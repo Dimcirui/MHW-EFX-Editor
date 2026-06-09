@@ -329,19 +329,62 @@ class EFX_OT_move_block(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_OT_rename_body  —  body 改名（仅限文件中已有标签的 body）
+# body 命名能力判定 + EFX_OT_rename_body
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _find_root(obj):
+    """沿 parent 链找 EFX_ROOT。"""
+    cur = obj
+    while cur is not None and cur.get("~TYPE") != "EFX_ROOT":
+        cur = cur.parent
+    return cur
+
+
+def can_label_body(obj) -> bool:
+    """
+    该 body 能否安全获得/拥有标签槽。
+
+    EFX 标签表是 [Play|Extern|Main] 全局顺序的**连续前缀**。一个 body 要有标签，
+    它前面的所有条目（play/extern + 在它之前的 body）必须都已有标签——否则给它
+    标签会让标签错位（落到前面那个无标签条目上）。
+
+    返回 True 表示：它已在前缀内（has_label=1），或恰好在前缀边界（前面全有标签，
+    可安全扩展前缀把它纳入）。
+    """
+    if obj is None or obj.get("~TYPE") != "EFX_BODY":
+        return False
+    if int(obj.get("efx_has_label", 0)) == 1:
+        return True
+    root = _find_root(obj)
+    if root is None:
+        return False
+
+    def _children(type_tag):
+        objs = [o for o in bpy.data.objects
+                if o.parent == root and o.get("~TYPE") == type_tag]
+        objs.sort(key=lambda o: int(o.get("efx_index", 0)))
+        return objs
+
+    bodies = _children("EFX_BODY")
+    if obj not in bodies:
+        return False
+    bi = bodies.index(obj)
+    before = _children("EFX_PLAY") + _children("EFX_EXTERN") + bodies[:bi]
+    return all(int(e.get("efx_has_label", 0)) == 1 for e in before)
+
 
 class EFX_OT_rename_body(bpy.types.Operator):
     """重命名 EFX_BODY（改 EFX_Type 标签表里的名字，导出生效）
 
-    ⚠ 仅支持文件中已有标签的 body（efx_has_label=1）。标签表是 [Play|Extern|Main]
-    顺序的前缀，无标签 body 在前缀之外，硬给名字会破坏位置映射，故不支持（v1）。
+    标签表是 [Play|Extern|Main] 顺序的连续前缀。可命名条件（can_label_body）：
+      - 已有标签（efx_has_label=1）→ 直接改名；
+      - 或处于前缀边界（前面条目全有标签）→ 提升为有标签（has_label=1）。
+    前面有无标签条目的 body 不可命名（会破坏位置映射），面板会禁用。
     """
 
     bl_idname      = "efx.rename_body"
     bl_label       = "重命名 Body"
-    bl_description = "修改该 body 在 EFX 文件标签表中的名字（仅限已有标签的 body）"
+    bl_description = "修改该 body 在 EFX 文件标签表中的名字（前面条目须全有标签）"
     bl_options     = {"REGISTER", "UNDO"}
 
     new_name: bpy.props.StringProperty(
@@ -352,11 +395,7 @@ class EFX_OT_rename_body(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BODY":
-            return False
-        # 仅已有标签的 body 可改名
-        return int(obj.get("efx_has_label", 0)) == 1
+        return can_label_body(context.active_object)
 
     def invoke(self, context, event):
         obj = context.active_object
@@ -368,11 +407,8 @@ class EFX_OT_rename_body(bpy.types.Operator):
 
     def execute(self, context):
         obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BODY":
-            self.report({"ERROR"}, "请选中 EFX_BODY")
-            return {"CANCELLED"}
-        if int(obj.get("efx_has_label", 0)) != 1:
-            self.report({"ERROR"}, "该 body 在文件中无名字槽（无标签），不可改名")
+        if not can_label_body(obj):
+            self.report({"ERROR"}, "该 body 不可命名（前面有未命名条目，会破坏标签位置映射）")
             return {"CANCELLED"}
 
         new_name = self.new_name.strip()
@@ -383,17 +419,15 @@ class EFX_OT_rename_body(bpy.types.Operator):
             self.report({"ERROR"}, "名字不能含 NUL 字符")
             return {"CANCELLED"}
 
-        # 找 EFX_ROOT（沿 parent 链）
-        root = obj
-        while root is not None and root.get("~TYPE") != "EFX_ROOT":
-            root = root.parent
+        root = _find_root(obj)
         if root is None:
             self.report({"ERROR"}, "未找到 EFX_ROOT")
             return {"CANCELLED"}
 
-        # 更新标签 + 重建显示名 + 置 labels_dirty（导出重建标签表）
+        # 更新标签 + 提升为有标签 + 重建显示名 + 置 labels_dirty
         idx = int(obj.get("efx_index", 0))
         obj["efx_raw_label"] = new_name
+        obj["efx_has_label"] = 1   # 边界 body 提升为有标签
         obj.name = _body_display_name(idx, new_name)
         root["labels_dirty"] = 1
 

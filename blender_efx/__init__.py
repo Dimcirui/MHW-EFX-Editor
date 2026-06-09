@@ -121,7 +121,7 @@ def register():
     # ── L2 #3b：删除条目算子（EFX_OT_delete_*）────────────────────────────────
     delete_ops.register()
 
-    # ── L2 #3c：新增 body 算子 + Scene.efx_active_root（必须在 panels.register() 前）─
+    # ── L2 #3c：新增 body 算子 + Scene.efx_active_efx（必须在 panels.register() 前）─
     add_ops.register()
 
     # ── L2 #4：导出前校验算子（EFX_OT_validate）──────────────────────────────
@@ -149,7 +149,7 @@ def unregister():
     # ── L2 #4：导出前校验算子 ───────────────────────────────────────────────
     validate.unregister()
 
-    # ── L2 #3c：新增 body 算子 + Scene.efx_active_root ────────────────────────
+    # ── L2 #3c：新增 body 算子 + Scene.efx_active_efx ────────────────────────
     add_ops.unregister()
 
     # ── L2 #3b：删除条目算子 ────────────────────────────────────────────────

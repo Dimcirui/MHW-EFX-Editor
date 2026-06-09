@@ -558,7 +558,7 @@ class EFX_PT_main(bpy.types.Panel):
         row.operator("efx.export_efx", text="导出 EFX", icon="EXPORT")
 
         # ── Active EFX 选择器（新增 body 的目标根）────────────────────────────
-        layout.prop(context.scene, "efx_active_root", text="Active EFX")
+        layout.prop(context.scene, "efx_active_efx", text="Active EFX")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -641,15 +641,15 @@ class EFX_PT_body_reorder(bpy.types.Panel):
         op_dn = row.operator("efx.move_body", text="下移", icon="TRIA_DOWN")
         op_dn.direction = "DOWN"
 
-        # 重命名（仅文件中已有标签的 body 可改名）
+        # 重命名（可命名条件：已有标签，或处于标签前缀边界可安全提升）
         obj = context.active_object
-        has_label = obj is not None and int(obj.get("efx_has_label", 0)) == 1
-        if has_label:
+        from .reorder import can_label_body
+        if can_label_body(obj):
             layout.operator("efx.rename_body", text="重命名", icon="GREASEPENCIL")
         else:
             sub = layout.column()
             sub.enabled = False
-            sub.operator("efx.rename_body", text="重命名（无名字槽）", icon="GREASEPENCIL")
+            sub.operator("efx.rename_body", text="重命名（前有未命名条目）", icon="GREASEPENCIL")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

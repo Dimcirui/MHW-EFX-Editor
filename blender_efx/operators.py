@@ -126,6 +126,14 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         options={"HIDDEN", "SKIP_SAVE"},
     )
 
+    def invoke(self, context, event):
+        # FileHandler 拖入：Blender 已把 directory + files 填好 → 直接执行，不弹文件浏览器。
+        # （ImportHelper 默认 invoke 总是开浏览器，会让拖入"无反应"——这是拖入失效的根因。）
+        if self.directory and self.files:
+            return self.execute(context)
+        # 普通菜单/按钮：走 ImportHelper 的文件浏览器。
+        return ImportHelper.invoke(self, context, event)
+
     def execute(self, context):
         import os
 
@@ -193,12 +201,15 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
     )
 
     def execute(self, context):
-        # ── 1. 从 context 解析 EFX_ROOT ─────────────────────────────────────
-        root = _find_efx_root(context)
+        # ── 1. 解析要导出的 EFX_ROOT ─────────────────────────────────────────
+        # 优先用 N 面板的 Active EFX（选中的 .efx 集合）；否则回退到活动对象所属的 EFX。
+        # 这样不必非得选中 EFX 内某个对象——选好 Active EFX 即可导出。
+        from .add_ops import get_active_efx_root
+        root = get_active_efx_root(context) or _find_efx_root(context)
         if root is None:
             self.report(
                 {"ERROR"},
-                "未找到 EFX_ROOT 对象，请先选中 EFX 对象（或 EFX 对象树中的任意子对象）",
+                "未指定要导出的 EFX：请在 N 面板 EFX 区选择 Active EFX 集合，或选中 EFX 对象树中的任意对象",
             )
             return {"CANCELLED"}
 

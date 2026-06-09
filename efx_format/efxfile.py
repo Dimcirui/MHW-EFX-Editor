@@ -868,6 +868,7 @@ class EFXFile:
         self.main: List = []                  # List[MainDataBody | RootBody]
         self.subselect: List[SubselectTable] = []
         self.eof_ints: List[int] = []
+        self.eof_tail: bytes = b''     # eof 之后的不透明尾字节（部分游戏文件有，如 4 字节 footer）
 
     # ── Public API ──────────────────────────────────────────────────────────
 
@@ -920,11 +921,9 @@ class EFXFile:
         obj.eof_ints = list(struct.unpack_from(f'<{hdr.count_eof}I', data, pos))
         pos += hdr.count_eof * 4
 
-        if pos != len(data):
-            raise ValueError(
-                f'Cursor at {pos} but file is {len(data)} bytes '
-                f'(delta={len(data)-pos})'
-            )
+        # eof 之后的尾字节：部分游戏文件在 eof 后有不透明 footer（如 jichu1.efx 末尾
+        # 多 4 字节）。捕获为 opaque tail 原样保留，保证 byte-perfect（78 样本 tail 为空）。
+        obj.eof_tail = data[pos:]
 
         return obj
 
@@ -946,6 +945,8 @@ class EFXFile:
 
         for v in self.eof_ints:
             out += struct.pack('<I', v)
+
+        out += self.eof_tail   # eof 后不透明 footer（多数文件为空）
 
         return out
 

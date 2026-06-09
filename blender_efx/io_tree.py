@@ -193,6 +193,8 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     _n_labels                       = len(_clean_labels)  # 全局有标签条目数 k
     # eof_ints：每个元素是 uint32，存逗号分隔十进制字符串；空列表存 ""
     root_obj["eof_ints"]            = ",".join(str(x) for x in efx.eof_ints)
+    # eof 后不透明 footer（部分游戏文件有，如 jichu1.efx 末尾 4 字节）；多数为空
+    root_obj["eof_tail"]            = _b64enc(efx.eof_tail)
 
     # ── 4. 建 4 个子集合（含序号前缀，控制大纲排序）────────────────────────
     # 按 EFX 文件段顺序：0 Play、1 Extern、2 Main、3 Subselect
@@ -637,6 +639,12 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
         _eof_str = str(r["eof_ints"]).strip()
         eof_ints = [int(x) for x in _eof_str.split(",") if x] if _eof_str else []
 
+    # 0-body EFX 不应有任何顶层 body 引用：强制清空 eof，否则残留的越界原始值
+    # （如删光 body 后留下的 [16]）会让游戏访问不存在的 body → 闪退。
+    # 实测两个正常 0-body 游戏文件 eof 均为空；多 body 文件不受影响（byte-perfect 保持）。
+    if len(body_objs) == 0:
+        eof_ints = []
+
     main_bodies = []
     for body_obj in body_objs:
         kind = str(body_obj["body_kind"])
@@ -765,6 +773,7 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     out += subselect_raw
     for v in eof_ints:
         out += struct.pack("<I", v)
+    out += _b64dec(str(r.get("eof_tail", "")))   # eof 后不透明 footer（多数为空）
 
     return out
 

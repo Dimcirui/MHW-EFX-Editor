@@ -198,24 +198,9 @@ def validate_efx_tree(root_obj) -> list:
                 except AttributeError:
                     pass
 
-    # eof_ints 列表
-    eof_props = getattr(root_obj, "efx_eof_list", None)
-    if eof_props is not None:
-        try:
-            items = eof_props.items
-        except AttributeError:
-            items = None
-        if items is not None:
-            for i, item in enumerate(items):
-                try:
-                    if item.is_ptr and item.body_ptr is None:
-                        problems.append({
-                            "level": "ERROR",
-                            "msg": f"EOF 列表第 {i} 项指针悬空（被引用的 Body 已删除）",
-                            "obj": root_obj.name,
-                        })
-                except AttributeError:
-                    continue
+    # eof_ints 列表：**不校验悬空**。eof_ints 是"顶层 body 列表"（派生的成员关系，
+    # 非真引用），导出端 export_eof_ints 对悬空指针直接跳过（删除的 body 自然移出列表、
+    # count_eof 重算）。删 body 后 eof 项悬空是正常的、导出会自动剔除——不应报错挡导出。
 
     # ── (2) efx_index 重复 ──────────────────────────────────────────────────
 

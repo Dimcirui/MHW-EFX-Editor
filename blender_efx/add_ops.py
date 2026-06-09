@@ -6,7 +6,7 @@ blender_efx/add_ops.py  —  L2 #3c：从「整 body 预设」新增 body + Acti
   - add_body_from_preset(preset_path, root_obj)：按预设新建一个 EFX_BODY 对象树
   - list_body_presets()：扫 __bodies__/ 目录生成 EnumProperty items
   - 算子：efx.save_body_preset / efx.add_body_from_preset / efx.open_body_preset_folder
-  - Scene.efx_active_root：新增 body 的目标 EFX 根（PointerProperty → EFX_ROOT）
+  - Scene.efx_active_efx：当前操作的 EFX 文件集合（新增 body / 导出目标，PointerProperty → Collection）
   - get_active_efx_root(context)：解析当前活动 EFX 根
 
 设计约束（参照 CLAUDE.md）：
@@ -69,19 +69,29 @@ _EXTENDED_PROP_KEYS = (
 # Active EFX root helper
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _root_obj_in_collection(col):
+    """返回集合内直接的 EFX_ROOT 对象（root_obj 直接 link 在 EFX 文件集合里），无则 None。"""
+    if col is None:
+        return None
+    for o in col.objects:
+        if o.get("~TYPE") == "EFX_ROOT":
+            return o
+    return None
+
+
 def get_active_efx_root(context):
     """
-    解析当前活动 EFX 根对象（用于新增 body 的目标）。
+    解析当前活动 EFX 根对象（供新增 body / 导出等用）。
 
-    优先 scene.efx_active_root（若非 None 且仍是 EFX_ROOT）；
+    优先 scene.efx_active_efx（用户在 N 面板选的 EFX 文件**集合**）→ 取其内的 EFX_ROOT 对象；
     否则扫场景：若恰好有一个 EFX_ROOT 对象，返回它；
     否则返回 None（让用户显式选择）。
     """
     scn = getattr(context, "scene", None)
     if scn is not None:
-        sel = scn.efx_active_root
-        if sel is not None and sel.get("~TYPE") == "EFX_ROOT":
-            return sel
+        root = _root_obj_in_collection(getattr(scn, "efx_active_efx", None))
+        if root is not None:
+            return root
 
     roots = [o for o in bpy.data.objects if o.get("~TYPE") == "EFX_ROOT"]
     if len(roots) == 1:
@@ -262,9 +272,20 @@ def add_body_from_preset(preset_path: str,
     body_obj["~TYPE"]         = "EFX_BODY"
     body_obj["efx_index"]     = new_index
     body_obj["efx_raw_label"] = raw_label
-    body_obj["efx_has_label"] = 0           # 新增 body 不进标签前缀
+    body_obj["efx_has_label"] = 0           # 先置 0；下方在安全时提升
     body_obj["body_kind"]     = body_kind
     body_obj.parent           = root_obj
+
+    # 若预设源 body 有名字、且追加位置处于标签前缀边界（前面条目全有标签），
+    # 给新 body 一个真正的标签槽——名字才能持久化、也可被重命名。
+    # 否则（文件本身有无标签 body）保持 has_label=0（名字仅 Blender 显示，不进文件）。
+    if source_label:
+        try:
+            from .reorder import can_label_body
+            if can_label_body(body_obj):
+                body_obj["efx_has_label"] = 1
+        except Exception:
+            pass
 
     props = preset.get("props", {}) or {}
 
@@ -613,9 +634,9 @@ _CLASSES = (
 )
 
 
-def _active_root_poll(self, obj):
-    """Scene.efx_active_root 的 poll：仅允许选 EFX_ROOT 对象。"""
-    return obj.get("~TYPE") == "EFX_ROOT"
+def _active_efx_poll(self, col):
+    """Scene.efx_active_efx 的 poll：仅允许选含 EFX_ROOT 对象的 EFX 文件集合。"""
+    return any(o.get("~TYPE") == "EFX_ROOT" for o in col.objects)
 
 
 def _get_body_preset_items(self, context):
@@ -631,11 +652,13 @@ def register():
         bpy.utils.register_class(cls)
 
     # Active EFX 选择器：挂在 Scene 上（场景级，随 .blend 保存）。
-    bpy.types.Scene.efx_active_root = PointerProperty(
+    # 选 EFX 文件**集合**（大纲里那个紫色 .efx 集合，比选 header 对象直观）；
+    # 新增 body / 导出都以它为目标。
+    bpy.types.Scene.efx_active_efx = PointerProperty(
         name="Active EFX",
-        description="新增 body 的目标 EFX 根对象（选 EFX_ROOT）",
-        type=bpy.types.Object,
-        poll=_active_root_poll,
+        description="当前操作的 EFX 文件集合（新增 body / 导出的目标）",
+        type=bpy.types.Collection,
+        poll=_active_efx_poll,
     )
 
     # body 预设下拉：挂 WindowManager（会话级，不污染场景数据）。
@@ -653,7 +676,7 @@ def unregister():
         del bpy.types.WindowManager.efx_body_preset_enum
 
     try:
-        del bpy.types.Scene.efx_active_root
+        del bpy.types.Scene.efx_active_efx
     except AttributeError:
         pass
 
