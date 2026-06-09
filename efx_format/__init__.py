@@ -1,0 +1,59 @@
+# efx_format package
+# Pure-Python parser for MHW .efx effect files.
+# Phase 0: opaque byte-perfect roundtrip.
+# Phase 1: field-level schema codec for known attribute block types.
+
+from .efxfile import EFXFile
+from .structs import (
+    unpack, pack, _schema_size,
+    ATTR_SCHEMA_MAP,
+    TRANSFORM3D_SCHEMA,
+    PARENTOPTIONS_SCHEMA,
+    SPAWN_SCHEMA,
+    LIFE_SCHEMA,
+    SHADERSETTINGS_SCHEMA,
+    VELOCITY3D_SCHEMA,
+    EMITTERSHAPE3D_SCHEMA,
+    SCALEANIM_SCHEMA,
+    FADEBYDEPTH_SCHEMA,
+    RGBFIRE_SCHEMA,
+    ROTATEANIM_SCHEMA,
+    ALPHACORRECTION_SCHEMA,
+    LUMINANCEBLEED_SCHEMA,
+    REFRACTION_SCHEMA,
+    NOISE_SCHEMA,
+    # Shared ExternXxx variants (same schema, reused by Main and Extern)
+    EXTERN_TRANSFORM3D_SCHEMA,
+    EXTERN_SPAWN_SCHEMA,
+    EXTERN_VELOCITY3D_SCHEMA,
+    EXTERN_EMITTERSHAPE3D_SCHEMA,
+    EXTERN_SCALEANIM_SCHEMA,
+    EXTERN_RGBFIRE_SCHEMA,
+)
+
+__all__ = [
+    "EFXFile",
+    "unpack", "pack", "_schema_size",
+    "ATTR_SCHEMA_MAP",
+    "TRANSFORM3D_SCHEMA",
+    "PARENTOPTIONS_SCHEMA",
+    "SPAWN_SCHEMA",
+    "LIFE_SCHEMA",
+    "SHADERSETTINGS_SCHEMA",
+    "VELOCITY3D_SCHEMA",
+    "EMITTERSHAPE3D_SCHEMA",
+    "SCALEANIM_SCHEMA",
+    "FADEBYDEPTH_SCHEMA",
+    "RGBFIRE_SCHEMA",
+    "ROTATEANIM_SCHEMA",
+    "ALPHACORRECTION_SCHEMA",
+    "LUMINANCEBLEED_SCHEMA",
+    "REFRACTION_SCHEMA",
+    "NOISE_SCHEMA",
+    "EXTERN_TRANSFORM3D_SCHEMA",
+    "EXTERN_SPAWN_SCHEMA",
+    "EXTERN_VELOCITY3D_SCHEMA",
+    "EXTERN_EMITTERSHAPE3D_SCHEMA",
+    "EXTERN_SCALEANIM_SCHEMA",
+    "EXTERN_RGBFIRE_SCHEMA",
+]

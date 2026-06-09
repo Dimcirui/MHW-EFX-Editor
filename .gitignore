@@ -1,0 +1,16 @@
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 本地 Claude 配置/状态
+.claude/
+
+# 构建产物（发布用 GitHub Release 挂 zip，不进仓库）
+dist/
+
+# 提取的 MHW 游戏资产（版权，不上传；测试在本地跑）
+efx_samples/
+
+# 用户运行期生成的预设
+presets/
