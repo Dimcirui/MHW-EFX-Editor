@@ -756,21 +756,100 @@ class EFX_PT_ptcollision_ref(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §6  面板：EOF Body 列表（只读显示）
+# §6  EOF Body 激活切换算子 + 面板
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_eof_list(bpy.types.Panel):
-    """
-    EFX_ROOT 对象的 eof_ints body 列表只读面板（VIEW_3D N 面板 EFX 标签）。
+class EFX_OT_eof_toggle_body(bpy.types.Operator):
+    """切换当前 EFX_BODY 在根文件 eof 列表中的激活状态"""
 
-    选中 EFX_ROOT 时显示 eof 条目列表（body 指针 + 原始整数）。
-    本轮只读显示，不支持编辑（L2 #3 结构编辑阶段再开放）。
-    """
+    bl_idname      = "efx.eof_toggle_body"
+    bl_label       = "切换 EOF 激活"
+    bl_description = "将此 Body 加入/移出根文件的 EOF 激活列表（控制游戏是否直接触发该特效）"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if obj is None or obj.get("~TYPE") != "EFX_BODY":
+            return False
+        root = obj.parent
+        return root is not None and root.get("~TYPE") == "EFX_ROOT"
+
+    def execute(self, context):
+        body_obj = context.active_object
+        root = body_obj.parent
+        try:
+            props = root.efx_eof_list
+        except AttributeError:
+            self.report({"ERROR"}, "根对象无 efx_eof_list 属性")
+            return {"CANCELLED"}
+
+        # 查找已有条目
+        found_idx = None
+        for i, item in enumerate(props.items):
+            if item.is_ptr and item.body_ptr == body_obj:
+                found_idx = i
+                break
+
+        if found_idx is not None:
+            props.items.remove(found_idx)
+            self.report({"INFO"}, f"已从 EOF 列表移除 {body_obj.name}")
+        else:
+            item = props.items.add()
+            item.is_ptr = True
+            item.body_ptr = body_obj
+            self.report({"INFO"}, f"已将 {body_obj.name} 加入 EOF 列表")
+
+        return {"FINISHED"}
+
+
+def is_body_in_eof(body_obj: bpy.types.Object) -> bool:
+    """查询 body_obj 是否在所属根文件的 eof 列表中。供面板绘制使用。"""
+    root = body_obj.parent if body_obj else None
+    if root is None or root.get("~TYPE") != "EFX_ROOT":
+        return False
+    try:
+        props = root.efx_eof_list
+    except AttributeError:
+        return False
+    for item in props.items:
+        if item.is_ptr and item.body_ptr == body_obj:
+            return True
+    return False
+
+
+class EFX_OT_eof_remove_entry(bpy.types.Operator):
+    """从根文件 EOF 列表移除指定条目"""
+
+    bl_idname      = "efx.eof_remove_entry"
+    bl_label       = "移除 EOF 条目"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    entry_index: bpy.props.IntProperty(default=0)
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_ROOT"
+
+    def execute(self, context):
+        root = context.active_object
+        try:
+            props = root.efx_eof_list
+        except AttributeError:
+            return {"CANCELLED"}
+        if 0 <= self.entry_index < len(props.items):
+            props.items.remove(self.entry_index)
+        return {"FINISHED"}
+
+
+class EFX_PT_eof_list(bpy.types.Panel):
+    """EFX_ROOT 对象的 EOF 激活 body 列表面板（可编辑）"""
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "EOF Body 列表"
+    bl_label       = "EOF 激活列表"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -789,38 +868,31 @@ class EFX_PT_eof_list(bpy.types.Panel):
             layout.label(text="（无 efx_eof_list 数据）", icon="ERROR")
             return
 
-        box = layout.box()
-        box.label(
-            text="EOF Ints（" + str(len(props.items)) + " 条）",
-            icon="SORTBYEXT",
-        )
+        n = len(props.items)
+        layout.label(text=f"游戏直接激活的 Body（{n} 条）", icon="SORTBYEXT")
 
-        if len(props.items) == 0:
-            box.label(text="（空列表）", icon="INFO")
+        if n == 0:
+            layout.label(text="（空——特效不会被游戏触发）", icon="INFO")
             return
 
-        col = box.column(align=True)
+        col = layout.column(align=True)
         for i, item in enumerate(props.items):
             row = col.row(align=True)
-            row.scale_y = 0.9
+            row.scale_y = 0.85
             if item.is_ptr:
                 body_obj = item.body_ptr
                 if body_obj is not None:
                     body_idx = body_obj.get("efx_index", "?")
                     row.label(
-                        text=str(i) + ": body[" + str(body_idx) + "] " + body_obj.name,
+                        text=f"[{body_idx}] {body_obj.name}",
                         icon="OBJECT_DATA",
                     )
                 else:
-                    row.label(
-                        text=str(i) + ": [悬空指针]",
-                        icon="ERROR",
-                    )
+                    row.label(text="[悬空指针]", icon="ERROR")
             else:
-                row.label(
-                    text=str(i) + ": raw=" + str(item.raw_value),
-                    icon="DOT",
-                )
+                row.label(text=f"raw={item.raw_value}", icon="DOT")
+            op = row.operator("efx.eof_remove_entry", text="", icon="X")
+            op.entry_index = i
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -833,6 +905,12 @@ _CLASSES_CORE = (
     EFXPtCollisionRefProps,
     EFXEofItem,
     EFXEofListProps,
+)
+
+# 算子类：由 panels.py 注册
+_OPERATOR_CLASSES = (
+    EFX_OT_eof_toggle_body,
+    EFX_OT_eof_remove_entry,
 )
 
 # 面板类：由 panels.py 在 EFX_PT_main 之后注册（bl_parent_id='EFX_PT_main'）

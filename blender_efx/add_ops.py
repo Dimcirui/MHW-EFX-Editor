@@ -137,6 +137,7 @@ def save_body_preset(body_obj: bpy.types.Object, name: str) -> str:
         "raw": "",
         "source_label": str(body_obj.get("efx_raw_label", "")),
         "source_counts": _read_source_counts(body_obj),
+        "in_eof": _is_body_in_eof(body_obj),
         "blocks": [],
     }
 
@@ -204,6 +205,37 @@ def _read_source_counts(body_obj: bpy.types.Object) -> dict:
         except (ValueError, TypeError):
             counts[key] = 0
     return counts
+
+
+def _is_body_in_eof(body_obj: bpy.types.Object) -> bool:
+    """body_obj 的 efx_index 是否出现在所属 EFX_ROOT 的 efx_eof_list 中。"""
+    root = body_obj.parent
+    if root is None or root.get("~TYPE") != "EFX_ROOT":
+        return False
+    try:
+        props = root.efx_eof_list
+    except AttributeError:
+        return False
+    try:
+        my_idx = int(body_obj.get("efx_index", -1))
+    except (ValueError, TypeError):
+        return False
+    for item in props.items:
+        if item.is_ptr and item.body_ptr == body_obj:
+            return True
+    return False
+
+
+def _append_to_eof(root_obj: bpy.types.Object,
+                   body_obj: bpy.types.Object) -> None:
+    """向 root_obj.efx_eof_list 末尾追加一条指向 body_obj 的指针条目。"""
+    try:
+        props = root_obj.efx_eof_list
+    except AttributeError:
+        return
+    item = props.items.add()
+    item.is_ptr = True
+    item.body_ptr = body_obj
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -310,6 +342,10 @@ def add_body_from_preset(preset_path: str,
     # #3c 跨文件引用重指针化：把新增 body 内块的段局部引用重指向目标文件的段。
     if body_kind in ("standard", "extended"):
         _repointerize_refs(preset, body_obj, root_obj)
+
+    # 若源 body 在源文件 eof 中，将新 body 追加到目标文件 eof 列表
+    if preset.get("in_eof"):
+        _append_to_eof(root_obj, body_obj)
 
     # body 数量变化 → 标签表变 → 触发导出端重算
     root_obj["labels_dirty"] = 1

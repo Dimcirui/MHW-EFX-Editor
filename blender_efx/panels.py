@@ -56,6 +56,9 @@ from .body_play_ref import (                   # L2 #1d：PtLife/PtCollision/eof
     EFX_PT_ptlife_ref,
     EFX_PT_ptcollision_ref,
     EFX_PT_eof_list,
+    EFX_OT_eof_toggle_body,
+    EFX_OT_eof_remove_entry,
+    is_body_in_eof,
 )
 from .backref import (                          # L2 反向引用视图（只读）
     EFX_PT_extern_backref,
@@ -619,12 +622,12 @@ class EFX_PT_add_body(bpy.types.Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_body_reorder(bpy.types.Panel):
-    """EFX Body 重排（选中 EFX_BODY 对象时显示 ▲▼ 上移/下移按钮）"""
+    """EFX Body 属性（重排、重命名、EOF 激活状态）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Body 位置"
+    bl_label        = "Body 属性"
     bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
@@ -635,14 +638,27 @@ class EFX_PT_body_reorder(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+        obj = context.active_object
+
+        # ── EOF 激活状态 ──────────────────────────────────────────────────────
+        in_eof = is_body_in_eof(obj)
+        row = layout.row(align=True)
+        icon = "RADIOBUT_ON" if in_eof else "RADIOBUT_OFF"
+        label = "游戏激活：是" if in_eof else "游戏激活：否"
+        row.label(text=label, icon=icon)
+        toggle_text = "移出激活列表" if in_eof else "加入激活列表"
+        row.operator("efx.eof_toggle_body", text=toggle_text, icon="PLAY" if not in_eof else "PAUSE")
+
+        layout.separator(factor=0.5)
+
+        # ── 排序 ──────────────────────────────────────────────────────────────
         row = layout.row(align=True)
         op_up = row.operator("efx.move_body", text="上移", icon="TRIA_UP")
         op_up.direction = "UP"
         op_dn = row.operator("efx.move_body", text="下移", icon="TRIA_DOWN")
         op_dn.direction = "DOWN"
 
-        # 重命名（可命名条件：已有标签，或处于标签前缀边界可安全提升）
-        obj = context.active_object
+        # ── 重命名 ────────────────────────────────────────────────────────────
         from .reorder import can_label_body
         if can_label_body(obj):
             layout.operator("efx.rename_body", text="重命名", icon="GREASEPENCIL")
@@ -663,7 +679,7 @@ class EFX_PT_block_fields(bpy.types.Panel):
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "块字段"
+    bl_label        = "块属性"
     bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
@@ -694,7 +710,7 @@ class EFX_PT_block_fields_props(bpy.types.Panel):
     bl_space_type   = "PROPERTIES"
     bl_region_type  = "WINDOW"
     bl_context      = "data"
-    bl_label        = "EFX 块字段"
+    bl_label        = "EFX 块属性"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -713,7 +729,7 @@ class EFX_PT_block_fields_object(bpy.types.Panel):
     bl_space_type   = "PROPERTIES"
     bl_region_type  = "WINDOW"
     bl_context      = "object"
-    bl_label        = "EFX 块字段"
+    bl_label        = "EFX 块属性"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -889,6 +905,9 @@ _CLASSES = (
     EFX_PT_ptlife_ref,
     EFX_PT_ptcollision_ref,
     EFX_PT_eof_list,
+    # L2 #1d EOF 算子
+    EFX_OT_eof_toggle_body,
+    EFX_OT_eof_remove_entry,
     # L2 反向引用视图（只读，bl_parent_id='EFX_PT_main'，必须在 EFX_PT_main 之后注册）
     EFX_PT_extern_backref,
     EFX_PT_body_backref,

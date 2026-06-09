@@ -644,6 +644,13 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     # 实测两个正常 0-body 游戏文件 eof 均为空；多 body 文件不受影响（byte-perfect 保持）。
     if len(body_objs) == 0:
         eof_ints = []
+    elif len(eof_ints) > len(body_objs):
+        # count_eof > count_body → 游戏闪退。
+        # 成因：被删 body 的 eof 槽是哨兵原始值（非 body 指针），无法随 body 删除自动消失。
+        # 例：fine 的 body[3] eof 值=16（越界哨兵），删 body[3] 后哨兵残留 → ceof=4>cb=3。
+        # 修复：截断到 n_body，丢弃尾部多余条目（哨兵总在末尾；已有指针的 body 删除
+        # 会走悬空跳过路径，不产生此问题）。78/78 不受影响（未编辑文件 len==count_body）。
+        eof_ints = eof_ints[:len(body_objs)]
 
     main_bodies = []
     for body_obj in body_objs:
