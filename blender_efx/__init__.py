@@ -45,6 +45,7 @@ from . import add_ops       # L2 #3c：从整 body 预设新增 body + Active EF
 from . import validate      # L2 #4：导出前校验
 from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始字节查看）
 from . import timl_io       # TIML ↔ .timl 文件互导（方案 C：FreeKinetics 桥）
+from . import transform_sync # TRANSFORM3D → body empty 视口变换（单向）
 
 # 对外公开的核心函数
 from .io_tree import import_efx_tree, export_efx_tree, roundtrip_corpus
@@ -70,6 +71,7 @@ __all__ = [
     "validate",
     "hexview",
     "timl_io",
+    "transform_sync",
 ]
 
 
@@ -137,10 +139,14 @@ def register():
     # ── TIML 互导：面板 bl_parent_id='EFX_PT_main'，同样在 panels.register() 之后 ─
     timl_io.register()
 
+    # ── TRANSFORM3D → 视口同步算子（无面板依赖）─────────────────────────────
+    transform_sync.register()
+
 
 def unregister():
     """注销扩展的全部 PropertyGroup、Operator 和 Panel 类。"""
     # ── Operator / Panel（先注销 UI 层）────────────────────────────────────
+    transform_sync.unregister()
     timl_io.unregister()
     hexview.unregister()
     panels.unregister()

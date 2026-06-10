@@ -106,6 +106,15 @@ def _mark_block_dirty(self, context):
         obj = self.id_data
         if obj is not None and hasattr(obj, "efx_block"):
             obj.efx_block.efx_dirty = True
+            # TRANSFORM3D 的 translate/rotate/resize 编辑 → 实时同步到 body empty（单向、纯可视）
+            if self.ori_name in ("translate", "rotate", "resize"):
+                try:
+                    from ..efx_format.hashes import TRANSFORM3D
+                    if int(obj.efx_block.type_hash_str) == TRANSFORM3D:
+                        from . import transform_sync
+                        transform_sync.apply_transform3d_to_body(obj)
+                except Exception:
+                    pass
     except Exception:
         pass
 

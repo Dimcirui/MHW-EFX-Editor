@@ -478,6 +478,13 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         # 任何异常安全跳过：root_obj["eof_ints"] 字符串仍在，导出回退路径保证 byte-perfect
         pass
 
+    # ── 导入后：按 TRANSFORM3D 基础变换摆放各 body empty（单向可视化，不影响导出）──
+    try:
+        from . import transform_sync
+        transform_sync.sync_all_transform3d(root_obj)
+    except Exception:
+        pass
+
     return root_obj
 
 

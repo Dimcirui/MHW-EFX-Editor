@@ -563,6 +563,9 @@ class EFX_PT_main(bpy.types.Panel):
         # ── Active EFX 选择器（新增 body 的目标根）────────────────────────────
         layout.prop(context.scene, "efx_active_efx", text="Active EFX")
 
+        # ── TRANSFORM3D → 视口：按基础变换摆放各 body empty（纯可视，不影响导出）─
+        layout.operator("efx.sync_transform_to_view", icon="ORIENTATION_GLOBAL")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # EFX_PT_add_body  —  从整 body 预设新增 body（L2 #3c）
