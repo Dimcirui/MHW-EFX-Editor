@@ -120,12 +120,28 @@ def save_body_preset(body_obj: bpy.types.Object, name: str) -> str:
     ----
     ValueError — 对象不是 EFX_BODY 或 name 非法
     """
-    if body_obj is None or body_obj.get("~TYPE") != "EFX_BODY":
-        raise ValueError("save_body_preset：目标对象不是 EFX_BODY")
-
     if (not name or "/" in name or "\\" in name or ":" in name
             or ".." in name):
         raise ValueError(f"save_body_preset：非法预设名称 {name!r}")
+
+    preset = build_body_preset_dict(body_obj)
+
+    save_dir = _bodies_preset_dir()
+    os.makedirs(save_dir, exist_ok=True)
+    json_path = os.path.join(save_dir, name + ".json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(preset, f, ensure_ascii=False, indent=4)
+
+    return json_path
+
+
+def build_body_preset_dict(body_obj: bpy.types.Object) -> dict:
+    """
+    把 body_obj（整个 body：头字段 + 块列表）构建为 preset dict（不落盘）。
+    供 save_body_preset（写文件）与 复制Body（内存剪贴板）共用。
+    """
+    if body_obj is None or body_obj.get("~TYPE") != "EFX_BODY":
+        raise ValueError("build_body_preset_dict：目标对象不是 EFX_BODY")
 
     body_kind = str(body_obj.get("body_kind", "unknown"))
 
@@ -157,32 +173,50 @@ def save_body_preset(body_obj: bpy.types.Object, name: str) -> str:
         # root / unknown：整段 raw（b64），无块子对象
         preset["raw"] = str(body_obj.get("raw", ""))
 
-    save_dir = _bodies_preset_dir()
-    os.makedirs(save_dir, exist_ok=True)
-    json_path = os.path.join(save_dir, name + ".json")
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(preset, f, ensure_ascii=False, indent=4)
-
-    return json_path
+    return preset
 
 
 def _collect_block_dicts(body_obj: bpy.types.Object) -> list:
     """
     收集 body_obj 的 EFX_BLOCK 子对象（按 efx_index 升序），
     每个存 {"type_hash": <十进制str>, "data_bytes": <b64>}。
+
+    ⚠ data_bytes 用**导出端同款的字段感知解析**（io_tree._resolve_block_data_bytes）
+    取当前实际字节——脏块按字段模型重打包、引用块按指针覆写——而非读
+    obj["data_bytes"]（那是导入快照、不含用户编辑）。这样预设/复制Body 抓到的是修改后的值。
+    源文件段局部 index 映射（按 efx_index 排序 enumerate）与导出一致，供引用覆写。
     """
-    blocks = []
-    for obj in bpy.data.objects:
-        if obj.parent == body_obj and obj.get("~TYPE") == "EFX_BLOCK":
-            blocks.append(obj)
+    import base64
+    from . import io_tree
+
+    root = body_obj.parent  # EFX_ROOT
+
+    def _localmap(type_tag):
+        objs = [o for o in bpy.data.objects
+                if o.parent == root and o.get("~TYPE") == type_tag]
+        objs.sort(key=lambda o: int(o.get("efx_index", 0)))
+        return {o: i for i, o in enumerate(objs)}
+
+    extern_map = _localmap("EFX_EXTERN") if root is not None else {}
+    body_map   = _localmap("EFX_BODY")   if root is not None else {}
+    play_map   = _localmap("EFX_PLAY")   if root is not None else {}
+
+    blocks = [o for o in bpy.data.objects
+              if o.parent == body_obj and o.get("~TYPE") == "EFX_BLOCK"]
     blocks.sort(key=lambda o: int(o.get("efx_index", 0)))
-    return [
-        {
+
+    out = []
+    for b in blocks:
+        try:
+            data = io_tree._resolve_block_data_bytes(b, extern_map, body_map, play_map)
+        except Exception:
+            # 回退：原始快照（至少不崩）
+            data = base64.b64decode(str(b.get("data_bytes", "")))
+        out.append({
             "type_hash": str(b.get("type_hash", "")),
-            "data_bytes": str(b.get("data_bytes", "")),
-        }
-        for b in blocks
-    ]
+            "data_bytes": base64.b64encode(data).decode("ascii"),
+        })
+    return out
 
 
 def _read_source_counts(body_obj: bpy.types.Object) -> dict:
@@ -263,9 +297,6 @@ def add_body_from_preset(preset_path: str,
     ----
     ValueError — 预设非法 / root_obj 无效 / 读取失败
     """
-    from . import io_tree
-    from ..efx_format.efxfile import AttrBlock
-
     if root_obj is None or root_obj.get("~TYPE") != "EFX_ROOT":
         raise ValueError("add_body_from_preset：root_obj 不是 EFX_ROOT")
 
@@ -276,8 +307,21 @@ def add_body_from_preset(preset_path: str,
     except Exception as exc:
         raise ValueError(f"add_body_from_preset：读取预设失败：{exc}")
 
+    return add_body_from_preset_dict(preset, root_obj)
+
+
+def add_body_from_preset_dict(preset: dict,
+                              root_obj: bpy.types.Object) -> bpy.types.Object:
+    """
+    按 preset dict 新建 body（add_body_from_preset 的核心；供文件版与"粘贴Body"内存版共用）。
+    """
+    from . import io_tree
+    from ..efx_format.efxfile import AttrBlock
+
+    if root_obj is None or root_obj.get("~TYPE") != "EFX_ROOT":
+        raise ValueError("add_body_from_preset_dict：root_obj 不是 EFX_ROOT")
     if preset.get("efx_preset_kind") != "body":
-        raise ValueError("add_body_from_preset：不是 body 预设（efx_preset_kind != 'body'）")
+        raise ValueError("add_body_from_preset_dict：不是 body 预设（efx_preset_kind != 'body'）")
 
     body_kind = str(preset.get("body_kind", "unknown"))
     source_label = str(preset.get("source_label", ""))
@@ -539,7 +583,8 @@ def list_body_presets():
         for entry in sorted(os.scandir(preset_dir), key=lambda e: e.name):
             if entry.is_file() and entry.name.lower().endswith(".json"):
                 display = os.path.splitext(entry.name)[0]
-                result.append((entry.path, display, ""))
+                from .presets import _encode_path_ident
+                result.append((_encode_path_ident(entry.path), display, ""))
     if not result:
         return [("", "（无预设）", "")]
     return result
@@ -621,8 +666,10 @@ class EFX_OT_add_body_from_preset(bpy.types.Operator):
             self.report({"ERROR"}, "未选择 body 预设")
             return {"CANCELLED"}
 
+        from .presets import _decode_path_ident
+        actual_path = _decode_path_ident(self.preset_path)
         try:
-            new_obj = add_body_from_preset(self.preset_path, root)
+            new_obj = add_body_from_preset(actual_path, root)
         except Exception as exc:
             self.report({"ERROR"}, f"新增 body 失败：{exc}")
             return {"CANCELLED"}
@@ -660,6 +707,75 @@ class EFX_OT_open_body_preset_folder(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 复制 / 粘贴 Body（内存剪贴板，会话级；快速搬 body 而不必存预设）
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 模块级整-body 剪贴板：build_body_preset_dict 的结果（含 source_counts/in_eof）。
+_BODY_CLIPBOARD = {}
+
+
+class EFX_OT_copy_body(bpy.types.Operator):
+    """把当前 EFX_BODY（含所有块）复制到内存剪贴板（供"粘贴Body"快速新增）"""
+
+    bl_idname      = "efx.copy_body"
+    bl_label       = "复制 Body"
+    bl_description = "把当前 EFX_BODY（头字段 + 所有块）复制到内存剪贴板"
+    bl_options     = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+
+    def execute(self, context):
+        global _BODY_CLIPBOARD
+        try:
+            _BODY_CLIPBOARD = build_body_preset_dict(context.active_object)
+        except Exception as exc:
+            self.report({"ERROR"}, f"复制 Body 失败：{exc}")
+            return {"CANCELLED"}
+        nblk = len(_BODY_CLIPBOARD.get("blocks", []))
+        self.report({"INFO"}, f"已复制 Body（{nblk} 块）到剪贴板")
+        return {"FINISHED"}
+
+
+class EFX_OT_paste_body(bpy.types.Operator):
+    """把剪贴板的 Body 粘贴（新增）到 Active EFX，不必另存预设"""
+
+    bl_idname      = "efx.paste_body"
+    bl_label       = "粘贴 Body"
+    bl_description = "把剪贴板里的整 body 新增到 Active EFX（含跨文件引用重指针化）"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_BODY_CLIPBOARD) and get_active_efx_root(context) is not None
+
+    def execute(self, context):
+        if not _BODY_CLIPBOARD:
+            self.report({"ERROR"}, "剪贴板为空（先用“复制 Body”）")
+            return {"CANCELLED"}
+        root = get_active_efx_root(context)
+        if root is None:
+            self.report({"ERROR"}, "未指定 Active EFX 集合")
+            return {"CANCELLED"}
+        try:
+            new_obj = add_body_from_preset_dict(_BODY_CLIPBOARD, root)
+        except Exception as exc:
+            self.report({"ERROR"}, f"粘贴 Body 失败：{exc}")
+            return {"CANCELLED"}
+        try:
+            for o in context.selected_objects:
+                o.select_set(False)
+            new_obj.select_set(True)
+            context.view_layer.objects.active = new_obj
+        except Exception:
+            pass
+        self.report({"INFO"}, f"已粘贴 Body：{new_obj.name}")
+        return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -667,6 +783,8 @@ _CLASSES = (
     EFX_OT_save_body_preset,
     EFX_OT_add_body_from_preset,
     EFX_OT_open_body_preset_folder,
+    EFX_OT_copy_body,
+    EFX_OT_paste_body,
 )
 
 
@@ -706,8 +824,22 @@ def register():
         options={"SKIP_SAVE"},
     )
 
+    # 统一「预设」面板的模式切换：块预设 / Body 预设。
+    bpy.types.WindowManager.efx_preset_mode = EnumProperty(
+        name="预设模式",
+        description="切换块字段预设 / 整 body 预设",
+        items=[
+            ("BLOCK", "块预设", "块字段值的复制/粘贴与预设"),
+            ("BODY",  "Body 预设", "整 body 的复制/粘贴与预设"),
+        ],
+        default="BLOCK",
+        options={"SKIP_SAVE"},
+    )
+
 
 def unregister():
+    if hasattr(bpy.types.WindowManager, "efx_preset_mode"):
+        del bpy.types.WindowManager.efx_preset_mode
     if hasattr(bpy.types.WindowManager, "efx_body_preset_enum"):
         del bpy.types.WindowManager.efx_body_preset_enum
 

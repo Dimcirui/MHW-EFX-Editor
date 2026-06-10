@@ -31,10 +31,26 @@ JSON 结构（保存一个块）：
 load 时用 float(s) 还原。uint 用十进制字符串。整数/bool 直接用 JSON 原生类型。
 """
 
+import base64
 import json
 import os
 
 import bpy
+
+
+def _encode_path_ident(path: str) -> str:
+    """把文件路径 base64 编码为纯 ASCII identifier，供 EnumProperty 使用。"""
+    return base64.urlsafe_b64encode(path.encode("utf-8")).decode("ascii")
+
+
+def _decode_path_ident(ident: str) -> str:
+    """把 _encode_path_ident 产生的 identifier 解码回原始文件路径。
+    若解码失败（旧格式直接路径）则原样返回，保持向后兼容。
+    """
+    try:
+        return base64.urlsafe_b64decode(ident.encode("ascii")).decode("utf-8")
+    except Exception:
+        return ident
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -488,6 +504,6 @@ def reload_presets(type_name: str):
         if entry.is_file() and entry.name.lower().endswith(".json"):
             display_name = os.path.splitext(entry.name)[0]
             full_path = entry.path
-            result.append((full_path, display_name, ""))
+            result.append((_encode_path_ident(full_path), display_name, ""))
 
     return result

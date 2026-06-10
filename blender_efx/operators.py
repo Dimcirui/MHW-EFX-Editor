@@ -335,15 +335,16 @@ class EFX_OT_apply_block_preset(bpy.types.Operator):
             return False
 
     def execute(self, context):
-        from .presets import load_block_preset
+        from .presets import load_block_preset, _decode_path_ident
         obj = context.active_object
 
         if not self.preset_path:
             self.report({"ERROR"}, "应用预设失败：未指定预设路径")
             return {"CANCELLED"}
 
+        actual_path = _decode_path_ident(self.preset_path)
         try:
-            written = load_block_preset(obj, self.preset_path)
+            written = load_block_preset(obj, actual_path)
             self.report({"INFO"}, f"EFX 预设已应用：{written} 个字段已写入")
             return {"FINISHED"}
         except ValueError as exc:
