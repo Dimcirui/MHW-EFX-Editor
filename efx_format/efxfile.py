@@ -429,9 +429,10 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == EXTERNREFERENCE:
         return 4 + 4 + 4 + 4*7  # = 40
 
-    # FakePlane: 4(type) + int*2(8) + long unkn(4) + float*4(16) = 36B
+    # FakePlane (EFX_Crimson.bt): type(4)+int unkn0[2](8)+byte unkn1[4](4)+
+    #   float unkn2(4)+int unkn3(4)+long unkn4(4)+float unkn5[9](36) = 64B
     if h == FAKEPLANE:
-        return 4 + 8 + 4 + 16  # = 36
+        return 4 + 8 + 4 + 4 + 4 + 4 + 36  # = 64
 
     # Dummy: 4(type) + int*2(8) + byte(1) = 13B
     if h == DUMMY:
@@ -480,9 +481,14 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == MASTERONLY:
         return 4 + 4  # = 8
 
-    # TubeLight: variable (has path_len near end)
+    # TubeLight (EFX_Crimson.bt): type(4)+unkn0[3](12)+unkn1[11](44)+unkn2[2](8)+
+    #   unkn3[4](16)+unkn4[4](16)+unkn5[2](8)+unkn6[4](16)+unkn7(4)+path_len(4)+path
+    # 固定部分 132B，path_len 在偏移 128，总长 = 132 + path_len
     if h == TUBELIGHT:
-        return None  # variable
+        path_len_val = rd_i(128)
+        if path_len_val < 0 or path_len_val > 1024:
+            return None  # 异常 → 回退 forward-scan
+        return 132 + path_len_val
 
     # Shovel: variable-ish (ends with short) - actually from BT it has fixed fields but ends with short:
     # type(4)+long*2(8)+long spacer(4)+float*6(24)+long unkn9(4)+long unkn10(4)+float unkn11(4)+
