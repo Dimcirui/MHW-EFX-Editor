@@ -359,10 +359,15 @@ def _draw_field_item(layout, item, type_name: str = ""):
 # L1.4 预设面板 — 动态 EnumProperty items 回调
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Blender EnumProperty 动态回调的 GC 陷阱：Blender C 层持有的是 list 对象的
-# 指针，而不是 Python 变量的引用。若每次返回新建的 list，旧对象会被 GC 导致
-# 乱码。正确做法：始终对同一个模块级 list 对象做 .clear() + .extend()，
-# 保证对象地址不变，Blender 的指针永远有效。
+# Blender EnumProperty 动态回调的 GC 陷阱（含非 ASCII 时尤其致命）：
+#   - Blender C 层持有 enum 项字符串（name/identifier）的 char* 指针。
+#   - 这些指针指向 Python str 对象的内部缓冲；str 一旦被 GC，指针即悬空。
+#   - 下拉菜单"展开"时，鼠标在面板其他位置移动会触发重绘 → 回调被再次调用。
+#     若回调每次都返回新建的 str 对象（即便复用同一个 list 容器、做 clear/extend），
+#     上一次返回、正被展开菜单显示的那批 str 会被释放 → use-after-free → 乱码，
+#     且乱码随每次重绘而变（释放的内存被反复复用）。
+# 正确做法：缓存上次构建结果，仅当内容"按值"真正变化时才重建（clear/extend）；
+# 内容不变时原样返回缓存 list（同一批 str 对象，永不释放）→ 展开菜单始终有效。
 _block_preset_items_cache = [("__none__", "（无预设）", "")]
 
 
@@ -374,24 +379,24 @@ def _get_preset_items(self, context):
     """
     obj = context.active_object if context else None
     if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+        new = [("__none__", "（无预设）", "")]
+    else:
+        try:
+            bp = obj.efx_block
+            if not bp.is_editable:
+                new = [("__none__", "（块不可编辑）", "")]
+            else:
+                type_name = _type_name_from_hash(bp.type_hash_str)
+                items = reload_presets(type_name)
+                new = items if items else [("__none__", "（无预设）", "")]
+        except Exception:
+            new = [("__none__", "（加载预设出错）", "")]
+
+    # 仅当内容按值变化时才重建缓存；否则保留原 str 对象（防展开菜单悬空乱码）
+    if new != _block_preset_items_cache:
         _block_preset_items_cache.clear()
-        _block_preset_items_cache.extend([("__none__", "（无预设）", "")])
-        return _block_preset_items_cache
-    try:
-        bp = obj.efx_block
-        if not bp.is_editable:
-            _block_preset_items_cache.clear()
-            _block_preset_items_cache.extend([("__none__", "（块不可编辑）", "")])
-            return _block_preset_items_cache
-        type_name = _type_name_from_hash(bp.type_hash_str)
-        items = reload_presets(type_name)
-        _block_preset_items_cache.clear()
-        _block_preset_items_cache.extend(items if items else [("__none__", "（无预设）", "")])
-        return _block_preset_items_cache
-    except Exception:
-        _block_preset_items_cache.clear()
-        _block_preset_items_cache.extend([("__none__", "（加载预设出错）", "")])
-        return _block_preset_items_cache
+        _block_preset_items_cache.extend(new)
+    return _block_preset_items_cache
 
 
 # ─────────────────────────────────────────────────────────────────────────────

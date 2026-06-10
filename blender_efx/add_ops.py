@@ -793,21 +793,22 @@ def _active_efx_poll(self, col):
     return any(o.get("~TYPE") == "EFX_ROOT" for o in col.objects)
 
 
-# 同 panels.py _block_preset_items_cache：对同一 list 对象原地修改防止 GC 乱码
+# 同 panels.py _block_preset_items_cache（详见那里的 GC 陷阱注释）：
+# 仅当内容按值变化时才重建缓存，否则原样返回同一批 str 对象，
+# 防止展开的下拉菜单因重绘触发回调而引用到被释放的字符串 → 乱码。
 _body_preset_items_cache = [("", "（无预设）", "")]
 
 
 def _get_body_preset_items(self, context):
     """WindowManager.efx_body_preset_enum 的动态 items 回调。"""
     try:
-        items = list_body_presets()
-        _body_preset_items_cache.clear()
-        _body_preset_items_cache.extend(items)
-        return _body_preset_items_cache
+        new = list_body_presets()
     except Exception:
+        new = [("", "（加载预设出错）", "")]
+    if new != _body_preset_items_cache:
         _body_preset_items_cache.clear()
-        _body_preset_items_cache.extend([("", "（加载预设出错）", "")])
-        return _body_preset_items_cache
+        _body_preset_items_cache.extend(new)
+    return _body_preset_items_cache
 
 
 def register():
