@@ -1029,7 +1029,7 @@ class EFXFile:
             500644368: 228,   # EXTERNTRANSFORM3D  (ExternTransform3D)
             351887441: 108,   # EXTERNVELOCITY3D
             786529163: 76,    # EXTERNSCALEANIM
-            2069124466: 112,  # EXTERNRGBFIRE: unkn0(4)+XYZ(2)(4)*2+bright*2(8)+unkn4+bright3+bright4(12)+ColorParam*2(80) = 112B
+            2069124466: 112,  # EXTERNRGBFIRE
             28559457: 64,     # EXTERNSPAWN (ExternSpawn = 16 ints = 64B)
             1880343637: 80,   # EXTERNEMITTERSHAPE3D
             725249589: 76,    # EXTERNPLEMISSIVE
@@ -1037,6 +1037,10 @@ class EFXFile:
             283026906: 84,    # EXTERNVELOCITY3D2 (long unkn[21] = 84B)
             705591903: 72,    # EXTERNVELOCITY3D5 (long unkn[18] = 72B)
             1879331968: 80,   # EXTERNVELOCITY3D6 (long unkn[20] = 80B)
+            0x295D488A: 133,  # EXTERNBILLBOARD3D (133B/elem, confirmed via structural analysis)
+            0x320E3177: 88,   # EXTERNVELOCITY3D1 (88B/elem = 22 longs)
+            0x1CC2BE3A: 161,  # EXTERNRGBWATER (161B/elem, roundtrip verified)
+            0x7CFF28CC: 45,   # EXTERNUVSEQUENCE (45B/elem, confirmed via structural analysis)
         }
         if type_hash in FIXED:
             return attri_count * FIXED[type_hash]
@@ -1050,6 +1054,15 @@ class EFXFile:
                 null1 = data.index(b'\x00', path1_start)
                 null2 = data.index(b'\x00', null1 + 1)
                 p = null2 + 1
+            return p - pos
+
+        # Variable-length: EXTERNPTBEHAVIOR - each element has 12B fixed header +
+        # null-terminated class name string (length at +4 includes null) + 16B fixed tail
+        if type_hash == 0x5FFC3E36:  # EXTERNPTBEHAVIOR
+            p = pos
+            for _ in range(attri_count):
+                null_pos = data.index(b'\x00', p + 12)
+                p = null_pos + 1 + 16
             return p - pos
 
         # Variable-length types that are not yet seen in samples - raise for diagnosis
