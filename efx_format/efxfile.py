@@ -869,6 +869,13 @@ class EFXFile:
         self.subselect: List[SubselectTable] = []
         self.eof_ints: List[int] = []
         self.eof_tail: bytes = b''     # eof 之后的不透明尾字节（部分游戏文件有，如 4 字节 footer）
+        # ── main 段不可解析时的不透明回退 ──────────────────────────────────────
+        # 某些文件 main 段含我们尚无法定界的块（forward_scan 启发式越界），整段
+        # 解析会崩。此时把 main 起点到 EOF 的全部字节（main+subselect+eof+tail）
+        # 原样存为 opaque blob，serialize 时 verbatim 重发 → 仍 byte-perfect、可导入。
+        # 代价：此文件 main 段不可在 Blender 内逐块编辑（整体只读）。
+        self.main_opaque: bool = False
+        self.opaque_main_tail: bytes = b''
 
     # ── Public API ──────────────────────────────────────────────────────────
 
@@ -908,22 +915,34 @@ class EFXFile:
         # ── Extern ───────────────────────────────────────────────────────────
         obj.extern, pos = cls._parse_extern(data, pos, hdr.count_extern)
 
-        # ── Main ─────────────────────────────────────────────────────────────
-        obj.main, pos = cls._parse_main(data, pos, hdr.count_body)
+        # ── Main（+ Subselect + End）─────────────────────────────────────────
+        # main 段含未定界块时 _parse_main 会崩。此时整段（main 起点→EOF）转 opaque
+        # 回退，保证文件仍能 byte-perfect 导入（代价：main 不可逐块编辑）。
+        main_start = pos
+        try:
+            obj.main, pos = cls._parse_main(data, pos, hdr.count_body)
 
-        # ── Subselect ────────────────────────────────────────────────────────
-        if hdr.subselect_size > 0:
-            obj.subselect, pos = cls._parse_subselect(data, pos, hdr.count_subselect)
-        else:
+            # ── Subselect ────────────────────────────────────────────────────
+            if hdr.subselect_size > 0:
+                obj.subselect, pos = cls._parse_subselect(data, pos, hdr.count_subselect)
+            else:
+                obj.subselect = []
+
+            # ── End ──────────────────────────────────────────────────────────
+            obj.eof_ints = list(struct.unpack_from(f'<{hdr.count_eof}I', data, pos))
+            pos += hdr.count_eof * 4
+
+            # eof 之后的尾字节：部分游戏文件在 eof 后有不透明 footer（如 jichu1.efx
+            # 末尾多 4 字节）。捕获为 opaque tail 原样保留（78 样本 tail 为空）。
+            obj.eof_tail = data[pos:]
+        except Exception:
+            # main 解析失败：整段（含 subselect/eof/tail）转 opaque，verbatim 重发。
+            obj.main = []
             obj.subselect = []
-
-        # ── End ──────────────────────────────────────────────────────────────
-        obj.eof_ints = list(struct.unpack_from(f'<{hdr.count_eof}I', data, pos))
-        pos += hdr.count_eof * 4
-
-        # eof 之后的尾字节：部分游戏文件在 eof 后有不透明 footer（如 jichu1.efx 末尾
-        # 多 4 字节）。捕获为 opaque tail 原样保留，保证 byte-perfect（78 样本 tail 为空）。
-        obj.eof_tail = data[pos:]
+            obj.eof_ints = []
+            obj.eof_tail = b''
+            obj.main_opaque = True
+            obj.opaque_main_tail = data[main_start:]
 
         return obj
 
@@ -936,6 +955,11 @@ class EFXFile:
 
         for ea in self.extern:
             out += ea.serialize()
+
+        # main 段不可解析时走 opaque 回退：main 起点之后全部字节 verbatim 重发。
+        if self.main_opaque:
+            out += self.opaque_main_tail
+            return out
 
         for body in self.main:
             out += body.serialize()

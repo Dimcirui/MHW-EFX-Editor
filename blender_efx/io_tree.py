@@ -196,6 +196,11 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     # eof 后不透明 footer（部分游戏文件有，如 jichu1.efx 末尾 4 字节）；多数为空
     root_obj["eof_tail"]            = _b64enc(efx.eof_tail)
 
+    # main 段不可解析的 opaque 回退文件：整段（main 起点→EOF）无法逐块解析，
+    # 存整文件原始字节，导出时 verbatim 透传（保证 byte-perfect，但此文件只读）。
+    if getattr(efx, "main_opaque", False):
+        root_obj["main_opaque_file_b64"] = _b64enc(raw_data)
+
     # ── 4. 建 4 个子集合（含序号前缀，控制大纲排序）────────────────────────
     # 按 EFX 文件段顺序：0 Play、1 Extern、2 Main、3 Subselect
     col_main      = _new_collection(file_stem + "_2 Main",      root_col)
@@ -567,6 +572,13 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
         完整 .efx 文件字节（byte-perfect）。
     """
     r = root_object  # 简写
+
+    # ── 0. main 段不可解析的 opaque 回退文件：整文件 verbatim 透传 ───────────
+    # 这类文件 main 段含我们无法定界的块，导入时整段存为 opaque blob。无法重建
+    # 结构，直接重发原始字节（byte-perfect）。此文件在 Blender 内为只读透传。
+    _opaque_file = r.get("main_opaque_file_b64")
+    if _opaque_file:
+        return _b64dec(str(_opaque_file))
 
     # ── 1. 重建 EFXHeader ───────────────────────────────────────────────────
     # 所有 uint32 字段存的是十进制字符串，需先 str() 再 int()
