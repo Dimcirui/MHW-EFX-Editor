@@ -793,21 +793,19 @@ def _active_efx_poll(self, col):
     return any(o.get("~TYPE") == "EFX_ROOT" for o in col.objects)
 
 
-# 同 panels.py _block_preset_items_cache（详见那里的 GC 陷阱注释）：
-# 仅当内容按值变化时才重建缓存，否则原样返回同一批 str 对象，
-# 防止展开的下拉菜单因重绘触发回调而引用到被释放的字符串 → 乱码。
+# Blender EnumProperty 动态回调的 GC 陷阱（详见 panels.py 顶部完整说明）：
+# 模块级全局缓存 + 回调里 global 重新赋值再 return，防止局部 list 被 GC 后
+# Blender C 层字符串指针变野 → 中文预设下拉乱码。本变量独立于块预设的缓存。
 _body_preset_items_cache = [("", "（无预设）", "")]
 
 
 def _get_body_preset_items(self, context):
     """WindowManager.efx_body_preset_enum 的动态 items 回调。"""
+    global _body_preset_items_cache
     try:
-        new = list_body_presets()
+        _body_preset_items_cache = list_body_presets()
     except Exception:
-        new = [("", "（加载预设出错）", "")]
-    if new != _body_preset_items_cache:
-        _body_preset_items_cache.clear()
-        _body_preset_items_cache.extend(new)
+        _body_preset_items_cache = [("", "（加载预设出错）", "")]
     return _body_preset_items_cache
 
 
