@@ -1060,8 +1060,8 @@ class EFXFile:
             351887441: 108,   # EXTERNVELOCITY3D
             786529163: 76,    # EXTERNSCALEANIM
             2069124466: 112,  # EXTERNRGBFIRE
-            28559457: 64,     # EXTERNSPAWN (ExternSpawn = 16 ints = 64B)
-            1880343637: 80,   # EXTERNEMITTERSHAPE3D
+            28559457: 72,     # EXTERNSPAWN (EFX_Crimson.bt: ExternSpawn = long unkn[18] = 72B)
+            1880343637: 88,   # EXTERNEMITTERSHAPE3D (EFX_Crimson.bt: long unkn[22] = 88B)
             725249589: 76,    # EXTERNPLEMISSIVE
             1338793878: 48,   # EXTERNVELOCITY3D0 (long unkn[12] = 48B)
             283026906: 84,    # EXTERNVELOCITY3D2 (long unkn[21] = 84B)
