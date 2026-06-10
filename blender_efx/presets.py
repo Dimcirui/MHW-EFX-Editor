@@ -34,6 +34,7 @@ load 时用 float(s) 还原。uint 用十进制字符串。整数/bool 直接用
 import base64
 import json
 import os
+import re
 
 import bpy
 
@@ -51,6 +52,63 @@ def _decode_path_ident(ident: str) -> str:
         return base64.urlsafe_b64decode(ident.encode("ascii")).decode("utf-8")
     except Exception:
         return ident
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 文件名 ASCII 化 + 内置显示名（彻底绕开中文文件名乱码）
+# ─────────────────────────────────────────────────────────────────────────────
+# 设计：磁盘文件名一律纯 ASCII（os.scandir/identifier 永不碰非 ASCII 字节），
+# 中文友好名存进 JSON 的 "display_name" 字段，下拉菜单从 JSON 内容里用 utf-8
+# 读出来显示。这样从源头消除文件名编码 + enum identifier 两类乱码诱因。
+
+def _sanitize_ascii(s: str) -> str:
+    """保留 ASCII 字母/数字/下划线/连字符，其余字符丢弃。"""
+    return re.sub(r"[^A-Za-z0-9_-]", "", s or "")
+
+
+def _unique_ascii_filename(directory: str, base_hint: str, fallback: str) -> str:
+    """
+    在 directory 内生成唯一的纯 ASCII 文件名（不含 .json）。
+    base_hint 净化后为空 → 用 fallback（同样净化）；仍为空 → 用 "preset"。
+    重名时末尾依次加 _0 / _1 / _2 …（用户约定）。
+    """
+    base = _sanitize_ascii(base_hint) or _sanitize_ascii(fallback) or "preset"
+    candidate = base
+    n = 0
+    while os.path.exists(os.path.join(directory, candidate + ".json")):
+        candidate = "{}_{}".format(base, n)
+        n += 1
+    return candidate
+
+
+# 显示名缓存：json_path -> (mtime, display_name)，避免每次重绘都解析大 JSON
+_display_name_cache = {}
+
+
+def _read_display_name(json_path: str) -> str:
+    """
+    从预设 JSON 读 "display_name"（utf-8，免疫文件名编码问题）。
+    缺失/读取失败 → 回退为文件名去 .json。按 mtime 缓存解析结果。
+    """
+    fallback = os.path.splitext(os.path.basename(json_path))[0]
+    try:
+        mtime = os.path.getmtime(json_path)
+    except OSError:
+        return fallback
+    cached = _display_name_cache.get(json_path)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+    name = fallback
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        dn = d.get("display_name")
+        if isinstance(dn, str) and dn.strip():
+            name = dn
+    except Exception:
+        pass
+    _display_name_cache[json_path] = (mtime, name)
+    return name
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -347,9 +405,11 @@ def save_block_preset(block_obj: bpy.types.Object, preset_name: str) -> str:
     type_name = _type_name_from_hash(bp.type_hash_str)
 
     # ── 构建 JSON dict ────────────────────────────────────────────────────────
+    # display_name 存用户原始名（可含中文，下拉从这里 utf-8 读出来显示）
     preset_dict = {
         "type_hash": bp.type_hash_str,
         "type_name": type_name,
+        "display_name": preset_name,
         "fields": {},
     }
 
@@ -372,7 +432,9 @@ def save_block_preset(block_obj: bpy.types.Object, preset_name: str) -> str:
     save_dir = _preset_dir(type_name)
     os.makedirs(save_dir, exist_ok=True)
 
-    json_path = os.path.join(save_dir, preset_name + ".json")
+    # 文件名一律 ASCII：净化用户名 → 空则退回类型名 → 仍空用 "preset"；重名加 _0/_1…
+    fname = _unique_ascii_filename(save_dir, preset_name, type_name)
+    json_path = os.path.join(save_dir, fname + ".json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(preset_dict, f, ensure_ascii=False, indent=4)
 
@@ -502,8 +564,9 @@ def reload_presets(type_name: str):
 
     for entry in sorted(os.scandir(preset_dir), key=lambda e: e.name):
         if entry.is_file() and entry.name.lower().endswith(".json"):
-            display_name = os.path.splitext(entry.name)[0]
-            full_path = entry.path
-            result.append((_encode_path_ident(full_path), display_name, ""))
+            # 显示名从 JSON 内的 display_name 读（utf-8，免疫文件名编码）；
+            # identifier 用 base64(纯 ASCII 文件名路径)。
+            display_name = _read_display_name(entry.path)
+            result.append((_encode_path_ident(entry.path), display_name, ""))
 
     return result

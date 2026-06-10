@@ -120,15 +120,21 @@ def save_body_preset(body_obj: bpy.types.Object, name: str) -> str:
     ----
     ValueError — 对象不是 EFX_BODY 或 name 非法
     """
-    if (not name or "/" in name or "\\" in name or ":" in name
-            or ".." in name):
-        raise ValueError(f"save_body_preset：非法预设名称 {name!r}")
+    if not name or not name.strip():
+        raise ValueError(f"save_body_preset：预设名称不能为空")
 
     preset = build_body_preset_dict(body_obj)
+    # 用户输入名作为显示名（可含中文，存进 JSON，下拉从这里 utf-8 读）
+    preset["display_name"] = name
 
     save_dir = _bodies_preset_dir()
     os.makedirs(save_dir, exist_ok=True)
-    json_path = os.path.join(save_dir, name + ".json")
+
+    # 文件名一律 ASCII：净化用户名 → 空则退回 body 标签名 → 仍空用 "body"；重名加 _0/_1…
+    from .presets import _unique_ascii_filename
+    fallback = str(body_obj.get("efx_raw_label", "")) or "body"
+    fname = _unique_ascii_filename(save_dir, name, fallback)
+    json_path = os.path.join(save_dir, fname + ".json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(preset, f, ensure_ascii=False, indent=4)
 
@@ -148,6 +154,9 @@ def build_body_preset_dict(body_obj: bpy.types.Object) -> dict:
     preset = {
         "efx_preset_kind": "body",
         "body_kind": body_kind,
+        # display_name：下拉显示用（utf-8 从 JSON 读，免疫文件名编码）；
+        # 默认用 body 自身的标签名，save_body_preset 可用用户输入覆盖。
+        "display_name": str(body_obj.get("efx_raw_label", "")),
         "props": {},
         "timl_bytes": "",
         "raw": "",
@@ -580,10 +589,11 @@ def list_body_presets():
     preset_dir = _bodies_preset_dir()
     result = []
     if os.path.isdir(preset_dir):
+        from .presets import _encode_path_ident, _read_display_name
         for entry in sorted(os.scandir(preset_dir), key=lambda e: e.name):
             if entry.is_file() and entry.name.lower().endswith(".json"):
-                display = os.path.splitext(entry.name)[0]
-                from .presets import _encode_path_ident
+                # 显示名从 JSON 的 display_name 读（utf-8）；identifier 用 base64 路径
+                display = _read_display_name(entry.path)
                 result.append((_encode_path_ident(entry.path), display, ""))
     if not result:
         return [("", "（无预设）", "")]
