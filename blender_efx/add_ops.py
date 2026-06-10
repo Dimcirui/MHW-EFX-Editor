@@ -793,12 +793,19 @@ def _active_efx_poll(self, col):
     return any(o.get("~TYPE") == "EFX_ROOT" for o in col.objects)
 
 
+# 同 panels.py _block_preset_items_cache：防止 Blender GC 释放 enum 字符串
+_body_preset_items_cache = [("", "（无预设）", "")]
+
+
 def _get_body_preset_items(self, context):
     """WindowManager.efx_body_preset_enum 的动态 items 回调。"""
+    global _body_preset_items_cache
     try:
-        return list_body_presets()
+        _body_preset_items_cache = list_body_presets()
+        return _body_preset_items_cache
     except Exception:
-        return [("", "（加载预设出错）", "")]
+        _body_preset_items_cache = [("", "（加载预设出错）", "")]
+        return _body_preset_items_cache
 
 
 def register():

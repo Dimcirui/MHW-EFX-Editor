@@ -359,26 +359,38 @@ def _draw_field_item(layout, item, type_name: str = ""):
 # L1.4 预设面板 — 动态 EnumProperty items 回调
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Blender 已知陷阱：动态 enum 回调返回的 list 若为局部变量，Python GC 可能在
+# Blender C 层仍持有其字符串指针时将其释放，导致读到 freed memory 出现乱码。
+# 把结果存入模块级变量可防止 GC。
+_block_preset_items_cache = [("__none__", "（无预设）", "")]
+
+
 def _get_preset_items(self, context):
     """
     EnumProperty 动态 items 回调：扫当前块类型的预设目录，返回列表。
     self 是 WindowManager 实例，context 是当前 context。
     若没有可用预设，返回一个占位条目（EnumProperty 不接受空列表）。
     """
+    global _block_preset_items_cache
     obj = context.active_object if context else None
     if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
-        return [("__none__", "（无预设）", "")]
+        _block_preset_items_cache = [("__none__", "（无预设）", "")]
+        return _block_preset_items_cache
     try:
         bp = obj.efx_block
         if not bp.is_editable:
-            return [("__none__", "（块不可编辑）", "")]
+            _block_preset_items_cache = [("__none__", "（块不可编辑）", "")]
+            return _block_preset_items_cache
         type_name = _type_name_from_hash(bp.type_hash_str)
         items = reload_presets(type_name)
         if not items:
-            return [("__none__", "（无预设）", "")]
-        return items
+            _block_preset_items_cache = [("__none__", "（无预设）", "")]
+            return _block_preset_items_cache
+        _block_preset_items_cache = items
+        return _block_preset_items_cache
     except Exception:
-        return [("__none__", "（加载预设出错）", "")]
+        _block_preset_items_cache = [("__none__", "（加载预设出错）", "")]
+        return _block_preset_items_cache
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -568,56 +580,67 @@ class EFX_PT_main(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_add_body  —  从整 body 预设新增 body（L2 #3c）
-#   有 Active EFX 根时显示：预设下拉 + 新增 + 保存 + 打开文件夹。
+# EFX_PT_presets  —  统一「预设」面板（块预设 / Body 预设，顶部模式下拉）
+#   布局两模式统一：复制/粘贴(属性|Body) → 保存当前为预设 → 选预设+应用/新增 → 打开文件夹
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_add_body(bpy.types.Panel):
-    """EFX 新增 Body（从整 body 预设）"""
+def _draw_body_presets_content(layout, context):
+    """Body 预设模式：复制/粘贴 Body + 保存 + 选预设新增 + 打开文件夹。
+    目标 EFX 由 EFX_PT_main 顶部的 Active EFX 选择器决定。"""
+    wm = context.window_manager
+
+    # 1. 复制 Body / 粘贴 Body（整 body 内存剪贴板；算子 poll 自动灰）
+    row = layout.row(align=True)
+    row.operator("efx.copy_body", text="复制 Body", icon="COPYDOWN")
+    row.operator("efx.paste_body", text="粘贴 Body", icon="PASTEDOWN")
+
+    layout.separator()
+
+    # 2. 保存当前 body 为预设（需选中 EFX_BODY，poll 自动灰）
+    layout.operator("efx.save_body_preset", text="保存当前 body 为预设", icon="ADD")
+
+    layout.separator()
+
+    # 3. body 预设下拉 + 新增
+    row = layout.row(align=True)
+    row.prop(wm, "efx_body_preset_enum", text="")
+    selected = wm.efx_body_preset_enum
+    if selected:
+        op = row.operator("efx.add_body_from_preset", text="新增", icon="PLAY")
+        op.preset_path = selected
+    else:
+        sub = row.row()
+        sub.enabled = False
+        sub.operator("efx.add_body_from_preset", text="新增", icon="PLAY")
+
+    layout.separator()
+
+    # 4. 打开预设文件夹
+    layout.operator("efx.open_body_preset_folder", text="打开预设文件夹", icon="FILE_FOLDER")
+
+
+class EFX_PT_presets(bpy.types.Panel):
+    """EFX 预设（顶部下拉切换：块预设 / Body 预设）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "新增 Body"
+    bl_label        = "预设"
     bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
-    @classmethod
-    def poll(cls, context):
-        from .add_ops import get_active_efx_root
-        return get_active_efx_root(context) is not None
-
     def draw(self, context):
-        from .add_ops import get_active_efx_root
-
         layout = self.layout
-        root = get_active_efx_root(context)
-
-        # ── 当前 active root 名 ───────────────────────────────────────────────
-        layout.label(text=f"目标：{root.name if root else '(无)'}", icon="OUTLINER_OB_EMPTY")
-
-        layout.separator()
-
-        # ── body 预设下拉 + 新增按钮（仿 EFX_PT_block_presets 模式）──────────────
         wm = context.window_manager
-        row = layout.row(align=True)
-        row.prop(wm, "efx_body_preset_enum", text="")
-        selected = wm.efx_body_preset_enum
-        if selected:
-            op = row.operator("efx.add_body_from_preset", text="新增 body", icon="ADD")
-            op.preset_path = selected
-        else:
-            sub = row.row()
-            sub.enabled = False
-            sub.operator("efx.add_body_from_preset", text="新增 body", icon="ADD")
 
+        # ── 顶部模式切换 ─────────────────────────────────────────────────────
+        layout.prop(wm, "efx_preset_mode", expand=True)
         layout.separator()
 
-        # ── 保存当前 body 为预设（poll 管可用性）──────────────────────────────
-        layout.operator("efx.save_body_preset", text="保存为 body 预设", icon="FILE_TICK")
-
-        # ── 打开预设文件夹 ────────────────────────────────────────────────────
-        layout.operator("efx.open_body_preset_folder", text="打开预设文件夹", icon="FILE_FOLDER")
+        if wm.efx_preset_mode == "BODY":
+            _draw_body_presets_content(layout, context)
+        else:
+            _draw_block_presets_content(layout, context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -803,33 +826,8 @@ def _draw_block_presets_content(layout, context):
     layout.operator("efx.open_preset_folder", text="打开预设文件夹", icon="FILE_FOLDER")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_block_presets  —  VIEW_3D N 面板 EFX 标签，与块字段面板平级
-# ─────────────────────────────────────────────────────────────────────────────
-
-class EFX_PT_block_presets(bpy.types.Panel):
-    """EFX 字段预设面板（VIEW_3D N 面板，选中可编辑 EFX_BLOCK 时显示）"""
-
-    bl_space_type   = "VIEW_3D"
-    bl_region_type  = "UI"
-    bl_category     = "EFX"
-    bl_label        = "字段预设"
-    bl_parent_id    = "EFX_PT_main"
-    bl_options      = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        """仅当选中对象是可编辑 EFX_BLOCK 时显示此面板。"""
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
-            return False
-        try:
-            return obj.efx_block.is_editable
-        except AttributeError:
-            return False
-
-    def draw(self, context):
-        _draw_block_presets_content(self.layout, context)
+# （旧 EFX_PT_block_presets 面板已并入统一的 EFX_PT_presets；
+#   _draw_block_presets_content 仍由其"块预设"模式复用。）
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -888,8 +886,8 @@ class EFX_PT_delete(bpy.types.Panel):
 
 _CLASSES = (
     EFX_PT_main,
-    # L2 #3c：新增 body 面板（bl_parent_id='EFX_PT_main'，必须在其后注册）
-    EFX_PT_add_body,
+    # 统一「预设」面板：块预设 / Body 预设（bl_parent_id='EFX_PT_main'，必须在其后注册）
+    EFX_PT_presets,
     # L2 #3b / #4：删除 + 校验面板（bl_parent_id='EFX_PT_main'，必须在其后注册）
     EFX_PT_delete,
     # L2 #3a：body 重排面板（选中 EFX_BODY 时显示）
@@ -897,7 +895,6 @@ _CLASSES = (
     EFX_PT_block_fields,
     EFX_PT_block_fields_props,
     EFX_PT_block_fields_object,
-    EFX_PT_block_presets,
     # L2 #1a：Subselect 归属面板（bl_parent_id='EFX_PT_main'，必须在 EFX_PT_main 之后注册）
     EFX_PT_subselect,
     # L2 #1b：Play 数据面板（bl_parent_id='EFX_PT_main'，必须在 EFX_PT_main 之后注册）
