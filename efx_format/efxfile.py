@@ -1038,7 +1038,7 @@ class EFXFile:
             705591903: 72,    # EXTERNVELOCITY3D5 (long unkn[18] = 72B)
             1879331968: 80,   # EXTERNVELOCITY3D6 (long unkn[20] = 80B)
             0x295D488A: 133,  # EXTERNBILLBOARD3D (133B/elem, confirmed via structural analysis)
-            0x320E3177: 88,   # EXTERNVELOCITY3D1 (88B/elem = 22 longs)
+            0x320E3177: 361,  # EXTERNVELOCITY3D1 (361B/elem, confirmed via structural analysis)
             0x1CC2BE3A: 161,  # EXTERNRGBWATER (161B/elem, roundtrip verified)
             0x7CFF28CC: 45,   # EXTERNUVSEQUENCE (45B/elem, confirmed via structural analysis)
         }
