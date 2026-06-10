@@ -359,9 +359,10 @@ def _draw_field_item(layout, item, type_name: str = ""):
 # L1.4 预设面板 — 动态 EnumProperty items 回调
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Blender 已知陷阱：动态 enum 回调返回的 list 若为局部变量，Python GC 可能在
-# Blender C 层仍持有其字符串指针时将其释放，导致读到 freed memory 出现乱码。
-# 把结果存入模块级变量可防止 GC。
+# Blender EnumProperty 动态回调的 GC 陷阱：Blender C 层持有的是 list 对象的
+# 指针，而不是 Python 变量的引用。若每次返回新建的 list，旧对象会被 GC 导致
+# 乱码。正确做法：始终对同一个模块级 list 对象做 .clear() + .extend()，
+# 保证对象地址不变，Blender 的指针永远有效。
 _block_preset_items_cache = [("__none__", "（无预设）", "")]
 
 
@@ -371,25 +372,25 @@ def _get_preset_items(self, context):
     self 是 WindowManager 实例，context 是当前 context。
     若没有可用预设，返回一个占位条目（EnumProperty 不接受空列表）。
     """
-    global _block_preset_items_cache
     obj = context.active_object if context else None
     if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
-        _block_preset_items_cache = [("__none__", "（无预设）", "")]
+        _block_preset_items_cache.clear()
+        _block_preset_items_cache.extend([("__none__", "（无预设）", "")])
         return _block_preset_items_cache
     try:
         bp = obj.efx_block
         if not bp.is_editable:
-            _block_preset_items_cache = [("__none__", "（块不可编辑）", "")]
+            _block_preset_items_cache.clear()
+            _block_preset_items_cache.extend([("__none__", "（块不可编辑）", "")])
             return _block_preset_items_cache
         type_name = _type_name_from_hash(bp.type_hash_str)
         items = reload_presets(type_name)
-        if not items:
-            _block_preset_items_cache = [("__none__", "（无预设）", "")]
-            return _block_preset_items_cache
-        _block_preset_items_cache = items
+        _block_preset_items_cache.clear()
+        _block_preset_items_cache.extend(items if items else [("__none__", "（无预设）", "")])
         return _block_preset_items_cache
     except Exception:
-        _block_preset_items_cache = [("__none__", "（加载预设出错）", "")]
+        _block_preset_items_cache.clear()
+        _block_preset_items_cache.extend([("__none__", "（加载预设出错）", "")])
         return _block_preset_items_cache
 
 
