@@ -409,9 +409,13 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == PTLIFE:
         return 4 + 10*2  # = 24
 
-    # StrainRibbon: variable (has path_len near end)
+    # StrainRibbon (EFX_Crimson.bt): type(4)+固定 340B+path_len(4)+path
+    # path_len 在偏移 344，总长 = 348 + path_len（18 实例验证，均落在下一块）
     if h == STRAINRIBBON:
-        return None  # variable
+        path_len_val = rd_i(344)
+        if path_len_val < 0 or path_len_val > 4096:
+            return None  # 异常 → 回退 forward-scan
+        return 348 + path_len_val
 
     # ScreenSpaceCollision: 4(type) + int*2(8) + long spacer(4) + float*3(12) + int*2(8) + float bounce*(6*4=24)...
     # = 4+8+4+4+4+4+4+4+4 = 40? From BT:

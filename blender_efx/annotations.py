@@ -335,6 +335,65 @@ FIELD_ANNOTATIONS = {
     # ─── LIGHTNING (fixed part fields) ────────────────────────────────────────
     # Lightning — no significant inline comments in BT for fixed fields
 
+    # ─── STRAINRIBBON（拔刀链条，社区注释 EFX_Crimson.bt）─────────────────────
+    ("STRAINRIBBON", "color1"): "链条起始段颜色 RGBA（0~255）",
+    ("STRAINRIBBON", "color2"): "链条中间段颜色 RGBA（0~255）",
+    ("STRAINRIBBON", "emissionStrength"): (
+        "链条发光强度，同时控制基础可见性。0=完全消失不渲染；1~39=正常显示，"
+        "越大越亮；40+=产生辉光曝光；100+=大范围光晕"
+    ),
+    ("STRAINRIBBON", "emissionStrengthJitter"): (
+        "发光强度随机偏差。正数=部分帧更亮产生辉光；负数（如 -100）=部分帧变黑，"
+        "蓝黑交替闪烁，适合不稳定电弧感"
+    ),
+    ("STRAINRIBBON", "startDirectionX"): "起始端朝 X 轴（刀身上下）延伸开关，非 0 即触发（数值大小无影响）",
+    ("STRAINRIBBON", "startDirectionY"): "起始端朝 Y 轴（刀身左右）延伸开关，非 0 即触发；可与 X/Z 叠加合成方向",
+    ("STRAINRIBBON", "startDirectionZ"): "起始端朝 Z 轴（刀身前后）延伸开关，非 0 即触发；三轴同开产生立体合成方向",
+    ("STRAINRIBBON", "endPosition"): (
+        "末端骨骼 XYZ 偏移量。重要：非 0 时收刀链条弯曲正常，但拔刀进战斗后链条变直"
+        "（动画骨骼覆盖偏移计算）；全 0 时收/拔刀形态一致。偏移越大弯曲弧度越大"
+    ),
+    ("STRAINRIBBON", "width"): "链条整体宽度，越大越粗；配合开始/结束宽度做粗细变化",
+    ("STRAINRIBBON", "widthJitter"): "宽度随机偏差（待确认）",
+    ("STRAINRIBBON", "length"): (
+        "链条总长度。=两骨骼实际距离时绷直贴合；>距离时多余部分弯折产生自然弧度和垂落；"
+        "配合细分计数控制弯折形态"
+    ),
+    ("STRAINRIBBON", "lengthJitter"): "长度随机偏差（待确认）",
+    ("STRAINRIBBON", "startWidth"): "起始端宽度系数，与宽度相乘。0=收缩为尖点；1=与宽度相同",
+    ("STRAINRIBBON", "startOpacity"): "起始端透明度。0=完全透明（渐入）；1=完全不透明",
+    ("STRAINRIBBON", "endWidth"): "末端宽度系数，同起始宽度",
+    ("STRAINRIBBON", "endOpacity"): "末端透明度，同起始不透明度",
+    ("STRAINRIBBON", "subdivisionCount"): (
+        "同时控制物理节点数与视觉平滑度。1=退化为直线（物理弯曲失效）；4=默认；"
+        "16+=极圆滑（能量光带）。闪电建议 2~4 保留棱角，能量鞭建议 8~16"
+    ),
+    ("STRAINRIBBON", "uvRepetition"): "贴图沿链条长度方向重复次数。1=贴图完整覆盖整条；越大锯齿越密变光滑线条",
+    ("STRAINRIBBON", "widthwiseUVScalingAlpha"): (
+        "贴图宽度方向透明通道缩放。0.1=极细激光线状；0.8=默认；5=极度扩张纹理密集"
+    ),
+    ("STRAINRIBBON", "widthwiseUVScalingBML"): (
+        "贴图宽度方向光照通道缩放。0.1=极细线；1=默认；5=发光纹理宽度大增锯齿感强；与 Alpha 缩放配合做粗细/光晕变化"
+    ),
+    ("STRAINRIBBON", "endPointScatter"): (
+        "终点扩散开关（模板误标为颜色）。0=终点锚定到结束骨骼；非 0=终点不锚定，"
+        "在四周随机位置出现多条闪电向外扩散（数值大小无影响，0~255）"
+    ),
+    ("STRAINRIBBON", "originReleaseFlag"): (
+        "起点解锁标志（模板误标为颜色）。0=起点锚定到 1 号骨骼；非 0=起点解锁，"
+        "所有链条从结束骨骼位置朝地图世界中心方向发射"
+    ),
+    ("STRAINRIBBON", "endBoneID"): "链条末端绑定骨骼编号，从 1 号骨骼延伸到此骨骼，决定覆盖的武器区域范围",
+    ("STRAINRIBBON", "colorModeFlag"): "颜色模式标志（positionalAberration_03）。2=青色偏移，10+=消失",
+    # MT Framework 遗留物理字段（荒野 RE 引擎不读，实测无效）
+    ("STRAINRIBBON", "lengthBreakpoint"): "MT Framework 遗留，荒野无效",
+    ("STRAINRIBBON", "tension"): "MT Framework 遗留，荒野无效（给 0/1/10 测均无变化）",
+    ("STRAINRIBBON", "gravityMultiplier"): "MT Framework 遗留，荒野无效（链条下垂由引擎默认重力控制）",
+    ("STRAINRIBBON", "inertia"): "MT Framework 遗留，荒野无效（给 0/9/99 测均无变化）",
+    ("STRAINRIBBON", "poseSnapping"): "MT Framework 遗留，荒野无效（给 0/1/100 测均无变化）",
+    ("STRAINRIBBON", "displacement"): "MT Framework 遗留位移，荒野无效",
+    ("STRAINRIBBON", "displacementToggle"): "MT Framework 遗留，荒野无效",
+
 }
 
 

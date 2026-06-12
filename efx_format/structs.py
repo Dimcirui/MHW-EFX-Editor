@@ -1949,6 +1949,109 @@ def pack_ribbonblade(values: dict) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# StrainRibbon（拔刀链条，0x3F4DA1D6）—— 固定 340B（type 之后）+ 末尾 path
+# 字段布局对照 EFX_Crimson.bt 的 StrainRibbon struct（社区注释验证）。
+# color1/color2 是字节 RGBA 色（XYZ type 2）；color3 实为 endPointScatter /
+# originReleaseFlag 两个开关 + 2 保留字节（模板误标成颜色），故拆成 4 个 byte。
+# 大量 unkn / spacer / MT Framework 遗留物理字段无实际作用（见 annotations）。
+# ─────────────────────────────────────────────────────────────────────────────
+_STRAINRIBBON_FIXED_SCHEMA = [
+    ('unkn00',                 ('i', 2)),   # 8
+    ('spacer00',               'i'),
+    ('color1',                 ('XYZ', 2)), # 链条起始段颜色 RGBA
+    ('spacer01',               'i'),
+    ('color2',                 ('XYZ', 2)), # 链条中间段颜色 RGBA
+    ('spacer02',               'i'),
+    ('emissionStrength',       'f'),
+    ('emissionStrengthJitter', 'f'),        # unkn03_01
+    ('spacer03',               'i'),
+    ('startDirectionX',        'f'),        # unkn03_03
+    ('startDirectionY',        'f'),        # unkn03_04
+    ('startDirectionZ',        'f'),        # unkn03_05
+    ('unkn03_06',              'f'),
+    ('endPosition',            ('XYZ', 3)), # 末端骨骼 XYZ 偏移
+    ('unkn03_10',              'f'),
+    ('width',                  'f'),
+    ('widthJitter',            'f'),
+    ('length',                 'f'),
+    ('lengthJitter',           'f'),
+    ('startWidth',             'f'),
+    ('startOpacity',           'f'),
+    ('endWidth',               'f'),
+    ('endOpacity',             'f'),
+    ('subdivisionCount',       'i'),
+    ('unkn04_01',              'i'),
+    ('uvRepetition',           'i'),
+    ('widthwiseUVScalingAlpha','f'),
+    ('spacer04',               'i'),
+    ('widthwiseUVScalingBML',  'f'),
+    ('endPointScatter',        'B'),        # color3.x（终点扩散开关）
+    ('originReleaseFlag',      'B'),        # color3.y（起点解锁标志）
+    ('color3_z',               'B'),        # 保留（模板误标颜色）
+    ('color3_w',               'B'),        # 保留
+    ('unkn06',                 ('f', 8)),   # unkn06_00..07，32B
+    ('unkn06_08_00',           'h'),
+    ('unkn06_08_01',           'h'),
+    ('lengthBreakpoint',       'f'),        # 以下一片为 MT Framework 遗留，荒野无效
+    ('lengthBreakpointJitter', 'f'),
+    ('breakpointLocation',     'f'),
+    ('breakpointLocationJitter','f'),
+    ('breakDelay',             'f'),
+    ('breakDelayJitter',       'f'),
+    ('tension',                'f'),
+    ('tensionJitter',          'f'),
+    ('unkn06_17',              'f'),
+    ('unkn06_18',              'f'),
+    ('gravityMultiplier',      'f'),
+    ('gravityMultiplierJitter','f'),
+    ('inertia',                'f'),
+    ('inertiaJitter',          'f'),
+    ('poseSnapping',           'f'),
+    ('poseSnappingJitter',     'f'),
+    ('endBoneID',              'i'),        # 链条末端绑定骨骼 ID（有效）
+    ('positionalAberration_01','i'),
+    ('positionalAberration_02','i'),
+    ('colorModeFlag',          'i'),        # positionalAberration_03（有效：2=青色偏移,10+=消失）
+    ('positionalAberration_04','i'),
+    ('positionalAberration_05','i'),
+    ('displacement',           ('XYZ', 0)), # MT 遗留，24B
+    ('displacementToggle',     'i'),
+    ('unkn09',                 ('f', 5)),   # 20B
+    ('unkn10_00',              'i'),
+    ('unkn10_01',              'f'),
+    ('unkn10_02',              'f'),
+    ('unkn11',                 'i'),
+    ('unkn12_00',              'i'),
+    ('unkn12_01',              'f'),
+    ('unkn12_02',              'f'),
+    ('unkn12_03',              'f'),
+    ('unkn13',                 'i'),
+]
+assert _schema_size(_STRAINRIBBON_FIXED_SCHEMA) == 340, \
+    f"_STRAINRIBBON_FIXED_SCHEMA size mismatch: {_schema_size(_STRAINRIBBON_FIXED_SCHEMA)}"
+
+
+def unpack_strainribbon(data: bytes, off: int = 0):
+    """Unpack StrainRibbon data_bytes (variable-length, trailing path)."""
+    values, off = unpack(_STRAINRIBBON_FIXED_SCHEMA, data, off)
+    (path_len,) = struct.unpack_from('<i', data, off)
+    off += 4
+    values['path_len'] = path_len
+    values['path'] = data[off:off + path_len]
+    off += path_len
+    return values, off
+
+
+def pack_strainribbon(values: dict) -> bytes:
+    """Pack StrainRibbon values dict back to bytes."""
+    out = pack(_STRAINRIBBON_FIXED_SCHEMA, values)
+    path = values['path']
+    out += struct.pack('<i', len(path))
+    out += path
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Turbulence (variable: type(4) + unkn0(4) + path_len(4) + path + floats...)
 #
 # From efxfile.py: path_len at data_bytes offset 4; after path: 4+8+24*5+20 = 152 B more
@@ -2489,6 +2592,7 @@ from .hashes import (
     RIBBON,
     PLANE,
     RIBBONBLADE,
+    STRAINRIBBON,
     TURBULENCE,
     LIGHTNING,
     RGBWATER,
@@ -2542,6 +2646,7 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     RIBBON:      ('_custom', None),
     PLANE:       ('_custom', None),
     RIBBONBLADE: ('_custom', None),
+    STRAINRIBBON:('_custom', None),
     TURBULENCE:  ('_custom', None),
     LIGHTNING:   ('_custom', None),
     RGBWATER:    ('_custom', None),
@@ -2557,6 +2662,7 @@ ATTR_CUSTOM_CODEC = {
     RIBBON:      (unpack_ribbon,      pack_ribbon),
     PLANE:       (unpack_plane,       pack_plane),
     RIBBONBLADE: (unpack_ribbonblade, pack_ribbonblade),
+    STRAINRIBBON:(unpack_strainribbon,pack_strainribbon),
     TURBULENCE:  (unpack_turbulence,  pack_turbulence),
     LIGHTNING:   (unpack_lightning,   pack_lightning),
     RGBWATER:    (unpack_rgbwater,    pack_rgbwater),
@@ -2660,6 +2766,12 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
     if type_hash == RIBBONBLADE:
         (path_len,) = struct.unpack_from('<i', data_bytes, 194)
         path_b = data_bytes[198:198 + path_len]
+        return [_path_bytes_to_str(path_b)]
+
+    # STRAINRIBBON: fixed 340B + path_len(4) + path
+    if type_hash == STRAINRIBBON:
+        (path_len,) = struct.unpack_from('<i', data_bytes, 340)
+        path_b = data_bytes[344:344 + path_len]
         return [_path_bytes_to_str(path_b)]
 
     # RGBWATER: fixed 156B + path_len(4) + path
@@ -2836,6 +2948,15 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + struct.pack('<i', len(new_path_b))
                 + new_path_b)
 
+    # ── STRAINRIBBON ──
+    # 结构：[0..339] verbatim + path_len(4) + path
+    if type_hash == STRAINRIBBON:
+        assert len(new_paths) == 1
+        new_path_b = _str_to_path_bytes(new_paths[0])
+        return (data_bytes[:340]
+                + struct.pack('<i', len(new_path_b))
+                + new_path_b)
+
     # ── RGBWATER ──
     # 结构：[0..155] verbatim + path_len(4) + path
     if type_hash == RGBWATER:
@@ -2988,6 +3109,7 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     RIBBON,
     PLANE,
     RIBBONBLADE,
+    STRAINRIBBON,
     TURBULENCE,
     LIGHTNING,
     RGBWATER,
@@ -3020,6 +3142,7 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     # 故拼上 ('BeginMod3','B') 使其也可编辑）；path1/path2 由 codec 处理，不在 schema。
     MESH:        _MOD3_PROPERTIES_SCHEMA + [('BeginMod3', 'B')],
     RIBBONBLADE: _RIBBONBLADE_FIXED_SCHEMA,
+    STRAINRIBBON:_STRAINRIBBON_FIXED_SCHEMA,
     LIGHTNING:   _LIGHTNING_FIXED_SCHEMA,
     RGBWATER:    _RGBWATER_FIXED_SCHEMA,
     TURBULENCE:  [('unkn0', 'i')] + _TURBULENCE_AFTER_PATH_SCHEMA,
