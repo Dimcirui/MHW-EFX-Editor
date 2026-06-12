@@ -21,6 +21,8 @@ import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from bpy.props import StringProperty
 
+from .i18n import T
+
 
 _TIML_MAGIC = b"timl"
 
@@ -58,8 +60,8 @@ class EFX_OT_export_body_timl(bpy.types.Operator, ExportHelper):
     """把当前 EFX_BODY 的 TIML 段导出为独立 .timl 文件（供 FreeKinetics 编辑）"""
 
     bl_idname      = "efx.export_body_timl"
-    bl_label       = "导出为 .timl 文件"
-    bl_description = "把当前 EFX_BODY 的内嵌 TIML 段写成独立 .timl 文件，可用 FreeKinetics 打开编辑"
+    bl_label       = "Export as .timl File"
+    bl_description = "Write the current EFX_BODY's embedded TIML segment to a standalone .timl file, openable in FreeKinetics for editing"
     bl_options     = {"REGISTER"}
 
     filename_ext = ".timl"
@@ -78,16 +80,16 @@ class EFX_OT_export_body_timl(bpy.types.Operator, ExportHelper):
     def execute(self, context):
         obj = context.active_object
         if not _body_has_timl(obj):
-            self.report({"ERROR"}, "当前对象不是含 TIML 的 EFX_BODY")
+            self.report({"ERROR"}, "Current object is not an EFX_BODY containing TIML")
             return {"CANCELLED"}
         data = _body_timl_bytes(obj)
         try:
             with open(self.filepath, "wb") as f:
                 f.write(data)
         except OSError as exc:
-            self.report({"ERROR"}, f"写文件失败：{exc}")
+            self.report({"ERROR"}, f"Failed to write file: {exc}")
             return {"CANCELLED"}
-        self.report({"INFO"}, f"已导出 TIML：{self.filepath}（{len(data)} 字节）")
+        self.report({"INFO"}, f"TIML exported: {self.filepath} ({len(data)} bytes)")
         return {"FINISHED"}
 
 
@@ -99,10 +101,11 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
     """读 .timl 文件写回当前 EFX_BODY 的 TIML 段（FreeKinetics 编辑后回填）"""
 
     bl_idname      = "efx.import_body_timl"
-    bl_label       = "从 .timl 文件回填"
+    bl_label       = "Reimport from .timl File"
     bl_description = (
-        "读取 .timl 文件，写回当前 EFX_BODY 的内嵌 TIML 段（自动重算 timl_length，支持变长）。"
-        "用于把 FreeKinetics 编辑导出的 .timl 回填进 EFX"
+        "Read a .timl file and write it back into the current EFX_BODY's embedded TIML segment "
+        "(automatically recomputes timl_length, supports variable length). "
+        "Used to reimport a FreeKinetics-edited .timl back into the EFX"
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -116,22 +119,22 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
     def execute(self, context):
         obj = context.active_object
         if obj is None or obj.get("~TYPE") != "EFX_BODY":
-            self.report({"ERROR"}, "请先选中含 TIML 的 EFX_BODY")
+            self.report({"ERROR"}, "Select an EFX_BODY containing TIML first")
             return {"CANCELLED"}
         if str(obj.get("body_kind", "")) not in ("standard", "extended"):
-            self.report({"ERROR"}, "该 body 类型不含 TIML 段")
+            self.report({"ERROR"}, "This body type does not contain a TIML segment")
             return {"CANCELLED"}
         try:
             with open(self.filepath, "rb") as f:
                 data = f.read()
         except OSError as exc:
-            self.report({"ERROR"}, f"读文件失败：{exc}")
+            self.report({"ERROR"}, f"Failed to read file: {exc}")
             return {"CANCELLED"}
 
         if data[:4] != _TIML_MAGIC:
             self.report(
                 {"ERROR"},
-                f"不是合法 .timl 文件（magic 应为 'timl'，实为 {data[:4]!r}）",
+                f"Not a valid .timl file (magic should be 'timl', got {data[:4]!r})",
             )
             return {"CANCELLED"}
 
@@ -140,7 +143,7 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
         obj["timl_length"] = str(len(data))  # 重算长度（导出端也会再重算，双保险）
         self.report(
             {"INFO"},
-            f"已回填 TIML：{len(data)} 字节（原 {old_len}）。导出时 timl_length 自动重算。",
+            f"TIML reimported: {len(data)} bytes (was {old_len}). timl_length is auto-recomputed on export.",
         )
         return {"FINISHED"}
 
@@ -155,7 +158,7 @@ class EFX_PT_body_timl(bpy.types.Panel):
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "TIML（FreeKinetics）"
+    bl_label        = "TIML (FreeKinetics)"
     bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
@@ -167,11 +170,11 @@ class EFX_PT_body_timl(bpy.types.Panel):
         layout = self.layout
         obj = context.active_object
         n = len(_body_timl_bytes(obj))
-        layout.label(text=f"TIML 段：{n} 字节", icon="ANIM")
+        layout.label(text=T("timl.segment_bytes").format(n=n), icon="ANIM")
         col = layout.column(align=True)
-        col.operator("efx.export_body_timl", text="导出为 .timl 文件", icon="EXPORT")
-        col.operator("efx.import_body_timl", text="从 .timl 文件回填", icon="IMPORT")
-        layout.label(text="用 FreeKinetics 打开导出的 .timl 编辑后再回填", icon="INFO")
+        col.operator("efx.export_body_timl", text=T("timl.export_btn"), icon="EXPORT")
+        col.operator("efx.import_body_timl", text=T("timl.import_btn"), icon="IMPORT")
+        layout.label(text=T("timl.hint"), icon="INFO")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

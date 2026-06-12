@@ -12,5 +12,7 @@ dist/
 # 提取的 MHW 游戏资产（版权，不上传；测试在本地跑）
 efx_samples/
 
-# 用户运行期生成的预设
-presets/
+# 预设：__blocks__/ 是随扩展下发的默认块预设（curated，入库保证构建可复现）；
+# 其余（用户运行期保存的、__bodies__ 等）不入库。
+presets/*
+!presets/__blocks__/

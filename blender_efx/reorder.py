@@ -187,16 +187,16 @@ class EFX_OT_move_body(bpy.types.Operator):
     """上移或下移选中的 EFX_BODY（交换 efx_index 并重建显示名）"""
 
     bl_idname      = "efx.move_body"
-    bl_label       = "移动 Body"
-    bl_description = "在 Main 段内上移或下移选中的 EFX_BODY"
+    bl_label       = "Move Body"
+    bl_description = "Move the selected EFX_BODY up or down within the Main section"
     bl_options     = {"REGISTER", "UNDO"}
 
     direction: EnumProperty(
-        name="方向",
-        description="移动方向",
+        name="Direction",
+        description="Move direction",
         items=[
-            ("UP",   "上移", "向前（索引减小）移动"),
-            ("DOWN", "下移", "向后（索引增大）移动"),
+            ("UP",   "Up", "Move forward (index decreases)"),
+            ("DOWN", "Down", "Move backward (index increases)"),
         ],
         default="UP",
     )
@@ -217,7 +217,7 @@ class EFX_OT_move_body(bpy.types.Operator):
         # 收集同级 EFX_BODY，已按 efx_index 升序排列
         siblings = _collect_siblings_by_type(root, "EFX_BODY")
         if len(siblings) < 2:
-            self.report({"INFO"}, "只有 1 个 body，无法移动")
+            self.report({"INFO"}, "Only 1 body, cannot move")
             return {"CANCELLED"}
 
         # 找当前 body 在列表中的位置
@@ -228,27 +228,27 @@ class EFX_OT_move_body(bpy.types.Operator):
                 break
 
         if cur_idx is None:
-            self.report({"ERROR"}, "无法找到当前 body 在同级列表中的位置")
+            self.report({"ERROR"}, "Cannot find current body's position in the sibling list")
             return {"CANCELLED"}
 
         if self.direction == "UP":
             if cur_idx == 0:
-                self.report({"INFO"}, "已在最顶部，无法上移")
+                self.report({"INFO"}, "Already at the top, cannot move up")
                 return {"CANCELLED"}
             neighbor = siblings[cur_idx - 1]
         else:  # DOWN
             if cur_idx == len(siblings) - 1:
-                self.report({"INFO"}, "已在最底部，无法下移")
+                self.report({"INFO"}, "Already at the bottom, cannot move down")
                 return {"CANCELLED"}
             neighbor = siblings[cur_idx + 1]
 
         # 执行交换（efx_index + 显示名）
         _swap_objects(obj, neighbor, is_body=True)
 
-        dir_str = "上移" if self.direction == "UP" else "下移"
+        dir_str = "up" if self.direction == "UP" else "down"
         self.report(
             {"INFO"},
-            f"EFX_BODY 已{dir_str}：{obj.name} ↔ {neighbor.name}",
+            f"EFX_BODY moved {dir_str}: {obj.name} ↔ {neighbor.name}",
         )
         return {"FINISHED"}
 
@@ -261,16 +261,16 @@ class EFX_OT_move_block(bpy.types.Operator):
     """上移或下移选中 EFX_BODY 内的 EFX_BLOCK（交换 efx_index 并重建显示名）"""
 
     bl_idname      = "efx.move_block"
-    bl_label       = "移动块"
-    bl_description = "在同一 EFX_BODY 内上移或下移选中的 EFX_BLOCK"
+    bl_label       = "Move Block"
+    bl_description = "Move the selected EFX_BLOCK up or down within the same EFX_BODY"
     bl_options     = {"REGISTER", "UNDO"}
 
     direction: EnumProperty(
-        name="方向",
-        description="移动方向",
+        name="Direction",
+        description="Move direction",
         items=[
-            ("UP",   "上移", "向前（索引减小）移动"),
-            ("DOWN", "下移", "向后（索引增大）移动"),
+            ("UP",   "Up", "Move forward (index decreases)"),
+            ("DOWN", "Down", "Move backward (index increases)"),
         ],
         default="UP",
     )
@@ -292,7 +292,7 @@ class EFX_OT_move_block(bpy.types.Operator):
         # 收集同一 body 下的全部 EFX_BLOCK，已按 efx_index 升序排列
         siblings = _collect_siblings_by_type(body, "EFX_BLOCK")
         if len(siblings) < 2:
-            self.report({"INFO"}, "只有 1 个块，无法移动")
+            self.report({"INFO"}, "Only 1 block, cannot move")
             return {"CANCELLED"}
 
         # 找当前块在列表中的位置
@@ -303,27 +303,27 @@ class EFX_OT_move_block(bpy.types.Operator):
                 break
 
         if cur_idx is None:
-            self.report({"ERROR"}, "无法找到当前块在同级列表中的位置")
+            self.report({"ERROR"}, "Cannot find current block's position in the sibling list")
             return {"CANCELLED"}
 
         if self.direction == "UP":
             if cur_idx == 0:
-                self.report({"INFO"}, "已在最顶部，无法上移")
+                self.report({"INFO"}, "Already at the top, cannot move up")
                 return {"CANCELLED"}
             neighbor = siblings[cur_idx - 1]
         else:  # DOWN
             if cur_idx == len(siblings) - 1:
-                self.report({"INFO"}, "已在最底部，无法下移")
+                self.report({"INFO"}, "Already at the bottom, cannot move down")
                 return {"CANCELLED"}
             neighbor = siblings[cur_idx + 1]
 
         # 执行交换（efx_index + 显示名）
         _swap_objects(obj, neighbor, is_body=False)
 
-        dir_str = "上移" if self.direction == "UP" else "下移"
+        dir_str = "up" if self.direction == "UP" else "down"
         self.report(
             {"INFO"},
-            f"EFX_BLOCK 已{dir_str}：{obj.name} ↔ {neighbor.name}",
+            f"EFX_BLOCK moved {dir_str}: {obj.name} ↔ {neighbor.name}",
         )
         return {"FINISHED"}
 
@@ -383,13 +383,13 @@ class EFX_OT_rename_body(bpy.types.Operator):
     """
 
     bl_idname      = "efx.rename_body"
-    bl_label       = "重命名 Body"
-    bl_description = "修改该 body 在 EFX 文件标签表中的名字（前面条目须全有标签）"
+    bl_label       = "Rename Body"
+    bl_description = "Change this body's name in the EFX file label table (all preceding entries must have labels)"
     bl_options     = {"REGISTER", "UNDO"}
 
     new_name: bpy.props.StringProperty(
-        name="新名字",
-        description="该 body 的新标签名（写入 EFX_Type 标签表）",
+        name="New Name",
+        description="The body's new label name (written to the EFX_Type label table)",
         default="",
     )
 
@@ -408,20 +408,20 @@ class EFX_OT_rename_body(bpy.types.Operator):
     def execute(self, context):
         obj = context.active_object
         if not can_label_body(obj):
-            self.report({"ERROR"}, "该 body 不可命名（前面有未命名条目，会破坏标签位置映射）")
+            self.report({"ERROR"}, "This body cannot be named (preceding unnamed entries would break the label position mapping)")
             return {"CANCELLED"}
 
         new_name = self.new_name.strip()
         if not new_name:
-            self.report({"ERROR"}, "名字不能为空")
+            self.report({"ERROR"}, "Name cannot be empty")
             return {"CANCELLED"}
         if "\x00" in new_name:
-            self.report({"ERROR"}, "名字不能含 NUL 字符")
+            self.report({"ERROR"}, "Name cannot contain NUL characters")
             return {"CANCELLED"}
 
         root = _find_root(obj)
         if root is None:
-            self.report({"ERROR"}, "未找到 EFX_ROOT")
+            self.report({"ERROR"}, "EFX_ROOT not found")
             return {"CANCELLED"}
 
         # 更新标签 + 提升为有标签 + 重建显示名 + 置 labels_dirty
@@ -431,7 +431,7 @@ class EFX_OT_rename_body(bpy.types.Operator):
         obj.name = _body_display_name(idx, new_name)
         root["labels_dirty"] = 1
 
-        self.report({"INFO"}, f"已重命名为：{new_name}（导出时写入标签表）")
+        self.report({"INFO"}, f"Renamed to: {new_name} (written to label table on export)")
         return {"FINISHED"}
 
 

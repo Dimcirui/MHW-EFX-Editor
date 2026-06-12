@@ -46,6 +46,8 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
+from .i18n import T
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 常量：referenceIndex 在 data_bytes 中的字节偏移
@@ -82,23 +84,23 @@ class EFXExternRefProps(PropertyGroup):
     """
 
     extern_ref_ptr: PointerProperty(
-        name="Extern 引用",
-        description="此 ExternReference 块指向的 EFX_EXTERN 对象（referenceIndex 对应的 extern）",
+        name="Extern Reference",
+        description="The EFX_EXTERN object this ExternReference block points to (the extern corresponding to referenceIndex)",
         type=bpy.types.Object,
         poll=_extern_object_poll,
     )
 
     extern_ref_none: BoolProperty(
-        name="无目标（-1）",
-        description="True = referenceIndex == -1（哨兵，无 extern 目标）",
+        name="No Target (-1)",
+        description="True = referenceIndex == -1 (sentinel, no extern target)",
         default=False,
     )
 
     extern_ref_pointerized: BoolProperty(
-        name="已指针化",
+        name="Pointerized",
         description=(
-            "True = referenceIndex 已指针化（有效范围 / -1 哨兵）；"
-            "False = 死块/越界，保持原始字节（byte-perfect 回退）"
+            "True = referenceIndex has been pointerized (valid range / -1 sentinel); "
+            "False = dead block / out of range, preserve original bytes (byte-perfect fallback)"
         ),
         default=False,
     )
@@ -290,7 +292,7 @@ class EFX_PT_extern_ref(bpy.types.Panel):
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "Extern 引用"
+    bl_label       = "Extern Reference"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -314,15 +316,15 @@ class EFX_PT_extern_ref(bpy.types.Panel):
         try:
             props = obj.efx_extern_ref
         except AttributeError:
-            layout.label(text="（无 efx_extern_ref 数据）", icon="ERROR")
+            layout.label(text=T("extern.no_data"), icon="ERROR")
             return
 
         if not props.extern_ref_pointerized:
             # 死块/越界：原始字节保留，只读提示
             box = layout.box()
-            box.label(text="Reference Index（死块）", icon="ERROR")
-            box.label(text="此块的 referenceIndex 超出 extern 范围，")
-            box.label(text="原始字节已保留（不可编辑）。")
+            box.label(text=T("extern.dead_title"), icon="ERROR")
+            box.label(text=T("extern.dead_line1"))
+            box.label(text=T("extern.dead_line2"))
             return
 
         # 已指针化
@@ -331,24 +333,24 @@ class EFX_PT_extern_ref(bpy.types.Panel):
 
         # 无目标（-1 哨兵）勾选
         row = box.row(align=True)
-        row.prop(props, "extern_ref_none", text="无目标（-1 哨兵）")
+        row.prop(props, "extern_ref_none", text=T("extern.no_target_sentinel"))
 
         if props.extern_ref_none:
             # none=True：没有 extern 目标，禁用指针选择器
             row2 = box.row(align=True)
             row2.enabled = False
-            row2.prop(props, "extern_ref_ptr", text="Extern 对象")
+            row2.prop(props, "extern_ref_ptr", text=T("extern.extern_object"))
         else:
             # 正常指针：显示 EFX_EXTERN 对象选择器
             row2 = box.row(align=True)
-            row2.prop(props, "extern_ref_ptr", text="Extern 对象")
+            row2.prop(props, "extern_ref_ptr", text=T("extern.extern_object"))
 
             # 悬空警告
             if props.extern_ref_ptr is None:
                 warn = box.row()
                 warn.alert = True
                 warn.label(
-                    text="⚠ 指针悬空（导出时使用原始字节）",
+                    text=T("extern.dangling"),
                     icon="ERROR",
                 )
             else:
@@ -356,7 +358,7 @@ class EFX_PT_extern_ref(bpy.types.Panel):
                 ext_obj = props.extern_ref_ptr
                 ext_idx = ext_obj.get("efx_index", "?")
                 info = box.row()
-                info.label(text=f"Extern 局部 index: {ext_idx}", icon="INFO")
+                info.label(text=T("extern.local_index") + f" {ext_idx}", icon="INFO")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -381,8 +383,8 @@ def register():
         bpy.utils.register_class(cls)
 
     bpy.types.Object.efx_extern_ref = PointerProperty(
-        name="EFX Extern 引用属性",
-        description="EFX_BLOCK（EXTERNREFERENCE 类型）的 extern 指针数据",
+        name="EFX Extern Reference Properties",
+        description="Extern pointer data for EFX_BLOCK (EXTERNREFERENCE type)",
         type=EFXExternRefProps,
     )
 

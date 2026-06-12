@@ -29,6 +29,7 @@ import bpy
 from bpy.props import PointerProperty
 
 # ── 子模块（同包相对导入）────────────────────────────────────────────────────
+from . import i18n          # 中英双语化基础设施（语言状态 + T() + 切换算子）
 from . import operators
 from . import panels
 from . import io_tree       # 供外部直接访问，如 MCP 调用
@@ -42,6 +43,7 @@ from . import backref       # L2 反向引用视图（只读）
 from . import reorder       # L2 #3a：body / 块重排（上移/下移）
 from . import delete_ops    # L2 #3b：删除条目（body/块/play/extern/subselect）
 from . import add_ops       # L2 #3c：从整 body 预设新增 body + Active EFX 选择器
+from . import block_ops     # 块级组装：单块复制/粘贴/预设保存/新增
 from . import validate      # L2 #4：导出前校验
 from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始字节查看）
 from . import timl_io       # TIML ↔ .timl 文件互导（方案 C：FreeKinetics 桥）
@@ -56,6 +58,7 @@ __all__ = [
     "export_efx_tree",
     "roundtrip_corpus",
     "verify_items_lossless",
+    "i18n",
     "operators",
     "panels",
     "fields",
@@ -68,6 +71,7 @@ __all__ = [
     "reorder",
     "delete_ops",
     "add_ops",
+    "block_ops",
     "validate",
     "hexview",
     "timl_io",
@@ -81,6 +85,9 @@ __all__ = [
 
 def register():
     """注册扩展的全部 PropertyGroup、Operator 和 Panel 类。"""
+    # ── 双语化基础设施：最先注册（语言切换算子 + 读回语言偏好；panels 绘制时要用 T()）─
+    i18n.register()
+
     # ── L1.1a：先注册 PropertyGroup（顺序重要：子类先于容器类）────────────────
     # EFXFieldItem 必须在 EFXBlockProps 之前注册，因为后者用 CollectionProperty(type=EFXFieldItem)
     bpy.utils.register_class(fields.EFXFieldItem)
@@ -88,8 +95,8 @@ def register():
 
     # 把 EFXBlockProps 挂到 Object 上
     bpy.types.Object.efx_block = PointerProperty(
-        name="EFX 块属性",
-        description="AttrBlock 字段模型（EFX_BLOCK 对象专用）",
+        name="EFX Block Properties",
+        description="AttrBlock field model (EFX_BLOCK objects only)",
         type=fields.EFXBlockProps,
     )
 
@@ -126,6 +133,9 @@ def register():
     # ── L2 #3c：新增 body 算子 + Scene.efx_active_efx（必须在 panels.register() 前）─
     add_ops.register()
 
+    # ── 块级组装：单块复制/粘贴/预设保存/新增（必须在 panels.register() 前）────────
+    block_ops.register()
+
     # ── L2 #4：导出前校验算子（EFX_OT_validate）──────────────────────────────
     validate.register()
 
@@ -154,6 +164,9 @@ def unregister():
 
     # ── L2 #4：导出前校验算子 ───────────────────────────────────────────────
     validate.unregister()
+
+    # ── 块级组装算子 ──────────────────────────────────────────────────────────
+    block_ops.unregister()
 
     # ── L2 #3c：新增 body 算子 + Scene.efx_active_efx ────────────────────────
     add_ops.unregister()
@@ -192,3 +205,6 @@ def unregister():
     # ── PropertyGroup（反序注销：先容器，再子类）────────────────────────────
     bpy.utils.unregister_class(fields.EFXBlockProps)
     bpy.utils.unregister_class(fields.EFXFieldItem)
+
+    # ── 双语化基础设施：最后注销 ──────────────────────────────────────────────
+    i18n.unregister()

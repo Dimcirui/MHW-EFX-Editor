@@ -608,13 +608,13 @@ class EFX_OT_save_body_preset(bpy.types.Operator):
     """把当前选中的 EFX_BODY（含块）保存为整 body 预设"""
 
     bl_idname      = "efx.save_body_preset"
-    bl_label       = "保存为 Body 预设"
-    bl_description = "把当前 EFX_BODY 的头字段与块列表保存为可复用的 body 预设"
+    bl_label       = "Save as Body Preset"
+    bl_description = "Save the current EFX_BODY's header fields and block list as a reusable body preset"
     bl_options     = {"REGISTER"}
 
     preset_name: StringProperty(
-        name="预设名称",
-        description="保存的预设文件名（不含 .json）",
+        name="Preset Name",
+        description="Saved preset file name (without .json)",
         default="my_body",
     )
 
@@ -638,9 +638,9 @@ class EFX_OT_save_body_preset(bpy.types.Operator):
         try:
             path = save_body_preset(obj, self.preset_name)
         except Exception as exc:
-            self.report({"ERROR"}, f"保存 body 预设失败：{exc}")
+            self.report({"ERROR"}, f"Failed to save body preset: {exc}")
             return {"CANCELLED"}
-        self.report({"INFO"}, f"已保存 body 预设：{os.path.basename(path)}")
+        self.report({"INFO"}, f"Saved body preset: {os.path.basename(path)}")
         return {"FINISHED"}
 
 
@@ -652,13 +652,13 @@ class EFX_OT_add_body_from_preset(bpy.types.Operator):
     """按选中的 body 预设，在 Active EFX 下新增一个 body"""
 
     bl_idname      = "efx.add_body_from_preset"
-    bl_label       = "新增 Body"
-    bl_description = "按选中的 body 预设新建一个 EFX_BODY（含块），导出端自动重算 header"
+    bl_label       = "Add Body"
+    bl_description = "Create a new EFX_BODY (with blocks) from the selected body preset; the exporter recomputes the header automatically"
     bl_options     = {"REGISTER", "UNDO"}
 
     preset_path: StringProperty(
-        name="预设路径",
-        description="要新增的 body 预设 JSON 路径",
+        name="Preset Path",
+        description="JSON path of the body preset to add",
         default="",
     )
 
@@ -669,11 +669,11 @@ class EFX_OT_add_body_from_preset(bpy.types.Operator):
     def execute(self, context):
         root = get_active_efx_root(context)
         if root is None:
-            self.report({"ERROR"}, "请先在 EFX 工具区选择 Active EFX 集合")
+            self.report({"ERROR"}, "Select an Active EFX collection in the EFX tools area first")
             return {"CANCELLED"}
 
         if not self.preset_path:
-            self.report({"ERROR"}, "未选择 body 预设")
+            self.report({"ERROR"}, "No body preset selected")
             return {"CANCELLED"}
 
         from .presets import _decode_path_ident
@@ -681,7 +681,7 @@ class EFX_OT_add_body_from_preset(bpy.types.Operator):
         try:
             new_obj = add_body_from_preset(actual_path, root)
         except Exception as exc:
-            self.report({"ERROR"}, f"新增 body 失败：{exc}")
+            self.report({"ERROR"}, f"Failed to add body: {exc}")
             return {"CANCELLED"}
 
         # 选中并激活新对象
@@ -693,7 +693,7 @@ class EFX_OT_add_body_from_preset(bpy.types.Operator):
         new_obj.select_set(True)
         context.view_layer.objects.active = new_obj
 
-        self.report({"INFO"}, f"已新增 body：{new_obj.name}")
+        self.report({"INFO"}, f"Added body: {new_obj.name}")
         return {"FINISHED"}
 
 
@@ -705,8 +705,8 @@ class EFX_OT_open_body_preset_folder(bpy.types.Operator):
     """打开 body 预设所在文件夹（资源管理器 / Finder）"""
 
     bl_idname      = "efx.open_body_preset_folder"
-    bl_label       = "打开 Body 预设文件夹"
-    bl_description = "在系统文件管理器中打开 __bodies__ 预设目录"
+    bl_label       = "Open Body Preset Folder"
+    bl_description = "Open the __bodies__ preset directory in the system file manager"
     bl_options     = {"REGISTER"}
 
     def execute(self, context):
@@ -728,8 +728,8 @@ class EFX_OT_copy_body(bpy.types.Operator):
     """把当前 EFX_BODY（含所有块）复制到内存剪贴板（供"粘贴Body"快速新增）"""
 
     bl_idname      = "efx.copy_body"
-    bl_label       = "复制 Body"
-    bl_description = "把当前 EFX_BODY（头字段 + 所有块）复制到内存剪贴板"
+    bl_label       = "Copy Body"
+    bl_description = "Copy the current EFX_BODY (header fields + all blocks) to the in-memory clipboard"
     bl_options     = {"REGISTER"}
 
     @classmethod
@@ -742,10 +742,10 @@ class EFX_OT_copy_body(bpy.types.Operator):
         try:
             _BODY_CLIPBOARD = build_body_preset_dict(context.active_object)
         except Exception as exc:
-            self.report({"ERROR"}, f"复制 Body 失败：{exc}")
+            self.report({"ERROR"}, f"Failed to copy Body: {exc}")
             return {"CANCELLED"}
         nblk = len(_BODY_CLIPBOARD.get("blocks", []))
-        self.report({"INFO"}, f"已复制 Body（{nblk} 块）到剪贴板")
+        self.report({"INFO"}, f"Copied Body ({nblk} blocks) to clipboard")
         return {"FINISHED"}
 
 
@@ -753,8 +753,8 @@ class EFX_OT_paste_body(bpy.types.Operator):
     """把剪贴板的 Body 粘贴（新增）到 Active EFX，不必另存预设"""
 
     bl_idname      = "efx.paste_body"
-    bl_label       = "粘贴 Body"
-    bl_description = "把剪贴板里的整 body 新增到 Active EFX（含跨文件引用重指针化）"
+    bl_label       = "Paste Body"
+    bl_description = "Add the whole body from the clipboard to the Active EFX (with cross-file reference re-pointerization)"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -763,16 +763,16 @@ class EFX_OT_paste_body(bpy.types.Operator):
 
     def execute(self, context):
         if not _BODY_CLIPBOARD:
-            self.report({"ERROR"}, "剪贴板为空（先用“复制 Body”）")
+            self.report({"ERROR"}, "Clipboard is empty (use Copy Body first)")
             return {"CANCELLED"}
         root = get_active_efx_root(context)
         if root is None:
-            self.report({"ERROR"}, "未指定 Active EFX 集合")
+            self.report({"ERROR"}, "No Active EFX collection specified")
             return {"CANCELLED"}
         try:
             new_obj = add_body_from_preset_dict(_BODY_CLIPBOARD, root)
         except Exception as exc:
-            self.report({"ERROR"}, f"粘贴 Body 失败：{exc}")
+            self.report({"ERROR"}, f"Failed to paste Body: {exc}")
             return {"CANCELLED"}
         try:
             for o in context.selected_objects:
@@ -781,7 +781,7 @@ class EFX_OT_paste_body(bpy.types.Operator):
             context.view_layer.objects.active = new_obj
         except Exception:
             pass
-        self.report({"INFO"}, f"已粘贴 Body：{new_obj.name}")
+        self.report({"INFO"}, f"Pasted Body: {new_obj.name}")
         return {"FINISHED"}
 
 
@@ -828,7 +828,7 @@ def register():
     # 新增 body / 导出都以它为目标。
     bpy.types.Scene.efx_active_efx = PointerProperty(
         name="Active EFX",
-        description="当前操作的 EFX 文件集合（新增 body / 导出的目标）",
+        description="The EFX file collection currently being operated on (target for adding bodies / exporting)",
         type=bpy.types.Collection,
         poll=_active_efx_poll,
     )
@@ -836,28 +836,14 @@ def register():
     # body 预设下拉：挂 WindowManager（会话级，不污染场景数据）。
     # SKIP_SAVE 避免把跨机器可能失效的路径字符串写入 .blend。
     bpy.types.WindowManager.efx_body_preset_enum = EnumProperty(
-        name="Body 预设",
-        description="选择要新增的整 body 预设",
+        name="Body Preset",
+        description="Select the whole-body preset to add",
         items=_get_body_preset_items,
-        options={"SKIP_SAVE"},
-    )
-
-    # 统一「预设」面板的模式切换：块预设 / Body 预设。
-    bpy.types.WindowManager.efx_preset_mode = EnumProperty(
-        name="预设模式",
-        description="切换块字段预设 / 整 body 预设",
-        items=[
-            ("BLOCK", "块预设", "块字段值的复制/粘贴与预设"),
-            ("BODY",  "Body 预设", "整 body 的复制/粘贴与预设"),
-        ],
-        default="BLOCK",
         options={"SKIP_SAVE"},
     )
 
 
 def unregister():
-    if hasattr(bpy.types.WindowManager, "efx_preset_mode"):
-        del bpy.types.WindowManager.efx_preset_mode
     if hasattr(bpy.types.WindowManager, "efx_body_preset_enum"):
         del bpy.types.WindowManager.efx_body_preset_enum
 

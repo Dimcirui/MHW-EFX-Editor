@@ -143,8 +143,8 @@ class EFX_OT_delete_body(bpy.types.Operator):
     """删除选中的 EFX_BODY（连带其全部 EFX_BLOCK 子块），重排剩余 body"""
 
     bl_idname      = "efx.delete_body"
-    bl_label       = "删除 Body"
-    bl_description = "删除选中的 EFX_BODY（含其全部块），剩余 body 重新连续编号"
+    bl_label       = "Delete Body"
+    bl_description = "Delete the selected EFX_BODY (including all its blocks); remaining bodies are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -171,7 +171,7 @@ class EFX_OT_delete_body(bpy.types.Operator):
         # body 计数变 → 标签表变；导出端按 labels_dirty 重建 label_bytes/label_size
         root["labels_dirty"] = 1
 
-        self.report({"INFO"}, f"已删除 EFX_BODY，剩余 {remaining} 个 body")
+        self.report({"INFO"}, f"Deleted EFX_BODY, {remaining} body(s) remaining")
         return {"FINISHED"}
 
 
@@ -183,8 +183,8 @@ class EFX_OT_delete_block(bpy.types.Operator):
     """删除选中的 EFX_BLOCK，重排同一 body 内剩余块"""
 
     bl_idname      = "efx.delete_block"
-    bl_label       = "删除块"
-    bl_description = "删除选中的 EFX_BLOCK，同 body 内剩余块重新连续编号"
+    bl_label       = "Delete Block"
+    bl_description = "Delete the selected EFX_BLOCK; remaining blocks in the same body are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -208,7 +208,7 @@ class EFX_OT_delete_block(bpy.types.Operator):
             rebuild_name_fn=_rebuild_block_name,
         )
 
-        self.report({"INFO"}, f"已删除 EFX_BLOCK，该 body 内剩余 {remaining} 个块")
+        self.report({"INFO"}, f"Deleted EFX_BLOCK, {remaining} block(s) remaining in this body")
         return {"FINISHED"}
 
 
@@ -220,8 +220,8 @@ class EFX_OT_delete_play(bpy.types.Operator):
     """删除选中的 EFX_PLAY，重排剩余 play"""
 
     bl_idname      = "efx.delete_play"
-    bl_label       = "删除 Play"
-    bl_description = "删除选中的 EFX_PLAY，剩余 play 重新连续编号"
+    bl_label       = "Delete Play"
+    bl_description = "Delete the selected EFX_PLAY; remaining plays are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -248,7 +248,7 @@ class EFX_OT_delete_play(bpy.types.Operator):
         # play 计数变 → 标签表变
         root["labels_dirty"] = 1
 
-        self.report({"INFO"}, f"已删除 EFX_PLAY，剩余 {remaining} 个 play")
+        self.report({"INFO"}, f"Deleted EFX_PLAY, {remaining} play(s) remaining")
         return {"FINISHED"}
 
 
@@ -260,10 +260,10 @@ class EFX_OT_delete_extern(bpy.types.Operator):
     """删除选中的 EFX_EXTERN，重排剩余 extern（被引用的块指针变悬空，由校验报告）"""
 
     bl_idname      = "efx.delete_extern"
-    bl_label       = "删除 Extern"
+    bl_label       = "Delete Extern"
     bl_description = (
-        "删除选中的 EFX_EXTERN，剩余 extern 重新连续编号。"
-        "注意：被 ExternReference 块引用的指针将悬空（请用导出前校验检查）"
+        "Delete the selected EFX_EXTERN; remaining externs are renumbered consecutively. "
+        "Note: pointers referenced by ExternReference blocks will dangle (check with pre-export validation)"
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -294,7 +294,7 @@ class EFX_OT_delete_extern(bpy.types.Operator):
         # extern 计数变 → 标签表变
         root["labels_dirty"] = 1
 
-        self.report({"INFO"}, f"已删除 EFX_EXTERN，剩余 {remaining} 个 extern")
+        self.report({"INFO"}, f"Deleted EFX_EXTERN, {remaining} extern(s) remaining")
         return {"FINISHED"}
 
 
@@ -306,8 +306,8 @@ class EFX_OT_delete_subselect(bpy.types.Operator):
     """删除选中的 EFX_SUBSELECT，重排剩余 subselect"""
 
     bl_idname      = "efx.delete_subselect"
-    bl_label       = "删除 Subselect"
-    bl_description = "删除选中的 EFX_SUBSELECT，剩余 subselect 重新连续编号"
+    bl_label       = "Delete Subselect"
+    bl_description = "Delete the selected EFX_SUBSELECT; remaining subselects are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -335,7 +335,7 @@ class EFX_OT_delete_subselect(bpy.types.Operator):
 
         root["subselect_dirty"] = 1
 
-        self.report({"INFO"}, f"已删除 EFX_SUBSELECT，剩余 {remaining} 个 subselect")
+        self.report({"INFO"}, f"Deleted EFX_SUBSELECT, {remaining} subselect(s) remaining")
         return {"FINISHED"}
 
 

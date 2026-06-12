@@ -175,40 +175,40 @@ class EFXFieldItem(PropertyGroup):
     """
 
     ori_name: StringProperty(
-        name="字段名",
-        description="schema 中的原始字段名（不可改）",
+        name="Field Name",
+        description="Original schema field name (read-only)",
     )
 
     data_type: EnumProperty(
-        name="数据类型",
+        name="Data Type",
         items=_DATA_TYPE_ITEMS,
     )
 
     # ── L1.1b：逐字段无损性元数据 ────────────────────────────────────────────
 
     orig_b64: StringProperty(
-        name="原始字节（base64）",
+        name="Original Bytes (base64)",
         description=(
-            "该字段在原始 data_bytes 中对应字节切片的 base64。"
-            "未编辑时导出直接使用这些字节（bit 精确，绕开 float NaN/精度问题）。"
+            "base64 of the byte slice for this field in the original data_bytes. "
+            "When unedited, export uses these bytes directly (bit-exact, avoids float NaN/precision issues)."
         ),
         default="",
     )
 
     edited: BoolProperty(
-        name="已编辑",
+        name="Edited",
         description=(
-            "True = 用户修改过此字段值，导出时用新值重新 pack；"
-            "False = 导出时使用 orig_b64 原始字节（恒等还原）。"
+            "True = user modified this field value, export re-packs with the new value; "
+            "False = export uses the orig_b64 original bytes (identity restore)."
         ),
         default=False,
     )
 
     read_only: BoolProperty(
-        name="只读",
+        name="Read-only",
         description=(
-            "True = 该字段的原始字节无法被值槽精确往返（如含 NaN/inf/哨兵 bit 的 float）；"
-            "导出时永远使用 orig_b64，UI 禁用编辑。"
+            "True = this field's original bytes cannot round-trip exactly through the value slot (e.g. floats with NaN/inf/sentinel bits); "
+            "export always uses orig_b64, UI disables editing."
         ),
         default=False,
     )
@@ -217,41 +217,41 @@ class EFXFieldItem(PropertyGroup):
 
     float_value: FloatProperty(
         name="",
-        description="float32 值",
+        description="float32 value",
         precision=6,
         update=_mark_block_dirty,
     )
 
     int_value: IntProperty(
         name="",
-        description="int32/int16/int8 值",
+        description="int32/int16/int8 value",
         update=_mark_block_dirty,
     )
 
     # uint32/uint64 存字符串，避免 Blender C int 32 位溢出
     uint_str: StringProperty(
         name="",
-        description="uint 值（十进制字符串，避免溢出）",
+        description="uint value (decimal string, avoids overflow)",
         update=_mark_block_dirty,
     )
 
     bool_value: BoolProperty(
         name="",
-        description="布尔值",
+        description="Boolean value",
         default=False,
         update=_mark_block_dirty,
     )
 
     byte1_value: IntProperty(
         name="",
-        description="uint8 值 [0, 255]",
+        description="uint8 value [0, 255]",
         min=0, max=255,
         update=_mark_block_dirty,
     )
 
     short1_value: IntProperty(
         name="",
-        description="int16 值",
+        description="int16 value",
         min=-32768, max=32767,
         update=_mark_block_dirty,
     )
@@ -303,7 +303,7 @@ class EFXFieldItem(PropertyGroup):
     # subtype='COLOR' → Blender 自动显示色块，点击打开色轮/滑块（含 Alpha 面板）
     color_rgba_value: FloatVectorProperty(
         name="",
-        description="颜色 RGBA（ubyte 0-255 ↔ float 0-1，subtype=COLOR；用于 colour 和 XYZ type 2）",
+        description="Colour RGBA (ubyte 0-255 ↔ float 0-1, subtype=COLOR; used for colour and XYZ type 2)",
         subtype='COLOR',
         size=4,
         min=0.0, max=1.0,
@@ -315,7 +315,7 @@ class EFXFieldItem(PropertyGroup):
     # ('XYZ',2) 已改为映射到 COLOR_RGBA（第4字节为 alpha，非 pad）
     color_rgb_value: FloatVectorProperty(
         name="",
-        description="颜色 RGB（保留值槽，当前无 spec 映射到此 dtype）",
+        description="Colour RGB (reserved value slot, currently no spec maps to this dtype)",
         subtype='COLOR',
         size=3,
         min=0.0, max=1.0,
@@ -349,49 +349,49 @@ class EFXFieldItem(PropertyGroup):
 
     float2_str: StringProperty(
         name="",
-        description="2个浮点，逗号分隔",
+        description="2 floats, comma-separated",
         update=_mark_block_dirty,
     )
 
     float3_str: StringProperty(
         name="",
-        description="3个浮点，逗号分隔",
+        description="3 floats, comma-separated",
         update=_mark_block_dirty,
     )
 
     float5_str: StringProperty(
         name="",
-        description="5个浮点，逗号分隔",
+        description="5 floats, comma-separated",
         update=_mark_block_dirty,
     )
 
     float8_str: StringProperty(
         name="",
-        description="8个浮点，逗号分隔",
+        description="8 floats, comma-separated",
         update=_mark_block_dirty,
     )
 
     float16_str: StringProperty(
         name="",
-        description="16个浮点，逗号分隔",
+        description="16 floats, comma-separated",
         update=_mark_block_dirty,
     )
 
     int_pair_str: StringProperty(
         name="",
-        description="2个整数，逗号分隔",
+        description="2 ints, comma-separated",
         update=_mark_block_dirty,
     )
 
     int10_str: StringProperty(
         name="",
-        description="10个整数，逗号分隔",
+        description="10 ints, comma-separated",
         update=_mark_block_dirty,
     )
 
     int16_str: StringProperty(
         name="",
-        description="16个整数，逗号分隔",
+        description="16 ints, comma-separated",
         update=_mark_block_dirty,
     )
 
@@ -400,7 +400,7 @@ class EFXFieldItem(PropertyGroup):
     # 格式：逗号分隔十进制/repr字符串，不带空格。
     array_str: StringProperty(
         name="",
-        description="通用数组（逗号分隔），用于任意 count 的 float/int 数组",
+        description="Generic array (comma-separated), for float/int arrays of any count",
         update=_mark_block_dirty,
     )
 
@@ -408,7 +408,7 @@ class EFXFieldItem(PropertyGroup):
 
     opaque_str: StringProperty(
         name="",
-        description="不支持的复杂结构（base64 原始字节）",
+        description="Unsupported complex structure (base64 raw bytes)",
         update=_mark_block_dirty,
     )
 
@@ -418,7 +418,7 @@ class EFXFieldItem(PropertyGroup):
     # data_type == STRING 时，读/写此槽。
     string_value: StringProperty(
         name="",
-        description="路径字符串（游戏内资源路径，如 .dds/.efx/.mod3 路径）",
+        description="Path string (in-game resource path, e.g. .dds/.efx/.mod3 paths)",
         update=_mark_block_dirty,
     )
 
@@ -434,36 +434,36 @@ class EFXBlockProps(PropertyGroup):
     """
 
     type_hash_str: StringProperty(
-        name="类型 Hash",
-        description="AttrBlock 类型 hash（十进制字符串，避免 uint32 溢出）",
+        name="Type Hash",
+        description="AttrBlock type hash (decimal string, avoids uint32 overflow)",
     )
 
     efx_dirty: BoolProperty(
-        name="已修改",
-        description="字段被用户编辑后置 True；导出时重新 encode",
+        name="Modified",
+        description="Set True after a field is edited by the user; re-encode on export",
         default=False,
     )
 
     raw_b64: StringProperty(
-        name="原始字节（base64）",
-        description="data_bytes 的 base64 备份；导出时若 dirty=False 或 is_editable=False 则用此还原",
+        name="Original Bytes (base64)",
+        description="base64 backup of data_bytes; used to restore on export if dirty=False or is_editable=False",
     )
 
     field_items: CollectionProperty(
         type=EFXFieldItem,
-        name="字段列表",
+        name="Field List",
     )
 
     field_index: IntProperty(
-        name="字段索引",
+        name="Field Index",
         default=0,
     )
 
     is_editable: BoolProperty(
-        name="可编辑",
+        name="Editable",
         description=(
-            "True = 已展开为 field_items（flat schema 类型）；"
-            "False = 仅 base64 opaque（_custom / 未知 / 嵌套结构）"
+            "True = expanded into field_items (flat schema type); "
+            "False = base64 opaque only (_custom / unknown / nested structure)"
         ),
         default=False,
     )
@@ -1202,15 +1202,21 @@ def _init_custom_field_block(blk, bp, paths) -> bool:
 
     type_hash = blk.type_hash
 
+    from ..efx_format.hashes import HASH_TO_NAME as _H2N
+    _tname = _H2N.get(type_hash, f'0x{type_hash:08X}')
+
     try:
         values = blk.decode()
-    except Exception:
+    except Exception as _e:
+        print(f"[EFX Phase A] {_tname}: blk.decode() 失败 → {_e}")
         return False
     if values is None:
+        print(f"[EFX Phase A] {_tname}: blk.decode() 返回 None")
         return False
 
     schema = custom_field_schema(type_hash)
     if schema is None:
+        print(f"[EFX Phase A] {_tname}: custom_field_schema 返回 None")
         return False
 
     # 建字段项（含 XYZ[]→多 COLOR_RGBA、EPVColorSlot→子字段 的分解；
@@ -1219,6 +1225,7 @@ def _init_custom_field_block(blk, bp, paths) -> bool:
     ok = _build_custom_field_items(values, schema, bp)
     if not ok:
         bp.field_items.clear()
+        print(f"[EFX Phase A] {_tname}: _build_custom_field_items 失败（含不可表示字段）")
         return False
 
     # 追加路径 STRING item（路径不在 schema，需手动建）
@@ -1241,10 +1248,20 @@ def _init_custom_field_block(blk, bp, paths) -> bool:
         if rebuilt != blk.data_bytes:
             bp.is_editable = False
             bp.field_items.clear()
+            _diff = next(
+                (i for i, (a, b) in enumerate(zip(rebuilt, blk.data_bytes)) if a != b),
+                min(len(rebuilt), len(blk.data_bytes))
+            )
+            print(
+                f"[EFX Phase A] {_tname}: 统一闸门失败 "
+                f"rebuilt={len(rebuilt)}B orig={len(blk.data_bytes)}B "
+                f"first_diff@{_diff}"
+            )
             return False
-    except Exception:
+    except Exception as _e:
         bp.is_editable = False
         bp.field_items.clear()
+        print(f"[EFX Phase A] {_tname}: rebuild_custom_field_block 抛出异常 → {_e}")
         return False
 
     bp.is_editable = True
@@ -1281,7 +1298,9 @@ def _init_path_block_props(blk, bp) -> None:
 
     try:
         paths = extract_paths(type_hash, blk.data_bytes)
-    except Exception:
+    except Exception as _e:
+        from ..efx_format.hashes import HASH_TO_NAME as _H2N
+        print(f"[EFX Path] {_H2N.get(type_hash, f'0x{type_hash:08X}')}: extract_paths 失败 → {_e}")
         bp.is_editable = False
         return
 
@@ -1289,9 +1308,21 @@ def _init_path_block_props(blk, bp) -> None:
     try:
         rebuilt = rebuild_with_paths(type_hash, blk.data_bytes, paths)
         if rebuilt != blk.data_bytes:
+            from ..efx_format.hashes import HASH_TO_NAME as _H2N
+            _diff = next(
+                (i for i, (a, b) in enumerate(zip(rebuilt, blk.data_bytes)) if a != b),
+                min(len(rebuilt), len(blk.data_bytes))
+            )
+            print(
+                f"[EFX Path] {_H2N.get(type_hash, f'0x{type_hash:08X}')}: "
+                f"路径闸门失败 rebuilt={len(rebuilt)}B orig={len(blk.data_bytes)}B "
+                f"first_diff@{_diff}"
+            )
             bp.is_editable = False
             return
-    except Exception:
+    except Exception as _e:
+        from ..efx_format.hashes import HASH_TO_NAME as _H2N
+        print(f"[EFX Path] {_H2N.get(type_hash, f'0x{type_hash:08X}')}: rebuild_with_paths 抛出异常 → {_e}")
         bp.is_editable = False
         return
 

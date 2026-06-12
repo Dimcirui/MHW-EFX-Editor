@@ -37,6 +37,8 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
 
+from .i18n import T
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # §1  同树范围 helper
@@ -137,14 +139,14 @@ class EFX_OT_select_object(Operator):
     """
 
     bl_idname      = "efx.select_object"
-    bl_label       = "跳转到对象"
-    bl_description = "清除当前选择，选中并激活目标 EFX 对象"
+    bl_label       = "Jump to Object"
+    bl_description = "Clear current selection, select and activate the target EFX object"
     bl_options     = {"REGISTER"}  # 不含 UNDO：纯选择，不改场景数据
 
     # 目标对象名（由面板按钮在调用时赋值）
     target_name: StringProperty(
-        name="目标对象名",
-        description="要选中的 Blender 对象名称",
+        name="Target Object Name",
+        description="Name of the Blender object to select",
         default="",
     )
 
@@ -155,12 +157,12 @@ class EFX_OT_select_object(Operator):
     def execute(self, context):
         target_name = self.target_name
         if not target_name:
-            self.report({"WARNING"}, "target_name 为空，无法跳转")
+            self.report({"WARNING"}, "target_name is empty, cannot jump")
             return {"CANCELLED"}
 
         target_obj = bpy.data.objects.get(target_name)
         if target_obj is None:
-            self.report({"WARNING"}, f"找不到对象：{target_name}")
+            self.report({"WARNING"}, f"Object not found: {target_name}")
             return {"CANCELLED"}
 
         # 清除当前选择，选中并激活目标对象
@@ -248,7 +250,7 @@ class EFX_PT_extern_backref(bpy.types.Panel):
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "Extern 被引用方"
+    bl_label       = "Extern Referenced By"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -266,7 +268,7 @@ class EFX_PT_extern_backref(bpy.types.Panel):
         ext_idx = extern_obj.get("efx_index", "?")
         info_row = info_box.row()
         info_row.label(
-            text=f"Extern 对象：{extern_obj.name}  （index {ext_idx}）",
+            text=T("backref.extern_object") + f" {extern_obj.name}  (index {ext_idx})",
             icon="LINKED",
         )
 
@@ -278,12 +280,12 @@ class EFX_PT_extern_backref(bpy.types.Panel):
         header_row = layout.row()
         if refs:
             header_row.label(
-                text=f"被 {len(refs)} 个 EXTERNREFERENCE 块引用：",
+                text=T("backref.referenced_by_n_prefix") + f" {len(refs)} " + T("backref.referenced_by_n_suffix"),
                 icon="RESTRICT_SELECT_OFF",
             )
         else:
             header_row.label(
-                text="未被任何 EXTERNREFERENCE 块引用",
+                text=T("backref.not_referenced_by_extern"),
                 icon="INFO",
             )
             return
@@ -295,23 +297,23 @@ class EFX_PT_extern_backref(bpy.types.Panel):
 
             # 块名行
             row_name = col.row(align=True)
-            row_name.label(text=f"块：{ref['block_name']}", icon="MODIFIER")
+            row_name.label(text=T("backref.block") + f" {ref['block_name']}", icon="MODIFIER")
 
             # 所属 body 行
             row_body = col.row(align=True)
             if ref["body_name"]:
                 row_body.label(
-                    text=f"Body：{ref['body_name']}",
+                    text=T("backref.body") + f" {ref['body_name']}",
                     icon="OBJECT_DATA",
                 )
             else:
-                row_body.label(text="Body：（未知）", icon="QUESTION")
+                row_body.label(text=T("backref.body_unknown"), icon="QUESTION")
 
             # 跳转按钮行
             row_jump = col.row(align=True)
             op = row_jump.operator(
                 "efx.select_object",
-                text="跳转到此块",
+                text=T("backref.jump_to_block"),
                 icon="VIEWZOOM",
             )
             op.target_name = ref["block_name"]
@@ -395,7 +397,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "Body 被引用方"
+    bl_label       = "Body Referenced By"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -413,7 +415,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
         body_idx = body_obj.get("efx_index", "?")
         info_row = info_box.row()
         info_row.label(
-            text=f"Body 对象：{body_obj.name}  （index {body_idx}）",
+            text=T("backref.body_object") + f" {body_obj.name}  (index {body_idx})",
             icon="OBJECT_DATA",
         )
 
@@ -426,11 +428,11 @@ class EFX_PT_body_backref(bpy.types.Panel):
 
         total = len(ss_refs) + len(play_refs)
         if total == 0:
-            layout.label(text="未被任何 Subselect / Play 引用", icon="INFO")
+            layout.label(text=T("backref.not_referenced_by_ss_play"), icon="INFO")
             return
 
         layout.label(
-            text=f"共被引用 {total} 次（Subselect {len(ss_refs)}，Play {len(play_refs)}）：",
+            text=T("backref.referenced_total_prefix") + f" {total} " + T("backref.referenced_total_mid") + f" {len(ss_refs)}, Play {len(play_refs)})",
             icon="RESTRICT_SELECT_OFF",
         )
 
@@ -441,7 +443,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
             ss_box = layout.box()
             ss_header = ss_box.row()
             ss_header.label(
-                text=f"Subselect 表（{len(ss_refs)} 个）",
+                text=T("backref.subselect_tables_prefix") + f" ({len(ss_refs)})",
                 icon="OUTLINER_OB_EMPTY",
             )
             ss_col = ss_box.column(align=True)
@@ -460,7 +462,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
             play_box = layout.box()
             play_header = play_box.row()
             play_header.label(
-                text=f"Play Emitter（{len(play_refs)} 个）",
+                text=T("backref.play_emitter_prefix") + f" ({len(play_refs)})",
                 icon="SEQUENCE",
             )
             play_col = play_box.column(align=True)

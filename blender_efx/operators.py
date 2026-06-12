@@ -8,9 +8,8 @@ blender_efx/operators.py  —  L1.0 + L1.2 + L1.3 扩展：导入/导出算子 +
   - 不使用 5.x 新增 API
   - 不改 io_tree.py / efx_format/
 
-L1.2 预设算子：
-  efx.save_block_preset   —  保存当前选中可编辑块的字段值为 JSON 预设
-  efx.apply_block_preset  —  把已选预设应用到当前选中可编辑块
+字段复用：efx.copy_block_fields / efx.paste_block_fields（即时内存剪贴板）。
+  （旧「字段值预设」算子 save/apply_block_preset 已移除，整块预设见 block_ops。）
 
 L1.3 拖入导入（FileHandler）：
   EFX_FH_import  —  注册 .efx 文件拖入 3D 视口时调用 efx.import_efx
@@ -23,6 +22,7 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 from bpy.props import StringProperty, CollectionProperty
 
 from . import io_tree
+from .i18n import T
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -101,8 +101,8 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
     """导入 MHW .efx 特效文件，在场景中建立对象树"""
 
     bl_idname      = "efx.import_efx"
-    bl_label       = "导入 EFX"
-    bl_description = "导入 MHW EFX 特效文件（.efx）"
+    bl_label       = "Import EFX"
+    bl_description = "Import an MHW EFX effect file (.efx)"
     bl_options     = {"REGISTER", "UNDO"}
 
     # ImportHelper 所需：文件扩展名与过滤器
@@ -152,27 +152,40 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
                 paths = [self.filepath]
 
         if not paths:
-            self.report({"ERROR"}, "EFX 导入：未指定文件路径")
+            self.report({"ERROR"}, "EFX import: no file path specified")
             return {"CANCELLED"}
 
         # ── 逐文件导入 ───────────────────────────────────────────────────────
         imported = []
+        imported_roots = []
         errors = []
         for filepath in paths:
             try:
                 root_obj = io_tree.import_efx_tree(filepath, context)
                 imported.append(root_obj.name)
+                imported_roots.append(root_obj)
             except Exception as exc:
                 import traceback
                 errors.append(f"{os.path.basename(filepath)}: {exc}")
                 self.report(
                     {"ERROR"},
-                    f"EFX 导入失败：{filepath}\n{traceback.format_exc()}",
+                    f"EFX import failed: {filepath}\n{traceback.format_exc()}",
                 )
 
+        # ── 导入后按 TRANSFORM3D + 绑定骨骼(bone_lim) 摆放各特效体 ────────────
+        # 骨架取 N 面板的 Scene.efx_armature（未选则以世界原点为基准）。
+        if imported_roots:
+            try:
+                from . import transform_sync
+                armature = getattr(context.scene, "efx_armature", None)
+                for root_obj in imported_roots:
+                    transform_sync.sync_all_transform3d(root_obj, armature)
+            except Exception:
+                pass  # 摆位是可视化增强，失败不影响导入本身
+
         if imported:
-            names = "、".join(imported)
-            self.report({"INFO"}, f"EFX 导入完成：{names}")
+            names = ", ".join(imported)
+            self.report({"INFO"}, f"EFX import complete: {names}")
 
         # 有任何成功导入则返回 FINISHED；全部失败才返回 CANCELLED
         if imported:
@@ -188,8 +201,8 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
     """将当前选中的 EFX 对象树导出为 .efx 文件"""
 
     bl_idname      = "efx.export_efx"
-    bl_label       = "导出 EFX"
-    bl_description = "将 EFX 对象树导出为 MHW .efx 文件"
+    bl_label       = "Export EFX"
+    bl_description = "Export the EFX object tree to an MHW .efx file"
     bl_options     = {"REGISTER", "UNDO"}
 
     # ExportHelper 所需：文件扩展名
@@ -209,7 +222,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         if root is None:
             self.report(
                 {"ERROR"},
-                "未指定要导出的 EFX：请在 N 面板 EFX 区选择 Active EFX 集合，或选中 EFX 对象树中的任意对象",
+                "No EFX specified for export: select an Active EFX collection in the N-panel EFX area, or select any object in the EFX object tree",
             )
             return {"CANCELLED"}
 
@@ -220,13 +233,13 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         if errors:
             def _draw(self_menu, ctx):
                 col = self_menu.layout.column()
-                col.label(text="导出前校验发现错误，已取消：", icon="ERROR")
+                col.label(text=T("op.export_validation_failed_header"), icon="ERROR")
                 for p in errors[:20]:
                     col.label(text="• " + p["msg"])
             context.window_manager.popup_menu(
-                _draw, title="EFX 校验失败", icon="ERROR",
+                _draw, title=T("op.export_validation_failed_title"), icon="ERROR",
             )
-            self.report({"ERROR"}, f"EFX 导出已取消：{len(errors)} 个校验错误")
+            self.report({"ERROR"}, f"EFX export cancelled: {len(errors)} validation error(s)")
             return {"CANCELLED"}
 
         # ── 2. 导出为字节 ───────────────────────────────────────────────────
@@ -236,7 +249,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             import traceback
             self.report(
                 {"ERROR"},
-                f"EFX 导出序列化失败：{exc}\n{traceback.format_exc()}",
+                f"EFX export serialization failed: {exc}\n{traceback.format_exc()}",
             )
             return {"CANCELLED"}
 
@@ -245,119 +258,20 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             with open(self.filepath, "wb") as f:
                 f.write(data)
         except OSError as exc:
-            self.report({"ERROR"}, f"写文件失败：{exc}")
+            self.report({"ERROR"}, f"Failed to write file: {exc}")
             return {"CANCELLED"}
 
         self.report(
             {"INFO"},
-            f"EFX 导出完成：{self.filepath}（{len(data)} 字节，根对象：{root.name}）",
+            f"EFX export complete: {self.filepath} ({len(data)} bytes, root object: {root.name})",
         )
         return {"FINISHED"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# L1.2 预设算子
-# ─────────────────────────────────────────────────────────────────────────────
-
-class EFX_OT_save_block_preset(bpy.types.Operator):
-    """将当前选中 EFX_BLOCK 的字段值保存为 JSON 预设"""
-
-    bl_idname      = "efx.save_block_preset"
-    bl_label       = "保存块字段预设"
-    bl_description = "把当前 EFX_BLOCK 的所有可编辑字段值保存为 JSON 预设文件"
-    bl_options     = {"REGISTER", "UNDO"}
-
-    # 预设名称（由 invoke 时的对话框填写）
-    preset_name: bpy.props.StringProperty(
-        name="预设名称",
-        description="预设文件名（不含 .json；不可含路径分隔符）",
-        default="my_preset",
-    )
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
-            return False
-        try:
-            return obj.efx_block.is_editable
-        except AttributeError:
-            return False
-
-    def invoke(self, context, event):
-        """弹出对话框让用户填写预设名称。"""
-        return context.window_manager.invoke_props_dialog(self)
-
-    def draw(self, context):
-        self.layout.prop(self, "preset_name")
-
-    def execute(self, context):
-        from .presets import save_block_preset
-        obj = context.active_object
-
-        try:
-            path = save_block_preset(obj, self.preset_name)
-            self.report({"INFO"}, f"EFX 预设已保存：{path}")
-            return {"FINISHED"}
-        except ValueError as exc:
-            self.report({"ERROR"}, f"保存预设失败：{exc}")
-            return {"CANCELLED"}
-        except Exception as exc:
-            import traceback
-            self.report({"ERROR"}, f"保存预设失败：{exc}\n{traceback.format_exc()}")
-            return {"CANCELLED"}
-
-
-class EFX_OT_apply_block_preset(bpy.types.Operator):
-    """将选中的预设文件应用到当前 EFX_BLOCK"""
-
-    bl_idname      = "efx.apply_block_preset"
-    bl_label       = "应用块字段预设"
-    bl_description = "把选中的预设文件的字段值写入当前 EFX_BLOCK（类型必须一致）"
-    bl_options     = {"REGISTER", "UNDO"}
-
-    # 预设文件完整路径（由面板下拉 EnumProperty 传入）
-    preset_path: bpy.props.StringProperty(
-        name="预设文件路径",
-        description="要应用的 .json 预设文件路径",
-        default="",
-        subtype="FILE_PATH",
-    )
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
-            return False
-        try:
-            return obj.efx_block.is_editable
-        except AttributeError:
-            return False
-
-    def execute(self, context):
-        from .presets import load_block_preset, _decode_path_ident
-        obj = context.active_object
-
-        if not self.preset_path:
-            self.report({"ERROR"}, "应用预设失败：未指定预设路径")
-            return {"CANCELLED"}
-
-        actual_path = _decode_path_ident(self.preset_path)
-        try:
-            written = load_block_preset(obj, actual_path)
-            self.report({"INFO"}, f"EFX 预设已应用：{written} 个字段已写入")
-            return {"FINISHED"}
-        except ValueError as exc:
-            self.report({"ERROR"}, f"应用预设失败：{exc}")
-            return {"CANCELLED"}
-        except Exception as exc:
-            import traceback
-            self.report({"ERROR"}, f"应用预设失败：{exc}\n{traceback.format_exc()}")
-            return {"CANCELLED"}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # L1.4 即时复制/粘贴（内存剪贴板）
+#   （旧「字段值预设」算子 EFX_OT_save/apply_block_preset 已移除：块预设改为
+#    block_ops 的整块增删机制；字段复用保留为下方的即时复制/粘贴。）
 # ─────────────────────────────────────────────────────────────────────────────
 
 # 模块级内存剪贴板：{"type_hash": str, "fields": {...同 preset JSON fields 结构...}}
@@ -369,8 +283,8 @@ class EFX_OT_copy_block_fields(bpy.types.Operator):
     """把当前 EFX_BLOCK 的可编辑字段值复制到内存剪贴板"""
 
     bl_idname      = "efx.copy_block_fields"
-    bl_label       = "复制字段值"
-    bl_description = "把当前 EFX_BLOCK 所有可编辑字段值复制到内存剪贴板（供粘贴到相同类型块）"
+    bl_label       = "Copy Field Values"
+    bl_description = "Copy all editable field values of the current EFX_BLOCK to the in-memory clipboard (for pasting into a block of the same type)"
     bl_options     = {"REGISTER"}
 
     @classmethod
@@ -407,7 +321,7 @@ class EFX_OT_copy_block_fields(bpy.types.Operator):
             "fields": fields,
         }
 
-        self.report({"INFO"}, f"EFX 字段已复制（{len(fields)} 个字段，类型 hash={bp.type_hash_str}）")
+        self.report({"INFO"}, f"EFX fields copied ({len(fields)} field(s), type hash={bp.type_hash_str})")
         return {"FINISHED"}
 
 
@@ -415,8 +329,8 @@ class EFX_OT_paste_block_fields(bpy.types.Operator):
     """把内存剪贴板的字段值粘贴到当前 EFX_BLOCK（类型必须一致）"""
 
     bl_idname      = "efx.paste_block_fields"
-    bl_label       = "粘贴字段值"
-    bl_description = "把剪贴板字段值写入当前 EFX_BLOCK（仅限与复制源相同类型的块）"
+    bl_label       = "Paste Field Values"
+    bl_description = "Write the clipboard field values into the current EFX_BLOCK (only for blocks of the same type as the copy source)"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -449,8 +363,8 @@ class EFX_OT_paste_block_fields(bpy.types.Operator):
         if clip_hash != bp.type_hash_str:
             self.report(
                 {"ERROR"},
-                f"粘贴失败：类型不匹配（剪贴板 hash={clip_hash!r}，"
-                f"当前块 hash={bp.type_hash_str!r}）",
+                f"Paste failed: type mismatch (clipboard hash={clip_hash!r}, "
+                f"current block hash={bp.type_hash_str!r})",
             )
             return {"CANCELLED"}
 
@@ -489,55 +403,7 @@ class EFX_OT_paste_block_fields(bpy.types.Operator):
         if written > 0:
             bp.efx_dirty = True
 
-        self.report({"INFO"}, f"EFX 字段已粘贴：{written} 个字段已写入")
-        return {"FINISHED"}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# L1.4 打开预设文件夹
-# ─────────────────────────────────────────────────────────────────────────────
-
-class EFX_OT_open_preset_folder(bpy.types.Operator):
-    """用系统文件管理器打开当前块类型的预设文件夹"""
-
-    bl_idname      = "efx.open_preset_folder"
-    bl_label       = "打开预设文件夹"
-    bl_description = "在系统文件管理器中打开当前 EFX_BLOCK 类型的预设目录"
-    bl_options     = {"REGISTER"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
-            return False
-        try:
-            return obj.efx_block.is_editable
-        except AttributeError:
-            return False
-
-    def execute(self, context):
-        import os
-        from .presets import _presets_root, _preset_dir, _type_name_from_hash
-
-        obj = context.active_object
-        bp = obj.efx_block
-        type_name = _type_name_from_hash(bp.type_hash_str)
-
-        # 优先打开该类型子目录；不存在则先 makedirs 再打开；
-        # makedirs 失败则降级到 presets/ 根目录。
-        target = _preset_dir(type_name)
-        try:
-            os.makedirs(target, exist_ok=True)
-        except OSError:
-            # makedirs 失败（权限等）：降级到 presets/ 根
-            root = _presets_root()
-            try:
-                os.makedirs(root, exist_ok=True)
-            except OSError:
-                pass
-            target = root
-
-        bpy.ops.wm.path_open(filepath=target)
+        self.report({"INFO"}, f"EFX fields pasted: {written} field(s) written")
         return {"FINISHED"}
 
 
@@ -553,19 +419,19 @@ class EFX_OT_field_help(bpy.types.Operator):
     """
 
     bl_idname      = "efx.field_help"
-    bl_label       = "字段说明"
+    bl_label       = "Field Description"
     bl_options     = {"REGISTER"}
 
     type_name: bpy.props.StringProperty(
-        name="类型名",
-        description="HASH_TO_NAME 对应的块类型名（大写，如 EMITTERSHAPE3D）",
+        name="Type Name",
+        description="Block type name corresponding to HASH_TO_NAME (uppercase, e.g. EMITTERSHAPE3D)",
         default="",
         options={"SKIP_SAVE"},
     )
 
     field_name: bpy.props.StringProperty(
-        name="字段名",
-        description="schema ori_name（字段原始名称）",
+        name="Field Name",
+        description="schema ori_name (original field name)",
         default="",
         options={"SKIP_SAVE"},
     )
@@ -603,7 +469,7 @@ if _HAS_FILEHANDLER:
         """
 
         bl_idname          = "EFX_FH_import"
-        bl_label           = "导入 EFX"
+        bl_label           = "Import EFX"
         bl_import_operator = "efx.import_efx"
         bl_file_extensions = ".efx"
 
@@ -625,11 +491,10 @@ if _HAS_FILEHANDLER:
 _CLASSES = (
     EFX_OT_import,
     EFX_OT_export,
-    EFX_OT_save_block_preset,
-    EFX_OT_apply_block_preset,
+    # 旧字段值预设算子（save/apply_block_preset、open_preset_folder）已删：
+    # 块预设改为 block_ops 整块机制；字段复用保留为即时复制/粘贴。
     EFX_OT_copy_block_fields,
     EFX_OT_paste_block_fields,
-    EFX_OT_open_preset_folder,
     EFX_OT_field_help,
 )
 

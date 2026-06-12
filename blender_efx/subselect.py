@@ -36,6 +36,8 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup, Operator
 
+from .i18n import T
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # §1  段局部索引映射地基（通用 helper，导出路径共用）
@@ -130,8 +132,8 @@ class EFXSubselectMember(PropertyGroup):
     CollectionProperty 元素，挂在 EFXSubselectProps.members 上。
     """
     body_ptr: PointerProperty(
-        name="Body 对象",
-        description="被此 Subselect 表引用的 EFX_BODY 对象",
+        name="Body Object",
+        description="EFX_BODY object referenced by this Subselect table",
         type=bpy.types.Object,
         poll=_body_object_poll,
     )
@@ -151,25 +153,25 @@ class EFXSubselectProps(PropertyGroup):
     """
     table_type_str: StringProperty(
         name="Table Type",
-        description="SubselectTable.table_type（uint32，十进制字符串）",
+        description="SubselectTable.table_type (uint32, decimal string)",
         default="0",
     )
 
     unkn0_str: StringProperty(
         name="unkn0",
-        description="SubselectTable.unkn0 三个 uint32，逗号分隔十进制",
+        description="SubselectTable.unkn0 three uint32, comma-separated decimal",
         default="0,0,0",
     )
 
     members: CollectionProperty(
         name="Members",
-        description="被此 Subselect 表引用的 EFX_BODY 列表（对应 entries[]）",
+        description="List of EFX_BODY referenced by this Subselect table (corresponds to entries[])",
         type=EFXSubselectMember,
     )
 
     active_member_index: IntProperty(
-        name="激活成员序号",
-        description="当前激活的成员（供列表 UI 使用）",
+        name="Active Member Index",
+        description="Currently active member (used by the list UI)",
         default=0,
         min=0,
     )
@@ -320,8 +322,8 @@ class EFX_OT_subselect_member_add(Operator):
     """向当前 Subselect 表新增一个空成员（body_ptr 待用户指定）"""
 
     bl_idname      = "efx.subselect_member_add"
-    bl_label       = "添加成员"
-    bl_description = "向 Subselect 表的 members 列表末尾追加一个空槽位"
+    bl_label       = "Add Member"
+    bl_description = "Append an empty slot to the end of the Subselect table's members list"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -341,8 +343,8 @@ class EFX_OT_subselect_member_remove(Operator):
     """删除当前激活的 Subselect 成员"""
 
     bl_idname      = "efx.subselect_member_remove"
-    bl_label       = "移除成员"
-    bl_description = "删除 Subselect 表 members 列表中当前激活的成员"
+    bl_label       = "Remove Member"
+    bl_description = "Delete the currently active member from the Subselect table's members list"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -388,7 +390,7 @@ class EFX_UL_subselect_members(bpy.types.UIList):
             row.prop(item, "body_ptr", text="", icon="OBJECT_DATA")
         else:
             # 悬空状态：显示可编辑的指针槽（允许用户选择）
-            row.prop(item, "body_ptr", text="<未设置>", icon="ERROR")
+            row.prop(item, "body_ptr", text=T("sub.unset"), icon="ERROR")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -411,7 +413,7 @@ class EFX_PT_subselect(bpy.types.Panel):
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "Subselect 归属"
+    bl_label       = "Subselect Ownership"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -427,12 +429,12 @@ class EFX_PT_subselect(bpy.types.Panel):
         try:
             props = obj.efx_subselect
         except AttributeError:
-            layout.label(text="（无 efx_subselect 数据）", icon="ERROR")
+            layout.label(text=T("sub.no_data"), icon="ERROR")
             return
 
         # ── 元数据行（只读显示）────────────────────────────────────────────────
         meta_box = layout.box()
-        meta_box.label(text="表元数据", icon="INFO")
+        meta_box.label(text=T("sub.table_meta"), icon="INFO")
         row = meta_box.row()
         row.label(text=f"Table Type: {props.table_type_str}")
         row2 = meta_box.row()
@@ -442,7 +444,7 @@ class EFX_PT_subselect(bpy.types.Panel):
 
         # ── members 列表 ────────────────────────────────────────────────────────
         list_box = layout.box()
-        list_box.label(text=f"Members（{len(props.members)} 个）", icon="OUTLINER_OB_EMPTY")
+        list_box.label(text=f"{T('sub.members')}({len(props.members)})", icon="OUTLINER_OB_EMPTY")
 
         # template_list：UIList + 增删按钮
         row = list_box.row()
@@ -466,7 +468,7 @@ class EFX_PT_subselect(bpy.types.Panel):
         if 0 <= idx < len(props.members):
             active_item = props.members[idx]
             detail_row = list_box.row()
-            detail_row.prop(active_item, "body_ptr", text="Body 对象")
+            detail_row.prop(active_item, "body_ptr", text=T("sub.body_object"))
 
         # ── 悬空成员警告 ─────────────────────────────────────────────────────────
         dangling = sum(1 for m in props.members if m.body_ptr is None)
@@ -474,7 +476,7 @@ class EFX_PT_subselect(bpy.types.Panel):
             warn_row = layout.row()
             warn_row.alert = True
             warn_row.label(
-                text=f"⚠ {dangling} 个成员指针悬空（导出时跳过）",
+                text=f"⚠ {dangling} {T('sub.members_dangling')}",
                 icon="ERROR",
             )
 
@@ -508,8 +510,8 @@ def register():
         bpy.utils.register_class(cls)
 
     bpy.types.Object.efx_subselect = PointerProperty(
-        name="EFX Subselect 属性",
-        description="EFX_SUBSELECT 对象的结构化 Subselect 数据",
+        name="EFX Subselect Properties",
+        description="Structured Subselect data for the EFX_SUBSELECT object",
         type=EFXSubselectProps,
     )
 

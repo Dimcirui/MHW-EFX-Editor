@@ -17,6 +17,8 @@ blender_efx/hexview.py  —  只读整块 16 进制查看器
 import base64
 import bpy
 
+from .i18n import T
+
 
 # 面板内最多显示的字节数（超出截断，完整走剪贴板）。每行 16 字节。
 _PANEL_MAX_BYTES = 256
@@ -165,8 +167,8 @@ class EFX_OT_copy_block_hex(bpy.types.Operator):
     """把当前对象的完整原始字节以纯 hex 文本复制到系统剪贴板（可编辑后粘回）"""
 
     bl_idname      = "efx.copy_block_hex"
-    bl_label       = "复制 hex"
-    bl_description = "把当前 EFX 块/对象的完整原始字节（空格分隔纯 hex）复制到剪贴板，可编辑后用“粘贴 hex”写回"
+    bl_label       = "Copy Hex"
+    bl_description = "Copy the full raw bytes of the current EFX block/object (space-separated pure hex) to the clipboard; edit and write back with Paste Hex"
     bl_options     = {"REGISTER"}
 
     @classmethod
@@ -176,10 +178,10 @@ class EFX_OT_copy_block_hex(bpy.types.Operator):
     def execute(self, context):
         data = _get_object_raw_bytes(context.active_object)
         if data is None:
-            self.report({"ERROR"}, "无法获取原始字节")
+            self.report({"ERROR"}, "Cannot get raw bytes")
             return {"CANCELLED"}
         context.window_manager.clipboard = _clipboard_hex_text(data)
-        self.report({"INFO"}, f"已复制 {len(data)} 字节的纯 hex 到剪贴板")
+        self.report({"INFO"}, f"Copied {len(data)} bytes of pure hex to clipboard")
         return {"FINISHED"}
 
 
@@ -187,10 +189,10 @@ class EFX_OT_paste_block_hex(bpy.types.Operator):
     """从剪贴板粘贴纯 hex 写回当前对象的原始字节（同长度覆盖）"""
 
     bl_idname      = "efx.paste_block_hex"
-    bl_label       = "粘贴 hex"
+    bl_label       = "Paste Hex"
     bl_description = (
-        "把剪贴板的纯 hex（空格分隔两位十六进制）写回当前对象的原始字节。"
-        "**只允许同长度覆盖**（EFX 块无长度字段，改变字节数会破坏文件结构）"
+        "Write the clipboard's pure hex (space-separated two-digit hex) back to the current object's raw bytes. "
+        "**Same-length overwrite only** (EFX blocks have no length field; changing the byte count breaks file structure)"
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -206,32 +208,32 @@ class EFX_OT_paste_block_hex(bpy.types.Operator):
         obj = context.active_object
         cur = _get_object_raw_bytes(obj)
         if cur is None:
-            self.report({"ERROR"}, "无法获取当前原始字节")
+            self.report({"ERROR"}, "Cannot get current raw bytes")
             return {"CANCELLED"}
 
         text = context.window_manager.clipboard or ""
         new_bytes = _parse_pure_hex(text)
         if new_bytes is None:
-            self.report({"ERROR"}, "剪贴板内容不是合法的纯 hex（应为空格分隔的两位十六进制字节）")
+            self.report({"ERROR"}, "Clipboard content is not valid pure hex (should be space-separated two-digit hex bytes)")
             return {"CANCELLED"}
 
         if len(new_bytes) != len(cur):
             self.report(
                 {"ERROR"},
-                f"长度不一致：当前 {len(cur)} 字节，粘贴 {len(new_bytes)} 字节。"
-                "只允许同长度覆盖。",
+                f"Length mismatch: current {len(cur)} bytes, pasted {len(new_bytes)} bytes. "
+                "Same-length overwrite only.",
             )
             return {"CANCELLED"}
 
         if new_bytes == cur:
-            self.report({"INFO"}, "内容与当前一致，未改动")
+            self.report({"INFO"}, "Content matches current, no change")
             return {"CANCELLED"}
 
         if not _set_object_raw_bytes(obj, new_bytes):
-            self.report({"ERROR"}, "该对象类型不支持 hex 写回")
+            self.report({"ERROR"}, "This object type does not support hex write-back")
             return {"CANCELLED"}
 
-        self.report({"INFO"}, f"已写回 {len(new_bytes)} 字节")
+        self.report({"INFO"}, f"Wrote back {len(new_bytes)} bytes")
         return {"FINISHED"}
 
 
@@ -245,7 +247,7 @@ class EFX_PT_hex_view(bpy.types.Panel):
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Hex 视图（只读）"
+    bl_label        = "Hex View (Read-only)"
     bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
@@ -257,16 +259,16 @@ class EFX_PT_hex_view(bpy.types.Panel):
         layout = self.layout
         data = _get_object_raw_bytes(context.active_object)
         if data is None:
-            layout.label(text="（无原始字节）", icon="ERROR")
+            layout.label(text=T("hex.no_raw_bytes"), icon="ERROR")
             return
 
         total = len(data)
         row = layout.row()
-        row.label(text=f"总长度：{total} 字节", icon="FILE_BLANK")
+        row.label(text=f"{T('hex.total_length')}{total} {T('hex.bytes')}", icon="FILE_BLANK")
         btns = row.row(align=True)
-        btns.operator("efx.copy_block_hex", text="复制 hex", icon="COPYDOWN")
+        btns.operator("efx.copy_block_hex", text=T("hex.copy_hex"), icon="COPYDOWN")
         if _paste_supported(context.active_object):
-            btns.operator("efx.paste_block_hex", text="粘贴 hex", icon="PASTEDOWN")
+            btns.operator("efx.paste_block_hex", text=T("hex.paste_hex"), icon="PASTEDOWN")
 
         truncated = total > _PANEL_MAX_BYTES
         rows = _format_hex_rows(data, max_bytes=_PANEL_MAX_BYTES)
@@ -277,7 +279,7 @@ class EFX_PT_hex_view(bpy.types.Panel):
 
         if truncated:
             layout.label(
-                text=f"… 仅显示前 {_PANEL_MAX_BYTES} 字节，完整请用上方“复制完整 hex”",
+                text=f"{T('hex.trunc_prefix')}{_PANEL_MAX_BYTES}{T('hex.trunc_suffix')}",
                 icon="INFO",
             )
 

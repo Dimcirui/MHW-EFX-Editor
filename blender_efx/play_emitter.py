@@ -52,10 +52,12 @@ from bpy.props import (
     CollectionProperty,
     PointerProperty,
     IntProperty,
+    FloatVectorProperty,
 )
 from bpy.types import PropertyGroup, Operator
 
 from ..efx_format.hashes import PLAYEMITTER
+from .i18n import T
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -78,8 +80,8 @@ class EFXPlayTarget(PropertyGroup):
     CollectionProperty 元素，挂在 EFXPlayEntryProps.targets 上。
     """
     body_ptr: PointerProperty(
-        name="Body 对象",
-        description="此 PlayEmitter target 引用的 EFX_BODY 对象",
+        name="Body Object",
+        description="EFX_BODY object referenced by this PlayEmitter target",
         type=bpy.types.Object,
         poll=_body_object_poll,
     )
@@ -99,27 +101,38 @@ class EFXPlayEntryProps(PropertyGroup):
     """
     type_hash_str: StringProperty(
         name="Type Hash",
-        description="PlayEntry.type_hash（uint32，十进制字符串）",
+        description="PlayEntry.type_hash (uint32, decimal string)",
         default="0",
     )
     raw_b64: StringProperty(
         name="Raw (b64)",
-        description="PlayEntry.raw 的 base64 编码，始终保留作 byte-perfect 回退",
+        description="Base64 encoding of PlayEntry.raw; always preserves unknown bytes for byte-perfect fallback",
         default="",
     )
     is_emitter: BoolProperty(
         name="Is PlayEmitter",
-        description="True = PLAYEMITTER（targets 有效），False = PLAYEFX（raw 整体保留）",
+        description="True = PLAYEMITTER (targets valid), False = PLAYEFX (path + XYZ editable)",
         default=False,
+    )
+    xyz: FloatVectorProperty(
+        name="Position Offset XYZ",
+        description="Position offset of the PlayEntry (float[3])",
+        size=3,
+        default=(0.0, 0.0, 0.0),
+    )
+    efx_path: StringProperty(
+        name="EFX Path",
+        description="Path to the external .efx file referenced by PlayEFX (null-terminated string)",
+        default="",
     )
     targets: CollectionProperty(
         name="Targets",
-        description="PlayEmitter 引用的 EFX_BODY 列表（对应 targets[] 数组）",
+        description="List of EFX_BODY referenced by PlayEmitter (corresponds to the targets[] array)",
         type=EFXPlayTarget,
     )
     active_target_index: IntProperty(
-        name="激活 Target 序号",
-        description="当前激活的 target（供列表 UI 使用）",
+        name="Active Target Index",
+        description="Currently active target (used by the list UI)",
         default=0,
         min=0,
     )
@@ -137,17 +150,17 @@ class EFXPlayProps(PropertyGroup):
     """
     play_type_str: StringProperty(
         name="Play Type",
-        description="PlayData.play_type（uint32，十进制字符串）",
+        description="PlayData.play_type (uint32, decimal string)",
         default="0",
     )
     entries: CollectionProperty(
         name="Entries",
-        description="该 PlayData 的全部 PlayEntry（PLAYEFX / PLAYEMITTER）",
+        description="All PlayEntry of this PlayData (PLAYEFX / PLAYEMITTER)",
         type=EFXPlayEntryProps,
     )
     active_entry_index: IntProperty(
-        name="激活 Entry 序号",
-        description="当前激活的 entry（供列表 UI 使用）",
+        name="Active Entry Index",
+        description="Currently active entry (used by the list UI)",
         default=0,
         min=0,
     )
@@ -201,12 +214,15 @@ def init_play_props(play_obj: bpy.types.Object,
 
         if entry.type_hash == PLAYEMITTER:
             item.is_emitter = True
-            # ── 解析 targets ──────────────────────────────────────────────────
-            # PlayEmitter raw 布局：
-            #   [0:52]  unkn[7](28B) + xyz(12B) + NULL[3](12B)
-            #   [52:56] target_count (int32, 4B)
-            #   [56:]   targets[target_count] (int32 each)
+            # PlayEmitter raw 布局（type_hash 之后）：
+            #   [0:28]  unkn[7] (28B)
+            #   [28:40] XYZ float[3] (12B)  ← 可编辑
+            #   [40:52] NULL[3] (12B)
+            #   [52:56] target_count (int32)
+            #   [56:]   targets[N] (int32 each)
             raw = entry.raw
+            if len(raw) >= 40:
+                item.xyz = struct.unpack_from('<3f', raw, 28)
             if len(raw) >= 56:
                 target_count = struct.unpack_from('<i', raw, 52)[0]
                 for ti in range(target_count):
@@ -218,10 +234,27 @@ def init_play_props(play_obj: bpy.types.Object,
                     body_obj = main_bodies_by_index.get(body_idx)
                     if body_obj is not None:
                         t.body_ptr = body_obj
-                    # 若找不到对应 body（异常情况），body_ptr 留 None
         else:
-            # PLAYEFX 或其他：raw 整体保留，is_emitter=False
+            # PlayEFX raw 布局（type_hash 之后）：
+            #   [0:4]   unkn0 (4B)
+            #   [4:8]   path_len (int32)
+            #   [8:12]  type (4B)
+            #   [12:40] unkn[7] (28B)
+            #   [40:52] XYZ float[3] (12B)  ← 可编辑
+            #   [52:64] NULL[3] (12B)
+            #   [64:]   path[path_len]       ← 可编辑
             item.is_emitter = False
+            raw = entry.raw
+            if len(raw) >= 52:
+                item.xyz = struct.unpack_from('<3f', raw, 40)
+            if len(raw) >= 8:
+                path_len = struct.unpack_from('<i', raw, 4)[0]
+                if path_len > 0 and 64 + path_len <= len(raw):
+                    path_bytes = raw[64:64 + path_len]
+                    null_pos = path_bytes.find(b'\x00')
+                    if null_pos >= 0:
+                        path_bytes = path_bytes[:null_pos]
+                    item.efx_path = path_bytes.decode('utf-8', errors='replace')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -280,11 +313,11 @@ def export_play_data(play_obj: bpy.types.Object,
             continue
 
         if item.is_emitter:
-            # ── PLAYEMITTER：只替换 targets 段，其余字节逐字保留 ──────────────
+            # PLAYEMITTER：替换 XYZ + targets，其余字节逐字保留
             raw = _rebuild_emitter_raw(item, body_index_map)
         else:
-            # ── PLAYEFX（或其他）：raw 原样 ────────────────────────────────────
-            raw = _b64dec(str(item.raw_b64))
+            # PLAYEFX：替换 XYZ + 路径，其余字节逐字保留
+            raw = _rebuild_playefx_raw(item)
 
         entries.append(PlayEntry(type_hash=type_hash, raw=raw))
 
@@ -297,10 +330,10 @@ def _rebuild_emitter_raw(item: EFXPlayEntryProps,
     重建 PlayEmitter entry 的 raw 字节。
 
     策略：
-      1. 从 raw_b64 取出原始字节，保留 raw[:52]（unkn[7]+xyz+NULL[3]）逐字不动。
-      2. 从 item.targets 解析出 body 指针 → 局部 index 列表。
-      3. pack('<i', N) 写 target_count（bytes 52-55）。
-      4. 依次 pack('<i', idx) 写 targets（bytes 56+）。
+      raw[:28]  unkn[7] 原样保留
+      raw[28:40] 用 item.xyz 重写（float[3]）
+      raw[40:52] NULL[3] 原样保留
+      target_count + targets 由 body 指针映射重建
 
     悬空 target（body_ptr=None 或不在 body_index_map）静默跳过。
     """
@@ -311,23 +344,48 @@ def _rebuild_emitter_raw(item: EFXPlayEntryProps,
     for t in item.targets:
         body_obj = t.body_ptr
         if body_obj is None:
-            # TODO: 后续校验阶段改为报错，当前静默跳过
             continue
         local_idx = body_index_map.get(body_obj)
         if local_idx is None:
-            # body_obj 不在当前文件的 Main 段里
-            # TODO: 同上
             continue
         target_indices.append(local_idx)
 
-    # 保留前缀字节（offset 0..51，含 unkn[7]+xyz+NULL[3]，共 52 字节）
-    prefix = orig_raw[:52]
+    # 保留 unkn[7]（0-27），写入 XYZ（28-39），保留 NULL[3]（40-51）
+    prefix = (orig_raw[:28]
+              + struct.pack('<3f', *item.xyz)
+              + orig_raw[40:52])
 
-    # 重写 target_count + targets
     N = len(target_indices)
     new_raw = prefix + struct.pack('<i', N)
     for idx in target_indices:
         new_raw += struct.pack('<i', idx)
+
+    return new_raw
+
+
+def _rebuild_playefx_raw(item: EFXPlayEntryProps) -> bytes:
+    """
+    重建 PlayEFX entry 的 raw 字节。
+
+    策略：
+      raw[0:4]   unkn0 原样保留
+      raw[4:8]   path_len 按新路径重算
+      raw[8:40]  type + unkn[7] 原样保留
+      raw[40:52] 用 item.xyz 重写（float[3]）
+      raw[52:64] NULL[3] 原样保留
+      raw[64:]   用 item.efx_path 重写（UTF-8 + null 终止符）
+    """
+    orig_raw = _b64dec(str(item.raw_b64))
+
+    path_bytes = item.efx_path.encode('utf-8') + b'\x00'
+    path_len = len(path_bytes)
+
+    new_raw = (orig_raw[:4]
+               + struct.pack('<i', path_len)
+               + orig_raw[8:40]
+               + struct.pack('<3f', *item.xyz)
+               + orig_raw[52:64]
+               + path_bytes)
 
     return new_raw
 
@@ -373,8 +431,8 @@ class EFX_OT_play_target_add(Operator):
     """向当前 PlayEmitter entry 新增一个空 target（body_ptr 待用户指定）"""
 
     bl_idname      = "efx.play_target_add"
-    bl_label       = "添加 Target"
-    bl_description = "向 PlayEmitter targets 列表末尾追加一个空槽位"
+    bl_label       = "Add Target"
+    bl_description = "Append an empty slot to the end of the PlayEmitter targets list"
     bl_options     = {"REGISTER", "UNDO"}
 
     entry_index: IntProperty(name="Entry Index", default=0, min=0)
@@ -400,8 +458,8 @@ class EFX_OT_play_target_remove(Operator):
     """删除当前激活的 PlayEmitter target"""
 
     bl_idname      = "efx.play_target_remove"
-    bl_label       = "移除 Target"
-    bl_description = "删除 PlayEmitter targets 列表中当前激活的 target"
+    bl_label       = "Remove Target"
+    bl_description = "Delete the currently active target from the PlayEmitter targets list"
     bl_options     = {"REGISTER", "UNDO"}
 
     entry_index: IntProperty(name="Entry Index", default=0, min=0)
@@ -453,40 +511,12 @@ class EFX_UL_play_targets(bpy.types.UIList):
         if body_obj is not None:
             row.prop(item, "body_ptr", text="", icon="OBJECT_DATA")
         else:
-            row.prop(item, "body_ptr", text="<未设置>", icon="ERROR")
+            row.prop(item, "body_ptr", text=T("play.unset"), icon="ERROR")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # §7  面板：N 面板 EFX 标签 Play 数据显示
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _extract_playefx_path(raw: bytes) -> str:
-    """
-    从 PlayEFX entry raw 字节中提取路径字符串（只读显示用）。
-
-    PlayEFX raw 布局（type_hash 之后）：
-      offset  0: int unkn0      (4B)
-      offset  4: int path_len   (4B)
-      offset  8: long type      (4B)
-      offset 12: int unkn[7]    (28B)
-      offset 40: XYZ xyz(3)     (12B)   float[3]
-      offset 52: int NULL[3]    (12B)
-      offset 64: char p[path_len]
-    """
-    if len(raw) < 8:
-        return "(raw 太短)"
-    try:
-        path_len = struct.unpack_from('<i', raw, 4)[0]
-        if path_len <= 0 or 64 + path_len > len(raw):
-            return "(路径偏移越界)"
-        path_bytes = raw[64:64 + path_len]
-        # null-terminated
-        null_pos = path_bytes.find(b'\x00')
-        if null_pos >= 0:
-            path_bytes = path_bytes[:null_pos]
-        return path_bytes.decode('utf-8', errors='replace')
-    except Exception as e:
-        return f"(解析失败: {e})"
 
 
 class EFX_PT_play(bpy.types.Panel):
@@ -507,7 +537,7 @@ class EFX_PT_play(bpy.types.Panel):
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "Play 数据"
+    bl_label       = "Play Data"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -523,14 +553,14 @@ class EFX_PT_play(bpy.types.Panel):
         try:
             props = obj.efx_play
         except AttributeError:
-            layout.label(text="（无 efx_play 数据）", icon="ERROR")
+            layout.label(text=T("play.no_data"), icon="ERROR")
             return
 
         # ── 元数据行（只读）─────────────────────────────────────────────────────
         meta_box = layout.box()
-        meta_box.label(text="Play 元数据", icon="INFO")
+        meta_box.label(text=T("play.play_meta"), icon="INFO")
         meta_box.label(text=f"Play Type: {props.play_type_str}")
-        meta_box.label(text=f"Entries: {len(props.entries)} 个")
+        meta_box.label(text=f"Entries: {len(props.entries)}")
 
         layout.separator()
 
@@ -540,70 +570,54 @@ class EFX_PT_play(bpy.types.Panel):
             entry_box = layout.box()
 
             if entry.is_emitter:
-                # ── PLAYEMITTER：显示 target 指针列表 ─────────────────────────
-                header_row = entry_box.row(align=True)
-                header_row.label(
-                    text=f"Entry {ei}  PLAYEMITTER",
-                    icon="LINKED",
+                # ── PLAYEMITTER ────────────────────────────────────────────────
+                entry_box.row(align=True).label(
+                    text=f"Entry {ei}  PLAYEMITTER", icon="LINKED"
                 )
-                # targets 列表
+                entry_box.prop(entry, "xyz", text=T("play.pos_offset_xyz"))
+
                 tgt_count = len(entry.targets)
                 entry_box.label(
-                    text=f"Targets（{tgt_count} 个）",
+                    text=f"{T('play.targets')}({tgt_count})",
                     icon="OUTLINER_OB_EMPTY",
                 )
 
                 list_row = entry_box.row()
                 list_row.template_list(
-                    "EFX_UL_play_targets",       # UIList bl_idname
-                    f"play_targets_{ei}",         # list_id（区分多个 entry）
-                    entry,                        # data
-                    "targets",                    # propname
-                    entry,                        # active_data
-                    "active_target_index",        # active_propname
+                    "EFX_UL_play_targets",
+                    f"play_targets_{ei}",
+                    entry, "targets",
+                    entry, "active_target_index",
                     rows=3,
                 )
 
-                # 增删按钮列
                 btn_col = list_row.column(align=True)
-                add_op = btn_col.operator(
-                    "efx.play_target_add", text="", icon="ADD"
-                )
+                add_op = btn_col.operator("efx.play_target_add", text="", icon="ADD")
                 add_op.entry_index = ei
-                rem_op = btn_col.operator(
-                    "efx.play_target_remove", text="", icon="REMOVE"
-                )
+                rem_op = btn_col.operator("efx.play_target_remove", text="", icon="REMOVE")
                 rem_op.entry_index = ei
 
-                # 激活 target 详情
                 ati = entry.active_target_index
                 if 0 <= ati < tgt_count:
-                    active_tgt = entry.targets[ati]
-                    detail_row = entry_box.row()
-                    detail_row.prop(active_tgt, "body_ptr", text="Body 对象")
+                    entry_box.row().prop(entry.targets[ati], "body_ptr", text=T("play.body_object"))
 
-                # 统计悬空
                 dangling = sum(1 for t in entry.targets if t.body_ptr is None)
                 total_dangling += dangling
                 if dangling > 0:
                     warn = entry_box.row()
                     warn.alert = True
                     warn.label(
-                        text=f"⚠ {dangling} 个 target 指针悬空（导出时跳过）",
+                        text=f"⚠ {dangling} {T('play.targets_dangling')}",
                         icon="ERROR",
                     )
 
             else:
-                # ── PLAYEFX：只读显示路径 ─────────────────────────────────────
-                header_row = entry_box.row(align=True)
-                header_row.label(
-                    text=f"Entry {ei}  PLAYEFX",
-                    icon="FILE_BLEND",
+                # ── PLAYEFX ────────────────────────────────────────────────────
+                entry_box.row(align=True).label(
+                    text=f"Entry {ei}  PLAYEFX", icon="FILE_BLEND"
                 )
-                raw = base64.b64decode(str(entry.raw_b64))
-                path_str = _extract_playefx_path(raw)
-                path_row = entry_box.row()
-                path_row.label(text=f"Path: {path_str}", icon="LINKED")
+                entry_box.prop(entry, "efx_path", text=T("play.efx_path"))
+                entry_box.prop(entry, "xyz", text=T("play.pos_offset_xyz"))
 
         # ── 整体悬空警告 ─────────────────────────────────────────────────────────
         if total_dangling > 0:
@@ -611,7 +625,7 @@ class EFX_PT_play(bpy.types.Panel):
             warn_row = layout.row()
             warn_row.alert = True
             warn_row.label(
-                text=f"⚠ 共 {total_dangling} 个 target 指针悬空",
+                text=f"⚠ {total_dangling} {T('play.targets_dangling_total')}",
                 icon="ERROR",
             )
 
@@ -645,8 +659,8 @@ def register():
         bpy.utils.register_class(cls)
 
     bpy.types.Object.efx_play = PointerProperty(
-        name="EFX Play 属性",
-        description="EFX_PLAY 对象的结构化 Play 数据",
+        name="EFX Play Properties",
+        description="Structured Play data for the EFX_PLAY object",
         type=EFXPlayProps,
     )
 

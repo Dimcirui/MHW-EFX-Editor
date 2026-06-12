@@ -29,6 +29,7 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
 import bpy
 
 from .operators import _find_efx_root
+from .i18n import T
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -71,7 +72,7 @@ def validate_efx_tree(root_obj) -> list:
     if root_obj is None:
         problems.append({
             "level": "ERROR",
-            "msg": "未找到 EFX_ROOT 对象",
+            "msg": "EFX_ROOT object not found",
             "obj": "",
         })
         return problems
@@ -99,7 +100,7 @@ def validate_efx_tree(root_obj) -> list:
                 if member.body_ptr is None:
                     problems.append({
                         "level": "ERROR",
-                        "msg": f"Subselect '{ss.name}' 第 {i} 个成员指针悬空",
+                        "msg": f"Subselect '{ss.name}' member {i} has a dangling pointer",
                         "obj": ss.name,
                     })
             except AttributeError:
@@ -125,8 +126,8 @@ def validate_efx_tree(root_obj) -> list:
                         problems.append({
                             "level": "ERROR",
                             "msg": (
-                                f"Play '{play.name}' entry {ei} 第 {ti} 个 "
-                                f"target 指针悬空"
+                                f"Play '{play.name}' entry {ei} target {ti} "
+                                f"has a dangling pointer"
                             ),
                             "obj": play.name,
                         })
@@ -146,8 +147,8 @@ def validate_efx_tree(root_obj) -> list:
                         problems.append({
                             "level": "ERROR",
                             "msg": (
-                                f"ExternReference 块 '{blk.name}' 指针悬空"
-                                "（被引用的 Extern 已删除）"
+                                f"ExternReference block '{blk.name}' has a dangling pointer"
+                                " (the referenced Extern was deleted)"
                             ),
                             "obj": blk.name,
                         })
@@ -156,8 +157,8 @@ def validate_efx_tree(root_obj) -> list:
                         problems.append({
                             "level": "WARN",
                             "msg": (
-                                f"ExternReference 块 '{blk.name}' 仍指针化，"
-                                "但文件无 Extern 段（count_extern=0，合法历史死块）"
+                                f"ExternReference block '{blk.name}' is still pointerized, "
+                                "but the file has no Extern segment (count_extern=0, legal legacy dead block)"
                             ),
                             "obj": blk.name,
                         })
@@ -172,8 +173,8 @@ def validate_efx_tree(root_obj) -> list:
                         problems.append({
                             "level": "ERROR",
                             "msg": (
-                                f"PtLife 块 '{blk.name}' relation 指针悬空"
-                                "（被引用的 Body 已删除）"
+                                f"PtLife block '{blk.name}' relation has a dangling pointer"
+                                " (the referenced Body was deleted)"
                             ),
                             "obj": blk.name,
                         })
@@ -190,8 +191,8 @@ def validate_efx_tree(root_obj) -> list:
                         problems.append({
                             "level": "ERROR",
                             "msg": (
-                                f"PtCollision 块 '{blk.name}' ie 指针悬空"
-                                "（被引用的 Play 已删除）"
+                                f"PtCollision block '{blk.name}' ie has a dangling pointer"
+                                " (the referenced Play was deleted)"
                             ),
                             "obj": blk.name,
                         })
@@ -214,10 +215,10 @@ def validate_efx_tree(root_obj) -> list:
             seen.setdefault(idx, []).append(o.name)
         dups = {k: v for k, v in seen.items() if len(v) > 1}
         if dups:
-            dup_str = "、".join(str(k) for k in sorted(dups))
+            dup_str = ", ".join(str(k) for k in sorted(dups))
             problems.append({
                 "level": "ERROR",
-                "msg": f"{group_name} 段存在重复 efx_index：{dup_str}",
+                "msg": f"{group_name} segment has duplicate efx_index: {dup_str}",
                 "obj": "",
             })
 
@@ -228,7 +229,7 @@ def validate_efx_tree(root_obj) -> list:
     # 每个 body 内的块各自一组
     for body in bodies:
         blocks = _children_by_type(body, "EFX_BLOCK")
-        _check_dup(blocks, f"Body '{body.name}' 的块")
+        _check_dup(blocks, f"Body '{body.name}' blocks")
 
     return problems
 
@@ -241,8 +242,8 @@ class EFX_OT_validate(bpy.types.Operator):
     """导出前校验：扫描悬空指针、重复索引、死块，弹窗报告"""
 
     bl_idname      = "efx.validate"
-    bl_label       = "导出前校验"
-    bl_description = "扫描 EFX 对象树的悬空指针 / 重复 index / 死块，弹窗报告问题"
+    bl_label       = "Pre-export Validation"
+    bl_description = "Scan the EFX object tree for dangling pointers / duplicate index / dead blocks and report issues in a popup"
     bl_options     = {"REGISTER"}
 
     @classmethod
@@ -252,7 +253,7 @@ class EFX_OT_validate(bpy.types.Operator):
     def execute(self, context):
         root = _find_efx_root(context)
         if root is None:
-            self.report({"ERROR"}, "未找到 EFX_ROOT 对象")
+            self.report({"ERROR"}, "EFX_ROOT object not found")
             return {"CANCELLED"}
 
         problems = validate_efx_tree(root)
@@ -260,36 +261,36 @@ class EFX_OT_validate(bpy.types.Operator):
         warns = [p for p in problems if p["level"] == "WARN"]
 
         if not problems:
-            self.report({"INFO"}, "校验通过：未发现问题")
+            self.report({"INFO"}, "Validation passed: no issues found")
             return {"FINISHED"}
 
         def _draw(self_menu, ctx):
             col = self_menu.layout.column()
             if errors:
                 col.label(
-                    text=f"发现 {len(errors)} 个错误：", icon="ERROR",
+                    text=T("validate.found_errors").format(n=len(errors)), icon="ERROR",
                 )
                 for p in errors:
                     col.label(text="• " + p["msg"])
             if warns:
                 col.separator()
                 col.label(
-                    text=f"发现 {len(warns)} 个警告：", icon="INFO",
+                    text=T("validate.found_warnings").format(n=len(warns)), icon="INFO",
                 )
                 for p in warns:
                     col.label(text="• " + p["msg"])
 
         context.window_manager.popup_menu(
-            _draw, title="EFX 校验结果", icon="ERROR" if errors else "INFO",
+            _draw, title=T("validate.popup_title"), icon="ERROR" if errors else "INFO",
         )
 
         if errors:
             self.report(
                 {"WARNING"},
-                f"EFX 校验：{len(errors)} 错误，{len(warns)} 警告",
+                f"EFX validation: {len(errors)} error(s), {len(warns)} warning(s)",
             )
         else:
-            self.report({"INFO"}, f"EFX 校验：{len(warns)} 警告，无错误")
+            self.report({"INFO"}, f"EFX validation: {len(warns)} warning(s), no errors")
         return {"FINISHED"}
 
 

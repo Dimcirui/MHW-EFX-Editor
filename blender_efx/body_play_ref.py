@@ -95,6 +95,7 @@ from bpy.props import (
 from bpy.types import PropertyGroup
 
 from .subselect import build_local_index_map
+from .i18n import T
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -142,16 +143,16 @@ class EFXPtLifeRefProps(PropertyGroup):
 
     relation_body_ptr: PointerProperty(
         name="Relation Body",
-        description="此 PtLife 块 relationIndex 指向的 EFX_BODY 对象（body 段局部 index）",
+        description="The EFX_BODY object this PtLife block's relationIndex points to (body section local index)",
         type=bpy.types.Object,
         poll=_body_object_poll,
     )
 
     relation_pointerized: BoolProperty(
-        name="已指针化",
+        name="Pointerized",
         description=(
-            "True = relationIndex 已指针化（0 <= v < count_body）；"
-            "False = 越界/负值/死块，保持原始字节（byte-perfect 回退）"
+            "True = relationIndex has been pointerized (0 <= v < count_body); "
+            "False = out of range / negative / dead block, preserve original bytes (byte-perfect fallback)"
         ),
         default=False,
     )
@@ -277,22 +278,22 @@ class EFXPtCollisionRefProps(PropertyGroup):
 
     ie_play_ptr: PointerProperty(
         name="IE Play",
-        description="此 PtCollision 块 ieIndex 指向的 EFX_PLAY 对象（play 段局部 index）",
+        description="The EFX_PLAY object this PtCollision block's ieIndex points to (play section local index)",
         type=bpy.types.Object,
         poll=_play_object_poll,
     )
 
     ie_none: BoolProperty(
-        name="无目标（-1）",
-        description="True = ieIndex == -1（哨兵，无 play 目标）",
+        name="No Target (-1)",
+        description="True = ieIndex == -1 (sentinel, no play target)",
         default=False,
     )
 
     ie_pointerized: BoolProperty(
-        name="已指针化",
+        name="Pointerized",
         description=(
-            "True = ieIndex 已指针化（有效范围 / -1 哨兵）；"
-            "False = 死块/越界，保持原始字节（byte-perfect 回退）"
+            "True = ieIndex has been pointerized (valid range / -1 sentinel); "
+            "False = dead block / out of range, preserve original bytes (byte-perfect fallback)"
         ),
         default=False,
     )
@@ -417,21 +418,21 @@ class EFXEofItem(PropertyGroup):
     """
 
     body_ptr: PointerProperty(
-        name="Body 对象",
-        description="此 eof 条目引用的 EFX_BODY 对象（is_ptr=True 时有效）",
+        name="Body Object",
+        description="The EFX_BODY object this eof entry references (valid when is_ptr=True)",
         type=bpy.types.Object,
         poll=_body_object_poll,
     )
 
     raw_value: IntProperty(
-        name="原始值",
-        description="无法映射到有效 body 的原始整数值（is_ptr=False 时有效，如 99/33）",
+        name="Raw Value",
+        description="Raw integer value that cannot be mapped to a valid body (valid when is_ptr=False, e.g. 99/33)",
         default=0,
     )
 
     is_ptr: BoolProperty(
-        name="是 Body 指针",
-        description="True=body 指针；False=原始整数（无法映射的值）",
+        name="Is Body Pointer",
+        description="True = body pointer; False = raw integer (unmappable value)",
         default=False,
     )
 
@@ -449,13 +450,13 @@ class EFXEofListProps(PropertyGroup):
 
     items: CollectionProperty(
         name="EOF Items",
-        description="End 段的 eof_ints 条目列表（body 指针或原始整数，保持顺序）",
+        description="List of eof_ints entries in the End section (body pointers or raw integers, order preserved)",
         type=EFXEofItem,
     )
 
     active_index: IntProperty(
-        name="激活条目序号",
-        description="当前激活的 eof 条目（供 UI 使用）",
+        name="Active Entry Index",
+        description="The currently active eof entry (for UI use)",
         default=0,
         min=0,
     )
@@ -637,7 +638,7 @@ class EFX_PT_ptlife_ref(bpy.types.Panel):
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "Relation Body 引用"
+    bl_label       = "Relation Body Reference"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -660,30 +661,30 @@ class EFX_PT_ptlife_ref(bpy.types.Panel):
         try:
             props = obj.efx_ptlife_ref
         except AttributeError:
-            layout.label(text="（无 efx_ptlife_ref 数据）", icon="ERROR")
+            layout.label(text=T("ptref.no_ptlife_data"), icon="ERROR")
             return
 
         box = layout.box()
-        box.label(text="Relation Index (body 引用)", icon="LINKED")
+        box.label(text=T("ptref.relation_index_title"), icon="LINKED")
 
         if not props.relation_pointerized:
             row = box.row()
             row.enabled = False
-            row.label(text="[越界/负值，原始字节保留]", icon="ERROR")
+            row.label(text=T("ptref.relation_oob"), icon="ERROR")
             return
 
         row = box.row(align=True)
-        row.prop(props, "relation_body_ptr", text="Body 对象")
+        row.prop(props, "relation_body_ptr", text=T("ptref.body_object"))
 
         if props.relation_body_ptr is None:
             warn = box.row()
             warn.alert = True
-            warn.label(text="⚠ 指针悬空（导出时使用原始字节）", icon="ERROR")
+            warn.label(text=T("ptref.dangling"), icon="ERROR")
         else:
             body_obj = props.relation_body_ptr
             body_idx = body_obj.get("efx_index", "?")
             info = box.row()
-            info.label(text="Body 局部 index: " + str(body_idx), icon="INFO")
+            info.label(text=T("ptref.body_local_index") + " " + str(body_idx), icon="INFO")
 
 
 class EFX_PT_ptcollision_ref(bpy.types.Panel):
@@ -699,7 +700,7 @@ class EFX_PT_ptcollision_ref(bpy.types.Panel):
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "IE Play 引用"
+    bl_label       = "IE Play Reference"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -722,37 +723,37 @@ class EFX_PT_ptcollision_ref(bpy.types.Panel):
         try:
             props = obj.efx_ptcollision_ref
         except AttributeError:
-            layout.label(text="（无 efx_ptcollision_ref 数据）", icon="ERROR")
+            layout.label(text=T("ptref.no_ptcollision_data"), icon="ERROR")
             return
 
         box = layout.box()
-        box.label(text="IE Index (play 引用)", icon="LINKED")
+        box.label(text=T("ptref.ie_index_title"), icon="LINKED")
 
         if not props.ie_pointerized:
             row = box.row()
             row.enabled = False
-            row.label(text="[越界/count_play=0，原始字节保留]", icon="ERROR")
+            row.label(text=T("ptref.ie_oob"), icon="ERROR")
             return
 
         row = box.row(align=True)
-        row.prop(props, "ie_none", text="无目标（-1 哨兵）")
+        row.prop(props, "ie_none", text=T("ptref.no_target_sentinel"))
 
         if props.ie_none:
             row2 = box.row(align=True)
             row2.enabled = False
-            row2.prop(props, "ie_play_ptr", text="Play 对象")
+            row2.prop(props, "ie_play_ptr", text=T("ptref.play_object"))
         else:
             row2 = box.row(align=True)
-            row2.prop(props, "ie_play_ptr", text="Play 对象")
+            row2.prop(props, "ie_play_ptr", text=T("ptref.play_object"))
             if props.ie_play_ptr is None:
                 warn = box.row()
                 warn.alert = True
-                warn.label(text="⚠ 指针悬空（导出时使用原始字节）", icon="ERROR")
+                warn.label(text=T("ptref.dangling"), icon="ERROR")
             else:
                 play_obj = props.ie_play_ptr
                 play_idx = play_obj.get("efx_index", "?")
                 info = box.row()
-                info.label(text="Play 局部 index: " + str(play_idx), icon="INFO")
+                info.label(text=T("ptref.play_local_index") + " " + str(play_idx), icon="INFO")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -760,11 +761,11 @@ class EFX_PT_ptcollision_ref(bpy.types.Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_eof_toggle_body(bpy.types.Operator):
-    """切换当前 EFX_BODY 在根文件 eof 列表中的激活状态"""
+    """Toggle whether the current EFX_BODY is in the root file's eof active list"""
 
     bl_idname      = "efx.eof_toggle_body"
-    bl_label       = "切换 EOF 激活"
-    bl_description = "将此 Body 加入/移出根文件的 EOF 激活列表（控制游戏是否直接触发该特效）"
+    bl_label       = "Toggle EOF Active"
+    bl_description = "Add/remove this Body to/from the root file's EOF active list (controls whether the game directly triggers this effect)"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -781,7 +782,7 @@ class EFX_OT_eof_toggle_body(bpy.types.Operator):
         try:
             props = root.efx_eof_list
         except AttributeError:
-            self.report({"ERROR"}, "根对象无 efx_eof_list 属性")
+            self.report({"ERROR"}, "Root object has no efx_eof_list property")
             return {"CANCELLED"}
 
         # 查找已有条目
@@ -793,12 +794,12 @@ class EFX_OT_eof_toggle_body(bpy.types.Operator):
 
         if found_idx is not None:
             props.items.remove(found_idx)
-            self.report({"INFO"}, f"已从 EOF 列表移除 {body_obj.name}")
+            self.report({"INFO"}, f"Removed {body_obj.name} from EOF list")
         else:
             item = props.items.add()
             item.is_ptr = True
             item.body_ptr = body_obj
-            self.report({"INFO"}, f"已将 {body_obj.name} 加入 EOF 列表")
+            self.report({"INFO"}, f"Added {body_obj.name} to EOF list")
 
         return {"FINISHED"}
 
@@ -819,10 +820,10 @@ def is_body_in_eof(body_obj: bpy.types.Object) -> bool:
 
 
 class EFX_OT_eof_remove_entry(bpy.types.Operator):
-    """从根文件 EOF 列表移除指定条目"""
+    """Remove a specific entry from the root file's EOF list"""
 
     bl_idname      = "efx.eof_remove_entry"
-    bl_label       = "移除 EOF 条目"
+    bl_label       = "Remove EOF Entry"
     bl_options     = {"REGISTER", "UNDO"}
 
     entry_index: bpy.props.IntProperty(default=0)
@@ -849,7 +850,7 @@ class EFX_PT_eof_list(bpy.types.Panel):
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "EOF 激活列表"
+    bl_label       = "EOF Active List"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -865,14 +866,14 @@ class EFX_PT_eof_list(bpy.types.Panel):
         try:
             props = obj.efx_eof_list
         except AttributeError:
-            layout.label(text="（无 efx_eof_list 数据）", icon="ERROR")
+            layout.label(text=T("ptref.no_eof_data"), icon="ERROR")
             return
 
         n = len(props.items)
-        layout.label(text=f"游戏直接激活的 Body（{n} 条）", icon="SORTBYEXT")
+        layout.label(text=T("ptref.game_activated_bodies") + f"({n})", icon="SORTBYEXT")
 
         if n == 0:
-            layout.label(text="（空——特效不会被游戏触发）", icon="INFO")
+            layout.label(text=T("ptref.eof_empty"), icon="INFO")
             return
 
         col = layout.column(align=True)
@@ -888,7 +889,7 @@ class EFX_PT_eof_list(bpy.types.Panel):
                         icon="OBJECT_DATA",
                     )
                 else:
-                    row.label(text="[悬空指针]", icon="ERROR")
+                    row.label(text=T("ptref.dangling_pointer"), icon="ERROR")
             else:
                 row.label(text=f"raw={item.raw_value}", icon="DOT")
             op = row.operator("efx.eof_remove_entry", text="", icon="X")
@@ -930,20 +931,20 @@ def register():
         bpy.utils.register_class(cls)
 
     bpy.types.Object.efx_ptlife_ref = PointerProperty(
-        name="EFX PtLife 引用属性",
-        description="EFX_BLOCK（PTLIFE 类型）的 relationIndex body 指针数据",
+        name="EFX PtLife Reference Properties",
+        description="relationIndex body pointer data for EFX_BLOCK (PTLIFE type)",
         type=EFXPtLifeRefProps,
     )
 
     bpy.types.Object.efx_ptcollision_ref = PointerProperty(
-        name="EFX PtCollision 引用属性",
-        description="EFX_BLOCK（PTCOLLISION 类型）的 ieIndex play 指针数据",
+        name="EFX PtCollision Reference Properties",
+        description="ieIndex play pointer data for EFX_BLOCK (PTCOLLISION type)",
         type=EFXPtCollisionRefProps,
     )
 
     bpy.types.Object.efx_eof_list = PointerProperty(
-        name="EFX EOF Body 列表",
-        description="EFX_ROOT 对象的 eof_ints 有序 body 指针列表",
+        name="EFX EOF Body List",
+        description="Ordered eof_ints body pointer list for the EFX_ROOT object",
         type=EFXEofListProps,
     )
 
