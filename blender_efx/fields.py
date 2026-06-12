@@ -112,7 +112,13 @@ def _mark_block_dirty(self, context):
                     from ..efx_format.hashes import TRANSFORM3D
                     if int(obj.efx_block.type_hash_str) == TRANSFORM3D:
                         from . import transform_sync
-                        transform_sync.apply_transform3d_to_body(obj)
+                        # 0.2.15 重构后入口是 apply_body_transform(body, armature)：
+                        # 取该块的父 body + 当前骨架（含 bone_lim 骨骼基准），而非旧的 block 签名。
+                        body = obj.parent
+                        if body is not None and body.get("~TYPE") == "EFX_BODY":
+                            scene = getattr(context, "scene", None) or bpy.context.scene
+                            armature = getattr(scene, "efx_armature", None) if scene else None
+                            transform_sync.apply_body_transform(body, armature)
                 except Exception:
                     pass
     except Exception:
