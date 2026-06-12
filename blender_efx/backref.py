@@ -33,6 +33,9 @@ blender_efx/backref.py  —  L2 反向引用视图（只读）
 - 跳转算子不需要 UNDO（纯选择操作，不改场景数据）。
 """
 
+import base64
+import struct
+
 import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
@@ -320,36 +323,150 @@ class EFX_PT_extern_backref(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §4  Body 对象反向视图
+# §4  Body 对象双向关系视图（Body References）
+#
+# 把单纯的"被谁引用"升级为以 body 为中心的双向关系导航（仍纯只读、不碰导出）：
+#   ⬇ 我触发谁     ：本 body 的 PTLIFE 块 → action(play)（timing 区分生成/结束型）
+#                    → 该 play 的子 body(PLAYEMITTER targets) / 外部 efx(PLAYEFX path)
+#   ⬆ 谁触发我     ：哪些父 body 的 PTLIFE → 某个 targets 含本 body 的 action
+#   ⬔ 我引用的 Extern：本 body 的 EXTERNREFERENCE 块 → extern 对象
+#   ⬓ 我所属的 Subselect：哪些 Subselect 表把本 body 列为成员
+# 全部边最终都落在 body 这个公共节点上（关系是 DAG，不是树），所以按"边的类型"
+# 分组列出 + 可跳转，天然处理多对一/共享，不需要枚举"谁套谁"。
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _scan_body_backrefs(body_obj: bpy.types.Object) -> dict:
-    """
-    扫描同一 EFX 树内所有 Subselect 和 Play Emitter，
-    找出引用了 body_obj 的条目。
+# PTLIFE timing：short @ offset 4（0=生成时、4=结束时）
+_PTLIFE_TIMING_OFFSET = 4
 
-    返回
-    ----
-    dict with keys:
-        'subselect': list of dict
-            {
-                'ss_obj': bpy.types.Object,   # EFX_SUBSELECT 对象
-                'ss_name': str,               # Subselect 对象名
-            }
-        'play': list of dict
-            {
-                'play_obj': bpy.types.Object, # EFX_PLAY 对象
-                'play_name': str,             # Play 对象名
-                'entry_index': int,           # entry 序号（从 0）
-            }
 
-    只读扫描，不修改任何数据。
+def _block_type_hash(blk) -> int:
+    """读 EFX_BLOCK 的 type_hash（失败返回 -1）。"""
+    try:
+        return int(blk.efx_block.type_hash_str)
+    except (AttributeError, ValueError, TypeError):
+        return -1
+
+
+def _read_ptlife_timing(blk):
+    """读 PTLIFE 块的 timing（short @ offset 4）；失败返回 None。"""
+    try:
+        raw = base64.b64decode(str(blk.efx_block.raw_b64))
+        if len(raw) >= _PTLIFE_TIMING_OFFSET + 2:
+            return struct.unpack_from("<h", raw, _PTLIFE_TIMING_OFFSET)[0]
+    except Exception:
+        pass
+    return None
+
+
+def _play_children(play_obj):
+    """返回 play_obj 的子引用：(child_body 对象列表, 外部 efx 路径列表)。"""
+    children, paths = [], []
+    try:
+        props = play_obj.efx_play
+    except AttributeError:
+        return children, paths
+    for entry in props.entries:
+        if entry.is_emitter:
+            for tgt in entry.targets:
+                if tgt.body_ptr is not None:
+                    children.append(tgt.body_ptr)
+        else:
+            p = str(entry.efx_path or "").strip()
+            if p:
+                paths.append(p)
+    return children, paths
+
+
+def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
     """
-    result = {"subselect": [], "play": []}
+    以 body_obj 为中心扫描同一 EFX 树的四类关系（只读）。
+
+    返回 dict：
+      'triggers'     : list {play_obj, play_name, timing, children:[obj], paths:[str]}
+      'triggered_by' : list {body_obj, body_name, play_obj, play_name, timing}
+      'externs'      : list {extern_obj, extern_name, block_name}
+      'subselects'   : list {ss_obj, ss_name}
+    """
+    from ..efx_format.hashes import PTLIFE, EXTERNREFERENCE
 
     tree = get_efx_tree_objects(body_obj)
+    blocks  = tree.get("EFX_BLOCK", [])
+    plays   = tree.get("EFX_PLAY", [])
+    result  = {"triggers": [], "triggered_by": [], "externs": [], "subselects": []}
 
-    # ── 扫描 Subselect ──────────────────────────────────────────────────────
+    # 本 body 直属的块（parent==body_obj）
+    my_blocks = [b for b in blocks if b.parent is body_obj]
+
+    # ── ⬇ 我触发谁：本 body 的 PTLIFE → play → 子 body / 外部 efx ──────────────
+    for blk in my_blocks:
+        if _block_type_hash(blk) != PTLIFE:
+            continue
+        try:
+            ref = blk.efx_ptlife_ref
+            if not ref.relation_pointerized:
+                continue
+            play = ref.relation_play_ptr
+        except AttributeError:
+            continue
+        if play is None:
+            continue
+        children, paths = _play_children(play)
+        result["triggers"].append({
+            "play_obj": play,
+            "play_name": play.name,
+            "timing": _read_ptlife_timing(blk),
+            "children": children,
+            "paths": paths,
+        })
+
+    # ── ⬆ 谁触发我：父 body 的 PTLIFE → 某个 targets 含本 body 的 play ─────────
+    # 先找出 targets 含本 body 的 play 集合
+    plays_targeting_me = set()
+    for play in plays:
+        children, _ = _play_children(play)
+        if body_obj in children:
+            plays_targeting_me.add(play)
+    # 再找哪些 body 的 PTLIFE 指向这些 play
+    if plays_targeting_me:
+        for blk in blocks:
+            if _block_type_hash(blk) != PTLIFE:
+                continue
+            try:
+                ref = blk.efx_ptlife_ref
+                if not ref.relation_pointerized:
+                    continue
+                play = ref.relation_play_ptr
+            except AttributeError:
+                continue
+            if play in plays_targeting_me and blk.parent is not None \
+                    and blk.parent is not body_obj:
+                result["triggered_by"].append({
+                    "body_obj": blk.parent,
+                    "body_name": blk.parent.name,
+                    "play_obj": play,
+                    "play_name": play.name,
+                    "timing": _read_ptlife_timing(blk),
+                })
+
+    # ── ⬔ 我引用的 Extern：本 body 的 EXTERNREFERENCE 块 → extern ─────────────
+    for blk in my_blocks:
+        if _block_type_hash(blk) != EXTERNREFERENCE:
+            continue
+        try:
+            er = blk.efx_extern_ref
+            if not er.extern_ref_pointerized or er.extern_ref_none:
+                continue
+            ext = er.extern_ref_ptr
+        except AttributeError:
+            continue
+        if ext is not None:
+            result["externs"].append({
+                "extern_obj": ext,
+                "extern_name": ext.name,
+                "block_name": blk.name,
+            })
+
+    # ── ⬓ 我所属的 Subselect ─────────────────────────────────────────────────
     for ss_obj in tree.get("EFX_SUBSELECT", []):
         try:
             props = ss_obj.efx_subselect
@@ -357,47 +474,41 @@ def _scan_body_backrefs(body_obj: bpy.types.Object) -> dict:
             continue
         for member in props.members:
             if member.body_ptr is body_obj:
-                result["subselect"].append({
+                result["subselects"].append({
                     "ss_obj": ss_obj,
                     "ss_name": ss_obj.name,
                 })
-                break  # 同一 Subselect 多次引用同一 body 时只记录一次（去重）
-
-    # ── 扫描 Play Emitter ───────────────────────────────────────────────────
-    for play_obj in tree.get("EFX_PLAY", []):
-        try:
-            props = play_obj.efx_play
-        except AttributeError:
-            continue
-        for ei, entry in enumerate(props.entries):
-            if not entry.is_emitter:
-                continue
-            for tgt in entry.targets:
-                if tgt.body_ptr is body_obj:
-                    result["play"].append({
-                        "play_obj": play_obj,
-                        "play_name": play_obj.name,
-                        "entry_index": ei,
-                    })
-                    break  # 同一 entry 多次引用同一 body 时只记录一次
+                break
 
     return result
 
 
+def _timing_label(timing) -> str:
+    """timing → 人类可读（生成/结束/原值）。"""
+    if timing == 0:
+        return T("bodyref.timing_spawn")
+    if timing == 4:
+        return T("bodyref.timing_death")
+    return T("bodyref.timing_other") + f"={timing}"
+
+
+def _jump_button(row, target_name, text="", icon="VIEWZOOM"):
+    op = row.operator("efx.select_object", text=text, icon=icon)
+    op.target_name = target_name
+
+
 class EFX_PT_body_backref(bpy.types.Panel):
     """
-    Body 对象反向引用视图（VIEW_3D N 面板，选中 EFX_BODY 时显示）。
+    Body 双向关系视图（VIEW_3D N 面板，选中 EFX_BODY 时显示）。
 
-    显示哪些 Subselect 表和哪些 Play Emitter 引用了此 body，
-    分组显示并提供跳转按钮。
-
-    纯只读：不在此编辑引用关系，不触碰任何字节/导出路径。
+    以本 body 为中心展示四类关系（我触发谁 / 谁触发我 / 我引用的 Extern /
+    我所属的 Subselect），每条可跳转。纯只读，不碰任何字节/导出路径。
     """
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "Body Referenced By"
+    bl_label       = "Body References"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -413,71 +524,69 @@ class EFX_PT_body_backref(bpy.types.Panel):
         # ── Body 基本信息 ────────────────────────────────────────────────────
         info_box = layout.box()
         body_idx = body_obj.get("efx_index", "?")
-        info_row = info_box.row()
-        info_row.label(
+        info_box.row().label(
             text=T("backref.body_object") + f" {body_obj.name}  (index {body_idx})",
             icon="OBJECT_DATA",
         )
 
-        layout.separator()
+        rel = _scan_body_relations(body_obj)
+        triggers     = rel["triggers"]
+        triggered_by = rel["triggered_by"]
+        externs      = rel["externs"]
+        subselects   = rel["subselects"]
 
-        # ── 扫描反向引用 ──────────────────────────────────────────────────────
-        refs = _scan_body_backrefs(body_obj)
-        ss_refs   = refs["subselect"]
-        play_refs = refs["play"]
-
-        total = len(ss_refs) + len(play_refs)
-        if total == 0:
-            layout.label(text=T("backref.not_referenced_by_ss_play"), icon="INFO")
+        if not (triggers or triggered_by or externs or subselects):
+            layout.label(text=T("bodyref.none"), icon="INFO")
             return
 
-        layout.label(
-            text=T("backref.referenced_total_prefix") + f" {total} " + T("backref.referenced_total_mid") + f" {len(ss_refs)}, Play {len(play_refs)})",
-            icon="RESTRICT_SELECT_OFF",
-        )
+        # ── ⬇ 我触发谁 ────────────────────────────────────────────────────────
+        if triggers:
+            box = layout.box()
+            box.row().label(text=T("bodyref.triggers_header"), icon="FORWARD")
+            for t in triggers:
+                row = box.row(align=True)
+                row.label(text=f"{t['play_name']}  [{_timing_label(t['timing'])}]", icon="PLAY")
+                _jump_button(row, t["play_name"])
+                sub = box.column(align=True)
+                for child in t["children"]:
+                    r = sub.row(align=True)
+                    r.separator(factor=2.0)
+                    r.label(text=child.name, icon="OBJECT_DATA")
+                    _jump_button(r, child.name)
+                for p in t["paths"]:
+                    r = sub.row(align=True)
+                    r.separator(factor=2.0)
+                    r.label(text=p, icon="FILE_BLEND")
 
-        layout.separator()
-
-        # ── Subselect 组 ──────────────────────────────────────────────────────
-        if ss_refs:
-            ss_box = layout.box()
-            ss_header = ss_box.row()
-            ss_header.label(
-                text=T("backref.subselect_tables_prefix") + f" ({len(ss_refs)})",
-                icon="OUTLINER_OB_EMPTY",
-            )
-            ss_col = ss_box.column(align=True)
-            for ref in ss_refs:
-                row = ss_col.row(align=True)
-                row.label(text=ref["ss_name"], icon="MODIFIER")
-                op = row.operator(
-                    "efx.select_object",
-                    text="",
-                    icon="VIEWZOOM",
-                )
-                op.target_name = ref["ss_name"]
-
-        # ── Play Emitter 组 ───────────────────────────────────────────────────
-        if play_refs:
-            play_box = layout.box()
-            play_header = play_box.row()
-            play_header.label(
-                text=T("backref.play_emitter_prefix") + f" ({len(play_refs)})",
-                icon="SEQUENCE",
-            )
-            play_col = play_box.column(align=True)
-            for ref in play_refs:
-                row = play_col.row(align=True)
+        # ── ⬆ 谁触发我 ────────────────────────────────────────────────────────
+        if triggered_by:
+            box = layout.box()
+            box.row().label(text=T("bodyref.triggered_by_header"), icon="BACK")
+            for t in triggered_by:
+                row = box.row(align=True)
                 row.label(
-                    text=f"{ref['play_name']}  [Entry {ref['entry_index']}]",
-                    icon="MODIFIER",
+                    text=f"{t['body_name']}  ({t['play_name']} [{_timing_label(t['timing'])}])",
+                    icon="OBJECT_DATA",
                 )
-                op = row.operator(
-                    "efx.select_object",
-                    text="",
-                    icon="VIEWZOOM",
-                )
-                op.target_name = ref["play_name"]
+                _jump_button(row, t["body_name"])
+
+        # ── ⬔ 我引用的 Extern ────────────────────────────────────────────────
+        if externs:
+            box = layout.box()
+            box.row().label(text=T("bodyref.externs_header") + f" ({len(externs)})", icon="LINKED")
+            for e in externs:
+                row = box.row(align=True)
+                row.label(text=e["extern_name"], icon="FILE_BLEND")
+                _jump_button(row, e["extern_name"])
+
+        # ── ⬓ 我所属的 Subselect ─────────────────────────────────────────────
+        if subselects:
+            box = layout.box()
+            box.row().label(text=T("bodyref.subselect_header") + f" ({len(subselects)})", icon="OUTLINER_OB_EMPTY")
+            for s in subselects:
+                row = box.row(align=True)
+                row.label(text=s["ss_name"], icon="MODIFIER")
+                _jump_button(row, s["ss_name"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────

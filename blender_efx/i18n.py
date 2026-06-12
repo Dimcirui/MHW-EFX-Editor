@@ -321,6 +321,16 @@ STRINGS = {
     "backref.subselect_tables_prefix":{"EN": "Subselect tables", "ZH": "Subselect 表"},
     "backref.play_emitter_prefix":    {"EN": "Play Emitter", "ZH": "Play Emitter"},
 
+    # ── Body 双向关系视图（Body References，backref.py §4）────────────────────
+    "bodyref.none":                {"EN": "No references to/from this body", "ZH": "此 body 无任何引用关系"},
+    "bodyref.triggers_header":     {"EN": "Triggers (this body spawns):", "ZH": "我触发谁（本 body 生成）："},
+    "bodyref.triggered_by_header": {"EN": "Triggered by (spawned by):", "ZH": "谁触发我（本 body 被生成）："},
+    "bodyref.externs_header":      {"EN": "Externs referenced", "ZH": "我引用的 Extern"},
+    "bodyref.subselect_header":    {"EN": "In Subselect tables", "ZH": "我所属的 Subselect"},
+    "bodyref.timing_spawn":        {"EN": "on spawn", "ZH": "生成时"},
+    "bodyref.timing_death":        {"EN": "on death", "ZH": "消亡时"},
+    "bodyref.timing_other":        {"EN": "timing", "ZH": "timing"},
+
     # ── Hex 视图（hexview.py）─────────────────────────────────────────────────
     "hex.no_raw_bytes":  {"EN": "(no raw bytes)",  "ZH": "（无原始字节）"},
     "hex.total_length":  {"EN": "Total length: ",  "ZH": "总长度："},
