@@ -2,7 +2,7 @@
 blender_efx/body_play_ref.py  —  L2 #1d：补完 body/play 引用层指针化
 
 涵盖三项：
-  1. PtLife.relationIndex     → body 指针（int16，偏移 8）
+  1. PtLife.relationIndex     → play(action) 指针（int16，偏移 8）
   2. PtCollision.ieIndex      → play 指针（int32，偏移 96）
   3. eof_ints（End 段）       → 有序 body 指针列表（CollectionProperty）
 
@@ -25,15 +25,18 @@ PTLIFE_SCHEMA：short[10]，共 20 字节（no leading type_hash）。
   offset  8: h relationIndex   ← 指针化目标字段（int16 有符号）
   ...
 
-实测语义（BLUEPRINT §9，本文件 §0 分析）：
-  值 v（int16 有符号）被视为 Main 段局部 0-based body index（EFX_BODY）。
-  判定依据：wp08_002_2.efx 中 relationIndex=1、count_play=0、count_body=17
-  → 值不可能是 play index（count_play=0），必然是 body index。
-  此为语料中唯一不歧义的 cp=0 且 v>0 的样本，结论：body index。
+实测语义（社区教程 + 语料复核，2026-06 修正）：
+  值 v（int16 有符号）= **actionID** = PLAY 段局部 0-based index（EFX_PLAY）。
+  依据：canni《ACTION 结构》《延迟火》教程均写 relationIndex=actionID；
+  178 样本复核——18 个"有 action"（count_play>0）的文件里，每个
+  max(relationIndex)==count_play-1，无一越过 count_play（count_body 是
+  7~23 的大范围却从不被触及，如 ymt006 cp=3 用到 2、boom cp=2 用 1）。
+  若是 body index，值本应散布 [0,count_body)，但全部紧贴 [0,count_play)。
+  早先误判 body 的 5 个样本全来自 count_play==0 的文件 = 死 PTLIFE 残留块。
 
 int16 哨兵：无样本观测到哨兵（-1=0xFFFF），但因为 0xFFFF 是 int16 的 -1，
   若出现则应视为"无目标"，保守处理 → 不指针化（pointerized=False），原样保留。
-  实际上 0 <= v < count_body 才指针化；其他情况（含负值/越界）保守原样。
+  实际上 0 <= v < count_play 才指针化；其他情况（含负值/越界）保守原样。
 
 导出覆写：struct.pack_into('<h', buf, 8, new_index)  （int16，偏移 8）
 
@@ -136,22 +139,22 @@ class EFXPtLifeRefProps(PropertyGroup):
 
     字段
     ----
-    relation_body_ptr    : PointerProperty → EFX_BODY 对象（poll=EFX_BODY）
-                           pointerized=True 时有效（非负有效范围内的 body）
+    relation_play_ptr    : PointerProperty → EFX_PLAY 对象（poll=EFX_PLAY）
+                           pointerized=True 时有效（非负有效范围内的 play/action）
     relation_pointerized : BoolProperty    — True=已指针化；False=死块/越界，原样保留
     """
 
-    relation_body_ptr: PointerProperty(
-        name="Relation Body",
-        description="The EFX_BODY object this PtLife block's relationIndex points to (body section local index)",
+    relation_play_ptr: PointerProperty(
+        name="Relation Action",
+        description="The EFX_PLAY (action) object this PtLife block's relationIndex points to (play section local index = actionID)",
         type=bpy.types.Object,
-        poll=_body_object_poll,
+        poll=_play_object_poll,
     )
 
     relation_pointerized: BoolProperty(
         name="Pointerized",
         description=(
-            "True = relationIndex has been pointerized (0 <= v < count_body); "
+            "True = relationIndex has been pointerized (0 <= v < count_play); "
             "False = out of range / negative / dead block, preserve original bytes (byte-perfect fallback)"
         ),
         default=False,
@@ -161,8 +164,8 @@ class EFXPtLifeRefProps(PropertyGroup):
 def init_ptlife_ref_props(
     blk_obj: bpy.types.Object,
     data_bytes: bytes,
-    main_bodies_by_index: dict,
-    count_body: int,
+    play_objs_by_index: dict,
+    count_play: int,
 ) -> None:
     """
     初始化 blk_obj.efx_ptlife_ref PropertyGroup。
@@ -173,13 +176,13 @@ def init_ptlife_ref_props(
         EFX_BLOCK Empty（PTLIFE 类型）。
     data_bytes : bytes
         该块的 data_bytes（20 字节）。
-    main_bodies_by_index : dict[int, bpy.types.Object]
-        {efx_index → EFX_BODY 对象} 映射。
-    count_body : int
-        文件头的 count_body 字段值（hdr.count_body）。
+    play_objs_by_index : dict[int, bpy.types.Object]
+        {efx_index → EFX_PLAY 对象} 映射。
+    count_play : int
+        文件头的 count_play 字段值（hdr.count_play）。
 
     三种情况：
-      1. 0 <= v < count_body → ptr 指向 efx_index==v 的 EFX_BODY；pointerized=True
+      1. 0 <= v < count_play → ptr 指向 efx_index==v 的 EFX_PLAY；pointerized=True
       2. 其他（负值/越界）   → pointerized=False（原样，byte-perfect）
     """
     props = blk_obj.efx_ptlife_ref
@@ -189,31 +192,31 @@ def init_ptlife_ref_props(
         props.relation_pointerized = False
         return
 
-    # 读 relationIndex（有符号 int16，小端）
+    # 读 relationIndex（有符号 int16，小端）= actionID（play 段局部 index）
     v = struct.unpack_from('<h', data_bytes, _RELATION_INDEX_OFFSET)[0]
 
-    # 只指针化 [0, count_body) 范围内的值
-    if count_body > 0 and 0 <= v < count_body:
-        target_obj = main_bodies_by_index.get(v)
+    # 只指针化 [0, count_play) 范围内的值
+    if count_play > 0 and 0 <= v < count_play:
+        target_obj = play_objs_by_index.get(v)
         if target_obj is not None:
-            props.relation_body_ptr = target_obj
+            props.relation_play_ptr = target_obj
             props.relation_pointerized = True
         else:
             # 映射缺失（理论上不该发生），安全回退
             props.relation_pointerized = False
     else:
-        # 越界/负值（含 -1 等保守情况）→ 原样保留
+        # 越界/负值（含 count_play==0 的死块）→ 原样保留
         props.relation_pointerized = False
 
 
 def overlay_ptlife_relation_index(
     data_bytes: bytes,
     blk_obj: bpy.types.Object,
-    body_index_map: dict,
+    play_index_map: dict,
 ) -> bytes:
     """
     若 blk_obj.efx_ptlife_ref.relation_pointerized==True，
-    覆写 data_bytes 偏移 8 处的 int16（relationIndex）为重算的 body 局部 index。
+    覆写 data_bytes 偏移 8 处的 int16（relationIndex）为重算的 play 局部 index。
 
     参数
     ----
@@ -221,9 +224,9 @@ def overlay_ptlife_relation_index(
         PTLIFE 块的 data_bytes（20 字节）。
     blk_obj : bpy.types.Object
         EFX_BLOCK Empty（PTLIFE 类型）。
-    body_index_map : dict[bpy.types.Object, int]
-        {EFX_BODY Object → Main 段局部 0-based index}，
-        由 build_local_index_map(col_main, 'EFX_BODY') 构建。
+    play_index_map : dict[bpy.types.Object, int]
+        {EFX_PLAY Object → Play 段局部 0-based index}，
+        由 build_local_index_map(col_play, 'EFX_PLAY') 或 enumerate(play_objs) 构建。
 
     返回
     ----
@@ -232,7 +235,7 @@ def overlay_ptlife_relation_index(
     注意
     ----
     - int16：struct.pack_into('<h', buf, 8, new_index)
-    - 悬空指针（relation_body_ptr=None）：安全回退，原样返回。
+    - 悬空指针（relation_play_ptr=None）：安全回退，原样返回。
     """
     try:
         props = blk_obj.efx_ptlife_ref
@@ -242,14 +245,14 @@ def overlay_ptlife_relation_index(
     if not props.relation_pointerized:
         return data_bytes
 
-    body_obj = props.relation_body_ptr
-    if body_obj is None:
+    play_obj = props.relation_play_ptr
+    if play_obj is None:
         # 悬空：安全回退
         return data_bytes
 
-    new_index = body_index_map.get(body_obj)
+    new_index = play_index_map.get(play_obj)
     if new_index is None:
-        # body_obj 不在当前 Main 段（跨文件等极端情况）
+        # play_obj 不在当前 Play 段（跨文件等极端情况）
         return data_bytes
 
     if len(data_bytes) < 10:
@@ -593,7 +596,7 @@ def apply_block_ref_overlays(
 ) -> bytes:
     """
     对单个 EFX_BLOCK 对象，按其类型应用 L2 #1d 的字段覆写：
-      - PTLIFE      → overlay_ptlife_relation_index（body index，int16，偏移 8）
+      - PTLIFE      → overlay_ptlife_relation_index（play index，int16，偏移 8）
       - PTCOLLISION → overlay_ptcollision_ie_index（play index，int32，偏移 96）
       - 其他        → 原样返回
 
@@ -616,7 +619,7 @@ def apply_block_ref_overlays(
         return data_bytes
 
     if type_hash == _PTLIFE_HASH:
-        return overlay_ptlife_relation_index(data_bytes, blk_obj, body_index_map)
+        return overlay_ptlife_relation_index(data_bytes, blk_obj, play_index_map)
     if type_hash == _PTCOLLISION_HASH:
         return overlay_ptcollision_ie_index(data_bytes, blk_obj, play_index_map)
     return data_bytes
@@ -628,17 +631,17 @@ def apply_block_ref_overlays(
 
 class EFX_PT_ptlife_ref(bpy.types.Panel):
     """
-    PtLife 块的 relationIndex body 指针编辑面板（VIEW_3D N 面板 EFX 标签）。
+    PtLife 块的 relationIndex action(play) 指针编辑面板（VIEW_3D N 面板 EFX 标签）。
 
     选中 EFX_BLOCK（PTLIFE 类型）时显示：
       - pointerized=False：显示"越界/死块"警告（原始字节保留）
-      - pointerized=True ：EFX_BODY 对象选择器
+      - pointerized=True ：EFX_PLAY(action) 对象选择器
     """
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "Relation Body Reference"
+    bl_label       = "Relation Action Reference"
     bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
@@ -674,17 +677,17 @@ class EFX_PT_ptlife_ref(bpy.types.Panel):
             return
 
         row = box.row(align=True)
-        row.prop(props, "relation_body_ptr", text=T("ptref.body_object"))
+        row.prop(props, "relation_play_ptr", text=T("ptref.play_object"))
 
-        if props.relation_body_ptr is None:
+        if props.relation_play_ptr is None:
             warn = box.row()
             warn.alert = True
             warn.label(text=T("ptref.dangling"), icon="ERROR")
         else:
-            body_obj = props.relation_body_ptr
-            body_idx = body_obj.get("efx_index", "?")
+            play_obj = props.relation_play_ptr
+            play_idx = play_obj.get("efx_index", "?")
             info = box.row()
-            info.label(text=T("ptref.body_local_index") + " " + str(body_idx), icon="INFO")
+            info.label(text=T("ptref.play_local_index") + " " + str(play_idx), icon="INFO")
 
 
 class EFX_PT_ptcollision_ref(bpy.types.Panel):
@@ -932,7 +935,7 @@ def register():
 
     bpy.types.Object.efx_ptlife_ref = PointerProperty(
         name="EFX PtLife Reference Properties",
-        description="relationIndex body pointer data for EFX_BLOCK (PTLIFE type)",
+        description="relationIndex play(action) pointer data for EFX_BLOCK (PTLIFE type)",
         type=EFXPtLifeRefProps,
     )
 

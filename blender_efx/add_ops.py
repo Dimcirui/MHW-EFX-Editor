@@ -475,12 +475,12 @@ def _repointerize_refs(preset: dict,
                     src_count=src_extern)
             elif th == PTLIFE:
                 body_play_ref.init_ptlife_ref_props(
-                    blk, data_bytes, target_body_map, target_count_body)
+                    blk, data_bytes, target_play_map, target_count_play)
                 _flag_if_cross_file_broken(
-                    blk.efx_ptlife_ref, "relation_body_ptr",
+                    blk.efx_ptlife_ref, "relation_play_ptr",
                     "relation_pointerized", data_bytes, offset=8,
-                    fmt='<h', target_count=target_count_body,
-                    src_count=src_body)
+                    fmt='<h', target_count=target_count_play,
+                    src_count=src_play)
             elif th == PTCOLLISION:
                 body_play_ref.init_ptcollision_ref_props(
                     blk, data_bytes, target_play_map, target_count_play)

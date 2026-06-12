@@ -283,7 +283,7 @@ STRINGS = {
 
     # ── PtLife / PtCollision / EOF 指针面板（body_play_ref.py）────────────────
     "ptref.no_ptlife_data":      {"EN": "(No efx_ptlife_ref data)", "ZH": "（无 efx_ptlife_ref 数据）"},
-    "ptref.relation_index_title":{"EN": "Relation Index (body reference)", "ZH": "Relation Index (body 引用)"},
+    "ptref.relation_index_title":{"EN": "Relation Index (action reference)", "ZH": "Relation Index (action 引用)"},
     "ptref.relation_oob":        {"EN": "[Out of range/negative, original bytes preserved]",
                                   "ZH": "[越界/负值，原始字节保留]"},
     "ptref.body_object":         {"EN": "Body Object",      "ZH": "Body 对象"},

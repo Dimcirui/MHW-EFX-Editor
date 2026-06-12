@@ -13,7 +13,7 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
     - Subselect 成员 member.body_ptr is None
     - Play targets target.body_ptr is None
     - ExternReference extern_ref_ptr is None（pointerized && !none）
-    - PtLife relation_body_ptr is None（pointerized；relationIndex 无 -1 哨兵字段）
+    - PtLife relation_play_ptr is None（pointerized；relationIndex=actionID，无 -1 哨兵字段）
     - PtCollision ie_play_ptr is None（pointerized && !ie_none）
     - eof_ints item.body_ptr is None（is_ptr）
 (2) efx_index 重复（同级组内）—— ERROR
@@ -169,12 +169,12 @@ def validate_efx_tree(root_obj) -> list:
             pl = getattr(blk, "efx_ptlife_ref", None)
             if pl is not None:
                 try:
-                    if pl.relation_pointerized and pl.relation_body_ptr is None:
+                    if pl.relation_pointerized and pl.relation_play_ptr is None:
                         problems.append({
                             "level": "ERROR",
                             "msg": (
                                 f"PtLife block '{blk.name}' relation has a dangling pointer"
-                                " (the referenced Body was deleted)"
+                                " (the referenced Action/Play was deleted)"
                             ),
                             "obj": blk.name,
                         })

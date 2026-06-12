@@ -380,7 +380,7 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     #
     # Main 段已建完（§5），Play 段已建完（§6）——现在可以做 PTLIFE / PTCOLLISION 块
     # 的引用指针化：
-    #   PTLIFE.relationIndex     → body 指针（Main 局部 index）
+    #   PTLIFE.relationIndex     → play(action) 指针（Play 局部 index）
     #   PTCOLLISION.ieIndex      → play 指针（Play 局部 index）
     #
     # 构建 {efx_index → EFX_BODY} 和 {efx_index → EFX_PLAY} 映射
@@ -423,8 +423,8 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
                     _body_play_ref.init_ptlife_ref_props(
                         _blk_obj,
                         _data_bytes_1d,
-                        _main_bodies_by_index_1d,
-                        _count_body_1d,
+                        _play_objs_by_index_1d,
+                        _count_play_1d,
                     )
                 elif _type_hash == _PTCOLLISION_HASH:
                     _body_play_ref.init_ptcollision_ref_props(
