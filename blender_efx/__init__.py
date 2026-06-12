@@ -43,6 +43,7 @@ from . import backref       # L2 反向引用视图（只读）
 from . import reorder       # L2 #3a：body / 块重排（上移/下移）
 from . import delete_ops    # L2 #3b：删除条目（body/块/play/extern/subselect）
 from . import add_ops       # L2 #3c：从整 body 预设新增 body + Active EFX 选择器
+from . import add_section_ops  # 从无到有新建 Play / Extern / Subselect 段条目
 from . import block_ops     # 块级组装：单块复制/粘贴/预设保存/新增
 from . import validate      # L2 #4：导出前校验
 from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始字节查看）
@@ -71,6 +72,7 @@ __all__ = [
     "reorder",
     "delete_ops",
     "add_ops",
+    "add_section_ops",
     "block_ops",
     "validate",
     "hexview",
@@ -133,6 +135,9 @@ def register():
     # ── L2 #3c：新增 body 算子 + Scene.efx_active_efx（必须在 panels.register() 前）─
     add_ops.register()
 
+    # ── 从无到有新建 Play/Extern/Subselect 段条目（算子，须在 panels.register() 前）──
+    add_section_ops.register()
+
     # ── 块级组装：单块复制/粘贴/预设保存/新增（必须在 panels.register() 前）────────
     block_ops.register()
 
@@ -167,6 +172,9 @@ def unregister():
 
     # ── 块级组装算子 ──────────────────────────────────────────────────────────
     block_ops.unregister()
+
+    # ── 从无到有新建 Play/Extern/Subselect 段条目 ────────────────────────────
+    add_section_ops.unregister()
 
     # ── L2 #3c：新增 body 算子 + Scene.efx_active_efx ────────────────────────
     add_ops.unregister()

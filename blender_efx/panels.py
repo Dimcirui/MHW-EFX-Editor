@@ -767,6 +767,35 @@ class EFX_PT_block_fields_object(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# EFX_PT_add_section  —  从无到有新建 Play / Extern / Subselect 段条目
+#   poll = 已选 Active EFX；三个按钮各建一个带合法空白模板的容器对象。
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_PT_add_section(bpy.types.Panel):
+    """EFX 新建段条目（Play / Extern / Subselect）"""
+
+    bl_space_type   = "VIEW_3D"
+    bl_region_type  = "UI"
+    bl_category     = "EFX"
+    bl_label        = "Add Section Entry"
+    bl_parent_id    = "EFX_PT_main"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        from .add_ops import get_active_efx_root
+        return get_active_efx_root(context) is not None
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column(align=True)
+        col.operator("efx.add_play",      text=T("addsec.play"),      icon="PLAY")
+        col.operator("efx.add_extern",    text=T("addsec.extern"),    icon="FILE_BLEND")
+        col.operator("efx.add_subselect", text=T("addsec.subselect"), icon="OUTLINER_OB_EMPTY")
+        layout.label(text=T("addsec.hint"), icon="INFO")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # EFX_PT_delete  —  删除条目 + 导出前校验（L2 #3b / #4）
 #   按 active_object 的 ~TYPE 显示对应删除按钮；始终提供"导出前校验"按钮。
 # ─────────────────────────────────────────────────────────────────────────────
@@ -804,6 +833,16 @@ class EFX_PT_delete(bpy.types.Panel):
         obj = context.active_object
         t = obj.get("~TYPE") if obj is not None else None
 
+        # ── 重命名（Play / Extern；与 body 同源的标签前缀规则）─────────────────
+        if t in ("EFX_PLAY", "EFX_EXTERN"):
+            from .reorder import can_label_entry
+            if can_label_entry(obj):
+                layout.operator("efx.rename_entry", text=T("entry.rename"), icon="GREASEPENCIL")
+            else:
+                sub = layout.column()
+                sub.enabled = False
+                sub.operator("efx.rename_entry", text=T("entry.rename_blocked"), icon="GREASEPENCIL")
+
         # ── 删除按钮（按类型）─────────────────────────────────────────────────
         entry = _DELETE_BY_TYPE.get(t)
         if entry is not None:
@@ -824,6 +863,8 @@ _CLASSES = (
     EFX_PT_main,
     # 统一「预设」面板：块预设 / Body 预设（bl_parent_id='EFX_PT_main'，必须在其后注册）
     EFX_PT_presets,
+    # 新建段条目面板（bl_parent_id='EFX_PT_main'，必须在其后注册）
+    EFX_PT_add_section,
     # L2 #3b / #4：删除 + 校验面板（bl_parent_id='EFX_PT_main'，必须在其后注册）
     EFX_PT_delete,
     # L2 #3a：body 重排面板（选中 EFX_BODY 时显示）

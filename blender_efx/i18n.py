@@ -359,6 +359,18 @@ STRINGS = {
     "del.play_btn":      {"EN": "Delete Play",      "ZH": "删除 Play"},
     "del.extern_btn":    {"EN": "Delete Extern",    "ZH": "删除 Extern"},
     "del.subselect_btn": {"EN": "Delete Subselect", "ZH": "删除 Subselect"},
+
+    # ── 新建段条目（panels 新建面板）──────────────────────────────────────────
+    "addsec.play":      {"EN": "Add Play (Action)", "ZH": "新建 Play(动作)"},
+    "addsec.extern":    {"EN": "Add Extern",        "ZH": "新建 Extern"},
+    "addsec.subselect": {"EN": "Add Subselect",     "ZH": "新建 Subselect"},
+    "addsec.hint":      {"EN": "Exporter recomputes header automatically",
+                         "ZH": "导出端自动重算 header/标签"},
+
+    # ── Play / Extern 重命名 ─────────────────────────────────────────────────
+    "entry.rename":         {"EN": "Rename", "ZH": "重命名"},
+    "entry.rename_blocked": {"EN": "Rename (blocked: a preceding Play/Extern is unnamed)",
+                             "ZH": "重命名（被前导未命名 Play/Extern 锁定）"},
 }
 
 

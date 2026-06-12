@@ -436,6 +436,114 @@ class EFX_OT_rename_body(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Play / Extern 重命名（与 body 同理；解决"前导 play/extern 未命名锁死全体"的问题）
+#
+# EFX_Type 标签表是 [Play|Extern|Main] 全局顺序的连续前缀。此前只有 body 能重命名，
+# 于是无标签文件里位于最前的 play/extern 永远无法获得标签 → 它后面的所有 body 也
+# 因 can_label_body 的"前面条目须全有标签"而永久锁死。给 play/extern 加重命名后，
+# 先命名前导 play/extern，body 即随之解锁（前缀逐个向后扩展）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_LABELED_TYPES = ("EFX_PLAY", "EFX_EXTERN", "EFX_BODY")
+
+
+def _global_ordered_entries(root):
+    """root 下按 [Play|Extern|Main] 全局顺序排列的有标签段条目（各段内按 efx_index）。"""
+    def _children(type_tag):
+        objs = [o for o in bpy.data.objects
+                if o.parent == root and o.get("~TYPE") == type_tag]
+        objs.sort(key=lambda o: int(o.get("efx_index", 0)))
+        return objs
+    return _children("EFX_PLAY") + _children("EFX_EXTERN") + _children("EFX_BODY")
+
+
+def can_label_entry(obj) -> bool:
+    """
+    通用版 can_label_body：play / extern / body 均适用。
+
+    条件：已有标签（efx_has_label=1）→ True；否则处于标签前缀边界
+    （[Play|Extern|Main] 全局顺序里它前面的条目全部已有标签）→ True。
+    """
+    if obj is None or obj.get("~TYPE") not in _LABELED_TYPES:
+        return False
+    if int(obj.get("efx_has_label", 0)) == 1:
+        return True
+    root = _find_root(obj)
+    if root is None:
+        return False
+    ordered = _global_ordered_entries(root)
+    if obj not in ordered:
+        return False
+    pos = ordered.index(obj)
+    return all(int(e.get("efx_has_label", 0)) == 1 for e in ordered[:pos])
+
+
+class EFX_OT_rename_entry(bpy.types.Operator):
+    """重命名 EFX_PLAY / EFX_EXTERN（改 EFX_Type 标签表里的名字，导出生效）
+
+    可命名条件同 body（can_label_entry）：已有标签，或处于标签前缀边界。
+    显示名格式：'{nn} {label}'（与 io_tree / delete_ops 一致）。
+    """
+
+    bl_idname      = "efx.rename_entry"
+    bl_label       = "Rename Entry"
+    bl_description = "Change this Play/Extern's name in the EFX label table (all preceding entries must have labels)"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    new_name: bpy.props.StringProperty(
+        name="New Name",
+        description="The entry's new label name (written to the EFX_Type label table)",
+        default="",
+    )
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") in ("EFX_PLAY", "EFX_EXTERN") \
+            and can_label_entry(obj)
+
+    def invoke(self, context, event):
+        obj = context.active_object
+        self.new_name = str(obj.get("efx_raw_label", ""))
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(self, "new_name")
+
+    def execute(self, context):
+        obj = context.active_object
+        if obj is None or obj.get("~TYPE") not in ("EFX_PLAY", "EFX_EXTERN"):
+            self.report({"ERROR"}, "Select a Play or Extern object")
+            return {"CANCELLED"}
+        if not can_label_entry(obj):
+            self.report({"ERROR"}, "This entry cannot be named (preceding unnamed entries would break the label position mapping)")
+            return {"CANCELLED"}
+
+        new_name = self.new_name.strip()
+        if not new_name:
+            self.report({"ERROR"}, "Name cannot be empty")
+            return {"CANCELLED"}
+        if "\x00" in new_name:
+            self.report({"ERROR"}, "Name cannot contain NUL characters")
+            return {"CANCELLED"}
+
+        root = _find_root(obj)
+        if root is None:
+            self.report({"ERROR"}, "EFX_ROOT not found")
+            return {"CANCELLED"}
+
+        idx = int(obj.get("efx_index", 0))
+        nn = str(idx).zfill(2) if idx < 100 else str(idx)
+        obj["efx_raw_label"] = new_name
+        obj["efx_has_label"] = 1
+        obj.name = f"{nn} {new_name}"
+        root["labels_dirty"] = 1
+
+        self.report({"INFO"}, f"Renamed to: {new_name} (written to label table on export)")
+        return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -443,6 +551,7 @@ _CLASSES = (
     EFX_OT_move_body,
     EFX_OT_move_block,
     EFX_OT_rename_body,
+    EFX_OT_rename_entry,
 )
 
 
