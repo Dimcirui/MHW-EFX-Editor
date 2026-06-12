@@ -385,14 +385,14 @@ FIELD_ANNOTATIONS = {
     ),
     ("STRAINRIBBON", "endBoneID"): "链条末端绑定骨骼编号，从 1 号骨骼延伸到此骨骼，决定覆盖的武器区域范围",
     ("STRAINRIBBON", "colorModeFlag"): "颜色模式标志（positionalAberration_03）。2=青色偏移，10+=消失",
-    # MT Framework 遗留物理字段（荒野 RE 引擎不读，实测无效）
-    ("STRAINRIBBON", "lengthBreakpoint"): "MT Framework 遗留，荒野无效",
-    ("STRAINRIBBON", "tension"): "MT Framework 遗留，荒野无效（给 0/1/10 测均无变化）",
-    ("STRAINRIBBON", "gravityMultiplier"): "MT Framework 遗留，荒野无效（链条下垂由引擎默认重力控制）",
-    ("STRAINRIBBON", "inertia"): "MT Framework 遗留，荒野无效（给 0/9/99 测均无变化）",
-    ("STRAINRIBBON", "poseSnapping"): "MT Framework 遗留，荒野无效（给 0/1/100 测均无变化）",
-    ("STRAINRIBBON", "displacement"): "MT Framework 遗留位移，荒野无效",
-    ("STRAINRIBBON", "displacementToggle"): "MT Framework 遗留，荒野无效",
+    # 链条物理参数（MT Framework，即 MHW 引擎）
+    ("STRAINRIBBON", "lengthBreakpoint"): "长度断点（链条断裂相关物理参数）",
+    ("STRAINRIBBON", "tension"): "张力（链条物理参数）",
+    ("STRAINRIBBON", "gravityMultiplier"): "重力乘数（链条下垂物理参数）",
+    ("STRAINRIBBON", "inertia"): "惯性（链条物理参数）",
+    ("STRAINRIBBON", "poseSnapping"): "姿势捕捉（链条物理参数）",
+    ("STRAINRIBBON", "displacement"): "位移（链条物理参数）",
+    ("STRAINRIBBON", "displacementToggle"): "位移开关",
 
 }
 

@@ -1953,7 +1953,8 @@ def pack_ribbonblade(values: dict) -> bytes:
 # 字段布局对照 EFX_Crimson.bt 的 StrainRibbon struct（社区注释验证）。
 # color1/color2 是字节 RGBA 色（XYZ type 2）；color3 实为 endPointScatter /
 # originReleaseFlag 两个开关 + 2 保留字节（模板误标成颜色），故拆成 4 个 byte。
-# 大量 unkn / spacer / MT Framework 遗留物理字段无实际作用（见 annotations）。
+# 含一片 MT Framework 物理参数（tension/gravity/inertia/displacement 等）——
+# MHW 即 MT Framework 引擎，这些在 MHW 内有效；unkn/spacer 为保留/对齐字段。
 # ─────────────────────────────────────────────────────────────────────────────
 _STRAINRIBBON_FIXED_SCHEMA = [
     ('unkn00',                 ('i', 2)),   # 8
@@ -1992,7 +1993,7 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('unkn06',                 ('f', 8)),   # unkn06_00..07，32B
     ('unkn06_08_00',           'h'),
     ('unkn06_08_01',           'h'),
-    ('lengthBreakpoint',       'f'),        # 以下一片为 MT Framework 遗留，荒野无效
+    ('lengthBreakpoint',       'f'),        # 以下一片为 MT Framework 物理参数（MHW 引擎）
     ('lengthBreakpointJitter', 'f'),
     ('breakpointLocation',     'f'),
     ('breakpointLocationJitter','f'),
