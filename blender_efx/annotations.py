@@ -235,9 +235,9 @@ FIELD_ANNOTATIONS = {
 
     # ─── SCALEANIM ────────────────────────────────────────────────────────────
     # ExternScaleAnim (EFX_Subtypes.bt)
-    ("SCALEANIM", "animationSpeed"): {
-        "EN": "Speed (name attribute in BT)",
-        "ZH": "速度（BT 中的 name 属性）",
+    ("SCALEANIM", "initialScaleSpeed"): {
+        "EN": "Initial expansion speed (the overall scale-in at animation start).",
+        "ZH": "初始扩散速度（动画刚进来时的整体缩放）。",
     },
 
     # ─── ROTATEANIM ───────────────────────────────────────────────────────────
@@ -841,27 +841,31 @@ FIELD_ANNOTATIONS = {
               "1 = additive blend.",
         "ZH": "着色器混合模式：0=alpha 混合（正常亮度下可显示黑色），1=add 叠加混合。",
     },
-    # SCALEANIM（逐轴语义，模板命名/类型多误）
-    ("SCALEANIM", "scaleSpeed"): {
-        "EN": "Initial expansion accel paired with animationSpeed (the shrink-in at "
-              "animation start; negative = shrinking).",
-        "ZH": "与 animationSpeed 配对的初始扩散加速度（动画刚进来的缩小效果，负值=缩小）。",
+    # SCALEANIM（社区验证语义：初始整体扩散 + 播放过程逐轴 X/Y/Z 速度/加速度）
+    ("SCALEANIM", "initialScaleAccel"): {
+        "EN": "Initial expansion acceleration, paired with initialScaleSpeed (the shrink-in "
+              "at animation start; negative = shrinking).",
+        "ZH": "初始扩散加速度，与 initialScaleSpeed 配对（动画刚进来的缩小效果，负值=缩小）。",
     },
-    ("SCALEANIM", "unkn1"): {
-        "EN": "[0] = X-axis scale speed during playback; [1] = its jitter. (X accel = "
-              "scaleAccel/scaleAccelJitter.) Template naming is unreliable here.",
-        "ZH": "[0]=播放过程中 X 轴缩放速度；[1]=其偏差。（X 轴加速度见 scaleAccel/scaleAccelJitter。）"
-              "此处模板命名不可靠。",
+    ("SCALEANIM", "scaleSpeedX"): {
+        "EN": "X-axis scale speed during playback (billboard = X/Y; mesh = X/Y/Z).",
+        "ZH": "播放过程中 X 轴缩放速度（billboard 用 X/Y 两轴；模型用 X/Y/Z 三轴）。",
     },
-    ("SCALEANIM", "unkn2"): {
-        "EN": "Per-axis scale (8 floats): [0]Y speed [1]Y jitter [2]Y accel [3]Y accel jitter "
-              "[4]Z speed [5]Z jitter [6]Z accel [7]Z accel jitter. (Z only for meshes.)",
-        "ZH": "逐轴缩放（8 个 float）：[0]Y速度 [1]Y偏差 [2]Y加速度 [3]Y加速度偏差 "
-              "[4]Z速度 [5]Z偏差 [6]Z加速度 [7]Z加速度偏差。（Z 仅模型有。）",
+    ("SCALEANIM", "scaleAccelX"): {
+        "EN": "X-axis scale acceleration during playback.",
+        "ZH": "播放过程中 X 轴缩放加速度。",
     },
-    ("SCALEANIM", "delay"): {
-        "EN": "Animation update start time. (Template has many errors in this block.)",
-        "ZH": "动画更新开始时间。（该块模板错误较多。）",
+    ("SCALEANIM", "scaleSpeedY"): {
+        "EN": "Y-axis scale speed during playback.",
+        "ZH": "播放过程中 Y 轴缩放速度。",
+    },
+    ("SCALEANIM", "scaleSpeedZ"): {
+        "EN": "Z-axis scale speed during playback (meshes only).",
+        "ZH": "播放过程中 Z 轴缩放速度（仅模型有 Z 轴）。",
+    },
+    ("SCALEANIM", "animUpdateStart"): {
+        "EN": "Frame time when the per-axis scale animation starts updating.",
+        "ZH": "逐轴缩放动画开始更新的时间（帧）。",
     },
     # ROTATEANIM（含本版新拆分字段）
     ("ROTATEANIM", "billboardRotation"): {

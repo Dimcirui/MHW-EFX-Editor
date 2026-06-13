@@ -677,18 +677,29 @@ EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_SCHEMA
 # Total: 4+4+4+4+4+8+4+4+32+4+4 = 76 B ✓
 # ─────────────────────────────────────────────────────────────────────────────
 
+# 社区实测（《世界特效注释解析》，验证版）：原模板对 SCALEANIM 误读很多，此为正确语义。
+# 两阶段缩放：初始整体扩散（速度+加速度）+ 播放过程中的逐轴缩放（X/Y/Z 各 速度/加速度 + 偏差）。
+# 字段宽度与原版完全一致（仅拆分 unkn1=('f',2)→X、unkn2=('f',8)→Y/Z，重命名，不改类型/字节）。
 EXTERN_SCALEANIM_SCHEMA = [
     ('unkn0', 'i'),
-    ('animationSpeed', 'f'),
+    ('initialScaleSpeed', 'f'),        # 初始扩散速度（原 animationSpeed）
     ('NULL', 'i'),
-    ('scaleSpeed', 'f'),
-    ('scaleSpeedJitter', 'f'),
-    ('unkn1', ('f', 2)),
-    ('scaleAccel', 'f'),
-    ('scaleAccelJitter', 'f'),
-    ('unkn2', ('f', 8)),
-    ('delay', 'i'),
-    ('delayJitter', 'i'),
+    ('initialScaleAccel', 'f'),        # 初始扩散加速度（原 scaleSpeed）
+    ('initialScaleAccelJitter', 'f'),  # 原 scaleSpeedJitter
+    ('scaleSpeedX', 'f'),              # X 轴缩放速度（原 unkn1[0]）
+    ('scaleSpeedXJitter', 'f'),        # 原 unkn1[1]
+    ('scaleAccelX', 'f'),              # X 轴缩放加速度（原 scaleAccel）
+    ('scaleAccelXJitter', 'f'),        # 原 scaleAccelJitter
+    ('scaleSpeedY', 'f'),              # Y 轴缩放速度（原 unkn2[0]）
+    ('scaleSpeedYJitter', 'f'),        # unkn2[1]
+    ('scaleAccelY', 'f'),              # Y 轴缩放加速度 unkn2[2]
+    ('scaleAccelYJitter', 'f'),        # unkn2[3]
+    ('scaleSpeedZ', 'f'),              # Z 轴缩放速度 unkn2[4]（仅模型有 Z）
+    ('scaleSpeedZJitter', 'f'),        # unkn2[5]
+    ('scaleAccelZ', 'f'),              # Z 轴缩放加速度 unkn2[6]
+    ('scaleAccelZJitter', 'f'),        # unkn2[7]
+    ('animUpdateStart', 'i'),          # 动画更新开始时间（原 delay）
+    ('animUpdateStartJitter', 'i'),    # 原 delayJitter
 ]
 assert _schema_size(EXTERN_SCALEANIM_SCHEMA) == 76, \
     f"EXTERN_SCALEANIM_SCHEMA size mismatch: {_schema_size(EXTERN_SCALEANIM_SCHEMA)}"
