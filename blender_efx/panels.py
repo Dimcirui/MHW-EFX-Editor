@@ -477,6 +477,25 @@ def _draw_block_fields_content(layout, context):
     except (ValueError, ImportError):
         pass
 
+    # ── PTLIFE / PTCOLLISION：指针化时隐藏原始 relationIndex / ieIndex 字段 ────
+    # 这两个字节由专用指针面板（Relation Index / IE Play Reference）控制，导出时
+    # overlay 在字段编码之后覆写，故原始字段编辑会被静默丢弃 → 二者竞争、不同步。
+    # 指针化时跳过原始字段（仅留指针面板这一处编辑源）；未指针化（越界死块）则照常
+    # 显示原始字段供查看/编辑（此时 overlay 不生效，字段即真值）。
+    _ptlife_ptr_hidden = False
+    _ptcoll_ptr_hidden = False
+    try:
+        from ..efx_format.hashes import PTLIFE as _PTLIFE_HASH, PTCOLLISION as _PTCOLLISION_HASH
+        _th = int(bp.type_hash_str)
+        if _th == _PTLIFE_HASH:
+            pl = getattr(obj, "efx_ptlife_ref", None)
+            _ptlife_ptr_hidden = bool(pl and pl.relation_pointerized)
+        elif _th == _PTCOLLISION_HASH:
+            pc = getattr(obj, "efx_ptcollision_ref", None)
+            _ptcoll_ptr_hidden = bool(pc and pc.ie_pointerized)
+    except (ValueError, ImportError):
+        pass
+
     # ── 可编辑块：展示字段列表 ────────────────────────────────────────────────
     if bp.is_editable:
         if len(bp.field_items) == 0:
@@ -504,6 +523,19 @@ def _draw_block_fields_content(layout, context):
                 # L2 #1c：EXTERNREFERENCE 的 referenceIndex 字段替换为 extern 指针 UI
                 if _is_extern_ref and item.ori_name == "referenceIndex":
                     _draw_extern_ref_field(col, obj)
+                    i += 1
+                    continue
+                # PTLIFE/PTCOLLISION 指针化时隐藏原始索引字段（由专用指针面板控制），
+                # 改为一行只读提示，避免与指针面板竞争、互不同步。
+                if ((_ptlife_ptr_hidden and item.ori_name == "relationIndex")
+                        or (_ptcoll_ptr_hidden and item.ori_name == "ieIndex")):
+                    hint = col.row()
+                    hint.enabled = False
+                    hint.label(
+                        text=f"{_friendly_name(item.ori_name, type_name)}: "
+                             + T("field.ref_via_pointer"),
+                        icon="LINKED",
+                    )
                     i += 1
                     continue
                 # value + jitter 配对（位置性：下一个是同类型 jitter 标量）
