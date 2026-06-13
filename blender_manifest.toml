@@ -5,9 +5,9 @@ type    = "add-on"
 
 name     = "MHW EFX Editor"
 tagline  = "Import and export Monster Hunter World EFX effect files"
-version  = "0.2.20"
+version  = "0.2.21"
 
-maintainer = "EFX-Editor contributors"
+maintainer = "Dimcirui"
 
 blender_version_min = "4.3.0"
 

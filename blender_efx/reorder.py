@@ -180,6 +180,73 @@ def _swap_objects(obj_a: bpy.types.Object, obj_b: bpy.types.Object,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 顶层带标签条目（body / play / extern）通用重排核心
+#
+# 三者命名同格式 "{nn} {efx_raw_label}"、parent 都是 EFX_ROOT、都活在
+# [Play|Extern|Main] 全局标签前缀里。重排要正确必须：
+#   1. 标签前缀守卫：相邻两条 efx_has_label 不同 → 拒绝（交换会破坏"有标签条目是
+#      连续前缀"的不变量，导出重建标签表会错位）。
+#   2. 交换 efx_index + 重建显示名。
+#   3. 若任一条有标签 → 置 root["labels_dirty"]=1，使导出按新顺序重建标签表
+#      （否则导出发原始 verbatim 标签字节＝旧顺序，标签会贴到错误条目上）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _move_labeled_entry(obj, direction: str, type_tag: str, report) -> set:
+    """上移/下移顶层带标签条目（EFX_BODY / EFX_PLAY / EFX_EXTERN）。"""
+    root = obj.parent
+    if root is None:
+        report({"ERROR"}, "EFX_ROOT not found")
+        return {"CANCELLED"}
+
+    siblings = _collect_siblings_by_type(root, type_tag)
+    if len(siblings) < 2:
+        report({"INFO"}, "Only 1 entry, cannot move")
+        return {"CANCELLED"}
+
+    cur_idx = next((i for i, s in enumerate(siblings) if s == obj), None)
+    if cur_idx is None:
+        report({"ERROR"}, "Cannot find current entry's position in the sibling list")
+        return {"CANCELLED"}
+
+    if direction == "UP":
+        if cur_idx == 0:
+            report({"INFO"}, "Already at the top, cannot move up")
+            return {"CANCELLED"}
+        neighbor = siblings[cur_idx - 1]
+    else:
+        if cur_idx == len(siblings) - 1:
+            report({"INFO"}, "Already at the bottom, cannot move down")
+            return {"CANCELLED"}
+        neighbor = siblings[cur_idx + 1]
+
+    # 标签前缀守卫
+    if int(obj.get("efx_has_label", 0)) != int(neighbor.get("efx_has_label", 0)):
+        report(
+            {"WARNING"},
+            "Cannot reorder across a label boundary: one entry has a label and the "
+            "other does not — swapping would corrupt the positional label table. "
+            "Name the unlabeled entry first, or move within a labeled/unlabeled group.",
+        )
+        return {"CANCELLED"}
+
+    # 交换 efx_index + 重建显示名（顶层条目命名同 body 规则）
+    idx_a = int(obj.get("efx_index", 0))
+    idx_b = int(neighbor.get("efx_index", 0))
+    obj["efx_index"] = idx_b
+    neighbor["efx_index"] = idx_a
+    obj.name = _body_display_name(idx_b, _get_body_raw_label(obj))
+    neighbor.name = _body_display_name(idx_a, _get_body_raw_label(neighbor))
+
+    # 任一有标签 → 导出需按新顺序重建标签表
+    if int(obj.get("efx_has_label", 0)) or int(neighbor.get("efx_has_label", 0)):
+        root["labels_dirty"] = 1
+
+    dir_str = "up" if direction == "UP" else "down"
+    report({"INFO"}, f"Moved {dir_str}: {obj.name} ↔ {neighbor.name}")
+    return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # EFX_OT_move_body  —  body 上移/下移
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -211,46 +278,7 @@ class EFX_OT_move_body(bpy.types.Operator):
         return obj.parent is not None
 
     def execute(self, context):
-        obj = context.active_object
-        root = obj.parent  # EFX_ROOT
-
-        # 收集同级 EFX_BODY，已按 efx_index 升序排列
-        siblings = _collect_siblings_by_type(root, "EFX_BODY")
-        if len(siblings) < 2:
-            self.report({"INFO"}, "Only 1 body, cannot move")
-            return {"CANCELLED"}
-
-        # 找当前 body 在列表中的位置
-        cur_idx = None
-        for i, sibling in enumerate(siblings):
-            if sibling == obj:
-                cur_idx = i
-                break
-
-        if cur_idx is None:
-            self.report({"ERROR"}, "Cannot find current body's position in the sibling list")
-            return {"CANCELLED"}
-
-        if self.direction == "UP":
-            if cur_idx == 0:
-                self.report({"INFO"}, "Already at the top, cannot move up")
-                return {"CANCELLED"}
-            neighbor = siblings[cur_idx - 1]
-        else:  # DOWN
-            if cur_idx == len(siblings) - 1:
-                self.report({"INFO"}, "Already at the bottom, cannot move down")
-                return {"CANCELLED"}
-            neighbor = siblings[cur_idx + 1]
-
-        # 执行交换（efx_index + 显示名）
-        _swap_objects(obj, neighbor, is_body=True)
-
-        dir_str = "up" if self.direction == "UP" else "down"
-        self.report(
-            {"INFO"},
-            f"EFX_BODY moved {dir_str}: {obj.name} ↔ {neighbor.name}",
-        )
-        return {"FINISHED"}
+        return _move_labeled_entry(context.active_object, self.direction, "EFX_BODY", self.report)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -326,6 +354,42 @@ class EFX_OT_move_block(bpy.types.Operator):
             f"EFX_BLOCK moved {dir_str}: {obj.name} ↔ {neighbor.name}",
         )
         return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EFX_OT_move_entry  —  Play / Extern 上移/下移（与 body 同源核心）
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_OT_move_entry(bpy.types.Operator):
+    """上移或下移选中的 EFX_PLAY / EFX_EXTERN（交换 efx_index、重建显示名、
+    跨标签边界守卫 + labels_dirty）。引用（PTLIFE/PTCOLLISION→play、
+    ExternReference→extern）均已指针化，导出按段局部 index 自动重算，重排安全。"""
+
+    bl_idname      = "efx.move_entry"
+    bl_label       = "Move Entry"
+    bl_description = "Move the selected Play/Extern up or down within its segment"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    direction: EnumProperty(
+        name="Direction",
+        description="Move direction",
+        items=[
+            ("UP",   "Up", "Move forward (index decreases)"),
+            ("DOWN", "Down", "Move backward (index increases)"),
+        ],
+        default="UP",
+    )
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return (obj is not None
+                and obj.get("~TYPE") in ("EFX_PLAY", "EFX_EXTERN")
+                and obj.parent is not None)
+
+    def execute(self, context):
+        obj = context.active_object
+        return _move_labeled_entry(obj, self.direction, obj.get("~TYPE"), self.report)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -550,6 +614,7 @@ class EFX_OT_rename_entry(bpy.types.Operator):
 _CLASSES = (
     EFX_OT_move_body,
     EFX_OT_move_block,
+    EFX_OT_move_entry,
     EFX_OT_rename_body,
     EFX_OT_rename_entry,
 )

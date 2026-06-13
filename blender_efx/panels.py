@@ -841,8 +841,14 @@ class EFX_PT_delete(bpy.types.Panel):
         obj = context.active_object
         t = obj.get("~TYPE") if obj is not None else None
 
-        # ── 重命名（Play / Extern；与 body 同源的标签前缀规则）─────────────────
+        # ── 排序 + 重命名（Play / Extern；与 body 同源的标签前缀规则）───────────
         if t in ("EFX_PLAY", "EFX_EXTERN"):
+            row = layout.row(align=True)
+            op_up = row.operator("efx.move_entry", text=T("block.move_up"), icon="TRIA_UP")
+            op_up.direction = "UP"
+            op_dn = row.operator("efx.move_entry", text=T("block.move_down"), icon="TRIA_DOWN")
+            op_dn.direction = "DOWN"
+
             from .reorder import can_label_entry
             if can_label_entry(obj):
                 layout.operator("efx.rename_entry", text=T("entry.rename"), icon="GREASEPENCIL")
