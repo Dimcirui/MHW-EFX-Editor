@@ -185,7 +185,7 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     _draw_info_icon(row, type_name, vitem.ori_name)
 
 
-def _draw_field_item(layout, item, type_name: str = ""):
+def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     """
     按 item.data_type 在 layout 上绘制对应控件（L1.5 重设计版）。
 
@@ -209,7 +209,8 @@ def _draw_field_item(layout, item, type_name: str = ""):
     手动 index 分量行强制 use_property_split=False，防止 property_split 打乱布局。
     """
     dtype = item.data_type
-    fname = _friendly_name(item.ori_name, type_name)  # 友好显示名（仅显示，逻辑用 ori_name）
+    # 友好显示名（仅显示，逻辑用 ori_name）；label_override 优先（如 MATERIAL 路径的槽名）
+    fname = label_override if label_override else _friendly_name(item.ori_name, type_name)
 
     # ── FLOAT6（XYZ type 0）：固定+随机/轴，3×2 展开 ─────────────────────────
     # 顺序：[fixed_x(0), random_x(1), fixed_y(2), random_y(3), fixed_z(4), random_z(5)]
@@ -496,6 +497,27 @@ def _draw_block_fields_content(layout, context):
     except (ValueError, ImportError):
         pass
 
+    # ── MATERIAL：解析槽位（mrl3 同源），把每条 path_N 标注为其贴图槽名 ─────────
+    # _material_slots[i] = 第 i 条路径的槽名（tAlbedoMap/... 或 None）；_material_type = 主材质类型。
+    _material_slots = None
+    _material_type = None
+    try:
+        from ..efx_format.hashes import MATERIAL as _MATERIAL_HASH
+        if int(bp.type_hash_str) == _MATERIAL_HASH:
+            import base64 as _b64
+            from ..efx_format import material_meta as _mm
+            _summary = _mm.parse_material(_b64.b64decode(str(bp.raw_b64)))
+            if _summary is not None:
+                _material_slots = []
+                for _blk in _summary["blocks"]:
+                    if _material_type is None:
+                        _material_type = _blk["type_name"]
+                    for _s in _blk["sets"]:
+                        if _s["path"] is not None:
+                            _material_slots.append(_s["slot"])
+    except Exception:
+        _material_slots = None
+
     # ── 可编辑块：展示字段列表 ────────────────────────────────────────────────
     if bp.is_editable:
         if len(bp.field_items) == 0:
@@ -512,6 +534,11 @@ def _draw_block_fields_content(layout, context):
                 title_row.label(text=f"{block_title}  ● 已修改", icon="MODIFIER")
             else:
                 title_row.label(text=block_title, icon="MODIFIER")
+            # MATERIAL：在标题下显示主材质类型（mrl3 同源，shader_id_hash 反查）
+            if _material_type:
+                mt_row = col.row(align=True)
+                mt_row.scale_y = 1.0
+                mt_row.label(text=T("material.type") + " " + _material_type, icon="MATERIAL")
             col.separator(factor=0.5)
             # 逐字段绘制（带 value+jitter 位置配对：jitter 字段与紧邻前一个
             # 同类型标量 value 合并一行，模拟 XYZ Fixed/Random 分组风格）
@@ -536,6 +563,16 @@ def _draw_block_fields_content(layout, context):
                              + T("field.ref_via_pointer"),
                         icon="LINKED",
                     )
+                    i += 1
+                    continue
+                # MATERIAL：path_N 用其贴图槽名（tAlbedoMap…）当标签，取代独立只读面板
+                if _material_slots is not None and item.ori_name.startswith("path_"):
+                    try:
+                        _pidx = int(item.ori_name.split("_", 1)[1])
+                        _slot = _material_slots[_pidx] if _pidx < len(_material_slots) else None
+                    except (ValueError, IndexError):
+                        _slot = None
+                    _draw_field_item(col, item, type_name=type_name, label_override=_slot)
                     i += 1
                     continue
                 # value + jitter 配对（位置性：下一个是同类型 jitter 标量）
