@@ -330,6 +330,7 @@ STRINGS = {
     "bodyref.timing_spawn":        {"EN": "on spawn", "ZH": "生成时"},
     "bodyref.timing_death":        {"EN": "on death", "ZH": "消亡时"},
     "bodyref.timing_other":        {"EN": "timing", "ZH": "timing"},
+    "bodyref.trigger_collision":   {"EN": "on collision", "ZH": "碰撞时"},
 
     # ── Hex 视图（hexview.py）─────────────────────────────────────────────────
     "hex.no_raw_bytes":  {"EN": "(no raw bytes)",  "ZH": "（无原始字节）"},
@@ -359,6 +360,7 @@ STRINGS = {
 
     # ── 字段绘制 + 面板内通用提示（panels.py）────────────────────────────────
     "field.value":           {"EN": "Value",                "ZH": "值"},
+    "field.jitter":          {"EN": "Jitter",               "ZH": "抖动"},
     "block.not_registered":  {"EN": "efx_block not registered (reload the extension)",
                               "ZH": "efx_block 未注册（请重载扩展）"},
     "block.sentinel_no_target":{"EN": "(-1 sentinel, no target)", "ZH": "(-1 哨兵，无目标)"},

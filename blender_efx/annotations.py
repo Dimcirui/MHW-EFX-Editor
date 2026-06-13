@@ -742,6 +742,490 @@ FIELD_ANNOTATIONS = {
         "ZH": "位移开关。据 BT：0=一切正常；1/2=消除前一个位移；3=消除位移",
     },
 
+    # ─── LIGHTNING ────────────────────────────────────────────────────────────
+    # 社区逆向实测（010 Editor + 进游戏观察，MHW:Iceborne）。⚠ = 危险/崩溃字段。
+    ("LIGHTNING", "spacer0"): {
+        "EN": "Memory-alignment padding (-842150656). Do not edit.",
+        "ZH": "内存对齐占位符（-842150656）。请勿编辑。",
+    },
+    ("LIGHTNING", "unkn02"): {
+        "EN": "Memory-alignment padding between color blocks. Do not edit.",
+        "ZH": "颜色块之间的内存对齐占位符。请勿编辑。",
+    },
+    ("LIGHTNING", "unkn03"): {
+        "EN": "Memory-alignment padding between color blocks. Do not edit.",
+        "ZH": "颜色块之间的内存对齐占位符。请勿编辑。",
+    },
+    ("LIGHTNING", "spacer05_00"): {
+        "EN": "Memory-alignment padding (-842150656). Do not edit.",
+        "ZH": "内存对齐占位符（-842150656）。请勿编辑。",
+    },
+    ("LIGHTNING", "spacer05_14"): {
+        "EN": "Memory-alignment padding (-842150656). Do not edit.",
+        "ZH": "内存对齐占位符（-842150656）。请勿编辑。",
+    },
+    ("LIGHTNING", "unkn00"): {
+        "EN": "[0]=1 base config flag (untested); [1]=108 guessed max node count / "
+              "subdivision precision (untested).",
+        "ZH": "[0]=1 基础配置标志（待测）；[1]=108 推测为最大节点数 / 细分精度（待测）。",
+    },
+    ("LIGHTNING", "color1"): {
+        "EN": "Lightning color 1 (RGBA). color1/color2 are two INDEPENDENT lightning "
+              "palettes: the engine spawns instances in each color AND blends them into a "
+              "third mixed color (red+blue→purple). Shared by both main and branch bolts.",
+        "ZH": "闪电配色1（RGBA）。color1/color2 是两套独立配色：引擎按概率分别生成两色闪电，"
+              "并叠加出第三种混合色（红+蓝→紫）。主线和支线共享此配色系统。",
+    },
+    ("LIGHTNING", "color2"): {
+        "EN": "Lightning color 2 (RGBA). See color1 — independent palette, blends with "
+              "color1 into a third color. Affects both main and branch bolts.",
+        "ZH": "闪电配色2（RGBA）。见 color1——独立配色，与 color1 叠加出第三色，主支线共享。",
+    },
+    ("LIGHTNING", "emissive"): {
+        "EN": "Self-emission color (RGB) + overall emissive alpha coefficient (A).",
+        "ZH": "自发光颜色（RGB）+ 整体自发光透明度系数（A）。",
+    },
+    ("LIGHTNING", "unkn04"): {
+        "EN": "≈4.0 as float; guessed emissive intensity multiplier (unconfirmed).",
+        "ZH": "转为浮点约等于 4.0；推测是发光强度倍率（未确认）。",
+    },
+    ("LIGHTNING", "unkn05_01"): {
+        "EN": "Instance mode flag (lightningInstanceModeFlag). 1=standard single instance; "
+              "2=high-complexity triple instance; any other value=high-complexity double "
+              "instance. Controls instance count AND waveform complexity together.",
+        "ZH": "闪电实例模式标志。1=标准单实例；2=高复杂度三实例；其余值=高复杂度双实例。"
+              "同时控制实例数量与波形弯曲复杂度。",
+    },
+    ("LIGHTNING", "sineWaveFreq"): {
+        "EN": "Sine wave frequency. 0=lightning disappears (also a spawn precondition); "
+              "0.15≈near-straight; 0.5=default; 10=dense zigzag. Negative = abs value. "
+              "Regular wave shape (vs inflectionPointCount's random jaggedness).",
+        "ZH": "正弦波频率。0=闪电消失（同时是生成必要条件）；0.15≈接近直线；0.5默认；"
+              "10=密集锯齿；负数取绝对值。规律正弦波形（区别于 inflectionPointCount 的随机折线）。",
+    },
+    ("LIGHTNING", "sineWaveFreqJitter"): {
+        "EN": "Random jitter on sineWaveFreq; larger = more per-bolt frequency variation.",
+        "ZH": "正弦波频率随机抖动；越大每条闪电弯折密度差异越大。",
+    },
+    ("LIGHTNING", "alphaThreshold"): {
+        "EN": "Alpha cutoff threshold (default 0.2). Higher → overall less visible (edges "
+              "clipped); lower → loses texture detail, shows raw geometry. Suggested 0.2~2.",
+        "ZH": "alpha 截断阈值（默认 0.2）。调高→整体越不可见（边缘被截断）；调低→丢失贴图纹理"
+              "细节、呈现几何形态。双向都增透明。建议 0.2~2。",
+    },
+    ("LIGHTNING", "unkn05_05"): {
+        "EN": "Branch disable flag (branchDisableFlag). 0=branches on; non-0=branches fully "
+              "off (hard switch, ignores branch length/radius).",
+        "ZH": "分支禁用标志。0=分支启用；非0=分支完全消失（硬开关，不受支路长度/半径影响）。",
+    },
+    ("LIGHTNING", "unkn05_06"): {
+        "EN": "Branch origin offset (branchOriginOffset, default 0.6). 0=branches spawn far "
+              "from main bolt (hedgehog radial look). Handy debug knob to isolate branches.",
+        "ZH": "分支起始偏移距离（默认 0.6）。0=分支离主线很远、像刺猬向四周放射。"
+              "常用调试：归0 拉开主支线便于单独观察。正负相近。",
+    },
+    ("LIGHTNING", "unkn05_07"): {
+        "EN": "Reserved. No change observed at 0/3/300/3000/-3000.",
+        "ZH": "保留字段。测 0/3/300/3000/-3000 均无变化。",
+    },
+    ("LIGHTNING", "outwardsExpansionSpeed"): {
+        "EN": "Outward expansion speed/radius (NOT path flow speed). 1=default; 100=expands "
+              "outward fast/wide — straight bolts arc outward, complex bolts coil outward.",
+        "ZH": "向外扩展速度/半径（非沿路径流速）。1默认；100=整体大速度大半径外扩——"
+              "直线形态→圆弧扩展，复杂形态→缠绕扩展。",
+    },
+    ("LIGHTNING", "outwardsExpansionSpeedJitter"): {
+        "EN": "Random jitter on outwardsExpansionSpeed; default 1 gives large per-bolt spread.",
+        "ZH": "向外扩展速度随机抖动；默认 1，每条闪电外扩速度/半径差异较大，产生自然不规则感。",
+    },
+    ("LIGHTNING", "unkn05_10"): {
+        "EN": "Lightning opacity (lightningOpacity). 0=invisible, 10=normal; effective 0~10. "
+              "⚠ Negative triggers int16 overflow (unstable, e.g. -42000 wraps to invisible) "
+              "— do not use negatives.",
+        "ZH": "闪电不透明度。0=消失，10=正常；有效区间 0~10。"
+              "⚠ 负数触发 int16 溢出（不稳定，如 -42000 回绕变消失）——勿用负数。",
+    },
+    ("LIGHTNING", "unkn05_11"): {
+        "EN": "Transparency level B (lightningTransparencyLevel). 1=most opaque, 3=default, "
+              "higher=more transparent; effective 1~300+. Negative=fully transparent "
+              "(stable). Integer only. Low precision (vs unkn05_10).",
+        "ZH": "闪电透明度等级B。1最不透明，3默认，越大越透明；有效 1~300+。"
+              "负数=完全透明（稳定无溢出）。仅整数。精度低于 unkn05_10。",
+    },
+    ("LIGHTNING", "unkn05_12"): {
+        "EN": "Flow & fade mode (lightningFlowAndFadeMode). 0=faster flow + keep fade-out; "
+              "1=default (standard flow + fade); any other value=no flow change + fade-out "
+              "cancelled (hard cut at end of life). Integer only.",
+        "ZH": "流光与淡出模式。0=流光加速+保留淡出；1=默认（标准流光+淡出渐隐）；"
+              "非0非1=流光无变化+淡出取消（生命周期结束直接硬切消失）。仅整数。",
+    },
+    ("LIGHTNING", "unkn05_13"): {
+        "EN": "Reserved. No visible change at 0/1/10/negative.",
+        "ZH": "保留字段。测 0/1/10/负数均无明显变化。",
+    },
+    ("LIGHTNING", "targetBoneID"): {
+        "EN": "Target bone ID (default 200). Lightning extends from origin to this bone.",
+        "ZH": "靶骨 ID（默认 200）。闪电从起点延伸到此骨骼位置。",
+    },
+    ("LIGHTNING", "unkn05_16"): {
+        "EN": "Reserved. No visible change across many values.",
+        "ZH": "保留字段。测多个数值均无明显变化。",
+    },
+    ("LIGHTNING", "unkn05_17"): {
+        "EN": "Reserved. No visible change at 1/2/3/5/10/100/1000/negative.",
+        "ZH": "保留字段。测 1/2/3/5/10/100/1000/负数均无明显变化。",
+    },
+    ("LIGHTNING", "EPVColorSlot1"): {
+        "EN": "EPV color variable slot 1. 0=don't use EPV color, use fixed color1/color2.",
+        "ZH": "EPV 特效颜色变量插槽1。0=不使用 EPV 颜色，用固定 color1/color2。",
+    },
+    ("LIGHTNING", "EPVColorSlot2"): {
+        "EN": "EPV color variable slot 2. 0=don't use EPV color.",
+        "ZH": "EPV 特效颜色变量插槽2。0=不使用 EPV 颜色。",
+    },
+    ("LIGHTNING", "unkn05_20"): {
+        "EN": "⚠ Caution: do NOT set to 0 (possible crash). Guessed memory layout / render "
+              "batch related. Default 96.",
+        "ZH": "⚠ 谨慎：不要归0（可能崩溃）。推测与内存布局/渲染批次相关。默认 96。",
+    },
+    ("LIGHTNING", "unkn05_21"): {
+        "EN": "⚠ DO NOT MODIFY. 0xCCCCCD00 = uninitialized-memory fill pattern / engine "
+              "internal pointer. Modifying crashes the game.",
+        "ZH": "⚠ 禁止修改。0xCCCCCD00 = 未初始化内存填充值/引擎内部指针，修改导致崩溃。",
+    },
+    ("LIGHTNING", "unkn05_22"): {
+        "EN": "⚠ DO NOT MODIFY. Setting to 0 crashes the game; engine-internal key system "
+              "parameter (likely pointer/struct-ref table with unkn05_23/24).",
+        "ZH": "⚠ 禁止修改。归0直接崩溃；引擎内部关键系统参数（疑与 unkn05_23/24 同属指针/结构体表）。",
+    },
+    ("LIGHTNING", "unkn05_23"): {
+        "EN": "⚠ DO NOT MODIFY. Modifying crashes the game; engine-internal pointer / "
+              "struct reference.",
+        "ZH": "⚠ 禁止修改。修改导致崩溃；引擎内部指针/结构体引用。",
+    },
+    ("LIGHTNING", "unkn05_24"): {
+        "EN": "⚠ DO NOT MODIFY. Modifying crashes the game; engine-internal pointer / "
+              "struct reference.",
+        "ZH": "⚠ 禁止修改。修改导致崩溃；引擎内部指针/结构体引用。",
+    },
+    ("LIGHTNING", "inflectionPointCount"): {
+        "EN": "Main-bolt 1st-layer inflection point count (default 9). 0=no disappear but "
+              "stuttery motion; 1≈straight; 200=dense coiled ball. Low=straight+stutter, "
+              "high=complex+smooth. Pairs with inflectionPointCount2 (both layers).",
+        "ZH": "主线第一层拐点数量（默认 9）。0=不消失但运动顿挫；1≈直线；200=密集螺旋团。"
+              "低=变直+顿挫，高=复杂+丝滑。与 inflectionPointCount2 双层叠加，任一过低都顿挫。",
+    },
+    ("LIGHTNING", "uInflectionAngleLimit"): {
+        "EN": "U inflection angle limit (default 14). Small=distribution收束 near straight "
+              "(complexity unaffected); large=wide random spread + complexity drops (side "
+              "effect). Subtle/gentle vs vInflectionAngleLimit. Negative ~ positive.",
+        "ZH": "倾角限制（默认 14）。小=分布收束趋直线（复杂度不变）；大=分布范围大、随机感强、"
+              "复杂度降低（高值副作用）。影响细腻温和（v 版影响更大）。正负相近。",
+    },
+    ("LIGHTNING", "uInflectionAngleLimitJitter"): {
+        "EN": "Random jitter on uInflectionAngleLimit (default 4).",
+        "ZH": "倾角限制随机抖动（默认 4）。",
+    },
+    ("LIGHTNING", "vInflectionAngleLimit"): {
+        "EN": "V inflection angle limit (default 0.9). Same role as uInflectionAngleLimit "
+              "but STRONGER/more visible. Use u for coarse, v for fine control. Negative ~ "
+              "positive.",
+        "ZH": "弯曲角极限（默认 0.9）。与倾角限制功能相同但影响更大更明显。u 粗调、v 精调。正负相近。",
+    },
+    ("LIGHTNING", "vInflectionAngleLimitJitter"): {
+        "EN": "Random jitter on vInflectionAngleLimit (default 0).",
+        "ZH": "弯曲角极限随机抖动（默认 0）。",
+    },
+    ("LIGHTNING", "inflectionPointCount2"): {
+        "EN": "Main-bolt 2nd-layer inflection point count (default 10) — controls the MAIN "
+              "bolt (not branches). -1=main bolt vanishes. Stacks with inflectionPointCount "
+              "(dual-layer system); either too low → stutter.",
+        "ZH": "主线第二层拐点数量（默认 10）——控制主线（非分支）。-1=主线消失。"
+              "与 inflectionPointCount 双层叠加，任一过低都顿挫。",
+    },
+    ("LIGHTNING", "uInflectionAngleLimit2"): {
+        "EN": "Guessed 2nd-layer U angle limit (default 2, untested).",
+        "ZH": "推测第二层倾角范围（默认 2，待测）。",
+    },
+    ("LIGHTNING", "uInflectionAngleLimitJitter2"): {
+        "EN": "Guessed jitter on uInflectionAngleLimit2 (default 0, untested).",
+        "ZH": "推测 uInflectionAngleLimit2 的抖动（默认 0，待测）。",
+    },
+    ("LIGHTNING", "vInflectionAngleLimit2"): {
+        "EN": "Guessed 2nd-layer V angle limit (default 0.6, untested).",
+        "ZH": "推测第二层弯曲角范围（默认 0.6，待测）。",
+    },
+    ("LIGHTNING", "vInflectionAngleLimitJitter2"): {
+        "EN": "Guessed jitter on vInflectionAngleLimit2 (default 0, untested).",
+        "ZH": "推测 vInflectionAngleLimit2 的抖动（默认 0，待测）。",
+    },
+    ("LIGHTNING", "glow"): {
+        "EN": "Main-bolt glow (default 0.6). 0=none, larger=stronger halo. Negative=main "
+              "bolt turns black (branches unaffected — main/branch glow are independent).",
+        "ZH": "主线发光（默认 0.6）。0=无，越大辉光越强。负数=主线变黑（支线不受影响——"
+              "主/支发光系统独立，支线见 unkn07_09）。",
+    },
+    ("LIGHTNING", "glowJitter"): {
+        "EN": "Random jitter on glow (default 0.4). Key for flicker — near/over glow value, "
+              "some bolts dim to ~0 (simulates unstable real lightning halo).",
+        "ZH": "发光随机抖动（默认 0.4）。模拟真实闪电不稳定光晕的关键——接近/超过 glow 时部分闪电"
+              "亮度趋0，明显忽明忽暗。",
+    },
+    ("LIGHTNING", "length"): {
+        "EN": "Main-bolt total length (default 70).",
+        "ZH": "闪电主线总长度（默认 70）。",
+    },
+    ("LIGHTNING", "lengthJitter"): {
+        "EN": "Random length jitter (default 140 > base 70 → large per-bolt variation). "
+              "0=all bolts identical length.",
+        "ZH": "长度随机抖动（默认 140，大于基础 70 → 长短差异极大）。0=所有闪电长度一致。",
+    },
+    ("LIGHTNING", "width"): {
+        "EN": "Bolt line width (default 7).",
+        "ZH": "闪电线条宽度（默认 7）。",
+    },
+    ("LIGHTNING", "widthJitter"): {
+        "EN": "Random width jitter (default 6). 0=all bolts identical width.",
+        "ZH": "宽度随机抖动（默认 6）。0=所有闪电宽度一致。",
+    },
+    ("LIGHTNING", "startWidth"): {
+        "EN": "Start width (default 1). Gradient coefficient affecting the WHOLE main bolt's "
+              "width+glow, strongest at start, decaying to the end. Does NOT affect "
+              "branches. Set to 0 → main bolt vanishes, only branches remain (cleanest "
+              "main-bolt off switch).",
+        "ZH": "开始宽度（默认 1）。渐变系数，影响整条主线的宽度+辉光，起始端最强、向末端递减。"
+              "不影响支线。归0=主线消失只留支线（最干净的主线开关）。",
+    },
+    ("LIGHTNING", "uvRepetitionStart"): {
+        "EN": "UV repetition start (default 1). 0=lightning disappears (bad UV); large=texture "
+              "stretched/repeated along the bolt (knot look), more segments. Geometry "
+              "unaffected, texture-only.",
+        "ZH": "UV 重复开始（默认 1）。0=闪电消失（UV 异常）；越大贴图沿绳方向拉伸重复、段数增多"
+              "（绳结感）。不影响几何形态，纯贴图效果。",
+    },
+    ("LIGHTNING", "endWidth"): {
+        "EN": "End width (default 1). Stretches main-bolt texture width near the end "
+              "(bottom/end影响更大). Geometry unaffected; does not affect branches.",
+        "ZH": "结束宽度（默认 1）。拉伸主线末端贴图宽度（末端影响更大，上下不对称）。"
+              "不影响几何形态，不影响支线。",
+    },
+    ("LIGHTNING", "uvRepetitionEnd"): {
+        "EN": "UV repetition end (default 0). Non-0=bolt splits into segment pieces (segment "
+              "split look, vs uvRepetitionStart's knot look). Geometry unaffected.",
+        "ZH": "UV 重复结束（默认 0）。非0=闪电变成数段线段（线段分割感，区别于 uvRepetitionStart"
+              "的绳结感）。不影响几何形态。正负相近。",
+    },
+    ("LIGHTNING", "unkn05_45"): {
+        "EN": "⚠ Caution: do NOT set to 0 (possible crash). No visible change at 95/97/100/50. "
+              "Default 96.",
+        "ZH": "⚠ 谨慎：不要归0（可能崩溃）。测 95/97/100/50 无明显变化。默认 96。",
+    },
+    ("LIGHTNING", "unkn05_46"): {
+        "EN": "⚠ DO NOT MODIFY. 0xCCCCCC00 = uninitialized-memory fill / engine internal "
+              "pointer. Modifying crashes the game.",
+        "ZH": "⚠ 禁止修改。0xCCCCCC00 = 未初始化内存填充值/引擎内部指针，修改导致崩溃。",
+    },
+    ("LIGHTNING", "unkn05_47"): {
+        "EN": "Branch lightning count A (branchLightningCount, default 1). 0=sharply fewer "
+              "(not gone); 10/100=more; ≥500=invisible + GLOBAL render crash (all scene FX "
+              "flicker). ⚠ Negative crashes. Safe range 0~100.",
+        "ZH": "支路闪电数量A（默认 1）。0=锐减但不消失；10/100=增多；≥500=不可见+触发全局渲染崩溃"
+              "（场景所有特效闪烁）。⚠ 负数崩溃。安全范围 0~100。",
+    },
+    ("LIGHTNING", "unkn05_48"): {
+        "EN": "Branch lightning count B (branchLightningCountB, default 1). Affects main+branch "
+              "render layer; too high=local render glitch (distance-limited, FX flicker when "
+              "near, occasionally visible per viewing angle).",
+        "ZH": "支路闪电数量B（默认 1）。同时影响主/支渲染层级；过高=局部渲染层级异常"
+              "（受距离限制，越近影响越大，特定视角偶尔可见）。",
+    },
+    ("LIGHTNING", "unkn06"): {
+        "EN": "[0]=branch double-mode flag (branchDoubleModeFlag): 0=1 branch per point, "
+              "non-0=2 per point (switch). [1]=branch complexity & flow mode "
+              "(branchComplexityAndFlowMode, default 3): controls branch inflection count + "
+              "sine freq; larger activates dynamic flow. ⚠ [1] negative crashes.",
+        "ZH": "[0]=支路双倍模式标志：0=每点 1 条分支，非0=每点 2 条（开关）。"
+              "[1]=支路复杂度与流动模式（默认 3）：控制分支拐点数+正弦频率，增大激活动态流光。"
+              "⚠ [1] 负数崩溃。",
+    },
+    ("LIGHTNING", "radiusLimit"): {
+        "EN": "Branch spread max radius (default 5). 0=收束 but not fully gone (other params "
+              "contribute); 250=huge sphere/box spread. Positive ~ negative.",
+        "ZH": "分支扩散最大半径（默认 5）。0=收束但未完全消失（受 unkn05_06 等影响）；"
+              "250=球/方形大范围包围。正负相同。",
+    },
+    ("LIGHTNING", "radiusLimitJitter"): {
+        "EN": "Random jitter on radiusLimit (default 4). Even at 0, branches don't fully "
+              "collapse to a line (other params contribute).",
+        "ZH": "半径极限随机抖动（默认 4）。归0 仍不能让分支完全收束成线（受其它参数共同影响）。",
+    },
+    ("LIGHTNING", "unkn07_02"): {
+        "EN": "Branch inflection angle limit (branchInflectionAngleLimit, default 0.8). Large "
+              "→ branch complexity drops to ~1 inflection + bigger spread. BRANCH-ONLY "
+              "(branch counterpart of vInflectionAngleLimit). Positive ~ negative.",
+        "ZH": "支线弯曲角极限（默认 0.8）。大=支线复杂度降为约 1 个拐点+扩散增大。仅影响支线"
+              "（= vInflectionAngleLimit 的支线版）。正负相近。",
+    },
+    ("LIGHTNING", "unkn07_03"): {
+        "EN": "Random jitter on unkn07_02 (branch-only, default 0). Positive ~ negative.",
+        "ZH": "支线弯曲角极限抖动（仅影响支线，默认 0）。正负相近，可与 unkn07_02 叠加。",
+    },
+    ("LIGHTNING", "unkn07_04"): {
+        "EN": "Branch complexity/flow mode B switch (branchComplexityFlowModeB, default 0). "
+              "0=off (unkn07_05 inert); 1~150=on (recommended); >150 affects GLOBAL FX "
+              "flicker. ⚠ Negative crashes. Also feeds complexity calc; pair high 07_04 + "
+              "moderate 07_05 for arc-flow look.",
+        "ZH": "支线复杂度流动模式B开关（默认 0）。0=关（unkn07_05 无效）；1~150=开（建议）；"
+              ">150 影响全局闪烁。⚠ 负数崩溃。数值也参与复杂度计算；高 07_04+适中 07_05=电弧流动扩散。",
+    },
+    ("LIGHTNING", "unkn07_05"): {
+        "EN": "Branch complexity/spread randomness (default 0.1). Requires unkn07_04≥1. High "
+              "values increase spread/randomness (apparent complexity drops to big simple "
+              "folds at 100+, ~unkn07_02=800).",
+        "ZH": "支线复杂度/扩散范围随机性（默认 0.1）。需 unkn07_04≥1 才生效。值越大扩散/随机越强"
+              "（100+ 时趋向大范围简单折线，≈unkn07_02=800）。",
+    },
+    ("LIGHTNING", "unkn07_06"): {
+        "EN": "Random jitter on unkn07_05 (default 0.2). Requires unkn07_04≥1.",
+        "ZH": "unkn07_05 的随机抖动（默认 0.2）。需 unkn07_04≥1 才生效。",
+    },
+    ("LIGHTNING", "unkn07_07"): {
+        "EN": "Reserved. No visible change at positive/negative values.",
+        "ZH": "保留字段。测正负数值均无明显变化。",
+    },
+    ("LIGHTNING", "unkn07_08"): {
+        "EN": "Reserved. No visible change across many values.",
+        "ZH": "保留字段。测多个数值均无明显变化。",
+    },
+    ("LIGHTNING", "unkn07_09"): {
+        "EN": "Branch glow (branchGlow, default 1). Larger=brighter branches; negative=branch "
+              "turns black (main bolt unaffected). Branch counterpart of glow.",
+        "ZH": "支线发光（默认 1）。越大支线越亮；负数=支线变黑（主线不受影响）。对应主线 glow。",
+    },
+    ("LIGHTNING", "unkn07_10"): {
+        "EN": "Branch glow jitter (branchGlowJitter, default 0). Non-0=per-branch brightness "
+              "flicker. Branch counterpart of glowJitter.",
+        "ZH": "支线发光抖动（默认 0）。非0=支线亮度随机闪烁。对应主线 glowJitter。",
+    },
+    ("LIGHTNING", "branchLength"): {
+        "EN": "Branch length (default 30). 0=branches gone; negative=direction reversed. "
+              "Branch inflection/sine are independent of main bolt (stay near-straight "
+              "unless driven by unkn07_04/05). Branches never extend in the main's forward "
+              "direction (only sideways/backward).",
+        "ZH": "支路长度（默认 30）。0=分支消失；负数=方向反转。分支拐点/正弦频率不受主线影响、"
+              "趋直线（除非配合 unkn07_04/05）。分支永不朝主干正向延伸，只向侧/反向生成。",
+    },
+    ("LIGHTNING", "branchLengthJitter"): {
+        "EN": "Random branch length jitter (default 20).",
+        "ZH": "支路长度随机抖动（默认 20）。",
+    },
+    ("LIGHTNING", "unkn07_13"): {
+        "EN": "Branch start width (default 6). Stretches branch texture start width. "
+              "Counterpart of main startWidth. Positive ~ negative.",
+        "ZH": "支线开始宽度（默认 6）。拉伸支线起始端贴图宽度。对应主线 startWidth。正负相同。",
+    },
+    ("LIGHTNING", "unkn07_14"): {
+        "EN": "Branch end width (default 4). Counterpart of main endWidth.",
+        "ZH": "支线结束宽度（默认 4）。对应主线 endWidth。",
+    },
+    ("LIGHTNING", "unkn07_15"): {
+        "EN": "Branch start width jitter (default 1). Branch-only (no main counterpart).",
+        "ZH": "支线开始宽度抖动（默认 1）。支线独有，主线无对应。",
+    },
+    ("LIGHTNING", "unkn07_16"): {
+        "EN": "Branch UV repetition start (default 1). More segment splits, concentrated "
+              "near start. Texture-only. Counterpart of uvRepetitionStart.",
+        "ZH": "支线 UV 重复开始（默认 1）。分割点增多、集中在起始段。纯贴图效果。对应主线 "
+              "uvRepetitionStart。正负相近。",
+    },
+    ("LIGHTNING", "unkn07_17"): {
+        "EN": "Branch UV repetition end (default 1). Segment splits concentrated near the "
+              "end (opposite of unkn07_16). Counterpart of uvRepetitionEnd.",
+        "ZH": "支线 UV 重复结束（默认 1）。分割点集中在结束段（与 unkn07_16 位置相反）。"
+              "对应主线 uvRepetitionEnd。",
+    },
+    ("LIGHTNING", "unkn07_18"): {
+        "EN": "Branch end width jitter (default 1). Branch-only (no main counterpart).",
+        "ZH": "支线结束宽度抖动（默认 1）。支线独有，主线无对应。",
+    },
+    ("LIGHTNING", "unkn07_19"): {
+        "EN": "⚠ DO NOT MODIFY. Extreme float (~1.3e-43); guessed engine pointer/special flag.",
+        "ZH": "⚠ 禁止修改。极端浮点（约 1.3e-43）；推测引擎内部指针/特殊标志。",
+    },
+    ("LIGHTNING", "unkn07_20"): {
+        "EN": "⚠ DO NOT MODIFY. Extreme float (~-1.35e+08); guessed engine pointer/flag.",
+        "ZH": "⚠ 禁止修改。极端浮点（约 -1.35e+08）；推测引擎内部指针/标志。",
+    },
+    ("LIGHTNING", "unkn07_21"): {
+        "EN": "⚠ DO NOT MODIFY. Setting non-0 crashes (alone or with 22/23/26); pointer/"
+              "struct-ref region.",
+        "ZH": "⚠ 禁止修改。改非0崩溃（单独或与 22/23/26 同改）；指针/结构体引用区。",
+    },
+    ("LIGHTNING", "unkn07_22"): {
+        "EN": "⚠ DO NOT MODIFY. Crashes when set non-0; pointer/struct-ref region.",
+        "ZH": "⚠ 禁止修改。改非0崩溃；指针/结构体引用区。",
+    },
+    ("LIGHTNING", "unkn07_23"): {
+        "EN": "⚠ DO NOT MODIFY. Crashes when set non-0; pointer/struct-ref region.",
+        "ZH": "⚠ 禁止修改。改非0崩溃；指针/结构体引用区。",
+    },
+    ("LIGHTNING", "unkn07_24"): {
+        "EN": "⚠ DO NOT MODIFY. Extreme float (~4.2e-45); guessed engine pointer.",
+        "ZH": "⚠ 禁止修改。极端浮点（约 4.2e-45）；推测引擎内部指针。",
+    },
+    ("LIGHTNING", "unkn07_25"): {
+        "EN": "Reserved. No visible change across many values (default 20).",
+        "ZH": "保留字段。测多个数值均无明显变化（默认 20）。",
+    },
+    ("LIGHTNING", "unkn07_26"): {
+        "EN": "⚠ DO NOT MODIFY. Crashes when set non-0 (same region as 21/22/23).",
+        "ZH": "⚠ 禁止修改。改非0崩溃（与 21/22/23 同区）。",
+    },
+    ("LIGHTNING", "unkn07_27"): {
+        "EN": "Reserved. No visible change across many values (default 0.5).",
+        "ZH": "保留字段。测多个数值均无明显变化（默认 0.5）。",
+    },
+    ("LIGHTNING", "unkn08"): {
+        "EN": "Reserved/padding array — lightning type does not read it (no effect in "
+              "exhaustive testing).",
+        "ZH": "保留/填充数组——lightning 类型未读取（地毯式测试无任何效果）。",
+    },
+    ("LIGHTNING", "unkn09"): {
+        "EN": "Reserved/padding array (20 floats) — not read by lightning (no effect).",
+        "ZH": "保留/填充数组（20 个 float）——lightning 未读取（无效果）。",
+    },
+    ("LIGHTNING", "unkn10"): {
+        "EN": "Reserved/padding array — not read by lightning (no effect).",
+        "ZH": "保留/填充数组——lightning 未读取（无效果）。",
+    },
+    ("LIGHTNING", "unkn11"): {
+        "EN": "Reserved/padding array (all-zero, expansion slots) — no effect.",
+        "ZH": "保留/填充数组（全零预留位）——无效果。",
+    },
+    ("LIGHTNING", "unkn12"): {
+        "EN": "Reserved/padding array — not read by lightning (no effect).",
+        "ZH": "保留/填充数组——lightning 未读取（无效果）。",
+    },
+    ("LIGHTNING", "unkn13"): {
+        "EN": "Reserved/padding array — strongest 'rotation angle' candidate ([0]=360) but "
+              "0/90/180/720 all show no effect. Bolt twist is texture/shader, not this.",
+        "ZH": "保留/填充数组——曾是最强'旋转角度'候选（[0]=360），但 0/90/180/720 均无效果。"
+              "闪电的细微扭转来自贴图/shader，与此无关。",
+    },
+    ("LIGHTNING", "unkn14"): {
+        "EN": "Reserved/padding array — not read by lightning (no effect; [2]=38).",
+        "ZH": "保留/填充数组——lightning 未读取（无效果；[2]=38）。",
+    },
+    ("LIGHTNING", "unkn15"): {
+        "EN": "⚠ [0]=-4.3e+08 (0xCD fill pattern, debug-heap uninitialized memory) — DO NOT "
+              "MODIFY. Rest of array is reserved/padding (no effect).",
+        "ZH": "⚠ [0]=-4.3e+08（0xCD 调试堆未初始化内存填充值）——禁止修改。数组其余为保留/填充（无效果）。",
+    },
+    ("LIGHTNING", "unkn16"): {
+        "EN": "Reserved. No change at 1/100/-1.",
+        "ZH": "保留字段。测 1/100/-1 无变化。",
+    },
+
 }
 
 

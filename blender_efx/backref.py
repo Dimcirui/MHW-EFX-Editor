@@ -326,9 +326,10 @@ class EFX_PT_extern_backref(bpy.types.Panel):
 # §4  Body 对象双向关系视图（Body References）
 #
 # 把单纯的"被谁引用"升级为以 body 为中心的双向关系导航（仍纯只读、不碰导出）：
-#   ⬇ 我触发谁     ：本 body 的 PTLIFE 块 → action(play)（timing 区分生成/结束型）
-#                    → 该 play 的子 body(PLAYEMITTER targets) / 外部 efx(PLAYEFX path)
-#   ⬆ 谁触发我     ：哪些父 body 的 PTLIFE → 某个 targets 含本 body 的 action
+#   ⬇ 我触发谁     ：本 body 的 PTLIFE（timing 区分生成/结束型）/ PTCOLLISION（碰撞时）
+#                    块 → action(play) → 该 play 的子 body(PLAYEMITTER targets) /
+#                    外部 efx(PLAYEFX path)
+#   ⬆ 谁触发我     ：哪些父 body 的 PTLIFE / PTCOLLISION → 某个 targets 含本 body 的 action
 #   ⬔ 我引用的 Extern：本 body 的 EXTERNREFERENCE 块 → extern 对象
 #   ⬓ 我所属的 Subselect：哪些 Subselect 表把本 body 列为成员
 # 全部边最终都落在 body 这个公共节点上（关系是 DAG，不是树），所以按"边的类型"
@@ -387,7 +388,7 @@ def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
       'externs'      : list {extern_obj, extern_name, block_name}
       'subselects'   : list {ss_obj, ss_name}
     """
-    from ..efx_format.hashes import PTLIFE, EXTERNREFERENCE
+    from ..efx_format.hashes import PTLIFE, PTCOLLISION, EXTERNREFERENCE
 
     tree = get_efx_tree_objects(body_obj)
     blocks  = tree.get("EFX_BLOCK", [])
@@ -397,56 +398,77 @@ def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
     # 本 body 直属的块（parent==body_obj）
     my_blocks = [b for b in blocks if b.parent is body_obj]
 
-    # ── ⬇ 我触发谁：本 body 的 PTLIFE → play → 子 body / 外部 efx ──────────────
-    for blk in my_blocks:
-        if _block_type_hash(blk) != PTLIFE:
-            continue
+    def _ptlife_play(blk):
+        """PTLIFE 块 → 触发的 play 对象（pointerized 且非空才返回），否则 None。"""
         try:
             ref = blk.efx_ptlife_ref
             if not ref.relation_pointerized:
-                continue
-            play = ref.relation_play_ptr
+                return None
+            return ref.relation_play_ptr
         except AttributeError:
-            continue
-        if play is None:
-            continue
-        children, paths = _play_children(play)
-        result["triggers"].append({
-            "play_obj": play,
-            "play_name": play.name,
-            "timing": _read_ptlife_timing(blk),
-            "children": children,
-            "paths": paths,
-        })
+            return None
 
-    # ── ⬆ 谁触发我：父 body 的 PTLIFE → 某个 targets 含本 body 的 play ─────────
+    def _ptcollision_play(blk):
+        """PTCOLLISION 块 → 触发的 play 对象（pointerized、非哨兵、非空才返回），否则 None。"""
+        try:
+            ref = blk.efx_ptcollision_ref
+            if not ref.ie_pointerized or ref.ie_none:
+                return None
+            return ref.ie_play_ptr
+        except AttributeError:
+            return None
+
+    # 触发块种类表：(type_hash, kind 标识, 取 play 的函数, 取 timing 的函数)
+    _TRIGGER_KINDS = (
+        (PTLIFE,      "ptlife",      _ptlife_play,      _read_ptlife_timing),
+        (PTCOLLISION, "ptcollision", _ptcollision_play, lambda _blk: None),
+    )
+
+    # ── ⬇ 我触发谁：本 body 的 PTLIFE / PTCOLLISION → play → 子 body / 外部 efx ──
+    for blk in my_blocks:
+        th = _block_type_hash(blk)
+        for type_hash, kind, get_play, get_timing in _TRIGGER_KINDS:
+            if th != type_hash:
+                continue
+            play = get_play(blk)
+            if play is None:
+                continue
+            children, paths = _play_children(play)
+            result["triggers"].append({
+                "play_obj": play,
+                "play_name": play.name,
+                "kind": kind,
+                "timing": get_timing(blk),
+                "children": children,
+                "paths": paths,
+            })
+
+    # ── ⬆ 谁触发我：父 body 的 PTLIFE / PTCOLLISION → 某个 targets 含本 body 的 play ──
     # 先找出 targets 含本 body 的 play 集合
     plays_targeting_me = set()
     for play in plays:
         children, _ = _play_children(play)
         if body_obj in children:
             plays_targeting_me.add(play)
-    # 再找哪些 body 的 PTLIFE 指向这些 play
+    # 再找哪些 body 的 PTLIFE / PTCOLLISION 指向这些 play
     if plays_targeting_me:
         for blk in blocks:
-            if _block_type_hash(blk) != PTLIFE:
+            if blk.parent is None or blk.parent is body_obj:
                 continue
-            try:
-                ref = blk.efx_ptlife_ref
-                if not ref.relation_pointerized:
+            th = _block_type_hash(blk)
+            for type_hash, kind, get_play, get_timing in _TRIGGER_KINDS:
+                if th != type_hash:
                     continue
-                play = ref.relation_play_ptr
-            except AttributeError:
-                continue
-            if play in plays_targeting_me and blk.parent is not None \
-                    and blk.parent is not body_obj:
-                result["triggered_by"].append({
-                    "body_obj": blk.parent,
-                    "body_name": blk.parent.name,
-                    "play_obj": play,
-                    "play_name": play.name,
-                    "timing": _read_ptlife_timing(blk),
-                })
+                play = get_play(blk)
+                if play in plays_targeting_me:
+                    result["triggered_by"].append({
+                        "body_obj": blk.parent,
+                        "body_name": blk.parent.name,
+                        "play_obj": play,
+                        "play_name": play.name,
+                        "kind": kind,
+                        "timing": get_timing(blk),
+                    })
 
     # ── ⬔ 我引用的 Extern：本 body 的 EXTERNREFERENCE 块 → extern ─────────────
     for blk in my_blocks:
@@ -490,6 +512,13 @@ def _timing_label(timing) -> str:
     if timing == 4:
         return T("bodyref.timing_death")
     return T("bodyref.timing_other") + f"={timing}"
+
+
+def _trigger_label(t) -> str:
+    """触发条目 → 方括号内标签：PTCOLLISION 显示"碰撞时"，PTLIFE 按 timing。"""
+    if t.get("kind") == "ptcollision":
+        return T("bodyref.trigger_collision")
+    return _timing_label(t.get("timing"))
 
 
 def _jump_button(row, target_name, text="", icon="VIEWZOOM"):
@@ -545,7 +574,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
             box.row().label(text=T("bodyref.triggers_header"), icon="FORWARD")
             for t in triggers:
                 row = box.row(align=True)
-                row.label(text=f"{t['play_name']}  [{_timing_label(t['timing'])}]", icon="PLAY")
+                row.label(text=f"{t['play_name']}  [{_trigger_label(t)}]", icon="PLAY")
                 _jump_button(row, t["play_name"])
                 sub = box.column(align=True)
                 for child in t["children"]:
@@ -565,7 +594,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
             for t in triggered_by:
                 row = box.row(align=True)
                 row.label(
-                    text=f"{t['body_name']}  ({t['play_name']} [{_timing_label(t['timing'])}])",
+                    text=f"{t['body_name']}  ({t['play_name']} [{_trigger_label(t)}])",
                     icon="OBJECT_DATA",
                 )
                 _jump_button(row, t["body_name"])

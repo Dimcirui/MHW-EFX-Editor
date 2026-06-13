@@ -120,9 +120,28 @@ def find_main_collection(root_obj: bpy.types.Object):
 # §2  PropertyGroup：Subselect 结构化存储
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _find_root_obj(obj):
+    """沿 parent 链向上找 ~TYPE == 'EFX_ROOT' 的对象，找不到返回 None。"""
+    cur = obj
+    while cur is not None:
+        if cur.get("~TYPE") == "EFX_ROOT":
+            return cur
+        cur = cur.parent
+    return None
+
+
 def _body_object_poll(self, obj):
-    """PointerProperty poll：只允许选 ~TYPE == 'EFX_BODY' 的对象。"""
-    return obj.get("~TYPE") == "EFX_BODY"
+    """PointerProperty poll：只允许选 ~TYPE == 'EFX_BODY'，且限定为活动对象
+    所在 EFX 文件（同一 EFX_ROOT）内的 body——多 EFX 集合并存时防串文件。"""
+    if obj.get("~TYPE") != "EFX_BODY":
+        return False
+    editing = getattr(bpy.context, "active_object", None)
+    if editing is not None:
+        root_self = _find_root_obj(editing)
+        root_obj = _find_root_obj(obj)
+        if root_self is not None and root_obj is not None and root_self is not root_obj:
+            return False
+    return True
 
 
 class EFXSubselectMember(PropertyGroup):

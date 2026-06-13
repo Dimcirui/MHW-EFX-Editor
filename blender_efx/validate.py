@@ -44,6 +44,97 @@ def _children_by_type(parent_obj, type_tag: str) -> list:
     ]
 
 
+def _build_trigger_graph(bodies, plays):
+    """构建召唤触发有向图，返回 {obj: set(obj)} 邻接表。
+
+    边方向 = 召唤/触发方向：
+      Play  → body ：play.efx_play.entries[].targets[].body_ptr （play 生成 body）
+      body  → Play ：PTLIFE.relation_play_ptr / PTCOLLISION.ie_play_ptr （body 触发 play）
+
+    只保留终点也在本 root 节点集内的边（指针经 poll 已限定同文件，外指针忽略）。
+    """
+    node_set = set(bodies) | set(plays)
+    adj = {n: set() for n in node_set}
+
+    # Play → body
+    for play in plays:
+        pp = getattr(play, "efx_play", None)
+        if pp is None:
+            continue
+        try:
+            entries = pp.entries
+        except AttributeError:
+            continue
+        for entry in entries:
+            try:
+                targets = entry.targets
+            except AttributeError:
+                continue
+            for t in targets:
+                try:
+                    tgt = t.body_ptr
+                except AttributeError:
+                    continue
+                if tgt in node_set:
+                    adj[play].add(tgt)
+
+    # body → Play
+    for body in bodies:
+        for blk in _children_by_type(body, "EFX_BLOCK"):
+            pl = getattr(blk, "efx_ptlife_ref", None)
+            if pl is not None:
+                try:
+                    if pl.relation_pointerized and pl.relation_play_ptr in node_set:
+                        adj[body].add(pl.relation_play_ptr)
+                except AttributeError:
+                    pass
+            pc = getattr(blk, "efx_ptcollision_ref", None)
+            if pc is not None:
+                try:
+                    if (pc.ie_pointerized and not pc.ie_none
+                            and pc.ie_play_ptr in node_set):
+                        adj[body].add(pc.ie_play_ptr)
+                except AttributeError:
+                    pass
+
+    return adj
+
+
+def _find_cycles(adj):
+    """在邻接表上找有向环，返回去重后的环列表（每环是 obj 名字列表）。
+
+    DFS + 递归栈回边检测；环按"最小名字旋转到首位"规范化去重。
+    """
+    cycles = set()
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {n: WHITE for n in adj}
+    stack = []
+
+    def _norm(path):
+        # path 是构成环的节点序列；旋转使字典序最小的节点在首位
+        names = [o.name for o in path]
+        k = names.index(min(names))
+        return tuple(names[k:] + names[:k])
+
+    def dfs(u):
+        color[u] = GRAY
+        stack.append(u)
+        for v in adj.get(u, ()):  # 邻接确定性可不排序；环集去重
+            if color[v] == GRAY:
+                # 回边：栈中从 v 到栈顶构成一个环
+                idx = stack.index(v)
+                cycles.add(_norm(stack[idx:]))
+            elif color[v] == WHITE:
+                dfs(v)
+        stack.pop()
+        color[u] = BLACK
+
+    for n in adj:
+        if color[n] == WHITE:
+            dfs(n)
+    return [list(c) for c in cycles]
+
+
 def _is_extern_ref_block(obj) -> bool:
     """判断块对象是否是已指针化的 EXTERNREFERENCE（有 efx_extern_ref 且 pointerized）。"""
     props = getattr(obj, "efx_extern_ref", None)
@@ -230,6 +321,26 @@ def validate_efx_tree(root_obj) -> list:
     for body in bodies:
         blocks = _children_by_type(body, "EFX_BLOCK")
         _check_dup(blocks, f"Body '{body.name}' blocks")
+
+    # ── (4) 召唤回绕（body↔play 触发图成环）—— WARN ────────────────────────────
+    # body 的 PTLIFE/PTCOLLISION 触发 Play，Play 的 targets 又指回（祖先）body，
+    # 形成递归召唤 → 每轮按扇出倍增（如 12→144→1728…）直接卡死游戏。
+    # 仅警告、不挡导出：保留刻意 loop 的自由，由用户判断该环是否有界。
+    try:
+        adj = _build_trigger_graph(bodies, plays)
+        for cyc in _find_cycles(adj):
+            problems.append({
+                "level": "WARN",
+                "msg": (
+                    "Spawn cycle detected (body↔Play recursive summoning, may cause "
+                    "exponential particle explosion / game freeze): "
+                    + " → ".join(cyc + [cyc[0]])
+                ),
+                "obj": cyc[0] if cyc else "",
+            })
+    except Exception:
+        # 环检测失败不应阻断其它校验/导出
+        pass
 
     return problems
 

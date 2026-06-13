@@ -74,7 +74,7 @@ from .i18n import T
 # 友好字段名工具函数
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _friendly_name(ori_name: str) -> str:
+def _friendly_name(ori_name: str, type_name: str = "") -> str:
     """
     把 schema 原始字段名转换为友好的显示名称（仅用于 UI，不影响任何逻辑）。
 
@@ -94,6 +94,14 @@ def _friendly_name(ori_name: str) -> str:
     # 特殊内部名称（opaque hint 等）直接返回
     if ori_name.startswith("__") and ori_name.endswith("__"):
         return ori_name
+
+    # 中文模式：优先查中文标签表，命中即返回；未命中回退英文友好名（下方派生）。
+    from .i18n import get_lang
+    if get_lang() == "ZH":
+        from .field_labels import label_zh
+        zh = label_zh(ori_name, type_name or None)
+        if zh:
+            return zh
 
     s = ori_name
 
@@ -162,7 +170,7 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     把 value 字段与紧随其后的 jitter 字段合并成一行两列：友好名 | 值 | Jitter。
     与 XYZ Fixed/Random 的分组风格一致（rotation X/Y/Z 等各成一行）。
     """
-    fname = _friendly_name(vitem.ori_name)
+    fname = _friendly_name(vitem.ori_name, type_name)
     vattr = _SCALAR_PROP_ATTR[vitem.data_type]
     jattr = _SCALAR_PROP_ATTR[jitem.data_type]
 
@@ -173,7 +181,7 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     split.label(text=fname)
     sub = split.row(align=True)
     sub.prop(vitem, vattr, text=T("field.value"))
-    sub.prop(jitem, jattr, text="Jitter")
+    sub.prop(jitem, jattr, text=T("field.jitter"))
     _draw_info_icon(row, type_name, vitem.ori_name)
 
 
@@ -201,7 +209,7 @@ def _draw_field_item(layout, item, type_name: str = ""):
     手动 index 分量行强制 use_property_split=False，防止 property_split 打乱布局。
     """
     dtype = item.data_type
-    fname = _friendly_name(item.ori_name)  # 友好显示名（仅显示，逻辑用 ori_name）
+    fname = _friendly_name(item.ori_name, type_name)  # 友好显示名（仅显示，逻辑用 ori_name）
 
     # ── FLOAT6（XYZ type 0）：固定+随机/轴，3×2 展开 ─────────────────────────
     # 顺序：[fixed_x(0), random_x(1), fixed_y(2), random_y(3), fixed_z(4), random_z(5)]

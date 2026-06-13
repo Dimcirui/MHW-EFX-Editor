@@ -64,9 +64,30 @@ from .i18n import T
 # §1  poll 函数
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _find_root_obj(obj):
+    """沿 parent 链向上找 ~TYPE == 'EFX_ROOT' 的对象，找不到返回 None。"""
+    cur = obj
+    while cur is not None:
+        if cur.get("~TYPE") == "EFX_ROOT":
+            return cur
+        cur = cur.parent
+    return None
+
+
 def _body_object_poll(self, obj):
-    """PointerProperty poll：只允许选 ~TYPE == 'EFX_BODY' 的对象。"""
-    return obj.get("~TYPE") == "EFX_BODY"
+    """PointerProperty poll：只允许选 ~TYPE == 'EFX_BODY' 的对象，
+    且限定为当前编辑的 play 对象**同一个 EFX 文件**（同一 EFX_ROOT）内的 body——
+    多个 EFX 集合并存时，避免把别的文件的 body 列进下拉。"""
+    if obj.get("~TYPE") != "EFX_BODY":
+        return False
+    # 当前正在编辑 targets 的 play 对象 = 活动对象；按它的 root 限定范围。
+    editing = getattr(bpy.context, "active_object", None)
+    if editing is not None:
+        root_self = _find_root_obj(editing)
+        root_obj = _find_root_obj(obj)
+        if root_self is not None and root_obj is not None and root_self is not root_obj:
+            return False
+    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────

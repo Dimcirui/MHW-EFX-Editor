@@ -1,0 +1,336 @@
+# -*- coding: utf-8 -*-
+"""
+blender_efx/field_labels.py — 字段中文标签表（纯数据，零 bpy 依赖）
+
+字段标签默认走 panels._friendly_name（英文友好名，从 schema ori_name 机械派生）。
+中文模式（i18n.get_lang()=='ZH'）时改查本表的中文标签；查不到回退英文友好名。
+
+键 = schema ori_name（与 structs.py 的 ATTR_SCHEMA_MAP 字段名一致）。
+按 ori_name 单键（同名字段跨类型语义一致，共用一个中文标签）。
+
+刻意不收录的（回退英文）：
+  - 单字母 / 占位（_, c, f0, i0, m, o, s, t, u …）、spacer*、fixed70：结构占位/不透明，无语义。
+  - unkn* / *_unkn* / int_unkn / float_unkn：未知字段，保留英文观测名更诚实。
+覆盖范围：250 个有意义 ori_name 中的可命名项；增改 schema 字段时同步维护本表。
+"""
+
+FIELD_LABELS_ZH = {
+    # ── 运动 / 速度 / 加速度 ───────────────────────────────────────────────
+    "accel": "加速度",
+    "accelJitter": "加速度抖动",
+    "speed": "速度",
+    "speedJitter": "速度抖动",
+    "speedMultiplier": "速度倍率",
+    "velocityX": "X 速度",
+    "velocityY": "Y 速度",
+    "velocityZ": "Z 速度",
+    "translation_velocity": "平移速度",
+    "translation_velocity_modifier": "平移速度修正",
+    "rotation_velocity": "旋转速度",
+    "rotation_velocity_modifier": "旋转速度修正",
+    "scale_velocity": "缩放速度",
+    "scale_velocity_modifier": "缩放速度修正",
+    "spin_velocity": "自旋速度",
+    "spin_acceleration": "自旋加速度",
+    "main_axis_speed": "主轴速度",
+    "main_axis_speed2": "主轴速度2",
+    "secondary_axis_speed": "次轴速度",
+    "secondary_axis_speed2": "次轴速度2",
+    "energyOnAxisX": "X 轴能量",
+    "energyOnAxisY": "Y 轴能量",
+    "energyOnAxisZ": "Z 轴能量",
+    "momentum_conservation": "动量守恒",
+
+    # ── 变换 ───────────────────────────────────────────────────────────────
+    "transform": "变换",
+    "translate": "平移",
+    "rotate": "旋转",
+    "resize": "缩放",
+    "direction": "方向",
+    "rotationX": "X 旋转",
+    "rotationXJitter": "X 旋转抖动",
+    "rotationY": "Y 旋转",
+    "rotationYJitter": "Y 旋转抖动",
+    "rotationZ": "Z 旋转",
+    "rotationZJitter": "Z 旋转抖动",
+    "trayectoryRotationX": "轨迹旋转 X",
+    "trayectoryRotationY": "轨迹旋转 Y",
+    "trayectoryRotationZ": "轨迹旋转 Z",
+    "offsetX": "X 偏移",
+    "offsetXJitter": "X 偏移抖动",
+    "offsetY": "Y 偏移",
+    "offsetYJitter": "Y 偏移抖动",
+    "initialPosition": "初始位置",
+    "initialPositionJitter": "初始位置抖动",
+    "scaleAccel": "缩放加速度",
+    "scaleAccelJitter": "缩放加速度抖动",
+    "scaleSpeed": "缩放速度",
+    "scaleSpeedJitter": "缩放速度抖动",
+
+    # ── 跟踪 ───────────────────────────────────────────────────────────────
+    "translation_tracking": "平移跟踪",
+    "angle_tracking": "角度跟踪",
+    "scale_tracking": "缩放跟踪",
+    "spawnTrack": "生成跟踪",
+
+    # ── 生成 / 寿命 ─────────────────────────────────────────────────────────
+    "instancesSpawnedTotal": "生成总数",
+    "instancesSpawnedPerFrame": "每帧生成数",
+    "frameDelayBetweenSpawns": "生成间隔帧数",
+    "durationOfSpawnerLifespan": "发射器寿命",
+    "randomizedDelay": "随机延迟",
+    "randomizedLifespan": "随机寿命",
+    "randomizedSpawnsPerFrame": "每帧随机生成数",
+    "instanceCountUnknLimit": "实例数上限",
+    "instanceCountUnknLimitJitter": "实例数上限抖动",
+    "repeatAtribute": "重复属性",
+    "occur": "发生",
+    "occur2": "发生2",
+    "spawnAngleLimits": "生成角度限制",
+    "spawnCount": "生成数量",
+    "spawnLock": "生成锁定",
+    "spawnPerCycle": "每周期生成数",
+    "spawnTotal": "生成总数",
+    "lifespan": "寿命",
+    "lifespanJitter": "寿命抖动",
+    "duration": "持续时间",
+    "durationJitter": "持续时间抖动",
+    "delay": "延迟",
+    "delayJitter": "延迟抖动",
+    "indefiniteLifespan": "无限寿命",
+    "timeToDeath": "死亡时间",
+    "timeToDeathJitter": "死亡时间抖动",
+    "fadeInDuration": "淡入时长",
+    "fadeInDurationJitter": "淡入时长抖动",
+    "fadeOutDuration": "淡出时长",
+    "fadeOutDurationJitter": "淡出时长抖动",
+    "fadeStart": "淡出起点",
+    "timing": "触发时机",
+
+    # ── 引用 / 索引 ─────────────────────────────────────────────────────────
+    "ieIndex": "碰撞触发 Play",
+    "relationIndex": "关联 Play",
+    "referenceIndex": "Extern 引用",
+    "body_p": "关联 Body",
+    "wp_p": "关联武器",
+    "body_part_id": "身体部位 ID",
+    "weapon_id": "武器 ID",
+    "bone_lim": "绑定骨骼",
+
+    # ── 颜色 / 亮度 / 透明 ─────────────────────────────────────────────────
+    "color": "颜色",
+    "color1": "颜色1",
+    "color2": "颜色2",
+    "color1Param_enable": "颜色1 启用",
+    "color1Param_duration": "颜色1 持续时间",
+    "color1Param_durationJitter": "颜色1 持续时间抖动",
+    "color1Param_fadeIn": "颜色1 淡入",
+    "color1Param_fadeInJitter": "颜色1 淡入抖动",
+    "color1Param_fadeOut": "颜色1 淡出",
+    "color1Param_fadeOutJitter": "颜色1 淡出抖动",
+    "color2Param_enable": "颜色2 启用",
+    "color2Param_duration": "颜色2 持续时间",
+    "color2Param_durationJitter": "颜色2 持续时间抖动",
+    "color2Param_fadeIn": "颜色2 淡入",
+    "color2Param_fadeInJitter": "颜色2 淡入抖动",
+    "color2Param_fadeOut": "颜色2 淡出",
+    "color2Param_fadeOutJitter": "颜色2 淡出抖动",
+    "epv_color_slot": "EPV 颜色槽",
+    "epvcolorslot": "EPV 颜色槽",
+    "bright": "亮度",
+    "brightness": "亮度",
+    "brightness1": "亮度1",
+    "brightness2": "亮度2",
+    "brightness3": "亮度3",
+    "brightness4": "亮度4",
+    "opacity": "不透明度",
+    "opacityJitter": "不透明度抖动",
+    "opacityAcceleration": "不透明度加速度",
+    "opacityAccelerationJitter": "不透明度加速度抖动",
+    "alpha_effect": "透明度效果",
+    "alpha_threshold": "透明度阈值",
+    "transparentness": "透明度",
+
+    # ── 材质 / 着色 ─────────────────────────────────────────────────────────
+    "metallicness_multiplier": "金属度倍率",
+    "roughness_multiplier": "粗糙度倍率",
+    "subsurface_multipler": "次表面倍率",
+    "normal_map_strength": "法线贴图强度",
+    "pixelNormalOffset": "像素法线偏移",
+    "rimParam": "边缘光参数",
+    "blendParam": "混合参数",
+    "animationSpeed": "动画速度",
+    "extraMaterialInitialPosition": "附加材质初始位置",
+    "extraMaterialInitialPositionJ": "附加材质初始位置抖动",
+    "extraMaterialSpeed": "附加材质速度",
+    "extraMaterialSpeedJitter": "附加材质速度抖动",
+
+    # ── 几何 / 尺寸 / 半径 ─────────────────────────────────────────────────
+    "width": "宽度",
+    "widthJitter": "宽度抖动",
+    "height": "高度",
+    "heightJitter": "高度抖动",
+    "length": "长度",
+    "lengthJitter": "长度抖动",
+    "section_length": "段长度",
+    "radius": "半径",
+    "radiusOrigin": "起始半径",
+    "radiusEnd": "结束半径",
+    "innerRadius": "内半径",
+    "innerRadiusJitter": "内半径抖动",
+    "outerRadius": "外半径",
+    "outerRadiusJitter": "外半径抖动",
+    "area": "区域",
+    "area_of_aura": "光环范围",
+    "teleport_radius": "传送半径",
+    "teleport_radius2": "传送半径2",
+    "smooth_radius_randomized": "平滑半径随机",
+    "smooth_radius_randomized2": "平滑半径随机2",
+    "expansion_radius_limit": "扩张半径上限",
+    "expansion_radius_jitter": "扩张半径抖动",
+    "expansion_radius_elasticity": "扩张半径弹性",
+    "expansion_radius_elasticity_jitter": "扩张半径弹性抖动",
+    "expansionDelay": "扩张延迟",
+    "expansionDelayJitter": "扩张延迟抖动",
+    "expansionType": "扩张类型",
+    "pattern": "图案",
+    "patternControl": "图案控制",
+
+    # ── 物理 / 碰撞 / 弹跳 ─────────────────────────────────────────────────
+    "physicsEnum": "物理类型",
+    "gravity": "重力",
+    "gravity_jitter": "重力抖动",
+    "gravityDelay": "重力延迟",
+    "gravityDelayJitter": "重力延迟抖动",
+    "bounce": "弹跳",
+    "bounceJitter": "弹跳抖动",
+    "bounceConditional": "条件弹跳",
+    "bounceElasticity": "弹跳弹性",
+    "bounceElasticityJitter": "弹跳弹性抖动",
+    "bounceElasticityMultiplier": "弹跳弹性倍率",
+    "horizontalBounce": "水平弹跳",
+    "restitutionDelay": "回弹延迟",
+    "restitutionDelayJitter": "回弹延迟抖动",
+    "restitutionEccentricity": "回弹偏心率",
+    "restitutionEccentricityJitter": "回弹偏心率抖动",
+    "restitutionElasticity": "回弹弹性",
+    "restitutionElasticityJitter": "回弹弹性抖动",
+    "objectInteractionFlag0": "物体交互标志0",
+    "objectInteractionFlag1": "物体交互标志1",
+    "objectInteractionFlag2": "物体交互标志2",
+    "objectInteractionFlag3": "物体交互标志3",
+
+    # ── 位标志 / 控制 ───────────────────────────────────────────────────────
+    "controlBitflag": "控制位标志",
+    "enableVelocityBitflag": "启用速度位标志",
+    "enableRadialVanish": "启用径向消隐",
+    "viewAngleLimit": "视角限制",
+    "visibleOnPreview": "预览中可见",
+    "clipMax": "裁剪上限",
+    "clipMin": "裁剪下限",
+    "zDepthModifierStart": "Z 深度修正（起始）",
+    "zDepthModifierEnd": "Z 深度修正（结束）",
+
+    # ── UV ──────────────────────────────────────────────────────────────────
+    "uv1_initialPosition": "UV1 初始位置",
+    "uv1_speed": "UV1 速度",
+    "uv1_acceleration": "UV1 加速度",
+    "uv1_scale": "UV1 缩放",
+    "uv1_scaleSpeed": "UV1 缩放速度",
+    "uv1_scaleAcceleration": "UV1 缩放加速度",
+    "uv2_initialPosition": "UV2 初始位置",
+    "uv2_speed": "UV2 速度",
+    "uv2_acceleration": "UV2 加速度",
+    "uv2_scale": "UV2 缩放",
+    "uv2_scaleSpeed": "UV2 缩放速度",
+    "uv2_scaleAcceleration": "UV2 缩放加速度",
+
+    # ── 裂纹 / 渗出 / 其它效果 ─────────────────────────────────────────────
+    "craquelure_threshold": "裂纹阈值",
+    "craquelure_effect_diffumination": "裂纹效果扩散",
+    "bleedPos": "渗出位置",
+    "distanceMod0": "距离调制0",
+    "distanceMod0Jitter": "距离调制0抖动",
+    "distanceMod1": "距离调制1",
+    "distanceMod1Jitter": "距离调制1抖动",
+
+    # ── 通用属性 ───────────────────────────────────────────────────────────
+    "prop1": "属性1",
+    "prop1Jitter": "属性1抖动",
+    "prop2": "属性2",
+    "prop3": "属性3",
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 类型专属标签：键 = (TYPE_NAME, ori_name)，优先于全局表。
+# 用于"同名字段在不同类型语义不同"或"unkn_* 经逆向有了语义名"的场景。
+# 例：LIGHTNING 的 unkn05_*/unkn07_* 是闪电专属语义，绝不能用全局键（会误标到
+# PTCOLLISION/SHOVEL 等共用 unkn 名的类型）。详细行为见 annotations.py 的 ⓘ 注释。
+# ─────────────────────────────────────────────────────────────────────────────
+
+FIELD_LABELS_ZH_BY_TYPE = {
+    # ── LIGHTNING（闪电，社区逆向，2026-06）──────────────────────────────────
+    ("LIGHTNING", "unkn05_01"): "实例模式标志",
+    ("LIGHTNING", "sineWaveFreq"): "正弦波频率",
+    ("LIGHTNING", "sineWaveFreqJitter"): "正弦波频率抖动",
+    ("LIGHTNING", "alphaThreshold"): "alpha 阈值",
+    ("LIGHTNING", "unkn05_05"): "分支禁用标志",
+    ("LIGHTNING", "unkn05_06"): "分支起始偏移距离",
+    ("LIGHTNING", "outwardsExpansionSpeed"): "向外扩展速度",
+    ("LIGHTNING", "outwardsExpansionSpeedJitter"): "向外扩展速度抖动",
+    ("LIGHTNING", "unkn05_10"): "闪电不透明度",
+    ("LIGHTNING", "unkn05_11"): "闪电透明度等级B",
+    ("LIGHTNING", "unkn05_12"): "流光与淡出模式",
+    ("LIGHTNING", "targetBoneID"): "靶骨 ID",
+    ("LIGHTNING", "inflectionPointCount"): "拐点计数",
+    ("LIGHTNING", "uInflectionAngleLimit"): "倾角限制",
+    ("LIGHTNING", "uInflectionAngleLimitJitter"): "倾角限制抖动",
+    ("LIGHTNING", "vInflectionAngleLimit"): "弯曲角极限",
+    ("LIGHTNING", "vInflectionAngleLimitJitter"): "弯曲角极限抖动",
+    ("LIGHTNING", "inflectionPointCount2"): "拐点计数2",
+    ("LIGHTNING", "uInflectionAngleLimit2"): "倾角限制2",
+    ("LIGHTNING", "uInflectionAngleLimitJitter2"): "倾角限制2抖动",
+    ("LIGHTNING", "vInflectionAngleLimit2"): "弯曲角极限2",
+    ("LIGHTNING", "vInflectionAngleLimitJitter2"): "弯曲角极限2抖动",
+    ("LIGHTNING", "glow"): "发光",
+    ("LIGHTNING", "glowJitter"): "发光抖动",
+    ("LIGHTNING", "startWidth"): "开始宽度",
+    ("LIGHTNING", "uvRepetitionStart"): "UV 重复开始",
+    ("LIGHTNING", "endWidth"): "结束宽度",
+    ("LIGHTNING", "uvRepetitionEnd"): "UV 重复结束",
+    ("LIGHTNING", "unkn05_47"): "支路闪电数量A",
+    ("LIGHTNING", "unkn05_48"): "支路闪电数量B",
+    ("LIGHTNING", "radiusLimit"): "半径极限",
+    ("LIGHTNING", "radiusLimitJitter"): "半径极限抖动",
+    ("LIGHTNING", "unkn07_02"): "支线弯曲角极限",
+    ("LIGHTNING", "unkn07_03"): "支线弯曲角极限抖动",
+    ("LIGHTNING", "unkn07_04"): "支线流动模式B开关",
+    ("LIGHTNING", "unkn07_05"): "支线复杂度/扩散随机性",
+    ("LIGHTNING", "unkn07_06"): "支线复杂度抖动",
+    ("LIGHTNING", "unkn07_09"): "支线发光",
+    ("LIGHTNING", "unkn07_10"): "支线发光抖动",
+    ("LIGHTNING", "branchLength"): "支路长度",
+    ("LIGHTNING", "branchLengthJitter"): "支路长度抖动",
+    ("LIGHTNING", "unkn07_13"): "支线开始宽度",
+    ("LIGHTNING", "unkn07_14"): "支线结束宽度",
+    ("LIGHTNING", "unkn07_15"): "支线开始宽度抖动",
+    ("LIGHTNING", "unkn07_16"): "支线 UV 重复开始",
+    ("LIGHTNING", "unkn07_17"): "支线 UV 重复结束",
+    ("LIGHTNING", "unkn07_18"): "支线结束宽度抖动",
+    ("LIGHTNING", "emissive"): "自发光颜色",
+    ("LIGHTNING", "EPVColorSlot1"): "EPV 颜色槽1",
+    ("LIGHTNING", "EPVColorSlot2"): "EPV 颜色槽2",
+}
+
+
+def label_zh(ori_name, type_name=None):
+    """返回字段中文标签；无则返回 None（由调用方回退英文友好名）。
+
+    优先 (type_name, ori_name) 类型专属表，再回退 ori_name 全局表。
+    """
+    if type_name is not None:
+        zh = FIELD_LABELS_ZH_BY_TYPE.get((type_name, ori_name))
+        if zh is not None:
+            return zh
+    return FIELD_LABELS_ZH.get(ori_name)
