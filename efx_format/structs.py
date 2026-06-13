@@ -795,7 +795,9 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 
 ROTATEANIM_SCHEMA = [
     ('unkn0', ('i', 2)),
-    ('NULL', ('i', 2)),
+    # 社区实测：这两个专门控制 BILLBOARD3D 平面类的旋转，模板原标为 int，实为 float。
+    ('billboardRotation', 'f'),
+    ('billboardRotationSpeed', 'f'),
     ('spin_velocity', ('XYZ', 0)),
     ('unkn1_0', 'f'),
     ('unkn1_1', 'f'),
@@ -1557,7 +1559,11 @@ _BILLBOARD3D_FIXED_SCHEMA = [
     ('applicationRule',            'i'),
     ('color',                      ('XYZ[]', 2, 2)),
     ('brightness',                 'f'),
-    ('unkn2',                      ('i', 3)),
+    # 社区实测：原模板 unkn2 = 3×int 有误。[0] 是随机亮度乘数（float）；
+    # [2] 是混合模式开关（0=alpha 混合，1=add 混合）。拆成三个独立字段。
+    ('randomBrightnessMult',       'f'),
+    ('unkn2_1',                    'i'),
+    ('blendMode',                  'i'),
     ('EPVColorSlot1',              'i'),
     ('SlotOverride1',              'i'),
     ('unknDimension',              'f'),

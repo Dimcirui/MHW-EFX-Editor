@@ -255,6 +255,10 @@ FIELD_LABELS_ZH = {
     "distanceMod1Jitter": "距离调制1抖动",
 
     # ── 通用属性 ───────────────────────────────────────────────────────────
+    "randomBrightnessMult": "随机亮度乘数",
+    "blendMode": "混合模式",
+    "billboardRotation": "平面旋转",
+    "billboardRotationSpeed": "平面旋转速度",
     "prop1": "属性1",
     "prop1Jitter": "属性1抖动",
     "prop2": "属性2",

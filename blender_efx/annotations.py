@@ -742,6 +742,144 @@ FIELD_ANNOTATIONS = {
         "ZH": "位移开关。据 BT：0=一切正常；1/2=消除前一个位移；3=消除位移",
     },
 
+    # ─── 行为逆向补充（社区实测，世界特效注释解析）────────────────────────────
+    # SPAWN
+    ("SPAWN", "durationOfSpawnerLifespan"): {
+        "EN": "0 + repeatAtribute=1 + LIFE.indefinite=0 → continuous emission. Non-0 → "
+              "burst mode: the value = number of bursts (interval via frameDelayBetweenSpawns).",
+        "ZH": "为 0 且 repeatAtribute=1、LIFE 无限寿命=0 → 持续发射；非 0 → 爆发模式，"
+              "其值=爆发次数（间隔由 frameDelayBetweenSpawns 控制）。",
+    },
+    ("SPAWN", "frameDelayBetweenSpawns"): {
+        "EN": "Frames between each spawn/burst. Together with durationOfSpawnerLifespan "
+              "shapes the emission rhythm.",
+        "ZH": "每次生成/爆发之间的帧间隔；与 durationOfSpawnerLifespan 共同决定发射节奏。",
+    },
+    # LIFE
+    ("LIFE", "indefiniteLifespan"): {
+        "EN": "1 → particle ignores fade-in/out and lives forever; only disappears when the "
+              "weapon's major state switches or an action force-clears all FX (disappearance "
+              "still obeys fadeOutDuration). ⚠ Combine with high SPAWN counts = accumulation.",
+        "ZH": "1 → 无视渐入渐出、粒子永久存在；除非切换武器大状态或动作强制关闭所有特效才消失"
+              "（消失仍遵循淡出时间）。⚠ 与高 SPAWN 数量组合会累积。",
+    },
+    # EMITTERSHAPE3D
+    ("EMITTERSHAPE3D", "transform"): {
+        "EN": "Coupling depends on patternControl: Sphere/Cube → transform sets size/radius; "
+              "Ring → y = ring world height, x/z = ring shape; Point → transform acts as a "
+              "plain position offset.",
+        "ZH": "与 patternControl 联动：球/立方体→transform 定尺寸/半径；圆环→y 是圆环世界高度、"
+              "x/z 是圆环形状；point 点状→transform 直接当位移用。",
+    },
+    ("EMITTERSHAPE3D", "spawnAngleLimits"): {
+        "EN": "Spawn angle limit in degrees. 360 = full ring; reducing it removes particles "
+              "over part of the arc, packing the rest more densely.",
+        "ZH": "粒子生成角度限制（角度制）。360=生成一圈；调小可删除某段弧的粒子，让排列更紧密。",
+    },
+    ("EMITTERSHAPE3D", "spawnTotal"): {
+        "EN": "Total particles, split into equal groups; group count via spawnTotal, "
+              "particles-per-group via spawnPerCycle (even distribution).",
+        "ZH": "粒子总份数：与 spawnPerCycle 配合做平均分配——total 分几份、每份粒子数由 perCycle 控制。",
+    },
+    ("EMITTERSHAPE3D", "radiusEnd"): {
+        "EN": "With radiusOrigin, controls spawn position in the shape. end=1,origin=1 → on "
+              "the surface; end=1,origin=0 → filled solid interior.",
+        "ZH": "与 radiusOrigin 一起控制在形状中的生成位置。都=1→生成在表面；end=1 origin=0→实心填满内部。",
+    },
+    ("EMITTERSHAPE3D", "radiusOrigin"): {
+        "EN": "See radiusEnd. Inner bound of the spawn radius band.",
+        "ZH": "见 radiusEnd。生成半径范围的内边界。",
+    },
+    # VELOCITY3D
+    ("VELOCITY3D", "rotationX"): {
+        "EN": "Rotates the particle RELEASE direction. If particles move along y, adjusting "
+              "x/z biases them toward those axes.",
+        "ZH": "旋转粒子的释放方向。粒子沿 y 走时，调 x/z 会让它向这两轴偏。",
+    },
+    ("VELOCITY3D", "expansion_radius_limit"): {
+        "EN": "Caps the farthest spread distance during particle motion.",
+        "ZH": "扩散范围：限制粒子运动时的最远扩散距离。",
+    },
+    ("VELOCITY3D", "expansion_radius_jitter"): {
+        "EN": "Random addend on expansion_radius_limit.",
+        "ZH": "扩散范围偏差（expansion_radius_limit 的随机加数）。",
+    },
+    ("VELOCITY3D", "expansion_radius_elasticity_jitter"): {
+        "EN": "Random jitter on expansion_radius_elasticity (same nature as the radius jitter).",
+        "ZH": "扩散弹性偏差（性质同扩散范围偏差）。",
+    },
+    ("VELOCITY3D", "gravity"): {
+        "EN": "Adds a straight-down force to particles.",
+        "ZH": "重力：给粒子一个向正下的力。",
+    },
+    ("VELOCITY3D", "gravityDelay"): {
+        "EN": "Frames after spawn before gravity takes effect.",
+        "ZH": "重力延迟：粒子生成后一段时间再受重力。",
+    },
+    ("VELOCITY3D", "expansionDelay"): {
+        "EN": "Frames after spawn before initial velocity takes effect.",
+        "ZH": "扩散延迟：粒子生成后一段时间再受初速度。",
+    },
+    # 运动模型：轴速率×各轴能量=初速度 → 经弹性(1匀速/>1加速/<1减速) → 受扩散范围限制最远位置。
+    ("VELOCITY3D", "velocityY"): {
+        "EN": "Per-axis speed multiplier (Y). Higher=faster; negative=opposite direction. "
+              "Model: velocity × energyOnAxis = initial speed → elasticity → radius limit.",
+        "ZH": "Y 轴速率（总计算乘数）。越高越快、负值反向。运动模型：轴速率×轴能量=初速度→弹性→扩散限制。",
+    },
+    ("VELOCITY3D", "velocityZ"): {
+        "EN": "Per-axis speed multiplier (Z). See velocityY.",
+        "ZH": "Z 轴速率。见 velocityY。",
+    },
+    # BILLBOARD3D（含本版新拆分字段）
+    ("BILLBOARD3D", "randomBrightnessMult"): {
+        "EN": "Random brightness multiplier: brightness is picked between 'not×this' and "
+              "'×this'. (Was mistyped as int in the template; corrected to float.)",
+        "ZH": "随机亮度乘数：亮度在「不×该值」与「×该值」之间随机取。（原模板误标为 int，已改为 float。）",
+    },
+    ("BILLBOARD3D", "blendMode"): {
+        "EN": "Shader blend mode: 0 = alpha blend (can show black at normal brightness), "
+              "1 = additive blend.",
+        "ZH": "着色器混合模式：0=alpha 混合（正常亮度下可显示黑色），1=add 叠加混合。",
+    },
+    # SCALEANIM（逐轴语义，模板命名/类型多误）
+    ("SCALEANIM", "scaleSpeed"): {
+        "EN": "Initial expansion accel paired with animationSpeed (the shrink-in at "
+              "animation start; negative = shrinking).",
+        "ZH": "与 animationSpeed 配对的初始扩散加速度（动画刚进来的缩小效果，负值=缩小）。",
+    },
+    ("SCALEANIM", "unkn1"): {
+        "EN": "[0] = X-axis scale speed during playback; [1] = its jitter. (X accel = "
+              "scaleAccel/scaleAccelJitter.) Template naming is unreliable here.",
+        "ZH": "[0]=播放过程中 X 轴缩放速度；[1]=其偏差。（X 轴加速度见 scaleAccel/scaleAccelJitter。）"
+              "此处模板命名不可靠。",
+    },
+    ("SCALEANIM", "unkn2"): {
+        "EN": "Per-axis scale (8 floats): [0]Y speed [1]Y jitter [2]Y accel [3]Y accel jitter "
+              "[4]Z speed [5]Z jitter [6]Z accel [7]Z accel jitter. (Z only for meshes.)",
+        "ZH": "逐轴缩放（8 个 float）：[0]Y速度 [1]Y偏差 [2]Y加速度 [3]Y加速度偏差 "
+              "[4]Z速度 [5]Z偏差 [6]Z加速度 [7]Z加速度偏差。（Z 仅模型有。）",
+    },
+    ("SCALEANIM", "delay"): {
+        "EN": "Animation update start time. (Template has many errors in this block.)",
+        "ZH": "动画更新开始时间。（该块模板错误较多。）",
+    },
+    # ROTATEANIM（含本版新拆分字段）
+    ("ROTATEANIM", "billboardRotation"): {
+        "EN": "Controls BILLBOARD3D plane rotation. (Was mistyped as int in the template; "
+              "corrected to float.)",
+        "ZH": "控制 BILLBOARD3D 平面类的旋转。（原模板误标为 int，已改为 float。）",
+    },
+    ("ROTATEANIM", "billboardRotationSpeed"): {
+        "EN": "Second BILLBOARD3D plane-rotation parameter (rotation speed). (Corrected to "
+              "float; exact role vs billboardRotation not fully confirmed.)",
+        "ZH": "BILLBOARD3D 平面旋转的第二个参数（旋转速度）。（已改为 float；与 billboardRotation "
+              "的具体分工待确认。）",
+    },
+    ("ROTATEANIM", "spin_velocity"): {
+        "EN": "Model/plane rotation along three axes (with spin_acceleration below for each).",
+        "ZH": "模型/平面的三轴旋转方式（下方 spin_acceleration 为各自加速度）。",
+    },
+
     # ─── LIGHTNING ────────────────────────────────────────────────────────────
     # 社区逆向实测（010 Editor + 进游戏观察，MHW:Iceborne）。⚠ = 危险/崩溃字段。
     ("LIGHTNING", "spacer0"): {
