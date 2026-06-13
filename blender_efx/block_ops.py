@@ -251,7 +251,8 @@ def add_block_to_body(body_obj: bpy.types.Object, preset_dict: dict) -> bpy.type
     ----
     - 新块 efx_index = 同 body 内现有块最大 index + 1
     - attr_count 由导出端（io_tree §4c）按实际块数重算，无需手动维护
-    - EXTERNREFERENCE/PTLIFE/PTCOLLISION 的引用指针在 init_block_props 内初始化
+    - EXTERNREFERENCE 引用指针在 init_block_props 内初始化；PTLIFE/PTCOLLISION
+      在本函数末尾补充指针化（越界 baked 值强制转可编辑悬空，供用户指定 Play）
     """
     from . import io_tree
     from . import fields as _fields
@@ -320,6 +321,43 @@ def add_block_to_body(body_obj: bpy.types.Object, preset_dict: dict) -> bpy.type
     except Exception:
         # 安全回退：efx_block 保持 is_editable=False
         pass
+
+    # ── PTLIFE / PTCOLLISION 引用指针化 ───────────────────────────────────────
+    # init_block_props 只处理 EXTERNREFERENCE；PTLIFE/PTCOLLISION 在 io_tree 导入时
+    # 由独立第二 pass 指针化，而单块新增路径没有该 pass → 此处补上。
+    # 关键：预设里 baked 的 relationIndex/ieIndex 来自源文件，对新文件几乎必然越界，
+    # init_*_ref_props 会因此置 pointerized=False（不可编辑、导出保留陈旧值）。
+    # 新增块无 byte-perfect 义务，故越界时**强制指针化为悬空**，让用户能在面板里
+    # 指定合法 Play（导出按段局部 index 重写；未指定则 validate 报悬空挡导出）。
+    if root_obj is not None and root_obj.get("~TYPE") == "EFX_ROOT":
+        play_objs = {}
+        for obj in bpy.data.objects:
+            if obj.parent == root_obj and obj.get("~TYPE") == "EFX_PLAY":
+                try:
+                    play_objs[int(obj.get("efx_index", 0))] = obj
+                except (ValueError, TypeError):
+                    pass
+        count_play = len(play_objs)
+        if count_play > 0:
+            try:
+                from ..efx_format.hashes import PTLIFE as _PTLIFE, PTCOLLISION as _PTCOLLISION
+                from . import body_play_ref as _bpr
+                if type_hash == _PTLIFE:
+                    _bpr.init_ptlife_ref_props(blk_obj, data_bytes, play_objs, count_play)
+                    p = blk_obj.efx_ptlife_ref
+                    if not p.relation_pointerized:
+                        p.relation_pointerized = True   # 越界 baked 值 → 转可编辑悬空
+                        p.relation_play_ptr = None
+                elif type_hash == _PTCOLLISION:
+                    _bpr.init_ptcollision_ref_props(blk_obj, data_bytes, play_objs, count_play)
+                    p = blk_obj.efx_ptcollision_ref
+                    if not p.ie_pointerized:
+                        p.ie_pointerized = True
+                        p.ie_none = False
+                        p.ie_play_ptr = None
+            except Exception:
+                # 任何异常安全跳过（保持默认 pointerized=False）
+                pass
 
     # attr_count 由导出端自动重算，无需设 labels_dirty（块不在标签表）
     return blk_obj
