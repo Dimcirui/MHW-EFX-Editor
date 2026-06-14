@@ -210,6 +210,8 @@ STRINGS = {
 
     # ── 块预设 / 分类（block_ops + 新增块面板）───────────────────────────────
     "block.add_section":     {"EN": "Add Block",           "ZH": "新增块"},
+    "block.add_to_prefix":   {"EN": "Add Block to: ",      "ZH": "新增块到："},
+    "block.add_to_no_body":  {"EN": "(select a Body)",     "ZH": "（请选中 Body）"},
     "block.category":        {"EN": "Category",            "ZH": "分类"},
     "block.add":             {"EN": "Add",                 "ZH": "新增"},
     "block.paste":           {"EN": "Paste Block",         "ZH": "粘贴块"},
@@ -244,8 +246,8 @@ STRINGS = {
     "timl.segment_bytes": {"EN": "TIML segment: {n} bytes", "ZH": "TIML 段：{n} 字节"},
     "timl.export_btn":    {"EN": "Export as .timl File",    "ZH": "导出为 .timl 文件"},
     "timl.import_btn":    {"EN": "Reimport from .timl File","ZH": "从 .timl 文件回填"},
-    "timl.hint":          {"EN": "Open the exported .timl in FreeKinetics, edit, then reimport",
-                           "ZH": "用 FreeKinetics 打开导出的 .timl 编辑后再回填"},
+    "timl.hint":          {"EN": "Editing not supported directly — export, edit externally, then reimport",
+                           "ZH": "暂不支持直接编辑，请自行导出编辑后重新导入"},
 
     # ── Subselect 面板（subselect.py）─────────────────────────────────────────
     "sub.unset":            {"EN": "<Unset>",               "ZH": "<未设置>"},
@@ -351,6 +353,10 @@ STRINGS = {
     "body.open_folder":      {"EN": "Open Preset Folder",   "ZH": "打开预设文件夹"},
     "body.game_active_yes":  {"EN": "Direct trigger: Yes",  "ZH": "直接触发：是"},
     "body.game_active_no":   {"EN": "Direct trigger: No",   "ZH": "直接触发：否"},
+    "body.action_trigger_yes": {"EN": "Action trigger: Yes",  "ZH": "动作触发：是"},
+    "body.action_trigger_no":  {"EN": "Action trigger: No",   "ZH": "动作触发：否"},
+    "body.add_to_prefix":    {"EN": "Add Body to: ",         "ZH": "新增 Body 到："},
+    "body.add_to_no_efx":    {"EN": "(no active EFX)",       "ZH": "（未选中 EFX 文件）"},
     "body.remove_from_active":{"EN": "Remove from Direct Trigger", "ZH": "移出直接触发列表"},
     "body.add_to_active":    {"EN": "Add to Direct Trigger",   "ZH": "加入直接触发列表"},
     "body.rename":           {"EN": "Rename",               "ZH": "重命名"},

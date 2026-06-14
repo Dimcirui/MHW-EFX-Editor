@@ -158,7 +158,7 @@ class EFX_PT_body_timl(bpy.types.Panel):
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "TIML (FreeKinetics)"
+    bl_label        = "TIML"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod

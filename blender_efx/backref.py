@@ -377,6 +377,16 @@ def _play_children(play_obj):
     return children, paths
 
 
+def is_body_action_triggered(body_obj: bpy.types.Object) -> bool:
+    """True if any Play in the same EFX tree has body_obj as a target."""
+    tree = get_efx_tree_objects(body_obj)
+    for play in tree.get("EFX_PLAY", []):
+        children, _ = _play_children(play)
+        if body_obj in children:
+            return True
+    return False
+
+
 def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
     """
     以 body_obj 为中心扫描同一 EFX 树的四类关系（只读）。

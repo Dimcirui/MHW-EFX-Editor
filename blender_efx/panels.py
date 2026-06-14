@@ -62,7 +62,9 @@ from .body_play_ref import (                   # L2 #1d：PtLife/PtCollision/eof
 from .backref import (                          # L2 反向引用视图（只读）
     EFX_PT_extern_backref,
     EFX_PT_body_backref,
+    is_body_action_triggered,
 )
+from .add_ops import get_active_efx_root
 # L2 #3a：重排面板（body + block 上移/下移按钮）
 from . import reorder as _reorder
 # 中英双语化：T() 查表 + 语言切换行
@@ -646,14 +648,21 @@ def _draw_body_presets_content(layout, context):
     row.operator("efx.copy_body", text=T("body.copy"), icon="COPYDOWN")
     row.operator("efx.paste_body", text=T("body.paste"), icon="PASTEDOWN")
 
-    layout.separator()
-
     # 2. 保存当前 body 为预设（需选中 EFX_BODY，poll 自动灰）
     layout.operator("efx.save_body_preset", text=T("body.save_preset"), icon="ADD")
 
     layout.separator()
 
     # 3. body 预设下拉 + 新增
+    root = get_active_efx_root(context)
+    if root is not None:
+        efx_name = getattr(context.scene, "efx_active_efx", None)
+        efx_label = efx_name.name if efx_name is not None else root.name
+        layout.label(text=T("body.add_to_prefix") + efx_label, icon="PLUS")
+    else:
+        row2 = layout.row()
+        row2.enabled = False
+        row2.label(text=T("body.add_to_prefix") + T("body.add_to_no_efx"), icon="PLUS")
     row = layout.row(align=True)
     row.prop(wm, "efx_body_preset_enum", text="")
     selected = wm.efx_body_preset_enum
@@ -687,7 +696,14 @@ def _draw_block_presets_content(layout, context):
     layout.separator()
 
     # 2. 分类 + 块预设下拉 + 新增（需选中 EFX_BODY，poll 自动灰）
-    layout.label(text=T("block.add_section"), icon="PLUS")
+    obj = context.active_object
+    if obj is not None and obj.get("~TYPE") == "EFX_BODY":
+        body_label = obj.get("efx_raw_label", "") or obj.name
+        layout.label(text=T("block.add_to_prefix") + body_label, icon="PLUS")
+    else:
+        row_lbl = layout.row()
+        row_lbl.enabled = False
+        row_lbl.label(text=T("block.add_to_prefix") + T("block.add_to_no_body"), icon="PLUS")
     layout.prop(wm, "efx_block_category_enum", text=T("block.category"))
     row = layout.row(align=True)
     row.prop(wm, "efx_block_whole_preset_enum", text="")
@@ -759,6 +775,12 @@ class EFX_PT_body_reorder(bpy.types.Panel):
         row.label(text=label, icon=icon)
         toggle_text = T("body.remove_from_active") if in_eof else T("body.add_to_active")
         row.operator("efx.eof_toggle_body", text=toggle_text, icon="PLAY" if not in_eof else "PAUSE")
+
+        # ── 动作触发状态（只读：是否被任意 Play 目标引用）────────────────────────
+        in_action = is_body_action_triggered(obj)
+        act_icon = "RADIOBUT_ON" if in_action else "RADIOBUT_OFF"
+        act_label = T("body.action_trigger_yes") if in_action else T("body.action_trigger_no")
+        layout.label(text=act_label, icon=act_icon)
 
 
 
