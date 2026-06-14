@@ -404,10 +404,12 @@ def _draw_extern_ref_field(layout, obj) -> None:
     split.label(text="Reference Index")
 
     if not props.extern_ref_pointerized:
-        # 死块/越界：只读提示
+        # 死块/越界：只读提示 + 强制解锁按钮
         val_row = split.row(align=True)
-        val_row.enabled = False
-        val_row.label(text="[dead block / out of range]", icon="ERROR")
+        sub = val_row.row(align=True)
+        sub.enabled = False
+        sub.label(text="[dead block]", icon="ERROR")
+        val_row.operator("efx.force_pointerize_extern_ref", text="", icon="UNLOCKED")
         return
 
     if props.extern_ref_none:
@@ -507,6 +509,14 @@ def _draw_block_fields_content(layout, context):
     except Exception:
         _material_slots = None
 
+    # ── PTBEHAVIOR 检测（用于灰字提示 + param 标签）────────────────────────────
+    _is_ptbehavior = False
+    try:
+        from ..efx_format.hashes import PTBEHAVIOR as _PTBEHAVIOR_HASH_P
+        _is_ptbehavior = (int(bp.type_hash_str) == _PTBEHAVIOR_HASH_P)
+    except (ValueError, ImportError):
+        pass
+
     # ── 可编辑块：展示字段列表 ────────────────────────────────────────────────
     if bp.is_editable:
         if len(bp.field_items) == 0:
@@ -536,6 +546,11 @@ def _draw_block_fields_content(layout, context):
                 _hint_row = col.row(align=True)
                 _hint_row.enabled = False
                 _hint_row.label(text=T("block.partial_edit"))
+            # PTBEHAVIOR：param 数量因文件而异，仅支持现存 param 的修改
+            if _is_ptbehavior:
+                _ptb_hint_row = col.row(align=True)
+                _ptb_hint_row.enabled = False
+                _ptb_hint_row.label(text=T("block.ptbehavior_hint"))
             col.separator(factor=0.5)
             # 逐字段绘制（带 value+jitter 位置配对：jitter 字段与紧邻前一个
             # 同类型标量 value 合并一行，模拟 XYZ Fixed/Random 分组风格）
@@ -563,6 +578,15 @@ def _draw_block_fields_content(layout, context):
                         text=f"{_friendly_name(item.ori_name, type_name)}: "
                              + T("field.ref_via_pointer"),
                         icon="LINKED",
+                    )
+                    i += 1
+                    continue
+                # PTBEHAVIOR：p{i} 加语义标注 → "P{i}(hint)"；b_type / p{i}_v{j} 走普通路径
+                if _is_ptbehavior and item.hint_name and item.ori_name.startswith('p'):
+                    _rest = item.ori_name[1:]  # "5" or "5_v2"
+                    _draw_field_item(
+                        col, item, type_name=type_name,
+                        label_override=f"P{_rest}({item.hint_name})",
                     )
                     i += 1
                     continue

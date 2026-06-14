@@ -185,6 +185,12 @@ class EFXFieldItem(PropertyGroup):
         description="Original schema field name (read-only)",
     )
 
+    hint_name: StringProperty(
+        name="Hint Name",
+        description="Optional semantic hint for display (used by PTBEHAVIOR params)",
+        default="",
+    )
+
     data_type: EnumProperty(
         name="Data Type",
         items=_DATA_TYPE_ITEMS,
@@ -1442,6 +1448,22 @@ def _ptb_param_dtype(t: int) -> str:
     }.get(t, 'INT')
 
 
+def _ptb_param_hint(t: int) -> str:
+    """把 EFX_Behav.t 映射到语义字段名（用于 UI 标注）。"""
+    return {
+        0x03: 'NULL',
+        0x05: 'unkn0',
+        0x06: 'decal_epv_color_slot',
+        0x0C: 'unkn0',
+        0x0F: 'color',
+        0x14: 'unkn1',
+        0x36: 'unkn1',
+        0x37: 'unkn1',
+        0x40: 'unkn0',
+        0x80: 'path',
+    }.get(t, 'unkn_type')
+
+
 def _ptb_write_param_item(item, t: int, param: dict) -> None:
     """把 param dict 里的值写入 EFXFieldItem 的值槽。"""
     if t == 0x03:
@@ -1520,6 +1542,7 @@ def _init_ptbehavior_block(blk, bp) -> bool:
         else:
             it = bp.field_items.add()
             it.ori_name = f'p{i}'
+            it.hint_name = _ptb_param_hint(t)
             it.data_type = _ptb_param_dtype(t)
             it.edited = False
             it.read_only = False

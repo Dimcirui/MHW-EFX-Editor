@@ -962,27 +962,29 @@ GUIDE_SCHEMA = [
     ('innerRadiusJitter',          'f'),
     ('outerRadius',               'f'),
     ('outerRadiusJitter',          'f'),
-    # efxfile.py: 4+40+16+16+12+8+12 = 108 full → data_bytes = 104
-    # 40B above, then 4 more floats (16B)
+    # efxfile.py: 4+40+40+12+8+12 = 116 full → data_bytes = 112
+    # (EFX_Crimson.bt Guide: type + 23 floats + int[2] + float[3])
+    # restitution 组共 10 floats（40B）
     ('restitutionDelay',          'f'),
     ('restitutionDelayJitter',     'f'),
     ('restitutionEccentricity',   'f'),
     ('restitutionEccentricityJitter', 'f'),
-    # 4 more floats (16B)
     ('restitutionElasticity',     'f'),
     ('restitutionElasticityJitter','f'),
     ('unkn16',                    'f'),
     ('unkn17',                    'f'),
-    # 3 more floats (12B)
     ('unkn18',                    'f'),
     ('unkn19',                    'f'),
+    # unkn20/21/22 共 3 floats (12B)
     ('unkn20',                    'f'),
+    ('unkn21',                    'f'),
+    ('unkn22',                    'f'),
     # 2 ints (8B)
     ('int_unkn1',                 ('i', 2)),
     # 3 floats (12B)
     ('float_unkn2',               ('f', 3)),
 ]
-assert _schema_size(GUIDE_SCHEMA) == 104, \
+assert _schema_size(GUIDE_SCHEMA) == 112, \
     f"GUIDE_SCHEMA size mismatch: {_schema_size(GUIDE_SCHEMA)}"
 
 
@@ -2636,7 +2638,7 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     REFRACTION:     (REFRACTION_SCHEMA,      12),
     NOISE:          (NOISE_SCHEMA,           44),
     # ── New fixed-size types (Phase 1 completion) ─────────────────────────────
-    GUIDE:              (GUIDE_SCHEMA,              104),
+    GUIDE:              (GUIDE_SCHEMA,              112),
     PLEMISSIVE:         (PLEMISSIVE_SCHEMA,           76),
     PARENTEMISSIVE:     (PARENTEMISSIVE_SCHEMA,       72),
     PLSNOW:             (PLSNOW_SCHEMA,               80),

@@ -608,6 +608,178 @@ class EFX_OT_rename_entry(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# auto_sort_body_blocks  —  导出前静默规范化块顺序
+#
+# 规范顺序层（sort key）：
+#    0  EXTERNREFERENCE           (声明块，永远最前)
+#   10  TRANSFORM3D/PARENTOPTIONS/SPAWN/LIFE  (body 骨架)
+#   20  Renderer blocks           (渲染主体，互斥选一)
+#   40  Sprite modifiers          (BILLBOARD3D/RIBBON 专属修饰)
+#   50  Mesh overrides            (MESH 专属覆盖)
+#   60  Emitters                  (发射器/空间约束)
+#   70  Motion                    (运动/速度/动画)
+#   80  Visibility                (可见性/渐隐)
+#   90  Char effects              (角色附着效果)
+#  100  Behavior                  (PTBEHAVIOR 孤立行为系统)
+#  110  Misc/control              (特殊/控制)
+#  150  (未知类型默认值)
+#  200  RGBFIRE / RGBWATER / NOISE (总是最后的全局染色/噪声)
+#  210  Lifecycle triggers         (PTCOLLISION/PTLIFE/PTTRIGGER，总是最后)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_block_sort_key_map() -> dict:
+    """Lazy-build hash→sort_key；导入失败返回空字典。"""
+    try:
+        from ..efx_format.hashes import (
+            EXTERNREFERENCE,
+            TRANSFORM3D, PARENTOPTIONS, SPAWN, LIFE,
+            BILLBOARD3D, RIBBON, MESH, PLANE, FAKEPLANE,
+            LIGHTNING, DUMMY, RIBBONBLADE, STRAINRIBBON, TUBELIGHT, BILLBOARD2D,
+            UVSEQUENCE, ALPHACORRECTION, REFRACTION, BLINK, LUMINANCEBLEED,
+            MATERIAL, UVCONTROL,
+            EMITTERSHAPE3D, EMITTERSHAPE2D, EMITTERSHAPEMESH, EMITTERBOUNDARY,
+            SPAWNBYANGLE, SPAWNBYOCCLUSION,
+            VELOCITY3D, VELOCITY2D, SCALEANIM, ROTATEANIM, TURBULENCE,
+            HOMING, GUIDE, PATHCHAIN, SCREENSPACECOLLISION,
+            FADEBYDEPTH, FADEBYANGLE, FADEBYEMITTERANGLE, FADEBYOCCLUSION,
+            SHADERSETTINGS, MASTERONLY, RAYCAST, LINKPARTSVISIBLE,
+            PLEMISSIVE, PARENTEMISSIVE, PLSNOW, PARENTSNOW, OTOMOSNOW,
+            PARENTMATERIAL, SHOVEL,
+            PTBEHAVIOR,
+            RANDOMFIX, TIML, CHECKPUREATTRIBUTE, REPEATAREA, LAYOUT,
+            TRANSFORM2D, FAKEDOF, TONEMAPFILTER, COLORCORRECTFILTER,
+            RGBFIRE, RGBWATER, NOISE,
+            PTCOLLISION, PTLIFE, PTTRIGGER,
+        )
+    except ImportError:
+        return {}
+    return {
+        EXTERNREFERENCE:        0,
+        TRANSFORM3D:            10,
+        PARENTOPTIONS:          11,
+        SPAWN:                  12,
+        LIFE:                   13,
+        BILLBOARD3D:            20,
+        RIBBON:                 21,
+        MESH:                   22,
+        PLANE:                  23,
+        FAKEPLANE:              24,
+        LIGHTNING:              25,
+        DUMMY:                  26,
+        RIBBONBLADE:            27,
+        STRAINRIBBON:           28,
+        TUBELIGHT:              29,
+        BILLBOARD2D:            30,
+        UVSEQUENCE:             40,
+        ALPHACORRECTION:        41,
+        REFRACTION:             42,
+        BLINK:                  43,
+        LUMINANCEBLEED:         44,
+        MATERIAL:               50,
+        UVCONTROL:              51,
+        EMITTERSHAPE3D:         60,
+        EMITTERSHAPE2D:         61,
+        EMITTERSHAPEMESH:       62,
+        EMITTERBOUNDARY:        63,
+        SPAWNBYANGLE:           64,
+        SPAWNBYOCCLUSION:       65,
+        VELOCITY3D:             70,
+        VELOCITY2D:             71,
+        SCALEANIM:              72,
+        ROTATEANIM:             73,
+        TURBULENCE:             74,
+        HOMING:                 75,
+        GUIDE:                  76,
+        PATHCHAIN:              77,
+        SCREENSPACECOLLISION:   78,
+        FADEBYDEPTH:            80,
+        FADEBYANGLE:            81,
+        FADEBYEMITTERANGLE:     82,
+        FADEBYOCCLUSION:        83,
+        SHADERSETTINGS:         84,
+        MASTERONLY:             85,
+        RAYCAST:                86,
+        LINKPARTSVISIBLE:       87,
+        PLEMISSIVE:             90,
+        PARENTEMISSIVE:         91,
+        PLSNOW:                 92,
+        PARENTSNOW:             93,
+        OTOMOSNOW:              94,
+        PARENTMATERIAL:         95,
+        SHOVEL:                 96,
+        PTBEHAVIOR:             100,
+        RANDOMFIX:              110,
+        TIML:                   111,
+        CHECKPUREATTRIBUTE:     112,
+        REPEATAREA:             113,
+        LAYOUT:                 114,
+        TRANSFORM2D:            115,
+        FAKEDOF:                116,
+        TONEMAPFILTER:          117,
+        COLORCORRECTFILTER:     118,
+        RGBFIRE:                200,
+        RGBWATER:               201,
+        NOISE:                  202,
+        PTCOLLISION:            210,
+        PTLIFE:                 211,
+        PTTRIGGER:              212,
+    }
+
+
+_BLOCK_SORT_KEY_MAP = None  # lazy-initialized on first export
+
+
+def auto_sort_body_blocks(root_obj) -> int:
+    """
+    静默对 root_obj 下每个 body 的 EFX_BLOCK 按规范顺序排序（就地修改 efx_index）。
+
+    规范顺序：EXTERNREFERENCE → 骨架 → 渲染 → 面片修饰 → MESH覆盖 →
+             发射器 → 运动 → 可见性 → 角色特效 → 行为 → 杂项 →
+             RGBFIRE/RGBWATER/NOISE → 生命周期触发
+
+    只修改 efx_index；io_tree.export_efx_tree 按 efx_index 排序序列化，无需重建显示名。
+    返回被重新排序的 body 数量（未变动的 body 不计）。
+    """
+    global _BLOCK_SORT_KEY_MAP
+    if _BLOCK_SORT_KEY_MAP is None:
+        _BLOCK_SORT_KEY_MAP = _build_block_sort_key_map()
+    sort_map = _BLOCK_SORT_KEY_MAP
+    _DEFAULT_KEY = 150
+
+    if root_obj is None:
+        return 0
+
+    modified = 0
+    bodies = _collect_siblings_by_type(root_obj, "EFX_BODY")
+    for body in bodies:
+        try:
+            blocks = _collect_siblings_by_type(body, "EFX_BLOCK")
+            if len(blocks) < 2:
+                continue
+
+            def _sort_key(blk, _sm=sort_map, _dk=_DEFAULT_KEY):
+                try:
+                    h = int(str(blk.get("type_hash", "0")))
+                except (ValueError, TypeError):
+                    return _dk
+                return _sm.get(h, _dk)
+
+            sorted_blocks = sorted(blocks, key=_sort_key)
+
+            # 顺序已正确时跳过（避免无意义的属性写入）
+            if all(b is s for b, s in zip(blocks, sorted_blocks)):
+                continue
+
+            modified += 1
+            for new_idx, blk in enumerate(sorted_blocks):
+                blk["efx_index"] = new_idx
+        except Exception:
+            pass  # 单个 body 失败不阻断其余 body
+
+    return modified
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 

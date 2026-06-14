@@ -342,6 +342,146 @@ def validate_efx_tree(root_obj) -> list:
         # 环检测失败不应阻断其它校验/导出
         pass
 
+    # ── (5) Block-level structural rules ──────────────────────────────────────
+    # 依赖 efx_format.hashes；导入失败则跳过整节（不影响其他检查）。
+    try:
+        from ..efx_format.hashes import (
+            HASH_TO_NAME as _H2N,
+            RGBFIRE as _RGBFIRE,       RGBWATER as _RGBWATER,
+            PLANE as _PLANE,           FAKEPLANE as _FAKEPLANE,
+            PTBEHAVIOR as _PTBEHAVIOR,
+            BILLBOARD3D as _BB3D,      RIBBON as _RIBBON,
+            MESH as _MESH,             LIGHTNING as _LIGHTNING,
+            DUMMY as _DUMMY,           RIBBONBLADE as _RIBBONBLADE,
+            STRAINRIBBON as _SRBN,     TUBELIGHT as _TUBE,
+            BILLBOARD2D as _BB2D,
+            UVSEQUENCE as _UVSEQ,      UVCONTROL as _UVCTL,
+            MATERIAL as _MATERIAL,
+        )
+        _RENDERERS = frozenset({
+            _BB3D, _RIBBON, _MESH, _PLANE, _FAKEPLANE,
+            _LIGHTNING, _DUMMY, _RIBBONBLADE, _SRBN, _TUBE, _BB2D,
+        })
+        _SPRITE_RENDERERS = frozenset({_BB3D, _RIBBON})
+        _block_rules_ok = True
+    except ImportError:
+        _block_rules_ok = False
+
+    if _block_rules_ok:
+        for body in bodies:
+            try:
+                blk_objs = _children_by_type(body, "EFX_BLOCK")
+                hashes = []
+                for blk in blk_objs:
+                    raw = blk.get("type_hash")
+                    if raw is not None:
+                        try:
+                            hashes.append(int(str(raw)))
+                        except (ValueError, TypeError):
+                            pass
+                hash_count = {}
+                for h in hashes:
+                    hash_count[h] = hash_count.get(h, 0) + 1
+                hash_set = set(hashes)
+
+                # (5a) 重复块类型 — ERROR
+                for h, cnt in hash_count.items():
+                    if cnt > 1:
+                        name = _H2N.get(h, f"0x{h:08X}")
+                        problems.append({
+                            "level": "ERROR",
+                            "msg": (
+                                f"Body '{body.name}' has {cnt}× {name} blocks "
+                                "(duplicate block types are not allowed)"
+                            ),
+                            "obj": body.name,
+                        })
+
+                # (5b) RGBFIRE ✗ RGBWATER — ERROR
+                if _RGBFIRE in hash_set and _RGBWATER in hash_set:
+                    problems.append({
+                        "level": "ERROR",
+                        "msg": (
+                            f"Body '{body.name}' has both RGBFIRE and RGBWATER "
+                            "(mutually exclusive global color effects)"
+                        ),
+                        "obj": body.name,
+                    })
+
+                # (5c) PLANE ✗ FAKEPLANE — ERROR
+                if _PLANE in hash_set and _FAKEPLANE in hash_set:
+                    problems.append({
+                        "level": "ERROR",
+                        "msg": (
+                            f"Body '{body.name}' has both PLANE and FAKEPLANE "
+                            "(mutually exclusive renderer types)"
+                        ),
+                        "obj": body.name,
+                    })
+
+                # (5d) PTBEHAVIOR ✗ 其他 — ERROR
+                if _PTBEHAVIOR in hash_set and len(hash_set) > 1:
+                    problems.append({
+                        "level": "ERROR",
+                        "msg": (
+                            f"Body '{body.name}' has PTBEHAVIOR alongside other blocks — "
+                            "PTBEHAVIOR is an isolated system incompatible with "
+                            "renderer/physics blocks"
+                        ),
+                        "obj": body.name,
+                    })
+
+                # (5e) 多个渲染体 — WARN
+                renderers_in_body = hash_set & _RENDERERS
+                if len(renderers_in_body) > 1:
+                    names = "/".join(
+                        _H2N.get(h, f"0x{h:08X}") for h in renderers_in_body
+                    )
+                    problems.append({
+                        "level": "WARN",
+                        "msg": (
+                            f"Body '{body.name}' has multiple renderers ({names}) — "
+                            "only one renderer per body is expected"
+                        ),
+                        "obj": body.name,
+                    })
+
+                # (5f) UVSEQUENCE without BILLBOARD3D/RIBBON — WARN
+                if _UVSEQ in hash_set and not (hash_set & _SPRITE_RENDERERS):
+                    problems.append({
+                        "level": "WARN",
+                        "msg": (
+                            f"Body '{body.name}' has UVSEQUENCE without BILLBOARD3D/RIBBON "
+                            "(UVSEQUENCE is a sprite face UV animation system)"
+                        ),
+                        "obj": body.name,
+                    })
+
+                # (5g) UVCONTROL without MESH — WARN
+                if _UVCTL in hash_set and _MESH not in hash_set:
+                    problems.append({
+                        "level": "WARN",
+                        "msg": (
+                            f"Body '{body.name}' has UVCONTROL without MESH "
+                            "(UVCONTROL is a MESH-exclusive UV scroller)"
+                        ),
+                        "obj": body.name,
+                    })
+
+                # (5h) MATERIAL without MESH — WARN
+                if _MATERIAL in hash_set and _MESH not in hash_set:
+                    problems.append({
+                        "level": "WARN",
+                        "msg": (
+                            f"Body '{body.name}' has MATERIAL without MESH "
+                            "(MATERIAL overrides mrl3 material properties on a MESH body)"
+                        ),
+                        "obj": body.name,
+                    })
+
+            except Exception:
+                pass  # 单个 body 检查失败不影响整体
+
     return problems
 
 

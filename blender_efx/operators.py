@@ -242,6 +242,13 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             self.report({"ERROR"}, f"EFX export cancelled: {len(errors)} validation error(s)")
             return {"CANCELLED"}
 
+        # ── 1.7 导出前静默规范化块顺序 ────────────────────────────────────────
+        try:
+            from .reorder import auto_sort_body_blocks
+            auto_sort_body_blocks(root)
+        except Exception:
+            pass  # 排序失败不阻断导出
+
         # ── 2. 导出为字节 ───────────────────────────────────────────────────
         try:
             data = io_tree.export_efx_tree(root)

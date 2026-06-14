@@ -230,6 +230,8 @@ STRINGS = {
     "block.opaque_hint":     {"EN": "This block type has complex structure; raw bytes preserved.",
                               "ZH": "此块类型含复杂结构，本轮仅保留原始字节。"},
     "block.partial_edit":    {"EN": "Not fully editable",        "ZH": "不支持完全编辑"},
+    "block.ptbehavior_hint": {"EN": "Param count varies by file; only editing existing params is supported.",
+                              "ZH": "该 Block 的 param 数量因文件而异，仅支持现存 param 的修改"},
     "block.no_fields":       {"EN": "(no fields)",         "ZH": "（无字段）"},
     "block.select_hint":     {"EN": "Select an EFX_BLOCK object", "ZH": "请选中 EFX_BLOCK 对象"},
 
@@ -289,6 +291,7 @@ STRINGS = {
     "extern.dangling":           {"EN": "Dangling pointer (uses original bytes on export)",
                                   "ZH": "⚠ 指针悬空（导出时使用原始字节）"},
     "extern.local_index":        {"EN": "Extern local index:", "ZH": "Extern 局部 index:"},
+    "extern.force_unlock":       {"EN": "Force Unlock (dangling)", "ZH": "强制解锁（悬空指针）"},
 
     # ── PtLife / PtCollision / EOF 指针面板（body_play_ref.py）────────────────
     "ptref.no_ptlife_data":      {"EN": "(No efx_ptlife_ref data)", "ZH": "（无 efx_ptlife_ref 数据）"},

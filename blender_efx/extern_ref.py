@@ -44,7 +44,7 @@ from bpy.props import (
     BoolProperty,
     PointerProperty,
 )
-from bpy.types import PropertyGroup
+from bpy.types import PropertyGroup, Operator
 
 from .i18n import T
 
@@ -295,7 +295,40 @@ def build_extern_index_map(extern_objs: list) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §6  面板：ExternReference 块的 referenceIndex 指针编辑器
+# §6  算子：强制解锁死块（pointerized=False → pointerized=True + ptr=None）
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_OT_force_pointerize_extern_ref(Operator):
+    """把死块/越界的 ExternReference 强制升级为悬空指针，以便手动重连 Extern 目标"""
+
+    bl_idname  = "efx.force_pointerize_extern_ref"
+    bl_label   = "Force Unlock (dangling)"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+            return False
+        try:
+            from ..efx_format.hashes import EXTERNREFERENCE
+            if int(str(obj.get("type_hash", ""))) != EXTERNREFERENCE:
+                return False
+            return not obj.efx_extern_ref.extern_ref_pointerized
+        except (AttributeError, ValueError, ImportError):
+            return False
+
+    def execute(self, context):
+        obj = context.active_object
+        props = obj.efx_extern_ref
+        props.extern_ref_pointerized = True
+        props.extern_ref_none        = False
+        props.extern_ref_ptr         = None
+        return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §7  面板：ExternReference 块的 referenceIndex 指针编辑器
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_extern_ref(bpy.types.Panel):
@@ -338,11 +371,13 @@ class EFX_PT_extern_ref(bpy.types.Panel):
             return
 
         if not props.extern_ref_pointerized:
-            # 死块/越界：原始字节保留，只读提示
+            # 死块/越界：原始字节保留，只读提示 + 强制解锁按钮
             box = layout.box()
             box.label(text=T("extern.dead_title"), icon="ERROR")
             box.label(text=T("extern.dead_line1"))
             box.label(text=T("extern.dead_line2"))
+            box.operator("efx.force_pointerize_extern_ref",
+                         text=T("extern.force_unlock"), icon="UNLOCKED")
             return
 
         # 已指针化
@@ -387,6 +422,7 @@ class EFX_PT_extern_ref(bpy.types.Panel):
 # 由 panels.register() 在 EFX_PT_main 之后注册。
 _CLASSES_CORE = (
     EFXExternRefProps,
+    EFX_OT_force_pointerize_extern_ref,
 )
 
 # EFX_PT_extern_ref 导出给 panels.py，由 panels.register() 在 EFX_PT_main 之后注册。

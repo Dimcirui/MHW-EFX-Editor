@@ -206,16 +206,16 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == PLEMISSIVE:
         return 4 + 76  # = 80
 
-    # Guide: 4(type) + lots of floats
-    # From BT: 10 floats + 4 floats + 3 floats + 5 floats = total fixed
+    # Guide (EFX_Crimson.bt): type(4) + 23 floats + int[2] + float[3]
     # type(4) + initialPos(4)+initialPosJ(4)+speed(4)+speedJ(4)+accel(4)+accelJ(4)+
-    #   innerRadius(4)+innerRadiusJ(4)+outerRadius(4)+outerRadiusJ(4)+
+    #   innerRadius(4)+innerRadiusJ(4)+outerRadius(4)+outerRadiusJ(4)        (10 floats)
     #   restitutionDelay(4)+restitutionDelayJ(4)+restitutionEcc(4)+restitutionEccJ(4)+
-    #   restitutionElasticity(4)+restitutionElasticityJ(4)+unkn16(4)+unkn17(4)+unkn18(4)+unkn19(4)+
-    #   unkn20-22(3*4)+int*2(8)+float*3(12)
-    # = 4 + 10*4 + 4*4 + 4*4 + 3*4 + 2*4 + 3*4 = 4+40+16+16+12+8+12 = 108B
+    #   restitutionElasticity(4)+restitutionElasticityJ(4)+unkn16(4)+unkn17(4)+unkn18(4)+unkn19(4) (10 floats)
+    #   unkn20(4)+unkn21(4)+unkn22(4)                                        (3 floats)
+    #   int_unkn1[2](8)+float_unkn2[3](12)
+    # = 4 + 23*4 + 8 + 12 = 4+92+8+12 = 116B
     if h == GUIDE:
-        return 4 + 40 + 16 + 16 + 12 + 8 + 12  # = 108
+        return 4 + 92 + 8 + 12  # = 116
 
     # Lightning: type(4)+unkn00[2](8)+spacer0(4)+XYZ(2)(4)*3+unkn02-04(12)+group05(100)+
     #   inflection1(20)+inflection2(20)+glow/length(16)+width(8)+startWidth group(16)+
@@ -525,9 +525,15 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == HOMING:
         return 4 + 8 + 4 + 24 + 8 + 8  # = 56
 
-    # EmitterShapeMesh: variable (null-terminated string path1)
+    # EmitterShapeMesh (EFX_Crimson.bt): type(4)+int unkn0[2](8)+long unkn1[3](12)+
+    #   byte unkn2[8](8)+int unkn3(4) = 36B fixed + null-terminated string path1 (Mod3 path)
+    # ⚠ 务必精确定界：path1 让块总长不是 4 的倍数，会把后续块推到奇数地址；旧版
+    #   靠 forward_scan(只探 4 对齐)会跳过全部后续块、把它们吞进本块，导致 body
+    #   边界错乱、吃进下一个 body（em013_046 实证）。
     if h == EMITTERSHAPEMESH:
-        return None  # variable: null-terminated string
+        path1_start = pos + 36
+        null1 = data.index(b'\x00', path1_start)
+        return null1 - pos + 1  # 36 + len(path1) + 1(null)
 
     # SpawnByAngle: 4(type) + int*2(8) + long(4) + float(4) + int(4) + short(2) = 26B
     if h == SPAWNBYANGLE:
@@ -1054,6 +1060,47 @@ class EFXFile:
         return results, pos
 
     @staticmethod
+    def _efx_behavior_size(data: bytes, pos: int) -> int:
+        """
+        Return byte size of one EFX_Behavior struct at *pos* (EFX_Crimson.bt):
+          int unkn0(4) + int behav_type_len(4) + int para_count(4)
+          + char b_type[behav_type_len] + EFX_Behav[para_count]
+        EFX_Behav = long unkn(4) + long const0(4) + int t(4) + 变长 data（按 t 分派）。
+        与主体 PTBEHAVIOR 块的 EFX_Behavior 共用同一编码（见 _known_attr_size::PTBEHAVIOR）。
+        """
+        behav_type_len = struct.unpack_from('<i', data, pos + 4)[0]
+        para_count = struct.unpack_from('<i', data, pos + 8)[0]
+        p = pos + 12 + behav_type_len   # skip unkn0/behav_type_len/para_count + b_type
+        for _ in range(para_count):
+            t = struct.unpack_from('<i', data, p + 8)[0]  # int t at offset 8 in EFX_Behav
+            base = 12                  # long unkn(4) + long const0(4) + int t(4)
+            if t == 0x03:
+                extra = 4              # long NULL
+            elif t == 0x05:
+                extra = 2              # short unkn0
+            elif t == 0x06:
+                extra = 4              # int decal_epv_color_slot
+            elif t == 0x0C:
+                extra = 4              # float unkn0
+            elif t == 0x0F:
+                extra = 4              # XYZ(2) = ubyte[3]+pad
+            elif t == 0x14:
+                extra = 12            # XYZ(3) = float[3]
+            elif t == 0x15:
+                extra = 16            # float+long+float+long
+            elif t in (0x36, 0x37):
+                extra = 8             # int[2]
+            elif t == 0x40:
+                extra = 8             # int64
+            elif t == 0x80:
+                path_len_val = struct.unpack_from('<i', data, p + 12 + 4)[0]
+                extra = 4 + 4 + path_len_val  # file_type(4) + path_len(4) + path
+            else:
+                extra = 4             # long unkn_type fallback
+            p += base + extra
+        return p - pos
+
+    @staticmethod
     def _extern_data_size(type_hash: int, attri_count: int,
                           data: bytes = b'', pos: int = 0) -> int:
         """Return total data bytes (after the 12-byte Extern_Data header) for a known extern type.
@@ -1090,13 +1137,16 @@ class EFXFile:
                 p = null2 + 1
             return p - pos
 
-        # Variable-length: EXTERNPTBEHAVIOR - each element has 12B fixed header +
-        # null-terminated class name string (length at +4 includes null) + 16B fixed tail
+        # Variable-length: EXTERNPTBEHAVIOR - data = EFX_Behavior efx_behaiv[attri_count]
+        # (EFX_Extern.bt). EFX_Behavior 与主体 PTBEHAVIOR 块同源：int unkn0(4) +
+        # int behav_type_len(4) + int para_count(4) + char b_type[behav_type_len] +
+        # EFX_Behav[para_count]（每个参数变长，按 t 分派）。
+        # ⚠ 旧实现把 b_type 当 null 结尾串、尾巴写死 16B —— 参数数组变长导致整段错位，
+        #   后续 extern 项落进字符串区（em024_062 / em026_001 实证）。
         if type_hash == 0x5FFC3E36:  # EXTERNPTBEHAVIOR
             p = pos
             for _ in range(attri_count):
-                null_pos = data.index(b'\x00', p + 12)
-                p = null_pos + 1 + 16
+                p += EFXFile._efx_behavior_size(data, p)
             return p - pos
 
         # Variable-length types that are not yet seen in samples - raise for diagnosis
