@@ -144,8 +144,12 @@ def _same_root_as_active(obj):
 
 def _body_object_poll(self, obj):
     """PointerProperty poll：只允许选 ~TYPE == 'EFX_BODY'，且限定同一 EFX 文件
-    （多 EFX 集合并存时防串文件）。"""
-    return obj.get("~TYPE") == "EFX_BODY" and _same_root_as_active(obj)
+    （多 EFX 集合并存时防串文件）。已从所有集合解链的孤儿对象（Purge 可清除）排除。"""
+    if obj.get("~TYPE") != "EFX_BODY":
+        return False
+    if not obj.users_collection:
+        return False
+    return _same_root_as_active(obj)
 
 
 def _play_object_poll(self, obj):
@@ -791,7 +795,7 @@ class EFX_OT_eof_toggle_body(bpy.types.Operator):
 
     bl_idname      = "efx.eof_toggle_body"
     bl_label       = "Toggle Direct Trigger"
-    bl_description = "Add/remove this Body to/from the direct-trigger list (bodies in this list fire automatically when the EFX loads; others can still be activated via Play calls)"
+    bl_description = "Add/remove this Body to/from the direct-trigger (EOF) list. Direct-trigger bodies fire with the EFX unless gated by a subselect state; bodies absent here can still be summoned by Play calls"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -845,6 +849,44 @@ def is_body_in_eof(body_obj: bpy.types.Object) -> bool:
     return False
 
 
+class EFX_OT_eof_add_body(bpy.types.Operator):
+    """Add a body selected in the picker to the root file's EOF direct-trigger list"""
+
+    bl_idname      = "efx.eof_add_body"
+    bl_label       = "Add Body to Direct Trigger List"
+    bl_description = "Add the selected EFX_BODY to the direct-trigger (EOF) list"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        root = context.active_object
+        if root is None or root.get("~TYPE") != "EFX_ROOT":
+            return False
+        wm = context.window_manager
+        return getattr(wm, "efx_eof_body_to_add", None) is not None
+
+    def execute(self, context):
+        root = context.active_object
+        wm = context.window_manager
+        body_obj = wm.efx_eof_body_to_add
+        if body_obj is None:
+            return {"CANCELLED"}
+        try:
+            props = root.efx_eof_list
+        except AttributeError:
+            self.report({"ERROR"}, "Root object has no efx_eof_list property")
+            return {"CANCELLED"}
+        for item in props.items:
+            if item.is_ptr and item.body_ptr == body_obj:
+                self.report({"WARNING"}, f"{body_obj.name} is already in the list")
+                return {"CANCELLED"}
+        item = props.items.add()
+        item.is_ptr = True
+        item.body_ptr = body_obj
+        self.report({"INFO"}, f"Added {body_obj.name} to EOF list")
+        return {"FINISHED"}
+
+
 class EFX_OT_eof_remove_entry(bpy.types.Operator):
     """Remove a specific entry from the root file's EOF list"""
 
@@ -894,6 +936,13 @@ class EFX_PT_eof_list(bpy.types.Panel):
             layout.label(text=T("ptref.no_eof_data"), icon="ERROR")
             return
 
+        # ── 选择器 + 添加按钮 ────────────────────────────────────────────────
+        add_row = layout.row(align=True)
+        add_row.prop(context.window_manager, "efx_eof_body_to_add", text="", icon="OBJECT_DATA")
+        add_row.operator("efx.eof_add_body", text="", icon="ADD")
+
+        layout.separator(factor=0.3)
+
         n = len(props.items)
         layout.label(text=T("ptref.game_activated_bodies") + f"({n})", icon="SORTBYEXT")
 
@@ -937,6 +986,7 @@ _CLASSES_CORE = (
 _OPERATOR_CLASSES = (
     EFX_OT_eof_toggle_body,
     EFX_OT_eof_remove_entry,
+    EFX_OT_eof_add_body,
 )
 
 # 面板类：由 panels.py 在 EFX_PT_main 之后注册（bl_parent_id='EFX_PT_main'）
@@ -973,6 +1023,13 @@ def register():
         type=EFXEofListProps,
     )
 
+    bpy.types.WindowManager.efx_eof_body_to_add = PointerProperty(
+        name="Body to Add",
+        description="Select an EFX_BODY to add to the direct-trigger (EOF) list",
+        type=bpy.types.Object,
+        poll=_body_object_poll,
+    )
+
 
 def unregister():
     """
@@ -984,6 +1041,11 @@ def unregister():
             delattr(bpy.types.Object, attr)
         except AttributeError:
             pass
+
+    try:
+        delattr(bpy.types.WindowManager, "efx_eof_body_to_add")
+    except AttributeError:
+        pass
 
     for cls in reversed(_CLASSES_CORE):
         bpy.utils.unregister_class(cls)

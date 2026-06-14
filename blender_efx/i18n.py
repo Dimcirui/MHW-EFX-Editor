@@ -244,10 +244,14 @@ STRINGS = {
 
     # ── TIML 互导（timl_io.py）─────────────────────────────────────────────────
     "timl.segment_bytes": {"EN": "TIML segment: {n} bytes", "ZH": "TIML 段：{n} 字节"},
+    "timl.none":          {"EN": "No TIML segment in this body", "ZH": "本 body 无 TIML 段"},
     "timl.export_btn":    {"EN": "Export as .timl File",    "ZH": "导出为 .timl 文件"},
     "timl.import_btn":    {"EN": "Reimport from .timl File","ZH": "从 .timl 文件回填"},
-    "timl.hint":          {"EN": "Editing not supported directly — export, edit externally, then reimport",
-                           "ZH": "暂不支持直接编辑，请自行导出编辑后重新导入"},
+    "timl.add_btn":       {"EN": "Add TIML",     "ZH": "添加 TIML"},
+    "timl.replace_btn":   {"EN": "Replace TIML", "ZH": "替换 TIML"},
+    "timl.delete_btn":    {"EN": "Delete TIML",  "ZH": "删除 TIML"},
+    "timl.hint":          {"EN": "Edit externally with FreeKinetics: Add/Replace loads a .timl, Export writes one out",
+                           "ZH": "用 FreeKinetics 在外部编辑：添加/替换从 .timl 文件载入，导出写出 .timl"},
 
     # ── Subselect 面板（subselect.py）─────────────────────────────────────────
     "sub.unset":            {"EN": "<Unset>",               "ZH": "<未设置>"},
@@ -268,6 +272,8 @@ STRINGS = {
     "play.targets_dangling":      {"EN": "target pointer(s) dangling (skipped on export)",
                                    "ZH": "个 target 指针悬空（导出时跳过）"},
     "play.efx_path":              {"EN": "EFX Path",        "ZH": "EFX 路径"},
+    "play.entry_type":            {"EN": "Entry Type",      "ZH": "条目类型"},
+    "play.add_entry":             {"EN": "Add Entry",       "ZH": "新增条目"},
     "play.targets_dangling_total":{"EN": "target pointer(s) dangling in total",
                                    "ZH": "个 target 指针悬空"},
 
@@ -335,6 +341,16 @@ STRINGS = {
     "bodyref.timing_other":        {"EN": "timing", "ZH": "timing"},
     "bodyref.trigger_collision":   {"EN": "on collision", "ZH": "碰撞时"},
 
+    # ── ROOT subselect 状态总览（backref.py §5；模型推测）──────────────────────
+    "rootstate.no_states":        {"EN": "No subselect tables (no state gating)", "ZH": "无 subselect 表（无状态门控）"},
+    "rootstate.header":           {"EN": "Subselect states (variants)", "ZH": "Subselect 状态（变体）"},
+    "rootstate.state_prefix":     {"EN": "State",  "ZH": "状态"},
+    "rootstate.empty_table":      {"EN": "(empty table)", "ZH": "（空表）"},
+    "rootstate.always_on_header": {"EN": "Always-on (direct, ungated)", "ZH": "恒触发（直接、无门控）"},
+    "rootstate.always_on_empty":  {"EN": "(none)", "ZH": "（无）"},
+    "rootstate.hint":             {"EN": "Inferred model: the game picks which state fires at runtime; bodies in no table always fire",
+                                   "ZH": "推测模型：运行时由游戏选中触发哪个状态；不在任何表里的 body 恒触发"},
+
     # ── Hex 视图（hexview.py）─────────────────────────────────────────────────
     "hex.no_raw_bytes":  {"EN": "(no raw bytes)",  "ZH": "（无原始字节）"},
     "hex.total_length":  {"EN": "Total length: ",  "ZH": "总长度："},
@@ -355,12 +371,26 @@ STRINGS = {
     "body.game_active_no":   {"EN": "Direct trigger: No",   "ZH": "直接触发：否"},
     "body.action_trigger_yes": {"EN": "Action trigger: Yes",  "ZH": "动作触发：是"},
     "body.action_trigger_no":  {"EN": "Action trigger: No",   "ZH": "动作触发：否"},
+    # ── 有效激活态（派生，backref.classify_body_activation；模型推测）─────────────
+    "body.effective_label":    {"EN": "Effective (inferred):", "ZH": "有效行为（推测）："},
+    # 触发来源（direct 与 action 是「并」/OR：两者都有则两种时机都触发）
+    "body.src_both":           {"EN": "Fires on load AND when summoned", "ZH": "加载时与被召唤时均触发"},
+    "body.src_direct":         {"EN": "Fires on load",               "ZH": "加载即触发"},
+    "body.src_action":         {"EN": "Fires when summoned by Play",  "ZH": "被 Play 召唤时触发"},
+    "body.src_none":           {"EN": "No trigger source",           "ZH": "无触发来源（孤儿/死块）"},
+    # subselect 是更上层的「与」/AND 门控：还须满足该状态条件才触发
+    "body.gate_qualifier":     {"EN": " — only if its state is selected", "ZH": " — 还须其状态被选中"},
+    "body.gating_yes":         {"EN": "State-gated (AND) by {n} subselect table(s)", "ZH": "受 {n} 张 subselect 表门控（与）"},
+    "body.gating_no":          {"EN": "No subselect gating (fires unconditionally)",   "ZH": "无 subselect 门控（无条件触发）"},
     "body.add_to_prefix":    {"EN": "Add Body to: ",         "ZH": "新增 Body 到："},
     "body.add_to_no_efx":    {"EN": "(no active EFX)",       "ZH": "（未选中 EFX 文件）"},
     "body.remove_from_active":{"EN": "Remove from Direct Trigger", "ZH": "移出直接触发列表"},
     "body.add_to_active":    {"EN": "Add to Direct Trigger",   "ZH": "加入直接触发列表"},
     "body.rename":           {"EN": "Rename",               "ZH": "重命名"},
     "body.rename_blocked":   {"EN": "Rename (preceding item unnamed)", "ZH": "重命名（前有未命名条目）"},
+    "body.type_label":       {"EN": "Type: ",               "ZH": "类型："},
+    "body.type_standard":    {"EN": "Standard",             "ZH": "标准"},
+    "body.type_extended":    {"EN": "Extended",             "ZH": "扩展"},
 
     # ── 校验按钮（panels 删除/校验面板）──────────────────────────────────────
     "validate.run_btn":      {"EN": "Pre-export Validation", "ZH": "导出前校验"},

@@ -27,11 +27,21 @@ from .i18n import T
 _TIML_MAGIC = b"timl"
 
 
-def _body_has_timl(obj) -> bool:
-    """该对象是否为含 timl 段的 EFX_BODY（standard/extended 且 timl 非空）。"""
+def _body_is_timl_capable(obj) -> bool:
+    """该对象是否为「能携带 TIML 段」的 EFX_BODY（standard/extended）。
+
+    注意：与 _body_has_timl 不同，这里不要求 timl 非空——standard/extended body
+    的头部本来就有 timl_length 字段（0 = 无 TIML，是合法常态，官方 78 文件里
+    750/982 个 standard body 即 timl_length==0）。故"添加 TIML"对这些 body 都成立。
+    """
     if obj is None or obj.get("~TYPE") != "EFX_BODY":
         return False
-    if str(obj.get("body_kind", "")) not in ("standard", "extended"):
+    return str(obj.get("body_kind", "")) in ("standard", "extended")
+
+
+def _body_has_timl(obj) -> bool:
+    """该对象是否为含**非空** timl 段的 EFX_BODY（用于 Replace/Delete/Export 门控）。"""
+    if not _body_is_timl_capable(obj):
         return False
     try:
         tb = base64.b64decode(str(obj.get("timl_bytes", "")))
@@ -98,14 +108,15 @@ class EFX_OT_export_body_timl(bpy.types.Operator, ExportHelper):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
-    """读 .timl 文件写回当前 EFX_BODY 的 TIML 段（FreeKinetics 编辑后回填）"""
+    """读 .timl 文件写入当前 EFX_BODY 的 TIML 段（添加新 TIML 或替换现有 TIML）"""
 
     bl_idname      = "efx.import_body_timl"
-    bl_label       = "Reimport from .timl File"
+    bl_label       = "Add / Replace TIML"
     bl_description = (
-        "Read a .timl file and write it back into the current EFX_BODY's embedded TIML segment "
-        "(automatically recomputes timl_length, supports variable length). "
-        "Used to reimport a FreeKinetics-edited .timl back into the EFX"
+        "Read a .timl file and write it into the current EFX_BODY's TIML segment "
+        "(adds one if the body has none, or replaces the existing TIML). "
+        "timl_length is recomputed automatically (variable length supported). "
+        "Edit the .timl externally in FreeKinetics"
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -114,7 +125,8 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return _body_has_timl(context.active_object)
+        # 放宽到「能携带 TIML 的 body」：无 TIML 时此算子用于"添加"
+        return _body_is_timl_capable(context.active_object)
 
     def execute(self, context):
         obj = context.active_object
@@ -149,30 +161,83 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 面板：EFX_PT_body_timl（选中含 TIML 的 EFX_BODY 时显示）
+# 删除：清空 body 的 TIML 段（timl_bytes="" → 导出端 timl_length 重算为 0）
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_body_timl(bpy.types.Panel):
-    """EFX Body 的 TIML 段互导（导出/回填 .timl，配合 FreeKinetics）"""
+class EFX_OT_delete_body_timl(bpy.types.Operator):
+    """删除当前 EFX_BODY 的 TIML 段（清空字节，导出时 timl_length 归 0）"""
 
-    bl_space_type   = "VIEW_3D"
-    bl_region_type  = "UI"
-    bl_category     = "EFX"
-    bl_label        = "TIML"
-    bl_options      = {"DEFAULT_CLOSED"}
+    bl_idname      = "efx.delete_body_timl"
+    bl_label       = "Delete TIML"
+    bl_description = (
+        "Remove this EFX_BODY's TIML segment entirely (clears the bytes; "
+        "timl_length is recomputed to 0 on export). timl_length=0 is a valid, common state"
+    )
+    bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
         return _body_has_timl(context.active_object)
 
+    def execute(self, context):
+        obj = context.active_object
+        if not _body_has_timl(obj):
+            self.report({"ERROR"}, "Current object is not an EFX_BODY containing TIML")
+            return {"CANCELLED"}
+        old_len = len(_body_timl_bytes(obj))
+        obj["timl_bytes"]  = ""    # base64 of empty = b""
+        obj["timl_length"] = "0"   # 导出端也会再重算，双保险
+        self.report({"INFO"}, f"TIML deleted ({old_len} bytes removed). timl_length=0.")
+        return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 面板：EFX_PT_body_timl（Body 面板下的子栏，与激活/References 同级）
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_PT_body_timl(bpy.types.Panel):
+    """EFX Body 的 TIML 段管理（添加/替换/删除/导出 .timl，配合 FreeKinetics）"""
+
+    bl_space_type   = "VIEW_3D"
+    bl_region_type  = "UI"
+    bl_category     = "EFX"
+    bl_label        = "TIML"
+    bl_parent_id    = "EFX_PT_body_properties"  # Body Properties 子栏（与 Unkn Attributes 同级）
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        # 能携带 TIML 的 body 都显示（无 TIML 时提供"添加"）
+        return _body_is_timl_capable(context.active_object)
+
     def draw(self, context):
         layout = self.layout
         obj = context.active_object
-        n = len(_body_timl_bytes(obj))
-        layout.label(text=T("timl.segment_bytes").format(n=n), icon="ANIM")
+        has = _body_has_timl(obj)
+
+        # 段状态行
+        if has:
+            n = len(_body_timl_bytes(obj))
+            layout.label(text=T("timl.segment_bytes").format(n=n), icon="ANIM")
+        else:
+            layout.label(text=T("timl.none"), icon="DOT")
+
         col = layout.column(align=True)
-        col.operator("efx.export_body_timl", text=T("timl.export_btn"), icon="EXPORT")
-        col.operator("efx.import_body_timl", text=T("timl.import_btn"), icon="IMPORT")
+
+        # 第一排：Add/Replace（按是否有 TIML 切换文案）+ Delete（无 TIML 时禁用）
+        row = col.row(align=True)
+        add_replace_text = T("timl.replace_btn") if has else T("timl.add_btn")
+        row.operator("efx.import_body_timl", text=add_replace_text,
+                     icon="FILE_REFRESH" if has else "ADD")
+        del_sub = row.row(align=True)
+        del_sub.enabled = has
+        del_sub.operator("efx.delete_body_timl", text=T("timl.delete_btn"), icon="TRASH")
+
+        # 第二排：导出（无 TIML 时禁用）
+        exp_row = col.row(align=True)
+        exp_row.enabled = has
+        exp_row.operator("efx.export_body_timl", text=T("timl.export_btn"), icon="EXPORT")
+
         layout.label(text=T("timl.hint"), icon="INFO")
 
 
@@ -183,6 +248,7 @@ class EFX_PT_body_timl(bpy.types.Panel):
 _CLASSES = (
     EFX_OT_export_body_timl,
     EFX_OT_import_body_timl,
+    EFX_OT_delete_body_timl,
     EFX_PT_body_timl,
 )
 

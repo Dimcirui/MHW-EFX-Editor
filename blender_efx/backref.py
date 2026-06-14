@@ -387,6 +387,71 @@ def is_body_action_triggered(body_obj: bpy.types.Object) -> bool:
     return False
 
 
+def count_body_subselect_tables(body_obj: bpy.types.Object) -> int:
+    """本 body 出现在同一 EFX 树的多少张 subselect 表里（每表至多计一次）。
+
+    subselect 是叠在激活集上的「状态掩码」：出现在某表里的 body 只在选中该表的
+    状态下触发；不在任何表里的 direct-active body 恒触发。参见
+    memory: subselect-is-active-set-mask。
+    """
+    tree = get_efx_tree_objects(body_obj)
+    n = 0
+    for ss_obj in tree.get("EFX_SUBSELECT", []):
+        try:
+            props = ss_obj.efx_subselect
+        except AttributeError:
+            continue
+        for member in props.members:
+            if member.body_ptr is body_obj:
+                n += 1
+                break
+    return n
+
+
+def classify_body_activation(body_obj: bpy.types.Object) -> dict:
+    """综合 EOF（direct）+ play 召唤（action）+ subselect 门控，推断 body 的「有效激活态」。
+
+    触发模型（用户确认）：
+      - **触发来源是「并」/OR**：direct（随 EFX 加载触发）与 action（被 Play 召唤触发）
+        各自独立生效；两者都有的块在「加载时」和「被召唤时」都会触发。
+      - **subselect 是更上层的「与」/AND 门控**：在某 subselect 表里的块，除来源条件外
+        还须满足该表对应的状态条件才触发；不在任何表里 = 无条件（来源满足即触发）。
+
+    返回 dict：
+      'source'    : str — 触发来源并集（both / direct / action / none）
+      'gated'     : bool — 是否被 subselect 门控（n_tables > 0）
+      'n_tables'  : int  — 出现在几张 subselect 表里
+      'in_eof'    : bool — 是否在直接触发列表（EOF）
+      'in_action' : bool — 是否被任意 Play target 召唤
+
+    注意：这是基于语料逆向的**模型推断**，不是字节铁律——运行时由哪个状态选中哪张
+    subselect 表，取决于 EFX 之外的游戏逻辑（动画事件/战斗状态）。UI 文案据此用
+    "推测"口吻。
+    """
+    from .body_play_ref import is_body_in_eof
+
+    in_eof    = is_body_in_eof(body_obj)
+    in_action = is_body_action_triggered(body_obj)
+    n_tables  = count_body_subselect_tables(body_obj)
+
+    if in_eof and in_action:
+        source = "both"
+    elif in_eof:
+        source = "direct"
+    elif in_action:
+        source = "action"
+    else:
+        source = "none"
+
+    return {
+        "source": source,
+        "gated": n_tables > 0,
+        "n_tables": n_tables,
+        "in_eof": in_eof,
+        "in_action": in_action,
+    }
+
+
 def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
     """
     以 body_obj 为中心扫描同一 EFX 树的四类关系（只读）。
@@ -547,7 +612,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "Body References"
-    bl_parent_id   = "EFX_PT_body_reorder"
+    bl_parent_id   = "EFX_PT_body_status"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -625,6 +690,105 @@ class EFX_PT_body_backref(bpy.types.Panel):
                 row = box.row(align=True)
                 row.label(text=s["ss_name"], icon="MODIFIER")
                 _jump_button(row, s["ss_name"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §5  ROOT subselect 状态总览面板（把 subselect 表呈现为「状态/变体」）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _table_members(ss_obj):
+    """返回 subselect 表的成员 body 对象列表（按 members 顺序，跳过悬空）。"""
+    out = []
+    try:
+        props = ss_obj.efx_subselect
+    except AttributeError:
+        return out
+    for m in props.members:
+        if m.body_ptr is not None:
+            out.append(m.body_ptr)
+    return out
+
+
+def _eof_direct_bodies(root_obj):
+    """返回 root 的 EOF（直接触发）列表里的有效 body 对象（按顺序）。"""
+    out = []
+    try:
+        props = root_obj.efx_eof_list
+    except AttributeError:
+        return out
+    for item in props.items:
+        if item.is_ptr and item.body_ptr is not None:
+            out.append(item.body_ptr)
+    return out
+
+
+class EFX_PT_root_states(bpy.types.Panel):
+    """
+    EFX_ROOT 的 subselect 状态总览（VIEW_3D N 面板，选中 EFX_ROOT 时显示）。
+
+    把每张 subselect 表呈现为一个「状态/变体」，列出其成员 body（带跳转）；
+    再单列「恒触发」集合 = 在 EOF 直接触发列表里、却不在任何 subselect 表里的 body。
+
+    纯只读、纯导航。文案用"推测模型"口吻——运行时由哪个状态被选中触发取决于
+    EFX 之外的游戏逻辑（见 memory: subselect-is-active-set-mask）。
+    """
+
+    bl_space_type  = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category    = "EFX"
+    bl_label       = "Subselect States"
+    bl_options     = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_ROOT"
+
+    def draw(self, context):
+        layout = self.layout
+        root_obj = context.active_object
+
+        tree = get_efx_tree_objects(root_obj)
+        ss_objs = tree.get("EFX_SUBSELECT", [])
+
+        # ── 状态（subselect 表）─────────────────────────────────────────────────
+        gated_bodies = set()   # 出现在任意表里的 body，用于算「恒触发」
+        if not ss_objs:
+            layout.label(text=T("rootstate.no_states"), icon="INFO")
+        else:
+            layout.label(text=T("rootstate.header") + f" ({len(ss_objs)})", icon="PRESET")
+            for i, ss in enumerate(ss_objs):
+                members = _table_members(ss)
+                gated_bodies.update(members)
+                box = layout.box()
+                hrow = box.row(align=True)
+                hrow.label(text=f"{T('rootstate.state_prefix')} {i}: {ss.name}",
+                           icon="OUTLINER_OB_EMPTY")
+                _jump_button(hrow, ss.name)
+                if not members:
+                    box.label(text=T("rootstate.empty_table"), icon="DOT")
+                for b in members:
+                    r = box.row(align=True)
+                    r.separator(factor=1.5)
+                    bidx = b.get("efx_index", "?")
+                    r.label(text=f"[{bidx}] {b.name}", icon="OBJECT_DATA")
+                    _jump_button(r, b.name)
+
+        # ── 恒触发：在 EOF 直接触发列表、却不在任何 subselect 表里 ───────────────
+        always_on = [b for b in _eof_direct_bodies(root_obj) if b not in gated_bodies]
+        box = layout.box()
+        box.label(text=T("rootstate.always_on_header") + f" ({len(always_on)})",
+                  icon="RADIOBUT_ON")
+        if not always_on:
+            box.label(text=T("rootstate.always_on_empty"), icon="DOT")
+        for b in always_on:
+            r = box.row(align=True)
+            r.separator(factor=1.5)
+            bidx = b.get("efx_index", "?")
+            r.label(text=f"[{bidx}] {b.name}", icon="OBJECT_DATA")
+            _jump_button(r, b.name)
+
+        layout.label(text=T("rootstate.hint"), icon="INFO")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

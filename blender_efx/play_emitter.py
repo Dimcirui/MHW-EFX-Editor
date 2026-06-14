@@ -50,13 +50,14 @@ from bpy.props import (
     StringProperty,
     BoolProperty,
     CollectionProperty,
+    EnumProperty,
     PointerProperty,
     IntProperty,
     FloatVectorProperty,
 )
 from bpy.types import PropertyGroup, Operator
 
-from ..efx_format.hashes import PLAYEMITTER
+from ..efx_format.hashes import PLAYEMITTER, PLAYEFX
 from .i18n import T
 
 
@@ -77,8 +78,11 @@ def _find_root_obj(obj):
 def _body_object_poll(self, obj):
     """PointerProperty poll：只允许选 ~TYPE == 'EFX_BODY' 的对象，
     且限定为当前编辑的 play 对象**同一个 EFX 文件**（同一 EFX_ROOT）内的 body——
-    多个 EFX 集合并存时，避免把别的文件的 body 列进下拉。"""
+    多个 EFX 集合并存时，避免把别的文件的 body 列进下拉。
+    已从所有集合解链的孤儿对象（Purge 可清除）排除。"""
     if obj.get("~TYPE") != "EFX_BODY":
+        return False
+    if not obj.users_collection:
         return False
     # 当前正在编辑 targets 的 play 对象 = 活动对象；按它的 root 限定范围。
     editing = getattr(bpy.context, "active_object", None)
@@ -513,7 +517,98 @@ class EFX_OT_play_target_remove(Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §6  UIList：PlayEmitter target 列表
+# §6  算子：Play entry 新增 / 删除
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_OT_play_entry_add(Operator):
+    """向当前 Play 追加一个新 entry（弹窗选择 PlayEmitter / PlayEFX）"""
+
+    bl_idname      = "efx.play_entry_add"
+    bl_label       = "Add Entry"
+    bl_description = "Append a new PlayEmitter or PlayEFX entry to this Play"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    entry_type: EnumProperty(
+        name="Entry Type",
+        description="Type of the new entry",
+        items=[
+            ('PLAYEMITTER', "PlayEmitter", "Internal body reference (targets[] pointing to Main bodies)"),
+            ('PLAYEFX',     "PlayEFX",     "External .efx file call (path + XYZ offset)"),
+        ],
+        default='PLAYEMITTER',
+    )
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_PLAY"
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(self, "entry_type", text=T("play.entry_type"))
+
+    def execute(self, context):
+        import base64 as _b64mod
+        from .add_section_ops import _BLANK_PLAYEFX_RAW, _BLANK_EMITTER_UNKN7
+
+        obj = context.active_object
+        props = obj.efx_play
+        item = props.entries.add()
+
+        if self.entry_type == 'PLAYEFX':
+            item.type_hash_str = str(PLAYEFX)
+            item.is_emitter    = False
+            item.raw_b64       = _b64mod.b64encode(_BLANK_PLAYEFX_RAW).decode('ascii')
+            item.xyz           = (0.0, 0.0, 0.0)
+            item.efx_path      = ""
+        else:
+            emitter_raw = (_BLANK_EMITTER_UNKN7
+                           + struct.pack("<3f", 1.0, 1.0, 1.0)
+                           + b"\x00" * 12
+                           + struct.pack("<i", 0))
+            item.type_hash_str = str(PLAYEMITTER)
+            item.is_emitter    = True
+            item.raw_b64       = _b64mod.b64encode(emitter_raw).decode('ascii')
+            item.xyz           = (1.0, 1.0, 1.0)
+
+        props.active_entry_index = len(props.entries) - 1
+        return {"FINISHED"}
+
+
+class EFX_OT_play_entry_remove(Operator):
+    """从当前 Play 删除指定 entry"""
+
+    bl_idname      = "efx.play_entry_remove"
+    bl_label       = "Remove Entry"
+    bl_description = "Remove this entry from the Play"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    entry_index: IntProperty(name="Entry Index", default=0, min=0)
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if obj is None or obj.get("~TYPE") != "EFX_PLAY":
+            return False
+        try:
+            return len(obj.efx_play.entries) > 0
+        except AttributeError:
+            return False
+
+    def execute(self, context):
+        obj = context.active_object
+        props = obj.efx_play
+        ei = self.entry_index
+        if 0 <= ei < len(props.entries):
+            props.entries.remove(ei)
+            props.active_entry_index = min(ei, max(0, len(props.entries) - 1))
+        return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# §7  UIList：PlayEmitter target 列表
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_UL_play_targets(bpy.types.UIList):
@@ -591,9 +686,11 @@ class EFX_PT_play(bpy.types.Panel):
 
             if entry.is_emitter:
                 # ── PLAYEMITTER ────────────────────────────────────────────────
-                entry_box.row(align=True).label(
-                    text=f"Entry {ei}  PLAYEMITTER", icon="LINKED"
-                )
+                hdr = entry_box.row(align=True)
+                hdr.label(text=f"Entry {ei}  PLAYEMITTER", icon="LINKED")
+                rem_op = hdr.operator("efx.play_entry_remove", text="", icon="X")
+                rem_op.entry_index = ei
+
                 entry_box.prop(entry, "xyz", text=T("play.pos_offset_xyz"))
 
                 tgt_count = len(entry.targets)
@@ -614,8 +711,8 @@ class EFX_PT_play(bpy.types.Panel):
                 btn_col = list_row.column(align=True)
                 add_op = btn_col.operator("efx.play_target_add", text="", icon="ADD")
                 add_op.entry_index = ei
-                rem_op = btn_col.operator("efx.play_target_remove", text="", icon="REMOVE")
-                rem_op.entry_index = ei
+                rem_op2 = btn_col.operator("efx.play_target_remove", text="", icon="REMOVE")
+                rem_op2.entry_index = ei
 
                 ati = entry.active_target_index
                 if 0 <= ati < tgt_count:
@@ -633,11 +730,17 @@ class EFX_PT_play(bpy.types.Panel):
 
             else:
                 # ── PLAYEFX ────────────────────────────────────────────────────
-                entry_box.row(align=True).label(
-                    text=f"Entry {ei}  PLAYEFX", icon="FILE_BLEND"
-                )
+                hdr = entry_box.row(align=True)
+                hdr.label(text=f"Entry {ei}  PLAYEFX", icon="FILE_BLEND")
+                rem_op = hdr.operator("efx.play_entry_remove", text="", icon="X")
+                rem_op.entry_index = ei
+
                 entry_box.prop(entry, "efx_path", text=T("play.efx_path"))
                 entry_box.prop(entry, "xyz", text=T("play.pos_offset_xyz"))
+
+        # ── 新增 entry 按钮 ──────────────────────────────────────────────────────
+        layout.separator()
+        layout.operator("efx.play_entry_add", text=T("play.add_entry"), icon="ADD")
 
         # ── 整体悬空警告 ─────────────────────────────────────────────────────────
         if total_dangling > 0:
@@ -663,6 +766,8 @@ _CLASSES_CORE = (
     EFX_UL_play_targets,
     EFX_OT_play_target_add,
     EFX_OT_play_target_remove,
+    EFX_OT_play_entry_add,
+    EFX_OT_play_entry_remove,
 )
 
 # EFX_PT_play 导出给 panels.py，由 panels.register() 在 EFX_PT_main 之后注册。

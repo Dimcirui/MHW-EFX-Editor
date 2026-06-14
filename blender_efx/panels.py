@@ -57,12 +57,15 @@ from .body_play_ref import (                   # L2 #1d：PtLife/PtCollision/eof
     EFX_PT_eof_list,
     EFX_OT_eof_toggle_body,
     EFX_OT_eof_remove_entry,
+    EFX_OT_eof_add_body,
     is_body_in_eof,
 )
 from .backref import (                          # L2 反向引用视图（只读）
     EFX_PT_extern_backref,
     EFX_PT_body_backref,
+    EFX_PT_root_states,
     is_body_action_triggered,
+    classify_body_activation,
 )
 from .add_ops import get_active_efx_root
 # L2 #3a：重排面板（body + block 上移/下移按钮）
@@ -70,6 +73,8 @@ from . import reorder as _reorder
 # 中英双语化：T() 查表 + 语言切换行
 from . import i18n
 from .i18n import T
+# Extern 字段展开面板
+from . import extern_props as _extern_props
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -744,18 +749,18 @@ class EFX_PT_presets(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_body_reorder  —  Body 面板（选中 EFX_BODY 时显示）
-#   展示直接触发状态开关；Body References 作为子面板附于其下。
-#   排序/重命名操作移至 EFX_PT_delete（Edit 面板）。
+# EFX_PT_body_status  —  Body Status 面板（选中 EFX_BODY 时显示）
+#   子栏：Activation / Body References。
+#   排序/重命名操作在 EFX_PT_delete（Edit 面板）。
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_body_reorder(bpy.types.Panel):
-    """EFX Body 面板（直接触发状态；Body References 子面板附于其下）"""
+class EFX_PT_body_status(bpy.types.Panel):
+    """EFX Body Status 父面板（容器）。子栏：Activation / Body References 同级附于其下。"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Body"
+    bl_label        = "Body Status"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -766,22 +771,140 @@ class EFX_PT_body_reorder(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         obj = context.active_object
+        idx = obj.get("efx_index", "?")
+        layout.label(text=f"[{idx}] {obj.name}", icon="OBJECT_DATA")
 
-        # ── 直接触发状态 ──────────────────────────────────────────────────────
-        in_eof = is_body_in_eof(obj)
+
+class EFX_PT_body_activation(bpy.types.Panel):
+    """Body 激活态子栏：综合 EOF（直接触发）+ Play 召唤 + subselect 门控的派生有效态。
+
+    放在 Body 父面板下，与 Body References、TIML 同级。
+    """
+
+    bl_space_type   = "VIEW_3D"
+    bl_region_type  = "UI"
+    bl_category     = "EFX"
+    bl_label        = "Activation"
+    bl_parent_id    = "EFX_PT_body_status"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    # 触发来源 → (i18n key, 图标)
+    _SOURCE_UI = {
+        "both":   ("body.src_both",   "RADIOBUT_ON"),
+        "direct": ("body.src_direct", "RADIOBUT_ON"),
+        "action": ("body.src_action", "PLAY"),
+        "none":   ("body.src_none",   "RADIOBUT_OFF"),
+    }
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.active_object
+
+        info = classify_body_activation(obj)
+
+        # ── 有效行为（派生结论，模型推测）：来源(并) + 门控(与) 修饰 ───────────────
+        box = layout.box()
+        key, icon = self._SOURCE_UI.get(info["source"], ("body.src_none", "QUESTION"))
+        box.label(text=T("body.effective_label"), icon="INFO")
+        eff_text = T(key)
+        if info["gated"]:
+            eff_text += T("body.gate_qualifier")
+            if info["source"] != "none":
+                icon = "PROP_CON"
+        box.label(text=eff_text, icon=icon)
+
+        # ── 来源 1：直接触发（EOF），可切换 ─────────────────────────────────────
+        in_eof = info["in_eof"]
         row = layout.row(align=True)
-        icon = "RADIOBUT_ON" if in_eof else "RADIOBUT_OFF"
-        label = T("body.game_active_yes") if in_eof else T("body.game_active_no")
-        row.label(text=label, icon=icon)
+        row.label(
+            text=T("body.game_active_yes") if in_eof else T("body.game_active_no"),
+            icon="RADIOBUT_ON" if in_eof else "RADIOBUT_OFF",
+        )
         toggle_text = T("body.remove_from_active") if in_eof else T("body.add_to_active")
-        row.operator("efx.eof_toggle_body", text=toggle_text, icon="PLAY" if not in_eof else "PAUSE")
+        row.operator("efx.eof_toggle_body", text=toggle_text,
+                     icon="PAUSE" if in_eof else "PLAY")
 
-        # ── 动作触发状态（只读：是否被任意 Play 目标引用）────────────────────────
-        in_action = is_body_action_triggered(obj)
-        act_icon = "RADIOBUT_ON" if in_action else "RADIOBUT_OFF"
-        act_label = T("body.action_trigger_yes") if in_action else T("body.action_trigger_no")
-        layout.label(text=act_label, icon=act_icon)
+        # ── 来源 2：动作触发（被 Play 召唤，只读）────────────────────────────────
+        in_action = info["in_action"]
+        layout.label(
+            text=T("body.action_trigger_yes") if in_action else T("body.action_trigger_no"),
+            icon="RADIOBUT_ON" if in_action else "RADIOBUT_OFF",
+        )
 
+        # ── 门控层：subselect 状态掩码 ──────────────────────────────────────────
+        n = info["n_tables"]
+        if n > 0:
+            layout.label(text=T("body.gating_yes").format(n=n), icon="PROP_CON")
+        else:
+            layout.label(text=T("body.gating_no"), icon="CHECKMARK")
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EFX_PT_body_properties / EFX_PT_body_unkn  —  Body 原始属性面板
+#   Body Properties：单行只读 Type + 子栏 Unkn Attributes + TIML 挂在其下。
+#   Body Status（EFX_PT_body_status）管激活状态和引用，Body Properties 管原始数据。
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_PT_body_properties(bpy.types.Panel):
+    """EFX Body 原始属性面板（Type / Unkn / TIML）"""
+
+    bl_space_type   = "VIEW_3D"
+    bl_region_type  = "UI"
+    bl_category     = "EFX"
+    bl_label        = "Body Properties"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.active_object
+        body_kind = str(obj.get("body_kind", "unknown"))
+        kind_label = {
+            "standard": T("body.type_standard"),
+            "extended": T("body.type_extended"),
+        }.get(body_kind, body_kind)
+        row = layout.row()
+        row.enabled = False
+        row.label(text=T("body.type_label") + kind_label, icon="INFO")
+
+
+class EFX_PT_body_unkn(bpy.types.Panel):
+    """Body 未知属性子栏（unkn0 / unkn1 / unkn2）"""
+
+    bl_space_type   = "VIEW_3D"
+    bl_region_type  = "UI"
+    bl_category     = "EFX"
+    bl_label        = "Unkn Attributes"
+    bl_parent_id    = "EFX_PT_body_properties"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.active_object
+        body_kind = str(obj.get("body_kind", "unknown"))
+        col = layout.column(align=True)
+        if "unkn0" in obj:
+            col.prop(obj, '["unkn0"]', text="Unkn0")
+        if body_kind == "extended":
+            if "unkn1" in obj:
+                col.prop(obj, '["unkn1"]', text="Unkn1")
+            if "unkn2" in obj:
+                col.prop(obj, '["unkn2"]', text="Unkn2")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -977,6 +1100,126 @@ class EFX_PT_delete(bpy.types.Panel):
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# _draw_plain_field_list — 纯字段列表渲染（value+jitter 配对，无体块专属逻辑）
+# 供 Extern 面板复用
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _draw_plain_field_list(col, field_items, type_name: str = "") -> None:
+    """渲染 field_items 列表（含 value+jitter 配对），无 EXTERNREFERENCE / PTLIFE 等体块专属逻辑。"""
+    items = list(field_items)
+    n = len(items)
+    i = 0
+    while i < n:
+        item = items[i]
+        if item.ori_name.startswith("__") and item.ori_name.endswith("__"):
+            i += 1
+            continue
+        nxt = items[i + 1] if i + 1 < n else None
+        if (nxt is not None
+                and item.data_type in _SCALAR_PROP_ATTR
+                and not _is_jitter_name(item.ori_name)
+                and not item.ori_name.startswith("__")
+                and nxt.data_type == item.data_type
+                and _is_jitter_name(nxt.ori_name)):
+            _draw_value_jitter_pair(col, item, nxt, type_name=type_name)
+            i += 2
+            continue
+        _draw_field_item(col, item, type_name=type_name)
+        i += 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EFX_PT_extern_props — Extern 段字段展开面板（选中 EFX_EXTERN 时显示）
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_PT_extern_props(bpy.types.Panel):
+    """EFX Extern 属性展开面板"""
+
+    bl_space_type   = "VIEW_3D"
+    bl_region_type  = "UI"
+    bl_category     = "EFX"
+    bl_label        = "Extern Properties"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_EXTERN"
+
+    def draw(self, context):
+        layout = self.layout
+        obj    = context.active_object
+
+        try:
+            ep = obj.efx_extern
+        except AttributeError:
+            layout.label(text="Extern props not registered", icon="ERROR")
+            return
+
+        if len(ep.items) == 0:
+            layout.label(text="No extern data", icon="INFO")
+            return
+
+        # 多 item 时显示 item 切换器（实测语料通常只有 1 个）
+        if len(ep.items) > 1:
+            row = layout.row(align=True)
+            row.label(text=f"Item {ep.active_item + 1} / {len(ep.items)}", icon="NODETREE")
+            sub = row.row(align=True)
+            decr = sub.operator("efx.extern_item_prev", text="", icon="TRIA_LEFT")  # noqa: F841
+            incr = sub.operator("efx.extern_item_next", text="", icon="TRIA_RIGHT")  # noqa: F841
+
+        ai = min(ep.active_item, len(ep.items) - 1)
+        it = ep.items[ai]
+
+        # 解析 type_name 用于字段注释查表
+        type_name = ""
+        try:
+            from ..efx_format.hashes import HASH_TO_NAME
+            type_name = HASH_TO_NAME.get(int(it.type_hash_str), "").upper()
+        except Exception:
+            pass
+        display_name = type_name or f"0x{int(it.type_hash_str):08X}"
+
+        if not it.is_editable:
+            box = layout.box()
+            col = box.column(align=True)
+            col.label(text=display_name, icon="MODIFIER")
+            col.label(text="Not supported yet", icon="INFO")
+            return
+
+        # 实例切换器（attr_count 个实例）
+        n_inst = len(it.instances)
+        if n_inst > 1:
+            row = layout.row(align=True)
+            row.label(text=f"Instance {it.active_instance + 1} / {n_inst}")
+            nav = row.row(align=True)
+            nav.operator("efx.extern_instance_prev", text="", icon="TRIA_LEFT")
+            nav.operator("efx.extern_instance_next", text="", icon="TRIA_RIGHT")
+
+        inst_idx = min(it.active_instance, n_inst - 1)
+        inst = it.instances[inst_idx]
+
+        box = layout.box()
+        col = box.column(align=True)
+
+        title = display_name
+        if n_inst > 1:
+            title += f"  [{inst_idx + 1}/{n_inst}]"
+        col.label(text=title, icon="MODIFIER")
+        col.separator(factor=0.5)
+
+        if not inst.is_editable:
+            col.label(text="Not supported yet", icon="INFO")
+            return
+
+        if len(inst.field_items) == 0:
+            col.label(text="No fields", icon="INFO")
+            return
+
+        _draw_plain_field_list(col, inst.field_items, type_name=type_name)
+
+
 _CLASSES = (
     # 主面板（Import/Export/Active EFX/Armature）
     EFX_PT_main,
@@ -985,12 +1228,16 @@ _CLASSES = (
     EFX_PT_add_section,
     # 顶级上下文面板（选中特定对象时出现，与 EFX_PT_main 同级）
     EFX_PT_delete,
-    EFX_PT_body_reorder,
+    EFX_PT_body_status,
+    EFX_PT_body_activation,
+    EFX_PT_body_properties,
+    EFX_PT_body_unkn,
     EFX_PT_block_fields,
     EFX_PT_block_fields_props,
     EFX_PT_block_fields_object,
     EFX_PT_subselect,
     EFX_PT_play,
+    EFX_PT_extern_props,
     EFX_PT_extern_ref,
     EFX_PT_ptlife_ref,
     EFX_PT_ptcollision_ref,
@@ -998,9 +1245,11 @@ _CLASSES = (
     # EOF 算子
     EFX_OT_eof_toggle_body,
     EFX_OT_eof_remove_entry,
+    EFX_OT_eof_add_body,
     # 反向引用视图（只读）
     EFX_PT_extern_backref,
     EFX_PT_body_backref,
+    EFX_PT_root_states,
 )
 
 

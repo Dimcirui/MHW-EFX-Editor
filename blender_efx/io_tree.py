@@ -331,6 +331,11 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         obj["efx_has_label"] = int(has_label)   # 1=有原始标签, 0=合成名（不进标签表）
         obj["raw_b64"]       = _b64enc(ea.serialize())
         obj.parent           = root_obj
+        try:
+            from . import extern_props as _ep
+            _ep.init_extern_props(obj, ea)
+        except Exception:
+            pass  # 任何异常安全跳过，raw_b64 保底
 
     # ── 7b. ExternReference 指针化二次 pass（L2 #1c）──────────────────────────
     #
@@ -753,7 +758,17 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
             # 回退：用 raw_b64 原样拼接（byte-perfect 保底）
             play_raw += _b64dec(str(po["raw_b64"]))
 
-    extern_raw = b"".join(_b64dec(str(o["raw_b64"])) for o in extern_objs)
+    try:
+        from . import extern_props as _ep
+        def _extern_bytes(o):
+            try:
+                return _ep.export_extern_data(o)
+            except Exception:
+                return _b64dec(str(o["raw_b64"]))
+    except Exception:
+        def _extern_bytes(o):
+            return _b64dec(str(o["raw_b64"]))
+    extern_raw = b"".join(_extern_bytes(o) for o in extern_objs)
 
     # ── 5b. Subselect：L2 #1a 结构化导出 ─────────────────────────────────────
     #   构建 Main 段局部索引映射，供 export_subselect_table 解析 body_ptr → 整数 index。

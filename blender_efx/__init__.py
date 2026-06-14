@@ -38,6 +38,7 @@ from . import presets       # L1.2：块字段值预设
 from . import subselect     # L2 #1a：Subselect 结构化存储
 from . import play_emitter  # L2 #1b：PlayEmitter targets 指针化
 from . import extern_ref    # L2 #1c：ExternReference referenceIndex 指针化
+from . import extern_props  # L2 #1c+：Extern 段字段展开（EFXExternProps）
 from . import body_play_ref # L2 #1d：PtLife/PtCollision/eof_ints 指针化
 from . import backref       # L2 反向引用视图（只读）
 from . import reorder       # L2 #3a：body / 块重排（上移/下移）
@@ -67,6 +68,7 @@ __all__ = [
     "subselect",
     "play_emitter",
     "extern_ref",
+    "extern_props",
     "body_play_ref",
     "backref",
     "reorder",
@@ -117,6 +119,11 @@ def register():
     # extern_ref.register() 注册核心类（不含 Panel）并把 EFXExternRefProps 挂到 Object。
     # EFX_PT_extern_ref 面板由下面的 panels.register() 注册（bl_parent_id='EFX_PT_main'）。
     extern_ref.register()
+
+    # ── L2 #1c+：Extern 段字段展开（EFXExternInstanceProps/EFXExternItemProps/EFXExternProps）─
+    # EFXFieldItem 必须已注册（在本函数开头完成）。
+    # EFX_PT_extern_props 面板由 panels.register() 注册。
+    extern_props.register()
 
     # ── L2 #1d：PtLife/PtCollision/eof_ints 指针化（PropertyGroup）─────────────
     # body_play_ref.register() 注册核心类（不含 Panel）。
@@ -191,6 +198,9 @@ def unregister():
     # ── L2 #1d：PtLife/PtCollision/eof_ints 指针化核心类（PropertyGroup）──────
     # EFX_PT_ptlife_ref/EFX_PT_ptcollision_ref/EFX_PT_eof_list 已由 panels.unregister() 注销。
     body_play_ref.unregister()
+
+    # ── L2 #1c+：Extern 段字段展开核心类（PropertyGroup + Operators）────────
+    extern_props.unregister()
 
     # ── L2 #1c：ExternReference 核心类（PropertyGroup）──────────────────────
     # EFX_PT_extern_ref 已由上面的 panels.unregister() 注销。

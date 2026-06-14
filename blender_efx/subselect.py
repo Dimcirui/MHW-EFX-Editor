@@ -132,8 +132,11 @@ def _find_root_obj(obj):
 
 def _body_object_poll(self, obj):
     """PointerProperty poll：只允许选 ~TYPE == 'EFX_BODY'，且限定为活动对象
-    所在 EFX 文件（同一 EFX_ROOT）内的 body——多 EFX 集合并存时防串文件。"""
+    所在 EFX 文件（同一 EFX_ROOT）内的 body——多 EFX 集合并存时防串文件。
+    已从所有集合解链的孤儿对象（Purge 可清除）排除。"""
     if obj.get("~TYPE") != "EFX_BODY":
+        return False
+    if not obj.users_collection:
         return False
     editing = getattr(bpy.context, "active_object", None)
     if editing is not None:
@@ -172,14 +175,26 @@ class EFXSubselectProps(PropertyGroup):
     """
     table_type_str: StringProperty(
         name="Table Type",
-        description="SubselectTable.table_type (uint32, decimal string)",
+        description="SubselectTable.table_type (uint32 bitmask, decimal string)",
         default="0",
     )
 
-    unkn0_str: StringProperty(
-        name="unkn0",
-        description="SubselectTable.unkn0 three uint32, comma-separated decimal",
-        default="0,0,0",
+    unkn0_0_str: StringProperty(
+        name="unkn0[0]",
+        description="SubselectTable.unkn0[0] (uint32, decimal string)",
+        default="4294967295",
+    )
+
+    unkn0_1_str: StringProperty(
+        name="unkn0[1]",
+        description="SubselectTable.unkn0[1] (uint32) — usually 0",
+        default="0",
+    )
+
+    unkn0_2_str: StringProperty(
+        name="unkn0[2]",
+        description="SubselectTable.unkn0[2] (uint32) — usually 0",
+        default="0",
     )
 
     members: CollectionProperty(
@@ -226,8 +241,10 @@ def init_subselect_props(ss_obj: bpy.types.Object,
     # ── table_type（uint32 → 十进制字符串）────────────────────────────────────
     props.table_type_str = str(tbl.table_type)
 
-    # ── unkn0（3个 uint32 → 逗号分隔十进制字符串）────────────────────────────
-    props.unkn0_str = ",".join(str(v) for v in tbl.unkn0)
+    # ── unkn0（3个 uint32）────────────────────────────────────────────────────
+    props.unkn0_0_str = str(tbl.unkn0[0])
+    props.unkn0_1_str = str(tbl.unkn0[1])
+    props.unkn0_2_str = str(tbl.unkn0[2])
 
     # ── members：按 entries 原序填入 PointerProperty ──────────────────────────
     props.members.clear()
@@ -287,10 +304,11 @@ def export_subselect_table(ss_obj: bpy.types.Object,
 
     # ── unkn0（三个 uint32）──────────────────────────────────────────────────
     try:
-        parts = str(props.unkn0_str).split(",")
-        unkn0 = tuple(int(p) for p in parts)
-        if len(unkn0) != 3:
-            raise ValueError(f"unkn0 需要 3 个值，实际 {len(unkn0)}")
+        unkn0 = (
+            int(str(props.unkn0_0_str)),
+            int(str(props.unkn0_1_str)),
+            int(str(props.unkn0_2_str)),
+        )
     except (ValueError, TypeError):
         return _fallback_raw_subselect(ss_obj)
 
@@ -450,13 +468,17 @@ class EFX_PT_subselect(bpy.types.Panel):
             layout.label(text=T("sub.no_data"), icon="ERROR")
             return
 
-        # ── 元数据行（只读显示）────────────────────────────────────────────────
+        # ── 元数据（可编辑）──────────────────────────────────────────────────
         meta_box = layout.box()
         meta_box.label(text=T("sub.table_meta"), icon="INFO")
-        row = meta_box.row()
-        row.label(text=f"Table Type: {props.table_type_str}")
-        row2 = meta_box.row()
-        row2.label(text=f"unkn0: [{props.unkn0_str}]")
+        meta_box.prop(props, "table_type_str")
+        meta_box.prop(props, "unkn0_0_str")
+        row1 = meta_box.row(align=True)
+        row1.prop(props, "unkn0_1_str")
+        row1.label(text="(usually 0)")
+        row2 = meta_box.row(align=True)
+        row2.prop(props, "unkn0_2_str")
+        row2.label(text="(usually 0)")
 
         layout.separator()
 

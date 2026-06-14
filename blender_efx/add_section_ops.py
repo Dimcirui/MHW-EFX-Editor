@@ -31,6 +31,7 @@ import base64
 import struct
 
 import bpy
+from bpy.props import EnumProperty
 from bpy.types import Operator
 
 from .i18n import T
@@ -48,12 +49,40 @@ _BLANK_EMITTER_UNKN7 = bytes.fromhex(
 # 新建 Play 的 play_type 缺省值（corpus 最常见 hash；语义未知，面板可改）。
 _BLANK_PLAY_TYPE = 0xBF9F765B
 
-# 新建 Extern 的整段模板（wp08_061.efx 的 EXTERNSPAWN，172B），byte-perfect 合法。
+# ── Extern 子类型模板（ExternAttribute.serialize()，byte-perfect 往返验证）────────
+# EXTERNSPAWN   172B  来源：wp08_061.efx（单类型 ExternAttribute）
 _BLANK_EXTERN_B64 = (
     "pgdIxQAAAAABAAAAAAAAAGHIswEBAAAAAgAAAAAAAAABAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAABAAAAEAAAAAAA"
     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABQAAAAAAAAAAQAAAAAAAAAAAAAAAAAA"
     "AA=="
+)
+# EXTERNRGBFIRE  252B  来源：wp08_001.efx（单类型 ExternAttribute）
+_BLANK_EXTERN_RGBFIRE_B64 = "cqQ1NwAAAAABAAAAAAAAAHJVVHsHAAAAAgAAAAAAAAD/////AACAP/////8AAKBAAAAAAAAAAAAAAEhCAAAAAAAAAAAAAAAAFAAAAAAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABQAAAAAAAAAKAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA/////wAAgD//////AACgQAAAAAAAAIA/AABIQgAAAAAAAAAAAAAAABQAAAAAAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUAAAAAAAAACgAAAAAAAAAAQAAAAAAAAAAAAAA"  # noqa: E501
+# EXTERNVELOCITY3D  244B  attr_type=0xBBDA4B3A，unkn=5，attr_count=2，data=zeros×216B
+_BLANK_EXTERN_VELOCITY3D_B64 = "OkvauwAAAAABAAAAAAAAAFFg+RQFAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="  # noqa: E501
+# EXTERNSCALEANIM  180B  attr_type=0xBBDA4B3A，unkn=3，attr_count=2，data=zeros×152B
+_BLANK_EXTERN_SCALEANIM_B64 = "OkvauwAAAAABAAAAAAAAAIt74S4DAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"  # noqa: E501
+# EXTERNTRANSFORM3D  484B  attr_type=0xBF688367，unkn=24，attr_count=2，data=zeros×456B
+_BLANK_EXTERN_TRANSFORM3D_B64 = "Z4NovwAAAAABAAAAAAAAABA61x0YAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="  # noqa: E501
+
+_EXTERN_TYPE_B64 = {
+    'EXTERNSPAWN':       _BLANK_EXTERN_B64,
+    'EXTERNRGBFIRE':     _BLANK_EXTERN_RGBFIRE_B64,
+    'EXTERNVELOCITY3D':  _BLANK_EXTERN_VELOCITY3D_B64,
+    'EXTERNSCALEANIM':   _BLANK_EXTERN_SCALEANIM_B64,
+    'EXTERNTRANSFORM3D': _BLANK_EXTERN_TRANSFORM3D_B64,
+}
+
+# PlayEFX 空白模板（type_hash 之后，65B）：unkn0/type/unkn[7]/NULL[3] 全零，xyz=(0,0,0)，path="\0"
+_BLANK_PLAYEFX_RAW = (
+    b'\x00' * 4                          # unkn0
+    + struct.pack('<i', 1)               # path_len = 1（仅 null 终止符）
+    + b'\x00' * 4                        # type
+    + b'\x00' * 28                       # unkn[7]
+    + struct.pack('<3f', 0.0, 0.0, 0.0)  # xyz
+    + b'\x00' * 12                       # NULL[3]
+    + b'\x00'                            # path[1] = null terminator
 )
 
 
@@ -178,13 +207,15 @@ def add_subselect(root_obj) -> bpy.types.Object:
     return obj
 
 
-def add_play(root_obj) -> bpy.types.Object:
+def add_play(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
     """
-    新建一个 Play（action）：含 1 个空白 PLAYEMITTER entry（0 targets，xyz=1,1,1 缩放）。
-    targets 由用户在 Play 面板里接线。
+    新建一个 Play（action）：含 1 个初始 entry，类型由 entry_type 决定。
+      'PLAYEMITTER'：空白 PlayEmitter（0 targets，xyz=1,1,1）
+      'PLAYEFX'    ：空白 PlayEFX（path=""，xyz=0,0,0）
+    targets / 路径由用户在 Play 面板里接线。
     """
     from ..efx_format.efxfile import PlayData, PlayEntry
-    from ..efx_format.hashes import PLAYEMITTER
+    from ..efx_format.hashes import PLAYEMITTER, PLAYEFX
     from . import play_emitter as _play_emitter
 
     col = _section_collection(root_obj, "_0 Play")
@@ -193,13 +224,16 @@ def add_play(root_obj) -> bpy.types.Object:
 
     idx = _next_index(root_obj, "EFX_PLAY")
 
-    # 空白 PLAYEMITTER raw：unkn[7] 模板 + xyz(1,1,1) + NULL[3] + target_count=0
-    emitter_raw = (_BLANK_EMITTER_UNKN7
-                   + struct.pack("<3f", 1.0, 1.0, 1.0)
-                   + b"\x00" * 12
-                   + struct.pack("<i", 0))
-    pd = PlayData(play_type=_BLANK_PLAY_TYPE,
-                  entries=[PlayEntry(type_hash=PLAYEMITTER, raw=emitter_raw)])
+    if entry_type == 'PLAYEFX':
+        first_entry = PlayEntry(type_hash=PLAYEFX, raw=_BLANK_PLAYEFX_RAW)
+    else:
+        emitter_raw = (_BLANK_EMITTER_UNKN7
+                       + struct.pack("<3f", 1.0, 1.0, 1.0)
+                       + b"\x00" * 12
+                       + struct.pack("<i", 0))
+        first_entry = PlayEntry(type_hash=PLAYEMITTER, raw=emitter_raw)
+
+    pd = PlayData(play_type=_BLANK_PLAY_TYPE, entries=[first_entry])
 
     # 标签前缀规则：新 play 追加在 play 组末尾，前面=现有所有 play。
     has_label = _all_labeled(_sorted_children(root_obj, "EFX_PLAY"))
@@ -222,11 +256,11 @@ def add_play(root_obj) -> bpy.types.Object:
     return obj
 
 
-def add_extern(root_obj) -> bpy.types.Object:
+def add_extern(root_obj, extern_type='EXTERNSPAWN') -> bpy.types.Object:
     """
-    新建一个 Extern：用真实 EXTERNSPAWN 模板字节种子（合法的起始模板）。
+    新建一个 Extern，extern_type 决定使用哪种模板字节（默认 EXTERNSPAWN）。
 
-    ⚠ extern 内容当前 opaque 不可编辑——新建出来是个合法占位/起始模板，
+    ⚠ extern 内容当前 opaque 不可逐字段编辑——新建出来是个合法占位/起始模板，
     供配合 EXTERNREFERENCE 块引用使用。
     """
     col = _section_collection(root_obj, "_1 Extern")
@@ -240,13 +274,27 @@ def add_extern(root_obj) -> bpy.types.Object:
     has_label = _all_labeled(before)
     raw_label = f"extern_{idx}"
 
+    raw_b64 = _EXTERN_TYPE_B64.get(extern_type, _BLANK_EXTERN_B64)
+
     obj = _new_empty(f"{_nn(idx)} {raw_label}", col)
     obj["~TYPE"]         = "EFX_EXTERN"
     obj["efx_index"]     = idx
     obj["efx_raw_label"] = raw_label
     obj["efx_has_label"] = int(has_label)
-    obj["raw_b64"]       = _BLANK_EXTERN_B64
+    obj["raw_b64"]       = raw_b64
     obj.parent           = root_obj
+
+    # 解析模板字节，填充 efx_extern PropertyGroup（同 io_tree import 路径）
+    try:
+        import base64 as _b64
+        from ..efx_format.efxfile import EFXFile as _EFXFile
+        from . import extern_props as _ep
+        _raw = _b64.b64decode(raw_b64)
+        _ea_list, _ = _EFXFile._parse_extern(_raw, 0, 1)
+        if _ea_list:
+            _ep.init_extern_props(obj, _ea_list[0])
+    except Exception:
+        pass  # raw_b64 保底
 
     root_obj["labels_dirty"] = 1
     return obj
@@ -257,17 +305,33 @@ def add_extern(root_obj) -> bpy.types.Object:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_add_play(Operator):
-    """在 Active EFX 下新建一个 Play(action)（含 1 个空 PLAYEMITTER，targets 待接线）"""
+    """在 Active EFX 下新建一个 Play(action)，弹窗选择首条目类型"""
 
     bl_idname      = "efx.add_play"
     bl_label       = "Add Play (Action)"
-    bl_description = ("Create a new Play/Action (one empty PlayEmitter, no targets); "
-                      "the exporter recomputes the header and label table automatically")
+    bl_description = ("Create a new Play/Action; a dialog lets you choose PlayEmitter or PlayEFX "
+                      "as the first entry. The exporter recomputes the header and label table automatically.")
     bl_options     = {"REGISTER", "UNDO"}
+
+    entry_type: EnumProperty(
+        name="Entry Type",
+        description="Type of the first entry in the new Play",
+        items=[
+            ('PLAYEMITTER', "PlayEmitter", "Internal body reference (targets[] pointing to Main bodies)"),
+            ('PLAYEFX',     "PlayEFX",     "External .efx file call (path + XYZ offset)"),
+        ],
+        default='PLAYEMITTER',
+    )
 
     @classmethod
     def poll(cls, context):
         return get_active_efx_root(context) is not None
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(self, "entry_type")
 
     def execute(self, context):
         root = get_active_efx_root(context)
@@ -275,7 +339,7 @@ class EFX_OT_add_play(Operator):
             self.report({"ERROR"}, "Select an Active EFX collection first")
             return {"CANCELLED"}
         try:
-            obj = add_play(root)
+            obj = add_play(root, self.entry_type)
         except Exception as exc:
             self.report({"ERROR"}, f"Failed to add Play: {exc}")
             return {"CANCELLED"}
@@ -285,17 +349,38 @@ class EFX_OT_add_play(Operator):
 
 
 class EFX_OT_add_extern(Operator):
-    """在 Active EFX 下新建一个 Extern（真实模板字节；内容 opaque，作起始模板）"""
+    """在 Active EFX 下新建一个 Extern，弹窗选择子类型"""
 
     bl_idname      = "efx.add_extern"
     bl_label       = "Add Extern"
-    bl_description = ("Create a new Extern from a real template (EXTERNSPAWN); "
-                      "content is opaque for now, serves as a valid starting placeholder")
+    bl_description = ("Create a new Extern; a dialog lets you choose the subtype. "
+                      "Field editing is not yet supported — the new extern is a valid placeholder.")
     bl_options     = {"REGISTER", "UNDO"}
+
+    extern_type: EnumProperty(
+        name="Extern Type",
+        description="Subtype of the new Extern (determines the template bytes used)",
+        items=[
+            ('EXTERNSPAWN',       "ExternSpawn",       "Override spawn parameters (instances, rate, delay, lifespan)"),
+            ('EXTERNRGBFIRE',     "ExternRgbFire",     "Override RGB fire color parameters"),
+            ('EXTERNVELOCITY3D',  "ExternVelocity3D",  "Override 3D velocity parameters"),
+            ('EXTERNSCALEANIM',   "ExternScaleAnim",   "Override scale animation parameters"),
+            ('EXTERNTRANSFORM3D', "ExternTransform3D", "Override 3D transform (translate/rotate/scale/velocity)"),
+        ],
+        default='EXTERNSPAWN',
+    )
 
     @classmethod
     def poll(cls, context):
         return get_active_efx_root(context) is not None
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="Not fully supported — field editing not yet available.", icon="INFO")
+        layout.prop(self, "extern_type")
 
     def execute(self, context):
         root = get_active_efx_root(context)
@@ -303,12 +388,12 @@ class EFX_OT_add_extern(Operator):
             self.report({"ERROR"}, "Select an Active EFX collection first")
             return {"CANCELLED"}
         try:
-            obj = add_extern(root)
+            obj = add_extern(root, self.extern_type)
         except Exception as exc:
             self.report({"ERROR"}, f"Failed to add Extern: {exc}")
             return {"CANCELLED"}
         _select_only(context, obj)
-        self.report({"INFO"}, f"Added Extern: {obj.name}")
+        self.report({"INFO"}, f"Added Extern ({self.extern_type}): {obj.name}")
         return {"FINISHED"}
 
 
