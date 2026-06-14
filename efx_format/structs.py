@@ -1489,6 +1489,134 @@ assert _schema_size(EMITTERSHAPE2D_SCHEMA) == 32, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 原 opaque 定长类型 schema（新增）
+# 字段布局来源：EFX_Crimson.bt；字节数由 _known_attr_size 实测往返验证。
+# 字段命名以 unknN 为主，语义待后续逆向补全。
+# ─────────────────────────────────────────────────────────────────────────────
+
+# PathChain (81B total, 77B data)
+PATHCHAIN_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', 'i'),        # 4B
+    ('unkn2', 'f'),        # 4B
+    ('unkn3', 'i'),        # 4B
+    ('unkn4', ('f', 6)),   # 24B
+    ('unkn5', ('i', 8)),   # 32B
+    ('unkn6', 'b'),        # 1B
+]
+assert _schema_size(PATHCHAIN_SCHEMA) == 77, \
+    f"PATHCHAIN_SCHEMA size mismatch: {_schema_size(PATHCHAIN_SCHEMA)}"
+
+# PtTrigger (20B total, 16B data)
+PTTRIGGER_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', 'i'),        # 4B
+    ('unkn2', 'i'),        # 4B
+]
+assert _schema_size(PTTRIGGER_SCHEMA) == 16, \
+    f"PTTRIGGER_SCHEMA size mismatch: {_schema_size(PTTRIGGER_SCHEMA)}"
+
+# LinkPartsVisible (16B total, 12B data)
+LINKPARTSVISIBLE_SCHEMA = [
+    ('unkn0', ('i', 3)),   # 12B
+]
+assert _schema_size(LINKPARTSVISIBLE_SCHEMA) == 12, \
+    f"LINKPARTSVISIBLE_SCHEMA size mismatch: {_schema_size(LINKPARTSVISIBLE_SCHEMA)}"
+
+# SpawnByAngle (26B total, 22B data)
+SPAWNBYANGLE_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', 'i'),        # 4B
+    ('unkn2', 'f'),        # 4B
+    ('unkn3', 'i'),        # 4B
+    ('unkn4', 'h'),        # 2B
+]
+assert _schema_size(SPAWNBYANGLE_SCHEMA) == 22, \
+    f"SPAWNBYANGLE_SCHEMA size mismatch: {_schema_size(SPAWNBYANGLE_SCHEMA)}"
+
+# CheckPureAttribute (44B total, 40B data)
+CHECKPUREATTRIBUTE_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', 'i'),        # 4B
+    ('unkn2', ('i', 7)),   # 28B
+]
+assert _schema_size(CHECKPUREATTRIBUTE_SCHEMA) == 40, \
+    f"CHECKPUREATTRIBUTE_SCHEMA size mismatch: {_schema_size(CHECKPUREATTRIBUTE_SCHEMA)}"
+
+# SpawnByOcclusion (24B total, 20B data)
+SPAWNBYOCCLUSION_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', 'i'),        # 4B
+    ('unkn2', 'f'),        # 4B
+    ('unkn3', 'i'),        # 4B
+]
+assert _schema_size(SPAWNBYOCCLUSION_SCHEMA) == 20, \
+    f"SPAWNBYOCCLUSION_SCHEMA size mismatch: {_schema_size(SPAWNBYOCCLUSION_SCHEMA)}"
+
+# FadeByOcclusion (28B total, 24B data)
+FADEBYOCCLUSION_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', 'i'),        # 4B
+    ('unkn2', ('f', 3)),   # 12B
+]
+assert _schema_size(FADEBYOCCLUSION_SCHEMA) == 24, \
+    f"FADEBYOCCLUSION_SCHEMA size mismatch: {_schema_size(FADEBYOCCLUSION_SCHEMA)}"
+
+# ParentMaterial (16B total, 12B data)
+PARENTMATERIAL_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', 'f'),        # 4B
+]
+assert _schema_size(PARENTMATERIAL_SCHEMA) == 12, \
+    f"PARENTMATERIAL_SCHEMA size mismatch: {_schema_size(PARENTMATERIAL_SCHEMA)}"
+
+# Transform2D (28B total, 24B data)
+# BT: int64 unkn0[2](16B) + float unkn1[2](8B)
+TRANSFORM2D_SCHEMA = [
+    ('unkn0', ('q', 2)),   # 16B
+    ('unkn1', ('f', 2)),   # 8B
+]
+assert _schema_size(TRANSFORM2D_SCHEMA) == 24, \
+    f"TRANSFORM2D_SCHEMA size mismatch: {_schema_size(TRANSFORM2D_SCHEMA)}"
+
+# ColorCorrectFilter (692B total, 688B data)
+COLORCORRECTFILTER_SCHEMA = [
+    ('unkn0', ('i', 4)),     # 16B
+    ('unkn1', ('f', 168)),   # 672B
+]
+assert _schema_size(COLORCORRECTFILTER_SCHEMA) == 688, \
+    f"COLORCORRECTFILTER_SCHEMA size mismatch: {_schema_size(COLORCORRECTFILTER_SCHEMA)}"
+
+# ParentSnow (84B total, 80B data)
+PARENTSNOW_SCHEMA = [
+    ('unkn0', ('i', 2)),    # 8B
+    ('unkn1', 'i'),         # 4B
+    ('unkn2', 'i'),         # 4B
+    ('color', ('XYZ', 2)),  # 4B
+    ('unkn3', ('i', 2)),    # 8B
+    ('unkn4', ('f', 13)),   # 52B
+]
+assert _schema_size(PARENTSNOW_SCHEMA) == 80, \
+    f"PARENTSNOW_SCHEMA size mismatch: {_schema_size(PARENTSNOW_SCHEMA)}"
+
+# OtomoSnow (88B total, 84B data)
+# 注：Crimson BT 记载 84B，实测往返 88B（多一个 XYZ color 字段），以实测为准。
+OTOMOSNOW_SCHEMA = [
+    ('unkn0', ('i', 2)),    # 8B
+    ('unkn1', 'i'),         # 4B
+    ('unkn2', ('i', 2)),    # 8B
+    ('color', ('XYZ', 2)),  # 4B
+    ('unkn3', 'i'),         # 4B
+    ('unkn4', 'i'),         # 4B
+    ('unkn5', ('f', 4)),    # 16B
+    ('unkn6', 'i'),         # 4B
+    ('unkn7', ('f', 8)),    # 32B
+]
+assert _schema_size(OTOMOSNOW_SCHEMA) == 84, \
+    f"OTOMOSNOW_SCHEMA size mismatch: {_schema_size(OTOMOSNOW_SCHEMA)}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ─────────────────────────────────────────────────────────────────────────────
 # VARIABLE-LENGTH TYPES
 #
@@ -2551,6 +2679,36 @@ def pack_material(values: dict) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# TonemapFilter (variable: fixed 24B data + int path_len + path bytes)
+# BT: int unkn0[2](8B) + long unkn1(4B) + float unkn2[3](12B) + int path_len(4B) + char p[path_len]
+# ─────────────────────────────────────────────────────────────────────────────
+
+_TONEMAPFILTER_FIXED_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', 'i'),        # 4B
+    ('unkn2', ('f', 3)),   # 12B
+]  # 24B
+
+
+def unpack_tonemapfilter(data: bytes, off: int = 0):
+    values, off = unpack(_TONEMAPFILTER_FIXED_SCHEMA, data, off)
+    (path_len,) = struct.unpack_from('<i', data, off)
+    off += 4
+    values['path_len'] = path_len
+    values['path'] = data[off:off + path_len]
+    off += path_len
+    return values, off
+
+
+def pack_tonemapfilter(values: dict) -> bytes:
+    out = pack(_TONEMAPFILTER_FIXED_SCHEMA, values)
+    path = values.get('path', b'')
+    out += struct.pack('<i', len(path))
+    out += path
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Custom-codec registry
 #
 # Maps type_hash → (unpack_fn, pack_fn)
@@ -2605,6 +2763,21 @@ from .hashes import (
     SHOVEL,
     UVCONTROL,
     EMITTERSHAPE2D,
+    # 原 opaque 定长类型（新增 schema）
+    PATHCHAIN,
+    PTTRIGGER,
+    LINKPARTSVISIBLE,
+    SPAWNBYANGLE,
+    CHECKPUREATTRIBUTE,
+    SPAWNBYOCCLUSION,
+    FADEBYOCCLUSION,
+    PARENTMATERIAL,
+    TRANSFORM2D,
+    COLORCORRECTFILTER,
+    PARENTSNOW,
+    OTOMOSNOW,
+    # 原 opaque 变长类型（新增 custom codec）
+    TONEMAPFILTER,
     # variable-length and dispatch types
     UVSEQUENCE,
     BILLBOARD3D,
@@ -2658,6 +2831,19 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     SHOVEL:             (SHOVEL_SCHEMA,               70),
     UVCONTROL:          (UVCONTROL_SCHEMA,           236),
     EMITTERSHAPE2D:     (EMITTERSHAPE2D_SCHEMA,       32),
+    # ── 原 opaque 定长类型（新增）────────────────────────────────────────────
+    PATHCHAIN:          (PATHCHAIN_SCHEMA,            77),
+    PTTRIGGER:          (PTTRIGGER_SCHEMA,            16),
+    LINKPARTSVISIBLE:   (LINKPARTSVISIBLE_SCHEMA,     12),
+    SPAWNBYANGLE:       (SPAWNBYANGLE_SCHEMA,         22),
+    CHECKPUREATTRIBUTE: (CHECKPUREATTRIBUTE_SCHEMA,   40),
+    SPAWNBYOCCLUSION:   (SPAWNBYOCCLUSION_SCHEMA,     20),
+    FADEBYOCCLUSION:    (FADEBYOCCLUSION_SCHEMA,      24),
+    PARENTMATERIAL:     (PARENTMATERIAL_SCHEMA,       12),
+    TRANSFORM2D:        (TRANSFORM2D_SCHEMA,          24),
+    COLORCORRECTFILTER: (COLORCORRECTFILTER_SCHEMA,  688),
+    PARENTSNOW:         (PARENTSNOW_SCHEMA,           80),
+    OTOMOSNOW:          (OTOMOSNOW_SCHEMA,            84),
     # ── Variable/dispatch types: sentinel '_custom', size=None ────────────────
     # These are routed to ATTR_CUSTOM_CODEC by decode/encode on AttrBlock.
     UVSEQUENCE:  ('_custom', None),
@@ -2672,6 +2858,7 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     RGBWATER:    ('_custom', None),
     PTBEHAVIOR:  ('_custom', None),
     MATERIAL:    ('_custom', None),
+    TONEMAPFILTER:('_custom', None),
 }
 
 # Populate custom codec registry after the hash imports above
@@ -2686,8 +2873,9 @@ ATTR_CUSTOM_CODEC = {
     TURBULENCE:  (unpack_turbulence,  pack_turbulence),
     LIGHTNING:   (unpack_lightning,   pack_lightning),
     RGBWATER:    (unpack_rgbwater,    pack_rgbwater),
-    PTBEHAVIOR:  (unpack_ptbehavior,  pack_ptbehavior),
-    MATERIAL:    (unpack_material,    pack_material),
+    PTBEHAVIOR:   (unpack_ptbehavior,   pack_ptbehavior),
+    MATERIAL:     (unpack_material,     pack_material),
+    TONEMAPFILTER:(unpack_tonemapfilter,pack_tonemapfilter),
 }
 
 
