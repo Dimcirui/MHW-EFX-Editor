@@ -1373,7 +1373,7 @@ def _init_path_block_props(blk, bp) -> None:
     hint.edited = False
     hint.read_only = True
     hint.orig_b64 = ""
-    hint.opaque_str = "(其余字段暂 opaque，L1.1b/c 仅路径可编辑)"
+    hint.opaque_str = ""
 
     bp.is_editable = True
 

@@ -521,6 +521,14 @@ def _draw_block_fields_content(layout, context):
                 mt_row = col.row(align=True)
                 mt_row.scale_y = 1.0
                 mt_row.label(text=T("material.type") + " " + _material_type, icon="MATERIAL")
+            # 部分可编辑（含 __opaque_hint__）：块名下一行灰字提示
+            _has_partial = any(
+                it.ori_name == "__opaque_hint__" for it in bp.field_items
+            )
+            if _has_partial:
+                _hint_row = col.row(align=True)
+                _hint_row.enabled = False
+                _hint_row.label(text=T("block.partial_edit"))
             col.separator(factor=0.5)
             # 逐字段绘制（带 value+jitter 位置配对：jitter 字段与紧邻前一个
             # 同类型标量 value 合并一行，模拟 XYZ Fixed/Random 分组风格）
@@ -529,6 +537,10 @@ def _draw_block_fields_content(layout, context):
             i = 0
             while i < n:
                 item = items[i]
+                # __opaque_hint__ 是内部 sentinel，不渲染为字段行
+                if item.ori_name.startswith("__") and item.ori_name.endswith("__"):
+                    i += 1
+                    continue
                 # L2 #1c：EXTERNREFERENCE 的 referenceIndex 字段替换为 extern 指针 UI
                 if _is_extern_ref and item.ori_name == "referenceIndex":
                     _draw_extern_ref_field(col, obj)
@@ -580,13 +592,9 @@ def _draw_block_fields_content(layout, context):
         title_row.scale_y = 1.0
         block_title = type_name if type_name else f"Hash {bp.type_hash_str}"
         title_row.label(text=block_title, icon="MODIFIER")
-        col.separator(factor=0.5)
-        row = col.row(align=True)
-        row.scale_y = 1.1
-        row.label(text=T("block.opaque"), icon="LOCKED")
-        row2 = col.row(align=True)
-        row2.scale_y = 1.0
-        row2.label(text=T("block.opaque_hint"))
+        _hint_row = col.row(align=True)
+        _hint_row.enabled = False
+        _hint_row.label(text=T("block.partial_edit"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

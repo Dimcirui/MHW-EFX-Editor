@@ -227,6 +227,7 @@ STRINGS = {
     "block.opaque":          {"EN": "(opaque, not editable yet)", "ZH": "（opaque，暂不可编辑）"},
     "block.opaque_hint":     {"EN": "This block type has complex structure; raw bytes preserved.",
                               "ZH": "此块类型含复杂结构，本轮仅保留原始字节。"},
+    "block.partial_edit":    {"EN": "Not fully editable",        "ZH": "不支持完全编辑"},
     "block.no_fields":       {"EN": "(no fields)",         "ZH": "（无字段）"},
     "block.select_hint":     {"EN": "Select an EFX_BLOCK object", "ZH": "请选中 EFX_BLOCK 对象"},
 
