@@ -167,6 +167,32 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 |---|---|
 | RANDOMFIX | ✓ |
 
+#### XII. Unknowns
+
+| Block Type | Field Editing |
+|---|---|
+| PATHCHAIN | ✓ |
+| PTTRIGGER | ✓ |
+| FAKEDOF | ✗ |
+| REPEATAREA | ✗ |
+| LINKPARTSVISIBLE | ✓ |
+| FAKEPLANE | ✓ |
+| TRANSFORM2D | ✓ |
+| BILLBOARD2D | ✗ |
+| VELOCITY2D | ✓ |
+| TUBELIGHT | ✗ |
+| LAYOUT | ✗ |
+| SPAWNBYANGLE | ✓ |
+| CHECKPUREATTRIBUTE | ✓ |
+| TONEMAPFILTER | ✓ |
+| COLORCORRECTFILTER | ✓ |
+| SPAWNBYOCCLUSION | ✓ |
+| FADEBYOCCLUSION | ✓ |
+| PARENTSNOW | ✓ |
+| OTOMOSNOW | ✓ |
+| PARENTMATERIAL | ✓ |
+| EMITTERSHAPEMESH | ✓ |
+
 ### 3. Other Features
 - **TRANSFORM3D Visualization** — Reflects the actual trigger position of the EFX Body.
   This feature uses the same coordinate system as the MHW Model Editor.
