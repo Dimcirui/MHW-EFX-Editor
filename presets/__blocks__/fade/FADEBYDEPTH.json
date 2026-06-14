@@ -1,8 +1,0 @@
-{
-    "efx_preset_kind": "block",
-    "type_hash": "859243212",
-    "type_name": "FADEBYDEPTH",
-    "display_name": "FADEBYDEPTH（按深度渐隐）",
-    "category": "fade",
-    "data_bytes": "AwAAAAAAyEIAAEhDAEAcRgCAO0Y="
-}

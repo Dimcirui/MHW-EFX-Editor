@@ -115,25 +115,47 @@ def _read_display_name(json_path: str) -> str:
 # 路径工具：用户持久化预设目录（重装扩展不丢失）
 # ─────────────────────────────────────────────────────────────────────────────
 
+_migrate_done = False  # 真正的 once 标志，模块级，热重载时重置
+
+
 def _presets_root() -> str:
     """
     返回预设根目录的绝对路径（用户数据目录，重装扩展不丢失）。
     路径：<Blender用户数据>/scripts/presets/efx_editor/
-    首次调用时自动把旧路径（包内 presets/）的预设迁移过来（跳过已有同名文件）。
+    首次调用时自动把包内 presets/ 的预设同步到用户目录（每次 Blender 会话只跑一次）。
     """
+    global _migrate_done
     new_root = bpy.utils.user_resource("SCRIPTS", path="presets/efx_editor")
     os.makedirs(new_root, exist_ok=True)
-    _migrate_presets_once(new_root)
+    if not _migrate_done:
+        _migrate_presets_once(new_root)
+        _migrate_done = True
     return new_root
 
 
 def _migrate_presets_once(new_root: str):
-    """把旧包内 presets/ 目录的 JSON 文件迁移到新用户目录，跳过已存在的同名文件。"""
+    """
+    把包内 presets/ 目录的 JSON 文件同步到用户目录：
+    - 跳过已存在的同名文件（用户自定义预设不覆盖）
+    - 清理用户目录中已不属于当前分类体系的旧 slug 子目录
+    """
     import shutil
+    from ..efx_format.categories import BLOCK_CATEGORY_LABELS
+
     here = os.path.dirname(os.path.abspath(__file__))
     old_root = os.path.join(os.path.dirname(here), "presets")
     if not os.path.isdir(old_root):
         return
+
+    # 清理用户目录里不再属于当前分类体系的旧 __blocks__ 子目录
+    blocks_user = os.path.join(new_root, "__blocks__")
+    if os.path.isdir(blocks_user):
+        for entry in os.listdir(blocks_user):
+            entry_path = os.path.join(blocks_user, entry)
+            if os.path.isdir(entry_path) and entry not in BLOCK_CATEGORY_LABELS:
+                shutil.rmtree(entry_path, ignore_errors=True)
+
+    # 从包内预设目录复制新文件（跳过已有同名，保留用户自定义）
     for dirpath, _dirs, files in os.walk(old_root):
         rel = os.path.relpath(dirpath, old_root)
         dest_dir = os.path.join(new_root, rel) if rel != "." else new_root
