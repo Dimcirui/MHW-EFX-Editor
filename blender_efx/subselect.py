@@ -433,7 +433,6 @@ class EFX_PT_subselect(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "Subselect Ownership"
-    bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod

@@ -248,7 +248,6 @@ class EFX_PT_hex_view(bpy.types.Panel):
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "Hex View (Read-only)"
-    bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod

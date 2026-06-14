@@ -254,7 +254,6 @@ class EFX_PT_extern_backref(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "Extern Referenced By"
-    bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -538,7 +537,6 @@ class EFX_PT_body_backref(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "Body References"
-    bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod

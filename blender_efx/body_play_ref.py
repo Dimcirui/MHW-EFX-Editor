@@ -667,7 +667,6 @@ class EFX_PT_ptlife_ref(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "Relation Action Reference"
-    bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -729,7 +728,6 @@ class EFX_PT_ptcollision_ref(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "IE Play Reference"
-    bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -879,7 +877,6 @@ class EFX_PT_eof_list(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "EOF Active List"
-    bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod

@@ -112,18 +112,38 @@ def _read_display_name(json_path: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 路径工具：找到 presets/ 目录（位于 blender_efx/ 同级的扩展包根下）
+# 路径工具：用户持久化预设目录（重装扩展不丢失）
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _presets_root() -> str:
     """
-    返回 presets/ 目录的绝对路径。
-    位置：本文件（blender_efx/presets.py）所在目录的父级（扩展包根）下的 presets/。
-    即：<efx_editor_root>/presets/
+    返回预设根目录的绝对路径（用户数据目录，重装扩展不丢失）。
+    路径：<Blender用户数据>/scripts/presets/efx_editor/
+    首次调用时自动把旧路径（包内 presets/）的预设迁移过来（跳过已有同名文件）。
     """
+    new_root = bpy.utils.user_resource("SCRIPTS", path="presets/efx_editor")
+    os.makedirs(new_root, exist_ok=True)
+    _migrate_presets_once(new_root)
+    return new_root
+
+
+def _migrate_presets_once(new_root: str):
+    """把旧包内 presets/ 目录的 JSON 文件迁移到新用户目录，跳过已存在的同名文件。"""
+    import shutil
     here = os.path.dirname(os.path.abspath(__file__))
-    package_root = os.path.dirname(here)
-    return os.path.join(package_root, "presets")
+    old_root = os.path.join(os.path.dirname(here), "presets")
+    if not os.path.isdir(old_root):
+        return
+    for dirpath, _dirs, files in os.walk(old_root):
+        rel = os.path.relpath(dirpath, old_root)
+        dest_dir = os.path.join(new_root, rel) if rel != "." else new_root
+        for fname in files:
+            if not fname.endswith(".json"):
+                continue
+            dst = os.path.join(dest_dir, fname)
+            if not os.path.exists(dst):
+                os.makedirs(dest_dir, exist_ok=True)
+                shutil.copy2(os.path.join(dirpath, fname), dst)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

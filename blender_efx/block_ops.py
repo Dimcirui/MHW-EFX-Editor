@@ -610,6 +610,15 @@ def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
+    bpy.types.WindowManager.efx_preset_mode = EnumProperty(
+        name="Preset Mode",
+        items=[
+            ("BODY",  "Body",  ""),
+            ("BLOCK", "Block", ""),
+        ],
+        default="BODY",
+        options={"SKIP_SAVE"},
+    )
     bpy.types.WindowManager.efx_block_category_enum = EnumProperty(
         name="Block Category",
         description="Pick the functional category of the block first",
@@ -629,6 +638,8 @@ def unregister():
         del bpy.types.WindowManager.efx_block_whole_preset_enum
     if hasattr(bpy.types.WindowManager, "efx_block_category_enum"):
         del bpy.types.WindowManager.efx_block_category_enum
+    if hasattr(bpy.types.WindowManager, "efx_preset_mode"):
+        del bpy.types.WindowManager.efx_preset_mode
 
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)

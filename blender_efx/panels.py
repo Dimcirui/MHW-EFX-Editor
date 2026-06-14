@@ -641,8 +641,7 @@ class EFX_PT_main(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_presets  —  统一「预设」面板（块预设 / Body 预设，顶部模式下拉）
-#   布局两模式统一：复制/粘贴(属性|Body) → 保存当前为预设 → 选预设+应用/新增 → 打开文件夹
+# EFX_PT_presets  —  统一「预设」面板（Body 预设 / Block 预设，顶部模式切换）
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _draw_body_presets_content(layout, context):
@@ -680,19 +679,59 @@ def _draw_body_presets_content(layout, context):
     layout.operator("efx.open_body_preset_folder", text=T("body.open_folder"), icon="FILE_FOLDER")
 
 
+def _draw_block_presets_content(layout, context):
+    """Block 预设模式：复制/保存整块 + 分类选择 + 选预设新增 + 粘贴块 + 打开文件夹。
+    新增块需选中 EFX_BODY，保存/复制需选中 EFX_BLOCK，算子 poll 自动灰。"""
+    wm = context.window_manager
+
+    # 1. 复制整块 / 保存为块预设（需选中 EFX_BLOCK，poll 自动灰）
+    row = layout.row(align=True)
+    row.operator("efx.copy_block", text=T("block.copy_whole"), icon="COPYDOWN")
+    row.operator("efx.save_block_preset", text=T("block.save_preset"), icon="ADD")
+
+    layout.separator()
+
+    # 2. 分类 + 块预设下拉 + 新增（需选中 EFX_BODY，poll 自动灰）
+    layout.label(text=T("block.add_section"), icon="PLUS")
+    layout.prop(wm, "efx_block_category_enum", text=T("block.category"))
+    row = layout.row(align=True)
+    row.prop(wm, "efx_block_whole_preset_enum", text="")
+    selected = wm.efx_block_whole_preset_enum
+    if selected:
+        op = row.operator("efx.add_block_from_block_preset", text=T("block.add"), icon="PLAY")
+        op.preset_path = selected
+    else:
+        sub = row.row()
+        sub.enabled = False
+        sub.operator("efx.add_block_from_block_preset", text=T("block.add"), icon="PLAY")
+
+    layout.separator()
+
+    # 3. 粘贴块 + 打开文件夹
+    row2 = layout.row(align=True)
+    row2.operator("efx.paste_block", text=T("block.paste"), icon="PASTEDOWN")
+    row2.operator("efx.open_block_preset_folder", text=T("body.open_folder"), icon="FILE_FOLDER")
+
+
 class EFX_PT_presets(bpy.types.Panel):
-    """EFX Body 预设（保存整 body / 从预设新增 body）"""
+    """EFX 预设（Body 预设 / Block 预设，顶部模式切换）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Body Preset"
+    bl_label        = "Presets"
     bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
         layout = self.layout
-        _draw_body_presets_content(layout, context)
+        wm = context.window_manager
+        layout.row().prop(wm, "efx_preset_mode", expand=True)
+        layout.separator(factor=0.3)
+        if wm.efx_preset_mode == "BLOCK":
+            _draw_block_presets_content(layout, context)
+        else:
+            _draw_body_presets_content(layout, context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -706,7 +745,6 @@ class EFX_PT_body_reorder(bpy.types.Panel):
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "Body Properties"
-    bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -745,28 +783,6 @@ class EFX_PT_body_reorder(bpy.types.Panel):
             sub.enabled = False
             sub.operator("efx.rename_body", text=T("body.rename_blocked"), icon="GREASEPENCIL")
 
-        # ── 块级组装：新增块 / 粘贴块 ─────────────────────────────────────────
-        layout.separator(factor=0.8)
-        layout.label(text=T("block.add_section"), icon="PLUS")
-
-        wm = context.window_manager
-        # 第一级：分类下拉
-        layout.prop(wm, "efx_block_category_enum", text=T("block.category"))
-        # 第二级：所选分类内的块预设下拉 + 新增按钮
-        row = layout.row(align=True)
-        row.prop(wm, "efx_block_whole_preset_enum", text="")
-        selected = wm.efx_block_whole_preset_enum
-        if selected:
-            op = row.operator("efx.add_block_from_block_preset", text=T("block.add"), icon="PLAY")
-            op.preset_path = selected
-        else:
-            sub = row.row()
-            sub.enabled = False
-            sub.operator("efx.add_block_from_block_preset", text=T("block.add"), icon="PLAY")
-
-        row2 = layout.row(align=True)
-        row2.operator("efx.paste_block", text=T("block.paste"), icon="PASTEDOWN")
-        row2.operator("efx.open_block_preset_folder", text="", icon="FILE_FOLDER")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -781,7 +797,6 @@ class EFX_PT_block_fields(bpy.types.Panel):
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "Block Properties"
-    bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -894,7 +909,6 @@ class EFX_PT_delete(bpy.types.Panel):
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "Delete / Validate"
-    bl_parent_id    = "EFX_PT_main"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -943,32 +957,27 @@ class EFX_PT_delete(bpy.types.Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CLASSES = (
+    # 主面板（Import/Export/Active EFX/Armature）
     EFX_PT_main,
-    # 统一「预设」面板：块预设 / Body 预设（bl_parent_id='EFX_PT_main'，必须在其后注册）
+    # 子面板（挂在 EFX_PT_main 下，无上下文依赖）
     EFX_PT_presets,
-    # 新建段条目面板（bl_parent_id='EFX_PT_main'，必须在其后注册）
     EFX_PT_add_section,
-    # L2 #3b / #4：删除 + 校验面板（bl_parent_id='EFX_PT_main'，必须在其后注册）
+    # 顶级上下文面板（选中特定对象时出现，与 EFX_PT_main 同级）
     EFX_PT_delete,
-    # L2 #3a：body 重排面板（选中 EFX_BODY 时显示）
     EFX_PT_body_reorder,
     EFX_PT_block_fields,
     EFX_PT_block_fields_props,
     EFX_PT_block_fields_object,
-    # L2 #1a：Subselect 归属面板（bl_parent_id='EFX_PT_main'，必须在 EFX_PT_main 之后注册）
     EFX_PT_subselect,
-    # L2 #1b：Play 数据面板（bl_parent_id='EFX_PT_main'，必须在 EFX_PT_main 之后注册）
     EFX_PT_play,
-    # L2 #1c：ExternReference 指针面板（bl_parent_id='EFX_PT_main'，必须在 EFX_PT_main 之后注册）
     EFX_PT_extern_ref,
-    # L2 #1d：PtLife/PtCollision/eof_ints 指针面板（bl_parent_id='EFX_PT_main'）
     EFX_PT_ptlife_ref,
     EFX_PT_ptcollision_ref,
     EFX_PT_eof_list,
-    # L2 #1d EOF 算子
+    # EOF 算子
     EFX_OT_eof_toggle_body,
     EFX_OT_eof_remove_entry,
-    # L2 反向引用视图（只读，bl_parent_id='EFX_PT_main'，必须在 EFX_PT_main 之后注册）
+    # 反向引用视图（只读）
     EFX_PT_extern_backref,
     EFX_PT_body_backref,
 )

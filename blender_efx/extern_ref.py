@@ -312,7 +312,6 @@ class EFX_PT_extern_ref(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "Extern Reference"
-    bl_parent_id   = "EFX_PT_main"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod
