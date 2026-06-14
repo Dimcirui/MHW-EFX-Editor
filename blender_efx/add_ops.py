@@ -41,6 +41,7 @@ blender_efx/add_ops.py  —  L2 #3c：从「整 body 预设」新增 body + Acti
 
 import json
 import os
+import time
 
 import bpy
 from bpy.props import EnumProperty, PointerProperty, StringProperty
@@ -640,6 +641,7 @@ class EFX_OT_save_body_preset(bpy.types.Operator):
         except Exception as exc:
             self.report({"ERROR"}, f"Failed to save body preset: {exc}")
             return {"CANCELLED"}
+        _invalidate_body_preset_cache()
         self.report({"INFO"}, f"Saved body preset: {os.path.basename(path)}")
         return {"FINISHED"}
 
@@ -803,19 +805,30 @@ def _active_efx_poll(self, col):
     return any(o.get("~TYPE") == "EFX_ROOT" for o in col.objects)
 
 
-# Blender EnumProperty 动态回调的 GC 陷阱（详见 panels.py 顶部完整说明）：
-# 模块级全局缓存 + 回调里 global 重新赋值再 return，防止局部 list 被 GC 后
-# Blender C 层字符串指针变野 → 中文预设下拉乱码。本变量独立于块预设的缓存。
+# EnumProperty 动态回调缓存（GC 陷阱说明见 panels.py 顶部）。
+# 脏标志 + 2 秒 TTL 双重机制：保存预设时立即失效；用户手动改文件夹后 2 秒内刷新。
 _body_preset_items_cache = [("", "（无预设）", "")]
+_body_preset_dirty = True        # 保存后置 True → 下次 redraw 立即重扫
+_body_preset_cache_time = 0.0    # 上次扫描时间戳
+_BODY_CACHE_TTL = 2.0            # 秒
+
+
+def _invalidate_body_preset_cache():
+    global _body_preset_dirty
+    _body_preset_dirty = True
 
 
 def _get_body_preset_items(self, context):
-    """WindowManager.efx_body_preset_enum 的动态 items 回调。"""
-    global _body_preset_items_cache
-    try:
-        _body_preset_items_cache = list_body_presets()
-    except Exception:
-        _body_preset_items_cache = [("", "（加载预设出错）", "")]
+    """WindowManager.efx_body_preset_enum 的动态 items 回调（带缓存）。"""
+    global _body_preset_items_cache, _body_preset_dirty, _body_preset_cache_time
+    now = time.monotonic()
+    if _body_preset_dirty or (now - _body_preset_cache_time) > _BODY_CACHE_TTL:
+        try:
+            _body_preset_items_cache = list_body_presets()
+        except Exception:
+            _body_preset_items_cache = [("", "（加载预设出错）", "")]
+        _body_preset_dirty = False
+        _body_preset_cache_time = now
     return _body_preset_items_cache
 
 

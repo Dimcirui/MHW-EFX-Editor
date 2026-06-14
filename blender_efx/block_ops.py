@@ -34,6 +34,7 @@ blender_efx/block_ops.py  —  块级组装：单块的复制/粘贴与块预设
 import base64
 import json
 import os
+import time
 
 import bpy
 from bpy.props import EnumProperty, StringProperty
@@ -421,6 +422,7 @@ class EFX_OT_save_block_preset(bpy.types.Operator):
         except Exception as exc:
             self.report({"ERROR"}, f"Failed to save block preset: {exc}")
             return {"CANCELLED"}
+        _invalidate_block_preset_cache()
         self.report({"INFO"}, f"Block preset saved: {os.path.basename(path)}")
         return {"FINISHED"}
 
@@ -575,34 +577,55 @@ _CLASSES = (
     EFX_OT_paste_block,
 )
 
-# EnumProperty 动态回调的 GC 陷阱修法（见 panels.py 顶部完整说明）：
-# 每个 enum 用各自独立的模块级全局缓存 + 回调里 global 重新赋值再 return 全局变量本身。
+# EnumProperty 动态回调缓存（GC 陷阱说明见 panels.py 顶部）。
+# 脏标志 + 2 秒 TTL：保存后立即失效；手动改文件夹 2 秒内刷新。
 _block_category_items_cache = [("", "(no block presets)", "")]
 _block_whole_preset_items_cache = [("", "(pick a category)", "")]
+_block_category_dirty = True
+_block_preset_dirty = True
+_block_category_cache_time = 0.0
+_block_preset_cache_time = 0.0
+_last_preset_slug = None          # 上次构建 preset list 时用的 category slug
+_BLOCK_CACHE_TTL = 2.0            # 秒
+
+
+def _invalidate_block_preset_cache():
+    global _block_category_dirty, _block_preset_dirty
+    _block_category_dirty = True
+    _block_preset_dirty = True
 
 
 def _get_block_category_items(self, context):
-    """WindowManager.efx_block_category_enum 的动态 items 回调（第一级：分类）。"""
-    global _block_category_items_cache
-    try:
-        _block_category_items_cache = list_block_categories()
-    except Exception:
-        _block_category_items_cache = [("", "(category load error)", "")]
+    """WindowManager.efx_block_category_enum 的动态 items 回调（带缓存）。"""
+    global _block_category_items_cache, _block_category_dirty, _block_category_cache_time
+    now = time.monotonic()
+    if _block_category_dirty or (now - _block_category_cache_time) > _BLOCK_CACHE_TTL:
+        try:
+            _block_category_items_cache = list_block_categories()
+        except Exception:
+            _block_category_items_cache = [("", "(category load error)", "")]
+        _block_category_dirty = False
+        _block_category_cache_time = now
     return _block_category_items_cache
 
 
 def _get_block_whole_preset_items(self, context):
     """
-    WindowManager.efx_block_whole_preset_enum 的动态 items 回调（第二级：类内块）。
-    读取第一级 efx_block_category_enum 的当前值来过滤。
+    WindowManager.efx_block_whole_preset_enum 的动态 items 回调（带缓存）。
+    分类切换或脏标志时重扫。
     """
-    global _block_whole_preset_items_cache
-    try:
-        wm = context.window_manager if context else None
-        slug = getattr(wm, "efx_block_category_enum", "") if wm else ""
-        _block_whole_preset_items_cache = list_block_presets(slug)
-    except Exception:
-        _block_whole_preset_items_cache = [("", "(preset load error)", "")]
+    global _block_whole_preset_items_cache, _block_preset_dirty, _block_preset_cache_time, _last_preset_slug
+    wm = context.window_manager if context else None
+    slug = getattr(wm, "efx_block_category_enum", "") if wm else ""
+    now = time.monotonic()
+    if _block_preset_dirty or slug != _last_preset_slug or (now - _block_preset_cache_time) > _BLOCK_CACHE_TTL:
+        try:
+            _block_whole_preset_items_cache = list_block_presets(slug)
+        except Exception:
+            _block_whole_preset_items_cache = [("", "(preset load error)", "")]
+        _block_preset_dirty = False
+        _block_preset_cache_time = now
+        _last_preset_slug = slug
     return _block_whole_preset_items_cache
 
 
