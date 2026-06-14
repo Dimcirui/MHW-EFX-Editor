@@ -39,6 +39,8 @@ from ..efx_format.efxfile import (
     MainDataBody,
     MainDataBodyExtended,
     RootBody,
+    RootUnitBoundary,
+    RootOpaqueEntry,
     SubselectTable,
 )
 from ..efx_format.hashes import HASH_TO_NAME
@@ -243,9 +245,25 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         body_obj.parent           = root_obj
 
         if isinstance(body, RootBody):
-            # RootBody：全部存 base64（opaque）
             body_obj["body_kind"] = "root"
-            body_obj["raw"]       = _b64enc(body.raw)
+            # 仅当全部子条目都是 UnitBoundary（实测 100% 官方样本如此）才结构化为
+            # 可编辑字段；含 RenderTarget/LayoutBank 或整段不透明回退时存 base64 只读。
+            structurable = (
+                body.raw is None
+                and all(isinstance(e, RootUnitBoundary) for e in body.entries)
+            )
+            if structurable:
+                body_obj["root_structured"] = 1
+                body_obj["root_const0"]     = str(body.const0)
+                body_obj["root_const1"]     = str(body.const1)
+                body_obj["root_ub_count"]   = len(body.entries)
+                for j, e in enumerate(body.entries):
+                    # 原生数组 IDProperty → panel 可直接 layout.prop 编辑
+                    body_obj["root_ub%d_ints" % j]   = list(e.ints)
+                    body_obj["root_ub%d_floats" % j] = list(e.floats)
+            else:
+                body_obj["root_structured"] = 0
+                body_obj["raw"]             = _b64enc(body.serialize())
 
         elif isinstance(body, MainDataBodyExtended):
             # 扩展头（body_type < 256，36B 头）
@@ -681,8 +699,21 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
         kind = str(body_obj["body_kind"])
 
         if kind == "root":
-            raw = _b64dec(str(body_obj["raw"]))
-            main_bodies.append(RootBody(raw=raw))
+            if int(body_obj.get("root_structured", 0)) == 1:
+                n = int(body_obj.get("root_ub_count", 0))
+                entries = []
+                for j in range(n):
+                    ints = tuple(int(x) for x in body_obj["root_ub%d_ints" % j])
+                    floats = tuple(float(x) for x in body_obj["root_ub%d_floats" % j])
+                    entries.append(RootUnitBoundary(ints=ints, floats=floats))
+                main_bodies.append(RootBody(
+                    const0=int(str(body_obj["root_const0"])),
+                    const1=int(str(body_obj["root_const1"])),
+                    entries=entries,
+                ))
+            else:
+                raw = _b64dec(str(body_obj["raw"]))
+                main_bodies.append(RootBody(raw=raw))
 
         elif kind == "extended":
             # 收集 AttrBlock 子对象

@@ -838,12 +838,60 @@ class MainDataBodyExtended:
 
 
 @dataclass
-class RootBody:
-    """A Root body (type == ROOT_MARKER), stored fully opaque."""
-    raw: bytes   # all bytes including the ROOT_MARKER int and everything that follows
+class RootUnitBoundary:
+    """
+    Root 子条目 UnitBoundary（EFX_Root.bt）。固定 44 字节：
+      long type(4) = ROOT_UNITBOUNDARY
+      int  ints[2] (8)        —— 单位/边界相关整型（语义未完全逆向）
+      float floats[8] (32)    —— 实测后段含包围盒式数值；.bt 标注 7 float + 1 long NULL，
+                                 但官方数据该尾字段常为非零 float，故统一按 8 float 存取。
+    """
+    ints: tuple    # (int0, int1)
+    floats: tuple  # 8 floats
+
+    def serialize(self) -> bytes:
+        return (struct.pack('<i', RootBody.UNITBOUNDARY)
+                + struct.pack('<2i', *self.ints)
+                + struct.pack('<8f', *self.floats))
+
+
+@dataclass
+class RootOpaqueEntry:
+    """Root 子条目中尚未结构化的类型（RenderTarget / LayoutBank），原样存取。"""
+    raw: bytes   # 整个子条目字节（含前导 type）
 
     def serialize(self) -> bytes:
         return self.raw
+
+
+@dataclass
+class RootBody:
+    """
+    Root body（type == ROOT_MARKER）。
+
+    16B 头（root_type + const0 + count + const1）后跟 count 个子条目。
+    UnitBoundary 结构化为可编辑字段；RenderTarget/LayoutBank 保留 opaque。
+    若 raw 非 None（旧式/无法结构化的整段不透明回退），serialize 直接重发 raw。
+    """
+    # 子条目 type marker（EFX_Root.bt）
+    UNITBOUNDARY = 1413509420
+    RENDERTARGET = 2083659062
+    LAYOUTBANK   = 2050487542
+
+    root_type: int = ROOT_MARKER
+    const0: int = 1
+    const1: int = 0
+    entries: list = field(default_factory=list)   # RootUnitBoundary | RootOpaqueEntry
+    raw: bytes = None   # 整段不透明回退（unknown 兜底用）
+
+    def serialize(self) -> bytes:
+        if self.raw is not None:
+            return self.raw
+        out = struct.pack('<iiii', self.root_type, self.const0,
+                          len(self.entries), self.const1)
+        for e in self.entries:
+            out += e.serialize()
+        return out
 
 
 @dataclass
@@ -1202,14 +1250,19 @@ class EFXFile:
         pos += 16
 
         # Parse count sub-entries (UnitBoundary, RenderTarget, LayoutBank)
-        UNITBOUNDARY = 1413509420
-        RENDERTARGET = 2083659062
-        LAYOUTBANK   = 2050487542
+        UNITBOUNDARY = RootBody.UNITBOUNDARY
+        RENDERTARGET = RootBody.RENDERTARGET
+        LAYOUTBANK   = RootBody.LAYOUTBANK
 
+        entries = []
         for i in range(count):
             sub_type = struct.unpack_from('<i', data, pos)[0]
+            ent_start = pos
             if sub_type == UNITBOUNDARY:
-                # long type(4) + int*2(8) + float*7(28) + long NULL(4) = 44B
+                # long type(4) + int*2(8) + float*8(32) = 44B
+                ints = struct.unpack_from('<2i', data, pos + 4)
+                floats = struct.unpack_from('<8f', data, pos + 12)
+                entries.append(RootUnitBoundary(ints=ints, floats=floats))
                 pos += 44
             elif sub_type == RENDERTARGET:
                 # long type(4) + int path_count(4, = 6 hardcoded) + 6*RenderTarget_Path + long NULL(4) + int*6(24) + float*9(36)
@@ -1219,19 +1272,21 @@ class EFXFile:
                     p_len = struct.unpack_from('<i', data, pos)[0]
                     pos += 4 + p_len
                 pos += 4 + 24 + 36  # NULL + unkn0[6] + unkn1[9]
+                entries.append(RootOpaqueEntry(raw=data[ent_start:pos]))
             elif sub_type == LAYOUTBANK:
                 # LayoutBank: long type(4) + int unkn0(4) + int block_count(4) + block_count*LayoutBank_Block
                 # LayoutBank_Block = int count(4) + if count>0: while ReadInt()!=-1: LayoutBank_B; long end
                 # LayoutBank_B = int block_type(4) + data depending on block_type
                 pos = EFXFile._parse_layout_bank(data, pos)
+                entries.append(RootOpaqueEntry(raw=data[ent_start:pos]))
             else:
                 # Unknown sub-type in Root body - should not happen in well-formed files
                 raise ValueError(
                     f'Unknown Root sub-entry type 0x{sub_type:08X} at pos {pos}'
                 )
 
-        raw = data[start_pos:pos]
-        return RootBody(raw=raw), pos
+        return RootBody(root_type=root_type, const0=const0, const1=const1,
+                        entries=entries), pos
 
     @staticmethod
     def _parse_layout_bank(data: bytes, pos: int) -> int:

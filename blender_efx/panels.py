@@ -901,6 +901,22 @@ class EFX_PT_body_properties(bpy.types.Panel):
         row.enabled = False
         row.label(text=T("body.type_label") + kind_label, icon="INFO")
 
+        # Root body 的 UnitBoundary 子条目（结构化时可编辑；含 RT/LayoutBank 的
+        # root 走 opaque 只读，不显示）。语义未完全逆向：ints[2] + floats[8]。
+        if body_kind == "root" and int(obj.get("root_structured", 0)) == 1:
+            n = int(obj.get("root_ub_count", 0))
+            if n == 0:
+                layout.label(text="(empty root — no sub-entries)", icon="DOT")
+            for j in range(n):
+                box = layout.box()
+                box.label(text="Unit Boundary %d" % j, icon="SHADING_BBOX")
+                ik = "root_ub%d_ints" % j
+                fk = "root_ub%d_floats" % j
+                if ik in obj:
+                    box.prop(obj, '["%s"]' % ik, text="Ints")
+                if fk in obj:
+                    box.prop(obj, '["%s"]' % fk, text="Floats")
+
 
 class EFX_PT_body_unkn(bpy.types.Panel):
     """Body 未知属性子栏（unkn0 / unkn1 / unkn2）"""
