@@ -1752,10 +1752,13 @@ def rebuild_custom_field_block(bp, type_hash: int) -> bytes:
         if it.data_type == 'STRING' and it.ori_name != '__opaque_hint__'
     ]
     for it, key in zip(str_items, path_keys):
+        # 未编辑的路径：保留 unpack 出来的原始字节（含 null 对齐填充），不替换。
+        # 替换会把原文件里多余的 null 填充字节丢失，导致 path_len 字段不一致。
+        if not it.edited:
+            continue
         new = it.string_value
         orig_bytes = values[key]
-        # 还原 null 结尾习惯（照搬 rebuild_path_block_data_bytes 的逻辑）：
-        # 若原 dict 该键 bytes 以 b'\x00' 结尾且新串不含尾 \x00，则补 \x00。
+        # 还原 null 结尾习惯：若原 bytes 以 \x00 结尾且新串不含尾 \x00，则补 \x00。
         if isinstance(orig_bytes, (bytes, bytearray)) \
                 and orig_bytes.endswith(b'\x00') and not new.endswith('\x00'):
             new = new + '\x00'
