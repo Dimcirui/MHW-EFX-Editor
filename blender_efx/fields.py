@@ -503,10 +503,11 @@ def _spec_to_dtype(spec) -> str:
       ('i', 2)      → INT_PAIR
       ('i', 3)      → INT3
       ('i', 10)     → INT10_STR
+      ('i', N)      → ARRAY_STR（其他 N，如 7）
       ('I', 2) etc  → INT_PAIR (无符号小数组也当 int pair 存)
       ('B', 2)      → INT_PAIR (bytes pair)
       ('h', 2)      → INT_PAIR
-      其余复杂结构  → None（强制 is_editable=False）
+      其余无法表示的 spec（XYZ[]、colour[]、path…）→ None（强制 is_editable=False）
     """
     if isinstance(spec, str):
         if spec == 'f':
@@ -1341,6 +1342,12 @@ def _init_path_block_props(blk, bp) -> None:
             return
         # _init_custom_field_block 返回 False → 已自行清理，继续纯路径回退
 
+    # ── Phase B：PTBEHAVIOR 全参数展开 ──────────────────────────────────────
+    if type_hash == _PTBEHAVIOR_HASH():
+        if _init_ptbehavior_block(blk, bp):
+            return
+        # Phase B 失败 → 继续路径兜底
+
     # ── 建路径字段项（纯路径模式：MATERIAL/PTBEHAVIOR 及 Phase A 退回的块）────
     bp.field_items.clear()
 
@@ -1394,6 +1401,221 @@ def _PTBEHAVIOR_HASH() -> int:
     """延迟返回 PTBEHAVIOR hash（避免循环导入时提前求值）。"""
     from ..efx_format.hashes import PTBEHAVIOR
     return PTBEHAVIOR
+
+
+def _PTBEHAVIOR_HASH_RB() -> int:
+    """同 _PTBEHAVIOR_HASH，供 get_block_data_bytes 重建分发使用。"""
+    from ..efx_format.hashes import PTBEHAVIOR
+    return PTBEHAVIOR
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PTBEHAVIOR Phase B：全参数展开编辑
+#
+# 结构（见 structs.unpack_ptbehavior）：
+#   int unkn0(4) + int behav_type_len(4) + int para_count(4) +
+#   char b_type[behav_type_len] +
+#   para_count × EFX_Behav：
+#     long unkn(4) + long const0(4) + int t(4) + type-dependent value
+#
+# Items 布局：
+#   'b_type'       STRING — 行为类名（无尾 \0）
+#   'p{i}'         dtype  — 第 i 个 param 的值（t != 0x15 时单 item）
+#   'p{i}_v0..v3'  4 items— t==0x15 时四个子值（FLOAT,INT,FLOAT,INT）
+#
+# 导出重建：unpack 原字节 → 对 edited=True 的 item 覆盖值 → pack_ptbehavior
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _ptb_param_dtype(t: int) -> str:
+    """把 EFX_Behav.t 类型标签映射到 EFXFieldItem.data_type。"""
+    return {
+        0x03: 'INT',
+        0x05: 'INT',
+        0x06: 'INT',
+        0x0C: 'FLOAT',
+        0x0F: 'COLOR_RGBA',
+        0x14: 'FLOAT3',
+        0x36: 'INT_PAIR',
+        0x37: 'INT_PAIR',
+        0x40: 'UINT',
+        0x80: 'STRING',
+    }.get(t, 'INT')
+
+
+def _ptb_write_param_item(item, t: int, param: dict) -> None:
+    """把 param dict 里的值写入 EFXFieldItem 的值槽。"""
+    if t == 0x03:
+        item.int_value = int(param.get('NULL', 0))
+    elif t == 0x05:
+        item.int_value = int(param.get('unkn0', 0))
+    elif t == 0x06:
+        item.int_value = int(param.get('decal_epv_color_slot', 0))
+    elif t == 0x0C:
+        item.float_value = float(param.get('unkn0', 0.0))
+    elif t == 0x0F:
+        color = param.get('color', [0, 0, 0, 255])
+        item.color_rgba_value = tuple(max(0.0, min(1.0, c / 255.0)) for c in color)
+    elif t == 0x14:
+        vals = param.get('unkn1', [0.0, 0.0, 0.0])
+        item.float3_value = tuple(float(v) for v in vals[:3])
+    elif t in (0x36, 0x37):
+        vals = param.get('unkn1', [0, 0])
+        item.int_pair_str = f"{int(vals[0])},{int(vals[1])}"
+    elif t == 0x40:
+        item.uint_str = str(int(param.get('unkn0', 0)))
+    elif t == 0x80:
+        path_b = param.get('path', b'')
+        item.string_value = path_b.rstrip(b'\x00').decode('utf-8', errors='replace')
+    else:
+        item.int_value = int(param.get('unkn_type', 0))
+
+
+def _init_ptbehavior_block(blk, bp) -> bool:
+    """
+    Phase B：展开 PTBEHAVIOR 为可编辑 field_items。
+
+    建 'b_type' STRING item + 每个 param 对应 item（t==0x15 展开为 4 个子 item）。
+    末尾运行 rebuild_ptbehavior_block 闸门，验证字节精度。
+    返回 True=成功（bp.is_editable 由本函数设置）；False=失败（已清理 items）。
+    """
+    from ..efx_format.structs import unpack_ptbehavior
+
+    try:
+        d, _ = unpack_ptbehavior(blk.data_bytes)
+    except Exception:
+        return False
+
+    bp.field_items.clear()
+
+    # b_type STRING item
+    bt = bp.field_items.add()
+    bt.ori_name = 'b_type'
+    bt.data_type = 'STRING'
+    bt.edited = False
+    bt.read_only = False
+    bt.orig_b64 = ''
+    bt.string_value = d['b_type'].rstrip(b'\x00').decode('utf-8', errors='replace')
+
+    for i, param in enumerate(d['params']):
+        t = param['t']
+        if t == 0x15:
+            # 四个子 item：unkn0(f), unkn1(i), unkn2(f), unkn3(i)
+            for suffix, vk, dtype_str in [
+                ('_v0', 'unkn0', 'FLOAT'),
+                ('_v1', 'unkn1', 'INT'),
+                ('_v2', 'unkn2', 'FLOAT'),
+                ('_v3', 'unkn3', 'INT'),
+            ]:
+                it = bp.field_items.add()
+                it.ori_name = f'p{i}{suffix}'
+                it.data_type = dtype_str
+                it.edited = False
+                it.read_only = False
+                it.orig_b64 = ''
+                val = param.get(vk, 0)
+                if dtype_str == 'FLOAT':
+                    it.float_value = float(val)
+                else:
+                    it.int_value = int(val)
+        else:
+            it = bp.field_items.add()
+            it.ori_name = f'p{i}'
+            it.data_type = _ptb_param_dtype(t)
+            it.edited = False
+            it.read_only = False
+            it.orig_b64 = ''
+            _ptb_write_param_item(it, t, param)
+
+    # 闸门：rebuild 必须 == 原始字节
+    try:
+        rebuilt = rebuild_ptbehavior_block(bp, blk.data_bytes)
+        if rebuilt == blk.data_bytes:
+            bp.is_editable = True
+            return True
+    except Exception:
+        pass
+
+    bp.field_items.clear()
+    bp.is_editable = False
+    return False
+
+
+def rebuild_ptbehavior_block(bp, original_data: bytes = None) -> bytes:
+    """
+    Phase B 重建：unpack 原始字节 → 对 edited=True 的 item 覆盖值 → pack_ptbehavior。
+
+    参数
+    ----
+    bp            : EFXBlockProps
+    original_data : bytes | None — 若 None 则从 bp.raw_b64 解码
+    """
+    from ..efx_format.structs import unpack_ptbehavior, pack_ptbehavior
+
+    orig = original_data if original_data is not None else base64.b64decode(bp.raw_b64)
+    d, _ = unpack_ptbehavior(orig)
+
+    # item 快速查表
+    imap = {}
+    for item in bp.field_items:
+        if not item.ori_name.startswith('__'):
+            imap[item.ori_name] = item
+
+    # b_type
+    bt = imap.get('b_type')
+    if bt and bt.edited and not bt.read_only:
+        new_str = bt.string_value
+        if d['b_type'].endswith(b'\x00') and not new_str.endswith('\x00'):
+            new_str += '\x00'
+        d['b_type'] = new_str.encode('utf-8')
+
+    # params
+    for i, param in enumerate(d['params']):
+        t = param['t']
+
+        if t == 0x15:
+            for suffix, vk, is_float in [
+                ('_v0', 'unkn0', True),
+                ('_v1', 'unkn1', False),
+                ('_v2', 'unkn2', True),
+                ('_v3', 'unkn3', False),
+            ]:
+                sub = imap.get(f'p{i}{suffix}')
+                if sub and sub.edited and not sub.read_only:
+                    param[vk] = float(sub.float_value) if is_float else int(sub.int_value)
+            continue
+
+        item = imap.get(f'p{i}')
+        if not (item and item.edited and not item.read_only):
+            continue
+
+        if t == 0x03:
+            param['NULL'] = int(item.int_value)
+        elif t == 0x05:
+            param['unkn0'] = max(-32768, min(32767, int(item.int_value)))
+        elif t == 0x06:
+            param['decal_epv_color_slot'] = int(item.int_value)
+        elif t == 0x0C:
+            param['unkn0'] = float(item.float_value)
+        elif t == 0x0F:
+            param['color'] = [max(0, min(255, round(c * 255)))
+                               for c in item.color_rgba_value]
+        elif t == 0x14:
+            param['unkn1'] = list(item.float3_value)
+        elif t in (0x36, 0x37):
+            parts = item.int_pair_str.split(',')
+            param['unkn1'] = [int(parts[0]), int(parts[1])]
+        elif t == 0x40:
+            param['unkn0'] = int(item.uint_str)
+        elif t == 0x80:
+            new_path = item.string_value
+            if param['path'].endswith(b'\x00') and not new_path.endswith('\x00'):
+                new_path += '\x00'
+            param['path'] = new_path.encode('utf-8')
+            param['path_len'] = len(param['path'])
+        else:
+            param['unkn_type'] = int(item.int_value)
+
+    return pack_ptbehavior(d)
 
 
 def rebuild_path_block_data_bytes(bp, type_hash: int) -> bytes:
@@ -1677,8 +1899,13 @@ def get_block_data_bytes(obj: bpy.types.Object,
                     # Phase A：固定标量字段 + 路径 → decode→覆盖→pack 重建
                     data = rebuild_custom_field_block(bp, type_hash)
                 elif type_hash in PATH_EDITABLE_CUSTOM_HASHES:
-                    # L1.1b/c：MATERIAL/PTBEHAVIOR 等 → 仅路径感知重建（不变）
-                    data = rebuild_path_block_data_bytes(bp, type_hash)
+                    # Phase B：PTBEHAVIOR 全参数重建（b_type item 存在即为 Phase B）
+                    _is_ptb = (type_hash == _PTBEHAVIOR_HASH_RB())
+                    if _is_ptb and any(it.ori_name == 'b_type' for it in bp.field_items):
+                        data = rebuild_ptbehavior_block(bp)
+                    else:
+                        # L1.1b/c：MATERIAL 等 → 仅路径感知重建
+                        data = rebuild_path_block_data_bytes(bp, type_hash)
                 else:
                     # 不支持编辑的 custom 类型（TIML 等）→ 退回 raw_b64
                     raise ValueError(f"get_block_data_bytes: custom 类型 0x{type_hash:08X} 不支持编辑")
