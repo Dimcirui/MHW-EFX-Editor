@@ -537,6 +537,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "Body References"
+    bl_parent_id   = "EFX_PT_body_reorder"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod

@@ -790,8 +790,8 @@ class EFX_OT_eof_toggle_body(bpy.types.Operator):
     """Toggle whether the current EFX_BODY is in the root file's eof active list"""
 
     bl_idname      = "efx.eof_toggle_body"
-    bl_label       = "Toggle EOF Active"
-    bl_description = "Add/remove this Body to/from the root file's EOF active list (controls whether the game directly triggers this effect)"
+    bl_label       = "Toggle Direct Trigger"
+    bl_description = "Add/remove this Body to/from the direct-trigger list (bodies in this list fire automatically when the EFX loads; others can still be activated via Play calls)"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -876,7 +876,7 @@ class EFX_PT_eof_list(bpy.types.Panel):
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "EOF Active List"
+    bl_label       = "Direct Trigger List"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod

@@ -298,9 +298,9 @@ STRINGS = {
     "ptref.play_object":         {"EN": "Play Object",      "ZH": "Play 对象"},
     "ptref.play_local_index":    {"EN": "Play local index:", "ZH": "Play 局部 index:"},
     "ptref.no_eof_data":         {"EN": "(No efx_eof_list data)", "ZH": "（无 efx_eof_list 数据）"},
-    "ptref.game_activated_bodies":{"EN": "Bodies activated directly by the game", "ZH": "游戏直接激活的 Body"},
-    "ptref.eof_empty":           {"EN": "(Empty - effect will not be triggered by the game)",
-                                  "ZH": "（空——特效不会被游戏触发）"},
+    "ptref.game_activated_bodies":{"EN": "Bodies triggered directly on EFX load", "ZH": "EFX 加载时直接触发的 Body"},
+    "ptref.eof_empty":           {"EN": "(Empty - effect will not be triggered directly on load)",
+                                  "ZH": "（空——EFX 加载时不会直接触发任何 Body）"},
     "ptref.dangling_pointer":    {"EN": "[Dangling pointer]", "ZH": "[悬空指针]"},
 
     # ── 反向引用视图（backref.py）─────────────────────────────────────────────
@@ -348,10 +348,10 @@ STRINGS = {
     "body.save_preset":      {"EN": "Save Current Body as Preset", "ZH": "保存当前 body 为预设"},
     "body.add":              {"EN": "Add",                  "ZH": "新增"},
     "body.open_folder":      {"EN": "Open Preset Folder",   "ZH": "打开预设文件夹"},
-    "body.game_active_yes":  {"EN": "Game-activated: Yes",  "ZH": "游戏激活：是"},
-    "body.game_active_no":   {"EN": "Game-activated: No",   "ZH": "游戏激活：否"},
-    "body.remove_from_active":{"EN": "Remove from Active List", "ZH": "移出激活列表"},
-    "body.add_to_active":    {"EN": "Add to Active List",   "ZH": "加入激活列表"},
+    "body.game_active_yes":  {"EN": "Direct trigger: Yes",  "ZH": "直接触发：是"},
+    "body.game_active_no":   {"EN": "Direct trigger: No",   "ZH": "直接触发：否"},
+    "body.remove_from_active":{"EN": "Remove from Direct Trigger", "ZH": "移出直接触发列表"},
+    "body.add_to_active":    {"EN": "Add to Direct Trigger",   "ZH": "加入直接触发列表"},
     "body.rename":           {"EN": "Rename",               "ZH": "重命名"},
     "body.rename_blocked":   {"EN": "Rename (preceding item unnamed)", "ZH": "重命名（前有未命名条目）"},
 

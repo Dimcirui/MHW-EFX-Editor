@@ -433,24 +433,6 @@ def _draw_block_fields_content(layout, context):
         layout.label(text=T("block.select_hint"), icon="INFO")
         return
 
-    # ── L2 #3a：块上移/下移按钮（始终在字段面板顶部显示）─────────────────────
-    reorder_row = layout.row(align=True)
-    op_up = reorder_row.operator("efx.move_block", text=T("block.move_up"), icon="TRIA_UP")
-    op_up.direction = "UP"
-    op_dn = reorder_row.operator("efx.move_block", text=T("block.move_down"), icon="TRIA_DOWN")
-    op_dn.direction = "DOWN"
-
-    # ── 字段值复制/粘贴（同类型块之间的参数剪贴板）─────────────────────────
-    fields_row = layout.row(align=True)
-    fields_row.operator("efx.copy_block_fields", text=T("block.copy_fields"), icon="COPYDOWN")
-    fields_row.operator("efx.paste_block_fields", text=T("block.paste_fields"), icon="PASTEDOWN")
-
-    # ── 整块复制 / 保存为块预设（整块组装机制）──────────────────────────────
-    copy_row = layout.row(align=True)
-    copy_row.operator("efx.copy_block", text=T("block.copy_whole"), icon="DUPLICATE")
-    copy_row.operator("efx.save_block_preset", text=T("block.save_preset"), icon="ADD")
-    layout.separator(factor=0.5)
-
     # ── 获取 efx_block PropertyGroup ────────────────────────────────────────
     try:
         bp = obj.efx_block
@@ -636,8 +618,10 @@ class EFX_PT_main(bpy.types.Panel):
 
         # ── 骨架选择器 + 刷新特效体位置（按 TRANSFORM3D + bone_lim 绑定骨骼摆位）─
         layout.prop(context.scene, "efx_armature", text=T("main.armature"))
-        layout.operator("efx.sync_transform_to_view",
-                        text=T("main.sync_transform"), icon="ORIENTATION_GLOBAL")
+        row = layout.row(align=True)
+        row.operator("efx.sync_transform_to_view",
+                     text=T("main.sync_transform"), icon="ORIENTATION_GLOBAL")
+        row.operator("efx.validate", text=T("validate.run_btn"), icon="CHECKMARK")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -684,10 +668,13 @@ def _draw_block_presets_content(layout, context):
     新增块需选中 EFX_BODY，保存/复制需选中 EFX_BLOCK，算子 poll 自动灰。"""
     wm = context.window_manager
 
-    # 1. 复制整块 / 保存为块预设（需选中 EFX_BLOCK，poll 自动灰）
+    # 1. 复制整块 / 粘贴块（需选中 EFX_BLOCK / EFX_BODY，poll 自动灰）
     row = layout.row(align=True)
     row.operator("efx.copy_block", text=T("block.copy_whole"), icon="COPYDOWN")
-    row.operator("efx.save_block_preset", text=T("block.save_preset"), icon="ADD")
+    row.operator("efx.paste_block", text=T("block.paste"), icon="PASTEDOWN")
+
+    # 2. 保存为块预设（需选中 EFX_BLOCK，poll 自动灰）
+    layout.operator("efx.save_block_preset", text=T("block.save_preset"), icon="ADD")
 
     layout.separator()
 
@@ -707,10 +694,8 @@ def _draw_block_presets_content(layout, context):
 
     layout.separator()
 
-    # 3. 粘贴块 + 打开文件夹
-    row2 = layout.row(align=True)
-    row2.operator("efx.paste_block", text=T("block.paste"), icon="PASTEDOWN")
-    row2.operator("efx.open_block_preset_folder", text=T("body.open_folder"), icon="FILE_FOLDER")
+    # 3. 打开文件夹
+    layout.operator("efx.open_block_preset_folder", text=T("body.open_folder"), icon="FILE_FOLDER")
 
 
 class EFX_PT_presets(bpy.types.Panel):
@@ -735,16 +720,18 @@ class EFX_PT_presets(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_body_reorder  —  body 上移/下移按钮（选中 EFX_BODY 时显示）
+# EFX_PT_body_reorder  —  Body 面板（选中 EFX_BODY 时显示）
+#   展示直接触发状态开关；Body References 作为子面板附于其下。
+#   排序/重命名操作移至 EFX_PT_delete（Edit 面板）。
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_body_reorder(bpy.types.Panel):
-    """EFX Body 属性（重排、重命名、EOF 激活状态）"""
+    """EFX Body 面板（直接触发状态；Body References 子面板附于其下）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Body Properties"
+    bl_label        = "Body"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -756,7 +743,7 @@ class EFX_PT_body_reorder(bpy.types.Panel):
         layout = self.layout
         obj = context.active_object
 
-        # ── EOF 激活状态 ──────────────────────────────────────────────────────
+        # ── 直接触发状态 ──────────────────────────────────────────────────────
         in_eof = is_body_in_eof(obj)
         row = layout.row(align=True)
         icon = "RADIOBUT_ON" if in_eof else "RADIOBUT_OFF"
@@ -764,24 +751,6 @@ class EFX_PT_body_reorder(bpy.types.Panel):
         row.label(text=label, icon=icon)
         toggle_text = T("body.remove_from_active") if in_eof else T("body.add_to_active")
         row.operator("efx.eof_toggle_body", text=toggle_text, icon="PLAY" if not in_eof else "PAUSE")
-
-        layout.separator(factor=0.5)
-
-        # ── 排序 ──────────────────────────────────────────────────────────────
-        row = layout.row(align=True)
-        op_up = row.operator("efx.move_body", text=T("block.move_up"), icon="TRIA_UP")
-        op_up.direction = "UP"
-        op_dn = row.operator("efx.move_body", text=T("block.move_down"), icon="TRIA_DOWN")
-        op_dn.direction = "DOWN"
-
-        # ── 重命名 ────────────────────────────────────────────────────────────
-        from .reorder import can_label_body
-        if can_label_body(obj):
-            layout.operator("efx.rename_body", text=T("body.rename"), icon="GREASEPENCIL")
-        else:
-            sub = layout.column()
-            sub.enabled = False
-            sub.operator("efx.rename_body", text=T("body.rename_blocked"), icon="GREASEPENCIL")
 
 
 
@@ -884,7 +853,6 @@ class EFX_PT_add_section(bpy.types.Panel):
         col.operator("efx.add_play",      text=T("addsec.play"),      icon="PLAY")
         col.operator("efx.add_extern",    text=T("addsec.extern"),    icon="FILE_BLEND")
         col.operator("efx.add_subselect", text=T("addsec.subselect"), icon="OUTLINER_OB_EMPTY")
-        layout.label(text=T("addsec.hint"), icon="INFO")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -903,12 +871,12 @@ _DELETE_BY_TYPE = {
 
 
 class EFX_PT_delete(bpy.types.Panel):
-    """EFX delete / validate (shown when any EFX object is active)"""
+    """EFX Edit panel — reorder / rename / copy fields / delete (shown when any EFX object is active)"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Delete / Validate"
+    bl_label        = "Edit"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -916,16 +884,43 @@ class EFX_PT_delete(bpy.types.Panel):
         obj = context.active_object
         if obj is None:
             return False
-        t = obj.get("~TYPE")
-        return t in _DELETE_BY_TYPE or t == "EFX_ROOT"
+        return obj.get("~TYPE") in _DELETE_BY_TYPE
 
     def draw(self, context):
         layout = self.layout
         obj = context.active_object
         t = obj.get("~TYPE") if obj is not None else None
 
-        # ── 排序 + 重命名（Play / Extern；与 body 同源的标签前缀规则）───────────
-        if t in ("EFX_PLAY", "EFX_EXTERN"):
+        # ── EFX_BLOCK：排序 + 字段复制/粘贴 ──────────────────────────────────
+        if t == "EFX_BLOCK":
+            row = layout.row(align=True)
+            op_up = row.operator("efx.move_block", text=T("block.move_up"), icon="TRIA_UP")
+            op_up.direction = "UP"
+            op_dn = row.operator("efx.move_block", text=T("block.move_down"), icon="TRIA_DOWN")
+            op_dn.direction = "DOWN"
+
+            row2 = layout.row(align=True)
+            row2.operator("efx.copy_block_fields", text=T("block.copy_fields"), icon="COPYDOWN")
+            row2.operator("efx.paste_block_fields", text=T("block.paste_fields"), icon="PASTEDOWN")
+
+        # ── EFX_BODY：排序 + 重命名 ───────────────────────────────────────────
+        elif t == "EFX_BODY":
+            row = layout.row(align=True)
+            op_up = row.operator("efx.move_body", text=T("block.move_up"), icon="TRIA_UP")
+            op_up.direction = "UP"
+            op_dn = row.operator("efx.move_body", text=T("block.move_down"), icon="TRIA_DOWN")
+            op_dn.direction = "DOWN"
+
+            from .reorder import can_label_body
+            if can_label_body(obj):
+                layout.operator("efx.rename_body", text=T("body.rename"), icon="GREASEPENCIL")
+            else:
+                sub = layout.column()
+                sub.enabled = False
+                sub.operator("efx.rename_body", text=T("body.rename_blocked"), icon="GREASEPENCIL")
+
+        # ── EFX_PLAY / EFX_EXTERN：排序 + 重命名 ─────────────────────────────
+        elif t in ("EFX_PLAY", "EFX_EXTERN"):
             row = layout.row(align=True)
             op_up = row.operator("efx.move_entry", text=T("block.move_up"), icon="TRIA_UP")
             op_up.direction = "UP"
@@ -940,16 +935,12 @@ class EFX_PT_delete(bpy.types.Panel):
                 sub.enabled = False
                 sub.operator("efx.rename_entry", text=T("entry.rename_blocked"), icon="GREASEPENCIL")
 
-        # ── 删除按钮（按类型）─────────────────────────────────────────────────
+        # ── 删除按钮（按类型，始终显示）──────────────────────────────────────
         entry = _DELETE_BY_TYPE.get(t)
         if entry is not None:
-            idname, text_key = entry
+            layout.separator(factor=0.5)
             row = layout.row()
-            row.operator(idname, text=T(text_key), icon="TRASH")
-
-        # ── 导出前校验（始终显示）─────────────────────────────────────────────
-        layout.separator()
-        layout.operator("efx.validate", text=T("validate.run_btn"), icon="CHECKMARK")
+            row.operator(entry[0], text=T(entry[1]), icon="TRASH")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
