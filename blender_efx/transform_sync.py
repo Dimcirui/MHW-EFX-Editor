@@ -95,7 +95,8 @@ def _body_bone_lim(body_obj):
 
 
 def _t3d_local_matrix(t3d_block):
-    """把 TRANSFORM3D 块的 translate/rotate/resize 组装成 blender 本地变换矩阵。"""
+    """把 TRANSFORM3D 块的 translate/rotate/resize 组装成 Blender 世界空间变换矩阵。
+    使用 game→Blender 轴交换（M_G2B），适用于无骨骼基准的情形。"""
     vals = {}
     try:
         for it in t3d_block.efx_block.field_items:
@@ -111,6 +112,35 @@ def _t3d_local_matrix(t3d_block):
         rot = Matrix.Identity(4)
     if "resize" in vals:
         sx, sy, sz = game_scale_to_blender(*vals["resize"])
+    else:
+        sx = sy = sz = 1.0
+    scl = Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
+    return Matrix.Translation(loc) @ rot @ scl
+
+
+def _t3d_local_matrix_game(t3d_block):
+    """把 TRANSFORM3D 块的 translate/rotate/resize 组装成游戏空间变换矩阵。
+    不做 Y/Z 轴交换——骨骼的 matrix_local 已内嵌 M_G2B，有骨骼时用此函数避免双重转换。"""
+    vals = {}
+    try:
+        for it in t3d_block.efx_block.field_items:
+            if it.ori_name in ("translate", "rotate", "resize") and it.data_type == "FLOAT6":
+                vals[it.ori_name] = _fixed3(it.float6_value)
+    except Exception:
+        return None
+
+    if "translate" in vals:
+        gx, gy, gz = vals["translate"]
+        loc = Vector((gx / 100.0, gy / 100.0, gz / 100.0))
+    else:
+        loc = Vector((0, 0, 0))
+    if "rotate" in vals:
+        gx, gy, gz = vals["rotate"]
+        rot = Euler((radians(gx), radians(gy), radians(gz)), "XYZ").to_matrix().to_4x4()
+    else:
+        rot = Matrix.Identity(4)
+    if "resize" in vals:
+        sx, sy, sz = vals["resize"]
     else:
         sx = sy = sz = 1.0
     scl = Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
@@ -148,15 +178,22 @@ def apply_body_transform(body_obj, armature_obj=None) -> bool:
     """
     按 body 的 TRANSFORM3D（基础变换）+ PARENTOPTIONS（bone_lim 绑定骨骼）
     计算 body empty 的 matrix_world 并写入。返回是否成功。
+
+    有骨骼时 TRANSFORM3D 使用游戏坐标原样（不做 Y/Z 交换），因为骨骼的
+    matrix_local 已内嵌 M_G2B 旋转，直接叠加可正确还原朝向。
+    无骨骼时使用 M_G2B 轴交换后的 Blender 坐标（原有行为）。
     """
     try:
         t3d = _block_of_type(body_obj, _t3d_hash())
         if t3d is None:
             return False
-        local = _t3d_local_matrix(t3d)
+        base = bone_base_matrix(armature_obj, _body_bone_lim(body_obj))
+        if base is not None:
+            local = _t3d_local_matrix_game(t3d)
+        else:
+            local = _t3d_local_matrix(t3d)
         if local is None:
             return False
-        base = bone_base_matrix(armature_obj, _body_bone_lim(body_obj))
         body_obj.matrix_world = (base @ local) if base is not None else local
         return True
     except Exception:
