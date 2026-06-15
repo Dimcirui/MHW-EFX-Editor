@@ -165,10 +165,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "中性方向为 (0, 1, 0)",
     },
     ("VELOCITY3D", "expansion_radius_elasticity"): {
-        "EN": "0=Completely dampened (instantly at position), "
-              "1=No dampening (continues moving)",
-        "ZH": "0=完全阻尼（瞬间到位），"
-              "1=无阻尼（持续运动）",
+        "EN": "1/−1 are the peak values. Above 1 or below −1: velocity surges and ignores "
+              "expansion_radius_limit. Below 1: decelerates, consuming initial velocity until 0. "
+              "0=Completely dampened (instantly at position); 1=No dampening (uniform motion).",
+        "ZH": "1/−1 为顶值。高于1/低于−1：速度急剧加快并无视扩散范围限制。低于1：减速，"
+              "消耗初速度直到0。0=完全阻尼（瞬间到位）；1=无阻尼（匀速运动）。",
     },
     ("VELOCITY3D", "velocityX"): {
         "EN": "Subtracts from system net energy; higher values restrict radial motion",
@@ -193,8 +194,14 @@ FIELD_ANNOTATIONS = {
               "小于 1=向内坍缩，1=无能量。",
     },
     ("VELOCITY3D", "expansionType"): {
-        "EN": "1=Radial, 2=Directional, 5=No Expansion",
-        "ZH": "1=径向, 2=定向, 5=无扩张",
+        "EN": "0=No initial velocity (all axis speed lost); "
+              "1=Linear radial: gains axis energy + initial velocity, moves toward high-energy axis; "
+              "2=Omnidirectional sphere: gains axis energy but no initial velocity, expands outward as sphere/ring; "
+              "higher values cycle — odd=same as 1, even=same as 2.",
+        "ZH": "0=丢失所有初速度，无论上面数值是多少；"
+              "1=线性径向：获得轴能量+初速度，向能量高处线性运动；"
+              "2=球状扩散：获得轴能量但无初速度，向四周运动、粒子呈球状/环状；"
+              "更高值循环——奇数效果同1，偶数效果同2。",
     },
 
     # ─── SHADERSETTINGS ───────────────────────────────────────────────────────
@@ -517,14 +524,23 @@ FIELD_ANNOTATIONS = {
         "ZH": "UVS 文件路径索引",
     },
     ("UVSEQUENCE", "loopingEnum"): {
-        "EN": "0=Not Animated,  2=Random Restart,  8=?,  9=Continuous",
-        "ZH": "0=不播放动画,  2=随机重启,  8=?,  9=连续循环",
+        "EN": "Stored as 4 hex bytes. First byte key values: "
+              "0=Not Animated (freeze frame),  2=Random Reset,  9=Continuous forward loop,  "
+              "16=Continuous reverse loop. "
+              "Second byte controls texture orientation on particle: "
+              "0=Up,  1=Right,  2=Left,  3=Random (never down).",
+        "ZH": "存储为 4 个 hex 字节。第一字节关键值："
+              "0=不播放动画（定格），2=随机重置，9=连续正向循环，16=连续反向循环。"
+              "第二字节控制贴图显现在粒子上的方向："
+              "0=正向上，1=正向右，2=正向左，3=随机（绝不向下）。",
     },
 
     # ─── BILLBOARD3D (fixed part fields) ──────────────────────────────────────
     ("BILLBOARD3D", "applicationRule"): {
-        "EN": "Enum — determines how long and how many times it applies",
-        "ZH": "枚举 —— 决定它应用的时长与次数",
+        "EN": "Enum — determines how long and how many times it applies. "
+              "4=Enables flowmap effect (requires unkn6=1 to take effect).",
+        "ZH": "枚举 —— 决定它应用的时长与次数。"
+              "4=启用流动贴图效果（还需 unkn6=1 才生效）。",
     },
     ("BILLBOARD3D", "brightness"): {
         "EN": "Brightness",
@@ -545,8 +561,10 @@ FIELD_ANNOTATIONS = {
 
     # ─── PLANE (fixed part fields — same layout as BILLBOARD3D dds_data) ──────
     ("PLANE", "applicationRule"): {
-        "EN": "Enum — determines how long and how many times it applies",
-        "ZH": "枚举 —— 决定它应用的时长与次数",
+        "EN": "Enum — determines how long and how many times it applies. "
+              "4=Enables flowmap effect (requires unkn6=1 to take effect).",
+        "ZH": "枚举 —— 决定它应用的时长与次数。"
+              "4=启用流动贴图效果（还需 unkn6=1 才生效）。",
     },
     ("PLANE", "brightness"): {
         "EN": "Brightness",

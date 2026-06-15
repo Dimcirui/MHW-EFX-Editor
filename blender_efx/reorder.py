@@ -610,21 +610,29 @@ class EFX_OT_rename_entry(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 # auto_sort_body_blocks  —  导出前静默规范化块顺序
 #
+# 顺序来自 660 个官方 EFX 文件 / 16021 个 body 的中位归一化位置统计（2026-06）。
+#
 # 规范顺序层（sort key）：
-#    0  EXTERNREFERENCE           (声明块，永远最前)
-#   10  TRANSFORM3D/PARENTOPTIONS/SPAWN/LIFE  (body 骨架)
-#   20  Renderer blocks           (渲染主体，互斥选一)
-#   40  Sprite modifiers          (BILLBOARD3D/RIBBON 专属修饰)
-#   50  Mesh overrides            (MESH 专属覆盖)
-#   60  Emitters                  (发射器/空间约束)
-#   70  Motion                    (运动/速度/动画)
-#   80  Visibility                (可见性/渐隐)
-#   90  Char effects              (角色附着效果)
-#  100  Behavior                  (PTBEHAVIOR 孤立行为系统)
-#  110  Misc/control              (特殊/控制)
-#  150  (未知类型默认值)
-#  200  RGBFIRE / RGBWATER / NOISE (总是最后的全局染色/噪声)
-#  210  Lifecycle triggers         (PTCOLLISION/PTLIFE/PTTRIGGER，总是最后)
+#    0  声明层      EXTERNREFERENCE / RANDOMFIX（永远最前）
+#   10  骨架层      TRANSFORM3D / PARENTOPTIONS / RAYCAST / LINKPARTSVISIBLE / SPAWN / LIFE
+#   20  早期可见性  FADEBYDEPTH / FADEBYANGLE / FADEBYEMITTERANGLE / FADEBYOCCLUSION
+#                   FAKEPLANE（地面检测，在发射器之前）
+#   30  发射器      EMITTERSHAPE3D / EMITTERSHAPE2D / EMITTERSHAPEMESH
+#   40  速度        VELOCITY3D / VELOCITY2D
+#   50  渲染主体    PLANE / RIBBONBLADE / UVCONTROL / BILLBOARD3D / LIGHTNING /
+#                   RIBBON / DUMMY / MESH / STRAINRIBBON / TUBELIGHT / BILLBOARD2D
+#   60  动画        ROTATEANIM / SCALEANIM
+#   70  UV 修饰     ALPHACORRECTION / UVSEQUENCE
+#   80  着色器及晚期约束  SHADERSETTINGS / EMITTERBOUNDARY / MATERIAL / SCREENSPACECOLLISION
+#   90  晚期效果    BLINK / GUIDE / HOMING / LUMINANCEBLEED / MASTERONLY / NOISE /
+#                   PATHCHAIN / REFRACTION / TURBULENCE
+#  100  角色附着    PLEMISSIVE / PARENTEMISSIVE / PLSNOW / PARENTSNOW / OTOMOSNOW /
+#                   PARENTMATERIAL / SHOVEL
+#  110  PTBEHAVIOR  （孤立行为系统，与大多数块互斥）
+#  120  Misc/control（TIML / SPAWNBYANGLE / SPAWNBYOCCLUSION / CHECKPUREATTRIBUTE 等）
+#  150  （未知类型默认值）
+#  200  全局染色    RGBFIRE / RGBWATER（总是最后）
+#  210  生命周期触发 PTCOLLISION / PTLIFE / PTTRIGGER（总是最后）
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_block_sort_key_map() -> dict:
@@ -654,72 +662,87 @@ def _build_block_sort_key_map() -> dict:
     except ImportError:
         return {}
     return {
+        # ── 0 声明层 ──────────────────────────────────────────────────────────
         EXTERNREFERENCE:        0,
+        RANDOMFIX:              1,    # 实测 0.000，与 EXTERNREFERENCE 并列最前
+        # ── 10 骨架层 ─────────────────────────────────────────────────────────
         TRANSFORM3D:            10,
         PARENTOPTIONS:          11,
-        SPAWN:                  12,
-        LIFE:                   13,
-        BILLBOARD3D:            20,
-        RIBBON:                 21,
-        MESH:                   22,
-        PLANE:                  23,
-        FAKEPLANE:              24,
-        LIGHTNING:              25,
-        DUMMY:                  26,
-        RIBBONBLADE:            27,
-        STRAINRIBBON:           28,
-        TUBELIGHT:              29,
-        BILLBOARD2D:            30,
-        UVSEQUENCE:             40,
-        ALPHACORRECTION:        41,
-        REFRACTION:             42,
-        BLINK:                  43,
-        LUMINANCEBLEED:         44,
-        MATERIAL:               50,
-        UVCONTROL:              51,
-        EMITTERSHAPE3D:         60,
-        EMITTERSHAPE2D:         61,
-        EMITTERSHAPEMESH:       62,
-        EMITTERBOUNDARY:        63,
-        SPAWNBYANGLE:           64,
-        SPAWNBYOCCLUSION:       65,
-        VELOCITY3D:             70,
-        VELOCITY2D:             71,
-        SCALEANIM:              72,
-        ROTATEANIM:             73,
-        TURBULENCE:             74,
-        HOMING:                 75,
-        GUIDE:                  76,
-        PATHCHAIN:              77,
-        SCREENSPACECOLLISION:   78,
-        FADEBYDEPTH:            80,
-        FADEBYANGLE:            81,
-        FADEBYEMITTERANGLE:     82,
-        FADEBYOCCLUSION:        83,
-        SHADERSETTINGS:         84,
-        MASTERONLY:             85,
-        RAYCAST:                86,
-        LINKPARTSVISIBLE:       87,
-        PLEMISSIVE:             90,
-        PARENTEMISSIVE:         91,
-        PLSNOW:                 92,
-        PARENTSNOW:             93,
-        OTOMOSNOW:              94,
-        PARENTMATERIAL:         95,
-        SHOVEL:                 96,
-        PTBEHAVIOR:             100,
-        RANDOMFIX:              110,
-        TIML:                   111,
-        CHECKPUREATTRIBUTE:     112,
-        REPEATAREA:             113,
-        LAYOUT:                 114,
-        TRANSFORM2D:            115,
-        FAKEDOF:                116,
-        TONEMAPFILTER:          117,
-        COLORCORRECTFILTER:     118,
+        RAYCAST:                12,   # 实测 0.167，骨架层内（FAKEPLANE 的地面探测前置）
+        LINKPARTSVISIBLE:       13,   # 实测 0.182
+        SPAWN:                  14,
+        LIFE:                   15,
+        # ── 20 早期可见性 / 地面检测 ──────────────────────────────────────────
+        FADEBYDEPTH:            20,   # 实测 0.357
+        FADEBYANGLE:            21,   # 实测 0.364
+        FADEBYEMITTERANGLE:     22,   # 实测 0.417
+        FADEBYOCCLUSION:        23,   # 实测 0.417
+        FAKEPLANE:              24,   # 实测 0.438，在发射器之前
+        # ── 30 发射器 ─────────────────────────────────────────────────────────
+        EMITTERSHAPE3D:         30,   # 实测 0.455
+        EMITTERSHAPE2D:         31,
+        EMITTERSHAPEMESH:       32,   # 实测 0.455
+        # ── 40 速度 ───────────────────────────────────────────────────────────
+        VELOCITY3D:             40,   # 实测 0.545
+        VELOCITY2D:             41,
+        # ── 50 渲染主体 ───────────────────────────────────────────────────────
+        PLANE:                  50,   # 实测 0.571
+        RIBBONBLADE:            51,   # 实测 0.571
+        UVCONTROL:              52,   # 实测 0.600（MESH 专属，但出现在 MESH 之前）
+        BILLBOARD3D:            53,   # 实测 0.615
+        LIGHTNING:              54,   # 实测 0.636
+        RIBBON:                 55,   # 实测 0.636
+        DUMMY:                  56,   # 实测 0.667
+        MESH:                   57,   # 实测 0.667
+        STRAINRIBBON:           58,   # 实测 0.700
+        TUBELIGHT:              59,
+        BILLBOARD2D:            59,
+        # ── 60 动画 ───────────────────────────────────────────────────────────
+        ROTATEANIM:             60,   # 实测 0.667
+        SCALEANIM:              61,   # 实测 0.727
+        # ── 70 UV 修饰 ────────────────────────────────────────────────────────
+        ALPHACORRECTION:        70,   # 实测 0.818
+        UVSEQUENCE:             71,   # 实测 0.818
+        # ── 80 着色器及晚期约束 ───────────────────────────────────────────────
+        SHADERSETTINGS:         80,   # 实测 0.909
+        EMITTERBOUNDARY:        81,   # 实测 0.917（与发射器无关，出现在最后段）
+        MATERIAL:               82,   # 实测 0.917（MESH 专属，最后段）
+        SCREENSPACECOLLISION:   83,   # 实测 0.933
+        # ── 90 晚期效果 ───────────────────────────────────────────────────────
+        BLINK:                  90,   # 实测 1.000
+        GUIDE:                  91,   # 实测 1.000
+        HOMING:                 92,   # 实测 1.000
+        LUMINANCEBLEED:         93,   # 实测 1.000
+        MASTERONLY:             94,   # 实测 1.000
+        NOISE:                  95,   # 实测 1.000
+        PATHCHAIN:              96,   # 实测 1.000
+        REFRACTION:             97,   # 实测 1.000
+        TURBULENCE:             98,   # 实测 1.000
+        # ── 100 角色附着 ──────────────────────────────────────────────────────
+        PLEMISSIVE:             100,
+        PARENTEMISSIVE:         101,
+        PLSNOW:                 102,
+        PARENTSNOW:             103,
+        OTOMOSNOW:              104,
+        PARENTMATERIAL:         105,
+        SHOVEL:                 106,
+        # ── 110 孤立行为系统 ──────────────────────────────────────────────────
+        PTBEHAVIOR:             110,
+        # ── 120 Misc/control ──────────────────────────────────────────────────
+        SPAWNBYANGLE:           120,
+        SPAWNBYOCCLUSION:       121,
+        TIML:                   122,
+        CHECKPUREATTRIBUTE:     123,
+        REPEATAREA:             124,
+        LAYOUT:                 125,
+        TRANSFORM2D:            126,
+        FAKEDOF:                127,
+        TONEMAPFILTER:          128,
+        COLORCORRECTFILTER:     129,
+        # ── 200 全局染色（总是最后） ──────────────────────────────────────────
         RGBFIRE:                200,
         RGBWATER:               201,
-        NOISE:                  202,
+        # ── 210 生命周期触发（总是最后） ──────────────────────────────────────
         PTCOLLISION:            210,
         PTLIFE:                 211,
         PTTRIGGER:              212,
@@ -733,9 +756,10 @@ def auto_sort_body_blocks(root_obj) -> int:
     """
     静默对 root_obj 下每个 body 的 EFX_BLOCK 按规范顺序排序（就地修改 efx_index）。
 
-    规范顺序：EXTERNREFERENCE → 骨架 → 渲染 → 面片修饰 → MESH覆盖 →
-             发射器 → 运动 → 可见性 → 角色特效 → 行为 → 杂项 →
-             RGBFIRE/RGBWATER/NOISE → 生命周期触发
+    规范顺序：EXTERNREFERENCE/RANDOMFIX → 骨架 → 早期可见性/FAKEPLANE →
+             发射器 → 速度 → 渲染主体 → 动画 → UV修饰 →
+             着色器/晚期约束 → 晚期效果 → 角色附着 → PTBEHAVIOR → 杂项 →
+             RGBFIRE/RGBWATER → 生命周期触发
 
     只修改 efx_index；io_tree.export_efx_tree 按 efx_index 排序序列化，无需重建显示名。
     返回被重新排序的 body 数量（未变动的 body 不计）。

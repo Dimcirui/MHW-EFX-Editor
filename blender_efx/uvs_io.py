@@ -396,7 +396,11 @@ class EFX_PT_uvs_edition(Panel):
             return
 
         # ── Group 列表 ────────────────────────────────────────────────────────
-        layout.label(text=f"Groups: {len(props.groups)}", icon="SEQUENCE")
+        row = layout.row()
+        row.label(text=f"Groups: {len(props.groups)}", icon="SEQUENCE")
+        sub = row.row(align=True)
+        sub.operator("efx.uvs_group_add",    text="", icon="ADD")
+        sub.operator("efx.uvs_group_remove", text="", icon="REMOVE")
         layout.template_list(
             "EFX_UL_uvs_groups", "",
             props, "groups",
@@ -889,21 +893,130 @@ class EFX_PT_uvs_editor(Panel):
         row.operator("efx.uvs_export", text="保存 UVS", icon="FILE_TICK")
 
 
+# =============================================================================
+# Group 增删操作符
+# =============================================================================
+
+class EFX_OT_uvs_group_add(Operator):
+    """在当前选中位置之后新增一个空 UVS Group"""
+
+    bl_idname  = "efx.uvs_group_add"
+    bl_label   = "Add UVS Group"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return (
+            _is_uvsequence_block(obj)
+            and getattr(getattr(obj, "efx_uvs", None), "is_loaded", False)
+        )
+
+    def execute(self, context):
+        from ..efx_format.uvs import UVSFile, UVSGroup
+
+        props = context.active_object.efx_uvs
+        try:
+            data = base64.b64decode(props.raw_b64)
+            uvs  = UVSFile.parse(data)
+        except Exception as e:
+            self.report({"ERROR"}, f"解析失败：{e}")
+            return {"CANCELLED"}
+
+        insert_at = props.group_index + 1
+        new_g = UVSGroup(
+            frames=[],
+            path_indices=[],
+            map_count=0,
+            dynamic=0,
+        )
+        uvs.groups.insert(insert_at, new_g)
+
+        props.raw_b64 = base64.b64encode(uvs.serialize()).decode("ascii")
+        _frame_cache.clear()
+
+        # 在 CollectionProperty 同位置插入
+        props.groups.add()                              # 追加一个空槽
+        for i in range(len(props.groups) - 1, insert_at, -1):
+            # CollectionProperty 无 insert，只能从末尾向前逐步移动
+            props.groups.move(i - 1, i)
+        item = props.groups[insert_at]
+        item.frame_count  = 0
+        item.dynamic      = 0
+        item.map_count    = 0
+        item.display_name = f"group_{insert_at}"
+        for attr in ("path0", "path1", "path2", "path3"):
+            setattr(item, attr, "")
+        for attr in ("type0", "type1", "type2", "type3"):
+            setattr(item, attr, 1)
+
+        props.group_index = insert_at
+        self.report({"INFO"}, f"已在位置 {insert_at} 新增 Group")
+        return {"FINISHED"}
+
+
+class EFX_OT_uvs_group_remove(Operator):
+    """删除当前选中的 UVS Group"""
+
+    bl_idname  = "efx.uvs_group_remove"
+    bl_label   = "Remove UVS Group"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if not _is_uvsequence_block(obj):
+            return False
+        props = getattr(obj, "efx_uvs", None)
+        return (
+            props is not None
+            and props.is_loaded
+            and len(props.groups) > 0
+        )
+
+    def execute(self, context):
+        from ..efx_format.uvs import UVSFile
+
+        props = context.active_object.efx_uvs
+        idx   = props.group_index
+        if not (0 <= idx < len(props.groups)):
+            self.report({"ERROR"}, "无效的 Group 序号")
+            return {"CANCELLED"}
+
+        try:
+            data = base64.b64decode(props.raw_b64)
+            uvs  = UVSFile.parse(data)
+        except Exception as e:
+            self.report({"ERROR"}, f"解析失败：{e}")
+            return {"CANCELLED"}
+
+        uvs.groups.pop(idx)
+        props.raw_b64 = base64.b64encode(uvs.serialize()).decode("ascii")
+        _frame_cache.clear()
+
+        props.groups.remove(idx)
+        props.group_index = max(0, idx - 1)
+        self.report({"INFO"}, f"已删除 Group {idx}")
+        return {"FINISHED"}
+
+
+# =============================================================================
+# Phase 4 — GIF → PNG 精灵表生成
+# =============================================================================
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 填充 _CLASSES_P3（在类定义完成后）
+# 填充 _CLASSES_P3（在所有 P3 类定义完成后）
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CLASSES_P3.extend([
+    EFX_OT_uvs_group_add,
+    EFX_OT_uvs_group_remove,
     EFX_OT_uvs_edit,
     EFX_OT_uvs_close_editor,
     EFX_OT_uvs_gen_frames,
     EFX_PT_uvs_editor,
 ])
 
-
-# =============================================================================
-# Phase 4 — GIF → PNG 精灵表生成
-# =============================================================================
 
 def _check_pillow() -> bool:
     """检测 Pillow 是否可用（import 失败 = 未安装）。"""

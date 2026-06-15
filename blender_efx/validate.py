@@ -357,12 +357,19 @@ def validate_efx_tree(root_obj) -> list:
             BILLBOARD2D as _BB2D,
             UVSEQUENCE as _UVSEQ,      UVCONTROL as _UVCTL,
             MATERIAL as _MATERIAL,
+            ALPHACORRECTION as _ALPHACORR,
+            SHADERSETTINGS as _SHADERSET,
+            TRANSFORM3D as _T3D,       PARENTOPTIONS as _PARENTOPT,
+            SPAWN as _SPAWN,           LIFE as _LIFE,
+            RANDOMFIX as _RANDOMFIX,
         )
+        # 与 PTBEHAVIOR 允许共存的块（基础骨架；冲突降级为 WARN）
+        _PTBEHAVIOR_SOFT = frozenset({_T3D, _PARENTOPT, _SPAWN, _LIFE, _RANDOMFIX})
         _RENDERERS = frozenset({
             _BB3D, _RIBBON, _MESH, _PLANE, _FAKEPLANE,
             _LIGHTNING, _DUMMY, _RIBBONBLADE, _SRBN, _TUBE, _BB2D,
         })
-        _SPRITE_RENDERERS = frozenset({_BB3D, _RIBBON})
+        _SPRITE_RENDERERS = frozenset({_BB3D, _RIBBON, _PLANE})
         _block_rules_ok = True
     except ImportError:
         _block_rules_ok = False
@@ -419,17 +426,39 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5d) PTBEHAVIOR ✗ 其他 — ERROR
+                # (5d) PTBEHAVIOR ✗ 其他
+                # 基础骨架块（TRANSFORM3D/PARENTOPTIONS/SPAWN/LIFE/RANDOMFIX）与
+                # PTBEHAVIOR 共存已有实测文件验证不崩溃 → 降级为 WARN；
+                # 其余块（渲染体、行为块等）仍为 ERROR。
                 if _PTBEHAVIOR in hash_set and len(hash_set) > 1:
-                    problems.append({
-                        "level": "ERROR",
-                        "msg": (
-                            f"Body '{body.name}' has PTBEHAVIOR alongside other blocks — "
-                            "PTBEHAVIOR is an isolated system incompatible with "
-                            "renderer/physics blocks"
-                        ),
-                        "obj": body.name,
-                    })
+                    hard_conflicts = hash_set - _PTBEHAVIOR_SOFT - {_PTBEHAVIOR}
+                    soft_conflicts = (hash_set & _PTBEHAVIOR_SOFT) - {_PTBEHAVIOR}
+                    if hard_conflicts:
+                        names = "/".join(
+                            _H2N.get(h, f"0x{h:08X}") for h in hard_conflicts
+                        )
+                        problems.append({
+                            "level": "ERROR",
+                            "msg": (
+                                f"Body '{body.name}' has PTBEHAVIOR alongside "
+                                f"incompatible blocks ({names}) — "
+                                "PTBEHAVIOR is an isolated system"
+                            ),
+                            "obj": body.name,
+                        })
+                    elif soft_conflicts:
+                        names = "/".join(
+                            _H2N.get(h, f"0x{h:08X}") for h in soft_conflicts
+                        )
+                        problems.append({
+                            "level": "WARN",
+                            "msg": (
+                                f"Body '{body.name}' has PTBEHAVIOR alongside "
+                                f"structural blocks ({names}) — "
+                                "usually safe but verify in-game behavior"
+                            ),
+                            "obj": body.name,
+                        })
 
                 # (5e) 多个渲染体 — WARN
                 renderers_in_body = hash_set & _RENDERERS
@@ -446,12 +475,12 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5f) UVSEQUENCE without BILLBOARD3D/RIBBON — WARN
+                # (5f) UVSEQUENCE without BILLBOARD3D/RIBBON/PLANE — WARN
                 if _UVSEQ in hash_set and not (hash_set & _SPRITE_RENDERERS):
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Body '{body.name}' has UVSEQUENCE without BILLBOARD3D/RIBBON "
+                            f"Body '{body.name}' has UVSEQUENCE without BILLBOARD3D/RIBBON/PLANE "
                             "(UVSEQUENCE is a sprite face UV animation system)"
                         ),
                         "obj": body.name,
@@ -475,6 +504,19 @@ def validate_efx_tree(root_obj) -> list:
                         "msg": (
                             f"Body '{body.name}' has MATERIAL without MESH "
                             "(MATERIAL overrides mrl3 material properties on a MESH body)"
+                        ),
+                        "obj": body.name,
+                    })
+
+                # (5i) ALPHACORRECTION without SHADERSETTINGS — WARN
+                # 738 文件统计：ALPHACORRECTION 100% 依附 SHADERSETTINGS，从不单独出现
+                if _ALPHACORR in hash_set and _SHADERSET not in hash_set:
+                    problems.append({
+                        "level": "WARN",
+                        "msg": (
+                            f"Body '{body.name}' has ALPHACORRECTION without SHADERSETTINGS "
+                            "(ALPHACORRECTION requires SHADERSETTINGS as its shader context; "
+                            "all 738 sample files follow this rule)"
                         ),
                         "obj": body.name,
                     })

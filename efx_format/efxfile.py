@@ -786,8 +786,10 @@ class MainDataBody:
     attr_blocks: List[AttrBlock]
 
     def serialize(self) -> bytes:
+        # evc 哨兵：attr_count 为负数时 range() 为空 → 解析出 0 块，但原始字段值需保留
+        count = self.attr_count if (not self.attr_blocks and self.attr_count != 0) else len(self.attr_blocks)
         head = struct.pack('<IiiiI', self.body_type, self.unkn0,
-                           len(self.attr_blocks), self.null, self.timl_length)
+                           count, self.null, self.timl_length)
         out = head + self.timl_bytes
         for blk in self.attr_blocks:
             out += blk.serialize()
@@ -1166,6 +1168,7 @@ class EFXFile:
             283026906: 84,    # EXTERNVELOCITY3D2 (long unkn[21] = 84B)
             705591903: 72,    # EXTERNVELOCITY3D5 (long unkn[18] = 72B)
             1879331968: 80,   # EXTERNVELOCITY3D6 (long unkn[20] = 80B)
+            0x3002E4CE: 288,  # EXTERNVELOCITY3D7 (long unkn[72] = 288B, brute-force verified)
             0x295D488A: 133,  # EXTERNBILLBOARD3D (133B/elem, confirmed via structural analysis)
             0x320E3177: 361,  # EXTERNVELOCITY3D1 (361B/elem, confirmed via structural analysis)
             0x1CC2BE3A: 161,  # EXTERNRGBWATER (161B/elem, roundtrip verified)
