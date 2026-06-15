@@ -610,26 +610,28 @@ class EFX_OT_rename_entry(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 # auto_sort_body_blocks  —  导出前静默规范化块顺序
 #
-# 顺序来自 660 个官方 EFX 文件 / 16021 个 body 的中位归一化位置统计（2026-06）。
+# 顺序来自 10163 个 EFX 文件 / 109662 个 body 的中位归一化位置统计（2026-06）。
 #
 # 规范顺序层（sort key）：
 #    0  声明层      EXTERNREFERENCE / RANDOMFIX（永远最前）
-#   10  骨架层      TRANSFORM3D / PARENTOPTIONS / RAYCAST / LINKPARTSVISIBLE / SPAWN / LIFE
+#   10  骨架层      TRANSFORM3D / PARENTOPTIONS / RAYCAST / LINKPARTSVISIBLE /
+#                   SPAWN / LIFE / SPAWNBYANGLE（实测 0.308，LIFE 之后）
 #   20  早期可见性  FADEBYDEPTH / FADEBYANGLE / FADEBYEMITTERANGLE / FADEBYOCCLUSION
 #                   FAKEPLANE（地面检测，在发射器之前）
 #   30  发射器      EMITTERSHAPE3D / EMITTERSHAPE2D / EMITTERSHAPEMESH
-#   40  速度        VELOCITY3D / VELOCITY2D
+#   40  速度        VELOCITY3D / VELOCITY2D / REPEATAREA（实测 0.538，速度区）
 #   50  渲染主体    PLANE / RIBBONBLADE / UVCONTROL / BILLBOARD3D / LIGHTNING /
 #                   RIBBON / DUMMY / MESH / STRAINRIBBON / TUBELIGHT / BILLBOARD2D
 #   60  动画        ROTATEANIM / SCALEANIM
 #   70  UV 修饰     ALPHACORRECTION / UVSEQUENCE
-#   80  着色器及晚期约束  SHADERSETTINGS / EMITTERBOUNDARY / MATERIAL / SCREENSPACECOLLISION
+#   80  着色器及晚期约束  SHADERSETTINGS / EMITTERBOUNDARY / LAYOUT（实测 0.923）/
+#                         SCREENSPACECOLLISION / MATERIAL（实测 1.000，MESH 专属末位）
 #   90  晚期效果    BLINK / GUIDE / HOMING / LUMINANCEBLEED / MASTERONLY / NOISE /
 #                   PATHCHAIN / REFRACTION / TURBULENCE
 #  100  角色附着    PLEMISSIVE / PARENTEMISSIVE / PLSNOW / PARENTSNOW / OTOMOSNOW /
 #                   PARENTMATERIAL / SHOVEL
 #  110  PTBEHAVIOR  （孤立行为系统，与大多数块互斥）
-#  120  Misc/control（TIML / SPAWNBYANGLE / SPAWNBYOCCLUSION / CHECKPUREATTRIBUTE 等）
+#  120  Misc/control（TIML / SPAWNBYOCCLUSION / CHECKPUREATTRIBUTE 等）
 #  150  （未知类型默认值）
 #  200  全局染色    RGBFIRE / RGBWATER（总是最后）
 #  210  生命周期触发 PTCOLLISION / PTLIFE / PTTRIGGER（总是最后）
@@ -672,6 +674,7 @@ def _build_block_sort_key_map() -> dict:
         LINKPARTSVISIBLE:       13,   # 实测 0.182
         SPAWN:                  14,
         LIFE:                   15,
+        SPAWNBYANGLE:           16,   # 实测 0.308，LIFE 之后、FADE 层之前
         # ── 20 早期可见性 / 地面检测 ──────────────────────────────────────────
         FADEBYDEPTH:            20,   # 实测 0.357
         FADEBYANGLE:            21,   # 实测 0.364
@@ -683,8 +686,9 @@ def _build_block_sort_key_map() -> dict:
         EMITTERSHAPE2D:         31,
         EMITTERSHAPEMESH:       32,   # 实测 0.455
         # ── 40 速度 ───────────────────────────────────────────────────────────
-        VELOCITY3D:             40,   # 实测 0.545
+        VELOCITY3D:             40,   # 实测 0.538
         VELOCITY2D:             41,
+        REPEATAREA:             42,   # 实测 0.538，速度区同位
         # ── 50 渲染主体 ───────────────────────────────────────────────────────
         PLANE:                  50,   # 实测 0.571
         RIBBONBLADE:            51,   # 实测 0.571
@@ -704,10 +708,11 @@ def _build_block_sort_key_map() -> dict:
         ALPHACORRECTION:        70,   # 实测 0.818
         UVSEQUENCE:             71,   # 实测 0.818
         # ── 80 着色器及晚期约束 ───────────────────────────────────────────────
-        SHADERSETTINGS:         80,   # 实测 0.909
-        EMITTERBOUNDARY:        81,   # 实测 0.917（与发射器无关，出现在最后段）
-        MATERIAL:               82,   # 实测 0.917（MESH 专属，最后段）
+        SHADERSETTINGS:         80,   # 实测 0.900
+        EMITTERBOUNDARY:        81,   # 实测 0.917
+        LAYOUT:                 82,   # 实测 0.923
         SCREENSPACECOLLISION:   83,   # 实测 0.933
+        MATERIAL:               84,   # 实测 1.000（MESH 专属，总在末尾）
         # ── 90 晚期效果 ───────────────────────────────────────────────────────
         BLINK:                  90,   # 实测 1.000
         GUIDE:                  91,   # 实测 1.000
@@ -729,16 +734,13 @@ def _build_block_sort_key_map() -> dict:
         # ── 110 孤立行为系统 ──────────────────────────────────────────────────
         PTBEHAVIOR:             110,
         # ── 120 Misc/control ──────────────────────────────────────────────────
-        SPAWNBYANGLE:           120,
-        SPAWNBYOCCLUSION:       121,
-        TIML:                   122,
-        CHECKPUREATTRIBUTE:     123,
-        REPEATAREA:             124,
-        LAYOUT:                 125,
-        TRANSFORM2D:            126,
-        FAKEDOF:                127,
-        TONEMAPFILTER:          128,
-        COLORCORRECTFILTER:     129,
+        SPAWNBYOCCLUSION:       120,  # 实测 0.200（n=1，样本不足，暂置末尾）
+        TIML:                   121,
+        CHECKPUREATTRIBUTE:     122,
+        TRANSFORM2D:            123,  # 实测 0.000（n=2，样本不足，暂置末尾）
+        FAKEDOF:                124,
+        TONEMAPFILTER:          125,
+        COLORCORRECTFILTER:     126,
         # ── 200 全局染色（总是最后） ──────────────────────────────────────────
         RGBFIRE:                200,
         RGBWATER:               201,
@@ -756,10 +758,10 @@ def auto_sort_body_blocks(root_obj) -> int:
     """
     静默对 root_obj 下每个 body 的 EFX_BLOCK 按规范顺序排序（就地修改 efx_index）。
 
-    规范顺序：EXTERNREFERENCE/RANDOMFIX → 骨架 → 早期可见性/FAKEPLANE →
-             发射器 → 速度 → 渲染主体 → 动画 → UV修饰 →
-             着色器/晚期约束 → 晚期效果 → 角色附着 → PTBEHAVIOR → 杂项 →
-             RGBFIRE/RGBWATER → 生命周期触发
+    规范顺序：EXTERNREFERENCE/RANDOMFIX → 骨架/SPAWNBYANGLE → 早期可见性/FAKEPLANE →
+             发射器 → 速度/REPEATAREA → 渲染主体 → 动画 → UV修饰 →
+             着色器/LAYOUT/晚期约束/MATERIAL → 晚期效果 → 角色附着 →
+             PTBEHAVIOR → 杂项 → RGBFIRE/RGBWATER → 生命周期触发
 
     只修改 efx_index；io_tree.export_efx_tree 按 efx_index 排序序列化，无需重建显示名。
     返回被重新排序的 body 数量（未变动的 body 不计）。
