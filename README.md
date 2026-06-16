@@ -33,15 +33,26 @@ For reference only. This interpretation does not reflect the actual structure of
        Composed of typed Components (**Blocks**) that together define particle behaviors (transforms, emission, rendering, color and more).
     2. **Play**: An action trigger.
        
-       Called by a Body's PTLIFE or PTCOLLISION block; activates one or more target Bodies (**PLAYEREMIITER**) or external EFX files (PLAYER.
+       Called by a Body's PTLIFE or PTCOLLISION block; activates one or more target Bodies (**PLAYEMITTER**) or external EFX files (**PLAYEFX**).
     3. **Extern**: EFX Body replacer(?)
        
        There are two types, replacement parameters and external EFX references.
        The former replaces the corresponding parameter in the block within the body when some conditions are met;
        the specific mechanism of the latter is not yet clear.
   - **EFX Subselect Table**: A subset of Bodies. Determines which EFX blocks from which subsets to call under some conditions.
+ 
 
-## Supported Operations & Features
+## Features
+- **TRANSFORM3D Visualization** — Reflects the actual trigger position of the EFX Body.
+  After you snap it to any armature, efx bodies can also snap to the bone binded (decided by PARENTOPTIONS).
+  This feature uses the same coordinate system as the MHW Model Editor.
+- **Pre-export Validation** — Check for errors & warnings that could cause the game to crash, such as null pointers, Play loop, block order, etc.
+  This feature does not guarantee that errors will never occur.
+- **Activation & Reference Status Check** — Display the calls to and from the selected Body, as well as its activation status.
+- **Hex View** — You can copy the entire hex value of a specific block, edit it, and then paste it back (ensuring that the bytes remain exactly the same).
+- **UVS Edit** — You can import/export and edit .uvs file at any UVSEQUENCE block. Gif to sequence png is also supported.
+
+## Supported Operations
 
 > **Note:** All add, remove, reorder, and paste operations must be done through the **EFX sidebar panel**
 > (`N` key). Do not rename, move, or delete the generated objects directly in the outliner — the add-on
@@ -85,9 +96,11 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | STRAINRIBBON | ✓ |
 | MESH | ✓ |
 | LIGHTNING | ✓ |
+| TUBELIGHT | ✓ — light cylinder with half-sphere caps and a texture; point/spot light behaviors belong to PTBEHAVIOR |
+| FAKEPLANE | ✓ |
 | DUMMY | ✓ |
 
-#### III. Sprite Modifiers (face-rendered only, can be conflict with MESH)
+#### III. Sprite Modifiers (face-rendered only, can conflict with MESH)
 
 | Block Type | Field Editing |
 |---|---|
@@ -111,8 +124,10 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | Block Type | Field Editing |
 |---|---|
 | EMITTERSHAPE3D | ✓ |
-| EMITTERSHAPE2D | ✓ |
+| EMITTERSHAPEMESH | ✓ — references a mesh; particles spawn at the mesh's vertices |
 | EMITTERBOUNDARY | ✓ |
+| SPAWNBYANGLE | ✓ |
+| SPAWNBYOCCLUSION | ✓ |
 
 #### VI. Motion / Velocity
 
@@ -125,6 +140,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | TURBULENCE | ✓ |
 | HOMING | ✓ |
 | GUIDE | ✓ |
+| PATHCHAIN | ✓ |
 | SCREENSPACECOLLISION | ✓ |
 
 #### VII. Visibility / Fade
@@ -134,9 +150,11 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | FADEBYDEPTH | ✓ |
 | FADEBYANGLE | ✓ |
 | FADEBYEMITTERANGLE | ✓ |
+| FADEBYOCCLUSION | ✓ |
 | SHADERSETTINGS | ✓ |
 | MASTERONLY | ✓ |
 | RAYCAST | ✓ |
+| LINKPARTSVISIBLE | ✓ |
 
 #### VIII. Lifecycle Triggers (almost certainly last in body)
 
@@ -144,7 +162,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 |---|---|
 | PTCOLLISION | ✓ |
 | PTLIFE | ✓ |
-| PTBEHAVIOR | **Partial** — existing parameters editable only |
+| PTTRIGGER | ✓ |
 
 #### IX. Extern Declaration (almost certainly first in body)
 
@@ -159,50 +177,38 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | PLEMISSIVE | ✓ |
 | PARENTEMISSIVE | ✓ |
 | PLSNOW | ✓ |
+| PARENTSNOW | ✓ |
+| OTOMOSNOW | ✓ |
+| PARENTMATERIAL | ✓ |
 | SHOVEL | ✓ |
 
-#### XI. Misc / Control
+#### XI. Behavior System (standalone, mutually exclusive with normal flow)
+
+| Block Type | Field Editing |
+|---|---|
+| PTBEHAVIOR | ✓ — typed sparse override; handles point light (MhPointLightBehavior), spot light (MhSpotLightBehavior), decals (MhEffectDecalBehavior), radial blur, and other type-specific behaviors; add / remove / edit override properties |
+
+#### XII. 2D / UI Variants (for 2D effects — functional 2D equivalents of their 3D counterparts; many 3D blocks do not apply when these are present)
+
+| Block Type | Field Editing | 3D Equivalent Section |
+|---|---|---|
+| TRANSFORM2D | ✓ | I. Body Skeleton |
+| EMITTERSHAPE2D | ✓ | V. Emitter / Space |
+| VELOCITY2D | ✗ | VI. Motion / Velocity |
+| BILLBOARD2D | ✗ | II. Renderer |
+
+#### XIII. Misc / Control
 
 | Block Type | Field Editing |
 |---|---|
 | RANDOMFIX | ✓ |
-
-#### XII. Unknowns
-
-| Block Type | Field Editing |
-|---|---|
-| PATHCHAIN | ✓ |
-| PTTRIGGER | ✓ |
-| FAKEDOF | ✗ |
-| REPEATAREA | ✗ |
-| LINKPARTSVISIBLE | ✓ |
-| FAKEPLANE | ✓ |
-| TRANSFORM2D | ✓ |
-| BILLBOARD2D | ✗ |
-| VELOCITY2D | ✓ |
-| TUBELIGHT | ✗ |
-| LAYOUT | ✗ |
-| SPAWNBYANGLE | ✓ |
 | CHECKPUREATTRIBUTE | ✓ |
 | TONEMAPFILTER | ✓ |
 | COLORCORRECTFILTER | ✓ |
-| SPAWNBYOCCLUSION | ✓ |
-| FADEBYOCCLUSION | ✓ |
-| PARENTSNOW | ✓ |
-| OTOMOSNOW | ✓ |
-| PARENTMATERIAL | ✓ |
-| EMITTERSHAPEMESH | ✓ |
-
-### 3. Other Features
-- **TRANSFORM3D Visualization** — Reflects the actual trigger position of the EFX Body.
-  This feature uses the same coordinate system as the MHW Model Editor.
-- **Place Effects on an Armature** — effects snap to the bone (decided in PARENTOPTIONS) they belong to when you load a matching
-  skeleton, so you can see them where they actually appear in-game.
-  This feature relies on armatures imported via the MHW Model Editor.
-- **Pre-export Validation** — Check for errors & warnings that could cause the game to crash, such as null pointers, Play loop, block order, etc.
-  This feature does not guarantee that errors will never occur.
-- **Activation & Reference Status Check** — Display the calls to and from the selected Body, as well as its activation status.
-- **Hex View** — You can copy the entire hex value of a specific block, edit it, and then paste it back (ensuring that the bytes remain exactly the same).
+| FAKEDOF | ✓ |
+| REPEATAREA | ✓ |
+| LAYOUT | ✗ |
+| TIML | via .timl file import/export |
 
 ## Credits
 
