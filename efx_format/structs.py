@@ -1615,6 +1615,33 @@ OTOMOSNOW_SCHEMA = [
 assert _schema_size(OTOMOSNOW_SCHEMA) == 84, \
     f"OTOMOSNOW_SCHEMA size mismatch: {_schema_size(OTOMOSNOW_SCHEMA)}"
 
+# FakePlane (64B total, 60B data)
+# BT (EFX_Crimson.bt): int unkn0[2](8) + byte unkn1[4](4) + float unkn2(4) +
+#   int unkn3(4) + long unkn4(4) + float unkn5[9](36)
+FAKEPLANE_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', ('b', 4)),   # 4B
+    ('unkn2', 'f'),        # 4B
+    ('unkn3', 'i'),        # 4B
+    ('unkn4', 'i'),        # 4B  (long=4B)
+    ('unkn5', ('f', 9)),   # 36B
+]
+assert _schema_size(FAKEPLANE_SCHEMA) == 60, \
+    f"FAKEPLANE_SCHEMA size mismatch: {_schema_size(FAKEPLANE_SCHEMA)}"
+
+# RepeatArea (56B total, 52B data) — 无 BT，按全 135 实例列分析推断字段类型：
+#   off0 小整数(0~10) / off4 恒为 44 / off8..23 为 0xcd 未初始化区(16B) /
+#   off24..47 为 6 个 float / off48 小整数。
+REPEATAREA_SCHEMA = [
+    ('unkn0', 'i'),        # 4B  索引/计数
+    ('unkn1', 'i'),        # 4B  恒 44（子结构大小？）
+    ('unkn2', ('b', 16)),  # 16B 0xcd 未初始化区
+    ('unkn3', ('f', 6)),   # 24B
+    ('unkn4', 'i'),        # 4B
+]
+assert _schema_size(REPEATAREA_SCHEMA) == 52, \
+    f"REPEATAREA_SCHEMA size mismatch: {_schema_size(REPEATAREA_SCHEMA)}"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1650,8 +1677,11 @@ _UVSEQUENCE_FIXED_SCHEMA = [
     ('animationSpeedJitter',    'f'),
     ('animationAcceleration',   'f'),
     ('animationAccelerationJitter', 'f'),
-    ('loopingEnum',             'i'),
-]  # 10 fields = 40 B
+    # loopingEnum（4B）按语义拆分：byte0=动画模式，byte1=贴图朝向，byte2-3=padding（恒0）。
+    ('loopingMode',             'B'),   # byte0：0=不播放/2=随机重置/9=连续正向/16=连续反向…
+    ('loopingOrientation',      'B'),   # byte1：0=上/1=右/2=左/3=随机
+    ('loopingPad',              'h'),   # byte2-3：保留（实测恒 0）
+]  # 11 fields = 40 B
 
 _UVSEQUENCE_FIXED_SIZE = _schema_size(_UVSEQUENCE_FIXED_SCHEMA)  # = 40
 
@@ -2709,6 +2739,138 @@ def pack_tonemapfilter(values: dict) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# TubeLight (variable: 124B fixed + path_len(4) + path[path_len]，path_len 含末尾 null)
+#
+# BT (EFX_Crimson.bt) 分组：unkn0[3]+unkn1[11]+unkn2[2]+unkn3[4]+unkn4[4]+
+#   unkn5[2]+unkn6[4]+unkn7 = 124B；类型按全 22 实例逐列分析判定：
+#   off80 / off108 为 RGBA 颜色（含 NaN 位模式）→ 用 int 防 NaN 归一化；
+#   0xcd 未初始化列亦用 int。其余清晰浮点列用 float。
+# path_len 计入末尾 null（如 "vfx\dds\..._BM\0" path_len=30）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_TUBELIGHT_FIXED_SCHEMA = [
+    ('unkn0',  ('i', 3)),   # 12B  off0-11
+    ('unkn1',  ('f', 11)),  # 44B  off12-55
+    ('unkn2',  ('f', 2)),   # 8B   off56-63
+    ('unkn3',  ('i', 4)),   # 16B  off64-79
+    ('color0', 'i'),        # 4B   off80  (RGBA → int)
+    ('unkn4',  ('f', 3)),   # 12B  off84-95
+    ('unkn5',  ('i', 2)),   # 8B   off96-103
+    ('unkn6a', ('i', 2)),   # 8B   off104-111 (含 color1@108)
+    ('unkn6b', ('f', 2)),   # 8B   off112-119
+    ('unkn7',  'f'),        # 4B   off120-123
+]
+assert _schema_size(_TUBELIGHT_FIXED_SCHEMA) == 124, \
+    f"_TUBELIGHT_FIXED_SCHEMA size mismatch: {_schema_size(_TUBELIGHT_FIXED_SCHEMA)}"
+
+
+def unpack_tubelight(data: bytes, off: int = 0):
+    """Unpack TubeLight data_bytes (124B fixed + length-prefixed path)。"""
+    values, off = unpack(_TUBELIGHT_FIXED_SCHEMA, data, off)
+    (path_len,) = struct.unpack_from('<i', data, off)
+    off += 4
+    values['path_len'] = path_len
+    values['path'] = data[off:off + path_len]   # 原始字节（含末尾 null）
+    off += path_len
+    return values, off
+
+
+def pack_tubelight(values: dict) -> bytes:
+    """Pack TubeLight values dict back to bytes（path verbatim，含其 null）。"""
+    out = pack(_TUBELIGHT_FIXED_SCHEMA, values)
+    path = values['path']
+    out += struct.pack('<i', len(path))
+    out += path
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EmitterShapeMesh (variable: 32B fixed + null-terminated path1，块在 null 处结束)
+#
+# BT (EFX_Crimson.bt)：int unkn0[2](8)+long unkn1[3](12)+byte unkn2[8](8)+
+#   int unkn3(4) = 32B fixed，随后 null-terminated path1（Mod3 路径）。
+# 空路径时块为 33B（32B fixed + 单个 null）。全字段 int/byte → 天然字节完美。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_EMITTERSHAPEMESH_FIXED_SCHEMA = [
+    ('unkn0', ('i', 2)),   # 8B
+    ('unkn1', ('i', 3)),   # 12B (long=4B)
+    ('unkn2', ('b', 8)),   # 8B
+    ('unkn3', 'i'),        # 4B
+]
+assert _schema_size(_EMITTERSHAPEMESH_FIXED_SCHEMA) == 32, \
+    f"_EMITTERSHAPEMESH_FIXED_SCHEMA size mismatch: {_schema_size(_EMITTERSHAPEMESH_FIXED_SCHEMA)}"
+
+
+def unpack_emittershapemesh(data: bytes, off: int = 0):
+    """Unpack EmitterShapeMesh（32B fixed + null-term path1）。"""
+    values, off = unpack(_EMITTERSHAPEMESH_FIXED_SCHEMA, data, off)
+    null = data.index(b'\x00', off)
+    values['path1'] = data[off:null]   # 不含 null
+    off = null + 1
+    return values, off
+
+
+def pack_emittershapemesh(values: dict) -> bytes:
+    """Pack EmitterShapeMesh values dict back to bytes（path1 + null）。"""
+    out = pack(_EMITTERSHAPEMESH_FIXED_SCHEMA, values)
+    out += values['path1'] + b'\x00'
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FakeDoF (变长：32B fixed + 可选 20B tail，两种实测尺寸 32B / 52B)
+#
+# 无内部长度字段——off24 等都不是判别符（off24=2 在 32B 与 52B 均出现）；尾段
+# 的有无由 forward_scan 定界（块 36B/56B 皆 4 对齐，扫描可靠）。codec 据
+# data_bytes 剩余长度自适应：满 20B 则解出 tail，否则止于 32B。无路径。
+# 字段类型按全 16 实例（尾段 13 实例）逐列分析：off8 为 0xcd → int；off32 为
+# hash/seed（大幅波动）→ int 防 float 异常；其余清晰浮点用 float。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_FAKEDOF_FIXED_SCHEMA = [
+    ('unkn0', 'i'),        # 4B  off0  (索引/计数 1~5)
+    ('unkn1', 'i'),        # 4B  off4  (恒 24)
+    ('unkn2', 'i'),        # 4B  off8  (0xcd 未初始化)
+    ('unkn3', ('f', 2)),   # 8B  off12-19
+    ('unkn4', 'f'),        # 4B  off20
+    ('unkn5', 'i'),        # 4B  off24
+    ('unkn6', 'i'),        # 4B  off28
+]
+assert _schema_size(_FAKEDOF_FIXED_SCHEMA) == 32, \
+    f"_FAKEDOF_FIXED_SCHEMA size mismatch: {_schema_size(_FAKEDOF_FIXED_SCHEMA)}"
+
+_FAKEDOF_TAIL_SCHEMA = [
+    ('tail_hash', 'i'),    # 4B  off32 (hash/seed)
+    ('tail1',     'i'),    # 4B  off36
+    ('tail2',     'i'),    # 4B  off40
+    ('tail3',     ('i', 2)),  # 8B off44-51
+]
+assert _schema_size(_FAKEDOF_TAIL_SCHEMA) == 20, \
+    f"_FAKEDOF_TAIL_SCHEMA size mismatch: {_schema_size(_FAKEDOF_TAIL_SCHEMA)}"
+
+
+def unpack_fakedof(data: bytes, off: int = 0):
+    """Unpack FakeDoF（32B fixed + 可选 20B tail，按剩余长度自适应）。"""
+    values, off = unpack(_FAKEDOF_FIXED_SCHEMA, data, off)
+    if len(data) - off >= 20:
+        tail, off = unpack(_FAKEDOF_TAIL_SCHEMA, data, off)
+        values.update(tail)
+        values['_has_tail'] = True
+    else:
+        values['_has_tail'] = False
+    return values, off
+
+
+def pack_fakedof(values: dict) -> bytes:
+    """Pack FakeDoF values dict back to bytes（按 _has_tail 决定是否拼尾段）。"""
+    out = pack(_FAKEDOF_FIXED_SCHEMA, values)
+    if values.get('_has_tail'):
+        out += pack(_FAKEDOF_TAIL_SCHEMA, values)
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Custom-codec registry
 #
 # Maps type_hash → (unpack_fn, pack_fn)
@@ -2776,6 +2938,8 @@ from .hashes import (
     COLORCORRECTFILTER,
     PARENTSNOW,
     OTOMOSNOW,
+    FAKEPLANE,
+    REPEATAREA,
     # 原 opaque 变长类型（新增 custom codec）
     TONEMAPFILTER,
     # variable-length and dispatch types
@@ -2791,6 +2955,9 @@ from .hashes import (
     RGBWATER,
     PTBEHAVIOR,
     MATERIAL,
+    TUBELIGHT,
+    EMITTERSHAPEMESH,
+    FAKEDOF,
 )
 
 ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
@@ -2844,6 +3011,8 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     COLORCORRECTFILTER: (COLORCORRECTFILTER_SCHEMA,  688),
     PARENTSNOW:         (PARENTSNOW_SCHEMA,           80),
     OTOMOSNOW:          (OTOMOSNOW_SCHEMA,            84),
+    FAKEPLANE:          (FAKEPLANE_SCHEMA,            60),
+    REPEATAREA:         (REPEATAREA_SCHEMA,           52),
     # ── Variable/dispatch types: sentinel '_custom', size=None ────────────────
     # These are routed to ATTR_CUSTOM_CODEC by decode/encode on AttrBlock.
     UVSEQUENCE:  ('_custom', None),
@@ -2859,6 +3028,9 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     PTBEHAVIOR:  ('_custom', None),
     MATERIAL:    ('_custom', None),
     TONEMAPFILTER:('_custom', None),
+    TUBELIGHT:        ('_custom', None),
+    EMITTERSHAPEMESH: ('_custom', None),
+    FAKEDOF:          ('_custom', None),
 }
 
 # Populate custom codec registry after the hash imports above
@@ -2876,6 +3048,9 @@ ATTR_CUSTOM_CODEC = {
     PTBEHAVIOR:   (unpack_ptbehavior,   pack_ptbehavior),
     MATERIAL:     (unpack_material,     pack_material),
     TONEMAPFILTER:(unpack_tonemapfilter,pack_tonemapfilter),
+    TUBELIGHT:        (unpack_tubelight,        pack_tubelight),
+    EMITTERSHAPEMESH: (unpack_emittershapemesh, pack_emittershapemesh),
+    FAKEDOF:          (unpack_fakedof,          pack_fakedof),
 }
 
 
@@ -2998,6 +3173,18 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
     if type_hash == TURBULENCE:
         (path_len,) = struct.unpack_from('<i', data_bytes, 4)
         path_b = data_bytes[8:8 + path_len]
+        return [_path_bytes_to_str(path_b)]
+
+    # TUBELIGHT: fixed 124B + path_len(4)@124 + path[path_len]（path_len 含末尾 null）
+    if type_hash == TUBELIGHT:
+        (path_len,) = struct.unpack_from('<i', data_bytes, 124)
+        path_b = data_bytes[128:128 + path_len].rstrip(b'\x00')
+        return [_path_bytes_to_str(path_b)]
+
+    # EMITTERSHAPEMESH: fixed 32B + null-term path1（块在 null 处结束）
+    if type_hash == EMITTERSHAPEMESH:
+        null = data_bytes.index(b'\x00', 32)
+        path_b = data_bytes[32:null]
         return [_path_bytes_to_str(path_b)]
 
     # RIBBON: fixed 360B + null-term path
@@ -3196,6 +3383,23 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path_b
                 + data_bytes[old_path_end:])
 
+    # ── TUBELIGHT ──
+    # 结构：[0..123] verbatim + path_len(4) + path（含末尾 null）。
+    # path_len 计入 null，故新 path 字节 = new_path + \x00，path_len = 其长度。
+    if type_hash == TUBELIGHT:
+        assert len(new_paths) == 1
+        new_path_b = _str_to_path_bytes(new_paths[0]) + b'\x00'
+        return (data_bytes[:124]
+                + struct.pack('<i', len(new_path_b))
+                + new_path_b)
+
+    # ── EMITTERSHAPEMESH ──
+    # 结构：[0..31] verbatim (32B fixed) + new_path + \x00
+    if type_hash == EMITTERSHAPEMESH:
+        assert len(new_paths) == 1
+        new_path_b = _str_to_path_bytes(new_paths[0])
+        return data_bytes[:32] + new_path_b + b'\x00'
+
     # ── RIBBON ──
     # 结构：[0..359] verbatim + new_path + \x00
     if type_hash == RIBBON:
@@ -3324,6 +3528,9 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     # L1.1c：嵌套/分派类型，含多个嵌入路径
     MATERIAL,
     PTBEHAVIOR,
+    # 新增变长路径类型
+    TUBELIGHT,
+    EMITTERSHAPEMESH,
 })
 
 
@@ -3358,6 +3565,10 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
                   if e[0] not in ('path', 'path_len')],
     PLANE:       [e for e in (_PLANE_DDS_SCHEMA + _PLANE_EXTRAS_SCHEMA)
                   if e[0] not in ('path', 'path_len')],
+    TUBELIGHT:        _TUBELIGHT_FIXED_SCHEMA,
+    EMITTERSHAPEMESH: _EMITTERSHAPEMESH_FIXED_SCHEMA,
+    # FAKEDOF：仅暴露恒在的 32B fixed 字段（尾段 present-conditional，不暴露为标量）
+    FAKEDOF:          _FAKEDOF_FIXED_SCHEMA,
 }
 
 

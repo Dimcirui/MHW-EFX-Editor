@@ -19,7 +19,7 @@ L1.3 拖入导入（FileHandler）：
 
 import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
-from bpy.props import StringProperty, CollectionProperty
+from bpy.props import StringProperty, CollectionProperty, EnumProperty, IntProperty
 
 from . import io_tree
 from .i18n import T
@@ -418,6 +418,127 @@ class EFX_OT_paste_block_fields(bpy.types.Operator):
 # #2 字段说明 tooltip 算子
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _is_ptbehavior_block(obj) -> bool:
+    """obj 是否为可编辑的 PTBEHAVIOR EFX_BLOCK。"""
+    if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+        return False
+    try:
+        from ..efx_format.hashes import PTBEHAVIOR
+        bp = obj.efx_block
+        return bp.is_editable and int(bp.type_hash_str) == PTBEHAVIOR
+    except (AttributeError, ValueError, ImportError):
+        return False
+
+
+# 动态 EnumProperty items 引用保活（防 GC：见 memory enum-callback-gc-trap）。
+# identifier/name 全 ASCII（key 为十进制串、label 为已知英文名或 0x%08X），规避中文乱码。
+_PTB_ADD_ENUM_CACHE = []
+
+
+def _ptb_add_enum_items(self, context):
+    """添加覆盖下拉的 items 回调：列出当前块 b_type 尚未覆盖的属性。"""
+    global _PTB_ADD_ENUM_CACHE
+    obj = context.active_object
+    items = []
+    if _is_ptbehavior_block(obj):
+        from . import fields as _fields
+        for key, t, label in _fields.ptbehavior_addable_items(obj.efx_block):
+            ident = str(key)
+            desc = "type=0x{:02X}".format(t)
+            items.append((ident, label, desc))
+    if not items:
+        items = [("__none__", "(no addable property)", "")]
+    _PTB_ADD_ENUM_CACHE = items  # 保活
+    return _PTB_ADD_ENUM_CACHE
+
+
+class EFX_OT_ptb_add_override(bpy.types.Operator):
+    """向 PTBEHAVIOR 添加一条覆盖属性（按规范顺序插入）"""
+
+    bl_idname      = "efx.ptb_add_override"
+    bl_label       = "Add Override"
+    bl_description = "Add an override property to this PTBEHAVIOR block (inserted in canonical order)"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    key_choice: EnumProperty(
+        name="Property",
+        description="Property to add (from this behavior type's catalog)",
+        items=_ptb_add_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _is_ptbehavior_block(context.active_object)
+
+    def execute(self, context):
+        from . import fields as _fields
+        from ..efx_format.structs import unpack_ptbehavior, pack_ptbehavior
+        from ..efx_format.ptbehavior_edit import add_override
+
+        if self.key_choice == "__none__":
+            self.report({"WARNING"}, "No property selected")
+            return {"CANCELLED"}
+
+        bp = context.active_object.efx_block
+        try:
+            key = int(self.key_choice)
+        except ValueError:
+            self.report({"ERROR"}, "Invalid property key")
+            return {"CANCELLED"}
+
+        cur = _fields.ptbehavior_current_bytes(bp)   # 烘焙待编辑值
+        d, _ = unpack_ptbehavior(cur)
+        if not add_override(d, key):
+            self.report({"WARNING"}, "Property already present or not in catalog")
+            return {"CANCELLED"}
+        new_bytes = pack_ptbehavior(d)
+        if not _fields.reinit_ptbehavior_from_bytes(bp, new_bytes):
+            self.report({"ERROR"}, "Re-init failed after add")
+            return {"CANCELLED"}
+        bp.efx_dirty = True
+        self.report({"INFO"}, "Override added (0x{:08X})".format(key))
+        return {"FINISHED"}
+
+
+class EFX_OT_ptb_remove_override(bpy.types.Operator):
+    """从 PTBEHAVIOR 移除指定下标的覆盖属性"""
+
+    bl_idname      = "efx.ptb_remove_override"
+    bl_label       = "Remove Override"
+    bl_description = "Remove this override property from the PTBEHAVIOR block"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    param_index: IntProperty(name="Param Index", default=-1)
+
+    @classmethod
+    def poll(cls, context):
+        return _is_ptbehavior_block(context.active_object)
+
+    def execute(self, context):
+        from . import fields as _fields
+        from ..efx_format.structs import unpack_ptbehavior, pack_ptbehavior
+        from ..efx_format.ptbehavior_edit import remove_override
+
+        bp = context.active_object.efx_block
+        cur = _fields.ptbehavior_current_bytes(bp)   # 烘焙待编辑值
+        d, _ = unpack_ptbehavior(cur)
+        params = d["params"]
+        if not (0 <= self.param_index < len(params)):
+            self.report({"ERROR"}, "Param index out of range")
+            return {"CANCELLED"}
+        key = params[self.param_index]["unkn"] & 0xFFFFFFFF
+        if not remove_override(d, key):
+            self.report({"WARNING"}, "Property not found")
+            return {"CANCELLED"}
+        new_bytes = pack_ptbehavior(d)
+        if not _fields.reinit_ptbehavior_from_bytes(bp, new_bytes):
+            self.report({"ERROR"}, "Re-init failed after remove")
+            return {"CANCELLED"}
+        bp.efx_dirty = True
+        self.report({"INFO"}, "Override removed (0x{:08X})".format(key))
+        return {"FINISHED"}
+
+
 class EFX_OT_field_help(bpy.types.Operator):
     """
     纯提示算子：执行无副作用，description 动态返回字段注释。
@@ -495,13 +616,88 @@ if _HAS_FILEHANDLER:
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 从零新建 EFX 集合（无需导入文件）
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_OT_new_efx(bpy.types.Operator):
+    """新建一个空白 EFX 集合（根对象 + 4 个空子集合），之后可直接添加 Play/Extern/Body"""
+
+    bl_idname  = "efx.new_efx"
+    bl_label   = "New EFX"
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty(
+        name="Name",
+        description="EFX collection name (used as file stem)",
+        default="new_efx",
+    )
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        import base64 as _b64
+        from . import io_tree
+
+        stem = self.name.strip() or "new_efx"
+        col_name = stem + ".efx"
+
+        # ── 顶层集合（紫色，与导入保持一致）──────────────────────────────────
+        scene_col = context.scene.collection
+        root_col = io_tree._new_collection(col_name, scene_col)
+        root_col.color_tag = "COLOR_06"
+
+        # ── EFX_ROOT Empty ────────────────────────────────────────────────────
+        root_obj = io_tree._new_empty(stem + "_ROOT", root_col)
+        root_obj["~TYPE"] = "EFX_ROOT"
+
+        # header：使用语料库最普遍值（从 78 精选样本统计）
+        root_obj["hdr_signature"]       = "45465800"      # "EFX\x00"
+        root_obj["hdr_version"]         = "711800"
+        root_obj["hdr_constant"]        = "402786304,0,1254190883,402786304,402786304"
+        root_obj["hdr_efxr"]            = "65667872"      # "efxr"
+        root_obj["hdr_unkn0"]           = "1"
+        root_obj["hdr_unkn1"]           = "4294967295"    # 0xFFFFFFFF
+        root_obj["hdr_count_body"]      = "0"
+        root_obj["hdr_label_size"]      = "1"
+        root_obj["hdr_count_play"]      = "0"
+        root_obj["hdr_count_extern"]    = "0"
+        root_obj["hdr_count_subselect"] = "0"
+        root_obj["hdr_subselect_size"]  = "0"
+        root_obj["hdr_count_eof"]       = "0"
+        root_obj["hdr_double_buffer"]   = "15000"
+
+        # label_bytes：单 null 字节；labels_dirty=1 让导出端按实际内容重建
+        root_obj["label_bytes"]  = _b64.b64encode(b"\x00").decode("ascii")
+        root_obj["label_tail"]   = ""
+        root_obj["labels_dirty"] = 1
+        root_obj["eof_ints"]     = ""
+        root_obj["eof_tail"]     = ""
+
+        # ── 4 个空子集合（与导入时命名一致）──────────────────────────────────
+        io_tree._new_collection(stem + "_2 Main",      root_col)
+        io_tree._new_collection(stem + "_0 Play",      root_col)
+        io_tree._new_collection(stem + "_1 Extern",    root_col)
+        io_tree._new_collection(stem + "_3 Subselect", root_col)
+
+        # Active EFX 自动切换到新建集合
+        context.scene.efx_active_efx = root_col
+
+        self.report({"INFO"}, f"New EFX created: {col_name}")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     EFX_OT_import,
     EFX_OT_export,
+    EFX_OT_new_efx,
     # 旧字段值预设算子（save/apply_block_preset、open_preset_folder）已删：
     # 块预设改为 block_ops 整块机制；字段复用保留为即时复制/粘贴。
     EFX_OT_copy_block_fields,
     EFX_OT_paste_block_fields,
+    EFX_OT_ptb_add_override,
+    EFX_OT_ptb_remove_override,
     EFX_OT_field_help,
 )
 

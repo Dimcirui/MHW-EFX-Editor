@@ -94,16 +94,16 @@ FIELD_LABELS_ZH = {
     # ── 生成 / 寿命 ─────────────────────────────────────────────────────────
     "instancesSpawnedTotal": "生成总数",
     "instancesSpawnedPerFrame": "每帧生成数",
-    "frameDelayBetweenSpawns": "生成间隔帧数",
-    "durationOfSpawnerLifespan": "发射器寿命",
-    "randomizedDelay": "随机延迟",
-    "randomizedLifespan": "随机寿命",
+    "frameDelayBetweenSpawns": "生成间隔（帧）",
+    "durationOfSpawnerLifespan": "发射器寿命（帧）",
+    "randomizedDelay": "生成间隔抖动（帧）",
+    "randomizedLifespan": "发射器寿命抖动（帧）",
     "randomizedSpawnsPerFrame": "每帧随机生成数",
     "instanceCountUnknLimit": "实例数上限",
     "instanceCountUnknLimitJitter": "实例数上限抖动",
     "repeatAtribute": "重复属性",
-    "occur": "发生",
-    "occur2": "发生2",
+    "occur": "生成延迟（帧）",
+    "occur2": "生成延迟抖动（帧）",
     "spawnAngleLimits": "生成角度限制",
     "spawnCount": "生成数量",
     "spawnLock": "锁定到位置",
@@ -281,6 +281,10 @@ FIELD_LABELS_ZH = {
     "prop1Jitter": "属性1抖动",
     "prop2": "属性2",
     "prop3": "属性3",
+    # ── UVSEQUENCE loopingEnum 拆分字段 ────────────────────────────────────
+    "loopingMode": "循环模式",
+    "loopingOrientation": "贴图朝向",
+    "loopingPad": "保留",
 }
 
 

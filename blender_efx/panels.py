@@ -167,9 +167,18 @@ _SCALAR_PROP_ATTR = {
 }
 
 
+# SPAWN 块中不符合 Jitter 后缀约定、但语义上是抖动字段的名称
+_SPAWN_JITTER_NAMES = frozenset({
+    "randomizedSpawnsPerFrame",
+    "randomizedDelay",
+    "randomizedLifespan",
+    "occur2",
+})
+
+
 def _is_jitter_name(name: str) -> bool:
-    """字段名是否为 jitter（两种命名：camelCase 'XJitter' / snake 'x_jitter'）。"""
-    return name.endswith("Jitter") or name.endswith("_jitter")
+    """字段名是否为 jitter（camelCase 'XJitter' / snake 'x_jitter' / SPAWN 特例）。"""
+    return name.endswith("Jitter") or name.endswith("_jitter") or name in _SPAWN_JITTER_NAMES
 
 
 def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
@@ -581,13 +590,26 @@ def _draw_block_fields_content(layout, context):
                     )
                     i += 1
                     continue
-                # PTBEHAVIOR：p{i} 加语义标注 → "P{i}(hint)"；b_type / p{i}_v{j} 走普通路径
+                # PTBEHAVIOR：param 行用属性 key 标签（hint_name=已知名/0x%08X）+ 行尾移除按钮
                 if _is_ptbehavior and item.hint_name and item.ori_name.startswith('p'):
                     _rest = item.ori_name[1:]  # "5" or "5_v2"
-                    _draw_field_item(
-                        col, item, type_name=type_name,
-                        label_override=f"P{_rest}({item.hint_name})",
-                    )
+                    try:
+                        _pord = int(_rest.split('_')[0])
+                    except ValueError:
+                        _pord = -1
+                    _is_first_sub = ('_v' not in _rest) or _rest.endswith('_v0')
+                    # 0x15 子值加 [vN] 后缀以区分；其余直接用 key 标签
+                    if '_v' in _rest:
+                        _lbl = f"{item.hint_name} [{_rest.split('_v')[1]}]"
+                    else:
+                        _lbl = item.hint_name
+                    _prow = col.row(align=True)
+                    _fcol = _prow.column(align=True)
+                    _draw_field_item(_fcol, item, type_name=type_name, label_override=_lbl)
+                    if _is_first_sub and _pord >= 0:
+                        _bcol = _prow.column(align=True)
+                        _op = _bcol.operator("efx.ptb_remove_override", text="", icon="X")
+                        _op.param_index = _pord
                     i += 1
                     continue
                 # MATERIAL：path_N 用其贴图槽名（tAlbedoMap…）当标签，取代独立只读面板
@@ -613,6 +635,15 @@ def _draw_block_fields_content(layout, context):
                     continue
                 _draw_field_item(col, item, type_name=type_name)
                 i += 1
+
+            # PTBEHAVIOR：参数列表底部「添加覆盖」下拉（按 b_type 目录列可加属性）
+            if _is_ptbehavior:
+                col.separator(factor=0.5)
+                _add_row = col.row(align=True)
+                _add_row.operator_menu_enum(
+                    "efx.ptb_add_override", "key_choice",
+                    text=T("block.ptbehavior_add"), icon="ADD",
+                )
 
     else:
         # 不可编辑（_custom / 未知 / 含嵌套结构）
@@ -647,10 +678,11 @@ class EFX_PT_main(bpy.types.Panel):
         i18n.draw_language_toggle(layout)
         layout.separator(factor=0.5)
 
-        # ── 顶部一行两个按钮：Import / Export ────────────────────────────────
+        # ── 顶部：Import / Export / New EFX ──────────────────────────────────
         row = layout.row(align=True)
         row.operator("efx.import_efx", text=T("main.import"), icon="IMPORT")
         row.operator("efx.export_efx", text=T("main.export"), icon="EXPORT")
+        layout.operator("efx.new_efx", text=T("main.new_efx"), icon="ADD")
 
         # ── Active EFX 选择器（新增 body 的目标根）────────────────────────────
         layout.prop(context.scene, "efx_active_efx", text=T("main.active_efx"))

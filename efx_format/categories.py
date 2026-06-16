@@ -23,6 +23,8 @@ efx_format/categories.py  —  块类型的功能分类表（纯 Python，零 bp
   extern_decl — 外部资源声明，body 最前（EXTERNREFERENCE）
   char_effect — 角色附着效果（PLEMISSIVE / PARENTEMISSIVE / PLSNOW / SHOVEL…）
   behavior    — 独立行为系统，与常规流程互斥（PTBEHAVIOR）
+  ui_2d       — 2D / UI 变体（TRANSFORM2D / EMITTERSHAPE2D / VELOCITY2D / BILLBOARD2D；
+                2D 特效专用，存在时多数 3D 属性不可用）
   misc        — 特殊 / 控制（RANDOMFIX / TIML / CHECKPUREATTRIBUTE / LAYOUT…）
 """
 
@@ -73,6 +75,7 @@ BLOCK_CATEGORY_LABELS = {
     "extern_decl": {"EN": "Extern Declaration", "ZH": "外部声明"},
     "char_effect": {"EN": "Char Effects",       "ZH": "角色附着效果"},
     "behavior":    {"EN": "Behavior System",    "ZH": "独立行为系统"},
+    "ui_2d":       {"EN": "2D / UI Variants",   "ZH": "2D / UI 变体"},
     "misc":        {"EN": "Misc/Control",       "ZH": "特殊/控制"},
 }
 
@@ -95,7 +98,6 @@ BLOCK_CATEGORY_OF = {
     RIBBONBLADE:       "renderer",
     STRAINRIBBON:      "renderer",
     TUBELIGHT:         "renderer",
-    BILLBOARD2D:       "renderer",
 
     # ── 面片渲染专属修饰（billboard/ribbon/plane 专用，与 MESH 完全不共存） ───
     UVSEQUENCE:        "sprite_mod",  # BILLBOARD3D/RIBBON 强制伴随
@@ -112,7 +114,6 @@ BLOCK_CATEGORY_OF = {
 
     # ── 发射器 / 空间约束 ─────────────────────────────────────────────────────
     EMITTERSHAPE3D:    "emitter",
-    EMITTERSHAPE2D:    "emitter",
     EMITTERSHAPEMESH:  "emitter",
     EMITTERBOUNDARY:   "emitter",
     SPAWNBYANGLE:      "emitter",
@@ -120,7 +121,6 @@ BLOCK_CATEGORY_OF = {
 
     # ── 运动 / 速度 / 动画 ────────────────────────────────────────────────────
     VELOCITY3D:        "motion",
-    VELOCITY2D:        "motion",
     SCALEANIM:         "motion",
     ROTATEANIM:        "motion",
     NOISE:             "motion",
@@ -166,10 +166,15 @@ BLOCK_CATEGORY_OF = {
     CHECKPUREATTRIBUTE:"misc",
     REPEATAREA:        "misc",
     LAYOUT:            "misc",
-    TRANSFORM2D:       "misc",
     FAKEDOF:           "misc",
     TONEMAPFILTER:     "misc",
     COLORCORRECTFILTER:"misc",
+
+    # ── 2D / UI 变体（2D 特效专用，存在时多数 3D 属性不可用；见 2d-ui-dialect）──
+    TRANSFORM2D:       "ui_2d",
+    EMITTERSHAPE2D:    "ui_2d",
+    VELOCITY2D:        "ui_2d",
+    BILLBOARD2D:       "ui_2d",
 }
 
 

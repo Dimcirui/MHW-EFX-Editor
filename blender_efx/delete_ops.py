@@ -140,11 +140,11 @@ def _rebuild_subselect_name(o, new_idx):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_delete_body(bpy.types.Operator):
-    """删除选中的 EFX_BODY（连带其全部 EFX_BLOCK 子块），重排剩余 body"""
+    """删除所有选中的 EFX_BODY（连带各自全部 EFX_BLOCK 子块），重排剩余 body"""
 
     bl_idname      = "efx.delete_body"
     bl_label       = "Delete Body"
-    bl_description = "Delete the selected EFX_BODY (including all its blocks); remaining bodies are renumbered consecutively"
+    bl_description = "Delete all selected EFX_BODY objects (including their blocks); remaining bodies are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -160,18 +160,37 @@ class EFX_OT_delete_body(bpy.types.Operator):
         return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
-        obj = context.active_object
-        root = obj.parent  # EFX_ROOT
+        active = context.active_object
+        root = active.parent  # EFX_ROOT
 
-        remaining = _delete_and_reindex(
-            obj, root, "EFX_BODY", is_body=True,
-            rebuild_name_fn=_rebuild_body_name,
-        )
+        # 收集选中的同 root 下所有 EFX_BODY；未多选时退化为只删 active
+        targets = [
+            o for o in context.selected_objects
+            if o.get("~TYPE") == "EFX_BODY" and o.parent == root
+        ]
+        if not targets:
+            targets = [active]
+
+        # 批量删除（先删子块再删 body 本身）
+        for obj in targets:
+            children = [
+                c for c in bpy.data.objects
+                if c.parent == obj and c.get("~TYPE") == "EFX_BLOCK"
+            ]
+            for child in children:
+                bpy.data.objects.remove(child, do_unlink=True)
+            bpy.data.objects.remove(obj, do_unlink=True)
+
+        # 统一重排剩余 body
+        remaining = _reindex_siblings(root, "EFX_BODY", _rebuild_body_name)
 
         # body 计数变 → 标签表变；导出端按 labels_dirty 重建 label_bytes/label_size
         root["labels_dirty"] = 1
 
-        self.report({"INFO"}, f"Deleted EFX_BODY, {remaining} body(s) remaining")
+        self.report(
+            {"INFO"},
+            f"Deleted {len(targets)} EFX_BODY(s), {remaining} body(s) remaining",
+        )
         return {"FINISHED"}
 
 
@@ -180,11 +199,11 @@ class EFX_OT_delete_body(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_delete_block(bpy.types.Operator):
-    """删除选中的 EFX_BLOCK，重排同一 body 内剩余块"""
+    """删除所有选中的 EFX_BLOCK，重排各自所属 body 内剩余块"""
 
     bl_idname      = "efx.delete_block"
     bl_label       = "Delete Block"
-    bl_description = "Delete the selected EFX_BLOCK; remaining blocks in the same body are renumbered consecutively"
+    bl_description = "Delete all selected EFX_BLOCK objects; remaining blocks in each affected body are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -199,16 +218,31 @@ class EFX_OT_delete_block(bpy.types.Operator):
         return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
-        obj = context.active_object
-        body = obj.parent  # EFX_BODY
+        # 收集选中的所有 EFX_BLOCK（跨 body 均可）；未多选时退化为只删 active
+        targets = [
+            o for o in context.selected_objects
+            if o.get("~TYPE") == "EFX_BLOCK"
+            and o.parent is not None
+            and o.parent.get("~TYPE") == "EFX_BODY"
+        ]
+        if not targets:
+            targets = [context.active_object]
+
+        # 记录受影响的 body（删完后各自重排一次）
+        affected_bodies = {o.parent for o in targets}
 
         # 块不在标签表，不设 labels_dirty；attr_count 由导出端自动重算。
-        remaining = _delete_and_reindex(
-            obj, body, "EFX_BLOCK", is_body=False,
-            rebuild_name_fn=_rebuild_block_name,
-        )
+        for obj in targets:
+            bpy.data.objects.remove(obj, do_unlink=True)
 
-        self.report({"INFO"}, f"Deleted EFX_BLOCK, {remaining} block(s) remaining in this body")
+        # 对每个受影响的 body 统一重排
+        for body in affected_bodies:
+            _reindex_siblings(body, "EFX_BLOCK", _rebuild_block_name)
+
+        self.report(
+            {"INFO"},
+            f"Deleted {len(targets)} EFX_BLOCK(s) across {len(affected_bodies)} body(s)",
+        )
         return {"FINISHED"}
 
 

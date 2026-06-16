@@ -2,7 +2,7 @@
     "efx_preset_kind": "block",
     "type_hash": "428328940",
     "type_name": "TRANSFORM2D",
-    "display_name": "TRANSFORM2D",
-    "category": "misc",
+    "display_name": "TRANSFORM2D（2D 版骨架变换，等价 I. Body Skeleton）",
+    "category": "ui_2d",
     "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/"
 }

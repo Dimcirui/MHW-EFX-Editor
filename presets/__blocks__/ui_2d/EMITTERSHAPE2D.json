@@ -2,7 +2,7 @@
     "efx_preset_kind": "block",
     "type_hash": "584030352",
     "type_name": "EMITTERSHAPE2D",
-    "display_name": "EMITTERSHAPE2D（2D发射器形状）",
-    "category": "emitter",
+    "display_name": "EMITTERSHAPE2D（2D 版发射器形状，等价 V. Emitter / Space）",
+    "category": "ui_2d",
     "data_bytes": "BwAAAI/C9T2PwvU9j8L1PY/C9T0AAAAABgAAAAAAAAA="
 }

@@ -504,8 +504,12 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == LAYOUT:
         return None  # variable: LayoutBank_Block
 
-    # FakeDoF/RepeatArea: variable (has length field)
-    if h in (FAKEDOF, REPEATAREA):
+    # RepeatArea: 实测全 135 实例恒 52B → 4(type) + 52 = 56B 定长
+    if h == REPEATAREA:
+        return 4 + 52  # = 56
+
+    # FakeDoF: variable (32B / 52B 两种，含 length 字段)
+    if h == FAKEDOF:
         return None  # variable
 
     # LinkPartsVisible: 4(type) + int*3(12) = 16B

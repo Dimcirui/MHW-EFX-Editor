@@ -1518,8 +1518,12 @@ def _init_ptbehavior_block(blk, bp) -> bool:
     bt.orig_b64 = ''
     bt.string_value = d['b_type'].rstrip(b'\x00').decode('utf-8', errors='replace')
 
+    from ..efx_format.ptbehavior_names import name_for as _ptb_name_for
+
     for i, param in enumerate(d['params']):
         t = param['t']
+        # 属性 key 标签：已知名 / 0x%08X（key=jamcrc(属性名)，存于 param['unkn']）
+        key_label = _ptb_name_for(param['unkn'])
         if t == 0x15:
             # 四个子 item：unkn0(f), unkn1(i), unkn2(f), unkn3(i)
             for suffix, vk, dtype_str in [
@@ -1530,6 +1534,7 @@ def _init_ptbehavior_block(blk, bp) -> bool:
             ]:
                 it = bp.field_items.add()
                 it.ori_name = f'p{i}{suffix}'
+                it.hint_name = key_label
                 it.data_type = dtype_str
                 it.edited = False
                 it.read_only = False
@@ -1542,7 +1547,7 @@ def _init_ptbehavior_block(blk, bp) -> bool:
         else:
             it = bp.field_items.add()
             it.ori_name = f'p{i}'
-            it.hint_name = _ptb_param_hint(t)
+            it.hint_name = key_label
             it.data_type = _ptb_param_dtype(t)
             it.edited = False
             it.read_only = False
@@ -1639,6 +1644,56 @@ def rebuild_ptbehavior_block(bp, original_data: bytes = None) -> bytes:
             param['unkn_type'] = int(item.int_value)
 
     return pack_ptbehavior(d)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PTBEHAVIOR option(c)：覆盖项增删支持（核心逻辑在 efx_format/ptbehavior_edit.py）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def ptbehavior_current_bytes(bp) -> bytes:
+    """烘焙待编辑值：返回当前 PTBEHAVIOR 的 data_bytes（含已编辑 item 的覆盖）。"""
+    return rebuild_ptbehavior_block(bp)
+
+
+def reinit_ptbehavior_from_bytes(bp, new_bytes: bytes) -> bool:
+    """
+    用 new_bytes 重置 PTBEHAVIOR 块：写 raw_b64 + 重建 field_items。
+    供增删覆盖项算子调用。期间置 _LOADING 抑制脏标记误触发，由调用方显式置脏。
+    返回 _init_ptbehavior_block 的成功与否。
+    """
+    global _LOADING
+
+    class _Blk:
+        pass
+    blk = _Blk()
+    blk.data_bytes = new_bytes
+
+    prev = _LOADING
+    _LOADING = True
+    try:
+        bp.raw_b64 = base64.b64encode(new_bytes).decode("ascii")
+        return _init_ptbehavior_block(blk, bp)
+    finally:
+        _LOADING = prev
+
+
+def ptbehavior_addable_items(bp):
+    """
+    返回当前块可新增的覆盖项 [(key_int, value_type_t, label), ...]（保持规范顺序）。
+    label = 已知名 / 0x%08X。供添加下拉的 EnumProperty 回调使用。
+    """
+    from ..efx_format.structs import unpack_ptbehavior
+    from ..efx_format.ptbehavior_edit import addable_catalog
+    from ..efx_format.ptbehavior_names import name_for
+
+    try:
+        d, _ = unpack_ptbehavior(base64.b64decode(bp.raw_b64))
+    except Exception:
+        return []
+    out = []
+    for key, t, _freq in addable_catalog(d):
+        out.append((key & 0xFFFFFFFF, t, name_for(key)))
+    return out
 
 
 def rebuild_path_block_data_bytes(bp, type_hash: int) -> bytes:

@@ -41,6 +41,7 @@ blender_efx/add_ops.py  —  L2 #3c：从「整 body 预设」新增 body + Acti
 
 import json
 import os
+import re
 import time
 
 import bpy
@@ -565,7 +566,7 @@ def _find_main_collection(root_obj: bpy.types.Object):
         if col.name in visited:
             continue
         visited.add(col.name)
-        if col.name.endswith("_2 Main"):
+        if re.search(r'_2 Main(\.\d+)?$', col.name):
             return col
         stack.extend(col.children)
 

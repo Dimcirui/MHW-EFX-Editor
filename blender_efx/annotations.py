@@ -24,6 +24,50 @@ blender_efx/annotations.py  —  L1.3 BT 注释接入
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
+# RE Engine 官方字段名交叉参考（来自 DTI type dump，refs/dti_effect_fields.json）
+# 键：(TYPE_NAME 大写, schema ori_name)  值：(官方字段名, CRC32 十六进制串, 置信度)
+# 置信度："确认"（偏移对齐，铁定）/ "高" / "中" / "低"（语义推断）/ 省略=确认。
+#   UI tip 渲染："确认"不加限定词；高/中/低 显示"X可能为 <名>"。
+#
+# 仅在注释 tooltip 末尾追加，作权威交叉参考——label / ori_name / 索引全不变。
+# dump 的字段名是内存结构名（m/mp 前缀 或 nTimelineParam 动画参数名），与 .efx
+# 文件布局非 1:1（内存≠文件，尾部常分歧），故逐字段人工核对、按置信度标注后录入。
+#
+# 注：哈希算法 jamcrc（zlib.crc32 ^ 0xFFFFFFFF）。数据源 refs/dti_effect_fields.json。
+# ─────────────────────────────────────────────────────────────────────────────
+
+FIELD_OFFICIAL_NAMES = {
+    # ── PARENTOPTIONS（nEffect::ParentOptions，按内存偏移 0x30–0x50 铁对齐）──
+    ("PARENTOPTIONS", "translation_tracking"): ("mRelationPos[XYZ]", "0xC8E41E1E", "确认"),
+    ("PARENTOPTIONS", "angle_tracking"):       ("mRelationRot[XYZ]", "0x2DAC4052", "确认"),
+    ("PARENTOPTIONS", "scale_tracking"):       ("mRelationScl[XYZ]", "0x1E11460A", "确认"),
+
+    # ── 语义映射（nTimelineParam 动画参数 ↔ schema 字段，按置信度标注）──────────
+    # TRANSFORM3D：translate/rotate/resize = 位置/旋转/缩放（XYZ 三连）
+    ("TRANSFORM3D", "translate"): ("pos[XYZ]", "0x8E8AFE06", "高"),
+    ("TRANSFORM3D", "rotate"):    ("rot[XYZ]", "0xF105BBE3", "高"),
+    ("TRANSFORM3D", "resize"):    ("scl[XYZ]", "0x9486DF23", "高"),
+    # VELOCITY3D：gravity 名称精确吻合
+    ("VELOCITY3D", "gravity"):    ("Gravity", "0x6A5FE3C4", "高"),
+    # EMITTERSHAPE3D：transform ↔ Range 盒（注释确认定尺寸/范围，升高）；
+    # trayectoryRotation 注释强调"轨迹"旋转，与泛指 LocalRotation 有微妙差异，降中
+    ("EMITTERSHAPE3D", "trayectoryRotationX"): ("LocalRotationX", "0x701FE225", "中"),
+    ("EMITTERSHAPE3D", "trayectoryRotationY"): ("LocalRotationY", "0x0718D2B3", "中"),
+    ("EMITTERSHAPE3D", "trayectoryRotationZ"): ("LocalRotationZ", "0x9E118309", "中"),
+    ("EMITTERSHAPE3D", "transform"):           ("RangeMin/Max[XYZ]", "0x760F3D43", "高"),
+    # SCALEANIM：Size*Add 动画增量 ↔ 缩放速度（注释佐证整体/按轴，且 dump 无 Accel 参数）
+    ("SCALEANIM", "initialScaleSpeed"): ("SizeScalarAdd", "0xC24DF97C", "高"),
+    ("SCALEANIM", "scaleSpeedX"):       ("SizeXAdd", "0x909EC047", "高"),
+    ("SCALEANIM", "scaleSpeedY"):       ("SizeYAdd", "0x2822A722", "高"),
+    ("SCALEANIM", "scaleSpeedZ"):       ("SizeZAdd", "0x3A9708CC", "高"),
+    # ROTATEANIM：单字段 spin_velocity 与按轴 RotationAdd 存在歧义
+    ("ROTATEANIM", "spin_velocity"):    ("RotationAdd", "0xE81961E4", "低"),
+    # LIFE：KeepFrame ≈ 存活时长
+    ("LIFE", "duration"):               ("KeepFrame", "0xBD8D5203", "中"),
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 注释字典
 # 键：(type_name: str, field_name: str)
 # 值：双语字典 {"EN": "...", "ZH": "..."}
@@ -106,12 +150,12 @@ FIELD_ANNOTATIONS = {
     # ─── SPAWN ────────────────────────────────────────────────────────────────
     # ExternSpawn (EFX_Subtypes.bt)
     ("SPAWN", "occur"): {
-        "EN": "Spawn Start Delay",
-        "ZH": "生成起始延迟",
+        "EN": "Frames to wait before the effect first appears. occur2 adds random jitter.",
+        "ZH": "指定帧数后才会出现。occur2 为随机抖动范围。",
     },
     ("SPAWN", "occur2"): {
-        "EN": "Randomized Spawn Start Delay",
-        "ZH": "随机化的生成起始延迟",
+        "EN": "Frames to wait before the effect first appears. occur2 adds random jitter.",
+        "ZH": "指定帧数后才会出现。occur2 为随机抖动范围。",
     },
     ("SPAWN", "repeatAtribute"): {
         "EN": "0=Repeat indefinitely; higher value=number of repetitions. "
@@ -523,15 +567,17 @@ FIELD_ANNOTATIONS = {
         "EN": "UVS File Path Index",
         "ZH": "UVS 文件路径索引",
     },
-    ("UVSEQUENCE", "loopingEnum"): {
-        "EN": "Stored as 4 hex bytes. First byte key values: "
+    ("UVSEQUENCE", "loopingMode"): {
+        "EN": "Animation mode (loopingEnum byte 0). Key values: "
               "0=Not Animated (freeze frame),  2=Random Reset,  9=Continuous forward loop,  "
-              "16=Continuous reverse loop. "
-              "Second byte controls texture orientation on particle: "
+              "16=Continuous reverse loop.",
+        "ZH": "动画模式（loopingEnum 第 0 字节）。关键值："
+              "0=不播放动画（定格），2=随机重置，9=连续正向循环，16=连续反向循环。",
+    },
+    ("UVSEQUENCE", "loopingOrientation"): {
+        "EN": "Texture orientation on particle (loopingEnum byte 1): "
               "0=Up,  1=Right,  2=Left,  3=Random (never down).",
-        "ZH": "存储为 4 个 hex 字节。第一字节关键值："
-              "0=不播放动画（定格），2=随机重置，9=连续正向循环，16=连续反向循环。"
-              "第二字节控制贴图显现在粒子上的方向："
+        "ZH": "贴图显现在粒子上的方向（loopingEnum 第 1 字节）："
               "0=正向上，1=正向右，2=正向左，3=随机（绝不向下）。",
     },
 
@@ -768,7 +814,18 @@ FIELD_ANNOTATIONS = {
         "ZH": "为 0 且 repeatAtribute=1、LIFE 无限寿命=0 → 持续发射；非 0 → 爆发模式，"
               "其值=爆发次数（间隔由 frameDelayBetweenSpawns 控制）。",
     },
+    ("SPAWN", "randomizedLifespan"): {
+        "EN": "0 + repeatAtribute=1 + LIFE.indefinite=0 → continuous emission. Non-0 → "
+              "burst mode: the value = number of bursts (interval via frameDelayBetweenSpawns).",
+        "ZH": "为 0 且 repeatAtribute=1、LIFE 无限寿命=0 → 持续发射；非 0 → 爆发模式，"
+              "其值=爆发次数（间隔由 frameDelayBetweenSpawns 控制）。",
+    },
     ("SPAWN", "frameDelayBetweenSpawns"): {
+        "EN": "Frames between each spawn/burst. Together with durationOfSpawnerLifespan "
+              "shapes the emission rhythm.",
+        "ZH": "每次生成/爆发之间的帧间隔；与 durationOfSpawnerLifespan 共同决定发射节奏。",
+    },
+    ("SPAWN", "randomizedDelay"): {
         "EN": "Frames between each spawn/burst. Together with durationOfSpawnerLifespan "
               "shapes the emission rhythm.",
         "ZH": "每次生成/爆发之间的帧间隔；与 durationOfSpawnerLifespan 共同决定发射节奏。",
@@ -1398,13 +1455,40 @@ def get_annotation(type_name: str, field_name: str) -> str:
     按 (type_name, field_name) 查注释，并按当前 UI 语言返回字符串。
     type_name 大写（如 "EMITTERSHAPE3D"）；field_name 为 schema ori_name。
     值为 {"EN":.., "ZH":..} 字典，按 i18n.get_lang() 选取，缺语种回退英文。
-    找不到返回空字符串。
+
+    若 (type_name, field_name) 有对应的 RE Engine 官方字段名（FIELD_OFFICIAL_NAMES，
+    来自 DTI type dump），在注释末尾追加一行权威交叉参考；label / ori_name / 索引均不变。
+    无 BT 注释但有官方名时，仅返回官方名行（使 ⓘ 仍可显示）。
     """
+    base = ""
     entry = FIELD_ANNOTATIONS.get((type_name.upper(), field_name))
-    if not entry:
-        return ""
-    if isinstance(entry, dict):
+    if entry:
+        if isinstance(entry, dict):
+            from . import i18n
+            lang = i18n.get_lang()
+            base = entry.get(lang) or entry.get("EN") or ""
+        else:
+            base = entry  # backward safety
+
+    official = FIELD_OFFICIAL_NAMES.get((type_name.upper(), field_name))
+    if official:
+        name, crc = official[0], official[1]
+        conf = official[2] if len(official) > 2 else None   # "确认"/"高"/"中"/"低"/None
         from . import i18n
         lang = i18n.get_lang()
-        return entry.get(lang) or entry.get("EN") or ""
-    return entry  # backward safety
+        if lang == "ZH":
+            tag = "RE 官方字段名"
+            if conf and conf != "确认":
+                line = f"[{tag}] {conf}可能为 {name}"
+            else:
+                line = f"[{tag}] {name}"
+        else:
+            tag = "RE field"
+            conf_en = {"高": "high", "中": "medium", "低": "low"}.get(conf or "")
+            if conf_en:
+                line = f"[{tag}] likely({conf_en}): {name}"
+            else:
+                line = f"[{tag}] {name}"
+        return f"{base}\n{line}" if base else line
+
+    return base

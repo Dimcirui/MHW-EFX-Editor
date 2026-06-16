@@ -202,6 +202,7 @@ STRINGS = {
     "lang.label":            {"EN": "Language",            "ZH": "语言"},
 
     # ── 主面板 EFX_PT_main ───────────────────────────────────────────────────
+    "main.new_efx":          {"EN": "New EFX",             "ZH": "新建 EFX"},
     "main.import":           {"EN": "Import EFX",          "ZH": "导入 EFX"},
     "main.export":           {"EN": "Export EFX",          "ZH": "导出 EFX"},
     "main.active_efx":       {"EN": "Active EFX",          "ZH": "当前 EFX"},
@@ -230,8 +231,9 @@ STRINGS = {
     "block.opaque_hint":     {"EN": "This block type has complex structure; raw bytes preserved.",
                               "ZH": "此块类型含复杂结构，本轮仅保留原始字节。"},
     "block.partial_edit":    {"EN": "Not fully editable",        "ZH": "不支持完全编辑"},
-    "block.ptbehavior_hint": {"EN": "Param count varies by file; only editing existing params is supported.",
-                              "ZH": "该 Block 的 param 数量因文件而异，仅支持现存 param 的修改"},
+    "block.ptbehavior_hint": {"EN": "Typed sparse override: each property = (key, type, value). Add/remove overrides below; unknown property names show as hash.",
+                              "ZH": "类型化稀疏覆盖：每条属性 = (key, 类型, 值)。可在下方增删覆盖项；未知属性名以哈希显示。"},
+    "block.ptbehavior_add":  {"EN": "Add Override",          "ZH": "添加覆盖属性"},
     "block.no_fields":       {"EN": "(no fields)",         "ZH": "（无字段）"},
     "block.select_hint":     {"EN": "Select an EFX_BLOCK object", "ZH": "请选中 EFX_BLOCK 对象"},
 
