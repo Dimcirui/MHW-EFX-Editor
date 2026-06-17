@@ -96,17 +96,15 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | STRAINRIBBON | ✓ |
 | MESH | ✓ |
 | LIGHTNING | ✓ |
-| TUBELIGHT | ✓ — light cylinder with half-sphere caps and a texture; point/spot light behaviors belong to PTBEHAVIOR |
+| TUBELIGHT | ✓ |
 | FAKEPLANE | ✓ |
 | DUMMY | ✓ |
 
 #### III. Sprite Modifiers (face-rendered only, can conflict with MESH)
 
-> ⚠️ **SHADERSETTINGS is required for any visually rendering body** (88.3% co-occurrence in official samples). Without it, textures and transparency will not work. The only exception is pure cascade-emitter bodies (PARENTEMISSIVE / PLEMISSIVE) that produce no visual output themselves.
-
 | Block Type | Field Editing |
 |---|---|
-| SHADERSETTINGS | ✓ — required for texture/transparency to work; `controlBitflag` selects blend mode (1=additive, 4=multiplicative are most common) |
+| SHADERSETTINGS | ✓ |
 | UVSEQUENCE | ✓ |
 | RGBFIRE | ✓ |
 | RGBWATER | ✓ |
@@ -120,14 +118,14 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | Block Type | Field Editing |
 |---|---|
 | UVCONTROL | ✓ |
-| MATERIAL | **Partial** — texture path slots (tAlbedoMap, etc.) editable only |
+| MATERIAL | **Partial** |
 
 #### V. Emitter / Space
 
 | Block Type | Field Editing |
 |---|---|
 | EMITTERSHAPE3D | ✓ |
-| EMITTERSHAPEMESH | ✓ — references a mesh; particles spawn at the mesh's vertices |
+| EMITTERSHAPEMESH | ✓ |
 | EMITTERBOUNDARY | ✓ |
 | SPAWNBYANGLE | ✓ |
 | SPAWNBYOCCLUSION | ✓ |
@@ -176,7 +174,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 | Block Type | Field Editing |
 |---|---|
-| PLEMISSIVE | ✓ — the aura-part bitmasks show as **Aura Part (Player)** / **Aura Part (Weapon)** numeric fields, each with a checkbox popup (head/body/arms/waist/legs and left/right hand, plus a `cycle` field for the high bits) that computes the value in sync with the field |
+| PLEMISSIVE | ✓ |
 | PARENTEMISSIVE | ✓ |
 | PLSNOW | ✓ |
 | PARENTSNOW | ✓ |
@@ -188,7 +186,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 | Block Type | Field Editing |
 |---|---|
-| PTBEHAVIOR | ✓ — typed sparse override; handles point light (MhPointLightBehavior), spot light (MhSpotLightBehavior), decals (MhEffectDecalBehavior), radial blur, and other type-specific behaviors; add / remove / edit override properties |
+| PTBEHAVIOR | ✓ |
 
 #### XII. 2D / UI Variants (for 2D effects — functional 2D equivalents of their 3D counterparts; many 3D blocks do not apply when these are present)
 
@@ -197,7 +195,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | TRANSFORM2D | ✓ | I. Body Skeleton |
 | EMITTERSHAPE2D | ✓ | V. Emitter / Space |
 | VELOCITY2D | ✓ | VI. Motion / Velocity |
-| BILLBOARD2D | ✓ (incl. texture path) | II. Renderer |
+| BILLBOARD2D | ✓ | II. Renderer |
 
 #### XIII. Misc / Control
 
