@@ -450,12 +450,17 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == TRANSFORM2D:
         return 4 + 4 + 8 + 4 + 8  # = 28
 
-    # Billboard2D: variable (has path_len)
-    # type(4)+long*2(8)+XYZ(2)[2](8)+float emit_min,max(8)+int*4(16)+
-    # float*8(32)+int path_len(4)+int unkn5[2](8)+char p[path_len]
+    # Billboard2D (EFX_Subtypes.bt): type(4)+long unkn0[2](8)+XYZ(2)color[2](8)+
+    #   float emissionMin,Max(8)+int unkn3[4](16)+
+    #   float rotJitter[2]+scaleJitter[2]+imageResX+scaleX+imageResY+scaleY(8 floats=32)+
+    #   float unkn4[8](32)+int path_len(4)+int unkn5[2](8)+char p[path_len]
+    # 固定部分 120B，path_len 在偏移 108；总长 = 120 + path_len。
+    # XYZ(2)=3 ubyte+1 NULL=4B。实测全语料 580 实例 / 121 文件 0 错。
     if h == BILLBOARD2D:
-        path_len_val = rd_i(4 + 8 + 8 + 8 + 4*4 + 4*8)
-        return 4 + 8 + 8 + 8 + 16 + 32 + 4 + 8 + path_len_val
+        path_len_val = rd_i(108)
+        if path_len_val < 0 or path_len_val > 1024:
+            return None  # 异常 → 回退 forward-scan
+        return 120 + path_len_val
 
     # Blink: 4(type) + int*2(8) + float*11(44) = 56B
     if h == BLINK:
@@ -466,16 +471,19 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == LUMINANCEBLEED:
         return 4 + 4 + 12  # = 20B
 
-    # EmitterShape2D: 4(type) + int unkn0(4) + float*4(16) + int*3(12) = 36B
+    # EmitterShape2D (EFX_Subtypes.bt): type(4)+int unkn0(4)+
+    #   float offsetX,XJitter,Y,YJitter(16)+int unkn20,spawnCount,unkn22,unkn22(16) = 40B
+    # ⚠ 旧值 36B 漏算了最后一个 int（BT 尾部是 4 个 int 非 3 个）；实测全语料 292 实例恒 40B。
     if h == EMITTERSHAPE2D:
-        return 4 + 4 + 16 + 12  # = 36
+        return 4 + 4 + 16 + 16  # = 40
 
-    # Velocity2D: 4(type) + int*2(8) + float*8(32) + int*2(8) + float*2(8) + int*2(8) = 68B
-    # From BT: type(4)+unkn0[2](8)+float unkn10(4)+float expansionRadius(4)+expRadiusJ(4)+
-    #   elast(4)+elastJ(4)+unkn15(4)+unkn16(4)+energyX(4)+energyY(4)+int expType(4)+
-    #   float gravity(4)+gravityJ(4)+int expDelay(4)+expDelayJ(4)+gravDelay(4)+gravDelayJ(4) = 4+17*4 = 72B
+    # Velocity2D (EFX_Subtypes.bt): type(4)+int unkn0[2](8)+
+    #   float unkn10,expansionRadius,expRJ,expRElast,expRElastJ,unkn15,unkn16,energyX,energyY(9 floats=36)+
+    #   int expansionType(4)+float gravity,gravityJitter(8)+
+    #   int expDelay,expDelayJ,gravDelay,gravDelayJ(16) = 4+8+36+4+8+16 = 76B
+    # ⚠ 旧值 72B 少 4B（少数 1 个 float）；实测全语料 277 实例恒 76B。
     if h == VELOCITY2D:
-        return 4 + 17*4  # = 72
+        return 4 + 8 + 36 + 4 + 8 + 16  # = 76
 
     # Refraction: 4(type) + int unkn0(4) + int pixelNormOffset(4) + int unkn2(4) = 16B
     if h == REFRACTION:

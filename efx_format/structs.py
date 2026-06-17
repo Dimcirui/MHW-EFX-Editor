@@ -1460,6 +1460,8 @@ assert _schema_size(UVCONTROL_SCHEMA) == 236, \
 #   data_bytes = 36-4 = 32. But _schema_size gives: 4+16+12=32 → correct.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# EFX_Subtypes.bt: type(4)+unkn0(4)+offsetX/XJ/Y/YJ(16)+unkn20/spawnCount/unkn22/unkn22(16)
+# 块全长 40B → data_bytes = 36B（9 个字段）。BT 尾部是 4 个 int。
 EMITTERSHAPE2D_SCHEMA = [
     ('unkn0',       'i'),
     ('offsetX',     'f'),
@@ -1472,20 +1474,32 @@ EMITTERSHAPE2D_SCHEMA = [
     ('unkn22_1',    'i'),
 ]
 assert _schema_size(EMITTERSHAPE2D_SCHEMA) == 36, \
-    f"EMITTERSHAPE2D_SCHEMA expected 32 or 36: {_schema_size(EMITTERSHAPE2D_SCHEMA)}"
-# efxfile returns 4+4+16+12=36 full, so data_bytes=32; fix:
-EMITTERSHAPE2D_SCHEMA = [
-    ('unkn0',       'i'),
-    ('offsetX',     'f'),
-    ('offsetXJitter','f'),
-    ('offsetY',     'f'),
-    ('offsetYJitter','f'),
-    ('unkn20',      'i'),
-    ('spawnCount',  'i'),
-    ('unkn22_0',    'i'),
-]
-assert _schema_size(EMITTERSHAPE2D_SCHEMA) == 32, \
     f"EMITTERSHAPE2D_SCHEMA size mismatch: {_schema_size(EMITTERSHAPE2D_SCHEMA)}"
+
+# Velocity2D (EFX_Subtypes.bt): 块全长 76B → data_bytes = 72B。
+#   int unkn0[2](8)+9 floats(36)+int expansionType(4)+float gravity,gravityJitter(8)+
+#   int expansionDelay,expDelayJ,gravityDelay,gravDelayJ(16)
+VELOCITY2D_SCHEMA = [
+    ('unkn0',                          ('i', 2)),  # 8
+    ('unkn10',                         'f'),
+    ('expansionRadius',                'f'),
+    ('expansionRadiusJitter',          'f'),
+    ('expansionRadiusElasticity',      'f'),
+    ('expansionRadiusElasticityJitter','f'),
+    ('unkn15',                         'f'),
+    ('unkn16',                         'f'),
+    ('energyOnAxisX',                  'f'),
+    ('energyOnAxisY',                  'f'),       # 9 floats = 36
+    ('expansionType',                  'i'),       # 0-1 Linear, 2-3 No Movement
+    ('gravity',                        'f'),
+    ('gravityJitter',                  'f'),       # 8
+    ('expansionDelay',                 'i'),
+    ('expansionDelayJitter',           'i'),
+    ('gravityDelay',                   'i'),
+    ('gravityDelayJitter',             'i'),       # 16
+]
+assert _schema_size(VELOCITY2D_SCHEMA) == 72, \
+    f"VELOCITY2D_SCHEMA size mismatch: {_schema_size(VELOCITY2D_SCHEMA)}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1785,6 +1799,59 @@ def pack_billboard3d(values: dict) -> bytes:
     path = values['path']
     out += struct.pack('<i', len(path))
     out += pack(_BILLBOARD3D_EXTRAS_SCHEMA, values)
+    out += path
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Billboard2D (variable: 116B 固定 + path[path_len])
+# EFX_Subtypes.bt: data_bytes(type 之后) =
+#   long unkn0[2](8) + XYZ(2) color1,color2(8) + float emissionMin,Max(8) +
+#   int unkn3[4](16) + float rotJitterMin,Max + scaleJitterMin,Max +
+#   imageResolutionX + scaleX + imageResolutionY + scaleY (8 floats=32) +
+#   float unkn4[8](32) + int path_len(4) + int unkn5[2](8) + char p[path_len]
+# 固定部分 116B；path_len 在 data 偏移 104。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BILLBOARD2D_FIXED_SCHEMA = [
+    ('unkn0',            ('i', 2)),   # 8
+    ('color1',           ('XYZ', 2)), # 4
+    ('color2',           ('XYZ', 2)), # 4
+    ('emissionMin',      'f'),
+    ('emissionMax',      'f'),        # 8
+    ('unkn3',            ('i', 4)),   # 16
+    ('rotationJitterMin','f'),
+    ('rotationJitterMax','f'),
+    ('scaleJitterMin',   'f'),
+    ('scaleJitterMax',   'f'),
+    ('imageResolutionX', 'f'),
+    ('scaleX',           'f'),
+    ('imageResolutionY', 'f'),
+    ('scaleY',           'f'),        # 8 floats = 32
+    ('unkn4',            ('f', 8)),   # 32
+    ('path_len',         'i'),        # 4
+    ('unkn5',            ('i', 2)),   # 8
+]
+assert _schema_size(_BILLBOARD2D_FIXED_SCHEMA) == 116, \
+    f"_BILLBOARD2D_FIXED_SCHEMA size mismatch: {_schema_size(_BILLBOARD2D_FIXED_SCHEMA)}"
+
+
+def unpack_billboard2d(data: bytes, off: int = 0):
+    """Unpack Billboard2D data_bytes (variable-length). Returns (dict, new_off)."""
+    values, off = unpack(_BILLBOARD2D_FIXED_SCHEMA, data, off)
+    path_len = values['path_len']
+    values['path'] = data[off:off + path_len]
+    off += path_len
+    return values, off
+
+
+def pack_billboard2d(values: dict) -> bytes:
+    """Pack Billboard2D values dict back to bytes."""
+    path = values['path']
+    # path_len 字段以实际 path 长度为准（避免编辑路径后长度字段失同步）
+    values = dict(values)
+    values['path_len'] = len(path)
+    out = pack(_BILLBOARD2D_FIXED_SCHEMA, values)
     out += path
     return out
 
@@ -2925,6 +2992,8 @@ from .hashes import (
     SHOVEL,
     UVCONTROL,
     EMITTERSHAPE2D,
+    VELOCITY2D,
+    BILLBOARD2D,
     # 原 opaque 定长类型（新增 schema）
     PATHCHAIN,
     PTTRIGGER,
@@ -2997,7 +3066,8 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     SCREENSPACECOLLISION:(SCREENSPACECOLLISION_SCHEMA,36),
     SHOVEL:             (SHOVEL_SCHEMA,               70),
     UVCONTROL:          (UVCONTROL_SCHEMA,           236),
-    EMITTERSHAPE2D:     (EMITTERSHAPE2D_SCHEMA,       32),
+    EMITTERSHAPE2D:     (EMITTERSHAPE2D_SCHEMA,       36),
+    VELOCITY2D:         (VELOCITY2D_SCHEMA,           72),
     # ── 原 opaque 定长类型（新增）────────────────────────────────────────────
     PATHCHAIN:          (PATHCHAIN_SCHEMA,            77),
     PTTRIGGER:          (PTTRIGGER_SCHEMA,            16),
@@ -3031,6 +3101,7 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     TUBELIGHT:        ('_custom', None),
     EMITTERSHAPEMESH: ('_custom', None),
     FAKEDOF:          ('_custom', None),
+    BILLBOARD2D:      ('_custom', None),
 }
 
 # Populate custom codec registry after the hash imports above
@@ -3051,6 +3122,7 @@ ATTR_CUSTOM_CODEC = {
     TUBELIGHT:        (unpack_tubelight,        pack_tubelight),
     EMITTERSHAPEMESH: (unpack_emittershapemesh, pack_emittershapemesh),
     FAKEDOF:          (unpack_fakedof,          pack_fakedof),
+    BILLBOARD2D:      (unpack_billboard2d,      pack_billboard2d),
 }
 
 
@@ -3149,6 +3221,12 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
     if type_hash == RIBBONBLADE:
         (path_len,) = struct.unpack_from('<i', data_bytes, 194)
         path_b = data_bytes[198:198 + path_len]
+        return [_path_bytes_to_str(path_b)]
+
+    # BILLBOARD2D: fixed 116B（path_len @ 104, unkn5 @ 108-115）+ path[path_len] @ 116
+    if type_hash == BILLBOARD2D:
+        (path_len,) = struct.unpack_from('<i', data_bytes, 104)
+        path_b = data_bytes[116:116 + path_len]
         return [_path_bytes_to_str(path_b)]
 
     # STRAINRIBBON: fixed 340B + path_len(4) + path
@@ -3343,6 +3421,16 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + struct.pack('<i', len(new_path_b))
                 + new_path_b)
 
+    # ── BILLBOARD2D ──
+    # 结构：[0..103]=fixed verbatim + path_len(4)@104 + [108..115]=unkn5 verbatim + path
+    if type_hash == BILLBOARD2D:
+        assert len(new_paths) == 1
+        new_path_b = _str_to_path_bytes(new_paths[0])
+        return (data_bytes[:104]
+                + struct.pack('<i', len(new_path_b))
+                + data_bytes[108:116]
+                + new_path_b)
+
     # ── STRAINRIBBON ──
     # 结构：[0..339] verbatim + path_len(4) + path
     if type_hash == STRAINRIBBON:
@@ -3531,6 +3619,7 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     # 新增变长路径类型
     TUBELIGHT,
     EMITTERSHAPEMESH,
+    BILLBOARD2D,
 })
 
 
@@ -3569,6 +3658,7 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     EMITTERSHAPEMESH: _EMITTERSHAPEMESH_FIXED_SCHEMA,
     # FAKEDOF：仅暴露恒在的 32B fixed 字段（尾段 present-conditional，不暴露为标量）
     FAKEDOF:          _FAKEDOF_FIXED_SCHEMA,
+    BILLBOARD2D:      [e for e in _BILLBOARD2D_FIXED_SCHEMA if e[0] != 'path_len'],
 }
 
 

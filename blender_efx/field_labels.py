@@ -241,7 +241,7 @@ FIELD_LABELS_ZH = {
     # ── 位标志 / 控制 ───────────────────────────────────────────────────────
     "controlBitflag": "控制位标志",
     "enableVelocityBitflag": "启用速度位标志",
-    "enableRadialVanish": "启用径向消隐",
+    "enableRadialVanish": "归航力控制",
     "viewAngleLimit": "视角限制",
     "visibleOnPreview": "预览中可见",
     "clipMax": "裁剪上限",
@@ -347,6 +347,53 @@ FIELD_LABELS_ZH_BY_TYPE = {
     ("LIGHTNING", "emissive"): "自发光颜色",
     ("LIGHTNING", "EPVColorSlot1"): "EPV 颜色槽1",
     ("LIGHTNING", "EPVColorSlot2"): "EPV 颜色槽2",
+
+    # ── HOMING（归航，系统实测逆向，2026-06）─────────────────────────────────
+    ("HOMING", "f0"):              "归航角速度",
+    ("HOMING", "f3"):              "渲染衰减系数",
+    ("HOMING", "f4"):              "归航激活距离",
+    ("HOMING", "radius"):          "力场衰减距离",
+    ("HOMING", "i0"):              "归航模式",
+    ("HOMING", "i1"):              "可见性标志",
+
+    # ── VELOCITY2D（2D 速度，来源 EFX_Subtypes.bt）────────────────────────────
+    ("VELOCITY2D", "unkn10"):                          "未知10",
+    ("VELOCITY2D", "expansionRadius"):                 "扩张半径",
+    ("VELOCITY2D", "expansionRadiusJitter"):           "扩张半径抖动",
+    ("VELOCITY2D", "expansionRadiusElasticity"):       "扩张半径弹性",
+    ("VELOCITY2D", "expansionRadiusElasticityJitter"): "扩张半径弹性抖动",
+    ("VELOCITY2D", "energyOnAxisX"):                   "X 轴能量",
+    ("VELOCITY2D", "energyOnAxisY"):                   "Y 轴能量",
+    ("VELOCITY2D", "expansionType"):                   "扩张类型(0-1线性 2-3静止)",
+    ("VELOCITY2D", "gravity"):                         "重力",
+    ("VELOCITY2D", "gravityJitter"):                   "重力抖动",
+    ("VELOCITY2D", "expansionDelay"):                  "扩张延迟",
+    ("VELOCITY2D", "expansionDelayJitter"):            "扩张延迟抖动",
+    ("VELOCITY2D", "gravityDelay"):                    "重力延迟",
+    ("VELOCITY2D", "gravityDelayJitter"):              "重力延迟抖动",
+
+    # ── BILLBOARD2D（2D 公告板，来源 EFX_Subtypes.bt）─────────────────────────
+    ("BILLBOARD2D", "color1"):           "颜色1",
+    ("BILLBOARD2D", "color2"):           "颜色2",
+    ("BILLBOARD2D", "emissionMin"):      "自发光最小值",
+    ("BILLBOARD2D", "emissionMax"):      "自发光最大值",
+    ("BILLBOARD2D", "rotationJitterMin"):"旋转抖动最小值",
+    ("BILLBOARD2D", "rotationJitterMax"):"旋转抖动最大值",
+    ("BILLBOARD2D", "scaleJitterMin"):   "缩放抖动最小值",
+    ("BILLBOARD2D", "scaleJitterMax"):   "缩放抖动最大值",
+    ("BILLBOARD2D", "imageResolutionX"): "图像分辨率 X",
+    ("BILLBOARD2D", "scaleX"):           "缩放 X",
+    ("BILLBOARD2D", "imageResolutionY"): "图像分辨率 Y",
+    ("BILLBOARD2D", "scaleY"):           "缩放 Y",
+
+    # PLEMISSIVE body_p/wp_p 的显示名由面板 label_override 给出（Aura Part (Player)/(Weapon)），不在此表。
+
+    # ── EMITTERSHAPE2D（2D 发射形状，来源 EFX_Subtypes.bt）────────────────────
+    ("EMITTERSHAPE2D", "offsetX"):       "偏移 X",
+    ("EMITTERSHAPE2D", "offsetXJitter"): "偏移 X 抖动",
+    ("EMITTERSHAPE2D", "offsetY"):       "偏移 Y",
+    ("EMITTERSHAPE2D", "offsetYJitter"): "偏移 Y 抖动",
+    ("EMITTERSHAPE2D", "spawnCount"):    "生成数量",
 }
 
 

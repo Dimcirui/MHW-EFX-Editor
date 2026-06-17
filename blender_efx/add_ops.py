@@ -355,6 +355,7 @@ def add_body_from_preset_dict(preset: dict,
     raw_label = source_label or f"body_{new_index}"
     display_name = f"{nn} {source_label or 'body'}"
     body_obj = io_tree._new_empty(display_name, col_main)
+    body_obj.empty_display_type = 'ARROWS'   # XYZ 三色轴，使特效体朝向直观可见
 
     body_obj["~TYPE"]         = "EFX_BODY"
     body_obj["efx_index"]     = new_index

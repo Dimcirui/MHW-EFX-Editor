@@ -345,14 +345,7 @@ FIELD_ANNOTATIONS = {
 
     # ─── PLEMISSIVE ───────────────────────────────────────────────────────────
     # ExternPlEmissive (EFX_Subtypes.bt)
-    ("PLEMISSIVE", "body_p"): {
-        "EN": "Player Aura Part — see /wiki/EFX-Effect-Editing#aura-parts",
-        "ZH": "玩家光圈部位 —— 见 /wiki/EFX-Effect-Editing#aura-parts",
-    },
-    ("PLEMISSIVE", "wp_p"): {
-        "EN": "Weapon Aura Part — see /wiki/EFX-Effect-Editing#aura-parts",
-        "ZH": "武器光圈部位 —— 见 /wiki/EFX-Effect-Editing#aura-parts",
-    },
+    # body_p / wp_p 已重命名为 Aura Part (Player)/(Weapon) 并配勾选弹窗，名称自明，无需注释。
     ("PLEMISSIVE", "area"): {
         "EN": "Area of Aura (2 floats)",
         "ZH": "光圈区域（2 个 float）",
@@ -486,10 +479,89 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── HOMING ───────────────────────────────────────────────────────────────
-    # Homing (EFX_Subtypes.bt)
+    # 字段语义来自 207 个官方块的统计 + 系统性实测逆向（2026-06）。
+    ("HOMING", "unknown"): {
+        "EN": "Observed range 1–29. Testing showed NO observable effect on homing "
+              "behavior (not a bone index). Purpose unknown.",
+        "ZH": "观测范围 1–29。实测对归航行为无可观影响（非骨骼索引）。用途未知。",
+    },
+    ("HOMING", "unknown0"): {
+        "EN": "Always 44 in all 207 observed blocks — do not modify",
+        "ZH": "207 个块中恒为 44，请勿修改",
+    },
+    ("HOMING", "spacer"): {
+        "EN": "Always 0xCDCDCD00 — do not modify",
+        "ZH": "恒为 0xCDCDCD00，请勿修改",
+    },
+    ("HOMING", "f0"): {
+        "EN": "Angular velocity: ω ∝ F0 (linear). Rotates velocity vector each frame. "
+              "Best range 90–360. Above ~18000 force overflows and fails.",
+        "ZH": "角速度参数，ω ∝ F0（线性）；每帧旋转速度向量方向。"
+              "推荐范围 90~360，超过约 18000 引力溢出失效。",
+    },
+    ("HOMING", "speed"): {
+        "EN": "Damping / convergence rate. Higher = faster spiral to orbit, "
+              "does NOT change final orbit size. 0 = particles invisible (no motion, trail hidden).",
+        "ZH": "阻尼/收敛速率，值越大越快螺旋到轨道，不影响最终轨道大小。"
+              "0=粒子不可见（静止，拖尾渲染不显示）。",
+    },
+    ("HOMING", "speedMultiplier"): {
+        "EN": "Per-frame tangential force (not initial velocity). "
+              "Sets natural orbit radius: r ∝ speedMultiplier^1.5 / F0. "
+              "Large values cause outward spiral over many loops before settling.",
+        "ZH": "每帧持续切向力（非初始速度）。决定自然轨道半径：r ∝ speedMultiplier^1.5 / F0。"
+              "值过大时粒子需要多圈螺旋才能收敛到轨道。",
+    },
+    ("HOMING", "f3"): {
+        "EN": "No observed effect on orbit (0.0–1.0 tested). "
+              "Likely render-layer fade: opacity/brightness decay multiplier per frame. "
+              "Official use: 84% = 1.0 (no decay).",
+        "ZH": "对轨道无可见影响（已测 0.0–1.0）。"
+              "推测为渲染衰减：每帧透明度/亮度乘数。官方 84% 使用 1.0（不衰减）。",
+    },
+    ("HOMING", "f4"): {
+        "EN": "Homing force activation distance threshold. "
+              "f4 < natural orbit radius → orbit expands (particles exit activation zone). "
+              "f4 > natural orbit radius → orbit constrained to natural radius. "
+              "Official default 50 (73%).",
+        "ZH": "归航力激活距离阈值。f4 < 自然轨道半径 → 轨道膨胀（粒子飞出激活区）；"
+              "f4 > 自然轨道半径 → 轨道约束到自然半径。官方默认 50（73%）。",
+    },
+    ("HOMING", "radius"): {
+        "EN": "Force falloff distance — minimal effect on orbit in tests (50–1000 range tested). "
+              "Official default 1000 (71%).",
+        "ZH": "力场衰减距离，实测对轨道影响极小（已测 50–1000）。官方默认 1000（71%）。",
+    },
+    ("HOMING", "i0"): {
+        "EN": "Homing target = (i0 mod 4): 0=spawn point (emitter pos), "
+              "1=model/character origin (feet), 2/3=world origin (map center). "
+              "Cycles every 4 (4=spawn, 5=model, …). Target captured at trigger time. "
+              "Trajectory: 0/2=straight, 1=arc. Orbit plane = surface normal at trigger point. "
+              "Official: 0=84%, 1=13%, 2=4%.",
+        "ZH": "归航目标 = (i0 mod 4)：0=生成点（发射器位置），"
+              "1=模型/角色原点（脚下），2/3=世界原点（地图中心）。"
+              "每 4 循环（4=生成点, 5=模型原点…）。目标在触发时捕获。"
+              "轨迹：0/2=直线，1=弧线。轨道面由触发面法线决定。官方用值：0=84%，1=13%，2=4%。",
+    },
+    ("HOMING", "i1"): {
+        "EN": "Visibility flag. bit0=1 AND bit1=1 (values 3,7,11…) = normal; "
+              "bit0=0 AND bit1=1 (values 2,6,10…) = particles disappear. "
+              "Official: 0=73%, 2=26%, 1=2%.",
+        "ZH": "可见性标志。bit0=1且bit1=1（3,7,11…）=正常；"
+              "bit0=0且bit1=1（2,6,10…）=粒子消失。官方：0=73%，2=26%，1=2%。",
+    },
     ("HOMING", "enableRadialVanish"): {
-        "EN": "1=Freak Speed,  3=Disappear on inner radius",
-        "ZH": "1=异常加速,  3=在内半径处消失",
+        "EN": "Orbit escape behavior. 0=normal (particle ejected radially after a few orbits). "
+              "1=homing force disabled (free expansion). 2/4=persistent orbit (no ejection). "
+              "3=periodic radial escape: orbit one loop → dash outward radially → orbit again, repeating. "
+              "Official: 0=72%, 3=11%, 2=8%, 1=7%, 4=2%.",
+        "ZH": "轨道逃逸行为。0=正常（绕几圈后径向甩出）；1=归航引力失效（自由扩散）；"
+              "2/4=持续轨道（不甩出）；3=周期性径向逃逸：绕一圈→径向冲出一段→再绕一圈，反复。"
+              "官方：0=72%，3=11%，2=8%，1=7%，4=2%。",
+    },
+    ("HOMING", "unknown1"): {
+        "EN": "Almost always 0 (97% of official blocks)",
+        "ZH": "几乎恒为 0（官方 97%）",
     },
 
     # ─── SCREENSPACECOLLISION ─────────────────────────────────────────────────

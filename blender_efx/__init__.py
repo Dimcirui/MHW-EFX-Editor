@@ -46,6 +46,7 @@ from . import delete_ops    # L2 #3b：删除条目（body/块/play/extern/subse
 from . import add_ops       # L2 #3c：从整 body 预设新增 body + Active EFX 选择器
 from . import add_section_ops  # 从无到有新建 Play / Extern / Subselect 段条目
 from . import block_ops     # 块级组装：单块复制/粘贴/预设保存/新增
+from . import part_mask_ops # PLEMISSIVE body_p/wp_p 位掩码勾选编辑器
 from . import validate      # L2 #4：导出前校验
 from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始字节查看）
 from . import timl_io       # TIML ↔ .timl 文件互导（方案 C：FreeKinetics 桥）
@@ -150,6 +151,9 @@ def register():
     # ── 块级组装：单块复制/粘贴/预设保存/新增（必须在 panels.register() 前）────────
     block_ops.register()
 
+    # ── PLEMISSIVE 位掩码勾选编辑器（算子，须在 panels.register() 前）─────────────
+    part_mask_ops.register()
+
     # ── L2 #4：导出前校验算子（EFX_OT_validate）──────────────────────────────
     validate.register()
 
@@ -184,6 +188,7 @@ def unregister():
     validate.unregister()
 
     # ── 块级组装算子 ──────────────────────────────────────────────────────────
+    part_mask_ops.unregister()
     block_ops.unregister()
 
     # ── 从无到有新建 Play/Extern/Subselect 段条目 ────────────────────────────

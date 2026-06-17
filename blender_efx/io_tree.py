@@ -238,6 +238,7 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
 
         # Blender 会自动给重名对象加 .001 后缀，这里不做额外处理
         body_obj = _new_empty(display_name, col_main)
+        body_obj.empty_display_type = 'ARROWS'   # XYZ 三色轴，使特效体朝向直观可见
         body_obj["~TYPE"]         = "EFX_BODY"
         body_obj["efx_index"]     = body_idx  # 原始顺序，还原时用
         body_obj["efx_raw_label"] = raw_label  # L2 #3a：原始标签，重排重建显示名用

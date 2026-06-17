@@ -521,6 +521,25 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
+                # (5j) 有渲染器但缺 SHADERSETTINGS — WARN
+                # 官方样本：BILLBOARD3D/RIBBON/PLANE/LIGHTNING 与 SHADERSETTINGS 100% 共现；
+                # MESH 78.7%（有合法的不可见 MESH，故豁免）；DUMMY 功能性体也豁免。
+                _SHADERSET_REQUIRED = frozenset({_BB3D, _RIBBON, _PLANE, _LIGHTNING, _RIBBONBLADE, _SRBN})
+                has_required_renderer = bool(hash_set & _SHADERSET_REQUIRED)
+                if has_required_renderer and _SHADERSET not in hash_set:
+                    renderer_names = ", ".join(
+                        _H2N.get(h, f"0x{h:08X}") for h in (hash_set & _SHADERSET_REQUIRED)
+                    )
+                    problems.append({
+                        "level": "WARN",
+                        "msg": (
+                            f"Body '{body.name}' has {renderer_names} but no SHADERSETTINGS — "
+                            "textures and transparency will not work in-game "
+                            "(88.3% of official rendering bodies include SHADERSETTINGS)"
+                        ),
+                        "obj": body.name,
+                    })
+
             except Exception:
                 pass  # 单个 body 检查失败不影响整体
 

@@ -526,6 +526,13 @@ def _draw_block_fields_content(layout, context):
     except (ValueError, ImportError):
         pass
 
+    _is_plemissive = False
+    try:
+        from ..efx_format.hashes import PLEMISSIVE as _PLEMISSIVE_HASH_P
+        _is_plemissive = (int(bp.type_hash_str) == _PLEMISSIVE_HASH_P)
+    except (ValueError, ImportError):
+        pass
+
     # ── 可编辑块：展示字段列表 ────────────────────────────────────────────────
     if bp.is_editable:
         if len(bp.field_items) == 0:
@@ -610,6 +617,19 @@ def _draw_block_fields_content(layout, context):
                         _bcol = _prow.column(align=True)
                         _op = _bcol.operator("efx.ptb_remove_override", text="", icon="X")
                         _op.param_index = _pord
+                    i += 1
+                    continue
+                # PLEMISSIVE：body_p / wp_p（光圈部位掩码）保留原数值字段（直接可看/改），
+                # 行尾附勾选弹窗按钮作为计算辅助。下拉拉开即显示部位，无需额外摘要行。
+                if _is_plemissive and item.ori_name in ("body_p", "wp_p"):
+                    _aura_lbl = ("Aura Part (Player)" if item.ori_name == "body_p"
+                                 else "Aura Part (Weapon)")
+                    _pm_row = col.row(align=True)
+                    _fcol = _pm_row.column(align=True)
+                    _draw_field_item(_fcol, item, type_name=type_name, label_override=_aura_lbl)
+                    _bcol = _pm_row.column(align=True)
+                    _op = _bcol.operator("efx.set_part_mask", text="", icon="DOWNARROW_HLT")
+                    _op.field = item.ori_name
                     i += 1
                     continue
                 # MATERIAL：path_N 用其贴图槽名（tAlbedoMap…）当标签，取代独立只读面板

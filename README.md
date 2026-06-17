@@ -102,8 +102,11 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 #### III. Sprite Modifiers (face-rendered only, can conflict with MESH)
 
+> ⚠️ **SHADERSETTINGS is required for any visually rendering body** (88.3% co-occurrence in official samples). Without it, textures and transparency will not work. The only exception is pure cascade-emitter bodies (PARENTEMISSIVE / PLEMISSIVE) that produce no visual output themselves.
+
 | Block Type | Field Editing |
 |---|---|
+| SHADERSETTINGS | ✓ — required for texture/transparency to work; `controlBitflag` selects blend mode (1=additive, 4=multiplicative are most common) |
 | UVSEQUENCE | ✓ |
 | RGBFIRE | ✓ |
 | RGBWATER | ✓ |
@@ -151,7 +154,6 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | FADEBYANGLE | ✓ |
 | FADEBYEMITTERANGLE | ✓ |
 | FADEBYOCCLUSION | ✓ |
-| SHADERSETTINGS | ✓ |
 | MASTERONLY | ✓ |
 | RAYCAST | ✓ |
 | LINKPARTSVISIBLE | ✓ |
@@ -174,7 +176,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 | Block Type | Field Editing |
 |---|---|
-| PLEMISSIVE | ✓ |
+| PLEMISSIVE | ✓ — the aura-part bitmasks show as **Aura Part (Player)** / **Aura Part (Weapon)** numeric fields, each with a checkbox popup (head/body/arms/waist/legs and left/right hand, plus a `cycle` field for the high bits) that computes the value in sync with the field |
 | PARENTEMISSIVE | ✓ |
 | PLSNOW | ✓ |
 | PARENTSNOW | ✓ |
@@ -194,8 +196,8 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 |---|---|---|
 | TRANSFORM2D | ✓ | I. Body Skeleton |
 | EMITTERSHAPE2D | ✓ | V. Emitter / Space |
-| VELOCITY2D | ✗ | VI. Motion / Velocity |
-| BILLBOARD2D | ✗ | II. Renderer |
+| VELOCITY2D | ✓ | VI. Motion / Velocity |
+| BILLBOARD2D | ✓ (incl. texture path) | II. Renderer |
 
 #### XIII. Misc / Control
 

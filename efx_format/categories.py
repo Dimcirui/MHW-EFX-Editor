@@ -14,11 +14,12 @@ efx_format/categories.py  —  块类型的功能分类表（纯 Python，零 bp
   renderer    — 渲染主体，互斥选一（BILLBOARD3D / RIBBON / MESH / PLANE /
                 FAKEPLANE / LIGHTNING / DUMMY / RIBBONBLADE / STRAINRIBBON / TUBELIGHT…）
   sprite_mod  — 面片渲染专属修饰（billboard/ribbon/plane 专用；与 MESH 完全不共存）
+                SHADERSETTINGS（可视渲染体必须，88.3% 共现，缺失则贴图/透明不生效）
                 UVSEQUENCE / RGBFIRE / RGBWATER / ALPHACORRECTION / REFRACTION / BLINK / LUMINANCEBLEED
   mesh_over   — MESH 专属覆盖（MATERIAL / UVCONTROL；100% 与 MESH 绑定）
   emitter     — 发射器 / 空间约束（EMITTERSHAPE3D / EMITTERBOUNDARY…）
   motion      — 运动 / 速度 / 动画（VELOCITY3D / SCALEANIM / ROTATEANIM / NOISE…）
-  visibility  — 可见性 / 渐隐 / 着色器（FADE* / SHADERSETTINGS / RAYCAST…）
+  visibility  — 可见性 / 渐隐（FADE* / RAYCAST…）
   lifecycle   — 生命周期触发，body 最后（PTCOLLISION / PTLIFE / PTTRIGGER）
   extern_decl — 外部资源声明，body 最前（EXTERNREFERENCE）
   char_effect — 角色附着效果（PLEMISSIVE / PARENTEMISSIVE / PLSNOW / SHOVEL…）
@@ -35,7 +36,8 @@ from .hashes import (
     BILLBOARD3D, RIBBON, MESH, PLANE, FAKEPLANE,
     LIGHTNING, DUMMY, RIBBONBLADE, STRAINRIBBON, TUBELIGHT,
     BILLBOARD2D,
-    # 面片修饰
+    # 面片修饰（含 SHADERSETTINGS：可视渲染体必须）
+    SHADERSETTINGS,
     UVSEQUENCE, RGBFIRE, RGBWATER, ALPHACORRECTION, REFRACTION, BLINK, LUMINANCEBLEED,
     # MESH 专属覆盖
     MATERIAL, UVCONTROL,
@@ -47,7 +49,7 @@ from .hashes import (
     NOISE, TURBULENCE, HOMING, GUIDE, PATHCHAIN, SCREENSPACECOLLISION,
     # 可见性
     FADEBYDEPTH, FADEBYANGLE, FADEBYEMITTERANGLE, FADEBYOCCLUSION,
-    SHADERSETTINGS, MASTERONLY, RAYCAST, LINKPARTSVISIBLE,
+    MASTERONLY, RAYCAST, LINKPARTSVISIBLE,
     # 生命周期触发
     PTCOLLISION, PTLIFE, PTTRIGGER,
     # 外部声明
@@ -100,6 +102,7 @@ BLOCK_CATEGORY_OF = {
     TUBELIGHT:         "renderer",
 
     # ── 面片渲染专属修饰（billboard/ribbon/plane 专用，与 MESH 完全不共存） ───
+    SHADERSETTINGS:    "sprite_mod",  # 可视渲染体必须（88.3% 共现）；缺失则贴图/透明不生效
     UVSEQUENCE:        "sprite_mod",  # BILLBOARD3D/RIBBON 强制伴随
     RGBFIRE:           "sprite_mod",  # 与 RGBWATER 互斥
     RGBWATER:          "sprite_mod",  # 与 RGBFIRE 互斥
@@ -135,7 +138,6 @@ BLOCK_CATEGORY_OF = {
     FADEBYANGLE:       "visibility",
     FADEBYEMITTERANGLE:"visibility",
     FADEBYOCCLUSION:   "visibility",
-    SHADERSETTINGS:    "visibility",
     MASTERONLY:        "visibility",
     RAYCAST:           "visibility",
     LINKPARTSVISIBLE:  "visibility",
