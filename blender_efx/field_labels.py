@@ -415,8 +415,10 @@ def label_zh(ori_name, type_name=None):
 # 判据：tools/scan_fill_fields.py 全语料(10163 文件)统计，字段最高字节(MSB)==0xCD
 # 的比例 ≥99%（基本 100%）。这些是引擎从不写入的保留/填充位（spacer*/unkn*/CD1 等），
 # 编辑无意义且易写坏；导出时未编辑字段走原始字节，byte-perfect 不受影响。
-# 键 = (type_name, ori_name)。如需放行某字段（如确认 tailTiedToBone 有用），删对应行即可。
+# 键 = (type_name, ori_name)。如需放行某字段，删对应行即可。
 # 重新生成：python3 tools/scan_fill_fields.py --all --emit-set
+# ⚠ 已手动排除 3 个名字像真实字段、可能有语义的项（--emit-set 会再次列出它们，
+#   重生成后需重新删除）：PLSNOW.alpha_effect、RIBBON.tailTiedToBone、STRAINRIBBON.color3_w。
 # ─────────────────────────────────────────────────────────────────────────────
 
 RESERVED_FILL_FIELDS = frozenset({
@@ -443,7 +445,6 @@ RESERVED_FILL_FIELDS = frozenset({
     ('OTOMOSNOW', 'unkn6'),
     ('PARENTSNOW', 'unkn1'),
     ('PATHCHAIN', 'unkn1'),
-    ('PLSNOW', 'alpha_effect'),
     ('PLSNOW', 'spacer'),
     ('PLSNOW', 'unkn5'),
     ('PTTRIGGER', 'unkn1'),
@@ -460,7 +461,6 @@ RESERVED_FILL_FIELDS = frozenset({
     ('RIBBON', 'spacer7'),
     ('RIBBON', 'spacer8'),
     ('RIBBON', 'spacer9'),
-    ('RIBBON', 'tailTiedToBone'),
     ('RIBBON', 'unkn24'),
     ('RIBBONBLADE', 'spacer0'),
     ('RIBBONBLADE', 'spacer1'),
@@ -471,7 +471,6 @@ RESERVED_FILL_FIELDS = frozenset({
     ('SHOVEL', 'spacer'),
     ('SPAWNBYANGLE', 'unkn1'),
     ('SPAWNBYOCCLUSION', 'unkn1'),
-    ('STRAINRIBBON', 'color3_w'),
     ('STRAINRIBBON', 'spacer00'),
     ('STRAINRIBBON', 'spacer01'),
     ('STRAINRIBBON', 'spacer02'),
