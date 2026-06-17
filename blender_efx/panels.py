@@ -225,6 +225,12 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     手动 index 分量行强制 use_property_split=False，防止 property_split 打乱布局。
     """
     dtype = item.data_type
+    # 保留填充字段（0xCD 占位）→ 关闭编辑：把 layout 重指向一个 enabled=False 的子列，
+    # 后续所有控件都画进它（只读灰显）。导出时该字段未编辑 → 走原字节，byte-perfect 不变。
+    from .field_labels import is_reserved_fill
+    if is_reserved_fill(type_name, item.ori_name):
+        layout = layout.column(align=True)
+        layout.enabled = False
     # 友好显示名（仅显示，逻辑用 ori_name）；label_override 优先（如 MATERIAL 路径的槽名）
     fname = label_override if label_override else _friendly_name(item.ori_name, type_name)
 

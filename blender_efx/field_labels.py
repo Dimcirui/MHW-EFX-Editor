@@ -407,3 +407,78 @@ def label_zh(ori_name, type_name=None):
         if zh is not None:
             return zh
     return FIELD_LABELS_ZH.get(ori_name)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 保留填充字段（0xCD 未初始化占位）——UI 中关闭编辑（只读灰显）
+#
+# 判据：tools/scan_fill_fields.py 全语料(10163 文件)统计，字段最高字节(MSB)==0xCD
+# 的比例 ≥99%（基本 100%）。这些是引擎从不写入的保留/填充位（spacer*/unkn*/CD1 等），
+# 编辑无意义且易写坏；导出时未编辑字段走原始字节，byte-perfect 不受影响。
+# 键 = (type_name, ori_name)。如需放行某字段（如确认 tailTiedToBone 有用），删对应行即可。
+# 重新生成：python3 tools/scan_fill_fields.py --all --emit-set
+# ─────────────────────────────────────────────────────────────────────────────
+
+RESERVED_FILL_FIELDS = frozenset({
+    ('CHECKPUREATTRIBUTE', 'unkn1'),
+    ('EMITTERSHAPEMESH', 'unkn1'),
+    ('FADEBYEMITTERANGLE', 'unkn'),
+    ('FADEBYOCCLUSION', 'unkn1'),
+    ('FAKEDOF', 'unkn2'),
+    ('FAKEPLANE', 'unkn4'),
+    ('HOMING', 'spacer'),
+    ('LIGHTNING', 'spacer0'),
+    ('LIGHTNING', 'spacer05_00'),
+    ('LIGHTNING', 'spacer05_14'),
+    ('LIGHTNING', 'unkn02'),
+    ('LIGHTNING', 'unkn03'),
+    ('LIGHTNING', 'unkn05_21'),
+    ('LIGHTNING', 'unkn05_46'),
+    ('LIGHTNING', 'unkn07_20'),
+    ('LUMINANCEBLEED', 'unkn0'),
+    ('MESH', 'CD1'),
+    ('NOISE', 'spacer'),
+    ('OTOMOSNOW', 'unkn1'),
+    ('OTOMOSNOW', 'unkn4'),
+    ('OTOMOSNOW', 'unkn6'),
+    ('PARENTSNOW', 'unkn1'),
+    ('PATHCHAIN', 'unkn1'),
+    ('PLSNOW', 'alpha_effect'),
+    ('PLSNOW', 'spacer'),
+    ('PLSNOW', 'unkn5'),
+    ('PTTRIGGER', 'unkn1'),
+    ('RAYCAST', 'spacer0'),
+    ('RAYCAST', 'spacer1'),
+    ('RAYCAST', 'spacer2'),
+    ('RAYCAST', 'spacer3'),
+    ('RIBBON', 'spacer0'),
+    ('RIBBON', 'spacer1'),
+    ('RIBBON', 'spacer2'),
+    ('RIBBON', 'spacer3'),
+    ('RIBBON', 'spacer4'),
+    ('RIBBON', 'spacer5'),
+    ('RIBBON', 'spacer7'),
+    ('RIBBON', 'spacer8'),
+    ('RIBBON', 'spacer9'),
+    ('RIBBON', 'tailTiedToBone'),
+    ('RIBBON', 'unkn24'),
+    ('RIBBONBLADE', 'spacer0'),
+    ('RIBBONBLADE', 'spacer1'),
+    ('RIBBONBLADE', 'spacer2'),
+    ('RIBBONBLADE', 'spacer3'),
+    ('SCREENSPACECOLLISION', 'spacer'),
+    ('SHADERSETTINGS', 'spacer'),
+    ('SHOVEL', 'spacer'),
+    ('SPAWNBYANGLE', 'unkn1'),
+    ('SPAWNBYOCCLUSION', 'unkn1'),
+    ('STRAINRIBBON', 'color3_w'),
+    ('STRAINRIBBON', 'spacer00'),
+    ('STRAINRIBBON', 'spacer01'),
+    ('STRAINRIBBON', 'spacer02'),
+    ('STRAINRIBBON', 'spacer03'),
+})
+
+
+def is_reserved_fill(type_name, ori_name) -> bool:
+    """该字段是否为保留填充位（UI 关闭编辑）。"""
+    return (type_name, ori_name) in RESERVED_FILL_FIELDS
