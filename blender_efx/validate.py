@@ -359,12 +359,7 @@ def validate_efx_tree(root_obj) -> list:
             MATERIAL as _MATERIAL,
             ALPHACORRECTION as _ALPHACORR,
             SHADERSETTINGS as _SHADERSET,
-            TRANSFORM3D as _T3D,       PARENTOPTIONS as _PARENTOPT,
-            SPAWN as _SPAWN,           LIFE as _LIFE,
-            RANDOMFIX as _RANDOMFIX,
         )
-        # 与 PTBEHAVIOR 允许共存的块（基础骨架；冲突降级为 WARN）
-        _PTBEHAVIOR_SOFT = frozenset({_T3D, _PARENTOPT, _SPAWN, _LIFE, _RANDOMFIX})
         _RENDERERS = frozenset({
             _BB3D, _RIBBON, _MESH, _PLANE, _FAKEPLANE,
             _LIGHTNING, _DUMMY, _RIBBONBLADE, _SRBN, _TUBE, _BB2D,
@@ -426,39 +421,24 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5d) PTBEHAVIOR ✗ 其他
-                # 基础骨架块（TRANSFORM3D/PARENTOPTIONS/SPAWN/LIFE/RANDOMFIX）与
-                # PTBEHAVIOR 共存已有实测文件验证不崩溃 → 降级为 WARN；
-                # 其余块（渲染体、行为块等）仍为 ERROR。
+                # (5d) PTBEHAVIOR 与其他块共存 — 全部 WARN
+                # 实测大量第三方特效让 PTBEHAVIOR 与任意块（含渲染体）共存且不崩溃，
+                # 故不再区分 hard/soft，统一降级为 WARN（仅提示，不挡导出）。
                 if _PTBEHAVIOR in hash_set and len(hash_set) > 1:
-                    hard_conflicts = hash_set - _PTBEHAVIOR_SOFT - {_PTBEHAVIOR}
-                    soft_conflicts = (hash_set & _PTBEHAVIOR_SOFT) - {_PTBEHAVIOR}
-                    if hard_conflicts:
-                        names = "/".join(
-                            _H2N.get(h, f"0x{h:08X}") for h in hard_conflicts
-                        )
-                        problems.append({
-                            "level": "ERROR",
-                            "msg": (
-                                f"Body '{body.name}' has PTBEHAVIOR alongside "
-                                f"incompatible blocks ({names}) — "
-                                "PTBEHAVIOR is an isolated system"
-                            ),
-                            "obj": body.name,
-                        })
-                    elif soft_conflicts:
-                        names = "/".join(
-                            _H2N.get(h, f"0x{h:08X}") for h in soft_conflicts
-                        )
-                        problems.append({
-                            "level": "WARN",
-                            "msg": (
-                                f"Body '{body.name}' has PTBEHAVIOR alongside "
-                                f"structural blocks ({names}) — "
-                                "usually safe but verify in-game behavior"
-                            ),
-                            "obj": body.name,
-                        })
+                    conflicts = hash_set - {_PTBEHAVIOR}
+                    names = "/".join(
+                        _H2N.get(h, f"0x{h:08X}") for h in conflicts
+                    )
+                    problems.append({
+                        "level": "WARN",
+                        "msg": (
+                            f"Body '{body.name}' has PTBEHAVIOR alongside "
+                            f"other blocks ({names}) — PTBEHAVIOR is usually an "
+                            "isolated system, but coexistence is observed not to crash; "
+                            "verify in-game behavior"
+                        ),
+                        "obj": body.name,
+                    })
 
                 # (5e) 多个渲染体 — WARN
                 renderers_in_body = hash_set & _RENDERERS
