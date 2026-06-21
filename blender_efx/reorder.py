@@ -603,6 +603,15 @@ class EFX_OT_rename_entry(bpy.types.Operator):
         obj.name = f"{nn} {new_name}"
         root["labels_dirty"] = 1
 
+        # play_type = jamcrc(play 名)（实测 5251/5251）。重命名 EFX_PLAY 必须同步
+        # 重算 play_type，否则名↔哈希不一致，按名字哈希调用 action 的引用会失效。
+        if obj.get("~TYPE") == "EFX_PLAY":
+            try:
+                from ..efx_format.hashes import jamcrc
+                obj.efx_play.play_type_str = str(jamcrc(new_name))
+            except Exception:
+                pass
+
         self.report({"INFO"}, f"Renamed to: {new_name} (written to label table on export)")
         return {"FINISHED"}
 

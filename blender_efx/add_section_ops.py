@@ -46,8 +46,6 @@ from .add_ops import get_active_efx_root
 _BLANK_EMITTER_UNKN7 = bytes.fromhex(
     "02000000000000000000000004000000000000000000000000000000"
 )
-# 新建 Play 的 play_type 缺省值（corpus 最常见 hash；语义未知，面板可改）。
-_BLANK_PLAY_TYPE = 0xBF9F765B
 
 # ── Extern 子类型模板（ExternAttribute.serialize()，byte-perfect 往返验证）────────
 # EXTERNSPAWN   172B  来源：wp08_061.efx（单类型 ExternAttribute）
@@ -233,11 +231,14 @@ def add_play(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
                        + struct.pack("<i", 0))
         first_entry = PlayEntry(type_hash=PLAYEMITTER, raw=emitter_raw)
 
-    pd = PlayData(play_type=_BLANK_PLAY_TYPE, entries=[first_entry])
-
     # 标签前缀规则：新 play 追加在 play 组末尾，前面=现有所有 play。
     has_label = _all_labeled(_sorted_children(root_obj, "EFX_PLAY"))
     raw_label = f"play_{idx}"
+
+    # play_type = jamcrc(play 名)（实测 5251/5251 命中）。新建即按名字算，
+    # 避免名↔哈希从出生就不一致；重命名时由 EFX_OT_rename_entry 同步重算。
+    from ..efx_format.hashes import jamcrc
+    pd = PlayData(play_type=jamcrc(raw_label), entries=[first_entry])
 
     obj = _new_empty(f"{_nn(idx)} {raw_label}", col)
     obj["~TYPE"]         = "EFX_PLAY"

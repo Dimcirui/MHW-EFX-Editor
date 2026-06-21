@@ -246,3 +246,18 @@ ATTR_HASHES: frozenset = frozenset([
     GUIDE_MOVETYPE_ALWAYSTHROUGH, GUIDE_MOVETYPE_SKIPNEAR, GUIDE_MOVETYPE_OLDTYPE,
     IEFFECTITEM, ITEM, DYNAMICRAY, CCOORDPARAMETER,
 ])
+
+
+# ── JamCRC（MT Framework 名字哈希）─────────────────────────────────────────────
+import zlib as _zlib
+
+
+def jamcrc(name) -> int:
+    """JamCRC = 标准 CRC32 按位取反（MT Framework 名字哈希）。
+
+    实测(官方 5251 个 play 全命中)：PlayData.play_type == jamcrc(play 标签名)。
+    输入接受 str（按 ASCII/UTF-8 编码）或 bytes，返回 32-bit 无符号整数。
+    """
+    if isinstance(name, str):
+        name = name.encode("utf-8")
+    return (~_zlib.crc32(name)) & 0xFFFFFFFF
