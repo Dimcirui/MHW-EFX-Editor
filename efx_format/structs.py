@@ -3265,6 +3265,12 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
         path_b = data_bytes[32:null]
         return [_path_bytes_to_str(path_b)]
 
+    # TONEMAPFILTER: fixed 24B + path_len(4)@24 + path[path_len]（path_len 含末尾 null）
+    if type_hash == TONEMAPFILTER:
+        (path_len,) = struct.unpack_from('<i', data_bytes, 24)
+        path_b = data_bytes[28:28 + path_len].rstrip(b'\x00')
+        return [_path_bytes_to_str(path_b)]
+
     # RIBBON: fixed 360B + null-term path
     if type_hash == RIBBON:
         null = data_bytes.index(b'\x00', 360)
@@ -3488,6 +3494,16 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
         new_path_b = _str_to_path_bytes(new_paths[0])
         return data_bytes[:32] + new_path_b + b'\x00'
 
+    # ── TONEMAPFILTER ──
+    # 结构：[0..23] verbatim (24B fixed) + path_len(4) + path（含末尾 null）。
+    # path_len 计入 null，故新 path 字节 = new_path + \x00，path_len = 其长度。
+    if type_hash == TONEMAPFILTER:
+        assert len(new_paths) == 1
+        new_path_b = _str_to_path_bytes(new_paths[0]) + b'\x00'
+        return (data_bytes[:24]
+                + struct.pack('<i', len(new_path_b))
+                + new_path_b)
+
     # ── RIBBON ──
     # 结构：[0..359] verbatim + new_path + \x00
     if type_hash == RIBBON:
@@ -3620,6 +3636,7 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     TUBELIGHT,
     EMITTERSHAPEMESH,
     BILLBOARD2D,
+    TONEMAPFILTER,
 })
 
 
@@ -3659,6 +3676,9 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     # FAKEDOF：仅暴露恒在的 32B fixed 字段（尾段 present-conditional，不暴露为标量）
     FAKEDOF:          _FAKEDOF_FIXED_SCHEMA,
     BILLBOARD2D:      [e for e in _BILLBOARD2D_FIXED_SCHEMA if e[0] != 'path_len'],
+    # TonemapFilter：3 个 fixed 标量字段（unkn0[2]/unkn1/unkn2[3]）；path/path_len
+    # 由 codec 处理、不入 schema，path 走通用 STRING-item↔bytes-key 路径回写。
+    TONEMAPFILTER:    _TONEMAPFILTER_FIXED_SCHEMA,
 }
 
 
