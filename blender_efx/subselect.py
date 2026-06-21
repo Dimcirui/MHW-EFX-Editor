@@ -120,6 +120,30 @@ def find_main_collection(root_obj: bpy.types.Object):
 # §2  PropertyGroup：Subselect 结构化存储
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _table_type_hint(table_type_str: str) -> str:
+    """把十进制 table_type 字符串解读成 hex + bit 分解提示（只读展示用）。
+
+    例：
+      "4"          → "0x00000004  bit 2"
+      "3"          → "0x00000003  bits 0,1"
+      "4294967295" → "0xFFFFFFFF  all bits (全选)"
+      非法/空      → "—"
+    """
+    try:
+        v = int(str(table_type_str)) & 0xFFFFFFFF
+    except (ValueError, TypeError):
+        return "—"
+    hexs = f"0x{v:08X}"
+    if v == 0:
+        return f"{hexs}  (no bits)"
+    if v == 0xFFFFFFFF:
+        return f"{hexs}  all bits (全选)"
+    bits = [str(i) for i in range(32) if v & (1 << i)]
+    if len(bits) == 1:
+        return f"{hexs}  bit {bits[0]}"
+    return f"{hexs}  bits {','.join(bits)}"
+
+
 def _find_root_obj(obj):
     """沿 parent 链向上找 ~TYPE == 'EFX_ROOT' 的对象，找不到返回 None。"""
     cur = obj
@@ -472,6 +496,10 @@ class EFX_PT_subselect(bpy.types.Panel):
         meta_box = layout.box()
         meta_box.label(text=T("sub.table_meta"), icon="INFO")
         meta_box.prop(props, "table_type_str")
+        # 只读提示：把十进制 table_type 展示成 hex + bit 分解（纯展示，不改存储）。
+        hint_row = meta_box.row()
+        hint_row.enabled = False
+        hint_row.label(text=_table_type_hint(props.table_type_str))
         meta_box.prop(props, "unkn0_0_str")
         row1 = meta_box.row(align=True)
         row1.prop(props, "unkn0_1_str")

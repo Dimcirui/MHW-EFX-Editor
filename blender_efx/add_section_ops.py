@@ -188,7 +188,11 @@ def add_subselect(root_obj) -> bpy.types.Object:
         raise RuntimeError("找不到/无法新建 Subselect 集合")
 
     idx = _next_index(root_obj, "EFX_SUBSELECT")
-    tbl = SubselectTable(table_type=1, unkn0=(0xFFFFFFFF, 0, 0), entries=[])
+    # table_type 智能默认 = 下一个槽位 bit（1,2,4,8…），符合官方最大模式(41.5%)
+    # 及 epv3 逐槽递增语义；仍可在面板 table_type_str 改成 0xFFFFFFFF/跳号/任意值。
+    n_existing = len(_sorted_children(root_obj, "EFX_SUBSELECT"))
+    next_bit = (1 << n_existing) if n_existing < 32 else 1   # 溢出兜底
+    tbl = SubselectTable(table_type=next_bit, unkn0=(0xFFFFFFFF, 0, 0), entries=[])
 
     obj = _new_empty(f"{_nn(idx)} subselect_{idx}", col)
     obj["~TYPE"]     = "EFX_SUBSELECT"
