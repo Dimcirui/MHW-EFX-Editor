@@ -106,21 +106,33 @@ def _mark_block_dirty(self, context):
         obj = self.id_data
         if obj is not None and hasattr(obj, "efx_block"):
             obj.efx_block.efx_dirty = True
-            # TRANSFORM3D 的 translate/rotate/resize 编辑 → 实时同步到 body empty（单向、纯可视）
-            if self.ori_name in ("translate", "rotate", "resize"):
-                try:
-                    from ..efx_format.hashes import TRANSFORM3D
-                    if int(obj.efx_block.type_hash_str) == TRANSFORM3D:
-                        from . import transform_sync
-                        # 0.2.15 重构后入口是 apply_body_transform(body, armature)：
-                        # 取该块的父 body + 当前骨架（含 bone_lim 骨骼基准），而非旧的 block 签名。
-                        body = obj.parent
-                        if body is not None and body.get("~TYPE") == "EFX_BODY":
-                            scene = getattr(context, "scene", None) or bpy.context.scene
-                            armature = getattr(scene, "efx_armature", None) if scene else None
-                            transform_sync.apply_body_transform(body, armature)
-                except Exception:
-                    pass
+            try:
+                from ..efx_format.hashes import TRANSFORM3D, MESH
+                blk_hash = int(obj.efx_block.type_hash_str)
+                body = obj.parent
+                is_body = body is not None and body.get("~TYPE") == "EFX_BODY"
+                # TRANSFORM3D 的 translate/rotate/resize 编辑 → 实时重摆 body empty（单向、纯可视）
+                if (blk_hash == TRANSFORM3D and is_body
+                        and self.ori_name in ("translate", "rotate", "resize")):
+                    from . import transform_sync
+                    scene = getattr(context, "scene", None) or bpy.context.scene
+                    armature = getattr(scene, "efx_armature", None) if scene else None
+                    use_anchor = getattr(scene, "efx_anchor_placement", True) if scene else True
+                    # 锚定感知：被锚 body 编辑 transform3d 仍以基点为基准，不掉回原点
+                    transform_sync.place_single_body(body, armature, use_anchor=use_anchor)
+                    # 网格对齐会话进行中 → body empty 移动后，重对齐其实例
+                    from . import mesh_align
+                    mesh_align.realign_body_if_active(body)
+                # MESH 的 rotation/scale/global_scale 编辑 →
+                #   ① 直接作用到绑定对象本身（持久、实时反映旋转/缩放）
+                #   ② 若对齐预览会话进行中，重对齐其实例
+                elif blk_hash == MESH and self.ori_name in ("rotation", "scale", "global_scale"):
+                    from . import mesh_align
+                    mesh_align.apply_mesh_rotscale_to_object(obj)
+                    if is_body:
+                        mesh_align.realign_body_if_active(body)
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -164,6 +176,122 @@ _DATA_TYPE_ITEMS = [
     # 路径字符串（custom-codec 含路径类型专用）
     ("STRING",      "Path/String",  "路径字符串（custom-codec 含路径块的路径字段）"),
 ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Blender 坐标显示：单位分类表 + 换算（影子属性 get/set 用）
+#
+# 游戏→Blender 约定（与 transform_sync 视口转换器一致）：
+#   LENGTH : /100 + Y/Z 交换 + 取负   blender=(gx/100, -gz/100, gy/100)
+#   ANGLE  : Y/Z 交换 + 取负，保持度数  blender=(gx, -gz, gy)
+#   SCALE  : 只 Y/Z 交换（不取负不除100） blender=(gx, gz, gy)
+# 取负只作用于 fixed 分量；jitter 是无符号抖动范围，只交换/缩放、不取负。
+# 单位依据全语料 XYZ 值量级统计（2026-06，tools/scan_xyz_fields.py）：高置信 + 速度/修正系。
+# 扩展只需往本表加行。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_XYZ_UNIT = {
+    # LENGTH（位置/位移/长度速度）
+    ("TRANSFORM3D",    "translate"):            "LENGTH",
+    ("TRANSFORM3D",    "translation_velocity"): "LENGTH",
+    ("EMITTERSHAPE3D", "transform"):            "LENGTH",
+    ("STRAINRIBBON",   "displacement"):         "LENGTH",
+    ("STRAINRIBBON",   "endPosition"):          "LENGTH",
+    ("TURBULENCE",     "offsetPos"):            "LENGTH",
+    ("TURBULENCE",     "offsetPosVel"):         "LENGTH",
+    # ANGLE（旋转/角速度，度）
+    ("TRANSFORM3D",    "rotate"):               "ANGLE",
+    ("TRANSFORM3D",    "rotation_velocity"):    "ANGLE",
+    ("MESH",           "rotation"):             "ANGLE",
+    ("PLANE",          "rotation"):             "ANGLE",
+    ("TURBULENCE",     "offsetAngle"):          "ANGLE",
+    ("TURBULENCE",     "offsetAngleVel"):       "ANGLE",
+    ("ROTATEANIM",     "spin_velocity"):        "ANGLE",
+    # SCALE（缩放/缩放速度/每轴乘数）
+    ("TRANSFORM3D",    "resize"):                       "SCALE",
+    ("TRANSFORM3D",    "scale_velocity"):               "SCALE",
+    ("TRANSFORM3D",    "rotation_velocity_modifier"):   "SCALE",
+    ("TRANSFORM3D",    "scale_velocity_modifier"):      "SCALE",
+    ("TRANSFORM3D",    "translation_velocity_modifier"):"SCALE",
+    ("MESH",           "scale"):                        "SCALE",
+    ("TURBULENCE",     "offsetScale"):                  "SCALE",
+}
+
+
+def xyz_unit_for_item(item):
+    """返回该字段项的单位类（LENGTH/ANGLE/SCALE）；不在表内返回 None。"""
+    obj = getattr(item, "id_data", None)
+    if obj is None:
+        return None
+    try:
+        from ..efx_format.hashes import HASH_TO_NAME
+        th = int(obj.efx_block.type_hash_str)
+    except Exception:
+        return None
+    name = HASH_TO_NAME.get(th)
+    if name is None:
+        return None
+    return _XYZ_UNIT.get((name, item.ori_name))
+
+
+def _conv_params(unit):
+    """(scale_factor, negate)。LENGTH:/100,取负; ANGLE:×1,取负; SCALE:×1,不取负。"""
+    s = 0.01 if unit == "LENGTH" else 1.0
+    neg = -1.0 if unit in ("LENGTH", "ANGLE") else 1.0
+    return s, neg
+
+
+def _keep_unchanged(new, cur):
+    """逐分量：与原值近似相等的保留原精确值，仅真正改动的写新值。
+
+    防 /100 再 *100 的 float32 漂移污染未编辑分量、破坏 byte-perfect。
+    """
+    return [c if abs(n - c) <= max(1e-4, abs(c) * 1e-6) else n
+            for n, c in zip(new, cur)]
+
+
+def _float6_display_get(self):
+    unit = xyz_unit_for_item(self)
+    v = list(self.float6_value)
+    if unit is None:
+        return v
+    s, neg = _conv_params(unit)
+    gx_f, gx_j, gy_f, gy_j, gz_f, gz_j = v
+    # blender: X=gx, Y=-gz, Z=gy（jitter 不取负）
+    return [gx_f * s, gx_j * s, neg * gz_f * s, gz_j * s, gy_f * s, gy_j * s]
+
+
+def _float6_display_set(self, val):
+    unit = xyz_unit_for_item(self)
+    if unit is None:
+        self.float6_value = val
+        return
+    s, neg = _conv_params(unit)
+    bx_f, bx_j, by_f, by_j, bz_f, bz_j = val
+    # 逆变换回游戏序 [gx_f,gx_j,gy_f,gy_j,gz_f,gz_j]
+    new = [bx_f / s, bx_j / s, bz_f / s, bz_j / s, neg * by_f / s, by_j / s]
+    self.float6_value = _keep_unchanged(new, list(self.float6_value))
+
+
+def _float3_display_get(self):
+    unit = xyz_unit_for_item(self)
+    v = list(self.float3_value)
+    if unit is None:
+        return v
+    s, neg = _conv_params(unit)
+    gx, gy, gz = v
+    return [gx * s, neg * gz * s, gy * s]
+
+
+def _float3_display_set(self, val):
+    unit = xyz_unit_for_item(self)
+    if unit is None:
+        self.float3_value = val
+        return
+    s, neg = _conv_params(unit)
+    bx, by, bz = val
+    new = [bx / s, bz / s, neg * by / s]
+    self.float3_value = _keep_unchanged(new, list(self.float3_value))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -296,6 +424,23 @@ class EFXFieldItem(PropertyGroup):
         size=6,
         precision=6,
         update=_mark_block_dirty,
+    )
+
+    # ── Blender 坐标显示影子属性（toggle 开时由面板绘制；get/set 按字段单位换算）──
+    # 不直接存储，读写转发到 float*_value（写时仅改动分量、防浮点漂移）。
+    float6_display: FloatVectorProperty(
+        name="",
+        size=6,
+        precision=6,
+        get=_float6_display_get,
+        set=_float6_display_set,
+    )
+    float3_display: FloatVectorProperty(
+        name="",
+        size=3,
+        precision=6,
+        get=_float3_display_get,
+        set=_float3_display_set,
     )
 
     # ── 整数向量值槽 ─────────────────────────────────────────────────────────

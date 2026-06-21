@@ -54,6 +54,40 @@ def game_scale_to_blender(gx, gy, gz):
     return (gx, gz, gy)
 
 
+# ── 旋转：基变换（共轭），而非朴素交换 Euler 分量 ──────────────────────────────
+#
+# ⚠ 关键：旋转不是向量，不能像平移那样交换分量。游戏 Euler 必须作为「同一旋转换基」处理：
+#   R_blender = M · R_game · M⁻¹    （M = Rx(+90°)，游戏 Y-up → Blender Z-up）
+# 且游戏内 Euler 组合顺序实测为 Z 先转（R = Rx·Ry·Rz，向量先受 Rz 作用）。
+# 实测六组单/组合旋转（含 (90,0,90)→-X、(45,0,90)→-X）全部吻合本式；朴素交换法仅单轴碰巧对。
+
+def _game_rot_matrix(gx, gy, gz):
+    """游戏 Euler(度) → 3x3 旋转矩阵，按游戏组合顺序 **Ry·Rx·Rz**（Rz 先作用于向量，X 在 Y 之后）。
+
+    ⚠ 确定性验证（unsheath.efx，几何真值，非目测）：zhu 是连线 mesh，每根指向下一颗星(xing)。
+    用星星真实坐标算"星→星"方向，对照各 zhu 原始 rotate 在两种顺序下的 mesh 朝向：
+      YXZ 全部命中（夹角 1.6~5.8°，纯取整误差）；Rx·Ry·Rz 偏 16~56°（把 gz=0 的剑全挤向一处）。
+    故 Ry·Rx·Rz 为准。注意：本函数**只影响视口显示，不碰导出字节**——改它绝不会影响游戏文件。
+    用显式 Matrix.Rotation 逐轴相乘，避开 Blender Euler order 字符串语义的歧义。
+    """
+    Rx = Matrix.Rotation(radians(gx), 3, 'X')
+    Ry = Matrix.Rotation(radians(gy), 3, 'Y')
+    Rz = Matrix.Rotation(radians(gz), 3, 'Z')
+    return Ry @ Rx @ Rz
+
+
+def _g2b_basis():
+    """游戏→Blender 的基变换矩阵 M = Rx(+90°)（游戏 Y-up → Blender Z-up）。"""
+    return Matrix.Rotation(radians(90), 3, 'X')
+
+
+def game_rot_matrix_blender(gx, gy, gz):
+    """无骨骼基准时：游戏旋转换到 Blender 世界 = M · R_game · M⁻¹，返回 4x4。"""
+    M = _g2b_basis()
+    R = _game_rot_matrix(gx, gy, gz)
+    return (M @ R @ M.inverted()).to_4x4()
+
+
 def _fixed3(float6_value):
     """从 FLOAT6 取基础三元组（idx 0/2/4）。"""
     v = list(float6_value)
@@ -107,7 +141,8 @@ def _t3d_local_matrix(t3d_block):
 
     loc = Vector(game_loc_to_blender(*vals["translate"])) if "translate" in vals else Vector((0, 0, 0))
     if "rotate" in vals:
-        rot = Euler(game_rot_to_blender(*vals["rotate"]), "XYZ").to_matrix().to_4x4()
+        # 基变换共轭 M·R_game·M⁻¹（非朴素分量交换）；与 loc/scl 的 M 变换一致组合。
+        rot = game_rot_matrix_blender(*vals["rotate"])
     else:
         rot = Matrix.Identity(4)
     if "resize" in vals:
@@ -135,8 +170,8 @@ def _t3d_local_matrix_game(t3d_block):
     else:
         loc = Vector((0, 0, 0))
     if "rotate" in vals:
-        gx, gy, gz = vals["rotate"]
-        rot = Euler((radians(gx), radians(gy), radians(gz)), "XYZ").to_matrix().to_4x4()
+        # 游戏空间（骨骼基准已含 M）：仍需按游戏组合顺序 Rx·Ry·Rz，不用朴素 XYZ。
+        rot = _game_rot_matrix(*vals["rotate"]).to_4x4()
     else:
         rot = Matrix.Identity(4)
     if "resize" in vals:
@@ -174,7 +209,7 @@ def bone_base_matrix(armature_obj, bone_lim):
 
 # ── 应用到单个 body ──────────────────────────────────────────────────────────
 
-def apply_body_transform(body_obj, armature_obj=None) -> bool:
+def apply_body_transform(body_obj, armature_obj=None, base_override=None) -> bool:
     """
     按 body 的 TRANSFORM3D（基础变换）+ PARENTOPTIONS（bone_lim 绑定骨骼）
     计算 body empty 的 matrix_world 并写入。返回是否成功。
@@ -182,16 +217,30 @@ def apply_body_transform(body_obj, armature_obj=None) -> bool:
     有骨骼时 TRANSFORM3D 使用游戏坐标原样（不做 Y/Z 交换），因为骨骼的
     matrix_local 已内嵌 M_G2B 旋转，直接叠加可正确还原朝向。
     无骨骼时使用 M_G2B 轴交换后的 Blender 坐标（原有行为）。
+
+    base_override：锚定机制传入「基点 body 的 matrix_world」。提供时它**优先于**骨骼
+    （锚定 body 间接继承基点 body 的位置）。
+
+    ⚠ 局部矩阵的坐标系按基准类型区分（MCP 实测确认，否则锚定 body 旋转偏 47~116°）：
+      - 骨骼基准：骨骼 matrix_local 已内嵌 M_G2B → 用游戏坐标局部 `_t3d_local_matrix_game`，避免双重转换。
+      - 锚定基准 / 无基准：基点是另一个 EFX body 的 **Blender 空间**矩阵（不含 M）→ 用 M 共轭的
+        blender 局部 `_t3d_local_matrix`，在 blender 空间正确组合。
     """
     try:
         t3d = _block_of_type(body_obj, _t3d_hash())
         if t3d is None:
             return False
-        base = bone_base_matrix(armature_obj, _body_bone_lim(body_obj))
-        if base is not None:
-            local = _t3d_local_matrix_game(t3d)
+        if base_override is not None:
+            base = base_override
+            local = _t3d_local_matrix(t3d)          # 锚定：blender 空间（M 共轭）
         else:
-            local = _t3d_local_matrix(t3d)
+            bone = bone_base_matrix(armature_obj, _body_bone_lim(body_obj))
+            if bone is not None:
+                base = bone
+                local = _t3d_local_matrix_game(t3d)  # 骨骼：游戏坐标（M 已在骨骼里）
+            else:
+                base = None
+                local = _t3d_local_matrix(t3d)        # 无基准：blender 空间（M 共轭）
         if local is None:
             return False
         body_obj.matrix_world = (base @ local) if base is not None else local
@@ -200,17 +249,139 @@ def apply_body_transform(body_obj, armature_obj=None) -> bool:
         return False
 
 
-def sync_all_transform3d(root_obj, armature_obj=None) -> int:
+# ── 锚定机制：A 只被一个 action 调用、该 action 只被一个 body B 触发 → A 以 B 为基点 ──
+
+def _iter_root_bodies(root_obj):
+    for b in bpy.data.objects:
+        if b.get("~TYPE") == "EFX_BODY" and b.parent is root_obj:
+            yield b
+
+
+def _iter_root_plays(root_obj):
+    for p in bpy.data.objects:
+        if p.get("~TYPE") == "EFX_PLAY" and p.parent is root_obj:
+            yield p
+
+
+def build_anchor_map(root_obj):
+    """构建 body→anchor_body 映射（实现用户规则）。
+
+    规则：bodyA 仅被一个 play 调用（出现在恰好一个 play 的 PlayEmitter targets 里），
+    且该 play 仅被一个 bodyB 触发（恰好一个 body 的 PTLIFE.relation_play_ptr 指向它），
+    则 anchor[A] = B。
+    """
+    from ..efx_format.hashes import PTLIFE
+
+    # play → 它调用的 body 集合；body → 调用它的 play 集合
+    callers = {}   # body → set(play)
+    for play in _iter_root_plays(root_obj):
+        pp = getattr(play, "efx_play", None)
+        if pp is None:
+            continue
+        for entry in getattr(pp, "entries", []):
+            if not getattr(entry, "is_emitter", False):
+                continue
+            for tgt in getattr(entry, "targets", []):
+                body = getattr(tgt, "body_ptr", None)
+                if body is not None:
+                    callers.setdefault(body, set()).add(play)
+
+    # play → 触发它的 body 集合（body 的 PTLIFE.relation_play_ptr）
+    triggers = {}  # play → set(body)
+    for body in _iter_root_bodies(root_obj):
+        for blk in _iter_body_blocks(body):
+            try:
+                if int(blk.efx_block.type_hash_str) != PTLIFE:
+                    continue
+            except Exception:
+                continue
+            ref = getattr(blk, "efx_ptlife_ref", None)
+            if ref is None or not getattr(ref, "relation_pointerized", False):
+                continue
+            play = getattr(ref, "relation_play_ptr", None)
+            if play is not None:
+                triggers.setdefault(play, set()).add(body)
+
+    anchor = {}
+    for body, play_set in callers.items():
+        if len(play_set) != 1:
+            continue
+        play = next(iter(play_set))
+        trig = triggers.get(play)
+        if trig is None or len(trig) != 1:
+            continue
+        b = next(iter(trig))
+        if b is not body:   # 不自锚
+            anchor[body] = b
+    return anchor
+
+
+def _resolve_order(bodies, anchor):
+    """对 bodies 做拓扑序：anchor 基点排在被锚 body 之前；环检测兜底（环内按原序、不锚）。"""
+    ordered = []
+    placed = set()
+
+    def visit(b, stack):
+        if b in placed:
+            return
+        if b in stack:           # 成环 → 不再深入（环里的锚关系会被忽略）
+            return
+        a = anchor.get(b)
+        if a is not None and a in bodies:
+            stack.add(b)
+            visit(a, stack)
+            stack.discard(b)
+        if b not in placed:
+            ordered.append(b)
+            placed.add(b)
+
+    for b in bodies:
+        visit(b, set())
+    return ordered
+
+
+def place_single_body(body_obj, armature_obj=None, use_anchor=True) -> bool:
+    """摆放单个 body（锚定感知）。供字段实时编辑回调用：编辑 TRANSFORM3D 时若该 body
+    满足锚定规则，仍以基点 body 为基准，而非掉回自身骨骼/原点。
+
+    基点 body 的位置取其当前 matrix_world（编辑的是被锚 body，自身基点未动 → 有效）。
+    """
+    base_override = None
+    if use_anchor:
+        root = body_obj.parent
+        if root is not None and root.get("~TYPE") == "EFX_ROOT":
+            try:
+                a = build_anchor_map(root).get(body_obj)
+                if a is not None:
+                    base_override = a.matrix_world.copy()
+            except Exception:
+                base_override = None
+    return apply_body_transform(body_obj, armature_obj, base_override=base_override)
+
+
+def sync_all_transform3d(root_obj, armature_obj=None, use_anchor=True) -> int:
     """
     对 root_obj 下所有 EFX_BODY，按 TRANSFORM3D + bone_lim 摆位。返回处理数量。
     供导入后一次性摆位、以及"刷新特效体位置"算子调用。
+
+    use_anchor=True 时启用锚定机制：满足规则的 body 以基点 body 的最终位置为基准
+    （优先于自身骨骼），并按依赖顺序摆位确保基点先就位。
     """
+    bodies = list(_iter_root_bodies(root_obj))
+    anchor = build_anchor_map(root_obj) if use_anchor else {}
+    order = _resolve_order(bodies, anchor) if anchor else bodies
+
     n = 0
-    for body in bpy.data.objects:
-        if body.get("~TYPE") != "EFX_BODY" or body.parent is not root_obj:
-            continue
-        if apply_body_transform(body, armature_obj):
+    # 环检测后真正可用的锚集合：基点必须排在自己之前（已就位）
+    seen = set()
+    for body in order:
+        base_override = None
+        a = anchor.get(body)
+        if a is not None and a in seen:
+            base_override = a.matrix_world.copy()
+        if apply_body_transform(body, armature_obj, base_override=base_override):
             n += 1
+        seen.add(body)
     return n
 
 
@@ -240,7 +411,8 @@ class EFX_OT_sync_transform(bpy.types.Operator):
             self.report({"ERROR"}, "EFX_ROOT not found (select an Active EFX or an EFX object)")
             return {"CANCELLED"}
         armature = getattr(context.scene, "efx_armature", None)
-        n = sync_all_transform3d(root, armature)
+        use_anchor = getattr(context.scene, "efx_anchor_placement", True)
+        n = sync_all_transform3d(root, armature, use_anchor=use_anchor)
         self.report({"INFO"}, f"Refreshed {n} body position(s)")
         return {"FINISHED"}
 
@@ -262,11 +434,31 @@ def register():
         type=bpy.types.Object,
         poll=_armature_poll,
     )
+    bpy.types.Scene.efx_anchor_placement = bpy.props.BoolProperty(
+        name="Anchor to triggering body",
+        description="定位时：若某 body 只被一个 action 调用、且该 action 只被一个 body 触发，"
+                    "则前者以后者为基点（优先于自身绑定骨骼）。默认开",
+        default=True,
+    )
+    bpy.types.Scene.efx_blender_coords = bpy.props.BoolProperty(
+        name="Blender coordinate display",
+        description="字段里的 XYZ 坐标按 Blender 约定显示/编辑：长度 /100、Y/Z 交换并取负、"
+                    "角度交换取负、缩放仅交换。仅作用于已知单位的字段；不改存储原值。默认关",
+        default=False,
+    )
 
 
 def unregister():
     try:
         del bpy.types.Scene.efx_armature
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.efx_anchor_placement
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.efx_blender_coords
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

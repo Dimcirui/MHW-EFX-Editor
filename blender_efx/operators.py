@@ -128,13 +128,36 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         options={"HIDDEN", "SKIP_SAVE"},
     )
 
+    # 可勾选项（默认关）：导入时一并把 MESH 块引用的 mod3（含 mrl3+材质）经 Model Editor 导入并绑定。
+    # Model Editor 缺席时此项无效（draw 里禁用）。
+    import_meshes: BoolProperty(
+        name="Import referenced meshes (mod3)",
+        description="同时把每个 MESH 块引用的 mod3（含 mrl3 与材质）经 MHW Model Editor 导入并绑定到预览。"
+                    "需安装 Model Editor。提取根目录默认从 efx 位置向上自动找 nativePC，找不到时再用下方 Chunk Root",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
+
     def invoke(self, context, event):
-        # FileHandler 拖入：Blender 已把 directory + files 填好 → 直接执行，不弹文件浏览器。
-        # （ImportHelper 默认 invoke 总是开浏览器，会让拖入"无反应"——这是拖入失效的根因。）
+        # FileHandler 拖入：不再静默导入，弹一个属性对话框让用户确认 / 勾选是否一并导入 mesh。
+        # （ImportHelper 默认 invoke 总是开浏览器，会让拖入"无反应"——故拖入走 props_dialog。）
         if self.directory and self.files:
-            return self.execute(context)
-        # 普通菜单/按钮：走 ImportHelper 的文件浏览器。
+            return context.window_manager.invoke_props_dialog(self)
+        # 普通菜单/按钮：走 ImportHelper 的文件浏览器（选项显示在浏览器侧栏的 draw 里）。
         return ImportHelper.invoke(self, context, event)
+
+    def draw(self, context):
+        # 文件浏览器侧栏 / 拖入对话框共用：mesh 导入开关 + chunk root。
+        layout = self.layout
+        from . import mod3_link
+        if mod3_link.model_editor_available():
+            layout.prop(self, "import_meshes")
+            if self.import_meshes:
+                box = layout.box()
+                box.label(text="提取根：默认自动找 nativePC；找不到才用下方", icon="FILE_FOLDER")
+                box.prop(context.scene, "efx_chunk_root", text="Chunk Root")
+        else:
+            layout.label(text="装 MHW Model Editor 后可勾选「一并导入 mod3」", icon="INFO")
 
     def execute(self, context):
         import os
@@ -160,12 +183,14 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         # ── 逐文件导入 ───────────────────────────────────────────────────────
         imported = []
         imported_roots = []
+        imported_paths = []   # 与 imported_roots 一一对应的源文件路径（用于 mod3 同目录兜底）
         errors = []
         for filepath in paths:
             try:
                 root_obj = io_tree.import_efx_tree(filepath, context)
                 imported.append(root_obj.name)
                 imported_roots.append(root_obj)
+                imported_paths.append(filepath)
             except Exception as exc:
                 import traceback
                 errors.append(f"{os.path.basename(filepath)}: {exc}")
@@ -180,10 +205,36 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
             try:
                 from . import transform_sync
                 armature = getattr(context.scene, "efx_armature", None)
+                use_anchor = getattr(context.scene, "efx_anchor_placement", True)
                 for root_obj in imported_roots:
-                    transform_sync.sync_all_transform3d(root_obj, armature)
+                    transform_sync.sync_all_transform3d(root_obj, armature, use_anchor=use_anchor)
             except Exception:
                 pass  # 摆位是可视化增强，失败不影响导入本身
+
+        # ── 可勾选：一并导入 MESH 块引用的 mod3（含 mrl3+材质）并绑定 ──────────────
+        # 默认关；仅当用户勾选 + Model Editor 在场时执行。失败不影响 EFX 导入本身。
+        if imported_roots and self.import_meshes:
+            from . import mod3_link
+            if not mod3_link.model_editor_available():
+                self.report({"WARNING"}, "未检测到 MHW Model Editor，已跳过 mod3 导入")
+            else:
+                chunk_root = getattr(context.scene, "efx_chunk_root", "") or ""
+                total_bound = 0
+                all_unresolved = []
+                for root_obj, fpath in zip(imported_roots, imported_paths):
+                    try:
+                        n, unresolved = mod3_link.import_and_bind(
+                            root_obj, context, chunk_root, os.path.dirname(fpath)
+                        )
+                        total_bound += n
+                        all_unresolved.extend(unresolved)
+                    except Exception:
+                        pass
+                if total_bound:
+                    self.report({"INFO"}, f"已导入并绑定 {total_bound} 个 mod3 网格")
+                if all_unresolved:
+                    detail = "；".join(f"{n}（{r}）" for n, r in all_unresolved[:6])
+                    self.report({"WARNING"}, f"{len(all_unresolved)} 个 mod3 未找到（检查 Chunk Root）：{detail}")
 
         if imported:
             names = ", ".join(imported)

@@ -349,13 +349,16 @@ class EFX_UL_uvs_groups(UIList):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_uvs_edition(Panel):
-    """UVS Edition — 仅在选中 UVSEQUENCE 块时显示"""
+    """UVS Edition — 顶层面板，仅在选中 UVSEQUENCE 块时显示
+
+    工具类特性 → 只放 N 面板（不放属性编辑器）；bl_order=0 压在 Block Properties 之上。
+    """
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "UVS Edition"
-    bl_parent_id   = "EFX_PT_block_fields"
+    bl_order       = 0
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod

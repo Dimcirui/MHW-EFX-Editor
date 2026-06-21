@@ -52,6 +52,10 @@ from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始�
 from . import timl_io       # TIML ↔ .timl 文件互导（方案 C：FreeKinetics 桥）
 from . import transform_sync # TRANSFORM3D → body empty 视口变换（单向）
 from . import uvs_io        # UVS Edition：UVSEQUENCE 块下 .uvs 文件导入/导出/编辑
+from . import uvc_preview    # UVCONTROL 视口 UV 滚动动画预览（根级单会话，全播）
+from . import timl_preview    # TIML transform 视口浏览 + FreeKinetics 快捷编辑（FK 在场解锁）
+from . import mod3_link        # EFX MESH 块引用的 mod3 自动导入+绑定（联动 MHW Model Editor，可勾选）
+from . import mesh_align        # 绑定网格随 TRANSFORM3D+MESH 旋转/缩放实时对齐（预览式+可编辑+实例化）
 
 # 对外公开的核心函数
 from .io_tree import import_efx_tree, export_efx_tree, roundtrip_corpus
@@ -83,6 +87,9 @@ __all__ = [
     "timl_io",
     "transform_sync",
     "uvs_io",
+    "uvc_preview",
+    "timl_preview",
+    "mod3_link",
 ]
 
 
@@ -170,13 +177,29 @@ def register():
     # ── TRANSFORM3D → 视口同步算子（无面板依赖）─────────────────────────────
     transform_sync.register()
 
-    # ── UVS Edition：bl_parent_id='EFX_PT_block_fields'，必须在 panels.register() 之后 ─
+    # ── UVS Edition：顶层 N 面板（bl_order=0），独立注册 ──────────────────────
     uvs_io.register()
+
+    # ── UVCONTROL UV 预览：顶层 N 面板 + frame handler，独立注册 ───────────────
+    uvc_preview.register()
+
+    # ── TIML transform 浏览 + FK 快捷编辑：顶层 N 面板，独立注册（FK 在场才解锁功能）─
+    timl_preview.register()
+
+    # ── mod3 自动导入联动：注册 Scene.efx_chunk_root（导入算子 draw/execute 用）────
+    mod3_link.register()
+
+    # ── 绑定网格实时对齐预览（预览式+可编辑+实例化）：顶层 N 面板，独立注册 ────────
+    mesh_align.register()
 
 
 def unregister():
     """注销扩展的全部 PropertyGroup、Operator 和 Panel 类。"""
     # ── Operator / Panel（先注销 UI 层）────────────────────────────────────
+    mesh_align.unregister()
+    mod3_link.unregister()
+    timl_preview.unregister()
+    uvc_preview.unregister()
     uvs_io.unregister()
     transform_sync.unregister()
     timl_io.unregister()

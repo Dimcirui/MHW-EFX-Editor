@@ -201,6 +201,19 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     _draw_info_icon(row, type_name, vitem.ori_name)
 
 
+def _xyz_prop_name(item, base_prop):
+    """选择绘制哪个属性：Scene.efx_blender_coords 开 且 该字段有单位映射时用 *_display
+    （Blender 约定显示/编辑），否则用原 *_value（游戏原值）。返回 (prop_name, is_blender)。"""
+    try:
+        if getattr(bpy.context.scene, "efx_blender_coords", False):
+            from . import fields as _f
+            if _f.xyz_unit_for_item(item) is not None:
+                return base_prop.replace("_value", "_display"), True
+    except Exception:
+        pass
+    return base_prop, False
+
+
 def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     """
     按 item.data_type 在 layout 上绘制对应控件（L1.5 重设计版）。
@@ -237,11 +250,12 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     # ── FLOAT6（XYZ type 0）：固定+随机/轴，3×2 展开 ─────────────────────────
     # 顺序：[fixed_x(0), random_x(1), fixed_y(2), random_y(3), fixed_z(4), random_z(5)]
     if dtype == "FLOAT6":
-        # 字段名标题行（含 ⓘ）
+        prop6, is_b = _xyz_prop_name(item, "float6_value")
+        # 字段名标题行（含 ⓘ）；Blender 坐标模式下标注
         title_row = layout.row(align=True)
         title_row.scale_y = 1.1
         title_row.use_property_split = False
-        title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
+        title_row.label(text=(fname + (" [Blender]" if is_b else "")), icon="ORIENTATION_GLOBAL")
         _draw_info_icon(title_row, type_name, item.ori_name)
 
         # X 行：Fixed index=0  Random index=1
@@ -249,24 +263,24 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         x_row.scale_y = 1.1
         x_row.use_property_split = False
         x_row.label(text="X", icon="BLANK1")
-        x_row.prop(item, "float6_value", index=0, text="Fixed")
-        x_row.prop(item, "float6_value", index=1, text="Random")
+        x_row.prop(item, prop6, index=0, text="Fixed")
+        x_row.prop(item, prop6, index=1, text="Random")
 
         # Y 行：Fixed index=2  Random index=3
         y_row = layout.row(align=True)
         y_row.scale_y = 1.1
         y_row.use_property_split = False
         y_row.label(text="Y", icon="BLANK1")
-        y_row.prop(item, "float6_value", index=2, text="Fixed")
-        y_row.prop(item, "float6_value", index=3, text="Random")
+        y_row.prop(item, prop6, index=2, text="Fixed")
+        y_row.prop(item, prop6, index=3, text="Random")
 
         # Z 行：Fixed index=4  Random index=5
         z_row = layout.row(align=True)
         z_row.scale_y = 1.1
         z_row.use_property_split = False
         z_row.label(text="Z", icon="BLANK1")
-        z_row.prop(item, "float6_value", index=4, text="Fixed")
-        z_row.prop(item, "float6_value", index=5, text="Random")
+        z_row.prop(item, prop6, index=4, text="Fixed")
+        z_row.prop(item, prop6, index=5, text="Random")
         return
 
     # ── INT3（XYZ type 1）：x,y,z 三分量整数 ─────────────────────────────────
@@ -290,11 +304,12 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
 
     # ── FLOAT3（XYZ type 3 / float[3]）：x,y,z 三分量浮点 ───────────────────
     if dtype == "FLOAT3":
+        prop3, is_b = _xyz_prop_name(item, "float3_value")
         # 字段名标题行（含 ⓘ）
         title_row = layout.row(align=True)
         title_row.scale_y = 1.1
         title_row.use_property_split = False
-        title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
+        title_row.label(text=(fname + (" [Blender]" if is_b else "")), icon="ORIENTATION_GLOBAL")
         _draw_info_icon(title_row, type_name, item.ori_name)
 
         # X/Y/Z 分量行
@@ -302,9 +317,9 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         comp_row.scale_y = 1.1
         comp_row.use_property_split = False
         comp_row.label(text="", icon="BLANK1")
-        comp_row.prop(item, "float3_value", index=0, text="X")
-        comp_row.prop(item, "float3_value", index=1, text="Y")
-        comp_row.prop(item, "float3_value", index=2, text="Z")
+        comp_row.prop(item, prop3, index=0, text="X")
+        comp_row.prop(item, prop3, index=1, text="Y")
+        comp_row.prop(item, prop3, index=2, text="Z")
         return
 
     # ── COLOR_RGBA：色块 + A 滑块 ─────────────────────────────────────────────
@@ -715,6 +730,8 @@ class EFX_PT_main(bpy.types.Panel):
 
         # ── 骨架选择器 + 刷新特效体位置（按 TRANSFORM3D + bone_lim 绑定骨骼摆位）─
         layout.prop(context.scene, "efx_armature", text=T("main.armature"))
+        layout.prop(context.scene, "efx_anchor_placement", text=T("main.anchor_placement"))
+        layout.prop(context.scene, "efx_blender_coords", text=T("main.blender_coords"))
         row = layout.row(align=True)
         row.operator("efx.sync_transform_to_view",
                      text=T("main.sync_transform"), icon="ORIENTATION_GLOBAL")
