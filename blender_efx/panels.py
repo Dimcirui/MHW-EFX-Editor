@@ -1079,6 +1079,39 @@ class EFX_PT_block_fields_object(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# EFX_PT_root_props  —  属性编辑器 Object Properties（选中 EFX_ROOT 时显示）
+#   只在 ROOT 对象上暴露 filesize_double（doubleBuffer）编辑，避免主面板臃肿。
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_PT_root_props(bpy.types.Panel):
+    """EFX 根属性（属性编辑器 → Object Properties，选中 EFX_ROOT 时显示）"""
+
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "object"
+    bl_label        = "EFX Root"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_ROOT"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.active_object
+        # filesize_double（doubleBuffer）：运行时内存缓冲提示，过小会致特效消失。
+        # 导出对话框勾「自动重算」会按 2.75× 文件大小自动抬高（默认开）。
+        if obj is not None and "hdr_double_buffer" in obj:
+            box = layout.box()
+            box.label(text=T("main.double_buffer"), icon="MODIFIER")
+            box.prop(obj, '["hdr_double_buffer"]', text="")
+            tip = box.row()
+            tip.enabled = False
+            tip.label(text=T("main.double_buffer_tip"))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # EFX_PT_add_section  —  从无到有新建 Play / Extern / Subselect 段条目
 #   poll = 已选 Active EFX；三个按钮各建一个带合法空白模板的容器对象。
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1333,6 +1366,7 @@ _CLASSES = (
     EFX_PT_block_fields,
     EFX_PT_block_fields_props,
     EFX_PT_block_fields_object,
+    EFX_PT_root_props,
     EFX_PT_subselect,
     EFX_PT_play,
     EFX_PT_extern_props,

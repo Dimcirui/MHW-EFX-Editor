@@ -208,6 +208,17 @@ STRINGS = {
     "main.active_efx":       {"EN": "Active EFX",          "ZH": "当前 EFX"},
     "main.armature":         {"EN": "Armature",            "ZH": "骨架"},
     "main.sync_transform":   {"EN": "Refresh Body Positions", "ZH": "刷新特效体位置"},
+    "main.anchor_placement": {"EN": "Anchor to triggering body", "ZH": "锚定到触发它的特效体"},
+    "main.blender_coords":   {"EN": "Blender coordinate display", "ZH": "按 Blender 坐标显示 XYZ"},
+    "main.double_buffer":    {"EN": "Buffer Size (filesize_double)", "ZH": "缓冲大小 (filesize_double)"},
+    "main.double_buffer_tip":{"EN": "Runtime memory buffer hint. Too small → effect disappears. ~2-3.5x filesize.",
+                              "ZH": "运行时内存缓冲提示。过小→特效消失。约为文件大小的 2~3.5 倍。"},
+    "export.recompute_db":   {"EN": "Auto-recompute filesize_double",
+                              "ZH": "自动重算 filesize_double"},
+    "export.recompute_db_tip":{"EN": "On export, set filesize_double = max(Root value, ceil16(2.75 x filesize)). "
+                                     "Unchecked: use the value stored in Root.",
+                               "ZH": "导出时将 filesize_double 设为 max(Root 值, 向上取整到16(2.75 × 文件大小))。"
+                                     "不勾：用 Root 里写的值。"},
 
     # ── 块预设 / 分类（block_ops + 新增块面板）───────────────────────────────
     "block.add_section":     {"EN": "Add Block",           "ZH": "新增块"},

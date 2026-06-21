@@ -17,9 +17,11 @@ L1.3 拖入导入（FileHandler）：
   同时保持原有"文件浏览器/按钮选文件导入"用法不变。
 """
 
+import struct
+
 import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
-from bpy.props import StringProperty, CollectionProperty, EnumProperty, IntProperty
+from bpy.props import StringProperty, CollectionProperty, EnumProperty, IntProperty, BoolProperty
 
 from . import io_tree
 from .i18n import T
@@ -213,6 +215,20 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         maxlen=255,
     )
 
+    # 自动重算 filesize_double（doubleBuffer，header 偏移 68）。
+    # 勾选：导出后将其设为 max(Root 值, ceil16(2.75 × 文件大小))，防止增量编辑后缓冲偏小
+    # 导致特效消失（公式实测覆盖 99.9% 官方样本；超额分配无害、欠额才消失，故取较大者）。
+    # 不勾：原样使用 Root 里 hdr_double_buffer 的值（byte-perfect 往返）。
+    recompute_double_buffer: BoolProperty(
+        name=T("export.recompute_db"),
+        description=T("export.recompute_db_tip"),
+        default=True,
+    )
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "recompute_double_buffer")
+
     def execute(self, context):
         # ── 1. 解析要导出的 EFX_ROOT ─────────────────────────────────────────
         # 优先用 N 面板的 Active EFX（选中的 .efx 集合）；否则回退到活动对象所属的 EFX。
@@ -260,6 +276,20 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             )
             return {"CANCELLED"}
 
+        # ── 2.5 自动重算 filesize_double（doubleBuffer @ header 偏移 68，uint LE）──
+        # 公式：max(原值, ceil16(2.75 × 文件大小))。原地覆写 4 字节（不改文件长度，
+        # 故 len(data) 即最终文件大小）。只增不减：未变大的文件仍保留原值。
+        _db_note = ""
+        if self.recompute_double_buffer:
+            import math
+            old_db = struct.unpack_from("<I", data, 68)[0]
+            new_db = max(old_db, (math.ceil(2.75 * len(data)) + 15) // 16 * 16)
+            if new_db != old_db:
+                data = data[:68] + struct.pack("<I", new_db) + data[72:]
+                # 同步回写 Root，保持 UI 显示与文件一致
+                root["hdr_double_buffer"] = str(new_db)
+            _db_note = f", filesize_double {old_db}→{new_db}"
+
         # ── 3. 写文件 ───────────────────────────────────────────────────────
         try:
             with open(self.filepath, "wb") as f:
@@ -270,7 +300,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
         self.report(
             {"INFO"},
-            f"EFX export complete: {self.filepath} ({len(data)} bytes, root object: {root.name})",
+            f"EFX export complete: {self.filepath} ({len(data)} bytes, root object: {root.name}{_db_note})",
         )
         return {"FINISHED"}
 
