@@ -158,6 +158,20 @@ def _play_object_poll(self, obj):
     return obj.get("~TYPE") == "EFX_PLAY" and _same_root_as_active(obj)
 
 
+def _relation_ptr_update(self, context):
+    """选中 play 目标后，自动把越界/死块（pointerized=False）翻转为已指针化，
+    使 N 面板成为可恢复入口而非死胡同。清空（None）不改变 pointerized，
+    以免误清掉悬空指针的已指针化状态（由现有 dangling 警告负责）。"""
+    if self.relation_play_ptr is not None and not self.relation_pointerized:
+        self.relation_pointerized = True
+
+
+def _ie_ptr_update(self, context):
+    """PtCollision 版本：选中 play 后从越界/死块翻转为已指针化。"""
+    if self.ie_play_ptr is not None and not self.ie_pointerized:
+        self.ie_pointerized = True
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # §1  PtLife.relationIndex → EFX_BODY 指针
 # ─────────────────────────────────────────────────────────────────────────────
@@ -178,6 +192,7 @@ class EFXPtLifeRefProps(PropertyGroup):
         description="The EFX_PLAY (action) object this PtLife block's relationIndex points to (play section local index = actionID)",
         type=bpy.types.Object,
         poll=_play_object_poll,
+        update=_relation_ptr_update,
     )
 
     relation_pointerized: BoolProperty(
@@ -313,6 +328,7 @@ class EFXPtCollisionRefProps(PropertyGroup):
         description="The EFX_PLAY object this PtCollision block's ieIndex points to (play section local index)",
         type=bpy.types.Object,
         poll=_play_object_poll,
+        update=_ie_ptr_update,
     )
 
     ie_none: BoolProperty(
@@ -699,9 +715,16 @@ class EFX_PT_ptlife_ref(bpy.types.Panel):
         box.label(text=T("ptref.relation_index_title"), icon="LINKED")
 
         if not props.relation_pointerized:
-            row = box.row()
-            row.enabled = False
-            row.label(text=T("ptref.relation_oob"), icon="ERROR")
+            # 越界/死块：原始字节保留。提供 play 选择器作为恢复入口——
+            # 选中后 _relation_ptr_update 翻转 pointerized=True，导出时 overlay
+            # 在 fallback 路径写回正确索引（不依赖 efx_dirty）。
+            warn = box.row()
+            warn.enabled = False
+            warn.label(text=T("ptref.relation_oob"), icon="ERROR")
+            box.prop(props, "relation_play_ptr", text=T("ptref.assign_play"))
+            hint = box.row()
+            hint.enabled = False
+            hint.label(text=T("ptref.assign_hint"))
             return
 
         row = box.row(align=True)
@@ -760,9 +783,15 @@ class EFX_PT_ptcollision_ref(bpy.types.Panel):
         box.label(text=T("ptref.ie_index_title"), icon="LINKED")
 
         if not props.ie_pointerized:
-            row = box.row()
-            row.enabled = False
-            row.label(text=T("ptref.ie_oob"), icon="ERROR")
+            # 越界/死块：原始字节保留。提供 play 选择器作为恢复入口——
+            # 选中后 _ie_ptr_update 翻转 ie_pointerized=True，导出时 overlay 写回。
+            warn = box.row()
+            warn.enabled = False
+            warn.label(text=T("ptref.ie_oob"), icon="ERROR")
+            box.prop(props, "ie_play_ptr", text=T("ptref.assign_play"))
+            hint = box.row()
+            hint.enabled = False
+            hint.label(text=T("ptref.assign_hint"))
             return
 
         row = box.row(align=True)
