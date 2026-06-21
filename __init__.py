@@ -45,13 +45,16 @@ bl_info = {
 }
 
 from . import blender_efx
+from . import blender_epv
 
 
 def register():
     """注册扩展（Blender 扩展系统入口）。"""
     blender_efx.register()
+    blender_epv.register()
 
 
 def unregister():
     """注销扩展（Blender 扩展系统入口）。"""
+    blender_epv.unregister()
     blender_efx.unregister()
