@@ -4,7 +4,7 @@ efx_format/timl.py  —  TIML 完整 4 层树解析 + 序列化（纯 Python，�
 定位
 ----
 [[timl_meta.py]] 只解析 TIML 头部三字段（animationLength/loopControl/loopStartPoint）做原地
-patch。本模块解析**完整 4 层关键帧树**，供「自建 TIML 编辑体系」（不依赖 FreeKinetics 节点树）
+patch。本模块解析**完整 4 层关键帧树**，供「自建 TIML 编辑体系」（不依赖任何外部工具）
 的核心层使用：
 
     TIML
@@ -22,16 +22,16 @@ byte-perfect 策略（与本仓库 labels_dirty / eof_dirty / opaque 一致）
 -------------------------------------------------------------------
 - 解析时**保留原始字节** `raw`。
 - `serialize()`：未编辑（`dirty=False`）→ 原样回吐 raw → **100% byte-perfect**。
-  已编辑 → 结构化重建（FK 式 16 字节对齐布局）。
+  已编辑 → 结构化重建（16 字节对齐布局）。
 - 全语料实测：clean 路径 6095/6095 byte-perfect；结构化重建对常规布局 ~99% 字节吻合，
-  极少数文件（~0.9%）头部 dataHeaders 偏移异常 + 含「未被引用的死数据」（按 FK/游戏读法
+  极少数文件（~0.9%）头部 dataHeaders 偏移异常 + 含「未被引用的死数据」（按游戏读法
   dataHeaders@32 即为空动画），重建会丢死字节——这类只要不编辑就走 verbatim，无损。
 
-字节结构（三方确认：refs/EFX_TIML.bt + FK struct/TIML.py serialize + 实测）
+字节结构（权威：refs/EFX_TIML.bt（010 BT 模板）+ 实测）
 --------------------------------------------------------------------------
     Header(28B): timl[4] signature[8] NULL(i32) enabled(i64=0x20) count(u32@24)
     → align16 → dataHeaders: uint64[count]（各 animation 的 Data 绝对偏移，0=空）
-    → align16 → 各 Data 结构（FK TIML_Data.structure 顺序）：
+    → align16 → 各 Data 结构（按 BT 模板 TIML_Data 布局顺序）：
         [pad16] Data(40B) [pad16] 所有 type 头(24B×) [pad16]
         每 type 的 transform 头(24B×)+[pad16]
         每 transform 的 keyframe(20B×)+[pad16]（末尾 pad 去掉）
@@ -57,13 +57,13 @@ _TYPE_SIZE = 24
 _TRANSFORM_SIZE = 24
 _KEYFRAME_SIZE = 20
 
-# dataType → 友好名（FK 同款语义）
+# dataType → 友好名
 DATATYPE_NAMES = {0: "SInt", 1: "Int", 2: "Float", 3: "Color", 4: "Bool"}
-# transition（插值类型）→ 名称（FK interpolationMapping）
+# transition（插值类型）→ 名称
 INTERP_NAMES = ["CONSTANT", "LINEAR", "QUAD", "CUBIC", "QUART", "EXPO", "SINE"]
 
 # datatypeHash ∈ BIG_FLAGS → 该 transform 是「标志位」通道，value/controlL/controlR
-# 各按低/高 16 位拆成 2 条子通道（FK timl_importer.bigFlags 同款）。
+# 各按低/高 16 位拆成 2 条子通道（标志位 hash 表）。
 BIG_FLAGS = frozenset({
     150806694, 2575924291, 4027018852, 2154666731, 4150962813,
     1852046279, 503910216, 1762541534, 2768909048, 3787782803,
@@ -215,13 +215,13 @@ class Timl:
         return self._rebuild()
 
     def _rebuild(self) -> bytes:
-        """结构化重建（FK TIML.structure 布局 + 16 字节对齐）。"""
+        """结构化重建（BT 模板布局 + 16 字节对齐）。"""
         datas = [d for d in self.animations if d is not None]
         if self.count == 0 or not datas:
             # 空 TIML：header + count（保留 header，count 已在 header 内）
             return self.header + b"\x00" * (_align16(_HEADER_SIZE) - _HEADER_SIZE)
 
-        # —— pass 1：按 FK 顺序排布、计算每个结构的绝对偏移 ——
+        # —— pass 1：按 BT 模板布局顺序排布、计算每个结构的绝对偏移 ——
         # 布局项：('pad',) / ('data',d) / ('type',t) / ('tf',f) / ('kfg',f)
         items = []
         items.append(("hdr", None))
@@ -231,7 +231,7 @@ class Timl:
             if d is None:
                 continue
             items.append(("pad", None))
-            items.append(("pad", None))     # FK: 循环的 pad + structure() 起始 pad（连续两 pad，第二个为 0）
+            items.append(("pad", None))     # 循环的 pad + 布局起始 pad（连续两 pad，第二个为 0）
             items.append(("data", d))
             items.append(("pad", None))
             for t in d.types:
@@ -246,7 +246,7 @@ class Timl:
                     items.append(("kfg", f))
                     items.append(("pad", None))
             if items and items[-1][0] == "pad":
-                items.pop()                 # FK structure() 去掉最后一个关键帧 pad
+                items.pop()                 # 去掉最后一个关键帧 pad（与 BT 布局一致）
 
         # 分配偏移
         pos = 0
@@ -309,9 +309,9 @@ def is_timl(data: bytes) -> bool:
 def parse_timl(data: bytes) -> Optional[Timl]:
     """解析完整 TIML 树。非 timl 返回 None。
 
-    指针读法与 FK/游戏一致（dataHeaders @32，各级按 offset 字段间接寻址）。保留 raw
+    指针读法与游戏一致（dataHeaders @32，各级按 offset 字段间接寻址）。保留 raw
     供 byte-perfect verbatim。极少数文件 dataHeaders@32 为 0 但含未引用死数据 → 按空动画
-    解析（与 FK/游戏一致），死字节由 raw verbatim 保留。
+    解析（与游戏一致），死字节由 raw verbatim 保留。
     """
     if not is_timl(data):
         return None

@@ -788,7 +788,7 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
                 unkn2       = int(str(body_obj["unkn2"])),
                 attr_count  = len(attr_blocks),  # L2 #3b：从实际块数重算（增删块后正确）
                 null2       = int(str(body_obj["null2"])),
-                timl_length = len(_b64dec(str(body_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持 FK 编辑后变长；未编辑 == 原值）
+                timl_length = len(_b64dec(str(body_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
                 timl_bytes  = _b64dec(str(body_obj["timl_bytes"])),
                 attr_blocks = attr_blocks,
             ))
@@ -811,7 +811,7 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
                 unkn0       = int(str(body_obj["unkn0"])),
                 attr_count  = len(attr_blocks),  # L2 #3b：从实际块数重算（增删块后正确）
                 null        = int(str(body_obj["null"])),
-                timl_length = len(_b64dec(str(body_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持 FK 编辑后变长；未编辑 == 原值）
+                timl_length = len(_b64dec(str(body_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
                 timl_bytes  = _b64dec(str(body_obj["timl_bytes"])),
                 attr_blocks = attr_blocks,
             ))

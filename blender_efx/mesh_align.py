@@ -405,7 +405,8 @@ class EFX_PT_mesh_align(Panel):
 _CLASSES = [
     EFX_OT_mesh_align_enter,
     EFX_OT_mesh_align_exit,
-    EFX_PT_mesh_align,
+    # EFX_PT_mesh_align 已整合进统一「EFX Preview」面板（efx_preview.py），
+    # 不再单独注册；算子保留供 EFX Preview 编排调用。
 ]
 
 

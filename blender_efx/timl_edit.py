@@ -1,9 +1,9 @@
 """
-blender_efx/timl_edit.py  —  阶段2b：自建 TIML 通道编辑会话（完全不依赖 FreeKinetics）
+blender_efx/timl_edit.py  —  阶段2b：自建 TIML 通道编辑会话（完全自包含，无外部工具依赖）
 
 把 body 的 TIML 解析成**原生 Blender F 曲线**，用户在 Dope Sheet / Graph Editor 里改值/帧/
 插值/缓动，Apply 时读回曲线、用 efx_format.timl 重建 TIML 字节写回 body。整条链路只用我们
-自己的 `efx_format/timl.py` + `timl_names.py`，**编辑彻底脱离 FK**。
+自己的 `efx_format/timl.py` + `timl_names.py`。
 
 机制
 ----
@@ -122,6 +122,9 @@ def _build_entry(timl_obj, body):
     if t is None:
         return None
 
+    # ⚠ 快照句柄进入前的 transform：transform3d 曲线会驱动句柄 location/rot/scale，
+    # 移除 Action 后值停在最后评估帧 → 退出时据此还原回原位（否则句柄停在末帧位置）。
+    basis_snap = timl_obj.matrix_basis.copy()
     timl_obj.efx_timl_channels.clear()
     act = bpy.data.actions.new("EFX_TIML::%s" % (body.get("efx_raw_label", "") or body.name))
     created = False
@@ -178,7 +181,8 @@ def _build_entry(timl_obj, body):
     mesh, con_name = _bind_mesh(timl_obj, body)
     entry = {"timl_obj": timl_obj, "body": body, "timl": t, "channels": channels,
              "prior_action": prior, "created_anim": created, "mesh": mesh,
-             "con_name": con_name, "snapshot": _snapshot(act, channels)}
+             "con_name": con_name, "basis_snap": basis_snap,
+             "snapshot": _snapshot(act, channels)}
     return entry, fmin, fmax
 
 
@@ -359,6 +363,10 @@ def _teardown():
                 if entry["created_anim"] and timl_obj.animation_data is not None:
                     timl_obj.animation_data_clear()
                 timl_obj.efx_timl_channels.clear()
+                # 还原句柄进入前的 transform（清 Action 后值会停在末帧，须显式还原）
+                snap = entry.get("basis_snap")
+                if snap is not None:
+                    timl_obj.matrix_basis = snap
             except Exception:
                 pass
     try:

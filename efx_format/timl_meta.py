@@ -3,7 +3,7 @@ efx_format/timl_meta.py  —  TIML 头部元字段的轻量解析 + 原地编辑
 
 定位
 ----
-TIML 整体过去刻意当 opaque（详细 4 层 offset 间接寻址的关键帧树交给 FreeKinetics）。
+TIML 整体过去刻意当 opaque（详细 4 层 offset 间接寻址的关键帧树见 timl.py）。
 本模块**只解析到能定位每条 animation 的 TIML_Data**，不展开 Type/Transform/Keyframe 树，
 用于读写三个头部元字段：
 
@@ -18,7 +18,7 @@ TIML 整体过去刻意当 opaque（详细 4 层 offset 间接寻址的关键帧
 animationLength 的"自动=最后关键帧"需要走到 Keyframe 层取 max(frameTiming)，故本模块也提供
 一个**只读**的 `last_keyframe_time(...)`，沿 TIML_Data→Type→Transform→Keyframe 走一遍。
 
-字节结构（三方确认：refs/EFX_TIML.bt + FK struct/EFX_Timl.py + Raw_TIML.py）
+字节结构（权威：refs/EFX_TIML.bt（010 BT 模板）+ 实测）
 ---------------------------------------------------------------------------
     base = 'timl' 起点（= timl_bytes[0]）
     +0   "timl"                              (4)

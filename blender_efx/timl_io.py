@@ -1,15 +1,16 @@
 """
-blender_efx/timl_io.py  —  TIML 块 ↔ 独立 .timl 文件互导（方案 C：松耦合 FreeKinetics 桥）
+blender_efx/timl_io.py  —  TIML 段 ↔ 独立 .timl 文件互导 + 句柄解析
 
 实测：EFX 内嵌 body.timl_bytes 与独立 .timl 文件 byte-identical（同 'timl' magic）。
-故无需引入 FreeKinetics API，只把"手动 hex 复制 + 改长度"自动化：
+本模块把 .timl 文件的导入/导出/增删自动化（供与外部工具交换，或归档）：
 
-  - efx.export_body_timl：把当前 EFX_BODY 的 timl_bytes 写成独立 .timl 文件。
-  - efx.import_body_timl：读 .timl 文件写回当前 body 的 timl_bytes（重算 timl_length，支持变长）。
+  - efx.export_body_timl：把当前 TIML 的 timl_bytes 写成独立 .timl 文件。
+  - efx.import_body_timl：读 .timl 文件写回 timl_bytes（重算 timl_length，支持变长）。
+  - efx.delete_body_timl：清空 TIML 段。
 
-中间用户用 FreeKinetics 正常的 import_timl / export 编辑那个 .timl 文件。
-零 FK 版本耦合。timl 在 EFX 里由 timl_length 字段界定，故允许变长（FK 加关键帧后变长 OK）——
-导出端 io_tree 已改为 timl_length = len(timl_bytes) 重算。
+timl 在 EFX 里由 timl_length 字段界定，故允许变长——导出端 io_tree 按 len(timl_bytes) 重算。
+另提供 resolve_timl_body()：把 EFX_TIML 句柄 / EFX_BODY 解析回所属 body（TIML 统一入口）。
+通道级编辑见 timl_edit.py（原生 F 曲线，自建）。
 
 约束（CLAUDE.md）：Python 3.11、bpy 稳定子集、包内相对导入。
 """
@@ -84,11 +85,11 @@ def _default_timl_name(obj) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_export_body_timl(bpy.types.Operator, ExportHelper):
-    """把当前 EFX_BODY 的 TIML 段导出为独立 .timl 文件（供 FreeKinetics 编辑）"""
+    """把当前 EFX_BODY 的 TIML 段导出为独立 .timl 文件"""
 
     bl_idname      = "efx.export_body_timl"
     bl_label       = "Export as .timl File"
-    bl_description = "Write the current EFX_BODY's embedded TIML segment to a standalone .timl file, openable in FreeKinetics for editing"
+    bl_description = "Write the current EFX_BODY's embedded TIML segment to a standalone .timl file"
     bl_options     = {"REGISTER"}
 
     filename_ext = ".timl"
@@ -132,8 +133,7 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
     bl_description = (
         "Read a .timl file and write it into the current EFX_BODY's TIML segment "
         "(adds one if the body has none, or replaces the existing TIML). "
-        "timl_length is recomputed automatically (variable length supported). "
-        "Edit the .timl externally in FreeKinetics"
+        "timl_length is recomputed automatically (variable length supported)."
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -235,7 +235,7 @@ class EFX_OT_delete_body_timl(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_body_timl(bpy.types.Panel):
-    """EFX Body 的 TIML 段管理（添加/替换/删除/导出 .timl，配合 FreeKinetics）"""
+    """EFX 的 TIML 段管理（添加/替换/删除/导出 .timl + 进入通道编辑）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"

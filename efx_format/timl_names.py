@@ -5,7 +5,7 @@ TIML 通道名由两段 hash 组成：
   - timelineParameterHash：这条动画**影响哪个对象/块**（Transform3D / RgbFire / TypeRibbon…）。
     来源：Ezekial711 MHW Modding wiki「TIML Effect and Material Animation Hashes」声明表。
   - datatypeHash：动画的**哪个属性**（pos:X / rot:Z / 颜色…）。wiki 未列；transform 九条来自
-    FreeKinetics defaultProps（jamcrc）。未知 hash 回退十六进制。
+    社区逆向 hash（jamcrc）。未知 hash 回退十六进制。
 
 供 timl 通道编辑/预览的友好命名与（后续）transform3d → 真实属性映射使用。
 """
@@ -34,7 +34,7 @@ TLP_NAMES = {
 import math
 
 # ── datatypeHash → (友好名, blender 属性, blender_array_index, kind)─────────────────
-# transform 九条来自 FK defaultProps（jamcrc）。MHW Y-up → Blender Z-up：游戏 Y↔Z 轴**置换**
+# transform 九条 hash（社区逆向，jamcrc）。MHW Y-up → Blender Z-up：游戏 Y↔Z 轴**置换**
 # （game Y→blender Z[index2]、game Z→blender Y[index1]），位置/旋转适用、缩放不置换。
 # 这里直接存**置换后的 blender array_index** + kind（loc/rot/scl，决定单位/符号换算）。
 # 元组：(label, bl_prop, bl_index, kind)
@@ -50,7 +50,7 @@ DT_TRANSFORM = {
     0x7A88BE0F: ("scl:Z", "scale", 2, "scl"),
 }
 
-# game↔Blender 数值换算（FK common/Constants 同款，互为精确逆）。
+# game↔Blender 数值换算（MHW Y-up↔Blender Z-up 标准换算，互为精确逆）。
 # AXIS_SIGN 按 blender 轴：blender Y(index1) 取负（game Z → blender -Y）。
 _AXIS_SIGN = (1.0, -1.0, 1.0)
 _LOC_UNIT = 100.0   # 游戏单位(cm) / 米

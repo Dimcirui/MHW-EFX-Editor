@@ -944,8 +944,8 @@ _CLASSES = [
     EFX_OT_uvc_preview_enter,
     EFX_OT_uvc_preview_exit,
     EFX_PT_mesh_binding,
-    EFX_PT_uvc_preview,
-    EFX_PT_uvc_preview_body,
+    # EFX_PT_uvc_preview / EFX_PT_uvc_preview_body 已整合进统一「EFX Preview」面板
+    # （efx_preview.py），不再单独注册；算子保留供 EFX Preview 编排调用。
 ]
 
 

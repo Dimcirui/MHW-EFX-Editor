@@ -1,7 +1,7 @@
 """
 blender_efx/timl_meta_ui.py  —  TIML 头部元字段编辑（Dope Sheet 侧栏「EFX TIML」）
 
-在不进 FreeKinetics node tree 的前提下，直接编辑选中 EFX_BODY 的 TIML 头部元字段：
+直接编辑选中 EFX_BODY 的 TIML 头部元字段（无需任何外部工具）：
 
   - Animation Length（每条动画）—— 可内联编辑 + 「贴合最后关键帧」按钮（grow-only）。
   - Loop Control —— 四值英文下拉（No Loop / Loop / Unkn / Unkn Loop）。
