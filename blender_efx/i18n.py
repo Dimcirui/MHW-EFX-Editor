@@ -286,6 +286,22 @@ STRINGS = {
     "timlm.auto_grow_desc": {"EN": "On TIML edit/writeback, grow each animation length to fit its last keyframe (never shrinks; preserves trailing hold frames)",
                              "ZH": "TIML 编辑/回写时，把每条动画长度增长到贴合其最后关键帧（只增不减，保留末尾保持帧）"},
     "timlm.grow_only":      {"EN": "grow-only", "ZH": "只增不减"},
+    "timlm.loopstart":      {"EN": "Loop Start", "ZH": "循环起点"},
+    # A0/A1 两个固定独立的时间轴（非可增删的动画列表）
+    "timlm.axis0":          {"EN": "Emission axis (A0)", "ZH": "发射轴 (A0)"},
+    "timlm.axis1":          {"EN": "Lifetime axis (A1)", "ZH": "寿命轴 (A1)"},
+    "timlm.axis0_tip":      {"EN": "t=0 at effect trigger — changes over the system's timeline",
+                             "ZH": "以特效触发为 0 帧——整条特效随系统时间的变化"},
+    "timlm.axis1_tip":      {"EN": "t=0 at each particle's birth — changes over each particle's life",
+                             "ZH": "以单粒子诞生为 0 帧——每个粒子一生中的变化"},
+    "timlm.axis_empty":     {"EN": "(not used)", "ZH": "（未使用）"},
+    "timlm.short0":         {"EN": "Emit", "ZH": "发射"},
+    "timlm.short1":         {"EN": "Life", "ZH": "寿命"},
+    "timlm.enable_axis":    {"EN": "Enable", "ZH": "启用"},
+    "timlm.enabled_axis":   {"EN": "{0} enabled", "ZH": "已启用{0}"},
+    "timlm.cleared_axis":   {"EN": "{0} cleared", "ZH": "已清空{0}"},
+    "timlm.edit_active":    {"EN": "Channel edit in progress — exit it to enable/clear axes",
+                             "ZH": "通道编辑进行中——退出后才能启用/清空轴"},
 
     # ── TIML 通道编辑会话（timl_edit.py，阶段2b，自建零 FK）──────────────────────
     "timle.enter":          {"EN": "Edit TIML",               "ZH": "编辑 TIML"},
@@ -298,6 +314,8 @@ STRINGS = {
     "timle.apply":          {"EN": "Apply & Exit",            "ZH": "应用并退出"},
     "timle.cancel":         {"EN": "Cancel",                  "ZH": "取消"},
     "timle.all_bodies":     {"EN": "All bodies in this EFX",  "ZH": "同时编辑本 EFX 内所有特效体"},
+    "timle.focus":          {"EN": "Focus", "ZH": "焦点"},
+    "timle.focus_note":     {"EN": "Switch A0/A1 live (edits kept across switches)", "ZH": "可会话内切 A0/A1（编辑跨切换不丢）"},
     "timle.entered":        {"EN": "TIML channel edit: {0} channel(s) built", "ZH": "TIML 通道编辑：已建 {0} 条通道"},
     "timle.applied":        {"EN": "TIML written back: {0} body(ies)", "ZH": "已回写 TIML：{0} 个特效体"},
 

@@ -48,11 +48,12 @@ class EFXTimlChannel(PropertyGroup):
 # channel = {"mode":"xform", tf, kind, bl_index, path, index}
 #         | {"mode":"syn",   tf, sub, path, index}
 
-_state = {"active": False, "entries": [], "frame_start": 0, "frame_end": 1}
+_state = {"active": False, "entries": [], "frame_start": 0, "frame_end": 1, "focus": "A0"}
 
 
 def _anim_role(slot):
-    return "emit" if slot == 0 else "life"
+    # 通道组名前缀（发射轴 / 寿命轴 的短名，随 UI 语言）
+    return T("timlm.short0") if slot == 0 else T("timlm.short1")
 
 
 def _channel_group_name(slot, tlp_hash, dt_hash, dtype, sub_label):
@@ -112,33 +113,25 @@ def _resolve_scope_bodies(context):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 进入：为单个 body 建条目
+# 把模型的（焦点）通道铺进 Action —— 初次构建与切焦点重建共用
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_entry(timl_obj, body):
-    """为一个 body 建 Action+通道，返回 (entry, fmin, fmax) 或 None。"""
-    data = _tio._body_timl_bytes(body)
-    t = _timl.parse_timl(data)
-    if t is None:
-        return None
+def _focus_includes(slot: int) -> bool:
+    f = _state.get("focus", "A0")
+    if f == "A0":
+        return slot == 0
+    if f == "A1":
+        return slot == 1
+    return True   # ALL
 
-    # ⚠ 快照句柄进入前的 transform：transform3d 曲线会驱动句柄 location/rot/scale，
-    # 移除 Action 后值停在最后评估帧 → 退出时据此还原回原位（否则句柄停在末帧位置）。
-    basis_snap = timl_obj.matrix_basis.copy()
-    timl_obj.efx_timl_channels.clear()
-    act = bpy.data.actions.new("EFX_TIML::%s" % (body.get("efx_raw_label", "") or body.name))
-    created = False
-    if timl_obj.animation_data is None:
-        timl_obj.animation_data_create()
-        created = True
-    prior = timl_obj.animation_data.action
-    timl_obj.animation_data.action = act
 
+def _populate_action(timl_obj, t, act):
+    """按当前焦点把 t 的通道铺进 act（建 fcurve + 关键帧）。返回 (channels, fmin, fmax)。"""
     channels = []
     used_slots = set()
     fmin, fmax = 0.0, 1.0
     for slot, d in enumerate(t.animations):
-        if d is None:
+        if d is None or not _focus_includes(slot):
             continue
         for ty in d.types:
             for f in ty.transforms:
@@ -177,11 +170,44 @@ def _build_entry(timl_obj, body):
                         fc.update()
                         channels.append({"mode": "syn", "tf": f, "sub": sub_idx,
                                          "path": path, "index": 0})
+    return channels, fmin, fmax
+
+
+def _apply_frame_range(fmin, fmax):
+    scene = bpy.context.scene
+    scene.frame_start = int(fmin)
+    scene.frame_end = max(int(round(fmax)), int(fmin) + 1)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 进入：为单个 body 建条目
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_entry(timl_obj, body):
+    """为一个 body 建 Action+通道（按当前焦点），返回 (entry, fmin, fmax) 或 None。"""
+    data = _tio._body_timl_bytes(body)
+    t = _timl.parse_timl(data)
+    if t is None:
+        return None
+
+    # ⚠ 快照句柄进入前的 transform：transform3d 曲线会驱动句柄 location/rot/scale，
+    # 移除 Action 后值停在最后评估帧 → 退出时据此还原回原位（否则句柄停在末帧位置）。
+    basis_snap = timl_obj.matrix_basis.copy()
+    timl_obj.efx_timl_channels.clear()
+    act = bpy.data.actions.new("EFX_TIML::%s" % (body.get("efx_raw_label", "") or body.name))
+    created = False
+    if timl_obj.animation_data is None:
+        timl_obj.animation_data_create()
+        created = True
+    prior = timl_obj.animation_data.action
+    timl_obj.animation_data.action = act
+
+    channels, fmin, fmax = _populate_action(timl_obj, t, act)
 
     mesh, con_name = _bind_mesh(timl_obj, body)
     entry = {"timl_obj": timl_obj, "body": body, "timl": t, "channels": channels,
              "prior_action": prior, "created_anim": created, "mesh": mesh,
-             "con_name": con_name, "basis_snap": basis_snap,
+             "con_name": con_name, "basis_snap": basis_snap, "edited": False,
              "snapshot": _snapshot(act, channels)}
     return entry, fmin, fmax
 
@@ -223,6 +249,8 @@ def _snapshot(act, channels):
 
 def _start_session(bodies):
     """为多个 body 建条目。返回建成的条目数。"""
+    # 焦点取自 Scene 枚举（默认 A0）；_build_entry 按 _state["focus"] 过滤
+    _state["focus"] = getattr(bpy.context.scene, "efx_timle_focus", "A0")
     entries = []
     fmin, fmax = 0.0, 1.0
     from . import io_tree as _iot
@@ -258,14 +286,15 @@ def _channel_total():
 # 回写（逐条目）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _writeback_entry(entry):
-    timl_obj = entry["timl_obj"]; body = entry["body"]; t = entry["timl"]
-    channels = entry["channels"]
+def _readback_entry_to_model(entry):
+    """把当前 Action（当前焦点的通道）读回内存模型 entry["timl"]（不写 body 字节）。
+    无改动则跳过；有改动则重建受影响 transform 的 keyframes 并标 entry["edited"]。返回是否改动。"""
+    timl_obj = entry["timl_obj"]; channels = entry["channels"]
     act = timl_obj.animation_data.action if timl_obj.animation_data else None
     if act is None:
         return False
     if _snapshot(act, channels) == entry["snapshot"]:
-        return False   # 无改动 → 不写（byte-perfect verbatim）
+        return False   # 当前焦点无改动 → 不动模型（byte-perfect 友好）
 
     by_transform = {}
     for ch in channels:
@@ -280,7 +309,16 @@ def _writeback_entry(entry):
             tf.keyframes = _rebuild_xform(act, ent["xform"], tf)
         else:
             tf.keyframes = _rebuild_synthetic(act, ent["syn"], tf)
+    entry["edited"] = True
+    return True
 
+
+def _writeback_entry(entry):
+    """Apply：先读回当前焦点，再（若该 body 累计有改动）序列化整模型写回 body。"""
+    _readback_entry_to_model(entry)
+    if not entry.get("edited"):
+        return False
+    t = entry["timl"]; body = entry["body"]
     t.dirty = True
     out = t.serialize()
     body["timl_bytes"] = base64.b64encode(out).decode("ascii")
@@ -339,6 +377,46 @@ def _rebuild_synthetic(act, syn, tf):
         out.append(_timl.TimlKeyframe(raw=raw, frame_timing=fr,
                                       transition=transition, data_type=tf.data_type))
     return out
+
+
+def _rebuild_entry_action(entry):
+    """切焦点：清空该条目的 Action/通道，按当前焦点重铺。"""
+    timl_obj = entry["timl_obj"]
+    ad = timl_obj.animation_data
+    act = ad.action if ad else None
+    if act is None:
+        return 0.0, 1.0
+    while act.fcurves:
+        act.fcurves.remove(act.fcurves[0])
+    timl_obj.efx_timl_channels.clear()
+    # 重铺前把句柄归位（上个焦点播放可能已驱动它偏移）
+    snap = entry.get("basis_snap")
+    if snap is not None:
+        timl_obj.matrix_basis = snap
+    channels, fmin, fmax = _populate_action(timl_obj, entry["timl"], act)
+    entry["channels"] = channels
+    entry["snapshot"] = _snapshot(act, channels)
+    return fmin, fmax
+
+
+def _switch_focus(new_focus):
+    """会话内切换焦点（A0/A1/All）：读回当前焦点编辑 → 改焦点 → 各条目重建视图。
+    编辑保留在内存模型，跨切换不丢；body 字节仅在 Apply 时写。"""
+    if not _state["active"]:
+        _state["focus"] = new_focus
+        return
+    for entry in _state["entries"]:
+        _readback_entry_to_model(entry)
+    _state["focus"] = new_focus
+    fmin, fmax = 0.0, 1.0
+    for entry in _state["entries"]:
+        lo, hi = _rebuild_entry_action(entry)
+        fmin = min(fmin, lo); fmax = max(fmax, hi)
+    _apply_frame_range(fmin, fmax)
+    try:
+        bpy.context.scene.frame_set(bpy.context.scene.frame_start)
+    except Exception:
+        pass
 
 
 def _teardown():
@@ -450,11 +528,18 @@ class EFX_OT_timl_edit_exit(Operator):
 # 绘制控件（供 timl_io 的 TIML 面板调用 —— 点1：编辑入口归入 TIML 栏目）
 # ─────────────────────────────────────────────────────────────────────────────
 
+def draw_focus(layout, context):
+    """焦点选择（A0/A1/All）——会话内改它即 live 切换；可在 TIML 面板与 Dope Sheet 侧栏复用。"""
+    layout.prop(context.scene, "efx_timle_focus", text=T("timle.focus"), expand=True)
+
+
 def draw_edit_controls(layout, context):
     if _state["active"]:
         box = layout.box()
         box.label(text=T("timle.editing").format(_channel_total(), len(_state["entries"])),
                   icon="FCURVE")
+        # 焦点切换（会话内 live 重建；默认 A0 仅发射轴）
+        draw_focus(box, context)
         box.label(text=T("timle.editor_hint"), icon="ACTION")
         row = box.row()
         row.scale_y = 1.3
@@ -464,6 +549,7 @@ def draw_edit_controls(layout, context):
         op.apply = False
     else:
         layout.prop(context.scene, "efx_timle_all_bodies", text=T("timle.all_bodies"))
+        draw_focus(layout, context)
         row = layout.row()
         row.scale_y = 1.3
         row.operator("efx.timl_edit_enter", text=T("timle.enter"), icon="FCURVE")
@@ -473,6 +559,18 @@ def draw_edit_controls(layout, context):
 # ─────────────────────────────────────────────────────────────────────────────
 # 注册
 # ─────────────────────────────────────────────────────────────────────────────
+
+_FOCUS_ITEMS = [
+    ("ALL", "All", "Both axes (transform preview may mix the two axes)"),
+    ("A0", "A0 Emission", "Emission axis — t=0 at effect trigger (system timeline)"),
+    ("A1", "A1 Lifetime", "Lifetime axis — t=0 at each particle's birth"),
+]
+
+
+def _on_focus_update(self, context):
+    # 会话内切焦点 → live 重建（读回当前编辑→改焦点→重铺视图）；非会话仅记默认
+    _switch_focus(self.efx_timle_focus)
+
 
 _CLASSES = (
     EFXTimlChannel,
@@ -490,10 +588,17 @@ def register():
         description="Edit the TIML of every body in the current EFX collection at once",
         default=False,
     )
+    bpy.types.Scene.efx_timle_focus = bpy.props.EnumProperty(
+        name="Focus", items=_FOCUS_ITEMS, default="ALL", update=_on_focus_update,
+        description="Which axis to build/edit/play. Default All (most TIML use only one axis). "
+                    "Pick A0/A1 to isolate when both are present.",
+    )
 
 
 def unregister():
     _teardown()
+    if hasattr(bpy.types.Scene, "efx_timle_focus"):
+        del bpy.types.Scene.efx_timle_focus
     if hasattr(bpy.types.Scene, "efx_timle_all_bodies"):
         del bpy.types.Scene.efx_timle_all_bodies
     if hasattr(bpy.types.Object, "efx_timl_channels"):

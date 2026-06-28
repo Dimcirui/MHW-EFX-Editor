@@ -26,6 +26,7 @@ from bpy.types import Operator, Panel
 
 from .i18n import T
 from ..efx_format import timl_meta as tm
+from ..efx_format import timl as _timl   # 完整解析/序列化（animation 增删用）
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -118,6 +119,39 @@ def _make_loop_set(idx):
     return _set
 
 
+def _make_loopstart_get(idx):
+    def _get(self):
+        body = _active_body()
+        if body is None:
+            return 0.0
+        anims = tm.parse_animations(_body_timl_bytes(body))
+        if idx < len(anims):
+            return float(anims[idx].loop_start_point)
+        return 0.0
+    return _get
+
+
+def _make_loopstart_set(idx):
+    def _set(self, value):
+        body = _active_body()
+        if body is None:
+            return
+        data = _body_timl_bytes(body)
+        new = tm.set_loop_start_point(data, idx, value)
+        if new != data:
+            _store_timl(body, new)
+    return _set
+
+
+def _edit_active() -> bool:
+    """通道编辑会话进行中？（进行中时禁止结构性增删，避免模型与字节脱节）"""
+    try:
+        from . import timl_edit as _te
+        return bool(_te._state.get("active"))
+    except Exception:
+        return False
+
+
 # loopControl 枚举项：identifier / 名称（英文，无 0123）/ 描述 / 图标 / 数值(=loopControl 原值)
 _LOOP_ENUM_ITEMS = [
     ("V0", "No Loop",   "Play once",                "", 0),
@@ -167,6 +201,94 @@ class EFX_OT_timlm_fit_last_keyframe(Operator):
         return {"FINISHED"}
 
 
+# A0/A1 是两个固定独立的时间轴槽（非可增删的动画列表）。实测主流形态是 [空, A1](4242 文件)。
+_AXIS_LABEL = {0: "timlm.axis0", 1: "timlm.axis1"}
+
+
+def _axis_present(anims, slot) -> bool:
+    return slot < len(anims) and anims[slot].data_offset != 0
+
+
+def _set_anim_indices(t):
+    for i, a in enumerate(t.animations):
+        if a is not None:
+            a.anim_index = i
+
+
+class EFX_OT_timlm_enable_axis(Operator):
+    """启用某条轴（A0 发射 / A1 寿命）：在该槽建数据，复制另一条轴作起点（无则空）"""
+
+    bl_idname = "efx.timlm_enable_axis"
+    bl_label = "Enable Axis"
+    bl_options = {"REGISTER", "UNDO"}
+
+    slot: bpy.props.IntProperty(default=0, options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        return (not _edit_active()) and _active_body() is not None
+
+    def execute(self, context):
+        if _edit_active():
+            self.report({"ERROR"}, T("timlm.edit_active"))
+            return {"CANCELLED"}
+        body = _active_body()
+        if body is None:
+            return {"CANCELLED"}
+        import copy
+        t = _timl.parse_timl(_body_timl_bytes(body))
+        if t is None:
+            return {"CANCELLED"}
+        slot = max(0, min(self.slot, 1))
+        while len(t.animations) <= slot:        # 补槽（如启用 A1 时 A0 占位为空 → [None, ...]）
+            t.animations.append(None)
+        # 复制另一条已存在的轴作起点；没有则建空
+        other = next((a for i, a in enumerate(t.animations) if a is not None and i != slot), None)
+        t.animations[slot] = copy.deepcopy(other) if other is not None else _timl.TimlData()
+        t.count = len(t.animations)
+        _set_anim_indices(t)
+        t.dirty = True
+        _store_timl(body, t.serialize())
+        self.report({"INFO"}, T("timlm.enabled_axis").format(T(_AXIS_LABEL.get(slot, ""))))
+        return {"FINISHED"}
+
+
+class EFX_OT_timlm_clear_axis(Operator):
+    """清空某条轴（置空该槽；末端空槽自动收尾，前导空槽合法保留，如 [None, A1]）"""
+
+    bl_idname = "efx.timlm_clear_axis"
+    bl_label = "Clear Axis"
+    bl_options = {"REGISTER", "UNDO"}
+
+    slot: bpy.props.IntProperty(default=0, options={"HIDDEN"})
+
+    @classmethod
+    def poll(cls, context):
+        return (not _edit_active()) and _active_body() is not None
+
+    def execute(self, context):
+        if _edit_active():
+            self.report({"ERROR"}, T("timlm.edit_active"))
+            return {"CANCELLED"}
+        body = _active_body()
+        if body is None:
+            return {"CANCELLED"}
+        t = _timl.parse_timl(_body_timl_bytes(body))
+        if t is None:
+            return {"CANCELLED"}
+        slot = self.slot
+        if 0 <= slot < len(t.animations):
+            t.animations[slot] = None
+        while t.animations and t.animations[-1] is None:
+            t.animations.pop()
+        t.count = len(t.animations)
+        _set_anim_indices(t)
+        t.dirty = True
+        _store_timl(body, t.serialize())
+        self.report({"INFO"}, T("timlm.cleared_axis").format(T(_AXIS_LABEL.get(slot, ""))))
+        return {"FINISHED"}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Panel：DOPESHEET_EDITOR N 面板「EFX TIML」
 # ─────────────────────────────────────────────────────────────────────────────
@@ -194,35 +316,57 @@ class EFX_PT_timl_meta(Panel):
         data = _body_timl_bytes(body)
         anims = tm.parse_animations(data)
         wm = context.window_manager
+        edit_active = _edit_active()
 
         # per-body 自动增长开关
         layout.prop(body, "efx_timl_auto_grow", text=T("timlm.auto_grow"))
-
-        for a in anims:
+        if edit_active:
+            # 通道编辑进行中：在此直接切 A0/A1/All 焦点（live 重建），并提示增删受限
             box = layout.box()
-            box.label(text=T("timlm.anim").format(i=a.index), icon="ANIM")
-            if a.data_offset == 0:
-                box.label(text=T("timlm.empty_anim"), icon="DOT")
-                continue
-            if a.index >= _MAX_ANIMS:
-                # 超出预注册属性范围（不可能发生于实测语料），只读显示
-                box.label(text="length=%g  loop=%d" % (a.animation_length, a.loop_control))
-                continue
+            box.label(text=T("timlm.edit_active"), icon="FCURVE")
+            try:
+                from . import timl_edit as _te
+                _te.draw_focus(box, context)
+                box.label(text=T("timle.focus_note"), icon="BLANK1")
+            except Exception:
+                pass
 
-            # 动画长度：内联可编辑 + 贴合最后关键帧
-            row = box.row(align=True)
-            row.prop(wm, "efx_timlm_length_%d" % a.index, text=T("timlm.length"))
-            op = row.operator("efx.timlm_fit_last_keyframe",
-                              text="", icon="KEYFRAME_HLT")
-            op.anim_index = a.index
-            lk = tm.last_keyframe_time(data, a.index)
-            if lk is not None:
-                box.label(text=T("timlm.last_kf").format(f=lk), icon="KEYFRAME")
+        # A0 / A1 两个固定独立的轴槽（不是可增删的列表）
+        for slot in (0, 1):
+            box = layout.box()
+            hdr = box.row(align=True)
+            hdr.label(text=T(_AXIS_LABEL[slot]),
+                      icon="ANIM" if slot == 0 else "PARTICLES")
+            present = _axis_present(anims, slot)
+
+            if present:
+                clr = hdr.row(align=True)
+                clr.enabled = not edit_active
+                op = clr.operator("efx.timlm_clear_axis", text="", icon="X")
+                op.slot = slot
+                box.label(text=T(_AXIS_LABEL[slot] + "_tip"), icon="BLANK1")
+
+                # 动画长度：内联可编辑 + 贴合最后关键帧
+                row = box.row(align=True)
+                row.prop(wm, "efx_timlm_length_%d" % slot, text=T("timlm.length"))
+                op = row.operator("efx.timlm_fit_last_keyframe", text="", icon="KEYFRAME_HLT")
+                op.anim_index = slot
+                lk = tm.last_keyframe_time(data, slot)
+                if lk is not None:
+                    box.label(text=T("timlm.last_kf").format(f=lk), icon="KEYFRAME")
+                else:
+                    box.label(text=T("timlm.no_kf"), icon="BLANK1")
+
+                box.prop(wm, "efx_timlm_loop_%d" % slot, text=T("timlm.loop"))
+                box.prop(wm, "efx_timlm_loopstart_%d" % slot, text=T("timlm.loopstart"))
             else:
-                box.label(text=T("timlm.no_kf"), icon="BLANK1")
-
-            # 循环控制下拉
-            box.prop(wm, "efx_timlm_loop_%d" % a.index, text=T("timlm.loop"))
+                box.label(text=T(_AXIS_LABEL[slot] + "_tip"), icon="BLANK1")
+                row = box.row(align=True)
+                row.label(text=T("timlm.axis_empty"), icon="DOT")
+                en = row.row(align=True)
+                en.enabled = not edit_active
+                op = en.operator("efx.timlm_enable_axis", text=T("timlm.enable_axis"), icon="ADD")
+                op.slot = slot
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -231,6 +375,8 @@ class EFX_PT_timl_meta(Panel):
 
 _CLASSES = (
     EFX_OT_timlm_fit_last_keyframe,
+    EFX_OT_timlm_enable_axis,
+    EFX_OT_timlm_clear_axis,
     EFX_PT_timl_meta,
 )
 
@@ -256,11 +402,14 @@ def register():
                 bpy.props.EnumProperty(
                     name="Loop Control", items=_LOOP_ENUM_ITEMS,
                     get=_make_loop_get(i), set=_make_loop_set(i)))
+        setattr(bpy.types.WindowManager, "efx_timlm_loopstart_%d" % i,
+                bpy.props.FloatProperty(
+                    name="Loop Start", get=_make_loopstart_get(i), set=_make_loopstart_set(i)))
 
 
 def unregister():
     for i in range(_MAX_ANIMS):
-        for stem in ("efx_timlm_length_%d", "efx_timlm_loop_%d"):
+        for stem in ("efx_timlm_length_%d", "efx_timlm_loop_%d", "efx_timlm_loopstart_%d"):
             attr = stem % i
             if hasattr(bpy.types.WindowManager, attr):
                 delattr(bpy.types.WindowManager, attr)
