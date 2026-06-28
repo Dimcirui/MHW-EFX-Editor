@@ -214,12 +214,17 @@ class Timl:
             return self.raw
         return self._rebuild()
 
+    def _header_bytes(self) -> bytes:
+        """原始 28 字节 header，但把 count(@24,uint32) patch 成当前 self.count
+        （animation 增删后 count 变，header 须同步，否则 dataHeaders 数对不上）。"""
+        return self.header[:24] + struct.pack("<I", self.count & 0xFFFFFFFF)
+
     def _rebuild(self) -> bytes:
         """结构化重建（BT 模板布局 + 16 字节对齐）。"""
         datas = [d for d in self.animations if d is not None]
         if self.count == 0 or not datas:
-            # 空 TIML：header + count（保留 header，count 已在 header 内）
-            return self.header + b"\x00" * (_align16(_HEADER_SIZE) - _HEADER_SIZE)
+            # 空 TIML：header(count 同步) + 对齐填充
+            return self._header_bytes() + b"\x00" * (_align16(_HEADER_SIZE) - _HEADER_SIZE)
 
         # —— pass 1：按 BT 模板布局顺序排布、计算每个结构的绝对偏移 ——
         # 布局项：('pad',) / ('data',d) / ('type',t) / ('tf',f) / ('kfg',f)
@@ -274,7 +279,7 @@ class Timl:
             if kind == "pad":
                 out += b"\x00" * (_align16(len(out)) - len(out))
             elif kind == "hdr":
-                out += self.header
+                out += self._header_bytes()
             elif kind == "dh":
                 for d in self.animations:
                     out += struct.pack("<q", offmap[("data", id(d))] if d is not None else 0)
