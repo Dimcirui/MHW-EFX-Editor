@@ -370,6 +370,14 @@ def _writeback_entry(ent, report):
         report({"WARNING"}, "FK 导出结果非法（非 timl 数据）")
         return False
     body = ent["body"]
+    # grow-only 自动长度：回写时把每条动画长度增长到末关键帧（per-body 开关，默认开）。
+    # 原地等长 patch，不碰 byte-perfect；仅在动画被改过（此处即回写）时生效。
+    if body.get("efx_timl_auto_grow", True):
+        try:
+            from ..efx_format import timl_meta as _tm
+            data = _tm.auto_grow_lengths(data)
+        except Exception:
+            pass
     body["timl_bytes"] = base64.b64encode(data).decode("ascii")
     body["timl_length"] = str(len(data))
     return True

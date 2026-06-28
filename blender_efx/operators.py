@@ -293,7 +293,9 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             )
             return {"CANCELLED"}
 
-        # ── 1.5 导出前校验（#4）：悬空指针 / 重复 index 等 ERROR → 取消导出 ────
+        # ── 1.5 导出前校验（#4）：仅真正的 ERROR（重复 index / 互斥块等）取消导出 ──
+        # 悬空指针 / EOF 越界 raw 哨兵已降级为 WARN：导出端安全跳过/清理，不挡导出，
+        # 仅在导出后弹窗报告（让用户知道哪些引用被跳过/清理）。
         from .validate import validate_efx_tree
         problems = validate_efx_tree(root)
         errors = [p for p in problems if p["level"] == "ERROR"]
@@ -308,6 +310,10 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             )
             self.report({"ERROR"}, f"EFX export cancelled: {len(errors)} validation error(s)")
             return {"CANCELLED"}
+
+        # 收集导出会跳过/清理的引用（悬空指针 + EOF 越界 raw），导出成功后报告
+        skipped = [p for p in problems
+                   if p.get("category") in ("dangling", "eof_raw")]
 
         # ── 1.7 导出前静默规范化块顺序 ────────────────────────────────────────
         try:
@@ -349,9 +355,26 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             self.report({"ERROR"}, f"Failed to write file: {exc}")
             return {"CANCELLED"}
 
+        # ── 3.5 报告被跳过/清理的引用（悬空指针 + EOF 越界 raw 哨兵）──────────────
+        if skipped:
+            def _draw_skipped(self_menu, ctx):
+                col = self_menu.layout.column()
+                col.label(
+                    text=T("op.export_skipped_header").format(n=len(skipped)),
+                    icon="INFO",
+                )
+                for p in skipped[:20]:
+                    col.label(text="• " + p["msg"])
+                if len(skipped) > 20:
+                    col.label(text="… (+%d more)" % (len(skipped) - 20))
+            context.window_manager.popup_menu(
+                _draw_skipped, title=T("op.export_skipped_title"), icon="INFO",
+            )
+
+        _skip_note = f", {len(skipped)} ref(s) skipped" if skipped else ""
         self.report(
             {"INFO"},
-            f"EFX export complete: {self.filepath} ({len(data)} bytes, root object: {root.name}{_db_note})",
+            f"EFX export complete: {self.filepath} ({len(data)} bytes, root object: {root.name}{_db_note}{_skip_note})",
         )
         return {"FINISHED"}
 

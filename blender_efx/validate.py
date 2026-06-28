@@ -9,13 +9,19 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
 
 检查项
 ------
-(1) 悬空指针（删除被引用对象后产生）—— 核心检查，全部 ERROR：
+(1) 悬空指针（删除被引用对象后产生）—— **WARN**（category="dangling"），导出端安全跳过、不挡导出：
     - Subselect 成员 member.body_ptr is None
     - Play targets target.body_ptr is None
     - ExternReference extern_ref_ptr is None（pointerized && !none）
     - PtLife relation_play_ptr is None（pointerized；relationIndex=actionID，无 -1 哨兵字段）
     - PtCollision ie_play_ptr is None（pointerized && !ie_none）
-    - eof_ints item.body_ptr is None（is_ptr）
+    悬空指针不再 ERROR：导出端各 export_* 早已对 None 指针安全跳过/回退（subselect/play/eof
+    直接 skip，extern/ptlife/ptcollision 原样保留旧字节）。降级为 WARN + 导出时报告即可，
+    不应仅因引用悬空就阻断导出。
+(1b) EOF 越界 raw 值（category="eof_raw"）—— WARN，仅当 eof 列表被编辑过（root["eof_dirty"]）时报告：
+    eof 条目整数落在 [0, body 数) 之外即存为 raw（is_ptr=False）。这些是原始文件里的
+    "空槽哨兵"（常见 33/99/==count_body），不指向真实 body。编辑激活集/增删 body 后它们成为
+    指向错误或不存在 body 的陈旧索引 → 破坏直接触发集 → 特效不生效。导出端在 eof_dirty 时丢弃。
 (2) efx_index 重复（同级组内）—— ERROR
 (3) 死块 EXTERNREFERENCE（count_extern==0 却仍 pointerized）—— WARN（合法历史模式）
 
@@ -190,8 +196,9 @@ def validate_efx_tree(root_obj) -> list:
             try:
                 if member.body_ptr is None:
                     problems.append({
-                        "level": "ERROR",
-                        "msg": f"Subselect '{ss.name}' member {i} has a dangling pointer",
+                        "level": "WARN",
+                        "category": "dangling",
+                        "msg": f"Subselect '{ss.name}' member {i} has a dangling pointer (skipped on export)",
                         "obj": ss.name,
                     })
             except AttributeError:
@@ -215,10 +222,11 @@ def validate_efx_tree(root_obj) -> list:
                 try:
                     if target.body_ptr is None:
                         problems.append({
-                            "level": "ERROR",
+                            "level": "WARN",
+                            "category": "dangling",
                             "msg": (
                                 f"Play '{play.name}' entry {ei} target {ti} "
-                                f"has a dangling pointer"
+                                f"has a dangling pointer (skipped on export)"
                             ),
                             "obj": play.name,
                         })
@@ -236,10 +244,11 @@ def validate_efx_tree(root_obj) -> list:
                             and not er.extern_ref_none
                             and er.extern_ref_ptr is None):
                         problems.append({
-                            "level": "ERROR",
+                            "level": "WARN",
+                            "category": "dangling",
                             "msg": (
                                 f"ExternReference block '{blk.name}' has a dangling pointer"
-                                " (the referenced Extern was deleted)"
+                                " (the referenced Extern was deleted; original index bytes kept on export)"
                             ),
                             "obj": blk.name,
                         })
@@ -262,10 +271,11 @@ def validate_efx_tree(root_obj) -> list:
                 try:
                     if pl.relation_pointerized and pl.relation_play_ptr is None:
                         problems.append({
-                            "level": "ERROR",
+                            "level": "WARN",
+                            "category": "dangling",
                             "msg": (
                                 f"PtLife block '{blk.name}' relation has a dangling pointer"
-                                " (the referenced Action/Play was deleted)"
+                                " (the referenced Action/Play was deleted; original index bytes kept on export)"
                             ),
                             "obj": blk.name,
                         })
@@ -280,19 +290,45 @@ def validate_efx_tree(root_obj) -> list:
                             and not pc.ie_none
                             and pc.ie_play_ptr is None):
                         problems.append({
-                            "level": "ERROR",
+                            "level": "WARN",
+                            "category": "dangling",
                             "msg": (
                                 f"PtCollision block '{blk.name}' ie has a dangling pointer"
-                                " (the referenced Play was deleted)"
+                                " (the referenced Play was deleted; original index bytes kept on export)"
                             ),
                             "obj": blk.name,
                         })
                 except AttributeError:
                     pass
 
-    # eof_ints 列表：**不校验悬空**。eof_ints 是"顶层 body 列表"（派生的成员关系，
-    # 非真引用），导出端 export_eof_ints 对悬空指针直接跳过（删除的 body 自然移出列表、
-    # count_eof 重算）。删 body 后 eof 项悬空是正常的、导出会自动剔除——不应报错挡导出。
+    # eof_ints 列表：悬空 body 指针不报（导出端跳过、count_eof 重算）。
+    # 但若 eof 列表被编辑过（eof_dirty），报告将被丢弃的越界 raw 值（空槽哨兵），
+    # 让用户知道哪些陈旧索引被清理 —— 见 (1b) 说明。
+    try:
+        eof_dirty = bool(int(root_obj.get("eof_dirty", 0)))
+    except (ValueError, TypeError):
+        eof_dirty = False
+    if eof_dirty:
+        n_bodies = len(bodies)
+        eof_props = getattr(root_obj, "efx_eof_list", None)
+        if eof_props is not None:
+            for i, item in enumerate(getattr(eof_props, "items", [])):
+                try:
+                    if not item.is_ptr:
+                        rv = int(item.raw_value)
+                        if rv < 0 or rv >= n_bodies:
+                            problems.append({
+                                "level": "WARN",
+                                "category": "eof_raw",
+                                "msg": (
+                                    f"EOF entry {i} raw={rv} is out of range "
+                                    f"[0,{n_bodies}) — inactive-slot sentinel, "
+                                    "dropped on export (the active set was edited)"
+                                ),
+                                "obj": root_obj.name,
+                            })
+                except (AttributeError, ValueError, TypeError):
+                    continue
 
     # ── (2) efx_index 重复 ──────────────────────────────────────────────────
 

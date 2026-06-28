@@ -675,8 +675,15 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     label_size = len(label_bytes)
 
     # ── 4c. 还原 eof_ints（L2 #1d：body 指针 → 局部 index）────────────────────
+    # eof_dirty=1（用户编辑过激活集 / 删过 body）→ sanitize：丢弃越界 raw 哨兵（陈旧错误索引）。
+    # 未编辑（=0）→ 原样还原，保 byte-perfect。
     try:
-        eof_ints = _body_play_ref.export_eof_ints(r, body_index_map_export)
+        _eof_sanitize = bool(int(r.get("eof_dirty", 0)))
+    except (ValueError, TypeError):
+        _eof_sanitize = False
+    try:
+        eof_ints = _body_play_ref.export_eof_ints(
+            r, body_index_map_export, sanitize=_eof_sanitize)
     except Exception:
         # 回退：旧字符串路径
         _eof_str = str(r["eof_ints"]).strip()

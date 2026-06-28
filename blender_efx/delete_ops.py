@@ -186,6 +186,9 @@ class EFX_OT_delete_body(bpy.types.Operator):
 
         # body 计数变 → 标签表变；导出端按 labels_dirty 重建 label_bytes/label_size
         root["labels_dirty"] = 1
+        # body 数变 → eof 里残留的越界 raw 哨兵成为陈旧错误索引，导出端 sanitize 清理
+        # （取代旧的 eof_ints[:len(bodies)] 长度截断，能去掉列表中部的哨兵）
+        root["eof_dirty"] = 1
 
         self.report(
             {"INFO"},

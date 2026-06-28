@@ -251,6 +251,9 @@ STRINGS = {
     # ── 导入/导出算子（operators.py）弹窗 ─────────────────────────────────────
     "op.export_validation_failed_header": {"EN": "Pre-export validation found errors, cancelled:", "ZH": "导出前校验发现错误，已取消："},
     "op.export_validation_failed_title":  {"EN": "EFX Validation Failed", "ZH": "EFX 校验失败"},
+    "op.export_skipped_header": {"EN": "Export complete. {n} reference(s) were skipped/cleaned (dangling pointers / out-of-range EOF sentinels):",
+                                 "ZH": "导出完成。{n} 个引用被跳过/清理（悬空指针 / EOF 越界哨兵）："},
+    "op.export_skipped_title":  {"EN": "EFX Export: References Skipped", "ZH": "EFX 导出：引用已跳过"},
 
     # ── 导出前校验（validate.py）弹窗 ─────────────────────────────────────────
     "validate.found_errors":   {"EN": "Found {n} error(s):",   "ZH": "发现 {n} 个错误："},
@@ -267,6 +270,22 @@ STRINGS = {
     "timl.delete_btn":    {"EN": "Delete TIML",  "ZH": "删除 TIML"},
     "timl.hint":          {"EN": "Edit externally with FreeKinetics: Add/Replace loads a .timl, Export writes one out",
                            "ZH": "用 FreeKinetics 在外部编辑：添加/替换从 .timl 文件载入，导出写出 .timl"},
+
+    # ── TIML 头部元字段编辑面板（timl_meta_ui.py，Dope Sheet 侧栏 EFX TIML）────────
+    "timlm.panel":          {"EN": "EFX TIML",                "ZH": "EFX TIML"},
+    "timlm.no_body":        {"EN": "Select an EFX body with a TIML segment", "ZH": "请选中带 TIML 段的 EFX 特效体"},
+    "timlm.no_timl":        {"EN": "This body has no TIML segment", "ZH": "本特效体无 TIML 段"},
+    "timlm.anim":           {"EN": "Animation {i}",           "ZH": "动画 {i}"},
+    "timlm.length":         {"EN": "Animation Length",        "ZH": "动画长度"},
+    "timlm.loop":           {"EN": "Loop Control",            "ZH": "循环控制"},
+    "timlm.set_last_kf":    {"EN": "Fit to Last Keyframe",    "ZH": "贴合最后关键帧"},
+    "timlm.last_kf":        {"EN": "last keyframe @ {f:g}",   "ZH": "最后关键帧 @ {f:g}"},
+    "timlm.no_kf":          {"EN": "(no keyframes)",          "ZH": "（无关键帧）"},
+    "timlm.empty_anim":     {"EN": "(empty animation)",       "ZH": "（空动画）"},
+    "timlm.auto_grow":      {"EN": "Auto-grow length on edit", "ZH": "编辑时自动增长长度"},
+    "timlm.auto_grow_desc": {"EN": "On TIML edit/writeback, grow each animation length to fit its last keyframe (never shrinks; preserves trailing hold frames)",
+                             "ZH": "TIML 编辑/回写时，把每条动画长度增长到贴合其最后关键帧（只增不减，保留末尾保持帧）"},
+    "timlm.grow_only":      {"EN": "grow-only", "ZH": "只增不减"},
 
     # ── Subselect 面板（subselect.py）─────────────────────────────────────────
     "sub.unset":            {"EN": "<Unset>",               "ZH": "<未设置>"},
@@ -330,6 +349,9 @@ STRINGS = {
     "ptref.eof_empty":           {"EN": "(Empty - effect will not be triggered directly on load)",
                                   "ZH": "（空——EFX 加载时不会直接触发任何 Body）"},
     "ptref.dangling_pointer":    {"EN": "[Dangling pointer]", "ZH": "[悬空指针]"},
+    "ptref.eof_sentinel":        {"EN": "raw={v} (out-of-range sentinel)", "ZH": "raw={v}（越界空槽）"},
+    "ptref.eof_sentinel_hint":   {"EN": "Out-of-range entries are inactive-slot sentinels (no such body); dropped on export once the active set is edited",
+                                  "ZH": "越界条目是空槽哨兵（无对应 body）；编辑激活集后导出时会被清理"},
 
     # ── 反向引用视图（backref.py）─────────────────────────────────────────────
     "backref.extern_object":          {"EN": "Extern object:", "ZH": "Extern 对象："},

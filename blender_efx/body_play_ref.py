@@ -560,6 +560,7 @@ def init_eof_list_props(
 def export_eof_ints(
     root_obj: bpy.types.Object,
     body_index_map: dict,
+    sanitize: bool = False,
 ) -> list:
     """
     从 root_obj.efx_eof_list 还原 eof_ints 整数列表。
@@ -571,20 +572,28 @@ def export_eof_ints(
     body_index_map : dict[bpy.types.Object, int]
         {EFX_BODY Object → Main 段局部 0-based index}，
         由 build_local_index_map(col_main, 'EFX_BODY') 或 enumerate(body_objs) 构建。
+    sanitize : bool
+        是否清理越界 raw 值（见下）。默认 False（保 byte-perfect）。
+        由 io_tree 在 root["eof_dirty"] 时传 True。
 
     返回
     ----
     list[int]
-        eof_ints 整数列表（顺序与导入时一致，byte-perfect）。
+        eof_ints 整数列表。未编辑时顺序与导入一致（byte-perfect）。
 
     回退策略
     --------
     若 root_obj 无 efx_eof_list 属性（旧场景），回退到 root_obj["eof_ints"] 字符串路径。
 
-    悬空 body_ptr 处理
-    ------------------
-    is_ptr=True 但 body_ptr=None（悬空）→ 静默跳过（不写入）。
-    后续校验阶段应改为报错。
+    指针 / raw 处理
+    ---------------
+    is_ptr=True 但 body_ptr=None（悬空）或不在 body_index_map → 始终跳过（不写入）。
+    is_ptr=False（raw 值）：
+      - sanitize=False（未编辑）：原样写回，保 byte-perfect。
+      - sanitize=True（eof 被编辑过）：**丢弃越界 raw 值**（< 0 或 >= body 数）。
+        这些是原始文件的"空槽哨兵"（33/99/==count_body 等），不指向真实 body；编辑激活集/
+        增删 body 后它们成为陈旧的错误索引，会破坏游戏直接触发集 → 特效不生效。
+        in-range 的 raw 值（理论上不出现，因 init 时 in-range 必指针化）保守保留。
     """
     try:
         props = root_obj.efx_eof_list
@@ -600,12 +609,13 @@ def export_eof_ints(
             return fallback
         return []
 
+    n_bodies = len(body_index_map)
     result = []
     for item in props.items:
         if item.is_ptr:
             body_obj = item.body_ptr
             if body_obj is None:
-                # 悬空：跳过（后续校验阶段应报错）
+                # 悬空：跳过
                 continue
             local_idx = body_index_map.get(body_obj)
             if local_idx is None:
@@ -613,7 +623,11 @@ def export_eof_ints(
                 continue
             result.append(local_idx)
         else:
-            result.append(item.raw_value)
+            rv = item.raw_value
+            if sanitize and (rv < 0 or rv >= n_bodies):
+                # eof 被编辑过：丢弃越界空槽哨兵（陈旧错误索引）
+                continue
+            result.append(rv)
 
     return result
 
@@ -860,6 +874,7 @@ class EFX_OT_eof_toggle_body(bpy.types.Operator):
             item.body_ptr = body_obj
             self.report({"INFO"}, f"Added {body_obj.name} to EOF list")
 
+        root["eof_dirty"] = 1  # 激活集被编辑 → 导出端清理越界 raw 哨兵
         return {"FINISHED"}
 
 
@@ -912,6 +927,7 @@ class EFX_OT_eof_add_body(bpy.types.Operator):
         item = props.items.add()
         item.is_ptr = True
         item.body_ptr = body_obj
+        root["eof_dirty"] = 1  # 激活集被编辑 → 导出端清理越界 raw 哨兵
         self.report({"INFO"}, f"Added {body_obj.name} to EOF list")
         return {"FINISHED"}
 
@@ -938,6 +954,7 @@ class EFX_OT_eof_remove_entry(bpy.types.Operator):
             return {"CANCELLED"}
         if 0 <= self.entry_index < len(props.items):
             props.items.remove(self.entry_index)
+            root["eof_dirty"] = 1  # 激活集被编辑 → 导出端清理越界 raw 哨兵
         return {"FINISHED"}
 
 
@@ -979,6 +996,11 @@ class EFX_PT_eof_list(bpy.types.Panel):
             layout.label(text=T("ptref.eof_empty"), icon="INFO")
             return
 
+        # 当前 body 数（有效 eof 索引上界）：判定 raw 值是否越界空槽哨兵
+        n_bodies = sum(1 for c in bpy.data.objects
+                       if c.parent == obj and c.get("~TYPE") == "EFX_BODY")
+        has_oob_raw = False
+
         col = layout.column(align=True)
         for i, item in enumerate(props.items):
             row = col.row(align=True)
@@ -994,9 +1016,19 @@ class EFX_PT_eof_list(bpy.types.Panel):
                 else:
                     row.label(text=T("ptref.dangling_pointer"), icon="ERROR")
             else:
-                row.label(text=f"raw={item.raw_value}", icon="DOT")
+                rv = item.raw_value
+                if rv < 0 or rv >= n_bodies:
+                    # 越界空槽哨兵：不指向真实 body，编辑激活集后导出会清理
+                    has_oob_raw = True
+                    row.label(text=T("ptref.eof_sentinel").format(v=rv), icon="UNLINKED")
+                else:
+                    row.label(text=f"raw={rv}", icon="DOT")
             op = row.operator("efx.eof_remove_entry", text="", icon="X")
             op.entry_index = i
+
+        if has_oob_raw:
+            note = layout.box()
+            note.label(text=T("ptref.eof_sentinel_hint"), icon="INFO")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

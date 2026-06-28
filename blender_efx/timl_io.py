@@ -151,6 +151,14 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
             return {"CANCELLED"}
 
         old_len = len(_body_timl_bytes(obj))
+        # grow-only 自动长度：导入 .timl 时把每条动画长度增长到末关键帧（per-body 开关，默认开）。
+        # 原地等长 patch，不改 timl 长度、不碰 byte-perfect。
+        if obj.get("efx_timl_auto_grow", True):
+            try:
+                from ..efx_format import timl_meta as _tm
+                data = _tm.auto_grow_lengths(data)
+            except Exception:
+                pass
         obj["timl_bytes"]  = base64.b64encode(data).decode("ascii")
         obj["timl_length"] = str(len(data))  # 重算长度（导出端也会再重算，双保险）
         self.report(
