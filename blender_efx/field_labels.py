@@ -39,7 +39,7 @@ FIELD_LABELS_ZH = {
     "energyOnAxisX": "X 轴能量",
     "energyOnAxisY": "Y 轴能量",
     "energyOnAxisZ": "Z 轴能量",
-    "momentum_conservation": "动量守恒",
+    "momentum_retention": "动量保留率",
 
     # ── 变换 ───────────────────────────────────────────────────────────────
     "transform": "变换",
@@ -244,6 +244,9 @@ FIELD_LABELS_ZH = {
     "enableRadialVanish": "归航力控制",
     "viewAngleLimit": "视角限制",
     "visibleOnPreview": "预览中可见",
+    # RIBBON 实测：原观测名 visiblePreview，实为"可见性修正"。非 0 会破坏 TIML 正常
+    # 读取（条带读不到 animation1 颜色）并导致条带莫名缺失；安全值 0。
+    "visiblePreview": "可见性修正",
     "clipMax": "裁剪上限",
     "clipMin": "裁剪下限",
     "zDepthModifierStart": "Z 深度修正（起始）",

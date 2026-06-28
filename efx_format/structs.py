@@ -793,26 +793,28 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 #
 # BT (EFX_Subtypes.bt):
 #   long  type                               4 B  ← in type_hash
-#   int   unkn0[2]                           8 B
+#   int   unkn0_0                            4 B  ← 轴掩码（bitmask：bit0=X, bit1=Y, bit2=Z）
+#   int   unkn0_1                            4 B  ← 旋转模式（0/1=billboard平面旋转；2/3=启用自旋速度）
 #   long  NULL[2]                            8 B
 #   XYZ   spin_velocity(0)   6 floats       24 B
 #   float unkn1_0                            4 B
 #   float unkn1_1                            4 B
-#   float momentum_conservation              4 B
+#   float momentum_retention                 4 B
 #   XYZ   spin_acceleration(0)              24 B
 #   float unkn1_2                            4 B
 # data_bytes: 8+8+24+12+24+4 = 80 B ✓
 # ─────────────────────────────────────────────────────────────────────────────
 
 ROTATEANIM_SCHEMA = [
-    ('unkn0', ('i', 2)),
+    ('unkn0_0', 'i'),  # 轴掩码：bit0=X, bit1=Y, bit2=Z
+    ('unkn0_1', 'i'),  # 旋转模式：取 2 或 3 时 spin_velocity 生效；取 0/1 时仅 billboard 平面旋转
     # 社区实测：这两个专门控制 BILLBOARD3D 平面类的旋转，模板原标为 int，实为 float。
     ('billboardRotation', 'f'),
     ('billboardRotationSpeed', 'f'),
     ('spin_velocity', ('XYZ', 0)),
     ('unkn1_0', 'f'),
     ('unkn1_1', 'f'),
-    ('momentum_conservation', 'f'),
+    ('momentum_retention', 'f'),
     ('spin_acceleration', ('XYZ', 0)),
     ('unkn1_2', 'f'),
 ]
@@ -1945,7 +1947,7 @@ def pack_mesh(values: dict) -> bytes:
 # Structure breakdown (360 B fixed before path):
 #   unkn0(4) + section_length(4) + spacer0(4) +
 #   XYZ color(2)(4) + spacer1(4) + XYZ color2(2)(4) + spacer2(4) +
-#   brightness(4) + unkn4[2](8) + scale(8) + width(8) + length(8) +
+#   brightness(4) + unkn4_0(f,4) + unkn4_1(i,4) + scale(8) + width(8) + length(8) +
 #   uv_map_height(4) + mat_tess_density(4) + mat_tess_j(4) + uv_map_width(4) +
 #   horiz_physics(4) + vert_physics(4) + unkn15(4) +
 #   restitution_dir(4) + unkn16[4](16) + startingAngle(4) + startingAngleJ(4) +
@@ -1971,7 +1973,10 @@ _RIBBON_FIXED_SCHEMA = [
     ('color2',                   ('XYZ', 2)),
     ('spacer2',                  'i'),
     ('brightness',               'f'),
-    ('unkn4',                    ('i', 2)),
+    # 原 unkn4(int[2]) 拆为两个独立字段（实测：[0] 是 float 标量，全语料 0.0–30.0、
+    # 零 NaN，常见 ±0.0；[1] 是 int 枚举 0/1/2 = 形态/速度对齐开关）。
+    ('unkn4_0',                  'f'),
+    ('unkn4_1',                  'i'),
     ('scale',                    'f'),
     ('scale_jitter',             'f'),
     ('width',                    'f'),

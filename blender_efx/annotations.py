@@ -276,6 +276,16 @@ FIELD_ANNOTATIONS = {
         "EN": "Bitflag — controls preview visibility",
         "ZH": "位标志 —— 控制预览可见性",
     },
+    ("SHADERSETTINGS", "unkn3_1"): {
+        "EN": "Render layer / billboard mode. "
+              "0=3D billboard (default); 2=Plane; "
+              "3=certain render subjects (e.g. BILLBOARD2D) bypass TONEMAPFILTER color grading; "
+              "6/7/8/9=3D billboard variants.",
+        "ZH": "渲染层 / billboard 模式。"
+              "0=3D billboard（默认）；2=Plane；"
+              "3=部分渲染主体（如 BILLBOARD2D）可无视 TONEMAPFILTER 色调滤镜；"
+              "6/7/8/9=3D billboard 变体。",
+    },
 
     # ─── FADEBYDEPTH ──────────────────────────────────────────────────────────
     # FadeByDepth (EFX_Subtypes.bt)
@@ -292,7 +302,14 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── ROTATEANIM ───────────────────────────────────────────────────────────
-    # RotateAnim — no distinct field comments in BT beyond field names
+    ("ROTATEANIM", "unkn0_0"): {
+        "EN": "Axis mask (bitmask): bit0=X, bit1=Y, bit2=Z. Controls which axes receive spin.",
+        "ZH": "轴掩码（bitmask）：bit0=X，bit1=Y，bit2=Z。控制哪些轴参与自旋。",
+    },
+    ("ROTATEANIM", "unkn0_1"): {
+        "EN": "Rotation mode: 0/1=billboard plane rotation only; 2 or 3=spin velocity enabled.",
+        "ZH": "旋转模式：0/1=仅 billboard 平面旋转；取 2 或 3 时 spin_velocity 生效。",
+    },
 
     # ─── ALPHACORRECTION ──────────────────────────────────────────────────────
     # AlphaCorrection (EFX_Subtypes.bt)
@@ -632,6 +649,34 @@ FIELD_ANNOTATIONS = {
     ("RIBBON", "unkn16_2"): {
         "EN": "0=Align to World,  Anything else=Align to Source",
         "ZH": "0=对齐到世界,  其他任何值=对齐到源",
+    },
+    ("RIBBON", "unkn4_0"): {
+        # 实测：原 unkn4 第一个值，其实是 float 标量（全语料 0.0–30.0，零 NaN，常见 ±0.0）。语义未定。
+        "EN": "Float scalar (split from the old unkn4[0]). Observed clean values "
+              "0.0–30.0 across all samples (commonly 0.0 / -0.0). Purpose not yet "
+              "identified. The -2147483648 you may have seen as an int is actually "
+              "-0.0 read as a float.",
+        "ZH": "浮点标量（由旧 unkn4[0] 拆出）。全语料取值 0.0–30.0、零 NaN，常见 0.0 / -0.0。"
+              "用途尚未确定。之前以 int 看到的 -2147483648 实际是 float 的 -0.0。",
+    },
+    ("RIBBON", "unkn4_1"): {
+        # 实测：原 unkn4 第二个值 = 形态/速度对齐开关（int 枚举，语料含 0/1/2）。
+        "EN": "Shape / velocity alignment (split from the old unkn4[1]): 0 = normal "
+              "bendable ribbon strip; 1 = flag form (rigid, no bend) — auto-aligns to "
+              "the velocity direction and generates a flat sheet; 2 also observed. "
+              "Initial length/size relate to the scale/width/length fields below.",
+        "ZH": "形态/速度对齐开关（由旧 unkn4[1] 拆出，int 枚举，语料含 0/1/2）："
+              "0 = 正常条带（可弯折）；1 = 旗帜形态（刚性不弯）——自动对齐速度方向、"
+              "生成一个面片；另观测到 2。初始长度/大小与下方 scale/width/length 等字段相关。",
+    },
+    ("RIBBON", "visiblePreview"): {
+        # 实测（游戏内验证）：原观测名 visiblePreview，实为"可见性修正"。
+        "EN": "Visibility Correction. Recommended value: 0. A non-zero value not only "
+              "breaks normal TIML use (the ribbon won't read the color animation on "
+              "animation1 / particle-lifetime axis) but also causes ribbon strips to go "
+              "mysteriously missing. Keep at 0.",
+        "ZH": "可见性修正。安全值：0。非 0 不仅会破坏 TIML 正常使用（条带读不到 "
+              "animation1 / 粒子寿命轴上的颜色变换），还会让条带生成莫名缺失。请保持为 0。",
     },
 
     # ─── UVSEQUENCE (fixed part fields) ───────────────────────────────────────

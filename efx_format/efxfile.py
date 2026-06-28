@@ -192,8 +192,8 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
 
     # RotateAnim: 4(type) + int*2(8) + long*2(8) + XYZ(0)(24B) + float*2(8) + float(4) + XYZ(0)(24B) + float(4)
     # Wait from BT:
-    # long type(4) + int unkn0[2](8) + long NULL[2](8) + XYZ spin_velocity(0)(24B) +
-    # float unkn1_0(4) + float unkn1_1(4) + float momentum_conservation(4) + XYZ spin_acceleration(0)(24B) + float unkn1_2(4)
+    # long type(4) + int unkn0_0(4) + int unkn0_1(4) + long NULL[2](8) + XYZ spin_velocity(0)(24B) +
+    # float unkn1_0(4) + float unkn1_1(4) + float momentum_retention(4) + XYZ spin_acceleration(0)(24B) + float unkn1_2(4)
     # = 4+8+8+24+4+4+4+24+4 = 84B
     if h == ROTATEANIM:
         return 4 + 8 + 8 + 24 + 4 + 4 + 4 + 24 + 4  # = 84
