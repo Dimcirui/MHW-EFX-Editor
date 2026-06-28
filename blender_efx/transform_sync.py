@@ -153,35 +153,6 @@ def _t3d_local_matrix(t3d_block):
     return Matrix.Translation(loc) @ rot @ scl
 
 
-def _t3d_local_matrix_game(t3d_block):
-    """把 TRANSFORM3D 块的 translate/rotate/resize 组装成游戏空间变换矩阵。
-    不做 Y/Z 轴交换——骨骼的 matrix_local 已内嵌 M_G2B，有骨骼时用此函数避免双重转换。"""
-    vals = {}
-    try:
-        for it in t3d_block.efx_block.field_items:
-            if it.ori_name in ("translate", "rotate", "resize") and it.data_type == "FLOAT6":
-                vals[it.ori_name] = _fixed3(it.float6_value)
-    except Exception:
-        return None
-
-    if "translate" in vals:
-        gx, gy, gz = vals["translate"]
-        loc = Vector((gx / 100.0, gy / 100.0, gz / 100.0))
-    else:
-        loc = Vector((0, 0, 0))
-    if "rotate" in vals:
-        # 游戏空间（骨骼基准已含 M）：仍需按游戏组合顺序 Rx·Ry·Rz，不用朴素 XYZ。
-        rot = _game_rot_matrix(*vals["rotate"]).to_4x4()
-    else:
-        rot = Matrix.Identity(4)
-    if "resize" in vals:
-        sx, sy, sz = vals["resize"]
-    else:
-        sx = sy = sz = 1.0
-    scl = Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
-    return Matrix.Translation(loc) @ rot @ scl
-
-
 # ── 骨骼基准矩阵 ─────────────────────────────────────────────────────────────
 
 # 视为"无绑定骨骼 / 原点基准"的 bone_lim 哨兵值。
@@ -214,35 +185,32 @@ def apply_body_transform(body_obj, armature_obj=None, base_override=None) -> boo
     按 body 的 TRANSFORM3D（基础变换）+ PARENTOPTIONS（bone_lim 绑定骨骼）
     计算 body empty 的 matrix_world 并写入。返回是否成功。
 
-    有骨骼时 TRANSFORM3D 使用游戏坐标原样（不做 Y/Z 交换），因为骨骼的
-    matrix_local 已内嵌 M_G2B 旋转，直接叠加可正确还原朝向。
-    无骨骼时使用 M_G2B 轴交换后的 Blender 坐标（原有行为）。
-
     base_override：锚定机制传入「基点 body 的 matrix_world」。提供时它**优先于**骨骼
     （锚定 body 间接继承基点 body 的位置）。
 
-    ⚠ 局部矩阵的坐标系按基准类型区分（MCP 实测确认，否则锚定 body 旋转偏 47~116°）：
-      - 骨骼基准：骨骼 matrix_local 已内嵌 M_G2B → 用游戏坐标局部 `_t3d_local_matrix_game`，避免双重转换。
-      - 锚定基准 / 无基准：基点是另一个 EFX body 的 **Blender 空间**矩阵（不含 M）→ 用 M 共轭的
-        blender 局部 `_t3d_local_matrix`，在 blender 空间正确组合。
+    ⚠ 三类基准都用 **M 共轭的 blender 局部** `_t3d_local_matrix`，局部朝向统一交给
+    M_G2B 轴交换，与无骨骼路径一致 —— 关键是基准只贡献**位置**，不贡献朝向：
+      - 骨骼基准：只取骨骼世界位置(head)，**不继承骨骼 rest 朝向**（与 uvc_preview 同款）。
+        Blender 骨骼默认沿 +Y，指向 +Z 的 MhBone 其 matrix_local 内嵌 +90°X 伪旋转，
+        整体继承会让 body 平白绕 X 多转 90°（绑定竖直骨骼时尤其明显）。故只取 translation。
+      - 锚定基准：基点是另一个 EFX body 的 Blender 空间矩阵，同样用 blender 局部叠加。
+      - 无基准：直接 blender 局部（原有行为）。
     """
     try:
         t3d = _block_of_type(body_obj, _t3d_hash())
         if t3d is None:
             return False
+        local = _t3d_local_matrix(t3d)              # 统一：blender 空间（M 共轭）
+        if local is None:
+            return False
         if base_override is not None:
-            base = base_override
-            local = _t3d_local_matrix(t3d)          # 锚定：blender 空间（M 共轭）
+            base = base_override                    # 锚定：继承基点 body 的完整矩阵
         else:
             bone = bone_base_matrix(armature_obj, _body_bone_lim(body_obj))
             if bone is not None:
-                base = bone
-                local = _t3d_local_matrix_game(t3d)  # 骨骼：游戏坐标（M 已在骨骼里）
+                base = Matrix.Translation(bone.to_translation())  # 只取骨骼 head 位置，不继承朝向
             else:
                 base = None
-                local = _t3d_local_matrix(t3d)        # 无基准：blender 空间（M 共轭）
-        if local is None:
-            return False
         body_obj.matrix_world = (base @ local) if base is not None else local
         return True
     except Exception:
