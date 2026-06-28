@@ -287,6 +287,26 @@ STRINGS = {
                              "ZH": "TIML 编辑/回写时，把每条动画长度增长到贴合其最后关键帧（只增不减，保留末尾保持帧）"},
     "timlm.grow_only":      {"EN": "grow-only", "ZH": "只增不减"},
 
+    # ── TIML 通道编辑会话（timl_edit.py，阶段2b，自建零 FK）──────────────────────
+    "timle.enter":          {"EN": "Edit TIML",               "ZH": "编辑 TIML"},
+    "timle.enter_hint":     {"EN": "Parses TIML into native F-curves; edit in Dope Sheet / Graph Editor, then Apply",
+                             "ZH": "把 TIML 解析成原生 F 曲线；在 Dope Sheet / Graph Editor 编辑后点应用"},
+    "timle.editing":        {"EN": "Editing {0} channel(s) in {1} body(ies) — open Dope Sheet/Graph",
+                             "ZH": "正在编辑 {0} 条通道（{1} 个特效体）——打开 Dope Sheet/Graph"},
+    "timle.editor_hint":    {"EN": "Select an EFX_TIML handle's action in the Dope Sheet / Graph Editor",
+                             "ZH": "在 Dope Sheet / Graph Editor 中编辑各 EFX_TIML 句柄的 Action"},
+    "timle.apply":          {"EN": "Apply & Exit",            "ZH": "应用并退出"},
+    "timle.cancel":         {"EN": "Cancel",                  "ZH": "取消"},
+    "timle.all_bodies":     {"EN": "All bodies in this EFX",  "ZH": "同时编辑本 EFX 内所有特效体"},
+    "timle.entered":        {"EN": "TIML channel edit: {0} channel(s) built", "ZH": "TIML 通道编辑：已建 {0} 条通道"},
+    "timle.applied":        {"EN": "TIML written back: {0} body(ies)", "ZH": "已回写 TIML：{0} 个特效体"},
+    "timle.applied_nochange": {"EN": "No changes — TIML left byte-identical", "ZH": "无改动——TIML 保持逐字节一致"},
+    "timle.cancelled":      {"EN": "TIML channel edit cancelled (discarded)", "ZH": "已取消 TIML 通道编辑（丢弃）"},
+    "timle.no_timl":        {"EN": "Select an EFX_TIML handle (or a body with TIML) first", "ZH": "请先选中 EFX_TIML 句柄（或带 TIML 的特效体）"},
+    "timle.no_content":     {"EN": "No editable TIML channels found", "ZH": "未找到可编辑的 TIML 通道"},
+    "timle.build_failed":   {"EN": "Failed to build channels: {0}", "ZH": "建通道失败：{0}"},
+    "timle.writeback_failed": {"EN": "Writeback failed: {0}", "ZH": "回写失败：{0}"},
+
     # ── Subselect 面板（subselect.py）─────────────────────────────────────────
     "sub.unset":            {"EN": "<Unset>",               "ZH": "<未设置>"},
     "sub.no_data":          {"EN": "(No efx_subselect data)", "ZH": "（无 efx_subselect 数据）"},

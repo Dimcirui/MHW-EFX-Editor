@@ -51,6 +51,7 @@ from . import validate      # L2 #4：导出前校验
 from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始字节查看）
 from . import timl_io       # TIML ↔ .timl 文件互导（方案 C：FreeKinetics 桥）
 from . import timl_meta_ui  # TIML 头部元字段编辑（Dope Sheet 侧栏 EFX TIML：长度/循环控制）
+from . import timl_edit      # 阶段2b：自建 TIML 通道编辑会话（原生 F 曲线，零 FK）
 from . import transform_sync # TRANSFORM3D → body empty 视口变换（单向）
 from . import uvs_io        # UVS Edition：UVSEQUENCE 块下 .uvs 文件导入/导出/编辑
 from . import uvc_preview    # UVCONTROL 视口 UV 滚动动画预览（根级单会话，全播）
@@ -179,6 +180,9 @@ def register():
     # ── TIML 头部元字段编辑：Dope Sheet 独立侧栏 N 面板，独立注册 ────────────────
     timl_meta_ui.register()
 
+    # ── 阶段2b：自建 TIML 通道编辑会话（原生 F 曲线，零 FK）──────────────────────
+    timl_edit.register()
+
     # ── TRANSFORM3D → 视口同步算子（无面板依赖）─────────────────────────────
     transform_sync.register()
 
@@ -207,6 +211,7 @@ def unregister():
     uvc_preview.unregister()
     uvs_io.unregister()
     transform_sync.unregister()
+    timl_edit.unregister()
     timl_meta_ui.unregister()
     timl_io.unregister()
     hexview.unregister()
