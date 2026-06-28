@@ -89,6 +89,44 @@ def _set_parent(child: bpy.types.Object, parent: bpy.types.Object) -> None:
     child.matrix_parent_inverse = parent.matrix_world.inverted()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# EFX_TIML 句柄对象（TIML 统一入口）
+# ─────────────────────────────────────────────────────────────────────────────
+# TIML 在字节上从属于 body（timl_length 界定，先于 attr_blocks），不是独立 attr block。
+# 为收敛割裂的 TIML 入口（导入导出 / 长度循环 / 预览），给每个**含 TIML 的 body** 建一个
+# ~TYPE="EFX_TIML" 子 Empty 作 UI 句柄：选中它即可在面板里访问全部 TIML 操作。
+# 它**不持有数据**——timl_bytes/timl_length 仍权威存于 body（导出字节逻辑原封不动，
+# 故 byte-perfect 不受影响；EFX_TIML 既非 EFX_BODY 也非 EFX_BLOCK，被导出/重排/删除/校验
+# 的类型过滤天然忽略）。所有面板/算子经 resolve_timl_body() 把句柄解析回父 body 后操作。
+
+def find_timl_handle(body_obj: bpy.types.Object):
+    """返回 body 下的 EFX_TIML 句柄对象，无则 None。"""
+    if body_obj is None:
+        return None
+    for c in bpy.data.objects:
+        if c.parent == body_obj and c.get("~TYPE") == "EFX_TIML":
+            return c
+    return None
+
+
+def make_timl_handle(body_obj: bpy.types.Object, collection: bpy.types.Collection = None):
+    """为 body 创建（或复用）EFX_TIML 句柄子对象。"""
+    existing = find_timl_handle(body_obj)
+    if existing is not None:
+        return existing
+    if collection is None:
+        cols = body_obj.users_collection
+        collection = cols[0] if cols else bpy.context.scene.collection
+    label = str(body_obj.get("efx_raw_label", "")) or body_obj.name
+    h = bpy.data.objects.new("%s TIML" % label, None)
+    h.empty_display_type = 'SPHERE'
+    h.empty_display_size = 0.12
+    collection.objects.link(h)
+    h["~TYPE"] = "EFX_TIML"
+    h.parent = body_obj
+    return h
+
+
 def _hash_display_name(type_hash: int) -> str:
     """用 hash 查已知名；没注册的用 0x 十六进制。"""
     return HASH_TO_NAME.get(type_hash, f"0x{type_hash:08X}")
@@ -282,6 +320,8 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
             body_obj["timl_bytes"]   = _b64enc(body.timl_bytes)
             # AttrBlock 子对象（extern 指针化在 §7b 二次 pass 完成）
             _build_attr_block_children(body.attr_blocks, body_obj, col_main, raw_label)
+            if body.timl_length > 0:
+                make_timl_handle(body_obj, col_main)   # TIML 统一入口句柄
 
         elif isinstance(body, MainDataBody):
             # 标准头（20B 头）
@@ -295,6 +335,8 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
             body_obj["timl_bytes"]  = _b64enc(body.timl_bytes)
             # AttrBlock 子对象（extern 指针化在 §7b 二次 pass 完成）
             _build_attr_block_children(body.attr_blocks, body_obj, col_main, raw_label)
+            if body.timl_length > 0:
+                make_timl_handle(body_obj, col_main)   # TIML 统一入口句柄
 
         else:
             # 未知类型：保守存整段 serialize()

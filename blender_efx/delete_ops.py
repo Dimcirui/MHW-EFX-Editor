@@ -175,7 +175,7 @@ class EFX_OT_delete_body(bpy.types.Operator):
         for obj in targets:
             children = [
                 c for c in bpy.data.objects
-                if c.parent == obj and c.get("~TYPE") == "EFX_BLOCK"
+                if c.parent == obj and c.get("~TYPE") in ("EFX_BLOCK", "EFX_TIML")
             ]
             for child in children:
                 bpy.data.objects.remove(child, do_unlink=True)

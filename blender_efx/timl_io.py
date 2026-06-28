@@ -27,6 +27,23 @@ from .i18n import T
 _TIML_MAGIC = b"timl"
 
 
+def resolve_timl_body(obj):
+    """把活动对象解析成所属 EFX_BODY：
+
+    - EFX_TIML 句柄  → 其父 body（TIML 统一入口）
+    - EFX_BODY      → 自身（兼容直接选 body，如给无 TIML 的 body 添加）
+    - 其他          → None
+    """
+    if obj is None:
+        return None
+    t = obj.get("~TYPE")
+    if t == "EFX_TIML":
+        return obj.parent
+    if t == "EFX_BODY":
+        return obj
+    return None
+
+
 def _body_is_timl_capable(obj) -> bool:
     """该对象是否为「能携带 TIML 段」的 EFX_BODY（standard/extended）。
 
@@ -79,16 +96,16 @@ class EFX_OT_export_body_timl(bpy.types.Operator, ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        return _body_has_timl(context.active_object)
+        return _body_has_timl(resolve_timl_body(context.active_object))
 
     def invoke(self, context, event):
         # 用 body 标签预填默认文件名
         if not self.filepath:
-            self.filepath = _default_timl_name(context.active_object) + ".timl"
+            self.filepath = _default_timl_name(resolve_timl_body(context.active_object)) + ".timl"
         return super().invoke(context, event)
 
     def execute(self, context):
-        obj = context.active_object
+        obj = resolve_timl_body(context.active_object)
         if not _body_has_timl(obj):
             self.report({"ERROR"}, "Current object is not an EFX_BODY containing TIML")
             return {"CANCELLED"}
@@ -126,10 +143,10 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
     @classmethod
     def poll(cls, context):
         # 放宽到「能携带 TIML 的 body」：无 TIML 时此算子用于"添加"
-        return _body_is_timl_capable(context.active_object)
+        return _body_is_timl_capable(resolve_timl_body(context.active_object))
 
     def execute(self, context):
-        obj = context.active_object
+        obj = resolve_timl_body(context.active_object)
         if obj is None or obj.get("~TYPE") != "EFX_BODY":
             self.report({"ERROR"}, "Select an EFX_BODY containing TIML first")
             return {"CANCELLED"}
@@ -161,6 +178,12 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
                 pass
         obj["timl_bytes"]  = base64.b64encode(data).decode("ascii")
         obj["timl_length"] = str(len(data))  # 重算长度（导出端也会再重算，双保险）
+        # 确保该 body 有 TIML 统一入口句柄（从无到有添加 TIML 时创建）
+        try:
+            from . import io_tree as _iot
+            _iot.make_timl_handle(obj)
+        except Exception:
+            pass
         self.report(
             {"INFO"},
             f"TIML reimported: {len(data)} bytes (was {old_len}). timl_length is auto-recomputed on export.",
@@ -185,16 +208,24 @@ class EFX_OT_delete_body_timl(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return _body_has_timl(context.active_object)
+        return _body_has_timl(resolve_timl_body(context.active_object))
 
     def execute(self, context):
-        obj = context.active_object
+        obj = resolve_timl_body(context.active_object)
         if not _body_has_timl(obj):
             self.report({"ERROR"}, "Current object is not an EFX_BODY containing TIML")
             return {"CANCELLED"}
         old_len = len(_body_timl_bytes(obj))
         obj["timl_bytes"]  = ""    # base64 of empty = b""
         obj["timl_length"] = "0"   # 导出端也会再重算，双保险
+        # 移除该 body 的 TIML 句柄（清空后不再有 TIML）
+        try:
+            from . import io_tree as _iot
+            h = _iot.find_timl_handle(obj)
+            if h is not None:
+                bpy.data.objects.remove(h, do_unlink=True)
+        except Exception:
+            pass
         self.report({"INFO"}, f"TIML deleted ({old_len} bytes removed). timl_length=0.")
         return {"FINISHED"}
 
@@ -210,17 +241,16 @@ class EFX_PT_body_timl(bpy.types.Panel):
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "TIML"
-    bl_parent_id    = "EFX_PT_body_properties"  # Body Properties 子栏（与 Unkn Attributes 同级）
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
-        # 能携带 TIML 的 body 都显示（无 TIML 时提供"添加"）
-        return _body_is_timl_capable(context.active_object)
+        # TIML 统一入口：选中 EFX_TIML 句柄或能携带 TIML 的 body 都显示（无 TIML 时提供"添加"）
+        return _body_is_timl_capable(resolve_timl_body(context.active_object))
 
     def draw(self, context):
         layout = self.layout
-        obj = context.active_object
+        obj = resolve_timl_body(context.active_object)
         has = _body_has_timl(obj)
 
         # 段状态行
@@ -247,6 +277,15 @@ class EFX_PT_body_timl(bpy.types.Panel):
         exp_row.operator("efx.export_body_timl", text=T("timl.export_btn"), icon="EXPORT")
 
         layout.label(text=T("timl.hint"), icon="INFO")
+
+        # ── 通道编辑（点1：编辑入口归入 TIML 栏目）──────────────────────────────
+        if has:
+            layout.separator()
+            try:
+                from . import timl_edit as _te
+                _te.draw_edit_controls(layout, context)
+            except Exception:
+                pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
