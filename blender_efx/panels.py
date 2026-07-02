@@ -251,12 +251,18 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     # 顺序：[fixed_x(0), random_x(1), fixed_y(2), random_y(3), fixed_z(4), random_z(5)]
     if dtype == "FLOAT6":
         prop6, is_b = _xyz_prop_name(item, "float6_value")
-        # 字段名标题行（含 ⓘ）；Blender 坐标模式下标注
+        # 字段名标题行（含 ⓘ + T2 +TIML 按钮）；Blender 坐标模式下标注
         title_row = layout.row(align=True)
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=(fname + (" [Blender]" if is_b else "")), icon="ORIENTATION_GLOBAL")
         _draw_info_icon(title_row, type_name, item.ori_name)
+        # T2: +TIML 按钮（仅确认字段显示）
+        try:
+            from . import timl_tracks as _tt
+            _tt.draw_field_timl_buttons(title_row, type_name, item.ori_name)
+        except Exception:
+            pass
 
         # X 行：Fixed index=0  Random index=1
         x_row = layout.row(align=True)
@@ -337,6 +343,12 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         val_row.prop(item, "color_rgba_value", index=3, text="A", slider=True)
         # ⓘ 图标（仅有注释时）
         _draw_info_icon(row, type_name, item.ori_name)
+        # T2: +TIML 按钮（仅确认字段显示）
+        try:
+            from . import timl_tracks as _tt
+            _tt.draw_field_timl_buttons(row, type_name, item.ori_name)
+        except Exception:
+            pass
         return
 
     # ── 通用单行布局 ──────────────────────────────────────────────────────────

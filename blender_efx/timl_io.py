@@ -192,6 +192,50 @@ class EFX_OT_import_body_timl(bpy.types.Operator, ImportHelper):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 新建：从零生成空白 TIML（count=0，32 字节），用于不需要导入外部文件的情况
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_OT_create_body_timl(bpy.types.Operator):
+    """为当前 EFX_BODY 新建一个空白 TIML 段（count=0，不含任何轨道）"""
+
+    bl_idname      = "efx.create_body_timl"
+    bl_label       = "Create Blank TIML"
+    bl_description = (
+        "Create a minimal empty TIML segment (count=0) for this EFX_BODY. "
+        "Use 'Enable Axis' in the EFX TIML panel to add A0/A1, then add tracks."
+    )
+    bl_options     = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return _body_is_timl_capable(resolve_timl_body(context.active_object))
+
+    def execute(self, context):
+        obj = resolve_timl_body(context.active_object)
+        if obj is None or obj.get("~TYPE") != "EFX_BODY":
+            self.report({"ERROR"}, "Select an EFX_BODY first")
+            return {"CANCELLED"}
+        if str(obj.get("body_kind", "")) not in ("standard", "extended"):
+            self.report({"ERROR"}, "This body type does not support a TIML segment")
+            return {"CANCELLED"}
+        if _body_has_timl(obj):
+            self.report({"WARNING"}, "Body already has a TIML segment — use Replace to overwrite")
+            return {"CANCELLED"}
+
+        from ..efx_format.timl import make_blank_timl
+        data = make_blank_timl()
+        obj["timl_bytes"]  = base64.b64encode(data).decode("ascii")
+        obj["timl_length"] = str(len(data))
+        try:
+            from . import io_tree as _iot
+            _iot.make_timl_handle(obj)
+        except Exception:
+            pass
+        self.report({"INFO"}, f"Blank TIML created ({len(data)} bytes). Use EFX TIML panel to enable axes.")
+        return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 删除：清空 body 的 TIML 段（timl_bytes="" → 导出端 timl_length 重算为 0）
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -262,19 +306,18 @@ class EFX_PT_body_timl(bpy.types.Panel):
 
         col = layout.column(align=True)
 
-        # 第一排：Add/Replace（按是否有 TIML 切换文案）+ Delete（无 TIML 时禁用）
-        row = col.row(align=True)
-        add_replace_text = T("timl.replace_btn") if has else T("timl.add_btn")
-        row.operator("efx.import_body_timl", text=add_replace_text,
-                     icon="FILE_REFRESH" if has else "ADD")
-        del_sub = row.row(align=True)
-        del_sub.enabled = has
-        del_sub.operator("efx.delete_body_timl", text=T("timl.delete_btn"), icon="TRASH")
-
-        # 第二排：导出（无 TIML 时禁用）
-        exp_row = col.row(align=True)
-        exp_row.enabled = has
-        exp_row.operator("efx.export_body_timl", text=T("timl.export_btn"), icon="EXPORT")
+        if not has:
+            # 无 TIML：两种添加方式并列
+            row = col.row(align=True)
+            row.operator("efx.import_body_timl", text=T("timl.import_file_btn"), icon="FILEBROWSER")
+            row.operator("efx.create_body_timl", text=T("timl.create_blank_btn"), icon="ADD")
+        else:
+            # 有 TIML：替换（从文件）+ 删除
+            row = col.row(align=True)
+            row.operator("efx.import_body_timl", text=T("timl.replace_file_btn"), icon="FILE_REFRESH")
+            row.operator("efx.delete_body_timl", text=T("timl.delete_btn"), icon="TRASH")
+            # 导出
+            col.operator("efx.export_body_timl", text=T("timl.export_btn"), icon="EXPORT")
 
         layout.label(text=T("timl.hint"), icon="INFO")
 
@@ -295,6 +338,7 @@ class EFX_PT_body_timl(bpy.types.Panel):
 _CLASSES = (
     EFX_OT_export_body_timl,
     EFX_OT_import_body_timl,
+    EFX_OT_create_body_timl,
     EFX_OT_delete_body_timl,
     EFX_PT_body_timl,
 )

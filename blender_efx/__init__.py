@@ -52,6 +52,7 @@ from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始�
 from . import timl_io       # TIML ↔ .timl 文件互导 + EFX_TIML 句柄解析
 from . import timl_meta_ui  # TIML 头部元字段编辑（Dope Sheet 侧栏 EFX TIML：长度/循环控制）
 from . import timl_edit      # 阶段2b：自建 TIML 通道编辑会话（原生 F 曲线，零 FK）
+from . import timl_tracks    # T1/T2/T2b：TIML 轨道增删复制（删除/复制/调色板/字段+TIML 按钮）
 from . import transform_sync # TRANSFORM3D → body empty 视口变换（单向）
 from . import uvs_io        # UVS Edition：UVSEQUENCE 块下 .uvs 文件导入/导出/编辑
 from . import uvc_preview    # UVCONTROL 视口 UV 滚动动画预览（根级单会话，全播）
@@ -88,6 +89,7 @@ __all__ = [
     "hexview",
     "timl_io",
     "timl_meta_ui",
+    "timl_tracks",
     "transform_sync",
     "uvs_io",
     "uvc_preview",
@@ -182,6 +184,9 @@ def register():
     # ── 阶段2b：自建 TIML 通道编辑会话（原生 F 曲线，零 FK）──────────────────────
     timl_edit.register()
 
+    # ── T1/T2/T2b：TIML 轨道增删复制（Dope Sheet 面板 + 字段 +TIML 按钮）────────
+    timl_tracks.register()
+
     # ── TRANSFORM3D → 视口同步算子（无面板依赖）─────────────────────────────
     transform_sync.register()
 
@@ -210,6 +215,7 @@ def unregister():
     uvc_preview.unregister()
     uvs_io.unregister()
     transform_sync.unregister()
+    timl_tracks.unregister()
     timl_edit.unregister()
     timl_meta_ui.unregister()
     timl_io.unregister()

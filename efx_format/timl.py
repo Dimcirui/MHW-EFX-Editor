@@ -53,6 +53,8 @@ import struct
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from .hashes import jamcrc
+
 _MAGIC = b"timl"
 
 # 各结构定长
@@ -406,6 +408,153 @@ def _parse_transform(data: bytes, off: int, n: int) -> TimlTransform:
         trans, kdt = struct.unpack_from("<hh", raw, 16)
         f.keyframes.append(TimlKeyframe(raw=raw, frame_timing=ft, transition=trans, data_type=kdt))
     return f
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 轨道增删复制（供 Blender 胶水层调用；timl.dirty=True 门控序列化走重建）
+# ─────────────────────────────────────────────────────────────────────────────
+
+# label_hash / data_ix0 / data_ix1 的 dataclass 默认值是 0，但 2026-07-01 用 6180 条
+# 真实 animation 核对：label_hash 恒非 0（0/6180），同一 TIML 内 A0/A1 两条轴的
+# label_hash 恒不相同（0/116 相同）；data_ix0/data_ix1 也恒非 0（min=1）。具体数值
+# 看起来是原作者工具里任意的曲线/剪辑书签（同一 hash 会被完全不同的 body 复用，
+# 如全语料最高频的一个 label_hash 出现在 267 个语义无关的文件里），推测引擎不校验
+# 具体数值、但把 0 当"未初始化"处理而跳过——从零新建的 TimlData 若留 0 默认值，
+# 很可能是"新建 TIML / 新增轨道游戏内不生效"的头号嫌疑。只是从语料统计推出的
+# 头号嫌疑，不是实机确认的定论，修复效果有待实机验证。
+_NEW_LABEL_HASH = {0: jamcrc(b"EFX_EDITOR_NEW_TIMELINE_A0"), 1: jamcrc(b"EFX_EDITOR_NEW_TIMELINE_A1")}
+_NEW_DATA_IX = (1, 2)
+
+
+def make_blank_animdata(slot: int) -> "TimlData":
+    """新建一条空动画数据（供 enable_axis 无源可复制 / add_transform 从零建轴使用）。
+    label_hash/data_ix0/data_ix1 用非零占位值，而非 dataclass 默认的 0（见上方注释）。"""
+    lbl = _NEW_LABEL_HASH.get(slot, _NEW_LABEL_HASH[0])
+    return TimlData(anim_index=slot, animation_length=30.0,
+                    data_ix0=_NEW_DATA_IX[0], data_ix1=_NEW_DATA_IX[1], label_hash=lbl)
+
+
+def _make_default_keyframes(data_type: int, dt_hash: int,
+                            anim_length: float = 30.0) -> "List[TimlKeyframe]":
+    """生成两个默认关键帧（frame=0 和 frame=anim_length），作为新轨道起始内容。"""
+    frames = [0.0, max(1.0, anim_length)]
+    kfs = []
+    for fr in frames:
+        if data_type == 3:  # Color RGBA：白色全透
+            subs = [{"value": 255, "back": 0.0, "period": 0.0} for _ in range(4)]
+        else:               # Float/SInt/Int/Bool：0.0
+            subs = [{"value": 0.0, "back": 0.0, "period": 0.0}]
+        raw = encode_keyframe(data_type, dt_hash, fr, 1, data_type, subs)  # transition=1=LINEAR
+        kfs.append(TimlKeyframe(raw=raw, frame_timing=fr, transition=1, data_type=data_type))
+    return kfs
+
+
+def add_transform(timl: "Timl", slot: int, tlp_hash: int,
+                  dt_hash: int, data_type: int) -> bool:
+    """在 slot 轴（0=A0, 1=A1）下新增 (tlp_hash, dt_hash) 通道。
+    已存在返回 False；成功返回 True 并设 timl.dirty=True。"""
+    tlp_hash &= 0xFFFFFFFF
+    dt_hash &= 0xFFFFFFFF
+    # 补槽（None 占位，count 跟随）
+    while len(timl.animations) <= slot:
+        timl.animations.append(None)
+    timl.count = max(timl.count, slot + 1)
+
+    if timl.animations[slot] is None:
+        timl.animations[slot] = make_blank_animdata(slot)
+    anim = timl.animations[slot]
+    anim.anim_index = slot
+
+    # 查找或创建 TimlType
+    tlp = None
+    for t in anim.types:
+        if (t.timeline_param_hash & 0xFFFFFFFF) == tlp_hash:
+            tlp = t
+            break
+    if tlp is None:
+        tlp = TimlType(timeline_param_hash=tlp_hash)
+        anim.types.append(tlp)
+
+    # 检查 dt_hash 是否已存在
+    for tf in tlp.transforms:
+        if (tf.datatype_hash & 0xFFFFFFFF) == dt_hash:
+            return False
+
+    anim_len = anim.animation_length if anim.animation_length > 0.0 else 30.0
+    kfs = _make_default_keyframes(data_type, dt_hash, anim_len)
+    tlp.transforms.append(TimlTransform(datatype_hash=dt_hash, data_type=data_type, keyframes=kfs))
+    timl.dirty = True
+    return True
+
+
+def delete_transform(timl: "Timl", slot: int, tlp_hash: int, dt_hash: int) -> bool:
+    """删除 slot 轴的 (tlp_hash, dt_hash) 通道；空 type 一并删除。返回是否找到。"""
+    tlp_hash &= 0xFFFFFFFF
+    dt_hash &= 0xFFFFFFFF
+    if slot >= len(timl.animations) or timl.animations[slot] is None:
+        return False
+    anim = timl.animations[slot]
+    for t in list(anim.types):
+        if (t.timeline_param_hash & 0xFFFFFFFF) != tlp_hash:
+            continue
+        before = len(t.transforms)
+        t.transforms = [tf for tf in t.transforms
+                        if (tf.datatype_hash & 0xFFFFFFFF) != dt_hash]
+        if len(t.transforms) < before:
+            if not t.transforms:
+                anim.types.remove(t)
+            timl.dirty = True
+            return True
+    return False
+
+
+def copy_transform(timl: "Timl", src_slot: int, dst_slot: int,
+                   tlp_hash: int, dt_hash: int) -> bool:
+    """把 src_slot 的 (tlp_hash, dt_hash) 通道（含关键帧）复制到 dst_slot；已有则覆盖。
+    src 不存在返回 False。"""
+    import copy as _copy
+    tlp_hash &= 0xFFFFFFFF
+    dt_hash &= 0xFFFFFFFF
+    # 找源 transform
+    if src_slot >= len(timl.animations) or timl.animations[src_slot] is None:
+        return False
+    src_tf = None
+    for t in timl.animations[src_slot].types:
+        if (t.timeline_param_hash & 0xFFFFFFFF) != tlp_hash:
+            continue
+        for tf in t.transforms:
+            if (tf.datatype_hash & 0xFFFFFFFF) == dt_hash:
+                src_tf = tf
+                break
+        if src_tf is not None:
+            break
+    if src_tf is None:
+        return False
+
+    # 先删目标（若存在）；delete_transform 会设 dirty，但我们总会再设一次
+    delete_transform(timl, dst_slot, tlp_hash, dt_hash)
+
+    # 补槽
+    while len(timl.animations) <= dst_slot:
+        timl.animations.append(None)
+    timl.count = max(timl.count, dst_slot + 1)
+    if timl.animations[dst_slot] is None:
+        timl.animations[dst_slot] = make_blank_animdata(dst_slot)
+    dst_anim = timl.animations[dst_slot]
+    dst_anim.anim_index = dst_slot
+
+    dst_t = None
+    for t in dst_anim.types:
+        if (t.timeline_param_hash & 0xFFFFFFFF) == tlp_hash:
+            dst_t = t
+            break
+    if dst_t is None:
+        dst_t = TimlType(timeline_param_hash=tlp_hash)
+        dst_anim.types.append(dst_t)
+
+    dst_t.transforms.append(_copy.deepcopy(src_tf))
+    timl.dirty = True
+    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────

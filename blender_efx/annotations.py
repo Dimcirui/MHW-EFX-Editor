@@ -43,10 +43,15 @@ FIELD_OFFICIAL_NAMES = {
     ("PARENTOPTIONS", "scale_tracking"):       ("mRelationScl[XYZ]", "0x1E11460A", "确认"),
 
     # ── 语义映射（nTimelineParam 动画参数 ↔ schema 字段，按置信度标注）──────────
-    # TRANSFORM3D：translate/rotate/resize = 位置/旋转/缩放（XYZ 三连）
-    ("TRANSFORM3D", "translate"): ("pos[XYZ]", "0x8E8AFE06", "高"),
-    ("TRANSFORM3D", "rotate"):    ("rot[XYZ]", "0xF105BBE3", "高"),
-    ("TRANSFORM3D", "resize"):    ("scl[XYZ]", "0x9486DF23", "高"),
+    # TRANSFORM3D：translate/rotate/resize = 位置/旋转/缩放（XYZ 三连）铁定确认
+    ("TRANSFORM3D", "translate"): ("pos[XYZ]", "0x8E8AFE06", "确认"),
+    ("TRANSFORM3D", "rotate"):    ("rot[XYZ]", "0xF105BBE3", "确认"),
+    ("TRANSFORM3D", "resize"):    ("scl[XYZ]", "0x9486DF23", "确认"),
+    # BILLBOARD3D：color = 显示颜色 RGBA（nadao_qian.efx 实测：TIML 从红→蓝紫渐变确认）
+    ("BILLBOARD3D", "color"):     ("Color",    "0x58689812", "确认"),
+    # MESH：scale/rotation → SizeX/Y/Z / RotationX/Y/Z（nadao_qian.efx SizeY 0x531B9E44 实测确认，余轴同理）
+    ("MESH", "scale"):            ("SizeX/Y/Z",    "0x241CAED2", "确认"),
+    ("MESH", "rotation"):         ("RotationX/Y/Z","0x002FF505",  "确认"),
     # VELOCITY3D：gravity 名称精确吻合
     ("VELOCITY3D", "gravity"):    ("Gravity", "0x6A5FE3C4", "高"),
     # EMITTERSHAPE3D：transform ↔ Range 盒（注释确认定尺寸/范围，升高）；
