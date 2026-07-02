@@ -29,7 +29,12 @@ byte-perfect 策略（与本仓库 labels_dirty / eof_dirty / opaque 一致）
 
 字节结构（权威：refs/EFX_TIML.bt（010 BT 模板）+ 实测）
 --------------------------------------------------------------------------
-    Header(28B): timl[4] signature[8] NULL(i32) enabled(i64=0x20) count(u32@24)
+    Header(28B): timl[4] signature[3×i32]=(402786304,402786304,0)恒定 enabled(i32)=32
+                 NULL(i32)=0 count(u32@24)
+    （2026-07-01 用 232 个真实 TIML 头核对修正：signature 是 3 个 int32、非 8 字节；
+    enabled 是 i32=32 不是 i64；NULL 紧跟在 enabled 后面。之前的字段切法凑够 28 字节但
+    顺序/宽度全错——parse_timl 只把这段当不透明字节存，真实文件不受影响，但
+    make_blank_timl() 曾经按错误切法手填这些字节，导致新建的 TIML 游戏内不生效。）
     → align16 → dataHeaders: uint64[count]（各 animation 的 Data 绝对偏移，0=空）
     → align16 → 各 Data 结构（按 BT 模板 TIML_Data 布局顺序）：
         [pad16] Data(40B) [pad16] 所有 type 头(24B×) [pad16]
@@ -306,6 +311,26 @@ class Timl:
 # ─────────────────────────────────────────────────────────────────────────────
 # 解析
 # ─────────────────────────────────────────────────────────────────────────────
+
+def make_blank_timl() -> bytes:
+    """生成最小合法 TIML 字节（count=0，32 字节）作为从头新建的起点。
+    可在此基础上用 enable_axis 启用轴、再用 add_transform 添加轨道。
+
+    header 中间 20 字节（signature/enabled/NULL）不是随便填的占位——2026-07-01 用
+    232 个真实 TIML 头核对：signature（3×int32）恒为 (402786304, 402786304, 0)，
+    enabled（int32）恒为 32，NULL（int32）恒为 0，全语料无一例外。之前这里错填成
+    全零 signature + 顺序/宽度都错的 enabled/NULL，游戏引擎会拒绝识别，新建的 TIML
+    完全不生效——parse_timl 对真实文件只是把这段当不透明字节保留，从没验证过具体
+    数值，所以这个 bug 一直没被现有 roundtrip 测试发现。"""
+    header = (
+        _MAGIC                                          # b"timl"  [4]
+        + struct.pack("<3i", 402786304, 402786304, 0)    # signature [12]，全语料恒定
+        + struct.pack("<i", 32)                          # enabled  [4]，全语料恒定 = 0x20
+        + struct.pack("<i", 0)                           # NULL     [4]，全语料恒定
+        + struct.pack("<I", 0)                           # count=0  [4]
+    )  # = _HEADER_SIZE = 28 bytes
+    return header + b"\x00" * (_align16(_HEADER_SIZE) - _HEADER_SIZE)  # → 32 bytes
+
 
 def is_timl(data: bytes) -> bool:
     return len(data) >= 4 and data[:4] == _MAGIC
