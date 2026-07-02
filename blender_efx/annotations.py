@@ -318,24 +318,111 @@ FIELD_ANNOTATIONS = {
 
     # ─── ALPHACORRECTION ──────────────────────────────────────────────────────
     # AlphaCorrection (EFX_Subtypes.bt)
-    ("ALPHACORRECTION", "transparentness"): {
-        "EN": "Transparentness & Brightness",
-        "ZH": "透明度与亮度",
+    ("ALPHACORRECTION", "alpha_clip_threshold"): {
+        "EN": "Hard alpha clip threshold (like Photoshop's Threshold tool) — alpha below this value is cut to 0. 0 = no clipping.",
+        "ZH": "Alpha 硬裁切阈值（类似 PS 的 Threshold 工具）——低于此值的 alpha 直接归 0。0 = 不裁切。",
+    },
+    ("ALPHACORRECTION", "contrast_gamma"): {
+        "EN": "Contrast/gamma correction on alpha (field formerly named 'transparentness'). Unbounded — higher values fade out low/mid alpha (edges) while keeping high alpha (core) intact; values can exceed 1, where almost everything fades to transparent.",
+        "ZH": "对 alpha 做对比度/伽马修正（原字段名 transparentness）。无上限——值越大，低/中 alpha（边缘）越快变透明，高 alpha（核心）保留；可超过 1，过大时几乎全图变透明。",
+    },
+
+    # ─── TUBELIGHT ────────────────────────────────────────────────────────────
+    # TubeLight 由一个面（tailColor 发光平面）+ 一根光柱（起点 headColor，终点 tailColor）组成。
+    ("TUBELIGHT", "headColor"): {
+        "EN": "Light column start color.",
+        "ZH": "光柱起点颜色。",
+    },
+    ("TUBELIGHT", "tailColor"): {
+        "EN": "Light column end color.",
+        "ZH": "光柱终点颜色。",
+    },
+    ("TUBELIGHT", "headColorEpvSlot"): {
+        "EN": "EPV color slot associated with headColor.",
+        "ZH": "起点颜色对应的 EPV 颜色槽。",
+    },
+    ("TUBELIGHT", "columnLength"): {
+        "EN": "Length of the light column (start=headColor, end=tailColor).",
+        "ZH": "光柱长度（起点 headColor，终点 tailColor）。",
+    },
+    ("TUBELIGHT", "columnLengthModifier"): {
+        "EN": "Also affects the light column's length; exact relation to columnLength not yet determined.",
+        "ZH": "也会影响光柱长度，跟 columnLength 具体是什么关系还不确定。",
+    },
+    ("TUBELIGHT", "columnRadius"): {
+        "EN": "Light column radius.",
+        "ZH": "光柱半径。",
+    },
+    ("TUBELIGHT", "columnRadiusJitter"): {
+        "EN": "Random jitter on the column radius.",
+        "ZH": "光柱半径的随机抖动。",
+    },
+    ("TUBELIGHT", "columnEdgeSoftness"): {
+        "EN": "Affects how soft/blurred the column's edge looks.",
+        "ZH": "影响光柱边缘的柔化程度。",
+    },
+    ("TUBELIGHT", "lightIntensity"): {
+        "EN": "Light intensity.",
+        "ZH": "光照强度。",
+    },
+    ("TUBELIGHT", "lightIntensityJitter"): {
+        "EN": "Random jitter on the light intensity.",
+        "ZH": "光照强度的随机抖动。",
+    },
+    ("TUBELIGHT", "tailGlowSpread"): {
+        "EN": "Makes the tail glow longer with softer/blurrier edges.",
+        "ZH": "让尾光变得更长、边缘更虚。",
+    },
+    ("TUBELIGHT", "frontFaceTintMode"): {
+        "EN": "0=emission-facing direction unaffected by the tube's own light. 1=surrounding glow brightens, facing direction tinted by tailColor.",
+        "ZH": "0=发射面朝向方向不受自身光影响；1=发光区域四周变亮，朝向方向受 tailColor 染色。",
+    },
+    ("TUBELIGHT", "backFaceTintMode"): {
+        "EN": "Same as frontFaceTintMode but inverted — controls whether the region opposite the facing direction is tinted by headColor.",
+        "ZH": "跟 frontFaceTintMode 一样但反过来——控制发射面反向区域是否受 headColor 染色。",
+    },
+    ("TUBELIGHT", "tailPlaneOffset"): {
+        "EN": "Front-back position of the tailColor emitting plane.",
+        "ZH": "tailColor 发光平面的前后位置。",
+    },
+    ("TUBELIGHT", "unkn6b_1"): {
+        "EN": "Possibly related to the brightness/glow halo of the emission — not confirmed.",
+        "ZH": "可能跟发光的明暗光圈相关，尚未确认。",
+    },
+    ("TUBELIGHT", "unkn5_0"): {
+        "EN": "Always 24 in the sample data — likely just a common default value.",
+        "ZH": "语料里恒为 24，可能只是常见的默认值。",
+    },
+    ("TUBELIGHT", "unkn1_0"): {
+        "EN": "Possibly texture scroll speed.",
+        "ZH": "可能为纹理滚动速度。",
+    },
+    ("TUBELIGHT", "unkn1_8"): {
+        "EN": "Possibly core brightness.",
+        "ZH": "可能为核心亮度。",
+    },
+    ("TUBELIGHT", "unkn1_10"): {
+        "EN": "Possibly related to the light column's length; relation to columnLength/columnLengthModifier not yet determined.",
+        "ZH": "可能与光柱长度有关，跟 columnLength/columnLengthModifier 的关系还不确定。",
     },
 
     # ─── RGBFIRE ──────────────────────────────────────────────────────────────
     # ExternRgbFire (EFX_Subtypes.bt)
-    ("RGBFIRE", "color1"): {
-        "EN": "Color Channel 1 (Alpha)",
-        "ZH": "颜色通道 1（Alpha）",
+    ("RGBFIRE", "fireColor"): {
+        "EN": "Fire color — the outer glowing edge; also tints the inner smoke color.",
+        "ZH": "火焰色——外缘的荧光色；同时会给内部的烟雾色染色。",
     },
     ("RGBFIRE", "brightness1"): {
-        "EN": "Brightness 1 (Alpha) — colors will combine",
-        "ZH": "亮度 1（Alpha）—— 颜色会叠加混合",
+        "EN": "Fire color brightness — colors will combine.",
+        "ZH": "火焰色亮度——颜色会叠加混合。",
     },
-    ("RGBFIRE", "color2"): {
-        "EN": "Color Channel 2 (RGB)",
-        "ZH": "颜色通道 2（RGB）",
+    ("RGBFIRE", "smokeColor"): {
+        "EN": "Smoke color — the inner core color.",
+        "ZH": "烟雾色——内部的核心色。",
+    },
+    ("RGBFIRE", "brightness2"): {
+        "EN": "Smoke color brightness rate.",
+        "ZH": "烟雾色的亮度速率。",
     },
     ("RGBFIRE", "brightness3"): {
         "EN": "Color Balance 1 — brings out color 1 without lowering overall brightness",
@@ -345,21 +432,21 @@ FIELD_ANNOTATIONS = {
         "EN": "Color Balance 2 — setting either balance to 0 makes all disappear",
         "ZH": "色彩平衡 2 —— 任一平衡设为 0 都会让全部消失",
     },
-    ("RGBFIRE", "color1Param_enable"): {
-        "EN": "Color 1 Params (Green channel control)",
-        "ZH": "颜色 1 参数（绿色通道控制）",
+    ("RGBFIRE", "fireColorParam_enable"): {
+        "EN": "Fire color timing params (fade-in / duration / fade-out).",
+        "ZH": "火焰色时序参数（淡入 / 持续 / 淡出）。",
     },
-    ("RGBFIRE", "color1Param_unkn9"): {
-        "EN": "Setting to 1 kills color 1",
-        "ZH": "设为 1 会消除颜色 1",
+    ("RGBFIRE", "fireColorParam_unkn9"): {
+        "EN": "Setting to 1 kills the fire color.",
+        "ZH": "设为 1 会消除火焰色。",
     },
-    ("RGBFIRE", "color2Param_enable"): {
-        "EN": "Color 2 Params (Red channel control)",
-        "ZH": "颜色 2 参数（红色通道控制）",
+    ("RGBFIRE", "smokeColorParam_enable"): {
+        "EN": "Smoke color timing params (fade-in / duration / fade-out). Note: even a short duration can tint a persistent effect permanently.",
+        "ZH": "烟雾色时序参数（淡入 / 持续 / 淡出）。注意：即使持续时间很短，也可能对常驻特效造成持久染色。",
     },
-    ("RGBFIRE", "color2Param_unkn9"): {
-        "EN": "Setting to 1 kills color 2",
-        "ZH": "设为 1 会消除颜色 2",
+    ("RGBFIRE", "smokeColorParam_unkn9"): {
+        "EN": "Setting to 1 kills the smoke color.",
+        "ZH": "设为 1 会消除烟雾色。",
     },
 
     # ─── GUIDE ────────────────────────────────────────────────────────────────

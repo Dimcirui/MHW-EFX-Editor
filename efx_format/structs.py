@@ -594,7 +594,7 @@ EXTERN_VELOCITY3D_SCHEMA = [
     ('energyOnAxisY', 'f'),
     ('energyOnAxisZ', 'f'),
     ('expansionType', 'i'),
-    ('gravity', 'f'),
+    ('gravity', 'f'),  # TIML DT 0x6A5FE3C4("Gravity") 已确认
     ('gravity_jitter', 'f'),
     ('expansionDelay', 'i'),
     ('expansionDelayJitter', 'i'),
@@ -682,19 +682,19 @@ EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_SCHEMA
 # 字段宽度与原版完全一致（仅拆分 unkn1=('f',2)→X、unkn2=('f',8)→Y/Z，重命名，不改类型/字节）。
 EXTERN_SCALEANIM_SCHEMA = [
     ('unkn0', 'i'),
-    ('initialScaleSpeed', 'f'),        # 初始扩散速度（原 animationSpeed）
+    ('initialScaleSpeed', 'f'),        # 初始扩散速度（原 animationSpeed）TIML DT 0xC24DF97C("SizeScalarAdd") 已确认
     ('NULL', 'i'),
     ('initialScaleAccel', 'f'),        # 初始扩散加速度（原 scaleSpeed）
     ('initialScaleAccelJitter', 'f'),  # 原 scaleSpeedJitter
-    ('scaleSpeedX', 'f'),              # X 轴缩放速度（原 unkn1[0]）
+    ('scaleSpeedX', 'f'),              # X 轴缩放速度（原 unkn1[0]）TIML DT 0x909EC047("SizeXAdd") 已确认
     ('scaleSpeedXJitter', 'f'),        # 原 unkn1[1]
     ('scaleAccelX', 'f'),              # X 轴缩放加速度（原 scaleAccel）
     ('scaleAccelXJitter', 'f'),        # 原 scaleAccelJitter
-    ('scaleSpeedY', 'f'),              # Y 轴缩放速度（原 unkn2[0]）
+    ('scaleSpeedY', 'f'),              # Y 轴缩放速度（原 unkn2[0]）TIML DT 0x2822A722("SizeYAdd") 已确认
     ('scaleSpeedYJitter', 'f'),        # unkn2[1]
     ('scaleAccelY', 'f'),              # Y 轴缩放加速度 unkn2[2]
     ('scaleAccelYJitter', 'f'),        # unkn2[3]
-    ('scaleSpeedZ', 'f'),              # Z 轴缩放速度 unkn2[4]（仅模型有 Z）
+    ('scaleSpeedZ', 'f'),              # Z 轴缩放速度 unkn2[4]（仅模型有 Z）TIML DT 0x3A9708CC("SizeZAdd") 已确认
     ('scaleSpeedZJitter', 'f'),        # unkn2[5]
     ('scaleAccelZ', 'f'),              # Z 轴缩放加速度 unkn2[6]
     ('scaleAccelZJitter', 'f'),        # unkn2[7]
@@ -752,35 +752,36 @@ assert _schema_size(FADEBYDEPTH_SCHEMA) == 20, \
 
 EXTERN_RGBFIRE_SCHEMA = [
     ('unkn0', 'i'),
-    ('color1', ('XYZ', 2)),
+    # 实机确认：color1=外缘荧光色（会给内部的 smokeColor 染色），color2=内部色。
+    ('fireColor', ('XYZ', 2)),   # 原 color1；TIML DT 0x39A1E557("FireColor") 已确认
     ('brightness1', 'f'),
-    ('color2', ('XYZ', 2)),
-    ('brightness2', 'f'),
+    ('smokeColor', ('XYZ', 2)),  # 原 color2；TIML DT 0x5A8C6820("SmokeColor") 已确认
+    ('brightness2', 'f'),        # TIML DT 0x9F1E012E("ColorRate") 已确认
     ('unkn4', 'f'),
     ('brightness3', 'f'),
     ('brightness4', 'f'),
-    # ColorParam color1Param (10 ints)
-    ('color1Param_enable', 'i'),
-    ('color1Param_fadeIn', 'i'),
-    ('color1Param_fadeInJitter', 'i'),
-    ('color1Param_duration', 'i'),
-    ('color1Param_durationJitter', 'i'),
-    ('color1Param_fadeOut', 'i'),
-    ('color1Param_fadeOutJitter', 'i'),
-    ('color1Param_unkn7', 'i'),
-    ('color1Param_unkn8', 'i'),
-    ('color1Param_unkn9', 'i'),
-    # ColorParam color2Param (10 ints)
-    ('color2Param_enable', 'i'),
-    ('color2Param_fadeIn', 'i'),
-    ('color2Param_fadeInJitter', 'i'),
-    ('color2Param_duration', 'i'),
-    ('color2Param_durationJitter', 'i'),
-    ('color2Param_fadeOut', 'i'),
-    ('color2Param_fadeOutJitter', 'i'),
-    ('color2Param_unkn7', 'i'),
-    ('color2Param_unkn8', 'i'),
-    ('color2Param_unkn9', 'i'),
+    # ColorParam fireColorParam (10 ints)：fireColor 的淡入/持续/淡出时序
+    ('fireColorParam_enable', 'i'),
+    ('fireColorParam_fadeIn', 'i'),
+    ('fireColorParam_fadeInJitter', 'i'),
+    ('fireColorParam_duration', 'i'),
+    ('fireColorParam_durationJitter', 'i'),
+    ('fireColorParam_fadeOut', 'i'),
+    ('fireColorParam_fadeOutJitter', 'i'),
+    ('fireColorParam_unkn7', 'i'),
+    ('fireColorParam_unkn8', 'i'),
+    ('fireColorParam_unkn9', 'i'),
+    # ColorParam smokeColorParam (10 ints)：smokeColor 的淡入/持续/淡出时序
+    ('smokeColorParam_enable', 'i'),
+    ('smokeColorParam_fadeIn', 'i'),
+    ('smokeColorParam_fadeInJitter', 'i'),
+    ('smokeColorParam_duration', 'i'),
+    ('smokeColorParam_durationJitter', 'i'),
+    ('smokeColorParam_fadeOut', 'i'),
+    ('smokeColorParam_fadeOutJitter', 'i'),
+    ('smokeColorParam_unkn7', 'i'),
+    ('smokeColorParam_unkn8', 'i'),
+    ('smokeColorParam_unkn9', 'i'),
 ]
 assert _schema_size(EXTERN_RGBFIRE_SCHEMA) == 112, \
     f"EXTERN_RGBFIRE_SCHEMA size mismatch: {_schema_size(EXTERN_RGBFIRE_SCHEMA)}"
@@ -837,8 +838,8 @@ assert _schema_size(ROTATEANIM_SCHEMA) == 80, \
 
 ALPHACORRECTION_SCHEMA = [
     ('unkn0', 'i'),
-    ('unkn1', 'f'),
-    ('transparentness', 'f'),
+    ('alpha_clip_threshold', 'f'),  # 原 unkn1；硬阈值裁切(类 PS Threshold)：<此值的 alpha 直接归 0，0=不裁
+    ('contrast_gamma', 'f'),  # 原 transparentness；对比度/伽马修正，无上限：越大边缘(低/中alpha)越快变透明、核心保留
     ('NULL', 'i'),
     ('unkn2', 'i'),
 ]
@@ -1728,7 +1729,7 @@ def pack_uvsequence(values: dict) -> bytes:
 #
 # billboard_data (108 B, includes the path_len field at offset +104):
 #   unkn0(4)+applicationRule(4)+XYZ color(2)[2](8)+brightness(4)+
-#   unkn2[3](12)+EPVColorSlot1(4)+SlotOverride1(4)+unknDimension(4)+unknDimJ(4)+
+#   unkn2[3](12)+EPVColorSlot1(4)+SlotOverride1(4)+rotation(4)+rotationJitter(4)+
 #   scale(4)+scaleJ(4)+width(4)+widthJ(4)+height(4)+heightJ(4)+
 #   flowmapSpeed(4)+flowmapSpeedJ(4)+flowmapAccel(4)+flowmapAccelJ(4)+
 #   flowmapStrength(4)+flowmapStrengthJ(4)+flowmapStrAccel(4)+flowmapStrAccelJ(4)+
@@ -1744,8 +1745,8 @@ def pack_uvsequence(values: dict) -> bytes:
 _BILLBOARD3D_FIXED_SCHEMA = [
     ('unkn0',                      'i'),
     ('applicationRule',            'i'),
-    ('color',                      ('XYZ[]', 2, 2)),
-    ('brightness',                 'f'),
+    ('color',                      ('XYZ[]', 2, 2)),  # TIML DT 0x58689812("Color") 已确认
+    ('brightness',                 'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
     # 社区实测：原模板 unkn2 = 3×int 有误。[0] 是随机亮度乘数（float）；
     # [2] 是混合模式开关（0=alpha 混合，1=add 混合）。拆成三个独立字段。
     ('randomBrightnessMult',       'f'),
@@ -1753,13 +1754,13 @@ _BILLBOARD3D_FIXED_SCHEMA = [
     ('blendMode',                  'i'),
     ('EPVColorSlot1',              'i'),
     ('SlotOverride1',              'i'),
-    ('unknDimension',              'f'),
-    ('unknDimensionJitter',        'f'),
-    ('scale',                      'f'),
+    ('rotation',                   'f'),  # TIML DT 0x2FF50558("Rotation") 实机确认
+    ('rotationJitter',             'f'),
+    ('scale',                      'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
     ('scaleJitter',                'f'),
-    ('width',                      'f'),
+    ('width',                      'f'),  # TIML DT 0x241CAED2("SizeX") 已确认
     ('widthJitter',                'f'),
-    ('height',                     'f'),
+    ('height',                     'f'),  # TIML DT 0x531B9E44("SizeY") 已确认
     ('heightJitter',               'f'),
     ('flowmapSpeed',               'f'),
     ('flowmapSpeedJitter',         'f'),
@@ -1883,17 +1884,17 @@ _MOD3_PROPERTIES_SCHEMA = [
     ('CD1',                     'i'),
     ('emissive_saturation',     'f'),
     ('emissive_saturation_j',   'f'),
-    ('emissive_brightness',     'f'),
+    ('emissive_brightness',     'f'),  # TIML DT 0x18C577DE("EmissiveColorRate") 已确认
     ('emissive_brightness_j',   'f'),
     ('rotation',                ('XYZ', 0)),
     ('unkn5_2',                 'f'),
     ('unkn5_3',                 'f'),
     ('scale',                   ('XYZ', 0)),
-    ('global_scale',            'f'),
+    ('global_scale',            'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
     ('global_scale_jitter',     'f'),
     ('starting_model_viscon',   'i'),
     ('end_model_viscon',        'i'),
-    ('color1',                  'colour'),
+    ('color1',                  'colour'),  # TIML DT 0x58689812("Color") 已确认
     ('color2',                  'colour'),
     ('color3',                  'colour'),
     ('color4',                  'colour'),
@@ -1972,16 +1973,16 @@ _RIBBON_FIXED_SCHEMA = [
     ('spacer1',                  'i'),
     ('color2',                   ('XYZ', 2)),
     ('spacer2',                  'i'),
-    ('brightness',               'f'),
+    ('brightness',               'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
     # 原 unkn4(int[2]) 拆为两个独立字段（实测：[0] 是 float 标量，全语料 0.0–30.0、
     # 零 NaN，常见 ±0.0；[1] 是 int 枚举 0/1/2 = 形态/速度对齐开关）。
     ('unkn4_0',                  'f'),
     ('unkn4_1',                  'i'),
-    ('scale',                    'f'),
+    ('scale',                    'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
     ('scale_jitter',             'f'),
-    ('width',                    'f'),
+    ('width',                    'f'),  # TIML DT 0xF0DF339B("WidthSize") 已确认
     ('width_jitter',             'f'),
-    ('length',                   'f'),
+    ('length',                   'f'),  # TIML DT 0xF92E647B("Length") 已确认
     ('length_jitter',            'f'),
     ('uv_map_height',            'i'),
     ('material_tesselation_density', 'f'),
@@ -2072,8 +2073,8 @@ def pack_ribbon(values: dict) -> bytes:
 _PLANE_DDS_SCHEMA = [
     ('unkn0',              'i'),
     ('applicationRule',    'i'),
-    ('color',              ('XYZ[]', 2, 2)),
-    ('brightness',         'f'),
+    ('color',              ('XYZ[]', 2, 2)),  # TIML DT 0x58689812("Color") 已确认
+    ('brightness',         'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
     ('unkn20',             'i'),
     ('EPVColorBlend',      'i'),
     ('unkn22',             'i'),
@@ -2081,11 +2082,11 @@ _PLANE_DDS_SCHEMA = [
     ('EPVColorSlot2',      'i'),
     ('SlotOverride1',      'i'),
     ('SlotOverride2',      'i'),
-    ('scale',              'f'),
+    ('scale',              'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
     ('scaleJitter',        'f'),
     ('width',              'f'),
     ('widthJitter',        'f'),
-    ('height',             'f'),
+    ('height',             'f'),  # TIML DT 0x531B9E44("SizeY") 已确认
     ('heightJitter',       'f'),
     ('flowmapSpeed',       'f'),
     ('flowmapSpeedJitter', 'f'),
@@ -2221,9 +2222,9 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('unkn03_06',              'f'),
     ('endPosition',            ('XYZ', 3)), # 末端骨骼 XYZ 偏移
     ('unkn03_10',              'f'),
-    ('width',                  'f'),
+    ('width',                  'f'),  # TIML DT 0xF0DF339B("WidthSize") 已确认
     ('widthJitter',            'f'),
-    ('length',                 'f'),
+    ('length',                 'f'),  # TIML DT 0xF92E647B("Length") 已确认
     ('lengthJitter',           'f'),
     ('startWidth',             'f'),
     ('startOpacity',           'f'),
@@ -2813,24 +2814,48 @@ def pack_tonemapfilter(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 # TubeLight (variable: 124B fixed + path_len(4) + path[path_len]，path_len 含末尾 null)
 #
-# BT (EFX_Crimson.bt) 分组：unkn0[3]+unkn1[11]+unkn2[2]+unkn3[4]+unkn4[4]+
-#   unkn5[2]+unkn6[4]+unkn7 = 124B；类型按全 22 实例逐列分析判定：
-#   off80 / off108 为 RGBA 颜色（含 NaN 位模式）→ 用 int 防 NaN 归一化；
-#   0xcd 未初始化列亦用 int。其余清晰浮点列用 float。
+# BT (EFX_Crimson.bt) 原始分组：unkn0[3]+unkn1[11]+unkn2[2]+unkn3[4]+unkn4[4]+
+#   unkn5[2]+unkn6[4]+unkn7 = 124B。字段已按用户实机测试结果（改 TIML 关键帧+
+#   游戏内观察）从原来的打包数组拆成独立具名字段（字节布局完全不变，pack/unpack
+#   按列表顺序处理，拆分对 byte-perfect 无影响）。
+#
+# TubeLight 由一个面（tailColor 发光平面）+ 一根光柱（起点 headColor，终点
+# tailColor）组成。未确认的字段保留 unknN 命名，注释里用"可能为"标注候选猜测
+# （来自 stats/tubelight.txt 的语料统计，未实机验证，随时可能被推翻）。
 # path_len 计入末尾 null（如 "vfx\dds\..._BM\0" path_len=30）。
 # ─────────────────────────────────────────────────────────────────────────────
 
 _TUBELIGHT_FIXED_SCHEMA = [
-    ('unkn0',  ('i', 3)),   # 12B  off0-11
-    ('unkn1',  ('f', 11)),  # 44B  off12-55
-    ('unkn2',  ('f', 2)),   # 8B   off56-63
-    ('unkn3',  ('i', 4)),   # 16B  off64-79
-    ('color0', 'i'),        # 4B   off80  (RGBA → int)
-    ('unkn4',  ('f', 3)),   # 12B  off84-95
-    ('unkn5',  ('i', 2)),   # 8B   off96-103
-    ('unkn6a', ('i', 2)),   # 8B   off104-111 (含 color1@108)
-    ('unkn6b', ('f', 2)),   # 8B   off112-119
-    ('unkn7',  'f'),        # 4B   off120-123
+    ('unkn0',  ('i', 3)),   # 12B  off0-11，含义不明
+    ('unkn1_0',  'f'),   # off12 — 可能为纹理滚动速度
+    ('unkn1_1',  'f'),   # off16 — 含义不明（22 实例恒 0.0）
+    ('lightIntensity', 'f'),       # off20 光照强度
+    ('lightIntensityJitter', 'f'), # off24 光照强度抖动
+    ('columnLengthModifier', 'f'), # off28 也与光柱长度相关，具体跟 columnLength 的关系待定
+    ('columnRadius', 'f'),         # off32 光柱半径
+    ('columnRadiusJitter', 'f'),   # off36 光柱半径抖动
+    ('columnEdgeSoftness', 'f'),   # off40 与光柱边缘柔化相关
+    ('unkn1_8',  'f'),   # off44 — 可能为核心亮度
+    ('unkn1_9',  'f'),   # off48 — 含义不明（22 实例恒 0.0）
+    ('unkn1_10', 'f'),   # off52 — 可能与光柱长度有关，跟 columnLength/columnLengthModifier 的关系待定
+    ('unkn2',  ('f', 2)),   # 8B   off56-63，含义不明
+    ('unkn3_0', 'i'),          # off64 含义不明
+    ('unkn3_1', 'i'),          # off68 含义不明
+    ('unkn3_2', 'i'),          # off72 含义不明
+    ('headColorEpvSlot', 'i'), # off76 headColor 对应的 EPV 颜色槽
+    ('headColor', 'i'),        # 4B  off80  光柱起点颜色（打包 RGBA int）
+    ('columnLength', 'f'),     # off84 光柱长度（起点 headColor，终点 tailColor）
+    ('tailGlowSpread', 'f'),   # off88 尾光变长 + 边缘虚化（一个参数两种视觉效果）
+    ('backFaceTintMode', 'f'), # off92 发射面反向区域是否受 headColor 染色
+                               #        （与 frontFaceTintMode 镜像机制，反过来）
+    ('unkn5_0',  'i'),         # off96  — 含义不明（22 实例恒 24，非锁定占位，仅提示"通常为 24"）
+    ('unkn5_1',  'i'),         # off100 — 恒 0xCDCDCDCD 未初始化标记，UI 锁定只读
+    ('unkn6a_0', 'i'),         # off104 — 含义不明（22 实例恒 0）
+    ('tailColor', 'i'),        # off108 光柱终点颜色（打包 RGBA int）
+    ('tailPlaneOffset', 'f'),  # off112 tailColor 发光平面的前后位置
+    ('unkn6b_1', 'f'),         # off116 — 可能跟发光明暗光圈相关，未确认
+    ('frontFaceTintMode', 'f'),# off120 发射面朝向方向是否受 tailColor 染色
+                               #        （0=不受影响；1=受影响，且此时发光区域四周会变亮）
 ]
 assert _schema_size(_TUBELIGHT_FIXED_SCHEMA) == 124, \
     f"_TUBELIGHT_FIXED_SCHEMA size mismatch: {_schema_size(_TUBELIGHT_FIXED_SCHEMA)}"

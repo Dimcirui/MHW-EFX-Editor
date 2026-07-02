@@ -416,6 +416,24 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# TUBELIGHT 专用字段绘制（headColor/tailColor 是打包 int32 RGBA，拆成颜色选择器；
+# 2026-07-01 schema 重构后 unkn5/unkn6a 已是独立标量字段，交给通用引擎处理）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _draw_tubelight_int_as_color(layout, item, type_name, label):
+    """headColor/tailColor：打包 RGBA 颜色选择器。"""
+    row = layout.row(align=True)
+    row.scale_y = 1.1
+    row.use_property_split = False
+    split = row.split(factor=0.45)
+    split.label(text=label)
+    val_row = split.row(align=True)
+    val_row.prop(item, "int_as_color_display", text="")
+    val_row.prop(item, "int_as_color_display", index=3, text="A", slider=True)
+    _draw_info_icon(row, type_name, item.ori_name)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # L1.4 预设面板 — 动态 EnumProperty items 回调
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -566,6 +584,13 @@ def _draw_block_fields_content(layout, context):
     except (ValueError, ImportError):
         pass
 
+    _is_tubelight = False
+    try:
+        from ..efx_format.hashes import TUBELIGHT as _TUBELIGHT_HASH_P
+        _is_tubelight = (int(bp.type_hash_str) == _TUBELIGHT_HASH_P)
+    except (ValueError, ImportError):
+        pass
+
     # ── 可编辑块：展示字段列表 ────────────────────────────────────────────────
     if bp.is_editable:
         if len(bp.field_items) == 0:
@@ -650,6 +675,15 @@ def _draw_block_fields_content(layout, context):
                         _bcol = _prow.column(align=True)
                         _op = _bcol.operator("efx.ptb_remove_override", text="", icon="X")
                         _op.param_index = _pord
+                    i += 1
+                    continue
+                # TUBELIGHT：headColor/tailColor 是打包 int32 RGBA（非现成支持的
+                # 4-ubyte-list 格式），拆成颜色选择器（2026-07-01 schema 重构后，
+                # unkn5/unkn6a 已拆成独立标量字段，交给通用引擎+RESERVED_FILL_FIELDS
+                # 处理即可，不再需要专属分支）。
+                if _is_tubelight and item.ori_name in ("headColor", "tailColor"):
+                    _lbl = "HeadColor" if item.ori_name == "headColor" else "TailColor"
+                    _draw_tubelight_int_as_color(col, item, type_name, _lbl)
                     i += 1
                     continue
                 # PLEMISSIVE：body_p / wp_p（光圈部位掩码）保留原数值字段（直接可看/改），

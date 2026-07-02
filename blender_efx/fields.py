@@ -295,6 +295,44 @@ def _float3_display_set(self, val):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 打包 int32 RGBA 颜色显示影子属性（TUBELIGHT headColor/tailColor 专用）
+#
+# 两者都是打包成单个 int32 的 RGBA（非现成支持的 'colour'/('XYZ',2) 4-ubyte-list
+# 格式）。跟 float6_display/float3_display 一样：不单独存值，读写直接转发到真实
+# 值槽 int_value，写入时触发该值槽自身的 update=_mark_block_dirty，不需要额外
+# 挂 update。只有 TUBELIGHT 的 headColor/tailColor 用到，其余块的 item 上这个
+# 槽位始终空闲。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _packed_rgba_to_floats(packed: int) -> list:
+    """单个 int32（小端 RGBA 打包）→ [r,g,b,a] float [0,1]（R 在最低字节）。"""
+    u = int(packed) & 0xFFFFFFFF
+    return [
+        _ubyte_to_float(u & 0xFF),
+        _ubyte_to_float((u >> 8) & 0xFF),
+        _ubyte_to_float((u >> 16) & 0xFF),
+        _ubyte_to_float((u >> 24) & 0xFF),
+    ]
+
+
+def _floats_to_packed_rgba(val) -> int:
+    """[r,g,b,a] float [0,1] → 单个 int32（小端 RGBA 打包，R 在最低字节）。"""
+    v = list(val)
+    r, g, b, a = (_float_to_ubyte(v[0]), _float_to_ubyte(v[1]),
+                  _float_to_ubyte(v[2]), _float_to_ubyte(v[3]))
+    u = r | (g << 8) | (b << 16) | (a << 24)
+    return u - 0x100000000 if u >= 0x80000000 else u
+
+
+def _int_as_color_get(self):
+    return _packed_rgba_to_floats(int(self.int_value))
+
+
+def _int_as_color_set(self, val):
+    self.int_value = _floats_to_packed_rgba(val)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # EFXFieldItem  —  通用字段项 PropertyGroup
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -441,6 +479,17 @@ class EFXFieldItem(PropertyGroup):
         precision=6,
         get=_float3_display_get,
         set=_float3_display_set,
+    )
+
+    # ── TUBELIGHT 专用影子属性（打包 RGBA 颜色，见上方函数注释）──────────────
+    int_as_color_display: FloatVectorProperty(
+        name="",
+        description="Packed int32 RGBA (little-endian, R in lowest byte) as color swatch",
+        subtype='COLOR',
+        size=4,
+        min=0.0, max=1.0,
+        get=_int_as_color_get,
+        set=_int_as_color_set,
     )
 
     # ── 整数向量值槽 ─────────────────────────────────────────────────────────
