@@ -705,14 +705,24 @@ FIELD_ANNOTATIONS = {
               "8=垂直于地面且不追踪",
     },
     ("MESH", "colorize_material1"): {
-        "EN": "Byte controls for material colorize slot 1",
-        "ZH": "材质染色槽 1 的字节控制",
+        "EN": "4 bytes controlling how the mesh is colorized. Byte 0 and byte 2 are two "
+              "channels that both tint with color1 (having both on makes it brighter). "
+              "Byte 1 needs byte 0 or byte 2 turned on too, and makes the color randomly "
+              "cycle through a mix of color1/color2/color3 each time the effect plays "
+              "(color4 never takes part). Byte 3 is a separate, usually near-invisible "
+              "channel whose color can be set via colorize_material2.",
+        "ZH": "4 个字节，控制网格如何染色。byte 0 和 byte 2 是两条都用 color1 染色的通道"
+              "（两个都开会让颜色更亮）。byte 1 需要 byte 0 或 byte 2 也打开，会让颜色在 "
+              "color1/color2/color3 之间随机混合，每次特效播放都可能不同（color4 不参与）。"
+              "byte 3 是独立的一条通道，默认几乎看不见，颜色可以通过 colorize_material2 指定。",
     },
     ("MESH", "colorize_material2"): {
-        "EN": "Byte controls for material colorize slot 2. "
-              "Second byte tied to EPV Slot colour with NFH plugin.",
-        "ZH": "材质染色槽 2 的字节控制。"
-              "第二个字节在使用 NFH 插件时绑定到 EPV 槽颜色。",
+        "EN": "4 bytes. Byte 1 sets colorize_material1's byte-3 channel to color3. "
+              "Byte 2, when non-zero, forces the main channel to solid color1, overriding "
+              "any random color mix. Byte 0 has no confirmed effect.",
+        "ZH": "4 个字节。byte 1 会把 colorize_material1 里 byte 3 那条通道的颜色设为 "
+              "color3。byte 2 非零时会把主通道强制锁定为纯 color1，覆盖随机混色。byte 0 目前"
+              "没有观察到效果。",
     },
     ("MESH", "randommizeViscon"): {
         "EN": "0=Spawn random sample of range,  1=Spawn all of the range",
