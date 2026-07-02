@@ -70,11 +70,30 @@ def _store_timl(body, data: bytes):
 # get/set 回调工厂（按 anim_index 绑定，挂在 WindowManager 上，瞬态不保存）
 # ─────────────────────────────────────────────────────────────────────────────
 
+# 会话内：取活动 body 在 TIML 编辑会话中的 (entry, 内存模型 TimlData|None)；不在会话→(None, None)。
+# 会话进行中元字段(长度/循环)读写直接走内存模型 entry["timl"]，Apply 才落字节（与轨道增删一致）。
+def _session_anim(body, idx):
+    try:
+        from . import timl_edit as _te
+        entry = _te.session_entry(body)
+    except Exception:
+        entry = None
+    if entry is None:
+        return None, None
+    m = entry["timl"]
+    if 0 <= idx < len(m.animations) and m.animations[idx] is not None:
+        return entry, m.animations[idx]
+    return entry, None
+
+
 def _make_length_get(idx):
     def _get(self):
         body = _active_body()
         if body is None:
             return 0.0
+        entry, anim = _session_anim(body, idx)
+        if entry is not None:
+            return float(anim.animation_length) if anim is not None else 0.0
         anims = tm.parse_animations(_body_timl_bytes(body))
         if idx < len(anims):
             return float(anims[idx].animation_length)
@@ -86,6 +105,13 @@ def _make_length_set(idx):
     def _set(self, value):
         body = _active_body()
         if body is None:
+            return
+        entry, anim = _session_anim(body, idx)
+        if entry is not None:
+            if anim is not None:
+                anim.animation_length = float(value)
+                from . import timl_edit as _te
+                _te.session_mark_edited(entry)
             return
         data = _body_timl_bytes(body)
         new = tm.set_animation_length(data, idx, value)
@@ -99,6 +125,10 @@ def _make_loop_get(idx):
         body = _active_body()
         if body is None:
             return 0
+        entry, anim = _session_anim(body, idx)
+        if entry is not None:
+            v = int(anim.loop_control) if anim is not None else 0
+            return v if v in tm.LOOP_CONTROL_VALUES else 0
         anims = tm.parse_animations(_body_timl_bytes(body))
         if idx < len(anims):
             v = int(anims[idx].loop_control)
@@ -112,6 +142,13 @@ def _make_loop_set(idx):
         body = _active_body()
         if body is None:
             return
+        entry, anim = _session_anim(body, idx)
+        if entry is not None:
+            if anim is not None:
+                anim.loop_control = int(value)
+                from . import timl_edit as _te
+                _te.session_mark_edited(entry)
+            return
         data = _body_timl_bytes(body)
         new = tm.set_loop_control(data, idx, int(value))
         if new != data:
@@ -124,6 +161,9 @@ def _make_loopstart_get(idx):
         body = _active_body()
         if body is None:
             return 0.0
+        entry, anim = _session_anim(body, idx)
+        if entry is not None:
+            return float(anim.loop_start_point) if anim is not None else 0.0
         anims = tm.parse_animations(_body_timl_bytes(body))
         if idx < len(anims):
             return float(anims[idx].loop_start_point)
@@ -135,6 +175,13 @@ def _make_loopstart_set(idx):
     def _set(self, value):
         body = _active_body()
         if body is None:
+            return
+        entry, anim = _session_anim(body, idx)
+        if entry is not None:
+            if anim is not None:
+                anim.loop_start_point = float(value)
+                from . import timl_edit as _te
+                _te.session_mark_edited(entry)
             return
         data = _body_timl_bytes(body)
         new = tm.set_loop_start_point(data, idx, value)
@@ -186,11 +233,23 @@ class EFX_OT_timlm_fit_last_keyframe(Operator):
         if body is None:
             self.report({"ERROR"}, T("timlm.no_body"))
             return {"CANCELLED"}
-        data = _body_timl_bytes(body)
-        lk = tm.last_keyframe_time(data, self.anim_index)
+        lk = _live_last_kf(body, self.anim_index)
         if lk is None:
             self.report({"WARNING"}, T("timlm.no_kf"))
             return {"CANCELLED"}
+        # 会话内 → 改内存模型长度；会话外 → patch 字节
+        entry, anim = _session_anim(body, self.anim_index)
+        if entry is not None:
+            cur = anim.animation_length if anim is not None else 0.0
+            if lk <= cur:
+                self.report({"INFO"}, T("timlm.grow_only"))
+                return {"CANCELLED"}
+            anim.animation_length = float(lk)
+            from . import timl_edit as _te
+            _te.session_mark_edited(entry)
+            self.report({"INFO"}, T("timlm.last_kf").format(f=lk))
+            return {"FINISHED"}
+        data = _body_timl_bytes(body)
         anims = tm.parse_animations(data)
         cur = anims[self.anim_index].animation_length if self.anim_index < len(anims) else 0.0
         if lk <= cur:
@@ -226,17 +285,25 @@ class EFX_OT_timlm_enable_axis(Operator):
 
     @classmethod
     def poll(cls, context):
-        return (not _edit_active()) and _active_body() is not None
+        return _active_body() is not None   # 会话内/外均可
 
     def execute(self, context):
-        if _edit_active():
-            self.report({"ERROR"}, T("timlm.edit_active"))
-            return {"CANCELLED"}
         body = _active_body()
         if body is None:
             return {"CANCELLED"}
         import copy
-        t = _timl.parse_timl(_body_timl_bytes(body))
+        # 会话内 → 改内存模型并重建曲线；会话外 → 解析字节并立即落字节
+        entry = None
+        try:
+            from . import timl_edit as _te
+            entry = _te.session_entry(body)
+        except Exception:
+            entry = None
+        if entry is not None:
+            _te.session_capture(entry)
+            t = entry["timl"]
+        else:
+            t = _timl.parse_timl(_body_timl_bytes(body))
         if t is None:
             return {"CANCELLED"}
         slot = max(0, min(self.slot, 1))
@@ -244,11 +311,14 @@ class EFX_OT_timlm_enable_axis(Operator):
             t.animations.append(None)
         # 复制另一条已存在的轴作起点；没有则建空
         other = next((a for i, a in enumerate(t.animations) if a is not None and i != slot), None)
-        t.animations[slot] = copy.deepcopy(other) if other is not None else _timl.TimlData()
+        t.animations[slot] = copy.deepcopy(other) if other is not None else _timl.make_blank_animdata(slot)
         t.count = len(t.animations)
         _set_anim_indices(t)
         t.dirty = True
-        _store_timl(body, t.serialize())
+        if entry is not None:
+            _te.session_refresh(entry)
+        else:
+            _store_timl(body, t.serialize())
         self.report({"INFO"}, T("timlm.enabled_axis").format(T(_AXIS_LABEL.get(slot, ""))))
         return {"FINISHED"}
 
@@ -264,16 +334,23 @@ class EFX_OT_timlm_clear_axis(Operator):
 
     @classmethod
     def poll(cls, context):
-        return (not _edit_active()) and _active_body() is not None
+        return _active_body() is not None
 
     def execute(self, context):
-        if _edit_active():
-            self.report({"ERROR"}, T("timlm.edit_active"))
-            return {"CANCELLED"}
         body = _active_body()
         if body is None:
             return {"CANCELLED"}
-        t = _timl.parse_timl(_body_timl_bytes(body))
+        entry = None
+        try:
+            from . import timl_edit as _te
+            entry = _te.session_entry(body)
+        except Exception:
+            entry = None
+        if entry is not None:
+            _te.session_capture(entry)
+            t = entry["timl"]
+        else:
+            t = _timl.parse_timl(_body_timl_bytes(body))
         if t is None:
             return {"CANCELLED"}
         slot = self.slot
@@ -284,14 +361,112 @@ class EFX_OT_timlm_clear_axis(Operator):
         t.count = len(t.animations)
         _set_anim_indices(t)
         t.dirty = True
-        _store_timl(body, t.serialize())
+        if entry is not None:
+            _te.session_refresh(entry)
+        else:
+            _store_timl(body, t.serialize())
         self.report({"INFO"}, T("timlm.cleared_axis").format(T(_AXIS_LABEL.get(slot, ""))))
         return {"FINISHED"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Panel：DOPESHEET_EDITOR N 面板「EFX TIML」
+# Panel：「EFX TIML」（Dope Sheet + 曲线编辑器 共用内容）
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _live_axis_present(body):
+    """[A0存在, A1存在]：会话内看内存模型，会话外看字节。"""
+    try:
+        from . import timl_edit as _te
+        m = _te.session_model(body)
+    except Exception:
+        m = None
+    if m is not None:
+        return [(s < len(m.animations) and m.animations[s] is not None) for s in (0, 1)]
+    anims = tm.parse_animations(_body_timl_bytes(body))
+    return [_axis_present(anims, s) for s in (0, 1)]
+
+
+def _live_last_kf(body, slot):
+    """该轴最后关键帧时间：会话内从内存模型算，会话外从字节算。无 → None。"""
+    try:
+        from . import timl_edit as _te
+        m = _te.session_model(body)
+    except Exception:
+        m = None
+    if m is not None:
+        if slot < len(m.animations) and m.animations[slot] is not None:
+            mx = None
+            for ty in m.animations[slot].types:
+                for tf in ty.transforms:
+                    for kf in tf.keyframes:
+                        if mx is None or kf.frame_timing > mx:
+                            mx = kf.frame_timing
+            return mx
+        return None
+    return tm.last_keyframe_time(_body_timl_bytes(body), slot)
+
+
+def _draw_meta_panel(layout, context):
+    body = _active_body()
+    if body is None:
+        # 区分"没选 body"和"选了但没 TIML"
+        raw = _resolve_active_body(context.active_object)
+        if raw is not None:
+            layout.label(text=T("timlm.no_timl"), icon="DOT")
+        else:
+            layout.label(text=T("timlm.no_body"), icon="INFO")
+        return
+
+    wm = context.window_manager
+    edit_active = _edit_active()
+    present = _live_axis_present(body)
+
+    # per-body 自动增长开关
+    layout.prop(body, "efx_timl_auto_grow", text=T("timlm.auto_grow"))
+    if edit_active:
+        # 通道编辑进行中：在此直接切 A0/A1/All 焦点（live 重建）
+        box = layout.box()
+        box.label(text=T("timlm.edit_active"), icon="FCURVE")
+        try:
+            from . import timl_edit as _te
+            _te.draw_focus(box, context)
+            box.label(text=T("timle.focus_note"), icon="BLANK1")
+        except Exception:
+            pass
+
+    # A0 / A1 两个固定独立的轴槽（不是可增删的列表）
+    for slot in (0, 1):
+        box = layout.box()
+        hdr = box.row(align=True)
+        hdr.label(text=T(_AXIS_LABEL[slot]),
+                  icon="ANIM" if slot == 0 else "PARTICLES")
+
+        if present[slot]:
+            clr = hdr.row(align=True)
+            op = clr.operator("efx.timlm_clear_axis", text="", icon="X")
+            op.slot = slot
+            box.label(text=T(_AXIS_LABEL[slot] + "_tip"), icon="BLANK1")
+
+            # 动画长度：内联可编辑 + 贴合最后关键帧
+            row = box.row(align=True)
+            row.prop(wm, "efx_timlm_length_%d" % slot, text=T("timlm.length"))
+            op = row.operator("efx.timlm_fit_last_keyframe", text="", icon="KEYFRAME_HLT")
+            op.anim_index = slot
+            lk = _live_last_kf(body, slot)
+            if lk is not None:
+                box.label(text=T("timlm.last_kf").format(f=lk), icon="KEYFRAME")
+            else:
+                box.label(text=T("timlm.no_kf"), icon="BLANK1")
+
+            box.prop(wm, "efx_timlm_loop_%d" % slot, text=T("timlm.loop"))
+            box.prop(wm, "efx_timlm_loopstart_%d" % slot, text=T("timlm.loopstart"))
+        else:
+            box.label(text=T(_AXIS_LABEL[slot] + "_tip"), icon="BLANK1")
+            row = box.row(align=True)
+            row.label(text=T("timlm.axis_empty"), icon="DOT")
+            op = row.operator("efx.timlm_enable_axis", text=T("timlm.enable_axis"), icon="ADD")
+            op.slot = slot
+
 
 class EFX_PT_timl_meta(Panel):
     """Dope Sheet 侧栏：编辑选中 EFX 特效体 TIML 的长度 / 循环控制"""
@@ -302,71 +477,25 @@ class EFX_PT_timl_meta(Panel):
     bl_label = "EFX TIML"
 
     def draw(self, context):
-        layout = self.layout
-        body = _active_body()
-        if body is None:
-            # 区分"没选 body"和"选了但没 TIML"
-            raw = _resolve_active_body(context.active_object)
-            if raw is not None:
-                layout.label(text=T("timlm.no_timl"), icon="DOT")
-            else:
-                layout.label(text=T("timlm.no_body"), icon="INFO")
-            return
+        # ⚠ 无条件诊断标记：Dope Sheet 侧栏内容曾整体消失而曲线编辑器正常（2026-07-01
+        # 用户报告）。这行在 draw() 一进来就画，跟内容无关——若 Dope Sheet 连这行都不显示，
+        # 说明 draw() 根本没被调用（注册/空间类型问题）；若显示了但下面还是空，说明是
+        # 内容绘制被吞。定位后即可删。
+        self.layout.label(text="· EFX TIML v0.2.77", icon="ANIM")
+        # 兜底：异常直接显示在面板里而不是静默空白。
+        try:
+            _draw_meta_panel(self.layout, context)
+        except Exception:
+            import traceback
+            self.layout.label(text="EFX TIML panel error (see console):", icon="ERROR")
+            for line in traceback.format_exc().splitlines()[-4:]:
+                self.layout.label(text=line[:80])
+            traceback.print_exc()
 
-        data = _body_timl_bytes(body)
-        anims = tm.parse_animations(data)
-        wm = context.window_manager
-        edit_active = _edit_active()
 
-        # per-body 自动增长开关
-        layout.prop(body, "efx_timl_auto_grow", text=T("timlm.auto_grow"))
-        if edit_active:
-            # 通道编辑进行中：在此直接切 A0/A1/All 焦点（live 重建），并提示增删受限
-            box = layout.box()
-            box.label(text=T("timlm.edit_active"), icon="FCURVE")
-            try:
-                from . import timl_edit as _te
-                _te.draw_focus(box, context)
-                box.label(text=T("timle.focus_note"), icon="BLANK1")
-            except Exception:
-                pass
-
-        # A0 / A1 两个固定独立的轴槽（不是可增删的列表）
-        for slot in (0, 1):
-            box = layout.box()
-            hdr = box.row(align=True)
-            hdr.label(text=T(_AXIS_LABEL[slot]),
-                      icon="ANIM" if slot == 0 else "PARTICLES")
-            present = _axis_present(anims, slot)
-
-            if present:
-                clr = hdr.row(align=True)
-                clr.enabled = not edit_active
-                op = clr.operator("efx.timlm_clear_axis", text="", icon="X")
-                op.slot = slot
-                box.label(text=T(_AXIS_LABEL[slot] + "_tip"), icon="BLANK1")
-
-                # 动画长度：内联可编辑 + 贴合最后关键帧
-                row = box.row(align=True)
-                row.prop(wm, "efx_timlm_length_%d" % slot, text=T("timlm.length"))
-                op = row.operator("efx.timlm_fit_last_keyframe", text="", icon="KEYFRAME_HLT")
-                op.anim_index = slot
-                lk = tm.last_keyframe_time(data, slot)
-                if lk is not None:
-                    box.label(text=T("timlm.last_kf").format(f=lk), icon="KEYFRAME")
-                else:
-                    box.label(text=T("timlm.no_kf"), icon="BLANK1")
-
-                box.prop(wm, "efx_timlm_loop_%d" % slot, text=T("timlm.loop"))
-                box.prop(wm, "efx_timlm_loopstart_%d" % slot, text=T("timlm.loopstart"))
-            else:
-                box.label(text=T(_AXIS_LABEL[slot] + "_tip"), icon="BLANK1")
-                row = box.row(align=True)
-                row.label(text=T("timlm.axis_empty"), icon="DOT")
-                en = row.row(align=True)
-                en.enabled = not edit_active
-                op = en.operator("efx.timlm_enable_axis", text=T("timlm.enable_axis"), icon="ADD")
-                op.slot = slot
+class EFX_PT_timl_meta_graph(EFX_PT_timl_meta):
+    """曲线编辑器侧栏：与 Dope Sheet 完全相同的 EFX TIML 元字段面板。"""
+    bl_space_type = "GRAPH_EDITOR"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -378,6 +507,7 @@ _CLASSES = (
     EFX_OT_timlm_enable_axis,
     EFX_OT_timlm_clear_axis,
     EFX_PT_timl_meta,
+    EFX_PT_timl_meta_graph,
 )
 
 

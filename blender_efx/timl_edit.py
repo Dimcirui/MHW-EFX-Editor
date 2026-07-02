@@ -195,6 +195,12 @@ def _build_entry(timl_obj, body):
     basis_snap = timl_obj.matrix_basis.copy()
     timl_obj.efx_timl_channels.clear()
     act = bpy.data.actions.new("EFX_TIML::%s" % (body.get("efx_raw_label", "") or body.name))
+    # ⚠ 会话 Action 必须靠自己的引用清理，不能指望退出时重新读 animation_data.action
+    # 再删——用户在 Dope Sheet/Action Editor 原生控件上点 New/Browse/Unlink 都会改掉
+    # ad.action，届时 teardown 读到的就不是这个真正的会话 Action 了，导致真正该删的
+    # Action 找不到、永久残留在 bpy.data.actions 里（哪怕显示 0 用户也不会被清）。
+    # fake_user=True 顺便防止会话期间被意外当孤儿数据回收。
+    act.use_fake_user = True
     created = False
     if timl_obj.animation_data is None:
         timl_obj.animation_data_create()
@@ -206,7 +212,7 @@ def _build_entry(timl_obj, body):
 
     mesh, con_name = _bind_mesh(timl_obj, body)
     entry = {"timl_obj": timl_obj, "body": body, "timl": t, "channels": channels,
-             "prior_action": prior, "created_anim": created, "mesh": mesh,
+             "action": act, "prior_action": prior, "created_anim": created, "mesh": mesh,
              "con_name": con_name, "basis_snap": basis_snap, "edited": False,
              "snapshot": _snapshot(act, channels)}
     return entry, fmin, fmax
@@ -286,11 +292,31 @@ def _channel_total():
 # 回写（逐条目）
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _session_action(entry):
+    """取该 entry 真正的会话 Action，并把 animation_data.action 重新绑回它（自愈）。
+
+    用户在 Dope Sheet/Graph Editor 的原生 Action Editor 控件上点 New/Browse/Unlink
+    会改掉 timl_obj.animation_data.action，但 entry["action"] 这个引用本身不受影响——
+    每次读写前都重新绑一次，编辑/回写/退出清理才始终对着真正的会话 Action，不会被
+    用户误操作带偏。"""
+    act = entry.get("action")
+    timl_obj = entry.get("timl_obj")
+    if act is None or timl_obj is None:
+        return act
+    try:
+        ad = timl_obj.animation_data
+        if ad is not None and ad.action is not act:
+            ad.action = act
+    except Exception:
+        pass
+    return act
+
+
 def _readback_entry_to_model(entry):
     """把当前 Action（当前焦点的通道）读回内存模型 entry["timl"]（不写 body 字节）。
     无改动则跳过；有改动则重建受影响 transform 的 keyframes 并标 entry["edited"]。返回是否改动。"""
-    timl_obj = entry["timl_obj"]; channels = entry["channels"]
-    act = timl_obj.animation_data.action if timl_obj.animation_data else None
+    channels = entry["channels"]
+    act = _session_action(entry)
     if act is None:
         return False
     if _snapshot(act, channels) == entry["snapshot"]:
@@ -382,8 +408,7 @@ def _rebuild_synthetic(act, syn, tf):
 def _rebuild_entry_action(entry):
     """切焦点：清空该条目的 Action/通道，按当前焦点重铺。"""
     timl_obj = entry["timl_obj"]
-    ad = timl_obj.animation_data
-    act = ad.action if ad else None
+    act = _session_action(entry)
     if act is None:
         return 0.0, 1.0
     while act.fcurves:
@@ -420,7 +445,9 @@ def _switch_focus(new_focus):
 
 
 def _teardown():
+    # ⚠ 每一步独立 try：早先一步抛异常不得阻断后续的 Action 删除（否则会话 Action 残留）。
     for entry in _state["entries"]:
+        # 1) 解除 mesh 预览约束
         mesh = entry.get("mesh"); con_name = entry.get("con_name")
         if mesh is not None and con_name:
             try:
@@ -430,23 +457,46 @@ def _teardown():
             except Exception:
                 pass
         timl_obj = entry.get("timl_obj")
-        if timl_obj is not None:
+        if timl_obj is None:
+            continue
+        # 2) 取回会话 Action 引用——直接用 entry["action"]，不要重新读
+        #    animation_data.action：用户在 Dope Sheet/Action Editor 原生控件上点过
+        #    New/Browse/Unlink 的话 ad.action 早就不是这个会话 Action 了，届时读出来
+        #    删掉的是错的（或 None），真正的会话 Action 找不到主人、永久残留在
+        #    bpy.data.actions 里（哪怕显示 0 用户也不会被自动清掉）。
+        cur = entry.get("action")
+        # 3) 还原进入前的 Action（独立 try，失败也不挡删除）
+        try:
+            ad = timl_obj.animation_data
+            if ad is not None:
+                ad.action = entry.get("prior_action")
+        except Exception:
+            pass
+        # 4) 删除会话 Action 数据块——清 fake_user 防止残留在 .blend 的 Action 列表里
+        if cur is not None:
             try:
-                ad = timl_obj.animation_data
-                cur = ad.action if ad else None
-                if ad is not None:
-                    ad.action = entry["prior_action"]
-                if cur is not None:
-                    bpy.data.actions.remove(cur)
-                if entry["created_anim"] and timl_obj.animation_data is not None:
-                    timl_obj.animation_data_clear()
-                timl_obj.efx_timl_channels.clear()
-                # 还原句柄进入前的 transform（清 Action 后值会停在末帧，须显式还原）
-                snap = entry.get("basis_snap")
-                if snap is not None:
-                    timl_obj.matrix_basis = snap
+                cur.use_fake_user = False
+                bpy.data.actions.remove(cur, do_unlink=True)
             except Exception:
                 pass
+        # 5) 进会话时若新建过 animation_data，整体清除（恢复"无动画"状态）
+        try:
+            if entry.get("created_anim") and timl_obj.animation_data is not None:
+                timl_obj.animation_data_clear()
+        except Exception:
+            pass
+        # 6) 清 synthetic 通道集合
+        try:
+            timl_obj.efx_timl_channels.clear()
+        except Exception:
+            pass
+        # 7) 还原句柄进入前的 transform（清 Action 后值会停在末帧，须显式还原）
+        try:
+            snap = entry.get("basis_snap")
+            if snap is not None:
+                timl_obj.matrix_basis = snap
+        except Exception:
+            pass
     try:
         scene = bpy.context.scene
         scene.frame_start = _state["frame_start"]
@@ -457,8 +507,87 @@ def _teardown():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 会话内结构性编辑对接 API
+# （供 timl_tracks / timl_meta_ui 在会话进行中直接改内存模型 entry["timl"]，
+#  而非改 body 字节——会话期间字节是陈旧的，编辑都在模型里，Apply 才落字节）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def session_active() -> bool:
+    return bool(_state["active"])
+
+
+def session_entry(body):
+    """该 body 在当前会话中的 entry；不在会话 / 无会话 → None。"""
+    if not _state["active"] or body is None:
+        return None
+    for e in _state["entries"]:
+        b = e.get("body")
+        if b is body or (b is not None and getattr(b, "name", None) == body.name):
+            return e
+    return None
+
+
+def session_model(body):
+    """该 body 在会话中的内存 Timl 模型（只读展示用）；无 → None。"""
+    e = session_entry(body)
+    return e["timl"] if e is not None else None
+
+
+def session_capture(entry):
+    """结构性改动【前】调用：把当前焦点的曲线编辑读回内存模型，避免进行中的编辑被重建覆盖。"""
+    try:
+        _readback_entry_to_model(entry)
+    except Exception:
+        pass
+
+
+def session_mark_edited(entry):
+    """仅标脏（元字段如长度/循环改动用，不触碰曲线）。"""
+    entry["edited"] = True
+
+
+def session_refresh(entry):
+    """结构性改动【后】调用：标脏 + 按当前焦点重建 Action（含新轨道）+ 重设帧范围。"""
+    entry["edited"] = True
+    try:
+        lo, hi = _rebuild_entry_action(entry)
+        _apply_frame_range(lo, hi)
+    except Exception:
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Operators
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _select_session_handles(context):
+    """选中所有会话条目的 TIML 句柄并把第一个设为 active。
+
+    Dope Sheet / Graph Editor 默认「只显示选中物体」，进入编辑会话后如果不主动选中
+    句柄，新建好的 Action 曲线不会自动出现在编辑器里——之前 enter 完全没做这一步，
+    表现为"新建/进入编辑后不会跳转到指定的动作"，得用户自己去大纲视图手动点句柄。"""
+    try:
+        for obj in context.view_layer.objects:
+            obj.select_set(False)
+    except Exception:
+        pass
+    first = None
+    for entry in _state["entries"]:
+        obj = entry.get("timl_obj")
+        if obj is None:
+            continue
+        try:
+            obj.select_set(True)
+            if first is None:
+                first = obj
+        except Exception:
+            pass
+    if first is not None:
+        try:
+            context.view_layer.objects.active = first
+        except Exception:
+            pass
+
 
 class EFX_OT_timl_edit_enter(Operator):
     """进入 TIML 通道编辑（解析成原生 F 曲线，在 Dope/Graph 编辑）"""
@@ -486,6 +615,7 @@ class EFX_OT_timl_edit_enter(Operator):
         if n == 0:
             self.report({"WARNING"}, T("timle.no_content"))
             return {"CANCELLED"}
+        _select_session_handles(context)
         try:
             context.scene.frame_set(context.scene.frame_start)
         except Exception:
