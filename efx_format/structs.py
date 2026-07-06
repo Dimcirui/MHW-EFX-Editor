@@ -1728,7 +1728,7 @@ def pack_uvsequence(values: dict) -> bytes:
 # Billboard3D (variable: billboard_data 108 B + extras 24 B + path)
 #
 # billboard_data (108 B, includes the path_len field at offset +104):
-#   unkn0(4)+applicationRule(4)+XYZ color(2)[2](8)+brightness(4)+
+#   unkn0(4)+applicationRule(4)+XYZ color(2)(4)+XYZ colorRange(2)(4)+brightness(4)+
 #   unkn2[3](12)+EPVColorSlot1(4)+SlotOverride1(4)+rotation(4)+rotationJitter(4)+
 #   scale(4)+scaleJ(4)+width(4)+widthJ(4)+height(4)+heightJ(4)+
 #   flowmapSpeed(4)+flowmapSpeedJ(4)+flowmapAccel(4)+flowmapAccelJ(4)+
@@ -1745,12 +1745,24 @@ def pack_uvsequence(values: dict) -> bytes:
 _BILLBOARD3D_FIXED_SCHEMA = [
     ('unkn0',                      'i'),
     ('applicationRule',            'i'),
-    ('color',                      ('XYZ[]', 2, 2)),  # TIML DT 0x58689812("Color") 已确认
+    # 实机确认（2026-07-06，多组 color/colorRange/useColorRange/blendMode 组合排除测试）：
+    # useColorRange=0 时恒为 color（colorRange 完全不参与，含 alpha 通道）；
+    # =1 时逐粒子对 color→colorRange 做四通道（RGBA）共享同一随机插值因子 t∈[0,1] 的线性插值，
+    # 两端点在开启状态下地位对称（谁在 color/谁在 colorRange 不影响插值结果分布）。
+    # 官方 dti dump（refs/dti_effect_fields.json，nEffect::nTimelineParam::TypeBillboard3D）
+    # 里这两个字段本来就叫 "Color"(0x58689812)/"ColorRange"(0xC216C23D)，与 Wilds
+    # TypeBillboard3D.Color/ColorRange 字面同名。
+    ('color',                      ('XYZ', 2)),  # TIML DT 0x58689812("Color") 已确认
+    ('colorRange',                 ('XYZ', 2)),  # TIML DT 0xC216C23D("ColorRange") 已确认（官方 dump）
     ('brightness',                 'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
     # 社区实测：原模板 unkn2 = 3×int 有误。[0] 是随机亮度乘数（float）；
     # [2] 是混合模式开关（0=alpha 混合，1=add 混合）。拆成三个独立字段。
     ('randomBrightnessMult',       'f'),
-    ('unkn2_1',                    'i'),
+    # 实机确认：布尔开关，见上方 color/colorRange 注释。全语料 60842 个 BILLBOARD3D 块里
+    # 仅出现过 0(92.9%)/1(7.1%) 两个值；手动写入越界值 2、-1 效果与 1 完全相同，
+    # 证实引擎按"非零即真"处理，不是连续数值参数（与 Wilds 同位置的连续型 AlphaRate 不同，
+    # 应是两代之间的类型演变，而非我们把字段认错了位置）。
+    ('useColorRange',              'i'),
     ('blendMode',                  'i'),
     ('EPVColorSlot1',              'i'),
     ('SlotOverride1',              'i'),
@@ -1772,7 +1784,7 @@ _BILLBOARD3D_FIXED_SCHEMA = [
     ('flowmapStrengthAccelerationJitter', 'f'),
     # path_len is next (part of billboard_data), then extras, then path
     # we handle path_len + extras + path manually below
-]  # = 4+4+8+4+12+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
+]  # = 4+4+4+4+4+12+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
 
 _BILLBOARD3D_EXTRAS_SCHEMA = [
     ('unkn5', 'i'),

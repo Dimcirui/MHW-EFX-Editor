@@ -141,6 +141,8 @@ FIELD_LABELS_ZH = {
     "color": "颜色",
     "color1": "颜色1",
     "color2": "颜色2",
+    "colorRange": "颜色范围",
+    "useColorRange": "启用颜色范围",
     # RGBFIRE 实机确认：fireColor=外缘荧光色（会给 smokeColor 染色），smokeColor=内部色
     "fireColor": "火焰色",
     "smokeColor": "烟雾色",
