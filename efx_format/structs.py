@@ -2072,8 +2072,8 @@ def pack_ribbon(values: dict) -> bytes:
 # Plane (variable: dds_data 108 B + extras 48 B + path)
 #
 # dds_data (108 B, same layout as billboard_data):
-#   unkn0(4)+applicationRule(4)+XYZ color(2)[2](8)+brightness(4)+unkn20(4)+
-#   EPVColorBlend(4)+unkn22(4)+EPVColorSlot1(4)+EPVColorSlot2(4)+
+#   unkn0(4)+applicationRule(4)+XYZ color(2)(4)+XYZ colorRange(2)(4)+brightness(4)+unkn20(4)+
+#   useColorRange(4)+blendMode(4)+EPVColorSlot1(4)+EPVColorSlot2(4)+
 #   SlotOverride1(4)+SlotOverride2(4)+
 #   scale/j(8)+width/j(8)+height/j(8)+
 #   flowmapSpeed/j(8)+flowmapAccel/j(8)+flowmapStrength/j(8)+flowmapStrAccel/j(8)+
@@ -2085,11 +2085,15 @@ def pack_ribbon(values: dict) -> bytes:
 _PLANE_DDS_SCHEMA = [
     ('unkn0',              'i'),
     ('applicationRule',    'i'),
-    ('color',              ('XYZ[]', 2, 2)),  # TIML DT 0x58689812("Color") 已确认
+    # 实机确认（同 BILLBOARD3D 的 color/colorRange/useColorRange 机制，见该注释）：
+    # 原 EPVColorBlend 实为 useColorRange，原 unkn22 实为 blendMode。unkn20 实测不像
+    # BILLBOARD3D 对应位置的 randomBrightnessMult，语义未定，暂保留原名。
+    ('color',              ('XYZ', 2)),  # TIML DT 0x58689812("Color") 已确认
+    ('colorRange',         ('XYZ', 2)),
     ('brightness',         'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
     ('unkn20',             'i'),
-    ('EPVColorBlend',      'i'),
-    ('unkn22',             'i'),
+    ('useColorRange',      'i'),
+    ('blendMode',          'i'),
     ('EPVColorSlot1',      'i'),
     ('EPVColorSlot2',      'i'),
     ('SlotOverride1',      'i'),
@@ -2109,7 +2113,7 @@ _PLANE_DDS_SCHEMA = [
     ('flowmapStrengthAcceleration','f'),
     ('flowmapStrengthAccelerationJitter','f'),
     # path_len handled separately
-]  # = 4+4+8+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
+]  # = 4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
 
 _PLANE_EXTRAS_SCHEMA = [
     ('unkn5',   ('i', 4)),

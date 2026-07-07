@@ -51,6 +51,9 @@ FIELD_OFFICIAL_NAMES = {
     ("BILLBOARD3D", "color"):     ("Color",    "0x58689812", "确认"),
     # BILLBOARD3D：colorRange，与 color 同源自官方 dump 的 nEffect::nTimelineParam::TypeBillboard3D
     ("BILLBOARD3D", "colorRange"): ("ColorRange", "0xC216C23D", "确认"),
+    # PLANE：与 BILLBOARD3D 同源自官方 dump 的 nEffect::nTimelineParam::TypePlane，实机确认同一套机制
+    ("PLANE", "color"):      ("Color",      "0x58689812", "确认"),
+    ("PLANE", "colorRange"): ("ColorRange", "0xC216C23D", "确认"),
     # MESH：scale/rotation → SizeX/Y/Z / RotationX/Y/Z（nadao_qian.efx SizeY 0x531B9E44 实测确认，余轴同理）
     ("MESH", "scale"):            ("SizeX/Y/Z",    "0x241CAED2", "确认"),
     ("MESH", "rotation"):         ("RotationX/Y/Z","0x002FF505",  "确认"),
@@ -837,6 +840,28 @@ FIELD_ANNOTATIONS = {
         "EN": "Brightness",
         "ZH": "亮度",
     },
+    ("PLANE", "color"): {
+        "EN": "Base color (RGBA). Shown as-is when useColorRange is off.",
+        "ZH": "基准颜色（RGBA）。useColorRange 关闭时固定显示这个颜色。",
+    },
+    ("PLANE", "colorRange"): {
+        "EN": "The other end of the color range (RGBA). Only used when useColorRange "
+              "is on — the displayed color then randomly varies between color and "
+              "colorRange.",
+        "ZH": "颜色范围的另一端（RGBA）。仅在 useColorRange 开启时生效——开启后，最终"
+              "显示的颜色会在 color 与 colorRange 之间随机变化。",
+    },
+    ("PLANE", "useColorRange"): {
+        "EN": "Color random-range switch. 0 = off (always shows color). 1 = on "
+              "(displayed color randomly varies between color and colorRange).",
+        "ZH": "颜色随机范围开关。0=禁用（始终显示 color）；1=启用（最终显示的颜色会在 "
+              "color 与 colorRange 之间随机变化）。",
+    },
+    ("PLANE", "blendMode"): {
+        "EN": "Shader blend mode: 0 = alpha blend (can show black at normal brightness), "
+              "1 = additive blend.",
+        "ZH": "着色器混合模式：0=alpha 混合（正常亮度下可显示黑色），1=add 叠加混合。",
+    },
     ("PLANE", "scale"): {
         "EN": "Scale",
         "ZH": "缩放",
@@ -1128,46 +1153,21 @@ FIELD_ANNOTATIONS = {
     },
     # BILLBOARD3D（含本版新拆分字段）
     ("BILLBOARD3D", "color"): {
-        "EN": "Base color (RGBA). When useColorRange=0 this is the only color used "
-              "(static, all particles identical). When useColorRange=1, this is one "
-              "endpoint of the per-particle random interpolation with colorRange "
-              "(confirmed in-game, 2026-07-06).",
-        "ZH": "基准颜色（RGBA）。useColorRange=0 时恒为此色（静态，所有粒子相同）；"
-              "=1 时它是与 colorRange 做逐粒子随机插值的其中一个端点"
-              "（2026-07-06 实机测试确认）。",
+        "EN": "Base color (RGBA). Shown as-is when useColorRange is off.",
+        "ZH": "基准颜色（RGBA）。useColorRange 关闭时固定显示这个颜色。",
     },
     ("BILLBOARD3D", "colorRange"): {
-        "EN": "Second color endpoint (RGBA), only takes effect when useColorRange=1. "
-              "Each particle picks one shared random factor t∈[0,1] and linearly "
-              "interpolates all 4 channels (including alpha) between color and "
-              "colorRange: final = lerp(color, colorRange, t). The two endpoints are "
-              "symmetric — which one is 'color' vs 'colorRange' doesn't change the "
-              "resulting distribution. When useColorRange=0, this field is fully "
-              "ignored (confirmed in-game, 2026-07-06).",
-        "ZH": "第二个颜色端点（RGBA），仅在 useColorRange=1 时生效。每个粒子取同一个随机"
-              "因子 t∈[0,1]，对 color/colorRange 的全部 4 个通道（含 alpha）做线性插值："
-              "final = lerp(color, colorRange, t)。两个端点在插值时地位对称——谁是 "
-              "color、谁是 colorRange 不影响最终颜色分布。useColorRange=0 时此字段完全"
-              "不参与计算（2026-07-06 实机测试确认）。",
+        "EN": "The other end of the color range (RGBA). Only used when useColorRange "
+              "is on — the displayed color then randomly varies between color and "
+              "colorRange.",
+        "ZH": "颜色范围的另一端（RGBA）。仅在 useColorRange 开启时生效——开启后，最终"
+              "显示的颜色会在 color 与 colorRange 之间随机变化。",
     },
     ("BILLBOARD3D", "useColorRange"): {
-        "EN": "Boolean switch for the color/colorRange random interpolation (raw int32, "
-              "but behaves as a strict truthy check — confirmed via full-corpus scan: "
-              "60842 real BILLBOARD3D blocks only ever contain 0 (92.9%) or 1 (7.1%); "
-              "manually forcing out-of-corpus values 2 and -1 in-game produced results "
-              "identical to 1, ruling out a continuous-rate interpretation). "
-              "0 = static color only (colorRange ignored). 1 = per-particle random "
-              "lerp(color, colorRange, t). Note: Wilds' TypeBillboard3D has a similarly "
-              "positioned field named AlphaRate (F32, continuous) — this looks like a "
-              "genuine bool→float generalization across game generations, not a "
-              "mis-mapped field.",
-        "ZH": "color/colorRange 随机插值的布尔开关（底层是 int32，但引擎按严格的真值判断处理"
-              "——全语料 60842 个真实 BILLBOARD3D 块里只出现过 0（92.9%）和 1（7.1%）两个值；"
-              "游戏里手动改成语料外的 2、-1，效果都跟 1 完全一样，排除了'数值越大效果越强'"
-              "这种连续参数的可能）。=0 时恒为静态 color（colorRange 不参与）；=1 时逐粒子"
-              "随机 lerp(color, colorRange, t)。备注：Wilds 的 TypeBillboard3D 里同一位置"
-              "是叫 AlphaRate 的连续型 F32 字段——这更像是跨世代真的从布尔演变成了连续参数，"
-              "不是我们把字段位置认错了。",
+        "EN": "Color random-range switch. 0 = off (always shows color). 1 = on "
+              "(displayed color randomly varies between color and colorRange).",
+        "ZH": "颜色随机范围开关。0=禁用（始终显示 color）；1=启用（最终显示的颜色会在 "
+              "color 与 colorRange 之间随机变化）。",
     },
     ("BILLBOARD3D", "randomBrightnessMult"): {
         "EN": "Random brightness multiplier: brightness is picked between 'not×this' and "
