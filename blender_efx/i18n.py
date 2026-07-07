@@ -342,6 +342,11 @@ STRINGS = {
     "timle.no_content":     {"EN": "No editable TIML channels found", "ZH": "未找到可编辑的 TIML 通道"},
     "timle.build_failed":   {"EN": "Failed to build channels: {0}", "ZH": "建通道失败：{0}"},
     "timle.writeback_failed": {"EN": "Writeback failed: {0}", "ZH": "回写失败：{0}"},
+    "timle.color_alpha":    {"EN": "Alpha", "ZH": "透明度 (A)"},
+    "timle.color_need_session": {"EN": "Enter TIML channel edit first", "ZH": "请先进入 TIML 通道编辑"},
+    "timle.color_none":     {"EN": "No color channel in this TIML", "ZH": "该 TIML 内无颜色通道"},
+    "timle.color_ambiguous": {"EN": "Multiple color channels — select one row in the channel list",
+                              "ZH": "有多组颜色通道——请在左侧通道列表选中其中一行"},
 
     # ── Subselect 面板（subselect.py）─────────────────────────────────────────
     "sub.unset":            {"EN": "<Unset>",               "ZH": "<未设置>"},

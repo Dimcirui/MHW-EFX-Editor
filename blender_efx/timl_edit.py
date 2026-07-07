@@ -27,8 +27,8 @@ blender_efx/timl_edit.py  —  阶段2b：自建 TIML 通道编辑会话（完�
 import base64
 
 import bpy
-from bpy.types import Operator, PropertyGroup
-from bpy.props import FloatProperty, CollectionProperty
+from bpy.types import Operator, Panel, PropertyGroup
+from bpy.props import FloatProperty, FloatVectorProperty, CollectionProperty
 
 from .i18n import T
 from . import timl_io as _tio          # resolve_timl_body / _body_timl_bytes / _body_has_timl
@@ -655,6 +655,187 @@ class EFX_OT_timl_edit_exit(Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 色轮（Color Wheel）—— 把 RGB(A) 4 条 synthetic 标量通道聚合成一个色轮控件
+# 只在会话中存在（synthetic fcurve 只在编辑会话期间挂在句柄 Action 上）；
+# 色轮不改数据模型，只是读写这 4 条真实 fcurve 在当前帧的关键帧——与直接在
+# Dope Sheet 里逐条调值等价，Apply 时走同一条 _readback_entry_to_model 路径。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _current_entry(context):
+    if not _state["active"]:
+        return None
+    try:
+        body = _tio.resolve_timl_body(context.active_object)
+    except Exception:
+        return None
+    return session_entry(body)
+
+
+def _find_color_groups(entry):
+    """按 tf 聚合该 entry 里所有 dataType==Color(3) 的 synthetic 通道组。"""
+    groups = {}
+    order = []
+    for ch in entry["channels"]:
+        if ch["mode"] != "syn" or ch["tf"].data_type != 3:
+            continue
+        key = id(ch["tf"])
+        if key not in groups:
+            groups[key] = {"tf": ch["tf"], "subs": {}}
+            order.append(key)
+        groups[key]["subs"][ch["sub"]] = ch
+    return [groups[k] for k in order if len(groups[k]["subs"]) >= 3]
+
+
+def _active_color_group(context, entry):
+    """确定色轮当前操作哪一组：唯一一组直接用；多组按 Dope Sheet/Graph 里选中的
+    通道行（fcurve.select）判定；都没选中则二义，不猜（返回 None）。"""
+    act = _session_action(entry)
+    if act is None:
+        return None, None
+    groups = _find_color_groups(entry)
+    if not groups:
+        return None, act
+    if len(groups) == 1:
+        return groups[0], act
+    for g in groups:
+        for ch in g["subs"].values():
+            fc = _ch_fcurve(act, ch)
+            if fc is not None and fc.select:
+                return g, act
+    return None, act
+
+
+def _write_scalar_keyframe(fc, frame, value):
+    for kp in fc.keyframe_points:
+        if abs(kp.co[0] - frame) < 1e-4:
+            kp.co[1] = value
+            fc.update()
+            return
+    kp = fc.keyframe_points.insert(frame, value)
+    kp.interpolation = "LINEAR"
+    fc.update()
+
+
+def _color_wheel_get(self):
+    try:
+        entry = _current_entry(bpy.context)
+        if entry is None:
+            return (0.0, 0.0, 0.0)
+        group, act = _active_color_group(bpy.context, entry)
+        if group is None:
+            return (0.0, 0.0, 0.0)
+        frame = bpy.context.scene.frame_current
+        out = [0.0, 0.0, 0.0]
+        for i in range(3):
+            fc = _ch_fcurve(act, group["subs"][i])
+            if fc is not None:
+                out[i] = max(0.0, min(255.0, fc.evaluate(frame))) / 255.0
+        return tuple(out)
+    except Exception:
+        return (0.0, 0.0, 0.0)
+
+
+def _color_wheel_set(self, value):
+    try:
+        entry = _current_entry(bpy.context)
+        if entry is None:
+            return
+        group, act = _active_color_group(bpy.context, entry)
+        if group is None:
+            return
+        frame = bpy.context.scene.frame_current
+        for i in range(3):
+            fc = _ch_fcurve(act, group["subs"].get(i)) if i in group["subs"] else None
+            if fc is not None:
+                _write_scalar_keyframe(fc, frame, max(0.0, min(1.0, value[i])) * 255.0)
+    except Exception:
+        pass
+
+
+def _color_alpha_get(self):
+    try:
+        entry = _current_entry(bpy.context)
+        if entry is None:
+            return 1.0
+        group, act = _active_color_group(bpy.context, entry)
+        if group is None or 3 not in group["subs"]:
+            return 1.0
+        fc = _ch_fcurve(act, group["subs"][3])
+        if fc is None:
+            return 1.0
+        return max(0.0, min(255.0, fc.evaluate(bpy.context.scene.frame_current))) / 255.0
+    except Exception:
+        return 1.0
+
+
+def _color_alpha_set(self, value):
+    try:
+        entry = _current_entry(bpy.context)
+        if entry is None:
+            return
+        group, act = _active_color_group(bpy.context, entry)
+        if group is None or 3 not in group["subs"]:
+            return
+        fc = _ch_fcurve(act, group["subs"][3])
+        if fc is not None:
+            _write_scalar_keyframe(fc, bpy.context.scene.frame_current, max(0.0, min(1.0, value)) * 255.0)
+    except Exception:
+        pass
+
+
+def draw_color_wheel(layout, context):
+    """TIML 色轮控件：聚合当前选中颜色通道组的 R/G/B(/A) 为一个色轮 + Alpha 滑条。"""
+    entry = _current_entry(context)
+    if entry is None:
+        layout.label(text=T("timle.color_need_session"), icon="INFO")
+        return
+    groups = _find_color_groups(entry)
+    if not groups:
+        layout.label(text=T("timle.color_none"), icon="INFO")
+        return
+    group, act = _active_color_group(context, entry)
+    if group is None or act is None:
+        layout.label(text=T("timle.color_ambiguous"), icon="INFO")
+        return
+    col = layout.column(align=True)
+    col.template_color_picker(context.scene, "efx_timle_color_rgb", value_slider=True)
+    col.prop(context.scene, "efx_timle_color_rgb", text="")
+    if 3 in group["subs"]:
+        col.prop(context.scene, "efx_timle_color_a", text=T("timle.color_alpha"), slider=True)
+
+
+class EFX_PT_timl_color_wheel(Panel):
+    """Dope Sheet 侧栏：把当前颜色通道组的 RGBA 聚合成色轮编辑。"""
+
+    bl_space_type  = "DOPESHEET_EDITOR"
+    bl_region_type = "UI"
+    bl_category    = "EFX TIML"
+    bl_label       = "TIML Color Wheel"
+    bl_options     = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        return _state["active"]
+
+    def draw(self, context):
+        # ⚠ 同 EFX_PT_timl_tracks：异常直接显示在面板里而不是让内容静默消失。
+        try:
+            draw_color_wheel(self.layout, context)
+        except Exception:
+            import traceback
+            self.layout.label(text="TIML Color Wheel panel error (see console):", icon="ERROR")
+            for line in traceback.format_exc().splitlines()[-4:]:
+                self.layout.label(text=line[:80])
+            traceback.print_exc()
+
+
+class EFX_PT_timl_color_wheel_graph(EFX_PT_timl_color_wheel):
+    """曲线编辑器侧栏：与 Dope Sheet 完全相同的色轮面板。"""
+
+    bl_space_type = "GRAPH_EDITOR"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 绘制控件（供 timl_io 的 TIML 面板调用 —— 点1：编辑入口归入 TIML 栏目）
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -706,6 +887,8 @@ _CLASSES = (
     EFXTimlChannel,
     EFX_OT_timl_edit_enter,
     EFX_OT_timl_edit_exit,
+    EFX_PT_timl_color_wheel,
+    EFX_PT_timl_color_wheel_graph,
 )
 
 
@@ -723,10 +906,25 @@ def register():
         description="Which axis to build/edit/play. Default All (most TIML use only one axis). "
                     "Pick A0/A1 to isolate when both are present.",
     )
+    bpy.types.Scene.efx_timle_color_rgb = FloatVectorProperty(
+        name="Color", subtype="COLOR", size=3, min=0.0, max=1.0,
+        get=_color_wheel_get, set=_color_wheel_set,
+        description="Aggregated RGB color wheel for the active TIML color channel group "
+                    "(reads/writes the R/G/B synthetic channels' keyframe at the current frame)",
+    )
+    bpy.types.Scene.efx_timle_color_a = FloatProperty(
+        name="Alpha", min=0.0, max=1.0, default=1.0,
+        get=_color_alpha_get, set=_color_alpha_set,
+        description="Alpha channel of the active TIML color channel group at the current frame",
+    )
 
 
 def unregister():
     _teardown()
+    if hasattr(bpy.types.Scene, "efx_timle_color_a"):
+        del bpy.types.Scene.efx_timle_color_a
+    if hasattr(bpy.types.Scene, "efx_timle_color_rgb"):
+        del bpy.types.Scene.efx_timle_color_rgb
     if hasattr(bpy.types.Scene, "efx_timle_focus"):
         del bpy.types.Scene.efx_timle_focus
     if hasattr(bpy.types.Scene, "efx_timle_all_bodies"):
