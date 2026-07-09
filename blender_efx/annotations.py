@@ -1802,6 +1802,1457 @@ FIELD_ANNOTATIONS = {
         "ZH": "保留字段。测 1/100/-1 无变化。",
     },
 
+    # -----------------------------------------------------------------------
+    # 批量生成：BOOLEAN/NORMALIZED/PERCENTAGE/ENUM 常见取值提示
+    # 来源：stats/field_classification.json（confidence>=0.6），仅提示"通常取值"，
+    # 不代表字段被锁定为该范围/取值——语料未覆盖到的其他取值同样合法。
+    # -----------------------------------------------------------------------
+    ("ALPHACORRECTION", "unkn0"): {
+        "EN": "Common range: 1~11 (rare outliers up to 45).",
+        "ZH": "常见范围 1~11（个别情况可达 45）。",
+    },
+    ("ALPHACORRECTION", "unkn2"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("BILLBOARD2D", "scaleJitterMax"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("BILLBOARD2D", "unkn0_0"): {
+        "EN": "Common values: [1, 5, 6, 7, 8, 10].",
+        "ZH": "常见取值为 [1, 5, 6, 7, 8, 10]。",
+    },
+    ("BILLBOARD2D", "unkn0_1"): {
+        "EN": "Common values: [0, 4, 12, 32].",
+        "ZH": "常见取值为 [0, 4, 12, 32]。",
+    },
+    ("BILLBOARD2D", "unkn3_0"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("BILLBOARD2D", "unkn3_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("BILLBOARD2D", "unkn3_2"): {
+        "EN": "Common values: [0, 1, 9].",
+        "ZH": "常见取值为 [0, 1, 9]。",
+    },
+    ("BILLBOARD2D", "unkn3_3"): {
+        "EN": "Common values: [0, 1, 9].",
+        "ZH": "常见取值为 [0, 1, 9]。",
+    },
+    ("BILLBOARD2D", "unkn4_1"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BILLBOARD2D", "unkn4_4"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BILLBOARD2D", "unkn4_5"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BILLBOARD2D", "unkn5_1"): {
+        "EN": "Common values: [0, 1, 3].",
+        "ZH": "常见取值为 [0, 1, 3]。",
+    },
+    ("BILLBOARD3D", "EPVColorSlot1"): {
+        "EN": "Common values: [0, 1, 2, 3, 7, 8, 9].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 7, 8, 9]。",
+    },
+    ("BILLBOARD3D", "SlotOverride1"): {
+        "EN": "Common values: [0, 1, 2, 3, 9].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 9]。",
+    },
+    ("BILLBOARD3D", "flowmapAcceleration"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("BILLBOARD3D", "flowmapAccelerationJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BILLBOARD3D", "flowmapSpeedJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("BILLBOARD3D", "flowmapStrengthAcceleration"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("BILLBOARD3D", "flowmapStrengthAccelerationJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BILLBOARD3D", "flowmapStrengthJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("BILLBOARD3D", "unkn5"): {
+        "EN": "Common values: [0, 1, 2, 3, 4, 10].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 4, 10]。",
+    },
+    ("BILLBOARD3D", "unkn6_0"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("BILLBOARD3D", "unkn6_1"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BILLBOARD3D", "unkn7"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BILLBOARD3D", "unkn9"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("BLINK", "unkn0_1"): {
+        "EN": "Common values: [5, 30, 44].",
+        "ZH": "常见取值为 [5, 30, 44]。",
+    },
+    ("BLINK", "unkn1_1"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BLINK", "unkn1_10"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("BLINK", "unkn1_2"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BLINK", "unkn1_4"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("BLINK", "unkn1_6"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("BLINK", "unkn1_8"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("EMITTERSHAPE2D", "offsetX"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("EMITTERSHAPE2D", "offsetXJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("EMITTERSHAPE2D", "offsetY"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("EMITTERSHAPE2D", "offsetYJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("EMITTERSHAPE2D", "spawnCount"): {
+        "EN": "Common values: [0, 3, 5, 6, 8, 10, 16, 18].",
+        "ZH": "常见取值为 [0, 3, 5, 6, 8, 10, 16, 18]。",
+    },
+    ("EMITTERSHAPE2D", "unkn0"): {
+        "EN": "Common values: [1, 2, 3, 7, 8, 9, 13].",
+        "ZH": "常见取值为 [1, 2, 3, 7, 8, 9, 13]。",
+    },
+    ("EMITTERSHAPE2D", "unkn20"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("EMITTERSHAPE3D", "rotationOrder"): {
+        "EN": "Formerly unkn3_i0. Exactly 6 observed values (0~5) — matches the number of "
+              "3-axis rotation-order permutations, hence the guessed name. Value 4 dominates "
+              "(~71%). Exact meaning per value unconfirmed.",
+        "ZH": "原名 unkn3_i0。恰好观测到 6 种取值（0~5）——与三轴旋转顺序的排列数吻合，故据此"
+              "命名。取值 4 占绝大多数（约 71%）。各取值具体含义尚未确认。",
+    },
+    ("EMITTERSHAPE3D", "unkn0"): {
+        "EN": "Common values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].",
+        "ZH": "常见取值为 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]。",
+    },
+    ("EMITTERSHAPE3D", "unkn2"): {
+        "EN": "Enum: observed values [0, 1, 2]; roughly 52%/39%/9%.",
+        "ZH": "枚举：观测取值为 [0, 1, 2]；分布约为 52%/39%/9%。",
+    },
+    ("EMITTERSHAPE3D", "unkn3_0"): {
+        "EN": "Common values: [0, 1, 3, 5, 7] (BT template mislabeled this a float; "
+              "confirmed integer).",
+        "ZH": "常见取值为 [0, 1, 3, 5, 7]（BT 模板误标为 float，实为整数）。",
+    },
+    ("EMITTERSHAPE3D", "unkn3_f1"): {
+        "EN": "Usually 0; other common values: [60, 100, 120, 135, 140, 150, 160, 180, 200].",
+        "ZH": "通常为 0；其余常见取值为 [60, 100, 120, 135, 140, 150, 160, 180, 200]。",
+    },
+    ("EMITTERSHAPE3D", "unkn4"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("EMITTERSHAPE3D", "unknRadiusRelated"): {
+        "EN": "Despite the name, BT template mislabeled this a float — confirmed integer "
+              "(only 6 values 0~5, overwhelmingly 0). Not actually radius-shaped data; "
+              "the original name is likely a positional guess.",
+        "ZH": "尽管名字如此，BT 模板误标为 float——实为整数（仅 0~5 共 6 种取值，绝大多数为 0）。"
+              "分布并不像半径类数据，原名很可能只是按位置猜测的。",
+    },
+    ("EMITTERSHAPEMESH", "unkn0_0"): {
+        "EN": "Common values: [1, 2, 3, 4, 5, 6, 7, 9].",
+        "ZH": "常见取值为 [1, 2, 3, 4, 5, 6, 7, 9]。",
+    },
+    ("EMITTERSHAPEMESH", "unkn2_0"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("EMITTERSHAPEMESH", "unkn2_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("EMITTERSHAPEMESH", "unkn2_2"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("EMITTERSHAPEMESH", "unkn2_3"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("EMITTERSHAPEMESH", "unkn2_5"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("EMITTERSHAPEMESH", "unkn2_6"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("EMITTERSHAPEMESH", "unkn2_7"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("EXTERNREFERENCE", "unkn1_0"): {
+        "EN": "Common values: [0, 1, 3, 4146].",
+        "ZH": "常见取值为 [0, 1, 3, 4146]。",
+    },
+    ("EXTERNREFERENCE", "unkn1_1"): {
+        "EN": "Common values: [0, 1, 2, 4].",
+        "ZH": "常见取值为 [0, 1, 2, 4]。",
+    },
+    ("EXTERNREFERENCE", "unkn1_2"): {
+        "EN": "Common values: [0, 1, 2, 3, 5].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 5]。",
+    },
+    ("EXTERNREFERENCE", "unkn1_3"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("EXTERNREFERENCE", "unkn1_6"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("FADEBYANGLE", "unkn1_1"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("FADEBYANGLE", "unkn1_2"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("FADEBYANGLE", "unkn2_1"): {
+        "EN": "Common values: [0, 4, 5].",
+        "ZH": "常见取值为 [0, 4, 5]。",
+    },
+    ("FADEBYOCCLUSION", "unkn2_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("FADEBYOCCLUSION", "unkn2_2"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("FAKEDOF", "unkn4"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("FAKEPLANE", "unkn1_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("FAKEPLANE", "unkn1_2"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("FAKEPLANE", "unkn1_3"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("FAKEPLANE", "unkn3"): {
+        "EN": "Common values: [1, 2, 4].",
+        "ZH": "常见取值为 [1, 2, 4]。",
+    },
+    ("GUIDE", "initialPositionJitter"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("GUIDE", "restitutionDelay"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("GUIDE", "restitutionDelayJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("GUIDE", "restitutionEccentricity"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "restitutionEccentricityJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "restitutionElasticity"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "restitutionElasticityJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "speed"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "speedJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "unkn16"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "unkn17"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "unkn18"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "unkn19"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "unkn21"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("GUIDE", "unkn22"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("LIFE", "unkn0"): {
+        "EN": "Common values: [1, 2, 5, 6, 7, 8, 9, 10, 12].",
+        "ZH": "常见取值为 [1, 2, 5, 6, 7, 8, 9, 10, 12]。",
+    },
+    ("LIFE", "unkn2_0"): {
+        "EN": "Usually 0; other common values: [2, 5, 10, 20, 30, 35, 40, 50, 100].",
+        "ZH": "通常为 0；其余常见取值为 [2, 5, 10, 20, 30, 35, 40, 50, 100]。",
+    },
+    ("LIFE", "unkn2_1"): {
+        "EN": "Usually 0; other common values: [5, 6, 10, 15, 20, 30, 40, 50, 60].",
+        "ZH": "通常为 0；其余常见取值为 [5, 6, 10, 15, 20, 30, 40, 50, 60]。",
+    },
+    ("LIGHTNING", "unkn00_0"): {
+        "EN": "Common values: [1, 2, 3, 4, 7].",
+        "ZH": "常见取值为 [1, 2, 3, 4, 7]。",
+    },
+    ("LIGHTNING", "unkn08_1"): {
+        "EN": "Common values: [0, 1, 2, 3, 5].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 5]。",
+    },
+    ("LIGHTNING", "unkn10_2"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("LIGHTNING", "unkn11_0"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("LIGHTNING", "unkn12_1"): {
+        "EN": "Common values: [0, 4].",
+        "ZH": "常见取值为 [0, 4]。",
+    },
+    ("LIGHTNING", "unkn14_0"): {
+        "EN": "Common values: [0, 5].",
+        "ZH": "常见取值为 [0, 5]。",
+    },
+    ("LIGHTNING", "unkn14_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("LINKPARTSVISIBLE", "unkn0_2"): {
+        "EN": "Common values: [2, 13, 15].",
+        "ZH": "常见取值为 [2, 13, 15]。",
+    },
+    ("LUMINANCEBLEED", "unkn1_1"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("LUMINANCEBLEED", "unkn1_2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("MATERIAL", "block_count"): {
+        "EN": "Common values: [0, 1, 2, 3, 5, 6, 7].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 5, 6, 7]。",
+    },
+    ("MESH", "BeginMod3"): {
+        "EN": "Common values: [0, 1, 2, 4, 12, 16].",
+        "ZH": "常见取值为 [0, 1, 2, 4, 12, 16]。",
+    },
+    ("MESH", "NULL1"): {
+        "EN": "Common values: [0, 1, 256, 257].",
+        "ZH": "常见取值为 [0, 1, 256, 257]。",
+    },
+    ("MESH", "emissive_saturation_j"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("MESH", "epv_color_slot1"): {
+        "EN": "Common values: [0, 1, 2, 3, 6, 9].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 6, 9]。",
+    },
+    ("MESH", "epv_color_slot2"): {
+        "EN": "Common values: [0, 1, 2, 3, 9].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 9]。",
+    },
+    ("MESH", "global_scale_jitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("MESH", "rotation2"): {
+        "EN": "Formerly unkn5_2. A scalar rotation value distinct from the XYZ 'rotation' "
+              "field above it — angle-like numbers, most commonly -180 or 0 (occasionally "
+              "-360 or other degree values). Exact axis/purpose unconfirmed.",
+        "ZH": "原名 unkn5_2。与上方 XYZ 的 rotation 字段不同，是一个独立的标量旋转值——呈"
+              "角度状数字，最常见为 -180 或 0（偶见 -360 等其他角度）。具体作用的轴向尚未确认。",
+    },
+    ("MESH", "rotation2Jitter"): {
+        "EN": "Formerly unkn5_3. Jitter paired with rotation2 — most commonly 360 or 0 "
+              "(360 reads as 'fully random rotation', matching rotation2's -360 outlier); "
+              "occasionally other degree values.",
+        "ZH": "原名 unkn5_3。与 rotation2 配对的抖动量——最常见为 360 或 0（360 即"
+              "「完全随机旋转」，与 rotation2 偶见的 -360 呼应）；偶见其他角度值。",
+    },
+    ("MESH", "rotationOrder"): {
+        "EN": "Formerly unkn7_2. Exactly 6 observed values (0~5, dominated by 4 at ~88%) — "
+              "same value shape as EMITTERSHAPE3D's rotationOrder (also dominated by 4), "
+              "suggesting they may share the same engine-wide rotation-order enum. "
+              "Exact meaning per value unconfirmed.",
+        "ZH": "原名 unkn7_2。恰好观测到 6 种取值（0~5，4 占约 88%）——与 EMITTERSHAPE3D 的 "
+              "rotationOrder 分布形态相同（同样以 4 为主流值），推测两者可能共用引擎内同一套"
+              "旋转顺序枚举。各取值具体含义尚未确认。",
+    },
+    ("MESH", "unkn0_0"): {
+        "EN": "Common values: [1, 2, 3, 4, 5, 6, 7, 8, 9].",
+        "ZH": "常见取值为 [1, 2, 3, 4, 5, 6, 7, 8, 9]。",
+    },
+    ("MESH", "unkn0_1"): {
+        "EN": "Always 167 across all observed samples — likely a fixed format/version "
+              "marker rather than a tunable parameter.",
+        "ZH": "观测样本中恒为 167——很可能是固定的格式/版本标记，而非可调参数。",
+    },
+    ("MESH", "unkn40"): {
+        "EN": "Observed values: [0, 1, 2, 3, 4, 5]; overwhelmingly 2 (~92%).",
+        "ZH": "观测取值为 [0, 1, 2, 3, 4, 5]；绝大多数为 2（约 92%）。",
+    },
+    ("MESH", "unkn5"): {
+        "EN": "Common values: [0, 2, 6, 7].",
+        "ZH": "常见取值为 [0, 2, 6, 7]。",
+    },
+    ("MESH", "unkn6_1"): {
+        "EN": "Always 0 across all observed samples. Likely reserved/unused.",
+        "ZH": "观测样本中恒为 0。可能是保留/未使用字段。",
+    },
+    ("MESH", "unkn7_0"): {
+        "EN": "Common values: [0, 1, 2, 3, 180, 4112].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 180, 4112]。",
+    },
+    ("MESH", "unkn7_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("NOISE", "secondary_axis_speed"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("NOISE", "secondary_axis_speed2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("NOISE", "section_length"): {
+        "EN": "Common values: [0, 36].",
+        "ZH": "常见取值为 [0, 36]。",
+    },
+    ("OTOMOSNOW", "unkn7_1"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("OTOMOSNOW", "unkn7_3"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("OTOMOSNOW", "unkn7_4"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("OTOMOSNOW", "unkn7_7"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PARENTEMISSIVE", "unkn2"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PARENTEMISSIVE", "unkn3"): {
+        "EN": "Common values: [0, 1, 2, 9].",
+        "ZH": "常见取值为 [0, 1, 2, 9]。",
+    },
+    ("PARENTEMISSIVE", "unkn4"): {
+        "EN": "Common values: [0, 1, 4, 9, 13, 15].",
+        "ZH": "常见取值为 [0, 1, 4, 9, 13, 15]。",
+    },
+    ("PARENTEMISSIVE", "unkn8_1"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PARENTEMISSIVE", "unkn8_2"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PARENTSNOW", "unkn4_10"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PARENTSNOW", "unkn4_12"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PARENTSNOW", "unkn4_2"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PARENTSNOW", "unkn4_3"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PARENTSNOW", "unkn4_5"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PARENTSNOW", "unkn4_6"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("PARENTSNOW", "unkn4_7"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PARENTSNOW", "unkn4_8"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PARENTSNOW", "unkn4_9"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PATHCHAIN", "unkn0_0"): {
+        "EN": "Common values: [0, 1, 2, 3, 4, 5, 7, 17].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 4, 5, 7, 17]。",
+    },
+    ("PATHCHAIN", "unkn4_0"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PATHCHAIN", "unkn4_2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PATHCHAIN", "unkn4_4"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PATHCHAIN", "unkn5_2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PATHCHAIN", "unkn5_7"): {
+        "EN": "Common values: [2, 4].",
+        "ZH": "常见取值为 [2, 4]。",
+    },
+    ("PATHCHAIN", "unkn6"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("PLANE", "EPVColorSlot1"): {
+        "EN": "Common values: [0, 1, 2, 3, 9].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 9]。",
+    },
+    ("PLANE", "unkn0"): {
+        "EN": "Common range: 1~13 (rare outliers up to 41).",
+        "ZH": "常见范围 1~13（个别情况可达 41）。",
+    },
+    ("PLANE", "unkn21_0"): {
+        "EN": "Unnamed float parameter (BT template calls it 'SlotOverride1', but the value "
+              "reinterpreted as float lands in a clean angle-like range [-217, 365] — the "
+              "original name/type appear to be a template mismatch). Purpose unconfirmed.",
+        "ZH": "未命名的浮点参数（BT 模板标为 SlotOverride1，但重解读为 float 后落在干净的角度状"
+              "区间 [-217, 365]，原名/类型疑似模板误标）。具体作用尚未确认。",
+    },
+    ("PLANE", "unkn21_1"): {
+        "EN": "Unnamed float parameter (BT template calls it 'SlotOverride2'). Observed values "
+              "are clean angle-like numbers spanning exactly [0, 360] — likely paired with "
+              "unkn21_0 as an angle range. Purpose unconfirmed.",
+        "ZH": "未命名的浮点参数（BT 模板标为 SlotOverride2）。观测值为干净的角度状数字，恰好覆盖 "
+              "[0, 360] 整个区间——很可能与 unkn21_0 构成一对角度范围。具体作用尚未确认。",
+    },
+    ("PLANE", "flowmapAcceleration"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PLANE", "flowmapAccelerationJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PLANE", "flowmapSpeedJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PLANE", "flowmapStrengthAcceleration"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PLANE", "flowmapStrengthAccelerationJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PLANE", "flowmapStrengthJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PLANE", "heightJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PLANE", "unkn20"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PLANE", "unkn5_0"): {
+        "EN": "Common values: [0, 1, 2, 3, 4, 6].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 4, 6]。",
+    },
+    ("PLANE", "unkn5_1"): {
+        "EN": "Common values: [0, 1, 3, 5, 7].",
+        "ZH": "常见取值为 [0, 1, 3, 5, 7]。",
+    },
+    ("PLANE", "unkn5_2"): {
+        "EN": "Observed values: [0, 1, 2, 3, 4, 5]; most commonly 1 or 0.",
+        "ZH": "观测取值为 [0, 1, 2, 3, 4, 5]；最常见为 1 或 0。",
+    },
+    ("PLANE", "unkn5_3"): {
+        "EN": "Common values: [0, 2, 3, 4, 5].",
+        "ZH": "常见取值为 [0, 2, 3, 4, 5]。",
+    },
+    ("PLANE", "unkn7_0"): {
+        "EN": "Observed values [0, 1, 2, 3, 4, 8, 32, 33, 36] look like a bitmask "
+              "(1/2/4/8/32 present, plus combinations 33=32+1, 36=32+4). "
+              "Per-bit meaning unconfirmed.",
+        "ZH": "观测取值 [0, 1, 2, 3, 4, 8, 32, 33, 36] 呈现位掩码特征"
+              "（含 1/2/4/8/32 及其组合 33=32+1、36=32+4）。各 bit 含义尚未确认。",
+    },
+    ("PLANE", "unkn7_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("PLANE", "widthJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PLEMISSIVE", "radii_effect_unkn2"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("PLEMISSIVE", "unkn1"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PLEMISSIVE", "unkn5_1"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PLEMISSIVE", "unkn5_2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PTBEHAVIOR", "behav_type_len"): {
+        "EN": "Common values: [20, 21, 28, 31, 34].",
+        "ZH": "常见取值为 [20, 21, 28, 31, 34]。",
+    },
+    ("PTCOLLISION", "bounceElasticityMultiplier"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PTCOLLISION", "unkn04"): {
+        "EN": "Common values: [0, 1, 10, 15].",
+        "ZH": "常见取值为 [0, 1, 10, 15]。",
+    },
+    ("PTCOLLISION", "unkn1_1"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PTCOLLISION", "unkn1_2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("PTCOLLISION", "unkn2_1"): {
+        "EN": "Common values: [0, 1, 2, 3, 10].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 10]。",
+    },
+    ("PTCOLLISION", "unkn34"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PTCOLLISION", "unkn35"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PTCOLLISION", "unkn36"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PTCOLLISION", "unkn37"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("PTCOLLISION", "unkn4_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("PTCOLLISION", "unkn6_0"): {
+        "EN": "Common values: [0, 2, 3, 4, 5].",
+        "ZH": "常见取值为 [0, 2, 3, 4, 5]。",
+    },
+    ("PTCOLLISION", "unkn6_1"): {
+        "EN": "Common values: [0, 1, 2, 7, 40, 50, 1000].",
+        "ZH": "常见取值为 [0, 1, 2, 7, 40, 50, 1000]。",
+    },
+    ("PTLIFE", "unkn3"): {
+        "EN": "Common values: [0, 2, 3, 4, 5].",
+        "ZH": "常见取值为 [0, 2, 3, 4, 5]。",
+    },
+    ("PTLIFE", "unkn5"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("PTLIFE", "unkn6"): {
+        "EN": "Common values: [0, 10, 30, 60, 70, 90, 240, 490].",
+        "ZH": "常见取值为 [0, 10, 30, 60, 70, 90, 240, 490]。",
+    },
+    ("PTLIFE", "unkn8"): {
+        "EN": "Common values: [0, 20].",
+        "ZH": "常见取值为 [0, 20]。",
+    },
+    ("PTTRIGGER", "unkn2"): {
+        "EN": "Common values: [1, 2, 4, 8].",
+        "ZH": "常见取值为 [1, 2, 4, 8]。",
+    },
+    ("RAYCAST", "spacer"): {
+        "EN": "Common values: [-4, -3, -2, -1].",
+        "ZH": "常见取值为 [-4, -3, -2, -1]。",
+    },
+    ("REFRACTION", "unkn2"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("REPEATAREA", "unkn0"): {
+        "EN": "Common values: [0, 1, 2, 3, 4, 7, 10].",
+        "ZH": "常见取值为 [0, 1, 2, 3, 4, 7, 10]。",
+    },
+    ("REPEATAREA", "unkn4"): {
+        "EN": "Common values: [1, 2, 5, 7].",
+        "ZH": "常见取值为 [1, 2, 5, 7]。",
+    },
+    ("RGBFIRE", "fireColorParam_unkn7"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RGBFIRE", "smokeColorParam_unkn7"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RGBFIRE", "unkn4"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RGBWATER", "brightnessSlot1"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RGBWATER", "brightnessSlot2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RGBWATER", "brightnessSlotMultiplier1"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RGBWATER", "brightnessSlotMultiplier2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RGBWATER", "emissiveMultiplier"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RGBWATER", "opacity"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RGBWATER", "unkn2_1"): {
+        "EN": "Common values: [0, 5, 10, 14, 30, 40, 62].",
+        "ZH": "常见取值为 [0, 5, 10, 14, 30, 40, 62]。",
+    },
+    ("RGBWATER", "unkn2_14"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RGBWATER", "unkn2_16"): {
+        "EN": "Common values: [0, 1, 2, 6, 7, 8].",
+        "ZH": "常见取值为 [0, 1, 2, 6, 7, 8]。",
+    },
+    ("RGBWATER", "unkn2_17"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RGBWATER", "unkn2_19"): {
+        "EN": "Common values: [0, 5].",
+        "ZH": "常见取值为 [0, 5]。",
+    },
+    ("RGBWATER", "unkn2_24"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RGBWATER", "unkn2_3"): {
+        "EN": "Common values: [0, 5, 10, 14, 20, 24, 25, 30].",
+        "ZH": "常见取值为 [0, 5, 10, 14, 20, 24, 25, 30]。",
+    },
+    ("RGBWATER", "unkn2_4"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RGBWATER", "unkn2_5"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RGBWATER", "unkn2_6"): {
+        "EN": "Common values: [0, 2].",
+        "ZH": "常见取值为 [0, 2]。",
+    },
+    ("RGBWATER", "unkn2_7"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RGBWATER", "unkn2_8"): {
+        "EN": "Common values: [0, 5, 10, 15, 25, 40, 50, 60].",
+        "ZH": "常见取值为 [0, 5, 10, 15, 25, 40, 50, 60]。",
+    },
+    ("RGBWATER", "unkn2_9"): {
+        "EN": "Common values: [0, 25].",
+        "ZH": "常见取值为 [0, 25]。",
+    },
+    ("RGBWATER", "unknownFloat"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RGBWATER", "unknownInt_0"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RGBWATER", "unknownInt_1"): {
+        "EN": "Common values: [0, 10, 16, 20, 25, 30, 60].",
+        "ZH": "常见取值为 [0, 10, 16, 20, 25, 30, 60]。",
+    },
+    ("RGBWATER", "unknownInt_2"): {
+        "EN": "Common values: [0, 16].",
+        "ZH": "常见取值为 [0, 16]。",
+    },
+    ("RIBBON", "base_flap_amount"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "base_flap_amount_jitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "base_flap_frequency"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "base_flap_frequency_jitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "base_opacity"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "base_width_multiplier"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "inertial_excess_jitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "lengthwise_offset_relative_to_camera"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "material_tesselation_jitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "restitution_jitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "scale_jitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "springiness"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "springiness_jitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "tip_flap_amount"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "tip_flap_amount_jitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "tip_flap_frequency"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "tip_flap_frequency_jitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "tip_opacity"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "tip_width_multiplier"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "unkn16_0_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RIBBON", "unkn16_1"): {
+        "EN": "Common values: [1, 257].",
+        "ZH": "常见取值为 [1, 257]。",
+    },
+    ("RIBBON", "unkn16arr_0"): {
+        "EN": "Common values: [0, 2, 4, 5].",
+        "ZH": "常见取值为 [0, 2, 4, 5]。",
+    },
+    ("RIBBON", "unkn21"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "unkn22_0"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "unkn22_2"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RIBBON", "unkn23_1"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "unkn23_2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "unkn23_5"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "unkn23_6"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "unkn27_0"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "unkn27_1"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "unknown19_0"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBON", "uv_map_width"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBON", "vertical_physics_subdivision_count"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RIBBONBLADE", "NULL9"): {
+        "EN": "Common values: [0, 1, 256].",
+        "ZH": "常见取值为 [0, 1, 256]。",
+    },
+    ("RIBBONBLADE", "unkn03"): {
+        "EN": "Common values: [1, 2, 4, 5].",
+        "ZH": "常见取值为 [1, 2, 4, 5]。",
+    },
+    ("RIBBONBLADE", "unkn05_1"): {
+        "EN": "Common values: [0, 2, 3, 4, 6, 20].",
+        "ZH": "常见取值为 [0, 2, 3, 4, 6, 20]。",
+    },
+    ("RIBBONBLADE", "unkn07_0"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RIBBONBLADE", "unkn07_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RIBBONBLADE", "unkn08"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RIBBONBLADE", "unkn0_0"): {
+        "EN": "Common values: [1, 2, 4].",
+        "ZH": "常见取值为 [1, 2, 4]。",
+    },
+    ("RIBBONBLADE", "unkn12_0"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RIBBONBLADE", "unkn12_1"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("RIBBONBLADE", "unkn23"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBONBLADE", "unkn25"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("RIBBONBLADE", "unkn26"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("RIBBONBLADE", "uvRepetition"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("ROTATEANIM", "momentum_retention"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("ROTATEANIM", "unkn1_0"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("ROTATEANIM", "unkn1_1"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("ROTATEANIM", "unkn1_2"): {
+        "EN": "Usually 0; other common values: [1, 2, 5, 10, 15, 20, 30, 60, 128].",
+        "ZH": "通常为 0；其余常见取值为 [1, 2, 5, 10, 15, 20, 30, 60, 128]。",
+    },
+    ("SCALEANIM", "initialScaleAccelJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SCALEANIM", "scaleAccelXJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SCALEANIM", "scaleAccelYJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SCALEANIM", "scaleAccelZ"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("SCALEANIM", "scaleSpeedXJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SCALEANIM", "scaleSpeedYJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("SCALEANIM", "scaleSpeedZJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SCREENSPACECOLLISION", "bounce"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SCREENSPACECOLLISION", "bounceJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SHADERSETTINGS", "unkn0"): {
+        "EN": "Common values: [1, 2, 3, 4, 5, 6, 7, 10, 11, 12].",
+        "ZH": "常见取值为 [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]。",
+    },
+    ("SHADERSETTINGS", "unkn1"): {
+        "EN": "Common values: [80, 104].",
+        "ZH": "常见取值为 [80, 104]。",
+    },
+    ("SHADERSETTINGS", "unkn2"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("SHADERSETTINGS", "unkn3_0"): {
+        "EN": "Observed values: [0, 1, 2, 3]; most commonly 0 or 1.",
+        "ZH": "观测取值为 [0, 1, 2, 3]；最常见为 0 或 1。",
+    },
+    ("SHADERSETTINGS", "unkn4_0"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SHADERSETTINGS", "unkn4_1"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SHADERSETTINGS", "unkn4_2"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SHADERSETTINGS", "unkn4_3"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SHADERSETTINGS", "unkn4_4"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SHADERSETTINGS", "unkn4_5"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SHADERSETTINGS", "unkn4_6"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SHADERSETTINGS", "unkn4_7"): {
+        "EN": "Common values: [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200].",
+        "ZH": "常见取值为 [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200]。",
+    },
+    ("SHADERSETTINGS", "unkn4_8"): {
+        "EN": "Unnamed integer parameter (BT template mislabels it float — reinterpreted values "
+              "showed no clean float range, and -1 alone covers 63% of samples, a classic "
+              "unset/sentinel pattern; the rest are large ID/hash-like integers). "
+              "-1 = unset (most common). Purpose unconfirmed.",
+        "ZH": "未命名的整数参数（BT 模板误标为 float ——重解读后并非干净的浮点范围，且 -1 单独"
+              "占样本的 63%，是典型的“未设置”哨兵值；其余为疑似哈希/ID 的大整数）。"
+              "-1 = 未设置（最常见）。具体作用尚未确认。",
+    },
+    ("SHADERSETTINGS", "unkn4_9"): {
+        "EN": "Usually 0; other common values: [-1000, -500, -200, -100, -50, 20, 50, 100, 200].",
+        "ZH": "通常为 0；其余常见取值为 [-1000, -500, -200, -100, -50, 20, 50, 100, 200]。",
+    },
+    ("SHADERSETTINGS", "unkn4_10"): {
+        "EN": "Usually 0; other common values: [20, 25, 50, 80, 100, 150, 200, 300, 1000].",
+        "ZH": "通常为 0；其余常见取值为 [20, 25, 50, 80, 100, 150, 200, 300, 1000]。",
+    },
+    ("SHADERSETTINGS", "unkn4_11"): {
+        "EN": "Usually 0; other common values: [-200, -100, -50, -20, 50, 80, 100, 150, 200].",
+        "ZH": "通常为 0；其余常见取值为 [-200, -100, -50, -20, 50, 80, 100, 150, 200]。",
+    },
+    ("SHADERSETTINGS", "unkn4_12"): {
+        "EN": "Always 0.0 in observed data. Purpose unconfirmed.",
+        "ZH": "观测样本中恒为 0.0。具体作用尚未确认。",
+    },
+    ("SHADERSETTINGS", "unkn4_13"): {
+        "EN": "Usually 0; other common values: [15, 17, 20, 25, 50, 100, 150, 200, 300].",
+        "ZH": "通常为 0；其余常见取值为 [15, 17, 20, 25, 50, 100, 150, 200, 300]。",
+    },
+    ("SHADERSETTINGS", "unkn4_14"): {
+        "EN": "Observed values: [0, 1, 2, 3]; almost always 0.",
+        "ZH": "观测取值为 [0, 1, 2, 3]；绝大多数为 0。",
+    },
+    ("SHADERSETTINGS", "unkn4_15"): {
+        "EN": "Usually 0; other common values are large round numbers: "
+              "[1, 100, 500, 1000, 2500, 5000, 8000, 10000, -10000].",
+        "ZH": "通常为 0；其余常见取值为较大的整数：[1, 100, 500, 1000, 2500, 5000, 8000, 10000, -10000]。",
+    },
+    ("SHADERSETTINGS", "unkn5_0"): {
+        "EN": "Common values: [0, 1, 65536, 16777216].",
+        "ZH": "常见取值为 [0, 1, 65536, 16777216]。",
+    },
+    ("SHADERSETTINGS", "unkn5_1"): {
+        "EN": "Observed values: [0, 1, 2, 3, 4, 5, 7, 8, 9] (6 never observed); most commonly 0 or 1.",
+        "ZH": "观测取值为 [0, 1, 2, 3, 4, 5, 7, 8, 9]（从未出现 6）；最常见为 0 或 1。",
+    },
+    ("SPAWN", "unkn0"): {
+        "EN": "Common values: [2, 3, 4, 5, 6, 7, 8, 9, 10]; overwhelmingly 2.",
+        "ZH": "常见取值为 [2, 3, 4, 5, 6, 7, 8, 9, 10]；绝大多数为 2。",
+    },
+    ("SPAWN", "unkn10"): {
+        "EN": "Usually 0; other common values: [1, 2, 5, 10, 15, 20, 30, 40, 60].",
+        "ZH": "通常为 0；其余常见取值为 [1, 2, 5, 10, 15, 20, 30, 40, 60]。",
+    },
+    ("SPAWN", "unkn11"): {
+        "EN": "Common values: [0, 2, 4, 5, 10, 50].",
+        "ZH": "常见取值为 [0, 2, 4, 5, 10, 50]。",
+    },
+    ("SPAWN", "unkn21"): {
+        "EN": "Usually 0; other common values: [5, 10, 20, 30, 40, 80, 100, 128, 200].",
+        "ZH": "通常为 0；其余常见取值为 [5, 10, 20, 30, 40, 80, 100, 128, 200]。",
+    },
+    ("SPAWN", "unkn30"): {
+        "EN": "Usually 0; other common values: [20, 22, 25, 30, 40, 50, 100, 200].",
+        "ZH": "通常为 0；其余常见取值为 [20, 22, 25, 30, 40, 50, 100, 200]。",
+    },
+    ("SPAWN", "unkn31"): {
+        "EN": "Usually 0. Non-zero values look like a bitmask (1/2/4/8/16/32 present, "
+              "plus combinations 33=32+1, 34=32+2, 36=32+4). Per-bit meaning unconfirmed.",
+        "ZH": "通常为 0。非零取值呈现位掩码特征（含 1/2/4/8/16/32 及其组合 33=32+1、"
+              "34=32+2、36=32+4）。各 bit 含义尚未确认。",
+    },
+    ("SPAWNBYANGLE", "unkn3"): {
+        "EN": "Common values: [1, 4].",
+        "ZH": "常见取值为 [1, 4]。",
+    },
+    ("STRAINRIBBON", "breakDelay"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("STRAINRIBBON", "breakDelayJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("STRAINRIBBON", "breakpointLocation"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("STRAINRIBBON", "breakpointLocationJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("STRAINRIBBON", "color3_z"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("STRAINRIBBON", "gravityMultiplierJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("STRAINRIBBON", "inertiaJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("STRAINRIBBON", "poseSnappingJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("STRAINRIBBON", "positionalAberration_01"): {
+        "EN": "Common values: [0, 1, 8, 32, 33, 36].",
+        "ZH": "常见取值为 [0, 1, 8, 32, 33, 36]。",
+    },
+    ("STRAINRIBBON", "positionalAberration_02"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("STRAINRIBBON", "spacer04"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("STRAINRIBBON", "unkn06_08_00"): {
+        "EN": "Common values: [0, 256].",
+        "ZH": "常见取值为 [0, 256]。",
+    },
+    ("STRAINRIBBON", "unkn06_08_01"): {
+        "EN": "Common values: [0, 1, 257].",
+        "ZH": "常见取值为 [0, 1, 257]。",
+    },
+    ("STRAINRIBBON", "unkn06_1"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("STRAINRIBBON", "unkn06_2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("STRAINRIBBON", "unkn06_4"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("STRAINRIBBON", "unkn06_5"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("STRAINRIBBON", "unkn06_6"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("STRAINRIBBON", "unkn06_7"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("STRAINRIBBON", "unkn09_3"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("STRAINRIBBON", "unkn11"): {
+        "EN": "Common values: [0, 2, 3, 6].",
+        "ZH": "常见取值为 [0, 2, 3, 6]。",
+    },
+    ("STRAINRIBBON", "unkn12_00"): {
+        "EN": "Common values: [0, 2, 3, 4, 5, 8, 10, 50].",
+        "ZH": "常见取值为 [0, 2, 3, 4, 5, 8, 10, 50]。",
+    },
+    ("TRANSFORM2D", "unkn1_0"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("TRANSFORM2D", "unkn1_1"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("TUBELIGHT", "unkn0_2"): {
+        "EN": "Common values: [13434880, 13435136].",
+        "ZH": "常见取值为 [13434880, 13435136]。",
+    },
+    ("TUBELIGHT", "unkn2_0"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("TURBULENCE", "unkn1_0"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("TURBULENCE", "unkn1_1"): {
+        "EN": "Common values: [0, 4].",
+        "ZH": "常见取值为 [0, 4]。",
+    },
+    ("TURBULENCE", "unkn3_4"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("UVCONTROL", "extraMaterialInitialPositionJ"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("UVCONTROL", "extraMaterialSpeed"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("UVCONTROL", "opacityJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("UVCONTROL", "unkn2"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("UVCONTROL", "uv2_unkn0"): {
+        "EN": "Common values: 0/1.",
+        "ZH": "常见取值为 0/1。",
+    },
+    ("UVSEQUENCE", "animationAcceleration"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("UVSEQUENCE", "animationAccelerationJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("UVSEQUENCE", "animationSpeedJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("UVSEQUENCE", "loopingPad"): {
+        "EN": "Padding byte, always 0 in observed data (part of the loopingEnum "
+              "byte layout, see loopingMode/loopingOrientation).",
+        "ZH": "填充字节，观测样本中恒为 0（属于 loopingEnum 的字节布局，参见 "
+              "loopingMode/loopingOrientation）。",
+    },
+    ("UVSEQUENCE", "unkn0"): {
+        "EN": "Common values: [1, 2, 5, 6, 7, 8, 9, 11, 13, 14].",
+        "ZH": "常见取值为 [1, 2, 5, 6, 7, 8, 9, 11, 13, 14]。",
+    },
+    ("UVSEQUENCE", "unkn2"): {
+        "EN": "Unnamed integer parameter (BT template mislabels it 'NULL' — it is not a "
+              "fixed constant). Usually 0; other values seen are small integers 1~8. "
+              "Purpose unconfirmed.",
+        "ZH": "未命名的整数参数（BT 模板误标为 NULL，实际并非恒定值）。通常为 0；其余取值为 "
+              "1~8 的小整数。具体作用尚未确认。",
+    },
+    ("VELOCITY2D", "expansionDelay"): {
+        "EN": "Common values: [0, 1, 2, 5, 16, 20].",
+        "ZH": "常见取值为 [0, 1, 2, 5, 16, 20]。",
+    },
+    ("VELOCITY2D", "expansionDelayJitter"): {
+        "EN": "Common values: [0, 1, 3, 4, 5, 10, 20].",
+        "ZH": "常见取值为 [0, 1, 3, 4, 5, 10, 20]。",
+    },
+    ("VELOCITY2D", "expansionRadiusElasticity"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("VELOCITY2D", "expansionRadiusElasticityJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("VELOCITY2D", "expansionRadiusJitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("VELOCITY2D", "gravityJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("VELOCITY3D", "NULL2"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+    ("VELOCITY3D", "gravity_jitter"): {
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
+    },
+
 }
 
 
