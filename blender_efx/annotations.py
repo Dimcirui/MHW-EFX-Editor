@@ -57,6 +57,12 @@ FIELD_OFFICIAL_NAMES = {
     # MESH：scale/rotation → SizeX/Y/Z / RotationX/Y/Z（nadao_qian.efx SizeY 0x531B9E44 实测确认，余轴同理）
     ("MESH", "scale"):            ("SizeX/Y/Z",    "0x241CAED2", "确认"),
     ("MESH", "rotation"):         ("RotationX/Y/Z","0x002FF505",  "确认"),
+    # MESH：color/colorRange、emissiveColor/emissiveColorRange 两组 —— 实机组合排除测试确认
+    # (2026-07-06)，与官方 dump 里 nEffect::nTimelineParam::TypeMesh 的字段名逐个对上
+    ("MESH", "color"):               ("Color",              "0x58689812", "确认"),
+    ("MESH", "colorRange"):          ("ColorRange",          "0xC216C23D", "确认"),
+    ("MESH", "emissiveColor"):       ("EmissiveColor",       "0x608DCF8D", "确认"),
+    ("MESH", "emissiveColorRange"):  ("EmissiveColorRange",  "0x7F2CEB57", "确认"),
     # VELOCITY3D：gravity 名称精确吻合
     ("VELOCITY3D", "gravity"):    ("Gravity", "0x6A5FE3C4", "高"),
     # EMITTERSHAPE3D：transform ↔ Range 盒（注释确认定尺寸/范围，升高）；
@@ -87,9 +93,9 @@ FIELD_ANNOTATIONS = {
 
     # ─── TRANSFORM3D ──────────────────────────────────────────────────────────
     # ExternTransform3D (EFX_Subtypes.bt)
-    ("TRANSFORM3D", "unkn1"): {
-        "EN": "Unknown. Observed frequency distribution: {0:236, 1:49, 2:233, 3:295, 4:28783, 5:36}",
-        "ZH": "未知。观测频率分布：{0:236, 1:49, 2:233, 3:295, 4:28783, 5:36}",
+    ("TRANSFORM3D", "rotationOrder"): {
+        "EN": "4 is the most common value. 0-XYZ, 1-YZX, 2-ZXY, 3-ZYX, 4-YXZ, 5-XZY",
+        "ZH": "4 为最常见值。0-XYZ，1-YZX，2-ZXY，3-ZYX，4-YXZ，5-XZY",
     },
     ("TRANSFORM3D", "Translation_Velocity_Modifier"): {
         "EN": "Multiplier / Acceleration? Range [0, 1]",
@@ -323,13 +329,17 @@ FIELD_ANNOTATIONS = {
 
     # ─── ALPHACORRECTION ──────────────────────────────────────────────────────
     # AlphaCorrection (EFX_Subtypes.bt)
-    ("ALPHACORRECTION", "alpha_clip_threshold"): {
-        "EN": "Hard alpha clip threshold (like Photoshop's Threshold tool) — alpha below this value is cut to 0. 0 = no clipping.",
-        "ZH": "Alpha 硬裁切阈值（类似 PS 的 Threshold 工具）——低于此值的 alpha 直接归 0。0 = 不裁切。",
+    ("ALPHACORRECTION", "lowPass"): {
+        "EN": "Hard alpha clip threshold (like Photoshop's Threshold tool; field formerly named 'alpha_clip_threshold') — alpha below this value is cut to 0. 0 = no clipping.",
+        "ZH": "Alpha 硬裁切阈值（类似 PS 的 Threshold 工具；原字段名 alpha_clip_threshold）——低于此值的 alpha 直接归 0。0 = 不裁切。",
     },
     ("ALPHACORRECTION", "contrast_gamma"): {
         "EN": "Contrast/gamma correction on alpha (field formerly named 'transparentness'). Unbounded — higher values fade out low/mid alpha (edges) while keeping high alpha (core) intact; values can exceed 1, where almost everything fades to transparent.",
         "ZH": "对 alpha 做对比度/伽马修正（原字段名 transparentness）。无上限——值越大，低/中 alpha（边缘）越快变透明，高 alpha（核心）保留；可超过 1，过大时几乎全图变透明。",
+    },
+    ("ALPHACORRECTION", "unkn3"): {
+        "EN": "Unnamed float parameter (BT template mislabels it 'NULL' — it is not a fixed constant). Usually 0 (unset); other values seen roughly in [-3.0, 3.0]. Purpose unconfirmed.",
+        "ZH": "未命名的浮点参数（BT 模板误标为 NULL，实际并非恒定值）。通常为 0（未设置）；其余取值大致落在 [-3.0, 3.0] 之间。具体作用尚未确认。",
     },
 
     # ─── TUBELIGHT ────────────────────────────────────────────────────────────
@@ -538,9 +548,9 @@ FIELD_ANNOTATIONS = {
 
     # ─── PTLIFE ───────────────────────────────────────────────────────────────
     # PtLife (EFX_Subtypes.bt)
-    ("PTLIFE", "timing"): {
-        "EN": "0=Attaches at spawn,  4=Attaches after the end",
-        "ZH": "0=在生成时附加,  4=在结束后附加",
+    ("PTLIFE", "status"): {
+        "EN": "Determines when the specified Play is triggered. 0=On spawn, 1=Appear, 2=Keep, 3=Vanish, 4=On end, -1=Unknown",
+        "ZH": "决定何时触发指定的 Play。0=生成时，1=出现，2=保持，3=消失，4=结束时，-1=未知",
     },
     ("PTLIFE", "relationIndex"): {
         "EN": "Play Emitter / Play EFX Index that declares the children",
@@ -687,12 +697,54 @@ FIELD_ANNOTATIONS = {
 
     # ─── SHOVEL ───────────────────────────────────────────────────────────────
     # Shovel — no inline comments in BT for most fields
+    # 取值统计依据见 docs/BLOCK_BEHAVIOR_NOTES.md「SHOVEL」节（tools/scan_shovel.py）
+    ("SHOVEL", "unkn09"): {
+        "EN": "Range roughly -180 to 90 (degrees); most commonly -180 or 0.",
+        "ZH": "取值范围约 -180~90（角度）；最常见为 -180 或 0。",
+    },
+    ("SHOVEL", "unkn10"): {
+        "EN": "Range 0 to 360 (degrees); most commonly 0 or 360, paired with unkn09.",
+        "ZH": "取值范围 0~360（角度）；最常见为 0 或 360，与 unkn09 成对使用。",
+    },
+    ("SHOVEL", "unkn11"): {
+        "EN": "Range 0 to 6; default is usually 0.5.",
+        "ZH": "取值范围 0~6；默认通常为 0.5。",
+    },
+    ("SHOVEL", "unkn12"): {
+        "EN": "Usually 0.",
+        "ZH": "通常为 0。",
+    },
+    ("SHOVEL", "unkn13"): {
+        "EN": "Range 0 to 100; usually 0.",
+        "ZH": "取值范围 0~100；通常为 0。",
+    },
+    ("SHOVEL", "unkn14"): {
+        "EN": "Range 0 to 30; usually 0.",
+        "ZH": "取值范围 0~30；通常为 0。",
+    },
+    ("SHOVEL", "pattern"): {
+        "EN": "Enum, range -1 to 7.",
+        "ZH": "枚举值，范围 -1~7。",
+    },
+    ("SHOVEL", "unkn16"): {
+        "EN": "Packed as 4 independent on/off byte flags.",
+        "ZH": "由 4 个独立的开/关字节标志打包而成。",
+    },
+    ("SHOVEL", "unkn17"): {
+        "EN": "Packed as 2 independent on/off byte flags; usually 0.",
+        "ZH": "由 2 个独立的开/关字节标志打包而成；通常为 0。",
+    },
 
     # ─── EXTERNREFERENCE ──────────────────────────────────────────────────────
     # ExternReference — no inline comments in BT
 
     # ─── DUMMY / RANDOMFIX / MASTERONLY / BLINK / LUMINANCEBLEED / REFRACTION ─
     # No significant inline comments in BT
+    ("RANDOMFIX", "seed"): {
+        "EN": "Random seed used by this effect's randomization. Click the "
+              "button on the left to generate a new random value.",
+        "ZH": "该特效随机化所用的种子。点击左侧按钮可生成新的随机值。",
+    },
 
     # ─── MESH (Mod3Properties fields — _custom type, flat part) ───────────────
     ("MESH", "end_model_viscon"): {
@@ -709,25 +761,69 @@ FIELD_ANNOTATIONS = {
               "6=完全不追踪旋转,  7=消失,  "
               "8=垂直于地面且不追踪",
     },
-    ("MESH", "colorize_material1"): {
-        "EN": "4 bytes controlling how the mesh is colorized. Byte 0 and byte 2 are two "
-              "channels that both tint with color1 (having both on makes it brighter). "
-              "Byte 1 needs byte 0 or byte 2 turned on too, and makes the color randomly "
-              "cycle through a mix of color1/color2/color3 each time the effect plays "
-              "(color4 never takes part). Byte 3 is a separate, usually near-invisible "
-              "channel whose color can be set via colorize_material2.",
-        "ZH": "4 个字节，控制网格如何染色。byte 0 和 byte 2 是两条都用 color1 染色的通道"
-              "（两个都开会让颜色更亮）。byte 1 需要 byte 0 或 byte 2 也打开，会让颜色在 "
-              "color1/color2/color3 之间随机混合，每次特效播放都可能不同（color4 不参与）。"
-              "byte 3 是独立的一条通道，默认几乎看不见，颜色可以通过 colorize_material2 指定。",
+    ("MESH", "color"): {
+        "EN": "Base color (RGBA). Shown as-is when useColorRange is off.",
+        "ZH": "基准颜色（RGBA）。useColorRange 关闭时固定显示这个颜色。",
     },
-    ("MESH", "colorize_material2"): {
-        "EN": "4 bytes. Byte 1 sets colorize_material1's byte-3 channel to color3. "
-              "Byte 2, when non-zero, forces the main channel to solid color1, overriding "
-              "any random color mix. Byte 0 has no confirmed effect.",
-        "ZH": "4 个字节。byte 1 会把 colorize_material1 里 byte 3 那条通道的颜色设为 "
-              "color3。byte 2 非零时会把主通道强制锁定为纯 color1，覆盖随机混色。byte 0 目前"
-              "没有观察到效果。",
+    ("MESH", "colorRange"): {
+        "EN": "The other end of the color range (RGBA). Only used when useColorRange "
+              "is on — the displayed color then randomly varies between color and "
+              "colorRange.",
+        "ZH": "颜色范围的另一端（RGBA）。仅在 useColorRange 开启时生效——开启后，最终"
+              "显示的颜色会在 color 与 colorRange 之间随机变化。",
+    },
+    ("MESH", "emissiveColor"): {
+        "EN": "Emissive glow color (RGBA), added on top of color. Only visible when "
+              "useEmissiveColor is on.",
+        "ZH": "自发光颜色（RGBA），叠加在 color 上面。只有 useEmissiveColor 开启时才会显示。",
+    },
+    ("MESH", "emissiveColorRange"): {
+        "EN": "The other end of the emissive color range (RGBA). Only used when "
+              "useEmissiveColorRange is on — the emissive glow then randomly varies "
+              "between emissiveColor and emissiveColorRange.",
+        "ZH": "自发光颜色范围的另一端（RGBA）。仅在 useEmissiveColorRange 开启时生效——"
+              "开启后，自发光颜色会在 emissiveColor 与 emissiveColorRange 之间随机变化。",
+    },
+    ("MESH", "enableIntensity1"): {
+        "EN": "Brightens the color channel. Independent of enableIntensity2 — turning "
+              "both on stacks (brighter than either alone).",
+        "ZH": "让 color 通道变亮。跟 enableIntensity2 相互独立——两个都开会叠加变得更亮。",
+    },
+    ("MESH", "useColorRange"): {
+        "EN": "Color random-range switch. 0 = off (always shows color). 1 = on "
+              "(displayed color randomly varies between color and colorRange).",
+        "ZH": "颜色随机范围开关。0=禁用（始终显示 color）；1=启用（最终显示的颜色会在 "
+              "color 与 colorRange 之间随机变化）。",
+    },
+    ("MESH", "enableIntensity2"): {
+        "EN": "Brightens the color channel. Independent of enableIntensity1 — turning "
+              "both on stacks (brighter than either alone).",
+        "ZH": "让 color 通道变亮。跟 enableIntensity1 相互独立——两个都开会叠加变得更亮。",
+    },
+    ("MESH", "useEmissiveColor"): {
+        "EN": "Enables the emissive channel. 0 = emissiveColor/emissiveColorRange are "
+              "completely ignored. 1 = emissiveColor is added on top of color.",
+        "ZH": "启用自发光通道。0=完全不显示 emissiveColor/emissiveColorRange；1=把 "
+              "emissiveColor 叠加到 color 上面。",
+    },
+    ("MESH", "useEmissiveColorRange"): {
+        "EN": "Emissive color random-range switch, same idea as useColorRange but for "
+              "the emissive channel. Only has an effect when useEmissiveColor is on; "
+              "independent of enableEmissiveIntensity.",
+        "ZH": "自发光颜色的随机范围开关，跟 useColorRange 是同一种机制，只是作用于自发光"
+              "通道。只有 useEmissiveColor 开启时才有效果；跟 enableEmissiveIntensity 相互独立。",
+    },
+    ("MESH", "enableEmissiveIntensity"): {
+        "EN": "Brightness switch for the emissive channel: 0 = dim, 1 = full brightness. "
+              "Only has an effect when useEmissiveColor is on.",
+        "ZH": "自发光通道的亮度开关：0=暗，1=满亮度。只有 useEmissiveColor 开启时才有效果。",
+    },
+    ("MESH", "disableAllColorRange"): {
+        "EN": "When on, forces both color and emissiveColor to their static values, "
+              "ignoring useColorRange and useEmissiveColorRange regardless of how "
+              "those two are set.",
+        "ZH": "开启时会强制 color 和 emissiveColor 都变成静态值，无视 useColorRange 和 "
+              "useEmissiveColorRange 各自的开关状态。",
     },
     ("MESH", "randommizeViscon"): {
         "EN": "0=Spawn random sample of range,  1=Spawn all of the range",

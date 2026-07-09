@@ -325,7 +325,7 @@ class EFX_PT_extern_backref(bpy.types.Panel):
 # §4  Body 对象双向关系视图（Body References）
 #
 # 把单纯的"被谁引用"升级为以 body 为中心的双向关系导航（仍纯只读、不碰导出）：
-#   ⬇ 我触发谁     ：本 body 的 PTLIFE（timing 区分生成/结束型）/ PTCOLLISION（碰撞时）
+#   ⬇ 我触发谁     ：本 body 的 PTLIFE（status 区分生成/结束型）/ PTCOLLISION（碰撞时）
 #                    块 → action(play) → 该 play 的子 body(PLAYEMITTER targets) /
 #                    外部 efx(PLAYEFX path)
 #   ⬆ 谁触发我     ：哪些父 body 的 PTLIFE / PTCOLLISION → 某个 targets 含本 body 的 action
@@ -335,7 +335,7 @@ class EFX_PT_extern_backref(bpy.types.Panel):
 # 分组列出 + 可跳转，天然处理多对一/共享，不需要枚举"谁套谁"。
 # ─────────────────────────────────────────────────────────────────────────────
 
-# PTLIFE timing：short @ offset 4（0=生成时、4=结束时）
+# PTLIFE status：short @ offset 4（0=生成时、4=结束时）
 _PTLIFE_TIMING_OFFSET = 4
 
 

@@ -20,7 +20,7 @@ blender_efx/body_play_ref.py  —  L2 #1d：补完 body/play 引用层指针化
 PTLIFE_SCHEMA：short[10]，共 20 字节（no leading type_hash）。
   offset  0: h unkn0
   offset  2: h unkn1
-  offset  4: h timing
+  offset  4: h status
   offset  6: h unkn3
   offset  8: h relationIndex   ← 指针化目标字段（int16 有符号）
   ...

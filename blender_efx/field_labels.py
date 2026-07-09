@@ -46,6 +46,7 @@ FIELD_LABELS_ZH = {
     "translate": "平移",
     "rotate": "旋转",
     "resize": "缩放",
+    "rotationOrder": "旋转顺序",
     "direction": "方向",
     "rotation": "旋转",
     "rotationJitter": "旋转抖动",
@@ -125,7 +126,7 @@ FIELD_LABELS_ZH = {
     "fadeOutDuration": "淡出时长",
     "fadeOutDurationJitter": "淡出时长抖动",
     "fadeStart": "淡出起点",
-    "timing": "触发时机",
+    "status": "状态",
 
     # ── 引用 / 索引 ─────────────────────────────────────────────────────────
     "ieIndex": "碰撞触发 Play",
@@ -143,6 +144,14 @@ FIELD_LABELS_ZH = {
     "color2": "颜色2",
     "colorRange": "颜色范围",
     "useColorRange": "启用颜色范围",
+    "emissiveColor": "自发光颜色",
+    "emissiveColorRange": "自发光颜色范围",
+    "useEmissiveColor": "启用自发光颜色",
+    "useEmissiveColorRange": "启用自发光颜色范围",
+    "enableIntensity1": "亮度增强1",
+    "enableIntensity2": "亮度增强2",
+    "enableEmissiveIntensity": "自发光亮度增强",
+    "disableAllColorRange": "禁用所有颜色范围",
     # RGBFIRE 实机确认：fireColor=外缘荧光色（会给 smokeColor 染色），smokeColor=内部色
     "fireColor": "火焰色",
     "smokeColor": "烟雾色",
@@ -174,7 +183,7 @@ FIELD_LABELS_ZH = {
     "opacityAccelerationJitter": "不透明度加速度抖动",
     "alpha_effect": "透明度效果",
     "alpha_threshold": "透明度阈值",
-    "alpha_clip_threshold": "Alpha 裁切阈值",
+    "lowPass": "低通阈值",
     "contrast_gamma": "对比度/伽马修正",
 
     # ── TUBELIGHT 专属 ─────────────────────────────────────────────────────
@@ -421,6 +430,9 @@ FIELD_LABELS_ZH_BY_TYPE = {
     ("EMITTERSHAPE2D", "offsetY"):       "偏移 Y",
     ("EMITTERSHAPE2D", "offsetYJitter"): "偏移 Y 抖动",
     ("EMITTERSHAPE2D", "spawnCount"):    "生成数量",
+
+    # ── RANDOMFIX ──────────────────────────────────────────────────────────
+    ("RANDOMFIX", "seed"): "种子",
 }
 
 
@@ -449,8 +461,11 @@ def label_zh(ori_name, type_name=None):
 # ─────────────────────────────────────────────────────────────────────────────
 
 RESERVED_FILL_FIELDS = frozenset({
+    ('BLINK', 'unkn1_0'),
     ('CHECKPUREATTRIBUTE', 'unkn1'),
-    ('EMITTERSHAPEMESH', 'unkn1'),
+    ('EMITTERSHAPEMESH', 'unkn1_0'),
+    ('EMITTERSHAPEMESH', 'unkn1_1'),
+    ('EMITTERSHAPEMESH', 'unkn1_2'),
     ('FADEBYEMITTERANGLE', 'unkn'),
     ('FADEBYOCCLUSION', 'unkn1'),
     ('FAKEDOF', 'unkn2'),
@@ -471,6 +486,8 @@ RESERVED_FILL_FIELDS = frozenset({
     ('OTOMOSNOW', 'unkn4'),
     ('OTOMOSNOW', 'unkn6'),
     ('PARENTSNOW', 'unkn1'),
+    ('PARENTSNOW', 'unkn3_1'),
+    ('PARENTSNOW', 'unkn4_4'),
     ('PATHCHAIN', 'unkn1'),
     ('PLSNOW', 'spacer'),
     ('PLSNOW', 'unkn5'),
@@ -502,6 +519,8 @@ RESERVED_FILL_FIELDS = frozenset({
     ('STRAINRIBBON', 'spacer01'),
     ('STRAINRIBBON', 'spacer02'),
     ('STRAINRIBBON', 'spacer03'),
+    ('TONEMAPFILTER', 'unkn1'),
+    ('TUBELIGHT', 'unkn3_2'),
     ('TUBELIGHT', 'unkn5_1'),  # 恒 0xCDCDCDCD 未初始化标记（2026-07-01 实机测试确认，schema 拆分后新增）
 })
 

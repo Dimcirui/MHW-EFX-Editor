@@ -100,8 +100,8 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
 
     # EmitterShape3D: 4(type) + ExternEmitterShape3D
     # ExternEmitterShape3D: int unkn0(4) + XYZ transform(0)(24B) +
-    #   patternControl(4) + unkn2(4) + unkn3_f0(4) +
-    #   trayX(4)+trayY(4)+trayZ(4) + unkn3_i0(4) + spawnAngleLimits(4) + unkn3_f1(4) +
+    #   patternControl(4) + unkn2(4) + unkn3_0(4) +
+    #   trayX(4)+trayY(4)+trayZ(4) + rotationOrder(4) + spawnAngleLimits(4) + unkn3_f1(4) +
     #   spawnPerCycle(4) + spawnTotal(4) + radiusEnd(4) + radiusOrigin(4) + unknRadiusRelated(4) + unkn4(4)
     # = 4 + 24 + 15*4 = 88B; total with type = 92B
     if h == EMITTERSHAPE3D:
@@ -175,9 +175,9 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     # Mesh: 4(type) + Mod3Properties(174B) + byte BeginMod3(1B) + string path1 + string path2
     # Mod3Properties size: int unkn0[2](8)+long CD1(4)+float emissive_sat(4)+float emissive_sat_j(4)+
     #   float emissive_bright(4)+float emissive_bright_j(4)+XYZ rotation(0)(24)+
-    #   float unkn5_2(4)+float unkn5_3(4)+XYZ scale(0)(24)+
+    #   float rotation2(4)+float rotation2Jitter(4)+XYZ scale(0)(24)+
     #   float global_scale(4)+float global_scale_j(4)+int starting_model_viscon(4)+int end_model_viscon(4)+
-    #   colour[4](16)+int unkn7[3](12)+int tracking_flags(4)+int unkn40(4)+int affectedByLight(4)+
+    #   colour[4](16)+int unkn7_0/1(8)+int rotationOrder(4)+int tracking_flags(4)+int unkn40(4)+int affectedByLight(4)+
     #   int shadowCastBitflag(4)+int epv_color_slot1(4)+int unkn5(4)+int epv_color_slot2(4)+
     #   int unkn6_1(4)+byte colorize_material1[4](4)+byte colorize_material2[4](4)+
     #   int randommizeViscon(4)+short NULL1(2)
