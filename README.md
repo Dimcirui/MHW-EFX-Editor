@@ -28,10 +28,10 @@ For reference only. This interpretation does not reflect the actual structure of
 
 - **EFX Collection**
   - **EFX Sections**
-    1. **Body/Main**: The core EFX unit.
+    1. **Main Body/Entry**: The core EFX unit.
        
-       Composed of typed Components (**Blocks**) that together define particle behaviors (transforms, emission, rendering, color and more).
-    2. **Play**: An action trigger.
+       Composed of typed Components (**Blocks** or Attributes) that together define particle behaviors (transforms, emission, rendering, color and more).
+    2. **Play/Action**: An action trigger.
        
        Called by a Body's PTLIFE or PTCOLLISION block; activates one or more target Bodies (**PLAYEMITTER**) or external EFX files (**PLAYEFX**).
     3. **Extern**: EFX Body replacer(?)
@@ -66,13 +66,13 @@ Universal section operations: **Add** (from preset) / **Delete** / **Reorder** (
 |---|---|---|---|---|
 | **Play** | ✓ | ✓ | ✓ | |
 | **Extern** | **Partial** | ✓ | **Partial** | EXTERN-SPAWN/RGBFIRE/VELOCITY3D/SCALEANIM/TRANSFORM3D add&edit |
-| **Body / Main** | ✓ | ✓ | ✓ | TIML editable via .timl file import/export |
+| **Body/Entry** | ✓ | ✓ | ✓ | TIML editable via .timl file import/export |
 
 ### 2. Subselection Table
 
 Fully Supported
 
-### 3. Body Block
+### 3. Body Block/Attributes
 
 Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (move up/down within body) / **Copy whole block** / **Paste whole block** / **Copy field values** / **Paste field values** / **Save** (to preset).
 
@@ -212,12 +212,14 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 ## Credits
 
-This add-on builds on community documentation and format research. In particular:
+This plugin was developed based on community documentation and format research, as well as with the help of many people. In particular:
 
-- [UNOWEN-OwO/MHW-EFX-Template](https://github.com/UNOWEN-OwO/MHW-EFX-Template) — the source of most of
-  the 010 Editor format templates this add-on is built on.
-- [Monster Hunter World Modding Wiki](https://github.com/Ezekial711/MonsterHunterWorldModding/wiki) — the
-  community knowledge base.
+- [UNOWEN-OwO/MHW-EFX-Template](https://github.com/UNOWEN-OwO/MHW-EFX-Template) — The parsing method and initial parameter names used in this plugin are based on these templates.
+- [Monster Hunter World Modding Wiki](https://github.com/Ezekial711/MonsterHunterWorldModding/wiki) — Provided a basic explanation of efx.
+- [REE Lib](https://github.com/kagenocookie/RE-Engine-Lib) — Provides a wealth of valuable information for cross-validation of attributes.
+- Crimson — Provided insights into Attribute categorization and inspiration for many attributes.
+- 冰室菖蒲 — Provides guides on the Attributes for numerous Entries, as well as the structure of efx TIML.
+- 003 — Provides detailed guides on the Attributes for Lightning, StrainRibbon, and Homing
 
 Bone placement is designed to pair with the
 [MHW Model Editor](https://github.com/chikichikibangbang/MHW_Model_Editor).
