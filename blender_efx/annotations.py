@@ -924,20 +924,28 @@ FIELD_ANNOTATIONS = {
         "ZH": "UVS 文件路径索引",
     },
     ("UVSEQUENCE", "loopingMode"): {
-        "EN": "Animation mode (loopingEnum byte 0) = direction*64 + flipFlags*4 + playbackMode. "
+        "EN": "Animation mode (loopingEnum byte 0) = direction*64 + flipCode*4 + playbackMode. "
               "playbackMode (bits 0-1): 0=Show only the first frame,  1=Loop continuously,  "
               "2=Play once then force-kill the particle,  3=Play once then freeze on the "
-              "last frame until Life ends. flipFlags (bits 2-5, 4 independent flags): "
-              "+1=Force horizontal flip,  +2=Randomize horizontal flip (overrides +1),  "
-              "+4=Force vertical flip,  +8=Randomize vertical flip (overrides +4). direction "
-              "(bits 6-7): 0=Forward,  1=Reverse,  2=Randomly forward or reverse. All random "
+              "last frame until Life ends. direction (bits 6-7): 0=Forward,  1=Reverse,  "
+              "2=Randomly forward or reverse. flipCode (bits 2-5) confirmed values: "
+              "0=Normal,  1=H-flip,  2=Random(normal, H-flip),  4=V-flip,  5=H+V-flip,  "
+              "6=V-flip + random(normal, H-flip),  7=same as 6,  8=Random(normal, V-flip),  "
+              "9=H-flip + random(normal, V-flip),  10=Random among all 4 H x V combos,  "
+              "12=Normal (no flip at all),  13=Flipped (fixed, not random). flipCode isn't a "
+              "simple 4-bit flag register - 12/13 don't fit the pattern the other values do, "
+              "so treat this as an empirical lookup table rather than a formula. All random "
               "picks happen once at particle spawn, not re-rolled during the loop.",
-        "ZH": "动画模式（loopingEnum 第 0 字节）= 方向(direction)×64 + 翻转标志(flipFlags)×4 + "
+        "ZH": "动画模式（loopingEnum 第 0 字节）= 方向(direction)×64 + 翻转码(flipCode)×4 + "
               "播放模式(playbackMode)。播放模式（低 2 位）：0=只显示起始帧，1=循环播放，"
-              "2=播放一次后强制粒子消亡，3=播放一次后停在最后一帧直到 Life 结束。翻转标志"
-              "（4 个独立标志位）：+1=强制左右翻转，+2=左右翻转随机取（覆盖 +1），"
-              "+4=强制上下翻转，+8=上下翻转随机取（覆盖 +4）。方向：0=正向播放，1=倒放，"
-              "2=正/倒随机取一种。所有随机项都在粒子生成时取一次，循环期间不会重新取。",
+              "2=播放一次后强制粒子消亡，3=播放一次后停在最后一帧直到 Life 结束。方向："
+              "0=正向播放，1=倒放，2=正/倒随机取一种。翻转码（已确认取值）：0=正常，"
+              "1=左右翻转，2=随机(正常,左右翻转)，4=上下翻转，5=左右+上下都翻转，"
+              "6=上下翻转+随机(正常,左右翻转)，7=同 6，8=随机(正常,上下翻转)，"
+              "9=左右翻转+随机(正常,上下翻转)，10=随机(左右×上下四种组合)，"
+              "12=正常（完全不翻转），13=翻转（固定，非随机）。flipCode 不是干净的 4 位标志"
+              "寄存器——12/13 跟其它值的规律对不上，暂按经验查表处理，不套用公式。"
+              "所有随机项都在粒子生成时取一次，循环期间不会重新取。",
     },
     ("UVSEQUENCE", "loopingOrientation"): {
         "EN": "Texture rotation on the particle (loopingEnum byte 1), independent of "
