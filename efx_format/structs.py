@@ -2062,13 +2062,13 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     ('flowmapStrengthAccelerationJitter', 'f'),   # 32
     ('path_len',         'i'),        # 4
     # 位置跟 BILLBOARD3D 的 path_len 之后、path 字节之前那段 extras（unkn5/unkn6_0…）
-    # 完全对应（都是"path_len 后、path 前"这个槎位）。BILLBOARD3D 那段的第二个字段
-    # unkn6_0 正是 applicationRule 注释里提到的"启用 flowmap 还需 unkn6=1"那个开关。
-    # 全语料核对：unkn5_0 全部恒为 0（580/580 无一例外），unkn5_1 跟 applicationRule
-    # 强相关——rule=4 时 76.8%（43/56）为 1，rule=12 时 100%（21/21）为 1，rule=0/32
-    # 时几乎全为 0——跟 unkn6_0 的角色（应用规则的搭配开关）高度吻合，比 unkn5_0 更
-    # 像是 BILLBOARD3D.unkn6_0 的对应物（位置也对得上：第二个槎位）。尚未实机验证，
-    # 也没有可用的具体名字（BILLBOARD3D 那边本身也还叫 unkn6_0，未正式命名）。
+    # 完全对应（都是"path_len 后、path 前"这个槎位）。
+    # 全语料核对：unkn5_0 全部恒为 0（580/580 无一例外）；unkn5_1 跟 applicationRule
+    # 有统计相关（rule=4 时 76.8% 为 1，rule=12 时 100% 为 1，rule=0/32 时几乎全为 0），
+    # 曾猜测是 BILLBOARD3D.unkn6_0（"启用 flowmap 还需 unkn6=1"）的对应物——用户实机
+    # 测试（2026-07-10）证伪：flowmap 效果不需要 unkn5_1=1 就能生效，applicationRule
+    # 本身的 4/12 区别才是关键（4=持续循环流动，12=只播一次到终点停）。unkn5_1 跟
+    # applicationRule 的相关性仍然存在，但具体作用未知，不再套用 unkn6_0 的"开关"解读。
     ('unkn5_0', 'i'),
     ('unkn5_1', 'i'),   # 8
 ]

@@ -1862,9 +1862,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [1, 5, 6, 7, 8, 10]。",
     },
     ("BILLBOARD2D", "applicationRule"): {
-        "EN": "Enum. Common values: [0, 4, 12, 32]. 4/12=Enables flowmap effect "
-              "(requires unkn5_1=1 to take effect).",
-        "ZH": "枚举。常见取值为 [0, 4, 12, 32]。4/12=启用流动贴图效果（还需 unkn5_1=1 才生效）。",
+        "EN": "Enum. Common values: [0, 4, 12, 32]. 4=Flowmap animates continuously "
+              "(loops). 12=Flowmap plays once and stops at the end.",
+        "ZH": "枚举。常见取值为 [0, 4, 12, 32]。4=流动贴图持续循环流动；"
+              "12=流动贴图只播放一次，到终点后停止。",
     },
     ("BILLBOARD2D", "useColorRange"): {
         "EN": "Common values: 0/1.",
