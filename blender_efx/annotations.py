@@ -924,17 +924,27 @@ FIELD_ANNOTATIONS = {
         "ZH": "UVS 文件路径索引",
     },
     ("UVSEQUENCE", "loopingMode"): {
-        "EN": "Animation mode (loopingEnum byte 0). Key values: "
-              "0=Not Animated (freeze frame),  2=Random Reset,  9=Continuous forward loop,  "
-              "16=Continuous reverse loop.",
-        "ZH": "动画模式（loopingEnum 第 0 字节）。关键值："
-              "0=不播放动画（定格），2=随机重置，9=连续正向循环，16=连续反向循环。",
+        "EN": "Animation mode (loopingEnum byte 0) = orientationGroup*4 + playbackMode. "
+              "playbackMode: 0=Show only the first frame,  1=Loop continuously,  "
+              "2=Play once then force-kill the particle,  3=Play once then freeze on the "
+              "last frame until Life ends. orientationGroup (confirmed so far): "
+              "0=Normal (values 0-3),  1=Horizontally flipped (values 4-7),  "
+              "2=Randomly normal or flipped (values 8-11). Higher groups exist in official "
+              "content (e.g. 40-43 is the single most common range) but haven't been tested.",
+        "ZH": "动画模式（loopingEnum 第 0 字节）= 朝向组(orientationGroup)×4 + 播放模式。"
+              "播放模式：0=只显示起始帧，1=循环播放，2=播放一次后强制粒子消亡，"
+              "3=播放一次后停在最后一帧直到 Life 结束。朝向组（已确认部分）："
+              "0=正常（取值 0~3），1=左右翻转（取值 4~7），2=正常/翻转随机取一种（取值 8~11）。"
+              "官方语料里还有更高的朝向组（如 40~43 是占比最大的单一区间）但尚未测试。",
     },
     ("UVSEQUENCE", "loopingOrientation"): {
-        "EN": "Texture orientation on particle (loopingEnum byte 1): "
-              "0=Up,  1=Right,  2=Left,  3=Random (never down).",
-        "ZH": "贴图显现在粒子上的方向（loopingEnum 第 1 字节）："
-              "0=正向上，1=正向右，2=正向左，3=随机（绝不向下）。",
+        "EN": "Texture rotation on the particle (loopingEnum byte 1), independent of "
+              "loopingMode's flip (a flipped texture still rotates the same direction): "
+              "0=Normal,  1=Rotate 90° clockwise,  2=Rotate 90° counter-clockwise,  "
+              "3=Randomly pick one of the first three.",
+        "ZH": "贴图在粒子上的旋转（loopingEnum 第 1 字节），与 loopingMode 的左右翻转相互独立"
+              "（即使贴图已翻转，1/2 仍分别是顺/逆时针旋转，不会因翻转而互换）："
+              "0=正常朝向，1=顺时针旋转 90°，2=逆时针旋转 90°，3=前三种随机取一种。",
     },
 
     # ─── BILLBOARD3D (fixed part fields) ──────────────────────────────────────

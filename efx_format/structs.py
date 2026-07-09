@@ -1881,8 +1881,16 @@ _UVSEQUENCE_FIXED_SCHEMA = [
     ('animationAcceleration',   'f'),
     ('animationAccelerationJitter', 'f'),
     # loopingEnum（4B）按语义拆分：byte0=动画模式，byte1=贴图朝向，byte2-3=padding（恒0）。
-    ('loopingMode',             'B'),   # byte0：0=不播放/2=随机重置/9=连续正向/16=连续反向…
-    ('loopingOrientation',      'B'),   # byte1：0=上/1=右/2=左/3=随机
+    # 用户实机测试（2026-07-10，配合 BILLBOARD2D 当稳定测试画布）坐实 byte0 结构：
+    # value = orientationGroup*4 + playbackMode。playbackMode（低2位）：0=只显示起始帧，
+    # 1=循环，2=播放一次后强制消亡，3=播放一次后定格最后一帧直到 Life 结束。
+    # orientationGroup（已测）：0（值0~3）=正常，1（值4~7）=左右翻转，2（值8~11）=正常/
+    # 翻转随机取一种；语料里最大占比的区间是 40~43（对应 group=10），尚未测试。
+    # 这也修正了 docs/BLOCK_BEHAVIOR_NOTES.md 里 2026-07-08 那版"family=value>>3"的分组
+    # 单位——实际是按 4 一组（family=value>>2），不是按 8 一组。
+    ('loopingMode',             'B'),
+    # 用户实机测试确认：贴图旋转，与 loopingMode 的左右翻转互相独立。
+    ('loopingOrientation',      'B'),   # byte1：0=正常/1=顺时针90°/2=逆时针90°/3=随机
     ('loopingPad',              'h'),   # byte2-3：保留（实测恒 0）
 ]  # 11 fields = 40 B
 
