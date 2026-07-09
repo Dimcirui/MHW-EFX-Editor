@@ -1862,8 +1862,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [1, 5, 6, 7, 8, 10]。",
     },
     ("BILLBOARD2D", "applicationRule"): {
-        "EN": "Common values: [0, 4, 12, 32].",
-        "ZH": "常见取值为 [0, 4, 12, 32]。",
+        "EN": "Enum. Common values: [0, 4, 12, 32]. 4/12=Enables flowmap effect "
+              "(requires unkn5_1=1 to take effect).",
+        "ZH": "枚举。常见取值为 [0, 4, 12, 32]。4/12=启用流动贴图效果（还需 unkn5_1=1 才生效）。",
     },
     ("BILLBOARD2D", "useColorRange"): {
         "EN": "Common values: 0/1.",
@@ -1881,15 +1882,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 9].",
         "ZH": "常见取值为 [0, 1, 9]。",
     },
-    ("BILLBOARD2D", "unkn4_1"): {
+    ("BILLBOARD2D", "flowmapSpeedJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("BILLBOARD2D", "unkn4_4"): {
+    ("BILLBOARD2D", "flowmapStrength"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("BILLBOARD2D", "unkn4_5"): {
+    ("BILLBOARD2D", "flowmapStrengthJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },

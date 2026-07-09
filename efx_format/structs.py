@@ -2012,7 +2012,8 @@ def pack_billboard3d(values: dict) -> bytes:
 #   long unkn0_0,applicationRule(8) + XYZ(2) color,colorRange(8) + float brightness,randomBrightnessMult(8) +
 #   int useColorRange,blendMode,EPVColorSlot1,EPVColorSlot2(16) + float rotation,rotationJitter + scale,scaleJitter +
 #   width + widthJitter + height + heightJitter (8 floats=32) +
-#   float unkn4[8](32) + int path_len(4) + int unkn5[2](8) + char p[path_len]
+#   float flowmapSpeed/Jitter,flowmapAcceleration/Jitter,flowmapStrength/Jitter,
+#   flowmapStrengthAcceleration/Jitter(32) + int path_len(4) + int unkn5[2](8) + char p[path_len]
 # 固定部分 116B；path_len 在 data 偏移 104。
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2049,14 +2050,16 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     ('widthJitter',      'f'),
     ('height',           'f'),
     ('heightJitter',     'f'),        # 8 floats = 32
-    ('unkn4_0', 'f'),
-    ('unkn4_1', 'f'),
-    ('unkn4_2', 'f'),
-    ('unkn4_3', 'f'),
-    ('unkn4_4', 'f'),
-    ('unkn4_5', 'f'),
-    ('unkn4_6', 'f'),
-    ('unkn4_7', 'f'),   # 32
+    # 用户确认（2026-07-10）：flowmap 八件套，位置+全语料统计形态跟 BILLBOARD3D 同名
+    # 字段逐一对应（"值有变化 + 紧跟的 Jitter 恒/几乎恒为 0"这套模式四对齐用）。
+    ('flowmapSpeed', 'f'),
+    ('flowmapSpeedJitter', 'f'),
+    ('flowmapAcceleration', 'f'),
+    ('flowmapAccelerationJitter', 'f'),
+    ('flowmapStrength', 'f'),
+    ('flowmapStrengthJitter', 'f'),
+    ('flowmapStrengthAcceleration', 'f'),
+    ('flowmapStrengthAccelerationJitter', 'f'),   # 32
     ('path_len',         'i'),        # 4
     # 位置跟 BILLBOARD3D 的 path_len 之后、path 字节之前那段 extras（unkn5/unkn6_0…）
     # 完全对应（都是"path_len 后、path 前"这个槎位）。BILLBOARD3D 那段的第二个字段
