@@ -2443,9 +2443,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("PLANE", "brightnessJitter"): {
-        "EN": "Random jitter added to brightness each time the effect plays. Common range: 0~100.",
-        "ZH": "brightness 的随机抖动范围，每次播放特效时随机浮动。常见取值在 0~100 之间。",
+    ("PLANE", "randomBrightnessMult"): {
+        "EN": "Same schema position as BILLBOARD3D's randomBrightnessMult. Exact behavior on "
+              "PLANE not yet confirmed. Common range: 0~100.",
+        "ZH": "与 BILLBOARD3D 的 randomBrightnessMult 字段位置相同。在 PLANE 上的具体行为尚未"
+              "确认。常见取值在 0~100 之间。",
     },
     ("PLANE", "unkn5_0"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 6].",

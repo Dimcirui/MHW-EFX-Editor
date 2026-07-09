@@ -177,7 +177,6 @@ FIELD_LABELS_ZH = {
     "brightness2": "亮度2",
     "brightness3": "亮度3",
     "brightness4": "亮度4",
-    "brightnessJitter": "亮度抖动",
     "opacity": "不透明度",
     "opacityJitter": "不透明度抖动",
     "opacityAcceleration": "不透明度加速度",

@@ -2319,8 +2319,8 @@ def pack_ribbon(values: dict) -> bytes:
 # Plane (variable: dds_data 108 B + extras 48 B + path)
 #
 # dds_data (108 B, same layout as billboard_data):
-#   unkn0(4)+applicationRule(4)+XYZ color(2)(4)+XYZ colorRange(2)(4)+brightness/j(8)+
-#   useColorRange(4)+blendMode(4)+EPVColorSlot1(4)+EPVColorSlot2(4)+
+#   unkn0(4)+applicationRule(4)+XYZ color(2)(4)+XYZ colorRange(2)(4)+brightness(4)+
+#   randomBrightnessMult(4)+useColorRange(4)+blendMode(4)+EPVColorSlot1(4)+EPVColorSlot2(4)+
 #   rotation2/j(8)+
 #   scale/j(8)+width/j(8)+height/j(8)+
 #   flowmapSpeed/j(8)+flowmapAccel/j(8)+flowmapStrength/j(8)+flowmapStrAccel/j(8)+
@@ -2337,7 +2337,9 @@ _PLANE_DDS_SCHEMA = [
     ('color',              ('XYZ', 2)),  # TIML DT 0x58689812("Color") 已确认
     ('colorRange',         ('XYZ', 2)),
     ('brightness',         'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
-    ('brightnessJitter',   'f'),  # 原 unkn20，用户实机确认为 brightness 的抖动
+    # 原 unkn20，位置与 BILLBOARD3D 的 randomBrightnessMult 相同，暂按同名归类；
+    # 语义未confirmed（不同于 BILLBOARD3D 那条已实机验证的注释，这里先只搬名字）。
+    ('randomBrightnessMult', 'f'),
     ('useColorRange',      'i'),
     ('blendMode',          'i'),
     ('EPVColorSlot1',      'i'),
