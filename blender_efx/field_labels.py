@@ -410,11 +410,8 @@ FIELD_LABELS_ZH_BY_TYPE = {
 
     # ── BILLBOARD2D（2D 公告板，来源 EFX_Subtypes.bt）─────────────────────────
     # color/colorRange/brightness/randomBrightnessMult/useColorRange/blendMode/
-    # rotation/rotationJitter 用全局通用标签。
-    ("BILLBOARD2D", "imageResolutionX"): "图像分辨率 X",
-    ("BILLBOARD2D", "scaleX"):           "缩放 X",
-    ("BILLBOARD2D", "imageResolutionY"): "图像分辨率 Y",
-    ("BILLBOARD2D", "scaleY"):           "缩放 Y",
+    # rotation/rotationJitter/scale/scaleJitter/width/widthJitter/height/
+    # heightJitter/applicationRule 用全局通用标签。
 
     # PLEMISSIVE body_p/wp_p 的显示名由面板 label_override 给出（Aura Part (Player)/(Weapon)），不在此表。
 

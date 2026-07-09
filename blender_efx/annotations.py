@@ -1861,7 +1861,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [1, 5, 6, 7, 8, 10].",
         "ZH": "常见取值为 [1, 5, 6, 7, 8, 10]。",
     },
-    ("BILLBOARD2D", "unkn0_1"): {
+    ("BILLBOARD2D", "applicationRule"): {
         "EN": "Common values: [0, 4, 12, 32].",
         "ZH": "常见取值为 [0, 4, 12, 32]。",
     },

@@ -2009,16 +2009,19 @@ def pack_billboard3d(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 # Billboard2D (variable: 116B 固定 + path[path_len])
 # EFX_Subtypes.bt: data_bytes(type 之后) =
-#   long unkn0[2](8) + XYZ(2) color,colorRange(8) + float brightness,randomBrightnessMult(8) +
-#   int useColorRange,blendMode,EPVColorSlot1,EPVColorSlot2(16) + float rotJitterMin,Max + scaleJitterMin,Max +
-#   imageResolutionX + scaleX + imageResolutionY + scaleY (8 floats=32) +
+#   long unkn0_0,applicationRule(8) + XYZ(2) color,colorRange(8) + float brightness,randomBrightnessMult(8) +
+#   int useColorRange,blendMode,EPVColorSlot1,EPVColorSlot2(16) + float rotation,rotationJitter + scale,scaleJitter +
+#   width + widthJitter + height + heightJitter (8 floats=32) +
 #   float unkn4[8](32) + int path_len(4) + int unkn5[2](8) + char p[path_len]
 # 固定部分 116B；path_len 在 data 偏移 104。
 # ─────────────────────────────────────────────────────────────────────────────
 
 _BILLBOARD2D_FIXED_SCHEMA = [
     ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8
+    # 用户直接投喂（2026-07-10，未测）：位置/取值集合都跟 BILLBOARD3D.applicationRule
+    # 对应（BILLBOARD2D 只出现 [0,4,12,32]，是 BILLBOARD3D 枚举集合 [0,4,8,12,16,32,36,40…]
+    # 的子集）。
+    ('applicationRule', 'i'),   # 8
     # 用户对照 BILLBOARD3D/PLANE 同一段 8 字段布局（color/colorRange/brightness/
     # randomBrightnessMult/useColorRange/blendMode/EPVColorSlot1/EPVColorSlot2）核对
     # 位置逐一对应，直接投喂改名（2026-07-10）；语料统计佐证：unkn3_0/1（现
@@ -2039,10 +2042,13 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     ('rotationJitter', 'f'),
     ('scale',    'f'),
     ('scaleJitter',      'f'),
-    ('imageResolutionX', 'f'),
-    ('scaleX',           'f'),
-    ('imageResolutionY', 'f'),
-    ('scaleY',           'f'),        # 8 floats = 32
+    # 用户实机确认（2026-07-10）：屏幕贴附特效，尺寸以像素为单位（故常见 256/512
+    # 这类经典贴图分辨率数值，跟 BILLBOARD3D 的 world-unit width 分布形态不同不代表
+    # 语义不同）。imageResolutionX/Y 是 width/height 的固定值，scaleX/Y 是对应抖动量。
+    ('width',            'f'),
+    ('widthJitter',      'f'),
+    ('height',           'f'),
+    ('heightJitter',     'f'),        # 8 floats = 32
     ('unkn4_0', 'f'),
     ('unkn4_1', 'f'),
     ('unkn4_2', 'f'),
@@ -2052,6 +2058,14 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     ('unkn4_6', 'f'),
     ('unkn4_7', 'f'),   # 32
     ('path_len',         'i'),        # 4
+    # 位置跟 BILLBOARD3D 的 path_len 之后、path 字节之前那段 extras（unkn5/unkn6_0…）
+    # 完全对应（都是"path_len 后、path 前"这个槎位）。BILLBOARD3D 那段的第二个字段
+    # unkn6_0 正是 applicationRule 注释里提到的"启用 flowmap 还需 unkn6=1"那个开关。
+    # 全语料核对：unkn5_0 全部恒为 0（580/580 无一例外），unkn5_1 跟 applicationRule
+    # 强相关——rule=4 时 76.8%（43/56）为 1，rule=12 时 100%（21/21）为 1，rule=0/32
+    # 时几乎全为 0——跟 unkn6_0 的角色（应用规则的搭配开关）高度吻合，比 unkn5_0 更
+    # 像是 BILLBOARD3D.unkn6_0 的对应物（位置也对得上：第二个槎位）。尚未实机验证，
+    # 也没有可用的具体名字（BILLBOARD3D 那边本身也还叫 unkn6_0，未正式命名）。
     ('unkn5_0', 'i'),
     ('unkn5_1', 'i'),   # 8
 ]
