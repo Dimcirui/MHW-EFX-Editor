@@ -1853,7 +1853,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("BILLBOARD2D", "scaleJitterMax"): {
+    ("BILLBOARD2D", "scaleJitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },

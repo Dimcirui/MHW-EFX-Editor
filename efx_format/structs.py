@@ -2032,10 +2032,13 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     ('blendMode',         'i'),
     ('EPVColorSlot1',     'i'),
     ('EPVColorSlot2',     'i'),   # 16
-    ('rotationJitterMin','f'),
-    ('rotationJitterMax','f'),
-    ('scaleJitterMin',   'f'),
-    ('scaleJitterMax',   'f'),
+    # 用户实机确认（2026-07-10）：原名 rotationJitterMin/Max、scaleJitterMin/Max 其实
+    # 不是"抖动范围的 min/max"，是"固定值 + 抖动量"这套本仓库到处都在用的 value/valueJitter
+    # 配对（同 BILLBOARD3D 的 rotation/rotationJitter、scale/scaleJitter）。
+    ('rotation', 'f'),
+    ('rotationJitter', 'f'),
+    ('scale',    'f'),
+    ('scaleJitter',      'f'),
     ('imageResolutionX', 'f'),
     ('scaleX',           'f'),
     ('imageResolutionY', 'f'),

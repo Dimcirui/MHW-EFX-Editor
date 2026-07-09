@@ -263,6 +263,14 @@ FIELD_TO_DT = {
     ("BILLBOARD3D", "height"):     [(0x531B9E44, 2)],
     ("BILLBOARD3D", "scale"):      [(0x0EBAEC37, 2)],
     ("BILLBOARD3D", "width"):      [(0x241CAED2, 2)],
+    # BILLBOARD2D：官方 dti dump（nEffect::nTimelineParam::TypeBillboard2D）confirmed
+    # Color/ColorRange/ColorRate/Rotation/SizeScalar 五个哈希跟 BILLBOARD3D 完全同名同值；
+    # rotation/scale 同时经用户实机测试独立验证。
+    ("BILLBOARD2D", "color"):      [(0x58689812, 3)],
+    ("BILLBOARD2D", "colorRange"): [(0xC216C23D, 3)],
+    ("BILLBOARD2D", "brightness"): [(0x9F1E012E, 2)],
+    ("BILLBOARD2D", "rotation"):   [(0x2FF50558, 2)],
+    ("BILLBOARD2D", "scale"):      [(0x0EBAEC37, 2)],
     ("PLANE", "color"):           [(0x58689812, 3)],
     ("PLANE", "colorRange"):      [(0xC216C23D, 3)],
     ("PLANE", "brightness"):      [(0x9F1E012E, 2)],
