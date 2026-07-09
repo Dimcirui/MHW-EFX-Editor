@@ -928,24 +928,23 @@ FIELD_ANNOTATIONS = {
               "playbackMode (bits 0-1): 0=Show only the first frame,  1=Loop continuously,  "
               "2=Play once then force-kill the particle,  3=Play once then freeze on the "
               "last frame until Life ends. direction (bits 6-7): 0=Forward,  1=Reverse,  "
-              "2=Randomly forward or reverse. flipCode (bits 2-5) confirmed values: "
-              "0=Normal,  1=H-flip,  2=Random(normal, H-flip),  4=V-flip,  5=H+V-flip,  "
-              "6=V-flip + random(normal, H-flip),  7=same as 6,  8=Random(normal, V-flip),  "
-              "9=H-flip + random(normal, V-flip),  10=Random among all 4 H x V combos,  "
-              "12=Normal (no flip at all),  13=Flipped (fixed, not random). flipCode isn't a "
-              "simple 4-bit flag register - 12/13 don't fit the pattern the other values do, "
-              "so treat this as an empirical lookup table rather than a formula. All random "
-              "picks happen once at particle spawn, not re-rolled during the loop.",
+              "2=Randomly forward or reverse. flipCode (bits 2-5) = h*1 + v*4, where h and v "
+              "each independently take one of: 0=Normal,  1=Force flip,  2=Randomize,  "
+              "3=Cancelled (force+randomize on the same axis cancel out back to normal). "
+              "All random/cancel picks happen once at particle spawn, not re-rolled during "
+              "the loop. flipCode=7 (h=cancelled, v=force) is the one exception that doesn't "
+              "fit this model yet - initial testing suggested it looks the same as flipCode=6 "
+              "(v-flip + random h-flip), which contradicts the h=cancelled prediction; needs "
+              "re-verification across multiple particle spawns.",
         "ZH": "动画模式（loopingEnum 第 0 字节）= 方向(direction)×64 + 翻转码(flipCode)×4 + "
               "播放模式(playbackMode)。播放模式（低 2 位）：0=只显示起始帧，1=循环播放，"
               "2=播放一次后强制粒子消亡，3=播放一次后停在最后一帧直到 Life 结束。方向："
-              "0=正向播放，1=倒放，2=正/倒随机取一种。翻转码（已确认取值）：0=正常，"
-              "1=左右翻转，2=随机(正常,左右翻转)，4=上下翻转，5=左右+上下都翻转，"
-              "6=上下翻转+随机(正常,左右翻转)，7=同 6，8=随机(正常,上下翻转)，"
-              "9=左右翻转+随机(正常,上下翻转)，10=随机(左右×上下四种组合)，"
-              "12=正常（完全不翻转），13=翻转（固定，非随机）。flipCode 不是干净的 4 位标志"
-              "寄存器——12/13 跟其它值的规律对不上，暂按经验查表处理，不套用公式。"
-              "所有随机项都在粒子生成时取一次，循环期间不会重新取。",
+              "0=正向播放，1=倒放，2=正/倒随机取一种。翻转码 = h×1 + v×4，h/v 各自独立取："
+              "0=正常，1=强制翻转，2=随机取，3=取消（同一轴上强制+随机同时置位会互相抵消，"
+              "回到正常）。所有随机/取消项都在粒子生成时取一次，循环期间不会重新取。"
+              "flipCode=7（h=取消，v=强制）是唯一还没套进这套模型的例外——早期测试认为它"
+              "跟 flipCode=6（上下翻转+左右随机）看起来一样，这跟 h 取消的预测矛盾，"
+              "需要多测几次粒子生成重新验证。",
     },
     ("UVSEQUENCE", "loopingOrientation"): {
         "EN": "Texture rotation on the particle (loopingEnum byte 1), independent of "
