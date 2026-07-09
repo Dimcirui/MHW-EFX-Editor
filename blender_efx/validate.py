@@ -24,6 +24,8 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
     指向错误或不存在 body 的陈旧索引 → 破坏直接触发集 → 特效不生效。导出端在 eof_dirty 时丢弃。
 (2) efx_index 重复（同级组内）—— ERROR
 (3) 死块 EXTERNREFERENCE（count_extern==0 却仍 pointerized）—— WARN（合法历史模式）
+(5k) standard/extended body 零块 —— WARN（提示性；io_tree.py §4a0 已自动从导出剔除这类
+     残留空壳，这里只是提醒用户手动清理场景里的对象；见该检查项内联注释）
 
 约束（参照 CLAUDE.md）：
   - Python 3.11 语法（目标 Blender 4.3.2）
@@ -533,6 +535,28 @@ def validate_efx_tree(root_obj) -> list:
                             f"Body '{body.name}' has ALPHACORRECTION without SHADERSETTINGS "
                             "(ALPHACORRECTION requires SHADERSETTINGS as its shader context; "
                             "all 738 sample files follow this rule)"
+                        ),
+                        "obj": body.name,
+                    })
+
+                # (5k) standard/extended body 一个块都没有 — WARN（提示性，不挡导出）
+                # 正常特效体至少有 1 个块；0 块的 standard/extended body 几乎总是原生
+                # 「Delete Hierarchy」的残留空壳——2026-07-01 实测坐实：body 这个 Empty
+                # 对象本身没被真正删除（残留在 bpy.data.objects，默认 Outliner「View
+                # Layer」视图不可见、Purge Unused Data 也清不掉，因为它仍链接在集合里、
+                # 不算孤儿），只有它的 EFX_BLOCK 子对象被删掉了。io_tree.py §4a0 已经会
+                # 在导出时自动把这类零块 body 当不存在（不写进文件），这里只是提示用户
+                # 场景里还留着这个空壳对象，建议手动清理（对导出结果无影响）。root 类型
+                # body 本来就没有块，不算在内。
+                if str(body.get("body_kind", "")) in ("standard", "extended") and not blk_objs:
+                    problems.append({
+                        "level": "WARN",
+                        "msg": (
+                            f"Body '{body.name}' has zero blocks (leftover from Blender's "
+                            "native \"Delete Hierarchy\" not fully removing it — check the "
+                            "Outliner's \"Blender File\" view to confirm). It will be "
+                            "automatically excluded from the export, but you may want to "
+                            "manually delete this leftover object from the scene"
                         ),
                         "obj": body.name,
                     })

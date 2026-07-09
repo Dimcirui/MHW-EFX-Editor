@@ -681,6 +681,22 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     body_objs = _collect_children_by_type(r, "EFX_BODY")
     body_objs.sort(key=lambda o: int(o["efx_index"]))
 
+    # ── 4a0. 剔除零块的 standard/extended body（原生 Delete Hierarchy 的残留空壳）──
+    # 2026-07-01 实测坐实：Blender 原生「Delete Hierarchy」在某些集合结构下只删掉
+    # body 的子对象（EFX_BLOCK/EFX_TIML），body 这个 Empty 本身却原样留在
+    # bpy.data.objects 里（默认 Outliner「View Layer」视图不可见，Purge Unused Data
+    # 也清不掉——它仍链接在集合里，不算孤儿），把它当"真删掉了"完全是错觉。这类零块
+    # body 在真实游戏内容里没有意义（不做任何事），直接在导出时当它不存在：不写进
+    # 文件。root 类型 body 本来就没有块，不受影响。
+    # 引用它的 Play/PtLife/PtCollision/Subselect/EOF 一律走既有的悬空指针安全路径
+    # （保留原字节/跳过，见各 export_* 与 validate.py 的"悬空不阻断导出"设计），
+    # 不需要额外清理——跟"真的用插件删除按钮删掉这个 body"效果一致。
+    body_objs = [
+        o for o in body_objs
+        if str(o.get("body_kind", "")) not in ("standard", "extended")
+        or _collect_children_by_type(o, "EFX_BLOCK")
+    ]
+
     # ── 4a. 提前构建 extern_index_map（L2 #1c）─────────────────────────────────
     # 需要在遍历 main_bodies 时传给 _resolve_block_data_bytes，
     # 所以在 §4 主循环开始前先收集并排序 EFX_EXTERN 对象。
@@ -698,12 +714,35 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     play_objs_prescan.sort(key=lambda o: int(o["efx_index"]))
     play_index_map_export = {obj: idx for idx, obj in enumerate(play_objs_prescan)}
 
+    # subselect_objs 在 §5b 才用，这里提前收集只为下面的结构变化检测；§5b 直接复用。
+    subselect_objs_prescan = _collect_children_by_type(r, "EFX_SUBSELECT")
+    subselect_objs_prescan.sort(key=lambda o: int(o["efx_index"]))
+
+    # ── 4d. 结构变化自动兜底（原生 Blender 删除的安全网）──────────────────────
+    # labels_dirty/eof_dirty/subselect_dirty 只由本插件自己的删除/增删算子显式置位；
+    # 用户若改用 Blender 原生删除（选中对象按 X，或 Delete Hierarchy）删掉 body/
+    # play/extern/subselect，这几个自定义属性根本不会被触碰，但 §6 的 count_*
+    # 早已无条件按实际对象数重算——如果 label_bytes/eof_ints/subselect_size 仍
+    # 走 verbatim 分支，就会和已经变化的 count_* 对不上，产出结构错误的文件。
+    # hdr_count_body/play/extern/subselect 只在导入时写一次、之后再不更新，天然
+    # 就是"最后一次已知结构"的快照，不需要额外状态：跟当前实际对象数一比对，
+    # 不管是走自定义算子还是原生删除/增加触发的变化，都能查出来。
+    _body_count_changed = len(body_objs) != int(str(r.get("hdr_count_body", len(body_objs))))
+    _play_count_changed = len(play_objs_prescan) != int(str(r.get("hdr_count_play", len(play_objs_prescan))))
+    _extern_count_changed = len(extern_objs) != int(str(r.get("hdr_count_extern", len(extern_objs))))
+    _subselect_count_changed = len(subselect_objs_prescan) != int(str(r.get("hdr_count_subselect", len(subselect_objs_prescan))))
+    _labels_need_rebuild = _body_count_changed or _play_count_changed or _extern_count_changed
+    _eof_need_sanitize = _body_count_changed
+    # subselect 表内部会跳过 body_ptr 悬空的成员（见 subselect.py），所以 body 数变化
+    # 也可能让某张表的字节变短，即使没有直接增删 subselect 对象本身，同样要重算。
+    _subselect_need_rebuild = _subselect_count_changed or _body_count_changed
+
     # ── 2b. 决定 label_bytes（play/extern/body 对象均已收集）──────────────────
     # 混合策略（契合本仓库"未编辑走 verbatim"哲学）：
     #   labels_dirty==0（未改名/未增删）→ emit 原始 blob，保证 byte-perfect。
     #   labels_dirty==1（改名/增删/结构变）→ 从对象重建 = join(有标签条目) + tail。
     # 重建已证明对未编辑文件 == verbatim（78/78），故增删走重建路径安全。
-    if int(r.get("labels_dirty", 0)):
+    if int(r.get("labels_dirty", 0)) or _labels_need_rebuild:
         # 顺序：[Play | Extern | Main]，按全局位置取 efx_has_label==1 的条目标签。
         # has_label 是前缀性质（增删保持前缀），所以拼出来仍是合法标签前缀。
         _ordered = list(play_objs_prescan) + list(extern_objs) + list(body_objs)
@@ -720,9 +759,9 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     # eof_dirty=1（用户编辑过激活集 / 删过 body）→ sanitize：丢弃越界 raw 哨兵（陈旧错误索引）。
     # 未编辑（=0）→ 原样还原，保 byte-perfect。
     try:
-        _eof_sanitize = bool(int(r.get("eof_dirty", 0)))
+        _eof_sanitize = bool(int(r.get("eof_dirty", 0))) or _eof_need_sanitize
     except (ValueError, TypeError):
-        _eof_sanitize = False
+        _eof_sanitize = _eof_need_sanitize
     try:
         eof_ints = _body_play_ref.export_eof_ints(
             r, body_index_map_export, sanitize=_eof_sanitize)
@@ -853,8 +892,8 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
 
     # ── 5b. Subselect：L2 #1a 结构化导出 ─────────────────────────────────────
     #   构建 Main 段局部索引映射，供 export_subselect_table 解析 body_ptr → 整数 index。
-    subselect_objs = _collect_children_by_type(r, "EFX_SUBSELECT")
-    subselect_objs.sort(key=lambda o: int(o["efx_index"]))
+    #   §4d 已收集排序过（结构变化检测用），直接复用。
+    subselect_objs = subselect_objs_prescan
 
     # 构建 {EFX_BODY object → main_local_index} 映射
     # body_objs 已在 §4 按 efx_index 排序并 enumerate → 局部 index == enumerate 序号
@@ -881,7 +920,7 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     # subselect_size 是不透明值：实测 4 个文件原始值 ≠ 实际段字节长（164 vs 188 等，
     # 差值不固定，与 double_buffer 同类）。故默认 verbatim 保留原值，仅 subselect
     # 段被编辑（删/增条目）时才重算。double_buffer 公式未知，恒原样保留。
-    if int(r.get("subselect_dirty", 0)):
+    if int(r.get("subselect_dirty", 0)) or _subselect_need_rebuild:
         hdr.subselect_size = len(subselect_raw)
     # else：hdr.subselect_size 保持 §1 从 hdr_subselect_size 读入的原值
 

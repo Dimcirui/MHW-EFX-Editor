@@ -12,15 +12,30 @@ blender_efx/delete_ops.py  —  L2 #3b：删除条目（body / 块 / play / exte
   1. 删除职责只有三件：
        ① 干净移除对象（body 连带块）；
        ② 剩余同级重新连续编号（efx_index 0..n-1）+ 重建显示名；
-       ③ 置 dirty 标志（labels_dirty / subselect_dirty），供导出端重算计数/标签/size。
+       ③ 置 dirty 标志（labels_dirty / eof_dirty / subselect_dirty），供导出端重算计数/标签/size。
   2. 引用是对象指针，删除后悬空指针（None）由导出端安全跳过、由 #4 校验报告。
      删除算子不主动清理引用（Extern 多对一，清理需用户决策）。
   3. 计数/size/eof 由 io_tree 导出端从实际内容重算，删除算子无需触碰头部数据。
 
+原生删除（用户直接选中对象按 X / Delete Hierarchy，不经过本文件的算子）：
+  ① 干净移除同样成立——block/body 是父子对象树，Blender 自己的递归删除即可；
+     play/extern/subselect 是 root 下的平级对象，直接删除即可。
+  ② efx_index 不会被重排（会留空洞），但 io_tree.py 收集同级时只把它当排序 key，
+     不要求连续，空洞不影响导出正确性。
+  ③ 本文件算子显式置的 dirty 标志会被跳过（原生删除根本不知道有这几个自定义
+     属性）——但 io_tree.py §4d 独立做了结构变化自动检测（对比 hdr_count_* 这些
+     只在导入时写一次的"原始计数"和当前实际对象数），只要数量对不上就自动强制
+     走重建路径，不依赖任何删除算子有没有主动置位。三个 dirty 属性现在是
+     "算子显式置位 OR 自动检测" 里的第一项，冗余但无害，继续保留。
+  ④ 唯一的例外是删 body 时不删子块（普通 Delete 而非 Delete Hierarchy）：
+     子块会变成 parent=None 的孤儿对象，io_tree.py 按 parent 关系逐 body 收集
+     子块，孤儿不属于任何 body，从此在导出里彻底不可见（不报错，也不会被
+     误挂到别的 body 下）——是预期行为，不是 bug。
+
 约束（参照 CLAUDE.md）：
   - Python 3.11 语法（目标 Blender 4.3.2）
   - bpy 只用稳定子集
-  - 不改 efx_format/，不改 io_tree.py
+  - 不改 efx_format/
   - bl_options = {"REGISTER", "UNDO"}
 """
 
@@ -144,7 +159,12 @@ class EFX_OT_delete_body(bpy.types.Operator):
 
     bl_idname      = "efx.delete_body"
     bl_label       = "Delete Body"
-    bl_description = "Delete all selected EFX_BODY objects (including their blocks); remaining bodies are renumbered consecutively"
+    bl_description = (
+        "Delete all selected EFX_BODY objects (including their blocks); remaining bodies "
+        "are renumbered consecutively. Safer than Blender's native Delete Hierarchy, which "
+        "deletes the hierarchy of every currently selected object — a stray selected block "
+        "belonging to a different body gets silently swept away too"
+    )
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
