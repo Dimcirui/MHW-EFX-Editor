@@ -410,9 +410,13 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     else:
         split.label(text=f"[未知类型 {dtype}]")
 
-    # 骰子按钮：RANDOMFIX 的种子字段（seed）一键随机重生成
-    if type_name == "RANDOMFIX" and item.ori_name == "seed":
-        row.operator("efx.randomize_seed", text="", icon="RNDCURVE")
+    # RANDOMFIX：种子槎位骰子按钮（一键随机重生成）+ 选择组勾选弹窗
+    if type_name == "RANDOMFIX":
+        if item.ori_name.startswith("randomSeedTable"):
+            _seed_op = row.operator("efx.randomize_seed", text="", icon="RNDCURVE")
+            _seed_op.field = item.ori_name
+        elif item.ori_name == "tableSelectionGroup":
+            row.operator("efx.randomfix_set_table_group", text="", icon="DOWNARROW_HLT")
 
     # ⓘ 图标（有注释，且非 OPAQUE 内部提示行）
     if dtype not in ("OPAQUE",) and not item.ori_name.startswith("__"):

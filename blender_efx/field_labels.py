@@ -432,7 +432,16 @@ FIELD_LABELS_ZH_BY_TYPE = {
     ("EMITTERSHAPE2D", "spawnCount"):    "生成数量",
 
     # ── RANDOMFIX ──────────────────────────────────────────────────────────
-    ("RANDOMFIX", "seed"): "种子",
+    ("RANDOMFIX", "useRandomSeedTableCount"): "种子表使用次数",
+    ("RANDOMFIX", "randomSeedTable0"): "随机种子表 0",
+    ("RANDOMFIX", "randomSeedTable1"): "随机种子表 1",
+    ("RANDOMFIX", "randomSeedTable2"): "随机种子表 2",
+    ("RANDOMFIX", "randomSeedTable3"): "随机种子表 3",
+    ("RANDOMFIX", "randomSeedTable4"): "随机种子表 4",
+    ("RANDOMFIX", "randomSeedTable5"): "随机种子表 5",
+    ("RANDOMFIX", "randomSeedTable6"): "随机种子表 6",
+    ("RANDOMFIX", "randomSeedTable7"): "随机种子表 7",
+    ("RANDOMFIX", "tableSelectionGroup"): "种子表选择组",
 }
 
 

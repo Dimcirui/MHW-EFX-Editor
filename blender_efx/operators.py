@@ -690,9 +690,13 @@ class EFX_OT_field_help(bpy.types.Operator):
 
 
 class EFX_OT_randomize_seed(bpy.types.Operator):
+    """给 RANDOMFIX 的指定 randomSeedTable{N} 字段填入一个新的随机 int32 值"""
+
     bl_idname  = "efx.randomize_seed"
     bl_label   = "Randomize Seed"
     bl_options = {"REGISTER", "UNDO"}
+
+    field: bpy.props.StringProperty(name="Field", default="randomSeedTable0")
 
     @classmethod
     def poll(cls, context):
@@ -705,16 +709,80 @@ class EFX_OT_randomize_seed(bpy.types.Operator):
                 return False
         except (AttributeError, ValueError, ImportError):
             return False
-        return any(i.ori_name == "seed" for i in obj.efx_block.field_items)
+        return True
 
     def execute(self, context):
         import random
         obj = context.active_object
         for item in obj.efx_block.field_items:
-            if item.ori_name == "seed":
+            if item.ori_name == self.field:
                 item.int_value = random.randint(-2147483648, 2147483647)
+                self.report({"INFO"}, f"{self.field} = {item.int_value}")
+                return {"FINISHED"}
+        self.report({"ERROR"}, f"Field '{self.field}' not found")
+        return {"CANCELLED"}
+
+
+class EFX_OT_randomfix_set_table_group(bpy.types.Operator):
+    """以勾选框编辑 RANDOMFIX 的 tableSelectionGroup（8-bit 掩码，bit i = randomSeedTable{i} 属于该组）"""
+
+    bl_idname      = "efx.randomfix_set_table_group"
+    bl_label       = "Edit Table Selection Group"
+    bl_description = "Edit tableSelectionGroup via checkboxes (bit i = randomSeedTable{i} belongs to this group)"
+    bl_options     = {"REGISTER", "UNDO", "INTERNAL"}
+
+    t0: bpy.props.BoolProperty(name="Table 0")
+    t1: bpy.props.BoolProperty(name="Table 1")
+    t2: bpy.props.BoolProperty(name="Table 2")
+    t3: bpy.props.BoolProperty(name="Table 3")
+    t4: bpy.props.BoolProperty(name="Table 4")
+    t5: bpy.props.BoolProperty(name="Table 5")
+    t6: bpy.props.BoolProperty(name="Table 6")
+    t7: bpy.props.BoolProperty(name="Table 7")
+
+    _BITS = ("t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7")
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+            return False
+        try:
+            from ..efx_format.hashes import RANDOMFIX
+            return int(str(obj.get("type_hash", ""))) == RANDOMFIX
+        except (AttributeError, ValueError, ImportError):
+            return False
+
+    def invoke(self, context, event):
+        bp = context.active_object.efx_block
+        val = 0
+        for item in bp.field_items:
+            if item.ori_name == "tableSelectionGroup":
+                val = int(item.int_value)
                 break
-        return {"FINISHED"}
+        for i, attr in enumerate(self._BITS):
+            setattr(self, attr, bool(val & (1 << i)))
+        return context.window_manager.invoke_props_dialog(self, width=200)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="Table Selection Group")
+        for attr in self._BITS:
+            layout.prop(self, attr)
+
+    def execute(self, context):
+        bp = context.active_object.efx_block
+        mask = 0
+        for i, attr in enumerate(self._BITS):
+            if getattr(self, attr):
+                mask |= (1 << i)
+        for item in bp.field_items:
+            if item.ori_name == "tableSelectionGroup":
+                item.int_value = mask
+                self.report({"INFO"}, f"tableSelectionGroup = {mask} (0b{mask:08b})")
+                return {"FINISHED"}
+        self.report({"ERROR"}, "Field 'tableSelectionGroup' not found")
+        return {"CANCELLED"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -841,6 +909,7 @@ _CLASSES = (
     EFX_OT_ptb_remove_override,
     EFX_OT_field_help,
     EFX_OT_randomize_seed,
+    EFX_OT_randomfix_set_table_group,
 )
 
 

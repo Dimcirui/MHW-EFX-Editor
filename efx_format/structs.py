@@ -1187,21 +1187,28 @@ assert _schema_size(PTCOLLISION_SCHEMA) == 112, \
 # BT (EFX_Subtypes.bt):
 #   int unkn0[10]  (10 × 4 = 40 B)
 #
-# seed = 随机种子（22946 个官方块中 8995 种不同取值，全表覆盖 int32 值域，
-# 熵远高于其余 9 个字段——其余字段均为几十种以内的小整数）。
+# 用户对照 RE Engine（Wilds 同构）的命名逐一核对（2026-07-10，22946 个官方块）：
+# useRandomSeedTableCount + randomSeedTable0~7 + tableSelectionGroup，刚好 10 个字段。
+#   randomSeedTable0~7（原 seed/unkn0_2~8）：8 个位置形状一致——大多数为 0（未用槎位），
+#     非零时 67%~98% 落在 |v|>=1000（真随机 int32 种子的典型信号，不是设计师手填小数）。
+#   useRandomSeedTableCount（原 unkn0_0）：小整数，众数 1~9，但范围 0~69，并不严格 ≤8
+#     （8 个 table 槎位的上限）——不是"已填槎位数"，更像"抽取/复用次数"计数器
+#     （允许循环复用 8 个槎位），故字段名里的"count"仍成立，只是不是槎位计数。
+#   tableSelectionGroup（原 unkn0_9）：取值全部是 2 的幂/位组合（1/2/4/8/16/32/64/128/
+#     255/15/31/63/240…），上限恰好 255（8-bit 全开）——8 个 table 槎位的选择位掩码。
 # ─────────────────────────────────────────────────────────────────────────────
 
 RANDOMFIX_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('seed', 'i'),
-    ('unkn0_2', 'i'),
-    ('unkn0_3', 'i'),
-    ('unkn0_4', 'i'),
-    ('unkn0_5', 'i'),
-    ('unkn0_6', 'i'),
-    ('unkn0_7', 'i'),
-    ('unkn0_8', 'i'),
-    ('unkn0_9', 'i'),
+    ('useRandomSeedTableCount', 'i'),
+    ('randomSeedTable0', 'i'),
+    ('randomSeedTable1', 'i'),
+    ('randomSeedTable2', 'i'),
+    ('randomSeedTable3', 'i'),
+    ('randomSeedTable4', 'i'),
+    ('randomSeedTable5', 'i'),
+    ('randomSeedTable6', 'i'),
+    ('randomSeedTable7', 'i'),
+    ('tableSelectionGroup', 'i'),
 ]
 assert _schema_size(RANDOMFIX_SCHEMA) == 40, \
     f"RANDOMFIX_SCHEMA size mismatch: {_schema_size(RANDOMFIX_SCHEMA)}"

@@ -740,10 +740,46 @@ FIELD_ANNOTATIONS = {
 
     # ─── DUMMY / RANDOMFIX / MASTERONLY / BLINK / LUMINANCEBLEED / REFRACTION ─
     # No significant inline comments in BT
-    ("RANDOMFIX", "seed"): {
-        "EN": "Random seed used by this effect's randomization. Click the "
-              "button on the left to generate a new random value.",
-        "ZH": "该特效随机化所用的种子。点击左侧按钮可生成新的随机值。",
+    ("RANDOMFIX", "useRandomSeedTableCount"): {
+        "EN": "Number of times this effect draws from the random seed table below.",
+        "ZH": "该特效从下方随机种子表中抽取的次数。",
+    },
+    ("RANDOMFIX", "randomSeedTable0"): {
+        "EN": "One of 8 slots in the random seed table. Click the dice button to generate a new random value.",
+        "ZH": "随机种子表的 8 个槎位之一。点击骰子按钮可生成新的随机值。",
+    },
+    ("RANDOMFIX", "randomSeedTable1"): {
+        "EN": "One of 8 slots in the random seed table. Click the dice button to generate a new random value.",
+        "ZH": "随机种子表的 8 个槎位之一。点击骰子按钮可生成新的随机值。",
+    },
+    ("RANDOMFIX", "randomSeedTable2"): {
+        "EN": "One of 8 slots in the random seed table. Click the dice button to generate a new random value.",
+        "ZH": "随机种子表的 8 个槎位之一。点击骰子按钮可生成新的随机值。",
+    },
+    ("RANDOMFIX", "randomSeedTable3"): {
+        "EN": "One of 8 slots in the random seed table. Click the dice button to generate a new random value.",
+        "ZH": "随机种子表的 8 个槎位之一。点击骰子按钮可生成新的随机值。",
+    },
+    ("RANDOMFIX", "randomSeedTable4"): {
+        "EN": "One of 8 slots in the random seed table. Click the dice button to generate a new random value.",
+        "ZH": "随机种子表的 8 个槎位之一。点击骰子按钮可生成新的随机值。",
+    },
+    ("RANDOMFIX", "randomSeedTable5"): {
+        "EN": "One of 8 slots in the random seed table. Click the dice button to generate a new random value.",
+        "ZH": "随机种子表的 8 个槎位之一。点击骰子按钮可生成新的随机值。",
+    },
+    ("RANDOMFIX", "randomSeedTable6"): {
+        "EN": "One of 8 slots in the random seed table. Click the dice button to generate a new random value.",
+        "ZH": "随机种子表的 8 个槎位之一。点击骰子按钮可生成新的随机值。",
+    },
+    ("RANDOMFIX", "randomSeedTable7"): {
+        "EN": "One of 8 slots in the random seed table. Click the dice button to generate a new random value.",
+        "ZH": "随机种子表的 8 个槎位之一。点击骰子按钮可生成新的随机值。",
+    },
+    ("RANDOMFIX", "tableSelectionGroup"): {
+        "EN": "Bitmask selecting which of the 8 randomSeedTable slots belong to this group. "
+              "Click the button on the left to edit via checkboxes.",
+        "ZH": "位掩码，选择 8 个 randomSeedTable 槎位中的哪些属于该组。点击左侧按钮可用勾选框编辑。",
     },
 
     # ─── MESH (Mod3Properties fields — _custom type, flat part) ───────────────
