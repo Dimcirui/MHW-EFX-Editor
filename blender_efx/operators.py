@@ -437,11 +437,11 @@ class EFX_OT_copy_block_fields(bpy.types.Operator):
 
 
 class EFX_OT_paste_block_fields(bpy.types.Operator):
-    """把内存剪贴板的字段值粘贴到当前 EFX_BLOCK（类型必须一致）"""
+    """把内存剪贴板的字段值粘贴到所有选中的同类型 EFX_BLOCK"""
 
     bl_idname      = "efx.paste_block_fields"
     bl_label       = "Paste Field Values"
-    bl_description = "Write the clipboard field values into the current EFX_BLOCK (only for blocks of the same type as the copy source)"
+    bl_description = "Write the clipboard field values into every selected EFX_BLOCK of the same type as the copy source"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -466,55 +466,64 @@ class EFX_OT_paste_block_fields(bpy.types.Operator):
         from . import fields as _fields
         global _FIELD_CLIPBOARD
 
-        obj = context.active_object
-        bp = obj.efx_block
-
-        # type_hash 双重校验（poll 已做过，execute 再守一次）
         clip_hash = _FIELD_CLIPBOARD.get("type_hash", "")
-        if clip_hash != bp.type_hash_str:
-            self.report(
-                {"ERROR"},
-                f"Paste failed: type mismatch (clipboard hash={clip_hash!r}, "
-                f"current block hash={bp.type_hash_str!r})",
-            )
-            return {"CANCELLED"}
+        fields_dict = _FIELD_CLIPBOARD.get("fields", {})
 
-        # 建 name→item 映射
-        item_by_name = {}
-        for item in bp.field_items:
-            if not item.ori_name.startswith("__"):
-                item_by_name[item.ori_name] = item
+        # 收集选中的、类型匹配且可编辑的 EFX_BLOCK；未多选（或选中里没有匹配类型）
+        # 时退化为只粘贴到 active（execute 再守一次类型校验，同 poll 逻辑）。
+        targets = [
+            o for o in context.selected_objects
+            if o.get("~TYPE") == "EFX_BLOCK"
+            and hasattr(o, "efx_block")
+            and o.efx_block.is_editable
+            and o.efx_block.type_hash_str == clip_hash
+        ]
+        if not targets:
+            active = context.active_object
+            if active is None or active.get("~TYPE") != "EFX_BLOCK" \
+                    or active.efx_block.type_hash_str != clip_hash:
+                self.report(
+                    {"ERROR"},
+                    f"Paste failed: type mismatch (clipboard hash={clip_hash!r})",
+                )
+                return {"CANCELLED"}
+            targets = [active]
 
         # 写入字段值（复用 presets.py 的 _json_value_to_item + _LOADING 守卫）
-        fields_dict = _FIELD_CLIPBOARD.get("fields", {})
-        written = 0
-
+        total_written = 0
         old_loading = _fields._LOADING
         _fields._LOADING = True
         try:
-            for ori_name, field_entry in fields_dict.items():
-                item = item_by_name.get(ori_name)
-                if item is None:
-                    continue
-                if item.read_only:
-                    continue
-                data_type = field_entry.get("data_type", "")
-                if data_type != item.data_type:
-                    continue
-                value = field_entry.get("value")
-                if value is None:
-                    continue
-                ok = _json_value_to_item(item, data_type, value)
-                if ok:
-                    item.edited = True
-                    written += 1
+            for obj in targets:
+                bp = obj.efx_block
+                item_by_name = {
+                    item.ori_name: item for item in bp.field_items
+                    if not item.ori_name.startswith("__")
+                }
+                written = 0
+                for ori_name, field_entry in fields_dict.items():
+                    item = item_by_name.get(ori_name)
+                    if item is None or item.read_only:
+                        continue
+                    data_type = field_entry.get("data_type", "")
+                    if data_type != item.data_type:
+                        continue
+                    value = field_entry.get("value")
+                    if value is None:
+                        continue
+                    if _json_value_to_item(item, data_type, value):
+                        item.edited = True
+                        written += 1
+                if written > 0:
+                    bp.efx_dirty = True
+                total_written += written
         finally:
             _fields._LOADING = old_loading
 
-        if written > 0:
-            bp.efx_dirty = True
-
-        self.report({"INFO"}, f"EFX fields pasted: {written} field(s) written")
+        self.report(
+            {"INFO"},
+            f"EFX fields pasted into {len(targets)} block(s): {total_written} field write(s) total",
+        )
         return {"FINISHED"}
 
 

@@ -1,12 +1,12 @@
 """
 blender_efx/delete_ops.py  —  L2 #3b：删除条目（body / 块 / play / extern / subselect）
 
-算子（全部 bl_options={"REGISTER","UNDO"}，invoke 用 invoke_confirm 弹确认）：
-  efx.delete_body      —  删除选中 EFX_BODY（连带其全部 EFX_BLOCK 子块）
-  efx.delete_block     —  删除选中 EFX_BLOCK
-  efx.delete_play      —  删除选中 EFX_PLAY
-  efx.delete_extern    —  删除选中 EFX_EXTERN
-  efx.delete_subselect —  删除选中 EFX_SUBSELECT
+算子（全部 bl_options={"REGISTER","UNDO"}，invoke 用 invoke_confirm 弹确认，均支持多选批量删除）：
+  efx.delete_body      —  删除所有选中 EFX_BODY（连带其全部 EFX_BLOCK 子块）
+  efx.delete_block     —  删除所有选中 EFX_BLOCK
+  efx.delete_play      —  删除所有选中 EFX_PLAY
+  efx.delete_extern    —  删除所有选中 EFX_EXTERN
+  efx.delete_subselect —  删除所有选中 EFX_SUBSELECT
 
 设计要点（参照 CLAUDE.md / reorder.py）：
   1. 删除职责只有三件：
@@ -82,42 +82,6 @@ def _reindex_siblings(parent_obj, type_tag: str, rebuild_name_fn) -> int:
         o["efx_index"] = new_idx
         o.name = rebuild_name_fn(o, new_idx)
     return len(siblings)
-
-
-def _delete_and_reindex(obj, parent, type_tag: str, is_body: bool,
-                        rebuild_name_fn) -> int:
-    """
-    通用删除流程：
-      1. 若是 EFX_BODY：先递归删除其全部 EFX_BLOCK 子对象。
-      2. 删除 obj 本身。
-      3. 重排剩余同级（重赋 efx_index + 重建显示名）。
-
-    参数
-    ----
-    obj            : 待删除对象。
-    parent         : obj 的父对象（root 或 body），用于收集剩余同级。
-    type_tag       : obj 的 ~TYPE（用于收集同级）。
-    is_body        : True 时先删子块。
-    rebuild_name_fn: fn(o, new_idx) -> str，重建剩余同级显示名。
-
-    返回
-    ----
-    int — 重排后剩余同级数量。
-    """
-    # ── 1. body：先递归删子块 ───────────────────────────────────────────────
-    if is_body:
-        children = [
-            c for c in bpy.data.objects
-            if c.parent == obj and c.get("~TYPE") == "EFX_BLOCK"
-        ]
-        for child in children:
-            bpy.data.objects.remove(child, do_unlink=True)
-
-    # ── 2. 删除 obj 本身 ─────────────────────────────────────────────────────
-    bpy.data.objects.remove(obj, do_unlink=True)
-
-    # ── 3. 重排剩余同级 ──────────────────────────────────────────────────────
-    return _reindex_siblings(parent, type_tag, rebuild_name_fn)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -274,11 +238,11 @@ class EFX_OT_delete_block(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_delete_play(bpy.types.Operator):
-    """删除选中的 EFX_PLAY，重排剩余 play"""
+    """删除所有选中的 EFX_PLAY，重排剩余 play"""
 
     bl_idname      = "efx.delete_play"
     bl_label       = "Delete Play"
-    bl_description = "Delete the selected EFX_PLAY; remaining plays are renumbered consecutively"
+    bl_description = "Delete all selected EFX_PLAY objects; remaining plays are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -294,18 +258,29 @@ class EFX_OT_delete_play(bpy.types.Operator):
         return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
-        obj = context.active_object
-        root = obj.parent  # EFX_ROOT
+        active = context.active_object
+        root = active.parent  # EFX_ROOT
 
-        remaining = _delete_and_reindex(
-            obj, root, "EFX_PLAY", is_body=False,
-            rebuild_name_fn=_rebuild_play_name,
-        )
+        # 收集选中的同 root 下所有 EFX_PLAY；未多选时退化为只删 active
+        targets = [
+            o for o in context.selected_objects
+            if o.get("~TYPE") == "EFX_PLAY" and o.parent == root
+        ]
+        if not targets:
+            targets = [active]
+
+        for obj in targets:
+            bpy.data.objects.remove(obj, do_unlink=True)
+
+        remaining = _reindex_siblings(root, "EFX_PLAY", _rebuild_play_name)
 
         # play 计数变 → 标签表变
         root["labels_dirty"] = 1
 
-        self.report({"INFO"}, f"Deleted EFX_PLAY, {remaining} play(s) remaining")
+        self.report(
+            {"INFO"},
+            f"Deleted {len(targets)} EFX_PLAY(s), {remaining} play(s) remaining",
+        )
         return {"FINISHED"}
 
 
@@ -314,12 +289,12 @@ class EFX_OT_delete_play(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_delete_extern(bpy.types.Operator):
-    """删除选中的 EFX_EXTERN，重排剩余 extern（被引用的块指针变悬空，由校验报告）"""
+    """删除所有选中的 EFX_EXTERN，重排剩余 extern（被引用的块指针变悬空，由校验报告）"""
 
     bl_idname      = "efx.delete_extern"
     bl_label       = "Delete Extern"
     bl_description = (
-        "Delete the selected EFX_EXTERN; remaining externs are renumbered consecutively. "
+        "Delete all selected EFX_EXTERN objects; remaining externs are renumbered consecutively. "
         "Note: pointers referenced by ExternReference blocks will dangle (check with pre-export validation)"
     )
     bl_options     = {"REGISTER", "UNDO"}
@@ -337,21 +312,32 @@ class EFX_OT_delete_extern(bpy.types.Operator):
         return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
-        obj = context.active_object
-        root = obj.parent  # EFX_ROOT
+        active = context.active_object
+        root = active.parent  # EFX_ROOT
+
+        # 收集选中的同 root 下所有 EFX_EXTERN；未多选时退化为只删 active
+        targets = [
+            o for o in context.selected_objects
+            if o.get("~TYPE") == "EFX_EXTERN" and o.parent == root
+        ]
+        if not targets:
+            targets = [active]
 
         # ⚠ Extern 多对一：被多个 EXTERNREFERENCE 块引用的对象删除后，
         # 这些块的 extern_ref_ptr 变 None（悬空）——这是预期行为，由 #4 校验报告。
         # 删除算子不主动清理引用。
-        remaining = _delete_and_reindex(
-            obj, root, "EFX_EXTERN", is_body=False,
-            rebuild_name_fn=_rebuild_extern_name,
-        )
+        for obj in targets:
+            bpy.data.objects.remove(obj, do_unlink=True)
+
+        remaining = _reindex_siblings(root, "EFX_EXTERN", _rebuild_extern_name)
 
         # extern 计数变 → 标签表变
         root["labels_dirty"] = 1
 
-        self.report({"INFO"}, f"Deleted EFX_EXTERN, {remaining} extern(s) remaining")
+        self.report(
+            {"INFO"},
+            f"Deleted {len(targets)} EFX_EXTERN(s), {remaining} extern(s) remaining",
+        )
         return {"FINISHED"}
 
 
@@ -360,11 +346,11 @@ class EFX_OT_delete_extern(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_delete_subselect(bpy.types.Operator):
-    """删除选中的 EFX_SUBSELECT，重排剩余 subselect"""
+    """删除所有选中的 EFX_SUBSELECT，重排剩余 subselect"""
 
     bl_idname      = "efx.delete_subselect"
     bl_label       = "Delete Subselect"
-    bl_description = "Delete the selected EFX_SUBSELECT; remaining subselects are renumbered consecutively"
+    bl_description = "Delete all selected EFX_SUBSELECT objects; remaining subselects are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -380,19 +366,30 @@ class EFX_OT_delete_subselect(bpy.types.Operator):
         return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
-        obj = context.active_object
-        root = obj.parent  # EFX_ROOT
+        active = context.active_object
+        root = active.parent  # EFX_ROOT
+
+        # 收集选中的同 root 下所有 EFX_SUBSELECT；未多选时退化为只删 active
+        targets = [
+            o for o in context.selected_objects
+            if o.get("~TYPE") == "EFX_SUBSELECT" and o.parent == root
+        ]
+        if not targets:
+            targets = [active]
 
         # subselect 不在标签表，不设 labels_dirty；
         # 但 subselect 段字节变 → subselect_size 要重算 → 置 subselect_dirty。
-        remaining = _delete_and_reindex(
-            obj, root, "EFX_SUBSELECT", is_body=False,
-            rebuild_name_fn=_rebuild_subselect_name,
-        )
+        for obj in targets:
+            bpy.data.objects.remove(obj, do_unlink=True)
+
+        remaining = _reindex_siblings(root, "EFX_SUBSELECT", _rebuild_subselect_name)
 
         root["subselect_dirty"] = 1
 
-        self.report({"INFO"}, f"Deleted EFX_SUBSELECT, {remaining} subselect(s) remaining")
+        self.report(
+            {"INFO"},
+            f"Deleted {len(targets)} EFX_SUBSELECT(s), {remaining} subselect(s) remaining",
+        )
         return {"FINISHED"}
 
 
