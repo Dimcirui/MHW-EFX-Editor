@@ -450,8 +450,8 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == TRANSFORM2D:
         return 4 + 4 + 8 + 4 + 8  # = 28
 
-    # Billboard2D (EFX_Subtypes.bt): type(4)+long unkn0[2](8)+XYZ(2)color[2](8)+
-    #   float emissionMin,Max(8)+int unkn3[4](16)+
+    # Billboard2D (EFX_Subtypes.bt): type(4)+long unkn0[2](8)+XYZ(2)color,colorRange(8)+
+    #   float brightness,randomBrightnessMult(8)+int useColorRange,blendMode,EPVColorSlot1,EPVColorSlot2(16)+
     #   float rotJitter[2]+scaleJitter[2]+imageResX+scaleX+imageResY+scaleY(8 floats=32)+
     #   float unkn4[8](32)+int path_len(4)+int unkn5[2](8)+char p[path_len]
     # 固定部分 120B，path_len 在偏移 108；总长 = 120 + path_len。

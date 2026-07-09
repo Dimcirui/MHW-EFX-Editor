@@ -1865,19 +1865,19 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 4, 12, 32].",
         "ZH": "常见取值为 [0, 4, 12, 32]。",
     },
-    ("BILLBOARD2D", "unkn3_0"): {
+    ("BILLBOARD2D", "useColorRange"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("BILLBOARD2D", "unkn3_1"): {
+    ("BILLBOARD2D", "blendMode"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("BILLBOARD2D", "unkn3_2"): {
+    ("BILLBOARD2D", "EPVColorSlot1"): {
         "EN": "Common values: [0, 1, 9].",
         "ZH": "常见取值为 [0, 1, 9]。",
     },
-    ("BILLBOARD2D", "unkn3_3"): {
+    ("BILLBOARD2D", "EPVColorSlot2"): {
         "EN": "Common values: [0, 1, 9].",
         "ZH": "常见取值为 [0, 1, 9]。",
     },

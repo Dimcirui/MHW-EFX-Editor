@@ -409,10 +409,7 @@ FIELD_LABELS_ZH_BY_TYPE = {
     ("VELOCITY2D", "gravityDelayJitter"):              "重力延迟抖动",
 
     # ── BILLBOARD2D（2D 公告板，来源 EFX_Subtypes.bt）─────────────────────────
-    ("BILLBOARD2D", "color1"):           "颜色1",
-    ("BILLBOARD2D", "color2"):           "颜色2",
-    ("BILLBOARD2D", "emissionMin"):      "自发光最小值",
-    ("BILLBOARD2D", "emissionMax"):      "自发光最大值",
+    # color/colorRange/brightness/randomBrightnessMult/useColorRange/blendMode 用全局通用标签。
     ("BILLBOARD2D", "rotationJitterMin"):"旋转抖动最小值",
     ("BILLBOARD2D", "rotationJitterMax"):"旋转抖动最大值",
     ("BILLBOARD2D", "scaleJitterMin"):   "缩放抖动最小值",

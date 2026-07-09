@@ -1724,11 +1724,16 @@ assert _schema_size(PARENTMATERIAL_SCHEMA) == 12, \
 
 # Transform2D (28B total, 24B data)
 # BT: int64 unkn0[2](16B) + float unkn1[2](8B)
-# unkn0_0/unkn0_1 各拆分自原 int64：低32位=int(小枚举)，高32位=float（实测 580 个块核对）
+# unkn0_0/unkn0_1 各拆分自原 int64：低32位=int(小枚举)，高32位=float（实测 580 个块核对）。
+# ⚠ 但两个 int64 并不对称：unkn0_0_0（低32位）确实是干净小枚举([1,2,6])，配合
+# unkn0_0_1（高32位）是干净浮点(310/224/89/2.8/-17…)；unkn0_1_0（低32位）原按
+# 同结构标 int，但重解读为 float32 后同样落在干净数值（320/345/256/300/102/26/-10…），
+# 跟真正的小枚举形态完全不符，2026-07-10 改回 float。unkn0_1_1（高32位）本就是 float，
+# 意味着第二个 int64 实际是"两个独立 float"，不是"低位枚举+高位浮点"的镜像结构。
 TRANSFORM2D_SCHEMA = [
     ('unkn0_0_0', 'i'),
     ('unkn0_0_1', 'f'),
-    ('unkn0_1_0', 'i'),
+    ('unkn0_1_0', 'f'),
     ('unkn0_1_1', 'f'),   # 16B
     ('unkn1_0', 'f'),
     ('unkn1_1', 'f'),   # 8B
@@ -2009,8 +2014,8 @@ def pack_billboard3d(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 # Billboard2D (variable: 116B 固定 + path[path_len])
 # EFX_Subtypes.bt: data_bytes(type 之后) =
-#   long unkn0[2](8) + XYZ(2) color1,color2(8) + float emissionMin,Max(8) +
-#   int unkn3[4](16) + float rotJitterMin,Max + scaleJitterMin,Max +
+#   long unkn0[2](8) + XYZ(2) color,colorRange(8) + float brightness,randomBrightnessMult(8) +
+#   int useColorRange,blendMode,EPVColorSlot1,EPVColorSlot2(16) + float rotJitterMin,Max + scaleJitterMin,Max +
 #   imageResolutionX + scaleX + imageResolutionY + scaleY (8 floats=32) +
 #   float unkn4[8](32) + int path_len(4) + int unkn5[2](8) + char p[path_len]
 # 固定部分 116B；path_len 在 data 偏移 104。
@@ -2019,14 +2024,19 @@ def pack_billboard3d(values: dict) -> bytes:
 _BILLBOARD2D_FIXED_SCHEMA = [
     ('unkn0_0', 'i'),
     ('unkn0_1', 'i'),   # 8
-    ('color1',           ('XYZ', 2)), # 4
-    ('color2',           ('XYZ', 2)), # 4
-    ('emissionMin',      'f'),
-    ('emissionMax',      'f'),        # 8
-    ('unkn3_0', 'i'),
-    ('unkn3_1', 'i'),
-    ('unkn3_2', 'i'),
-    ('unkn3_3', 'i'),   # 16
+    # 用户对照 BILLBOARD3D/PLANE 同一段 8 字段布局（color/colorRange/brightness/
+    # randomBrightnessMult/useColorRange/blendMode/EPVColorSlot1/EPVColorSlot2）核对
+    # 位置逐一对应，直接投喂改名（2026-07-10）；语料统计佐证：unkn3_0/1（现
+    # useColorRange/blendMode）取值恰好都是 0/1，unkn3_2/3（现 EPVColorSlot1/2）
+    # 取值形态跟其余块的 EPVColorSlot 一样是小整数枚举。
+    ('color',             ('XYZ', 2)), # 4
+    ('colorRange',        ('XYZ', 2)), # 4
+    ('brightness',        'f'),
+    ('randomBrightnessMult', 'f'),     # 8
+    ('useColorRange',     'i'),
+    ('blendMode',         'i'),
+    ('EPVColorSlot1',     'i'),
+    ('EPVColorSlot2',     'i'),   # 16
     ('rotationJitterMin','f'),
     ('rotationJitterMax','f'),
     ('scaleJitterMin',   'f'),
