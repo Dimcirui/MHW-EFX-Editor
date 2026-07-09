@@ -318,7 +318,7 @@ FIELD_LABELS_ZH = {
     "prop2": "属性2",
     "prop3": "属性3",
     # ── UVSEQUENCE loopingEnum 拆分字段 ────────────────────────────────────
-    "loopingMode": "循环模式",
+    # playbackMode/flipCode 是 UVSEQUENCE 专属概念，用类型专属表；direction 用上面的全局"方向"。
     "loopingOrientation": "贴图朝向",
     "loopingPad": "保留",
 }
@@ -332,6 +332,9 @@ FIELD_LABELS_ZH = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 FIELD_LABELS_ZH_BY_TYPE = {
+    # ── UVSEQUENCE loopingMode 拆分字段 ──────────────────────────────────────
+    ("UVSEQUENCE", "playbackMode"): "播放模式",
+    ("UVSEQUENCE", "flipCode"): "翻转码",
     # ── LIGHTNING（闪电，社区逆向，2026-06）──────────────────────────────────
     ("LIGHTNING", "unkn05_01"): "实例模式标志",
     ("LIGHTNING", "sineWaveFreq"): "正弦波频率",

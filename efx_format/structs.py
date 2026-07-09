@@ -1908,10 +1908,30 @@ _UVSEQUENCE_FIXED_SCHEMA = [
 
 _UVSEQUENCE_FIXED_SIZE = _schema_size(_UVSEQUENCE_FIXED_SCHEMA)  # = 40
 
+# UI 侧可编辑字段 schema：跟 _UVSEQUENCE_FIXED_SCHEMA 一致，只是把裸字节 loopingMode
+# 换成三个可分别编辑的具名子字段（unpack/pack_uvsequence 负责跟裸字节互转，
+# 位运算见下方两个函数）。
+_UVSEQUENCE_FIELD_SCHEMA = []
+for _name, _spec in _UVSEQUENCE_FIXED_SCHEMA:
+    if _name == 'loopingMode':
+        _UVSEQUENCE_FIELD_SCHEMA.extend([
+            ('playbackMode', 'B'),
+            ('flipCode',     'B'),
+            ('direction',    'B'),
+        ])
+    else:
+        _UVSEQUENCE_FIELD_SCHEMA.append((_name, _spec))
+del _name, _spec
+
 
 def unpack_uvsequence(data: bytes, off: int = 0):
     """Unpack UVSequence data_bytes (variable-length). Returns (dict, new_off)."""
     values, off = unpack(_UVSEQUENCE_FIXED_SCHEMA, data, off)
+    # loopingMode（裸字节）拆成 playbackMode(bit0-1)/flipCode(bit2-5)/direction(bit6-7)。
+    lm = values.pop('loopingMode')
+    values['playbackMode'] = lm & 0x03
+    values['flipCode']     = (lm >> 2) & 0x0F
+    values['direction']    = (lm >> 6) & 0x03
     # path_len field (int) + path bytes
     (path_len,) = struct.unpack_from('<i', data, off)
     off += 4
@@ -1923,6 +1943,13 @@ def unpack_uvsequence(data: bytes, off: int = 0):
 
 def pack_uvsequence(values: dict) -> bytes:
     """Pack UVSequence values dict back to bytes."""
+    values = dict(values)
+    # playbackMode/flipCode/direction → loopingMode（裸字节），跟 unpack_uvsequence 对称。
+    values['loopingMode'] = (
+        (values['direction'] & 0x03) << 6
+        | (values['flipCode'] & 0x0F) << 2
+        | (values['playbackMode'] & 0x03)
+    )
     out = pack(_UVSEQUENCE_FIXED_SCHEMA, values)
     path = values['path']
     out += struct.pack('<i', len(path))
@@ -4097,7 +4124,7 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
 
 CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     RIBBON:      _RIBBON_FIXED_SCHEMA,
-    UVSEQUENCE:  _UVSEQUENCE_FIXED_SCHEMA,
+    UVSEQUENCE:  _UVSEQUENCE_FIELD_SCHEMA,
     # MESH：174B Mod3Properties + 1B BeginMod3（unpack_mesh 单独读 BeginMod3，
     # 故拼上 ('BeginMod3','B') 使其也可编辑）；path1/path2 由 codec 处理，不在 schema。
     MESH:        _MOD3_PROPERTIES_SCHEMA + [('BeginMod3', 'B')],

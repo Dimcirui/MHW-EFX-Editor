@@ -923,35 +923,33 @@ FIELD_ANNOTATIONS = {
         "EN": "UVS File Path Index",
         "ZH": "UVS 文件路径索引",
     },
-    ("UVSEQUENCE", "loopingMode"): {
-        "EN": "Animation mode (loopingEnum byte 0) = direction*64 + flipCode*4 + playbackMode. "
-              "playbackMode (bits 0-1): 0=Show only the first frame,  1=Loop continuously,  "
+    ("UVSEQUENCE", "playbackMode"): {
+        "EN": "Animation playback mode: 0=Show only the first frame,  1=Loop continuously,  "
               "2=Play once then force-kill the particle,  3=Play once then freeze on the "
-              "last frame until Life ends. direction (bits 6-7): 0=Forward,  1=Reverse,  "
-              "2=Randomly forward or reverse. flipCode (bits 2-5) = h*1 + v*4, where h and v "
-              "each independently take one of: 0=Normal,  1=Force flip,  2=Randomize,  "
-              "3=Cancelled (force+randomize on the same axis cancel out back to normal). "
-              "All random/cancel picks happen once at particle spawn, not re-rolled during "
-              "the loop. flipCode=7 (h=cancelled, v=force) is the one exception that doesn't "
-              "fit this model yet - initial testing suggested it looks the same as flipCode=6 "
-              "(v-flip + random h-flip), which contradicts the h=cancelled prediction; needs "
-              "re-verification across multiple particle spawns.",
-        "ZH": "动画模式（loopingEnum 第 0 字节）= 方向(direction)×64 + 翻转码(flipCode)×4 + "
-              "播放模式(playbackMode)。播放模式（低 2 位）：0=只显示起始帧，1=循环播放，"
-              "2=播放一次后强制粒子消亡，3=播放一次后停在最后一帧直到 Life 结束。方向："
-              "0=正向播放，1=倒放，2=正/倒随机取一种。翻转码 = h×1 + v×4，h/v 各自独立取："
-              "0=正常，1=强制翻转，2=随机取，3=取消（同一轴上强制+随机同时置位会互相抵消，"
-              "回到正常）。所有随机/取消项都在粒子生成时取一次，循环期间不会重新取。"
-              "flipCode=7（h=取消，v=强制）是唯一还没套进这套模型的例外——早期测试认为它"
-              "跟 flipCode=6（上下翻转+左右随机）看起来一样，这跟 h 取消的预测矛盾，"
-              "需要多测几次粒子生成重新验证。",
+              "last frame until Life ends.",
+        "ZH": "播放模式：0=只显示起始帧，1=循环播放，2=播放一次后强制粒子消亡，"
+              "3=播放一次后停在最后一帧直到 Life 结束。",
+    },
+    ("UVSEQUENCE", "flipCode"): {
+        "EN": "Bitmask controlling texture flip: +1=Force horizontal flip,  "
+              "+2=Randomize horizontal flip,  +4=Force vertical flip,  "
+              "+8=Randomize vertical flip. Random picks happen once at particle spawn, "
+              "not re-rolled during the loop. (Combining flags hasn't been fully tested yet.)",
+        "ZH": "控制贴图翻转的位掩码：+1=强制左右翻转，+2=左右翻转随机取，"
+              "+4=强制上下翻转，+8=上下翻转随机取。随机项在粒子生成时取一次，"
+              "循环期间不会重新取。（组合多个标志位的效果尚未完全测试。）",
+    },
+    ("UVSEQUENCE", "direction"): {
+        "EN": "Playback direction: 0=Forward,  1=Reverse,  2=Randomly forward or reverse "
+              "(picked once at particle spawn).",
+        "ZH": "播放方向：0=正向播放，1=倒放，2=正/倒随机取一种（粒子生成时取一次）。",
     },
     ("UVSEQUENCE", "loopingOrientation"): {
         "EN": "Texture rotation on the particle (loopingEnum byte 1), independent of "
-              "loopingMode's flip (a flipped texture still rotates the same direction): "
+              "flipCode's flip (a flipped texture still rotates the same direction): "
               "0=Normal,  1=Rotate 90° clockwise,  2=Rotate 90° counter-clockwise,  "
               "3=Randomly pick one of the first three.",
-        "ZH": "贴图在粒子上的旋转（loopingEnum 第 1 字节），与 loopingMode 的左右翻转相互独立"
+        "ZH": "贴图在粒子上的旋转（loopingEnum 第 1 字节），与 flipCode 的左右翻转相互独立"
               "（即使贴图已翻转，1/2 仍分别是顺/逆时针旋转，不会因翻转而互换）："
               "0=正常朝向，1=顺时针旋转 90°，2=逆时针旋转 90°，3=前三种随机取一种。",
     },
@@ -3262,9 +3260,9 @@ FIELD_ANNOTATIONS = {
     },
     ("UVSEQUENCE", "loopingPad"): {
         "EN": "Padding byte, always 0 in observed data (part of the loopingEnum "
-              "byte layout, see loopingMode/loopingOrientation).",
+              "byte layout, see playbackMode/flipCode/direction/loopingOrientation).",
         "ZH": "填充字节，观测样本中恒为 0（属于 loopingEnum 的字节布局，参见 "
-              "loopingMode/loopingOrientation）。",
+              "playbackMode/flipCode/direction/loopingOrientation）。",
     },
     ("UVSEQUENCE", "unkn0"): {
         "EN": "Common values: [1, 2, 5, 6, 7, 8, 9, 11, 13, 14].",
