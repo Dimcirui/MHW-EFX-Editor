@@ -2406,19 +2406,14 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 1~13 (rare outliers up to 41).",
         "ZH": "常见范围 1~13（个别情况可达 41）。",
     },
-    ("PLANE", "unkn21_0"): {
-        "EN": "Unnamed float parameter (BT template calls it 'SlotOverride1', but the value "
-              "reinterpreted as float lands in a clean angle-like range [-217, 365] — the "
-              "original name/type appear to be a template mismatch). Purpose unconfirmed.",
-        "ZH": "未命名的浮点参数（BT 模板标为 SlotOverride1，但重解读为 float 后落在干净的角度状"
-              "区间 [-217, 365]，原名/类型疑似模板误标）。具体作用尚未确认。",
+    ("PLANE", "rotation2"): {
+        "EN": "Plane's rotation around its own perpendicular axis (spin), independent from "
+              "the XYZ orientation above.",
+        "ZH": "平面沿自身垂线的旋转（自旋），与上面的 XYZ 朝向字段独立。",
     },
-    ("PLANE", "unkn21_1"): {
-        "EN": "Unnamed float parameter (BT template calls it 'SlotOverride2'). Observed values "
-              "are clean angle-like numbers spanning exactly [0, 360] — likely paired with "
-              "unkn21_0 as an angle range. Purpose unconfirmed.",
-        "ZH": "未命名的浮点参数（BT 模板标为 SlotOverride2）。观测值为干净的角度状数字，恰好覆盖 "
-              "[0, 360] 整个区间——很可能与 unkn21_0 构成一对角度范围。具体作用尚未确认。",
+    ("PLANE", "rotation2Jitter"): {
+        "EN": "Random jitter added to rotation2 each time the effect plays.",
+        "ZH": "rotation2 的随机抖动范围，每次播放特效时随机浮动。",
     },
     ("PLANE", "flowmapAcceleration"): {
         "EN": "Common range: 0~100.",
@@ -2448,9 +2443,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("PLANE", "unkn20"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("PLANE", "brightnessJitter"): {
+        "EN": "Random jitter added to brightness each time the effect plays. Common range: 0~100.",
+        "ZH": "brightness 的随机抖动范围，每次播放特效时随机浮动。常见取值在 0~100 之间。",
     },
     ("PLANE", "unkn5_0"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 6].",

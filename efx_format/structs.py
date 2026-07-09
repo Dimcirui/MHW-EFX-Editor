@@ -2319,9 +2319,9 @@ def pack_ribbon(values: dict) -> bytes:
 # Plane (variable: dds_data 108 B + extras 48 B + path)
 #
 # dds_data (108 B, same layout as billboard_data):
-#   unkn0(4)+applicationRule(4)+XYZ color(2)(4)+XYZ colorRange(2)(4)+brightness(4)+unkn20(4)+
+#   unkn0(4)+applicationRule(4)+XYZ color(2)(4)+XYZ colorRange(2)(4)+brightness/j(8)+
 #   useColorRange(4)+blendMode(4)+EPVColorSlot1(4)+EPVColorSlot2(4)+
-#   SlotOverride1(4)+SlotOverride2(4)+
+#   rotation2/j(8)+
 #   scale/j(8)+width/j(8)+height/j(8)+
 #   flowmapSpeed/j(8)+flowmapAccel/j(8)+flowmapStrength/j(8)+flowmapStrAccel/j(8)+
 #   path_len(4) = 108 B (path_len at +104 within data_bytes)
@@ -2333,21 +2333,20 @@ _PLANE_DDS_SCHEMA = [
     ('unkn0',              'i'),
     ('applicationRule',    'i'),
     # 实机确认（同 BILLBOARD3D 的 color/colorRange/useColorRange 机制，见该注释）：
-    # 原 EPVColorBlend 实为 useColorRange，原 unkn22 实为 blendMode。unkn20 实测不像
-    # BILLBOARD3D 对应位置的 randomBrightnessMult，语义未定，暂保留原名。
+    # 原 EPVColorBlend 实为 useColorRange，原 unkn22 实为 blendMode。
     ('color',              ('XYZ', 2)),  # TIML DT 0x58689812("Color") 已确认
     ('colorRange',         ('XYZ', 2)),
     ('brightness',         'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
-    ('unkn20',             'f'),
+    ('brightnessJitter',   'f'),  # 原 unkn20，用户实机确认为 brightness 的抖动
     ('useColorRange',      'i'),
     ('blendMode',          'i'),
     ('EPVColorSlot1',      'i'),
     ('EPVColorSlot2',      'i'),
-    # 实测（2026-07-08）：原 SlotOverride1/2（int）重解读为 float 后落在干净的角度状范围
-    # （[-217,365] / [0,360]，后者恰好覆盖整圈），与"整数槽位覆盖"的原名完全不符，
-    # BT 模板命名疑似误标；已改回 float，语义未定，暂用中性名 unkn21_0/1。
-    ('unkn21_0',           'f'),
-    ('unkn21_1',           'f'),
+    # 用户实机确认：与顶部 XYZ 朝向独立的一对标量旋转+抖动（平面沿自身垂线的自旋），
+    # 同 MESH.rotation2/rotation2Jitter 命名（原 SlotOverride1/2，2026-07-08 已排除
+    # 整数槽位覆盖语义，重解读为 float）。
+    ('rotation2',          'f'),
+    ('rotation2Jitter',    'f'),
     ('scale',              'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
     ('scaleJitter',        'f'),
     ('width',              'f'),
