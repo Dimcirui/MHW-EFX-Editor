@@ -37,7 +37,7 @@ Blender 加载时此目录被视为包 bl_ext.user_default.efx_editor。
 bl_info = {
     "name": "MHW EFX Editor",
     "author": "Dimcirui",
-    "version": (0, 2, 91),
+    "version": (0, 2, 92),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > EFX",
     "description": "Import and export Monster Hunter World EFX effect files",
