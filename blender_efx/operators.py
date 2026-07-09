@@ -680,6 +680,34 @@ class EFX_OT_field_help(bpy.types.Operator):
         return {"CANCELLED"}
 
 
+class EFX_OT_randomize_seed(bpy.types.Operator):
+    bl_idname  = "efx.randomize_seed"
+    bl_label   = "Randomize Seed"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+            return False
+        try:
+            from ..efx_format.hashes import RANDOMFIX
+            if int(str(obj.get("type_hash", ""))) != RANDOMFIX:
+                return False
+        except (AttributeError, ValueError, ImportError):
+            return False
+        return any(i.ori_name == "seed" for i in obj.efx_block.field_items)
+
+    def execute(self, context):
+        import random
+        obj = context.active_object
+        for item in obj.efx_block.field_items:
+            if item.ori_name == "seed":
+                item.int_value = random.randint(-2147483648, 2147483647)
+                break
+        return {"FINISHED"}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # L1.3 FileHandler：拖入 3D 视口导入 .efx
 # ─────────────────────────────────────────────────────────────────────────────
@@ -803,6 +831,7 @@ _CLASSES = (
     EFX_OT_ptb_add_override,
     EFX_OT_ptb_remove_override,
     EFX_OT_field_help,
+    EFX_OT_randomize_seed,
 )
 
 

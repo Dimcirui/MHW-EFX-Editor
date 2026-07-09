@@ -410,6 +410,10 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     else:
         split.label(text=f"[未知类型 {dtype}]")
 
+    # 骰子按钮：RANDOMFIX 的种子字段（seed）一键随机重生成
+    if type_name == "RANDOMFIX" and item.ori_name == "seed":
+        row.operator("efx.randomize_seed", text="", icon="RNDCURVE")
+
     # ⓘ 图标（有注释，且非 OPAQUE 内部提示行）
     if dtype not in ("OPAQUE",) and not item.ori_name.startswith("__"):
         _draw_info_icon(row, type_name, item.ori_name)
@@ -832,10 +836,11 @@ def _draw_body_presets_content(layout, context):
 
 def _draw_block_presets_content(layout, context):
     """Block 预设模式：复制/保存整块 + 分类选择 + 选预设新增 + 粘贴块 + 打开文件夹。
-    新增块需选中 EFX_BODY，保存/复制需选中 EFX_BLOCK，算子 poll 自动灰。"""
+    新增块需选中 EFX_BODY 或其下的 EFX_BLOCK（连续新增块免切回 body），
+    保存/复制需选中 EFX_BLOCK，算子 poll 自动灰。"""
     wm = context.window_manager
 
-    # 1. 复制整块 / 粘贴块（需选中 EFX_BLOCK / EFX_BODY，poll 自动灰）
+    # 1. 复制整块（需选中 EFX_BLOCK）/ 粘贴块（需选中 EFX_BODY 或其 EFX_BLOCK），poll 自动灰
     row = layout.row(align=True)
     row.operator("efx.copy_block", text=T("block.copy_whole"), icon="COPYDOWN")
     row.operator("efx.paste_block", text=T("block.paste"), icon="PASTEDOWN")
