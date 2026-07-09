@@ -949,14 +949,16 @@ FIELD_ANNOTATIONS = {
     },
     ("PLANE", "useColorRange"): {
         "EN": "Color random-range switch. 0 = off (always shows color). 1 = on "
-              "(displayed color randomly varies between color and colorRange).",
+              "(displayed color randomly varies between color and colorRange). "
+              "(RE Engine's own name for the equivalent field is 'EdgeBlendRange'.)",
         "ZH": "颜色随机范围开关。0=禁用（始终显示 color）；1=启用（最终显示的颜色会在 "
-              "color 与 colorRange 之间随机变化）。",
+              "color 与 colorRange 之间随机变化）。（RE Engine 里对应字段叫 'EdgeBlendRange'。）",
     },
     ("PLANE", "blendMode"): {
         "EN": "Shader blend mode: 0 = alpha blend (can show black at normal brightness), "
-              "1 = additive blend.",
-        "ZH": "着色器混合模式：0=alpha 混合（正常亮度下可显示黑色），1=add 叠加混合。",
+              "1 = additive blend. (RE Engine's own name for the equivalent field is 'AlphaRate'.)",
+        "ZH": "着色器混合模式：0=alpha 混合（正常亮度下可显示黑色），1=add 叠加混合。"
+              "（RE Engine 里对应字段叫 'AlphaRate'。）",
     },
     ("PLANE", "scale"): {
         "EN": "Scale",
@@ -2445,9 +2447,10 @@ FIELD_ANNOTATIONS = {
     },
     ("PLANE", "randomBrightnessMult"): {
         "EN": "Same schema position as BILLBOARD3D's randomBrightnessMult. Exact behavior on "
-              "PLANE not yet confirmed. Common range: 0~100.",
+              "PLANE not yet confirmed. Common range: 0~100. "
+              "(RE Engine's own name for the equivalent field is 'Intensity'.)",
         "ZH": "与 BILLBOARD3D 的 randomBrightnessMult 字段位置相同。在 PLANE 上的具体行为尚未"
-              "确认。常见取值在 0~100 之间。",
+              "确认。常见取值在 0~100 之间。（RE Engine 里对应字段叫 'Intensity'。）",
     },
     ("PLANE", "unkn5_0"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 6].",
