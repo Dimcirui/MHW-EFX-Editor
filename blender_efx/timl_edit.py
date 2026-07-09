@@ -37,6 +37,72 @@ from ..efx_format import timl as _timl
 from ..efx_format import timl_names as _tn
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Action fcurves 兼容层
+# ─────────────────────────────────────────────────────────────────────────────
+# Blender 4.4+ 把 Action 改成 layers/strips/slots/channelbag 的分层结构，
+# Action.fcurves 被彻底移除（不是 deprecated，是 AttributeError）。旧版(<4.4，
+# 含 3.6/4.3 目标运行版本)Action.fcurves 仍是直接的 F 曲线集合。这层薄代理把
+# 两套 API 收敛成旧版接口(new/find/remove/迭代)，业务代码统一走 _act_fcurves()，
+# 不分裂成 if 版本 分支。
+_LEGACY_ACTION_FCURVES = hasattr(bpy.types.Action, "fcurves")
+
+
+class _ChannelbagFCurvesProxy:
+    """代理新版 ActionChannelbag.fcurves，接口对齐旧版 act.fcurves。"""
+    __slots__ = ("_fcs",)
+
+    def __init__(self, channelbag):
+        self._fcs = channelbag.fcurves
+
+    def new(self, data_path, index=0, action_group=""):
+        return self._fcs.new(data_path, index=index, group_name=action_group)
+
+    def find(self, data_path, index=0):
+        return self._fcs.find(data_path, index=index)
+
+    def remove(self, fc):
+        self._fcs.remove(fc)
+
+    def __iter__(self):
+        return iter(self._fcs)
+
+    def __len__(self):
+        return len(self._fcs)
+
+    def __getitem__(self, i):
+        return self._fcs[i]
+
+    def __bool__(self):
+        return len(self._fcs) > 0
+
+
+def _ensure_channelbag(act, timl_obj):
+    """新版 API 专用：按需建 slot/layer/strip，返回 timl_obj 对应的 ActionChannelbag。
+    要求 act 已经是 timl_obj.animation_data.action（否则 action_slot 赋值语义不对）。"""
+    ad = timl_obj.animation_data
+    slot = ad.action_slot if (ad is not None and ad.action_slot is not None) else None
+    if slot is None:
+        for s in act.slots:
+            if s.target_id_type in ("OBJECT", "UNSPECIFIED"):
+                slot = s
+                break
+    if slot is None:
+        slot = act.slots.new(id_type="OBJECT", name=timl_obj.name)
+    if ad is not None and ad.action_slot is not slot:
+        ad.action_slot = slot
+    layer = act.layers[0] if act.layers else act.layers.new(name="Layer")
+    strip = layer.strips[0] if layer.strips else layer.strips.new(type="KEYFRAME")
+    return strip.channelbag(slot, ensure=True)
+
+
+def _act_fcurves(act, timl_obj):
+    """统一入口：旧版直接 act.fcurves；新版(4.4+)走 layers/strips/channelbag 代理。"""
+    if _LEGACY_ACTION_FCURVES:
+        return act.fcurves
+    return _ChannelbagFCurvesProxy(_ensure_channelbag(act, timl_obj))
+
+
 class EFXTimlChannel(PropertyGroup):
     value: FloatProperty(name="Value")   # synthetic 通道的 F 曲线驱动目标
 
@@ -83,8 +149,8 @@ def _set_kp(kp, transition, back, period):
         pass
 
 
-def _ch_fcurve(act, ch):
-    return act.fcurves.find(ch["path"], index=ch["index"])
+def _ch_fcurve(act, timl_obj, ch):
+    return _act_fcurves(act, timl_obj).find(ch["path"], index=ch["index"])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -144,7 +210,7 @@ def _populate_action(timl_obj, t, act):
                 if tmap is not None and (tmap[0], tmap[1]) not in used_slots:
                     bl_prop, bl_index, kind = tmap
                     used_slots.add((bl_prop, bl_index))
-                    fc = act.fcurves.new(data_path=bl_prop, index=bl_index)
+                    fc = _act_fcurves(act, timl_obj).new(data_path=bl_prop, index=bl_index)
                     for dec in decoded:
                         s = dec["subs"][0]
                         val = _tn.game_to_blender(kind, bl_index, s["value"])
@@ -161,7 +227,7 @@ def _populate_action(timl_obj, t, act):
                         gname = _channel_group_name(d.anim_index, ty.timeline_param_hash,
                                                     f.datatype_hash, f.data_type, sub_label)
                         path = "efx_timl_channels[%d].value" % ci
-                        fc = act.fcurves.new(data_path=path, index=0, action_group=gname)
+                        fc = _act_fcurves(act, timl_obj).new(data_path=path, index=0, action_group=gname)
                         for dec in decoded:
                             s = dec["subs"][sub_idx]
                             kp = fc.keyframe_points.insert(dec["frame"], float(s["value"]))
@@ -214,7 +280,7 @@ def _build_entry(timl_obj, body):
     entry = {"timl_obj": timl_obj, "body": body, "timl": t, "channels": channels,
              "action": act, "prior_action": prior, "created_anim": created, "mesh": mesh,
              "con_name": con_name, "basis_snap": basis_snap, "edited": False,
-             "snapshot": _snapshot(act, channels)}
+             "snapshot": _snapshot(act, timl_obj, channels)}
     return entry, fmin, fmax
 
 
@@ -236,10 +302,10 @@ def _bind_mesh(timl_obj, body):
         return None, None
 
 
-def _snapshot(act, channels):
+def _snapshot(act, timl_obj, channels):
     sig = []
     for ch in channels:
-        fc = _ch_fcurve(act, ch)
+        fc = _ch_fcurve(act, timl_obj, ch)
         if fc is None:
             sig.append(()); continue
         sig.append(tuple(sorted(
@@ -316,10 +382,11 @@ def _readback_entry_to_model(entry):
     """把当前 Action（当前焦点的通道）读回内存模型 entry["timl"]（不写 body 字节）。
     无改动则跳过；有改动则重建受影响 transform 的 keyframes 并标 entry["edited"]。返回是否改动。"""
     channels = entry["channels"]
+    timl_obj = entry["timl_obj"]
     act = _session_action(entry)
     if act is None:
         return False
-    if _snapshot(act, channels) == entry["snapshot"]:
+    if _snapshot(act, timl_obj, channels) == entry["snapshot"]:
         return False   # 当前焦点无改动 → 不动模型（byte-perfect 友好）
 
     by_transform = {}
@@ -332,9 +399,9 @@ def _readback_entry_to_model(entry):
     for ent in by_transform.values():
         tf = ent["tf"]
         if ent["xform"] is not None:
-            tf.keyframes = _rebuild_xform(act, ent["xform"], tf)
+            tf.keyframes = _rebuild_xform(act, timl_obj, ent["xform"], tf)
         else:
-            tf.keyframes = _rebuild_synthetic(act, ent["syn"], tf)
+            tf.keyframes = _rebuild_synthetic(act, timl_obj, ent["syn"], tf)
     entry["edited"] = True
     return True
 
@@ -352,8 +419,8 @@ def _writeback_entry(entry):
     return True
 
 
-def _rebuild_xform(act, ch, tf):
-    fc = _ch_fcurve(act, ch)
+def _rebuild_xform(act, timl_obj, ch, tf):
+    fc = _ch_fcurve(act, timl_obj, ch)
     if fc is None:
         return []
     kind, bl_index = ch["kind"], ch["bl_index"]
@@ -370,9 +437,9 @@ def _rebuild_xform(act, ch, tf):
     return out
 
 
-def _rebuild_synthetic(act, syn, tf):
+def _rebuild_synthetic(act, timl_obj, syn, tf):
     labels = _timl.channel_sublabels(tf.data_type, tf.datatype_hash)
-    sub_fcurves = [_ch_fcurve(act, syn[i]) if i in syn else None for i in range(len(labels))]
+    sub_fcurves = [_ch_fcurve(act, timl_obj, syn[i]) if i in syn else None for i in range(len(labels))]
     frames = set(); kp_maps = []
     for fc in sub_fcurves:
         m = {}
@@ -411,8 +478,9 @@ def _rebuild_entry_action(entry):
     act = _session_action(entry)
     if act is None:
         return 0.0, 1.0
-    while act.fcurves:
-        act.fcurves.remove(act.fcurves[0])
+    fcs = _act_fcurves(act, timl_obj)
+    while fcs:
+        fcs.remove(fcs[0])
     timl_obj.efx_timl_channels.clear()
     # 重铺前把句柄归位（上个焦点播放可能已驱动它偏移）
     snap = entry.get("basis_snap")
@@ -420,7 +488,7 @@ def _rebuild_entry_action(entry):
         timl_obj.matrix_basis = snap
     channels, fmin, fmax = _populate_action(timl_obj, entry["timl"], act)
     entry["channels"] = channels
-    entry["snapshot"] = _snapshot(act, channels)
+    entry["snapshot"] = _snapshot(act, timl_obj, channels)
     return fmin, fmax
 
 
@@ -699,7 +767,7 @@ def _active_color_group(context, entry):
         return groups[0], act
     for g in groups:
         for ch in g["subs"].values():
-            fc = _ch_fcurve(act, ch)
+            fc = _ch_fcurve(act, entry["timl_obj"], ch)
             if fc is not None and fc.select:
                 return g, act
     return None, act
@@ -727,7 +795,7 @@ def _color_wheel_get(self):
         frame = bpy.context.scene.frame_current
         out = [0.0, 0.0, 0.0]
         for i in range(3):
-            fc = _ch_fcurve(act, group["subs"][i])
+            fc = _ch_fcurve(act, entry["timl_obj"], group["subs"][i])
             if fc is not None:
                 out[i] = max(0.0, min(255.0, fc.evaluate(frame))) / 255.0
         return tuple(out)
@@ -745,7 +813,7 @@ def _color_wheel_set(self, value):
             return
         frame = bpy.context.scene.frame_current
         for i in range(3):
-            fc = _ch_fcurve(act, group["subs"].get(i)) if i in group["subs"] else None
+            fc = _ch_fcurve(act, entry["timl_obj"], group["subs"].get(i)) if i in group["subs"] else None
             if fc is not None:
                 _write_scalar_keyframe(fc, frame, max(0.0, min(1.0, value[i])) * 255.0)
     except Exception:
@@ -760,7 +828,7 @@ def _color_alpha_get(self):
         group, act = _active_color_group(bpy.context, entry)
         if group is None or 3 not in group["subs"]:
             return 1.0
-        fc = _ch_fcurve(act, group["subs"][3])
+        fc = _ch_fcurve(act, entry["timl_obj"], group["subs"][3])
         if fc is None:
             return 1.0
         return max(0.0, min(255.0, fc.evaluate(bpy.context.scene.frame_current))) / 255.0
@@ -776,7 +844,7 @@ def _color_alpha_set(self, value):
         group, act = _active_color_group(bpy.context, entry)
         if group is None or 3 not in group["subs"]:
             return
-        fc = _ch_fcurve(act, group["subs"][3])
+        fc = _ch_fcurve(act, entry["timl_obj"], group["subs"][3])
         if fc is not None:
             _write_scalar_keyframe(fc, bpy.context.scene.frame_current, max(0.0, min(1.0, value)) * 255.0)
     except Exception:
