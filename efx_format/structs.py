@@ -1881,15 +1881,24 @@ _UVSEQUENCE_FIXED_SCHEMA = [
     ('animationAcceleration',   'f'),
     ('animationAccelerationJitter', 'f'),
     # loopingEnum（4B）按语义拆分：byte0=动画模式，byte1=贴图朝向，byte2-3=padding（恒0）。
-    # 用户实机测试（2026-07-10，配合 BILLBOARD2D 当稳定测试画布）坐实 byte0 结构：
-    # value = orientationGroup*4 + playbackMode。playbackMode（低2位）：0=只显示起始帧，
-    # 1=循环，2=播放一次后强制消亡，3=播放一次后定格最后一帧直到 Life 结束。
-    # orientationGroup（已测）：0（值0~3）=正常，1（值4~7）=左右翻转，2（值8~11）=正常/
-    # 翻转随机取一种；语料里最大占比的区间是 40~43（对应 group=10），尚未测试。
-    # 这也修正了 docs/BLOCK_BEHAVIOR_NOTES.md 里 2026-07-08 那版"family=value>>3"的分组
-    # 单位——实际是按 4 一组（family=value>>2），不是按 8 一组。
+    # 用户实机测试（2026-07-10，配合 BILLBOARD2D 当稳定测试画布）完整坐实 byte0 结构，
+    # 一个位段刚好铺满整个 byte：value = direction×64 + flipFlags×4 + playbackMode。
+    #   playbackMode（bit0-1）：0=只显示起始帧，1=循环，2=播放一次后强制消亡，
+    #     3=播放一次后定格最后一帧直到 Life 结束。
+    #   flipFlags（bit2-5，4 个独立标志位，非"值"而是位运算）：
+    #     +1=强制左右翻转，+2=左右翻转随机取（若同时置位覆盖 +1，+1 变无效），
+    #     +4=强制上下翻转，+8=上下翻转随机取（若同时置位覆盖 +4）。
+    #     全语料实测确认 9 种取值：0=正常/1=左右翻转/2=随机(正常,左右)/4=上下翻转/
+    #     5=左右+上下都翻转/6=上下翻转+随机(正常,左右)/7=同 6（+1 被 +2 覆盖，视觉重复，
+    #     验证了"覆盖"逻辑）/8=随机(正常,上下)/10=随机(4 种左右×上下组合)。
+    #     未测：3(=2的覆盖重复)/9(强制左右+随机上下，唯一无法由覆盖推出的新组合，最值得测)/
+    #     11~15(均可由覆盖逻辑推出等价于 2/9/10 之一)。
+    #   direction（bit6-7）：0=正向播放，1=倒放，2=正/倒随机取一种。全语料实测确认：
+    #     direction=1(倒放)+flipFlags=10 → 值 104~107；direction=2(随机正倒)+flipFlags=
+    #     0/2/10 → 值 128~131/136~139/168~171。direction=1/2 搭配其余 flipFlags 值尚未测试。
+    #   所有随机项均在粒子生成时取一次，循环期间不会重新取（用户确认）。
     ('loopingMode',             'B'),
-    # 用户实机测试确认：贴图旋转，与 loopingMode 的左右翻转互相独立。
+    # 用户实机测试确认：贴图旋转，与 loopingMode 的左右/上下翻转互相独立。
     ('loopingOrientation',      'B'),   # byte1：0=正常/1=顺时针90°/2=逆时针90°/3=随机
     ('loopingPad',              'h'),   # byte2-3：保留（实测恒 0）
 ]  # 11 fields = 40 B

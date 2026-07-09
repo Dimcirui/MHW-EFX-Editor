@@ -924,18 +924,20 @@ FIELD_ANNOTATIONS = {
         "ZH": "UVS 文件路径索引",
     },
     ("UVSEQUENCE", "loopingMode"): {
-        "EN": "Animation mode (loopingEnum byte 0) = orientationGroup*4 + playbackMode. "
-              "playbackMode: 0=Show only the first frame,  1=Loop continuously,  "
+        "EN": "Animation mode (loopingEnum byte 0) = direction*64 + flipFlags*4 + playbackMode. "
+              "playbackMode (bits 0-1): 0=Show only the first frame,  1=Loop continuously,  "
               "2=Play once then force-kill the particle,  3=Play once then freeze on the "
-              "last frame until Life ends. orientationGroup (confirmed so far): "
-              "0=Normal (values 0-3),  1=Horizontally flipped (values 4-7),  "
-              "2=Randomly normal or flipped (values 8-11). Higher groups exist in official "
-              "content (e.g. 40-43 is the single most common range) but haven't been tested.",
-        "ZH": "动画模式（loopingEnum 第 0 字节）= 朝向组(orientationGroup)×4 + 播放模式。"
-              "播放模式：0=只显示起始帧，1=循环播放，2=播放一次后强制粒子消亡，"
-              "3=播放一次后停在最后一帧直到 Life 结束。朝向组（已确认部分）："
-              "0=正常（取值 0~3），1=左右翻转（取值 4~7），2=正常/翻转随机取一种（取值 8~11）。"
-              "官方语料里还有更高的朝向组（如 40~43 是占比最大的单一区间）但尚未测试。",
+              "last frame until Life ends. flipFlags (bits 2-5, 4 independent flags): "
+              "+1=Force horizontal flip,  +2=Randomize horizontal flip (overrides +1),  "
+              "+4=Force vertical flip,  +8=Randomize vertical flip (overrides +4). direction "
+              "(bits 6-7): 0=Forward,  1=Reverse,  2=Randomly forward or reverse. All random "
+              "picks happen once at particle spawn, not re-rolled during the loop.",
+        "ZH": "动画模式（loopingEnum 第 0 字节）= 方向(direction)×64 + 翻转标志(flipFlags)×4 + "
+              "播放模式(playbackMode)。播放模式（低 2 位）：0=只显示起始帧，1=循环播放，"
+              "2=播放一次后强制粒子消亡，3=播放一次后停在最后一帧直到 Life 结束。翻转标志"
+              "（4 个独立标志位）：+1=强制左右翻转，+2=左右翻转随机取（覆盖 +1），"
+              "+4=强制上下翻转，+8=上下翻转随机取（覆盖 +4）。方向：0=正向播放，1=倒放，"
+              "2=正/倒随机取一种。所有随机项都在粒子生成时取一次，循环期间不会重新取。",
     },
     ("UVSEQUENCE", "loopingOrientation"): {
         "EN": "Texture rotation on the particle (loopingEnum byte 1), independent of "
