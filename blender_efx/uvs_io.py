@@ -67,6 +67,32 @@ def _is_uvsequence_block(obj) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Type 槎名称下拉（typeN 保留为真实存储的 int；typeN_ui 是绑定的展示/编辑下拉，
+# 靠 update 回调单向写回 typeN——静态 items 列表，不用动态 itemsfunc，规避
+# 动态 EnumProperty 的 GC 乱码坑）
+# ─────────────────────────────────────────────────────────────────────────────
+
+_TYPE_NAMES = {1: "Diffuse", 2: "Normal", 3: "Specular"}
+_TYPE_UI_ITEMS = [(str(k), v, "") for k, v in sorted(_TYPE_NAMES.items())]
+
+
+def _make_type_ui_update(i: int):
+    """生成第 i 槎 typeN_ui → typeN 的同步回调（闭包捕获 i，纯函数无 GC 风险）。"""
+    def _update(self, context):
+        try:
+            setattr(self, f"type{i}", int(getattr(self, f"type{i}_ui")))
+        except Exception:
+            pass
+    return _update
+
+
+def _sync_type_ui(item, i: int) -> None:
+    """按 typeN 当前值刷新 typeN_ui 下拉的显示项（未知数值兜底显示 Diffuse）。"""
+    raw = getattr(item, f"type{i}")
+    setattr(item, f"type{i}_ui", str(raw) if raw in _TYPE_NAMES else '1')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PropertyGroup：单个 Group 的可编辑字段
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -90,6 +116,12 @@ class EFXUVSGroupProp(PropertyGroup):
     type1: IntProperty(name="Type 1", min=0, default=1)
     type2: IntProperty(name="Type 2", min=0, default=1)
     type3: IntProperty(name="Type 3", min=0, default=1)
+
+    # 下拉展示层（真实数值仍在 typeN，见上方 _sync_type_ui/_make_type_ui_update）
+    type0_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(0))
+    type1_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(1))
+    type2_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(2))
+    type3_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(3))
 
     # Phase 3：帧生成参数
     grid_h: IntProperty(name="H", min=1, default=1,
@@ -169,6 +201,7 @@ def _populate_props(props: EFXUVSProps, data: bytes) -> None:
             setattr(item, attr, paths[i] if i < len(paths) else "")
         for i, attr in enumerate(["type0", "type1", "type2", "type3"]):
             setattr(item, attr, types[i] if i < len(types) else 1)
+            _sync_type_ui(item, i)
 
         # 显示名：取第一条路径最后一段（兼容正反斜杠）
         first_path = paths[0] if paths else ""
@@ -340,7 +373,7 @@ class EFX_UL_uvs_groups(UIList):
                   active_data, active_propname, index):
         row = layout.row(align=True)
         row.label(text=f"{index}:", icon="BLANK1")
-        row.label(text=item.display_name)
+        row.prop(item, "display_name", text="", emboss=False)
         row.label(text=f"{item.frame_count}f")
 
 
@@ -416,7 +449,9 @@ class EFX_PT_uvs_edition(Panel):
         if 0 <= idx < len(props.groups):
             g = props.groups[idx]
             box = layout.box()
-            box.label(text=f"Group {idx} — {g.display_name}", icon="LAYER_ACTIVE")
+            row = box.row(align=True)
+            row.label(text=f"Group {idx}:", icon="LAYER_ACTIVE")
+            row.prop(g, "display_name", text="")
 
             row = box.row()
             row.prop(g, "dynamic")
@@ -425,21 +460,21 @@ class EFX_PT_uvs_edition(Panel):
             box.separator(factor=0.5)
             box.label(text="Path slots:", icon="IMAGE_DATA")
 
-            _TYPE_NAMES = {1: "Diffuse", 2: "Normal", 3: "Specular"}
             for i in range(4):
                 path_attr = f"path{i}"
-                type_attr = f"type{i}"
-                path_val  = getattr(g, path_attr)
-                type_val  = getattr(g, type_attr)
-                type_name = _TYPE_NAMES.get(type_val, str(type_val))
+                type_ui_attr = f"type{i}_ui"
 
                 row = box.row(align=True)
                 row.label(text=f"{i+1}", icon="BLANK1")
                 if i < g.map_count:
                     sub = row.row(align=True)
                     sub.prop(g, path_attr, text="")
-                    sub.label(text=type_name)
-                    sub.prop(g, type_attr, text="")
+                    sub.prop(g, type_ui_attr, text="")
+                    if i == g.map_count - 1:
+                        row.operator("efx.uvs_slot_remove", text="", icon="REMOVE")
+                elif i == g.map_count:
+                    row.label(text="（空槽）", icon="BLANK1")
+                    row.operator("efx.uvs_slot_add", text="", icon="ADD")
                 else:
                     row.label(text="（空槽）", icon="BLANK1")
 
@@ -823,7 +858,11 @@ class EFX_PT_uvs_editor(Panel):
         layout.separator(factor=0.3)
 
         # ── Group 列表 ────────────────────────────────────────────────────────
-        layout.label(text=f"Groups  ({len(props.groups)})", icon="SEQUENCE")
+        row = layout.row()
+        row.label(text=f"Groups  ({len(props.groups)})", icon="SEQUENCE")
+        sub = row.row(align=True)
+        sub.operator("efx.uvs_group_add",    text="", icon="ADD")
+        sub.operator("efx.uvs_group_remove", text="", icon="REMOVE")
         layout.template_list(
             "EFX_UL_uvs_groups", "editor",
             props, "groups",
@@ -838,22 +877,28 @@ class EFX_PT_uvs_editor(Panel):
 
         # ── 路径槽 + Dynamic ─────────────────────────────────────────────────
         box = layout.box()
-        box.label(text=f"Group {idx} — {g.display_name}", icon="LAYER_ACTIVE")
+        row = box.row(align=True)
+        row.label(text=f"Group {idx}:", icon="LAYER_ACTIVE")
+        row.prop(g, "display_name", text="")
         row = box.row()
         row.prop(g, "dynamic")
         row.label(text=f"{g.frame_count} frames")
 
         box.separator(factor=0.3)
         box.label(text="路径槽", icon="RENDERLAYERS")
-        _TYPE_NAMES = {1: "Diffuse", 2: "Normal", 3: "Specular"}
         for i in range(4):
             path_attr = f"path{i}"
-            type_attr = f"type{i}"
+            type_ui_attr = f"type{i}_ui"
             row = box.row(align=True)
             row.label(text=f"{i+1}")
             if i < g.map_count:
                 row.prop(g, path_attr, text="")
-                row.prop(g, type_attr, text="")
+                row.prop(g, type_ui_attr, text="")
+                if i == g.map_count - 1:
+                    row.operator("efx.uvs_slot_remove", text="", icon="REMOVE")
+            elif i == g.map_count:
+                row.label(text="（空槽）")
+                row.operator("efx.uvs_slot_add", text="", icon="ADD")
             else:
                 row.label(text="（空槽）")
 
@@ -950,8 +995,9 @@ class EFX_OT_uvs_group_add(Operator):
         item.display_name = f"group_{insert_at}"
         for attr in ("path0", "path1", "path2", "path3"):
             setattr(item, attr, "")
-        for attr in ("type0", "type1", "type2", "type3"):
+        for i, attr in enumerate(("type0", "type1", "type2", "type3")):
             setattr(item, attr, 1)
+            _sync_type_ui(item, i)
 
         props.group_index = insert_at
         self.report({"INFO"}, f"已在位置 {insert_at} 新增 Group")
@@ -1003,6 +1049,88 @@ class EFX_OT_uvs_group_remove(Operator):
         return {"FINISHED"}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Path slot 增删操作符（Group 内 path0-3 的有效槽数 map_count）
+#
+# 格式约束（efx_format/uvs.py _serialize）：map indices 数组只在该 Group
+# frameCount != 0 时才实际写出字节；frameCount==0 却 map_count>0 会导致
+# dataOffset 指向没有数据的位置，产生结构性损坏。因此新增槽位要求该 Group
+# 已有帧数据（先用"帧生成"或导入带帧的 Group）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_OT_uvs_slot_add(Operator):
+    """在当前选中 Group 末尾追加一个 path slot（最多 4 个）"""
+
+    bl_idname  = "efx.uvs_slot_add"
+    bl_label   = "Add Path Slot"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if not _is_uvsequence_block(obj):
+            return False
+        props = getattr(obj, "efx_uvs", None)
+        if props is None or not props.is_loaded:
+            return False
+        idx = props.group_index
+        if not (0 <= idx < len(props.groups)):
+            return False
+        g = props.groups[idx]
+        if g.map_count >= 4:
+            return False
+        if g.frame_count <= 0:
+            try:
+                cls.poll_message_set("该 Group 无帧数据，需先生成/导入帧后才能添加 path slot")
+            except Exception:
+                pass
+            return False
+        return True
+
+    def execute(self, context):
+        props = context.active_object.efx_uvs
+        g = props.groups[props.group_index]
+        i = g.map_count
+        setattr(g, f"path{i}", "")
+        setattr(g, f"type{i}", 1)
+        _sync_type_ui(g, i)
+        g.map_count = i + 1
+        self.report({"INFO"}, f"已添加 Path Slot {i}")
+        return {"FINISHED"}
+
+
+class EFX_OT_uvs_slot_remove(Operator):
+    """删除当前选中 Group 的最后一个 path slot"""
+
+    bl_idname  = "efx.uvs_slot_remove"
+    bl_label   = "Remove Path Slot"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if not _is_uvsequence_block(obj):
+            return False
+        props = getattr(obj, "efx_uvs", None)
+        if props is None or not props.is_loaded:
+            return False
+        idx = props.group_index
+        if not (0 <= idx < len(props.groups)):
+            return False
+        return props.groups[idx].map_count > 0
+
+    def execute(self, context):
+        props = context.active_object.efx_uvs
+        g = props.groups[props.group_index]
+        i = g.map_count - 1
+        setattr(g, f"path{i}", "")
+        setattr(g, f"type{i}", 1)
+        _sync_type_ui(g, i)
+        g.map_count = i
+        self.report({"INFO"}, f"已删除 Path Slot {i}")
+        return {"FINISHED"}
+
+
 # =============================================================================
 # Phase 4 — GIF → PNG 精灵表生成
 # =============================================================================
@@ -1014,6 +1142,8 @@ class EFX_OT_uvs_group_remove(Operator):
 _CLASSES_P3.extend([
     EFX_OT_uvs_group_add,
     EFX_OT_uvs_group_remove,
+    EFX_OT_uvs_slot_add,
+    EFX_OT_uvs_slot_remove,
     EFX_OT_uvs_edit,
     EFX_OT_uvs_close_editor,
     EFX_OT_uvs_gen_frames,
