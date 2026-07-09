@@ -1557,19 +1557,14 @@ assert _schema_size(UVCONTROL_SCHEMA) == 236, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EmitterShape2D schema  (data_bytes = 32 B; full block = 36 B)
+# EmitterShape2D schema  (data_bytes = 36 B; full block = 40 B)
 #
-# BT (EFX_Subtypes.bt):
-#   int unkn0(4) + float offsetX/j(8) + float offsetY/j(8) +
-#   int unkn20(4) + int spawnCount(4) + int unkn22[2](8) = 36 B? Let me recount:
-#   unkn0(4)+offsetX(4)+offsetXJitter(4)+offsetY(4)+offsetYJitter(4)+
-#   unkn20(4)+spawnCount(4)+unkn22(4)+unkn22(4)
-#   = 4+4+4+4+4+4+4+4+4 = 36 B, but efxfile.py returns 4+4+16+12=36 full.
-#   data_bytes = 36-4 = 32. But _schema_size gives: 4+16+12=32 → correct.
-# ─────────────────────────────────────────────────────────────────────────────
-
 # EFX_Subtypes.bt: type(4)+unkn0(4)+offsetX/XJ/Y/YJ(16)+unkn20/spawnCount/unkn22/unkn22(16)
-# 块全长 40B → data_bytes = 36B（9 个字段）。BT 尾部是 4 个 int。
+# 块全长 40B → data_bytes = 36B（9 个字段）。BT 尾部是 4 个 int，不是 3 个（旧版
+# efxfile.py 的 forward-scan 一度少算了最后一个 int，导致猜出 36B 全长/32B data，
+# 已在 efxfile.py::_known_attr_size 修正为 40B 全长，实测全语料 292 实例恒如此；
+# 本 schema 一直就是按修正后的 9 字段/36B 写的，没有跟着错——这段仅更新旧注释）。
+# ─────────────────────────────────────────────────────────────────────────────
 EMITTERSHAPE2D_SCHEMA = [
     ('unkn0',       'i'),
     ('offsetX',     'f'),
@@ -1723,20 +1718,20 @@ assert _schema_size(PARENTMATERIAL_SCHEMA) == 12, \
     f"PARENTMATERIAL_SCHEMA size mismatch: {_schema_size(PARENTMATERIAL_SCHEMA)}"
 
 # Transform2D (28B total, 24B data)
-# BT: int64 unkn0[2](16B) + float unkn1[2](8B)
-# unkn0_0/unkn0_1 各拆分自原 int64：低32位=int(小枚举)，高32位=float（实测 580 个块核对）。
-# ⚠ 但两个 int64 并不对称：unkn0_0_0（低32位）确实是干净小枚举([1,2,6])，配合
-# unkn0_0_1（高32位）是干净浮点(310/224/89/2.8/-17…)；unkn0_1_0（低32位）原按
-# 同结构标 int，但重解读为 float32 后同样落在干净数值（320/345/256/300/102/26/-10…），
-# 跟真正的小枚举形态完全不符，2026-07-10 改回 float。unkn0_1_1（高32位）本就是 float，
-# 意味着第二个 int64 实际是"两个独立 float"，不是"低位枚举+高位浮点"的镜像结构。
+# 原 BT 猜测 int64 unkn0[2](16B) + float unkn1[2](8B)（两个 int64，各拆低32位int+高32位
+# float）——2026-07-10 用户对照 RE Engine（Wilds 同构，Type=0x1987C7EC）反编译结构证实
+# 该猜测是错的：实际是扁平的 6 个标量，根本没有"int64 对"这层结构：
+#   int unknown(4) + float offsetXY[2](8) + float rotation(4) + float scaleXY[2](8) = 24B
+# 第一个字段确实是 int（该引擎里很多块的头一个字段习惯性是 int/flags，REE 自己也没解出
+# 具体含义、仍标"unknown"，故未强行杜撰名字）；offsetXY/scaleXY 按本仓库惯例拆成 X/Y
+# 后缀（同 BILLBOARD2D 的 scaleX/scaleY）。
 TRANSFORM2D_SCHEMA = [
-    ('unkn0_0_0', 'i'),
-    ('unkn0_0_1', 'f'),
-    ('unkn0_1_0', 'f'),
-    ('unkn0_1_1', 'f'),   # 16B
-    ('unkn1_0', 'f'),
-    ('unkn1_1', 'f'),   # 8B
+    ('unknown', 'i'),
+    ('offsetX', 'f'),
+    ('offsetY', 'f'),
+    ('rotation', 'f'),   # 16B
+    ('scaleX', 'f'),
+    ('scaleY', 'f'),   # 8B
 ]
 assert _schema_size(TRANSFORM2D_SCHEMA) == 24, \
     f"TRANSFORM2D_SCHEMA size mismatch: {_schema_size(TRANSFORM2D_SCHEMA)}"

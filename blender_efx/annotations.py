@@ -3179,13 +3179,13 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 2, 3, 4, 5, 8, 10, 50].",
         "ZH": "常见取值为 [0, 2, 3, 4, 5, 8, 10, 50]。",
     },
-    ("TRANSFORM2D", "unkn1_0"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("TRANSFORM2D", "scaleX"): {
+        "EN": "Usually 1.0 (no scaling); occasionally 0.5 or 2.0.",
+        "ZH": "通常为 1.0（不缩放）；偶见 0.5 或 2.0。",
     },
-    ("TRANSFORM2D", "unkn1_1"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("TRANSFORM2D", "scaleY"): {
+        "EN": "Usually 1.0 (no scaling); occasionally 0.5 or 2.0.",
+        "ZH": "通常为 1.0（不缩放）；偶见 0.5 或 2.0。",
     },
     ("TUBELIGHT", "unkn0_2"): {
         "EN": "Common values: [13434880, 13435136].",
