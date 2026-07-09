@@ -374,6 +374,23 @@ def add_block_to_body_from_path(body_obj: bpy.types.Object, path: str) -> bpy.ty
     return add_block_to_body(body_obj, preset)
 
 
+def _resolve_target_body(obj):
+    """新增块的目标 body 解析：obj 本身是 EFX_BODY 则直接用；
+    obj 是 EFX_BLOCK 则取其父 EFX_BODY（连续新增块时无需先切回 body）。
+    都不满足返回 None。
+    """
+    if obj is None:
+        return None
+    t = obj.get("~TYPE")
+    if t == "EFX_BODY":
+        return obj
+    if t == "EFX_BLOCK":
+        parent = obj.parent
+        if parent is not None and parent.get("~TYPE") == "EFX_BODY":
+            return parent
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 内存剪贴板（会话级）
 # ─────────────────────────────────────────────────────────────────────────────
@@ -447,13 +464,12 @@ class EFX_OT_add_block_from_block_preset(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+        return _resolve_target_body(context.active_object) is not None
 
     def execute(self, context):
-        body_obj = context.active_object
-        if body_obj is None or body_obj.get("~TYPE") != "EFX_BODY":
-            self.report({"ERROR"}, "Select an EFX_BODY object first")
+        body_obj = _resolve_target_body(context.active_object)
+        if body_obj is None:
+            self.report({"ERROR"}, "Select an EFX_BODY (or one of its EFX_BLOCK) object first")
             return {"CANCELLED"}
         if not self.preset_path:
             self.report({"ERROR"}, "No block preset selected")
@@ -536,18 +552,15 @@ class EFX_OT_paste_block(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        return (bool(_BLOCK_CLIPBOARD)
-                and obj is not None
-                and obj.get("~TYPE") == "EFX_BODY")
+        return bool(_BLOCK_CLIPBOARD) and _resolve_target_body(context.active_object) is not None
 
     def execute(self, context):
         if not _BLOCK_CLIPBOARD:
             self.report({"ERROR"}, "Clipboard is empty (use Copy Block first)")
             return {"CANCELLED"}
-        body_obj = context.active_object
-        if body_obj is None or body_obj.get("~TYPE") != "EFX_BODY":
-            self.report({"ERROR"}, "Select an EFX_BODY object first")
+        body_obj = _resolve_target_body(context.active_object)
+        if body_obj is None:
+            self.report({"ERROR"}, "Select an EFX_BODY (or one of its EFX_BLOCK) object first")
             return {"CANCELLED"}
         try:
             new_blk = add_block_to_body(body_obj, _BLOCK_CLIPBOARD)
