@@ -27,6 +27,7 @@ _TARGETS = [
     ("uvc",  "efx.uvc_preview_enter", "efx.uvc_preview_exit", "efx_prev_t_uvc",  "efx_uvc_preview_all"),
     ("timl", "efx.timl_edit_enter",   "efx.timl_edit_exit",   "efx_prev_t_timl", "efx_timle_all_bodies"),
     ("mesh", "efx.mesh_align_enter",  "efx.mesh_align_exit",   "efx_prev_t_mesh", "efx_align_all_efx"),
+    ("es3d", "efx.es3d_preview_enter", "efx.es3d_preview_exit", "efx_prev_t_es3d", "efx_es3d_preview_all"),
 ]
 
 
@@ -148,6 +149,7 @@ class EFX_PT_efx_preview(Panel):
         col.prop(scene, "efx_prev_t_uvc",  text=T("efxprev.t_uvc"))
         col.prop(scene, "efx_prev_t_timl", text=T("efxprev.t_timl"))
         col.prop(scene, "efx_prev_t_mesh", text=T("efxprev.t_mesh"))
+        col.prop(scene, "efx_prev_t_es3d", text=T("efxprev.t_es3d"))
 
         # ── 总开关 ─────────────────────────────────────────────────────────────
         if active:
@@ -180,10 +182,12 @@ def register():
                                      description="Plays the TIML transform3d animation in the viewport (read-only here; edits are discarded on exit)")
     S.efx_prev_t_mesh = BoolProperty(name="Mesh placement", default=False,
                                      description="Places bound mesh instances by TRANSFORM3D + MESH rotation/scale (static placement, re-aligns live when those fields are edited)")
+    S.efx_prev_t_es3d = BoolProperty(name="EmitterShape3D shape", default=False,
+                                     description="Shows a transparent shape (cube/sphere/ring/spot) for each EmitterShape3D block, sized by its fields (live update when edited)")
 
 
 def unregister():
-    for attr in ("efx_prev_scope_all", "efx_prev_t_uvc", "efx_prev_t_timl", "efx_prev_t_mesh"):
+    for attr in ("efx_prev_scope_all", "efx_prev_t_uvc", "efx_prev_t_timl", "efx_prev_t_mesh", "efx_prev_t_es3d"):
         if hasattr(bpy.types.Scene, attr):
             delattr(bpy.types.Scene, attr)
     for cls in reversed(_CLASSES):

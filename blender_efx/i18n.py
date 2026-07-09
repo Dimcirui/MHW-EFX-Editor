@@ -329,6 +329,7 @@ STRINGS = {
     "efxprev.t_uvc":        {"EN": "UVCONTROL UV scroll", "ZH": "UVCONTROL UV 滚动"},
     "efxprev.t_timl":       {"EN": "TIML transform playback", "ZH": "TIML transform 播放"},
     "efxprev.t_mesh":       {"EN": "Mesh placement (TRANSFORM3D+MESH)", "ZH": "网格摆放（TRANSFORM3D+MESH）"},
+    "efxprev.t_es3d":       {"EN": "EmitterShape3D shape", "ZH": "EmitterShape3D 形状"},
     "efxprev.enter":        {"EN": "Enter Preview", "ZH": "进入预览"},
     "efxprev.exit":         {"EN": "Exit Preview", "ZH": "退出预览"},
     "efxprev.started":      {"EN": "Preview started: {0}", "ZH": "已进入预览：{0}"},
@@ -570,6 +571,15 @@ STRINGS = {
     "align.no_root":         {"EN": "EFX root not found (select an EFX body/block)",
                               "ZH": "找不到 EFX 根集合（请选中某个 EFX 的 body/块）"},
     "align.failed":          {"EN": "Mesh align failed: {0}", "ZH": "网格对齐失败：{0}"},
+
+    # ── EmitterShape3D 形状预览（es3d_preview） ────────────────────────────────
+    "es3d.entered":          {"EN": "ES3D shape preview started ({0} shape(s))", "ZH": "已进入形状预览（{0} 个形状）"},
+    "es3d.exited":           {"EN": "ES3D shape preview ended, shapes removed", "ZH": "已退出形状预览，预览几何体已清除"},
+    "es3d.no_content":       {"EN": "No EmitterShape3D block found to preview",
+                              "ZH": "没有可预览的 EmitterShape3D 块"},
+    "es3d.no_root":          {"EN": "EFX root not found (select an EFX body/block)",
+                              "ZH": "找不到 EFX 根集合（请选中某个 EFX 的 body/块）"},
+    "es3d.failed":           {"EN": "ES3D shape preview failed: {0}", "ZH": "形状预览失败：{0}"},
 }
 
 

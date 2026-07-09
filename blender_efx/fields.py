@@ -107,7 +107,7 @@ def _mark_block_dirty(self, context):
         if obj is not None and hasattr(obj, "efx_block"):
             obj.efx_block.efx_dirty = True
             try:
-                from ..efx_format.hashes import TRANSFORM3D, MESH
+                from ..efx_format.hashes import TRANSFORM3D, MESH, EMITTERSHAPE3D
                 blk_hash = int(obj.efx_block.type_hash_str)
                 body = obj.parent
                 is_body = body is not None and body.get("~TYPE") == "EFX_BODY"
@@ -131,6 +131,11 @@ def _mark_block_dirty(self, context):
                     mesh_align.apply_mesh_rotscale_to_object(obj)
                     if is_body:
                         mesh_align.realign_body_if_active(body)
+                # EMITTERSHAPE3D 的形状/尺寸/弧形裁剪字段编辑 → 形状预览会话进行中则重同步
+                elif blk_hash == EMITTERSHAPE3D and self.ori_name in (
+                        "patternControl", "transform", "spawnAngleLimits"):
+                    from . import es3d_preview
+                    es3d_preview.resync_if_active(obj)
             except Exception:
                 pass
     except Exception:
