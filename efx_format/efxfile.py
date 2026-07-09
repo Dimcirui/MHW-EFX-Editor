@@ -283,7 +283,7 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
             elif t == 0x15:
                 extra = 16            # float+long+float+long = 16B
             elif t in (0x36, 0x37):
-                extra = 8             # int[2]
+                extra = 8             # 0x36=int[2], 0x37=float[2]; same 8B width either way
             elif t == 0x40:
                 extra = 8             # int64
             elif t == 0x80:
@@ -1151,7 +1151,7 @@ class EFXFile:
             elif t == 0x15:
                 extra = 16            # float+long+float+long
             elif t in (0x36, 0x37):
-                extra = 8             # int[2]
+                extra = 8             # 0x36=int[2], 0x37=float[2]; same 8B width either way
             elif t == 0x40:
                 extra = 8             # int64
             elif t == 0x80:

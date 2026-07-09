@@ -1641,7 +1641,7 @@ def _ptb_param_dtype(t: int) -> str:
         0x0F: 'COLOR_RGBA',
         0x14: 'FLOAT3',
         0x36: 'INT_PAIR',
-        0x37: 'INT_PAIR',
+        0x37: 'FLOAT2',
         0x40: 'UINT',
         0x80: 'STRING',
     }.get(t, 'INT')
@@ -1679,9 +1679,12 @@ def _ptb_write_param_item(item, t: int, param: dict) -> None:
     elif t == 0x14:
         vals = param.get('unkn1', [0.0, 0.0, 0.0])
         item.float3_value = tuple(float(v) for v in vals[:3])
-    elif t in (0x36, 0x37):
+    elif t == 0x36:
         vals = param.get('unkn1', [0, 0])
         item.int_pair_str = f"{int(vals[0])},{int(vals[1])}"
+    elif t == 0x37:
+        vals = param.get('unkn1', [0.0, 0.0])
+        item.float2_value = (float(vals[0]), float(vals[1]))
     elif t == 0x40:
         item.uint_str = str(int(param.get('unkn0', 0)))
     elif t == 0x80:
@@ -1828,9 +1831,11 @@ def rebuild_ptbehavior_block(bp, original_data: bytes = None) -> bytes:
                                for c in item.color_rgba_value]
         elif t == 0x14:
             param['unkn1'] = list(item.float3_value)
-        elif t in (0x36, 0x37):
+        elif t == 0x36:
             parts = item.int_pair_str.split(',')
             param['unkn1'] = [int(parts[0]), int(parts[1])]
+        elif t == 0x37:
+            param['unkn1'] = [float(v) for v in item.float2_value]
         elif t == 0x40:
             param['unkn0'] = int(item.uint_str)
         elif t == 0x80:

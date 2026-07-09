@@ -2947,8 +2947,15 @@ def unpack_ptbehavior(data: bytes, off: int = 0):
             param['unkn1'] = v1
             param['unkn2'] = v2
             param['unkn3'] = v3
-        elif t in (0x36, 0x37):
+        elif t == 0x36:
             vals = list(struct.unpack_from('<2i', data, off)); off += 8
+            param['unkn1'] = vals
+        elif t == 0x37:
+            # 用户实机确认（2026-07-10）：全语料重解读为 float32 后落在干净数值
+            # （mIntensityRange/mPlaySpeed/mPlaySpeedCoef 均为 0/1/2/3/20/80/100/0.2
+            # 这类设计师数值），与共用同一 8B 宽度、但确认仍是 int32 对的 0x36
+            # （mSequenceNo/mPatternNo/各 *Frame 计数）不是同一类型，故拆开处理。
+            vals = list(struct.unpack_from('<2f', data, off)); off += 8
             param['unkn1'] = vals
         elif t == 0x40:
             (v,) = struct.unpack_from('<q', data, off); off += 8
@@ -2998,8 +3005,10 @@ def pack_ptbehavior(values: dict) -> bytes:
             out += struct.pack('<i', param['unkn1'])
             out += struct.pack('<f', param['unkn2'])
             out += struct.pack('<i', param['unkn3'])
-        elif t in (0x36, 0x37):
+        elif t == 0x36:
             out += struct.pack('<2i', *param['unkn1'])
+        elif t == 0x37:
+            out += struct.pack('<2f', *param['unkn1'])
         elif t == 0x40:
             out += struct.pack('<q', param['unkn0'])
         elif t == 0x80:
