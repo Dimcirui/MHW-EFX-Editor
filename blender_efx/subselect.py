@@ -13,18 +13,18 @@ Subselect 结构（efx_format/efxfile.py SubselectTable）：
   table_type : uint32（4B）
   unkn0      : uint32[3]（12B）
   entry_count: int32（4B）
-  entries    : int32[entry_count]  ← 每个值是 Main 段的局部 0-based body 索引
+  entries    : int32[entry_count]  ← 每个值是 Main 段的局部 0-based entry 索引
 
 索引映射约定（已实测，BLUEPRINT §9）：
-  entries[i] 是 Main 段的 0-based body 序号（efx_index == 该序号的 EFX_BODY 对象）。
-  导入时：entries[i] → 找 Main 段里 efx_index==entries[i] 的 EFX_BODY 对象，存 PointerProperty。
+  entries[i] 是 Main 段的 0-based entry 序号（efx_index == 该序号的 EFX_ENTRY 对象）。
+  导入时：entries[i] → 找 Main 段里 efx_index==entries[i] 的 EFX_ENTRY 对象，存 PointerProperty。
   导出时：member.body_ptr → 通过段局部索引映射 → 还原整数 index → 重建 SubselectTable.entries。
 
 byte-perfect 保证：
   - table_type / unkn0 原样存储（字符串，避免 uint32 溢出）。
   - entries 顺序由 members CollectionProperty 顺序决定，导入时按 entries 原序填入。
   - 悬空 member（body_ptr=None）导出时跳过（TODO: 后续校验阶段改为报错）。
-  - bodies 未变时：entries[i] == 该对象的 efx_index == Main 段局部序号，精确往返。
+  - entries 未变时：entries[i] == 该对象的 efx_index == Main 段局部序号，精确往返。
 """
 
 import bpy
@@ -50,10 +50,10 @@ def build_local_index_map(segment_collection, type_tag: str) -> dict:
     参数
     ----
     segment_collection : bpy.types.Collection
-        段集合（如 col_main），包含该段全部 Empty 对象。
+        段集合（如 col_entry），包含该段全部 Empty 对象。
         函数会递归收集集合及子集合里的所有对象。
     type_tag : str
-        对象的 ~TYPE 自定义属性值（如 'EFX_BODY'）。
+        对象的 ~TYPE 自定义属性值（如 'EFX_ENTRY'）。
 
     返回
     ----
@@ -61,14 +61,14 @@ def build_local_index_map(segment_collection, type_tag: str) -> dict:
         键：段内对象；值：按 efx_index 排序后的 0-based 序号。
 
     用法示例（导出 Subselect 段之前）：
-        body_index_map = build_local_index_map(col_main, 'EFX_BODY')
-        # body_index_map[some_body_obj] → 该 body 在 Main 段的局部序号
+        entry_index_map = build_local_index_map(col_entry, 'EFX_ENTRY')
+        # entry_index_map[some_entry_obj] → 该 entry 在 Main 段的局部序号
 
     注意
     ----
     - 只收集拥有 efx_index 自定义属性的对象（防御性过滤）。
     - 排序依据是 int(obj['efx_index'])，与导出路径对 body_objs.sort() 完全一致。
-    - 返回值序号 == 导出 Main 数组里该 body 的最终位置 == SubselectTable.entries 期望值。
+    - 返回值序号 == 导出 Main 数组里该 entry 的最终位置 == SubselectTable.entries 期望值。
     """
     # 递归收集集合内全部匹配 type_tag 的对象
     raw_objs = []
@@ -93,16 +93,16 @@ def _collect_typed_objects(col, type_tag: str, out: list) -> None:
         _collect_typed_objects(child_col, type_tag, out)
 
 
-def find_main_collection(root_obj: bpy.types.Object):
+def find_entry_collection(root_obj: bpy.types.Object):
     """
-    从 EFX_ROOT 对象出发，找到 Main 段集合（名含 ' Main' 后缀的子集合）。
+    从 EFX_ROOT 对象出发，找到 Entry 段集合（名含 ' Entry' 后缀的子集合）。
 
     返回 bpy.types.Collection 或 None（找不到时）。
-    在导出时用于构建 body_index_map。
+    在导出时用于构建 entry_index_map。
     """
     for col in bpy.data.collections:
-        # Main 集合命名规则：<file_stem>_2 Main（见 io_tree.py §4）
-        if col.name.endswith("_2 Main"):
+        # Entry 集合命名规则：<file_stem>_2 Entry（见 io_tree.py §4）
+        if col.name.endswith("_2 Entry"):
             # 验证：该集合是 root_obj 所在根集合的子集合
             for parent_col in bpy.data.collections:
                 if col.name in [c.name for c in parent_col.children]:
@@ -111,7 +111,7 @@ def find_main_collection(root_obj: bpy.types.Object):
                         return col
     # 宽松回退：只匹配名字
     for col in bpy.data.collections:
-        if col.name.endswith("_2 Main"):
+        if col.name.endswith("_2 Entry"):
             return col
     return None
 
@@ -154,11 +154,11 @@ def _find_root_obj(obj):
     return None
 
 
-def _body_object_poll(self, obj):
-    """PointerProperty poll：只允许选 ~TYPE == 'EFX_BODY'，且限定为活动对象
-    所在 EFX 文件（同一 EFX_ROOT）内的 body——多 EFX 集合并存时防串文件。
+def _entry_object_poll(self, obj):
+    """PointerProperty poll：只允许选 ~TYPE == 'EFX_ENTRY'，且限定为活动对象
+    所在 EFX 文件（同一 EFX_ROOT）内的 entry——多 EFX 集合并存时防串文件。
     已从所有集合解链的孤儿对象（Purge 可清除）排除。"""
-    if obj.get("~TYPE") != "EFX_BODY":
+    if obj.get("~TYPE") != "EFX_ENTRY":
         return False
     if not obj.users_collection:
         return False
@@ -173,15 +173,15 @@ def _body_object_poll(self, obj):
 
 class EFXSubselectMember(PropertyGroup):
     """
-    SubselectTable 的单条成员：指向一个 EFX_BODY 对象的指针。
+    SubselectTable 的单条成员：指向一个 EFX_ENTRY 对象的指针。
 
     CollectionProperty 元素，挂在 EFXSubselectProps.members 上。
     """
     body_ptr: PointerProperty(
-        name="Body Object",
-        description="EFX_BODY object referenced by this Subselect table",
+        name="Entry Object",
+        description="EFX_ENTRY object referenced by this Subselect table",
         type=bpy.types.Object,
-        poll=_body_object_poll,
+        poll=_entry_object_poll,
     )
 
 
@@ -194,7 +194,7 @@ class EFXSubselectProps(PropertyGroup):
     table_type_str  : 十进制字符串（uint32，避免 Blender int32 溢出）
     unkn0_str       : 三个 uint32，逗号分隔十进制字符串
     members         : CollectionProperty[EFXSubselectMember]
-                      每个元素对应 SubselectTable.entries 里的一个 body 索引
+                      每个元素对应 SubselectTable.entries 里的一个 entry 索引
     active_member_index : 当前激活的 member 序号（供 template_list 使用）
     """
     table_type_str: StringProperty(
@@ -223,7 +223,7 @@ class EFXSubselectProps(PropertyGroup):
 
     members: CollectionProperty(
         name="Members",
-        description="List of EFX_BODY referenced by this Subselect table (corresponds to entries[])",
+        description="List of EFX_ENTRY referenced by this Subselect table (corresponds to entries[])",
         type=EFXSubselectMember,
     )
 
@@ -252,8 +252,8 @@ def init_subselect_props(ss_obj: bpy.types.Object,
     tbl : SubselectTable
         已解析的 SubselectTable 数据对象（来自 efx_format/efxfile.py）。
     main_bodies_by_index : dict[int, bpy.types.Object]
-        {efx_index → EFX_BODY bpy Object} 映射（由 import_efx_tree 构建）。
-        用于将 tbl.entries 的整数索引解析为具体的 body 对象。
+        {efx_index → EFX_ENTRY bpy Object} 映射（由 import_efx_tree 构建）。
+        用于将 tbl.entries 的整数索引解析为具体的 entry 对象。
 
     副作用
     ------
@@ -274,10 +274,10 @@ def init_subselect_props(ss_obj: bpy.types.Object,
     props.members.clear()
     for entry_idx in tbl.entries:
         item = props.members.add()
-        body_obj = main_bodies_by_index.get(entry_idx)
-        if body_obj is not None:
-            item.body_ptr = body_obj
-        # 若找不到对应 body（异常情况），body_ptr 留 None
+        entry_obj = main_bodies_by_index.get(entry_idx)
+        if entry_obj is not None:
+            item.body_ptr = entry_obj
+        # 若找不到对应 entry（异常情况），body_ptr 留 None
         # 导出时悬空成员会被跳过（见 export_subselect_table 的 TODO 注释）
 
 
@@ -286,7 +286,7 @@ def init_subselect_props(ss_obj: bpy.types.Object,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def export_subselect_table(ss_obj: bpy.types.Object,
-                           body_index_map: dict):
+                           entry_index_map: dict):
     """
     从 EFX_SUBSELECT 对象重建 SubselectTable 数据对象。
 
@@ -294,9 +294,9 @@ def export_subselect_table(ss_obj: bpy.types.Object,
     ----
     ss_obj : bpy.types.Object
         EFX_SUBSELECT Empty 对象。
-    body_index_map : dict[bpy.types.Object, int]
-        {EFX_BODY Object → Main 段局部 0-based index}，
-        由 build_local_index_map(col_main, 'EFX_BODY') 构建。
+    entry_index_map : dict[bpy.types.Object, int]
+        {EFX_ENTRY Object → Main 段局部 0-based index}，
+        由 build_local_index_map(col_entry, 'EFX_ENTRY') 构建。
 
     返回
     ----
@@ -339,13 +339,13 @@ def export_subselect_table(ss_obj: bpy.types.Object,
     # ── entries：从 members 的 body_ptr 解析回局部整数索引 ──────────────────
     entries = []
     for item in props.members:
-        body_obj = item.body_ptr
-        if body_obj is None:
+        entry_obj = item.body_ptr
+        if entry_obj is None:
             # TODO: 后续校验阶段改为 raise ValueError 或 report ERROR，当前静默跳过
             continue
-        local_idx = body_index_map.get(body_obj)
+        local_idx = entry_index_map.get(entry_obj)
         if local_idx is None:
-            # body_obj 不在当前文件的 Main 段里（极端情况：跨文件拖拽等）
+            # entry_obj 不在当前文件的 Main 段里（极端情况：跨文件拖拽等）
             # TODO: 同上，后续改报错
             continue
         entries.append(local_idx)
@@ -446,8 +446,8 @@ class EFX_UL_subselect_members(bpy.types.UIList):
                   active_propname, index):
         row = layout.row(align=True)
         row.label(text=f"{index}:", icon="BLANK1")
-        body_obj = item.body_ptr
-        if body_obj is not None:
+        entry_obj = item.body_ptr
+        if entry_obj is not None:
             row.prop(item, "body_ptr", text="", icon="OBJECT_DATA")
         else:
             # 悬空状态：显示可编辑的指针槽（允许用户选择）
@@ -468,7 +468,7 @@ class EFX_PT_subselect(bpy.types.Panel):
       - 当前成员的 body_ptr 对象名（方便确认指向）
 
     设计理念（CLAUDE §4）：
-      Subselect ↔ body 归属关系是结构关系（工具功能），放 N 面板，不放属性编辑器。
+      Subselect ↔ entry 归属关系是结构关系（工具功能），放 N 面板，不放属性编辑器。
     """
 
     bl_space_type  = "VIEW_3D"
@@ -536,7 +536,7 @@ class EFX_PT_subselect(bpy.types.Panel):
         if 0 <= idx < len(props.members):
             active_item = props.members[idx]
             detail_row = list_box.row()
-            detail_row.prop(active_item, "body_ptr", text=T("sub.body_object"))
+            detail_row.prop(active_item, "body_ptr", text=T("sub.entry_object"))
 
         # ── 悬空成员警告 ─────────────────────────────────────────────────────────
         dangling = sum(1 for m in props.members if m.body_ptr is None)
@@ -554,7 +554,7 @@ class EFX_PT_subselect(bpy.types.Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 # 注册顺序：PropertyGroup 子类先于容器类；UIList/Operator 次之；
-# EFX_PT_subselect 依赖 EFX_PT_main（bl_parent_id），故单独由 panels.py 注册。
+# EFX_PT_subselect 依赖 EFX_PT_entry（bl_parent_id），故单独由 panels.py 注册。
 _CLASSES_CORE = (
     EFXSubselectMember,
     EFXSubselectProps,
@@ -563,8 +563,8 @@ _CLASSES_CORE = (
     EFX_OT_subselect_member_remove,
 )
 
-# EFX_PT_subselect 导出给 panels.py，由 panels.register() 在 EFX_PT_main 之后注册。
-# 这样确保 bl_parent_id = "EFX_PT_main" 的父面板已存在。
+# EFX_PT_subselect 导出给 panels.py，由 panels.register() 在 EFX_PT_entry 之后注册。
+# 这样确保 bl_parent_id = "EFX_PT_entry" 的父面板已存在。
 
 
 def register():
@@ -572,7 +572,7 @@ def register():
     注册 Subselect 核心类（PropertyGroup + UIList + Operator）。
     并把 EFXSubselectProps 挂到 Object 上。
 
-    注意：EFX_PT_subselect 面板由 panels.py 在 EFX_PT_main 之后注册。
+    注意：EFX_PT_subselect 面板由 panels.py 在 EFX_PT_entry 之后注册。
     """
     for cls in _CLASSES_CORE:
         bpy.utils.register_class(cls)

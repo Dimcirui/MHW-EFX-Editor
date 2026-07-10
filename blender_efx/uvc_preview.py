@@ -4,10 +4,10 @@ blender_efx/uvc_preview.py  —  UVCONTROL 视口 UV 滚动动画预览
 设计（与用户确认的边界）
 ------------------------
 - **绑定责任全交用户**：用户自行导入网格、上好材质（材质里需含一个 Mapping 节点），
-  然后在 MESH 块上手选目标网格对象（`Object.efx_mesh_target`）。本模块不生成几何、
+  然后在 MESH 属性上手选目标网格对象（`Object.efx_mesh_target`）。本模块不生成几何、
   不创建/修改材质节点结构，只在预览期间写 Mapping 节点的 Location/Scale。
-- **UVCONTROL → MESH 关联**：UVCONTROL 与 MESH 是同一 body（EFX_BODY）下的兄弟 EFX_BLOCK。
-  预览时对每个 UVCONTROL 块，在同 body 找 MESH 兄弟块，读其绑定网格。
+- **UVCONTROL → MESH 关联**：UVCONTROL 与 MESH 是同一 entry（EFX_ENTRY）下的兄弟 EFX_ATTRIBUTE。
+  预览时对每个 UVCONTROL 属性，在同 entry 找 MESH 兄弟属性，读其绑定网格。
 - **根级单会话，全播**：进入预览=收集本 EFX_ROOT 下所有 (UVCONTROL↔已绑定网格) 配对，
   全部一起驱动；共享时间轴 → 天然同步。一个场景同时只有一个会话。
 - **进入/退出状态**（类似 UVS 编辑器）：进入时快照各 Mapping 节点原值并注册
@@ -33,12 +33,12 @@ from . import transform_sync as _tsync
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 块类型判定
+# 属性类型判定
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _block_type_hash(obj):
-    """返回 EFX_BLOCK 对象的 type_hash（int）；非块或异常返回 None。"""
-    if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+def _attribute_type_hash(obj):
+    """返回 EFX_ATTRIBUTE 对象的 type_hash（int）；非属性或异常返回 None。"""
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
         return None
     try:
         return int(obj.efx_block.type_hash_str)
@@ -46,14 +46,14 @@ def _block_type_hash(obj):
         return None
 
 
-def _is_uvcontrol_block(obj) -> bool:
+def _is_uvcontrol_attribute(obj) -> bool:
     from ..efx_format.hashes import UVCONTROL
-    return _block_type_hash(obj) == UVCONTROL
+    return _attribute_type_hash(obj) == UVCONTROL
 
 
-def _is_mesh_block(obj) -> bool:
+def _is_mesh_attribute(obj) -> bool:
     from ..efx_format.hashes import MESH
-    return _block_type_hash(obj) == MESH
+    return _attribute_type_hash(obj) == MESH
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ def _is_mesh_block(obj) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _read_field(obj, name):
-    """从 EFX_BLOCK 的 field_items 读取指定字段，返回 python 值（标量或 tuple）。
+    """从 EFX_ATTRIBUTE 的 field_items 读取指定字段，返回 python 值（标量或 tuple）。
 
     覆盖 UVCONTROL 用到的类型：FLOAT / INT / FLOAT2/3/4，以及 *_STR 字符串数组兜底。
     找不到字段返回 None。
@@ -377,12 +377,12 @@ def _prepare_material(mat, mesh_obj, use_second_uv):
 
 
 def _find_sibling_mesh_target(uvc_obj):
-    """在 UVCONTROL 同 body 的兄弟块里找 MESH 块，返回其绑定网格对象（或 None）。"""
+    """在 UVCONTROL 同 entry 的兄弟属性里找 MESH 属性，返回其绑定网格对象（或 None）。"""
     body = uvc_obj.parent
     if body is None:
         return None
     for sib in body.children:
-        if _is_mesh_block(sib):
+        if _is_mesh_attribute(sib):
             tgt = getattr(sib, "efx_mesh_target", None)
             if tgt is not None:
                 return tgt
@@ -397,18 +397,18 @@ def _find_sibling_mesh_target(uvc_obj):
 _ROTATEANIM_SPIN_SCALE = 60.0
 
 
-def _body_block(body_obj, type_hash):
-    """body 下第一个指定 type_hash 的 EFX_BLOCK；无则 None。"""
-    for blk in body_obj.children:
-        if blk.get("~TYPE") == "EFX_BLOCK" and _block_type_hash(blk) == type_hash:
+def _entry_attribute(entry_obj, type_hash):
+    """entry 下第一个指定 type_hash 的 EFX_ATTRIBUTE；无则 None。"""
+    for blk in entry_obj.children:
+        if blk.get("~TYPE") == "EFX_ATTRIBUTE" and _attribute_type_hash(blk) == type_hash:
             return blk
     return None
 
 
-def _body_mesh_target(body_obj):
-    """body 下 MESH 块绑定的网格对象（或 None）。"""
-    for blk in body_obj.children:
-        if _is_mesh_block(blk):
+def _entry_mesh_target(entry_obj):
+    """entry 下 MESH 属性绑定的网格对象（或 None）。"""
+    for blk in entry_obj.children:
+        if _is_mesh_attribute(blk):
             tgt = getattr(blk, "efx_mesh_target", None)
             if tgt is not None:
                 return tgt
@@ -427,7 +427,7 @@ def _read_triple(block, name, default=(0.0, 0.0, 0.0)):
 
 
 def _collect_transform_entries(roots, armature):
-    """收集需要做变换动画的 body：每个有绑定网格、且含 TRANSFORM3D 或 ROTATEANIM 的 body。
+    """收集需要做变换动画的 entry：每个有绑定网格、且含 TRANSFORM3D 或 ROTATEANIM 的 entry。
 
     返回 (entries, snaps)：
       entries = [dict(mesh, bone_base, base_*, *_vel, spin_*)]
@@ -443,20 +443,20 @@ def _collect_transform_entries(roots, armature):
         if root is None:
             continue
         for body in root.children:
-            if body.get("~TYPE") != "EFX_BODY":
+            if body.get("~TYPE") != "EFX_ENTRY":
                 continue
-            mesh = _body_mesh_target(body)
+            mesh = _entry_mesh_target(body)
             if mesh is None or mesh.name in seen:
                 continue
-            t3d = _body_block(body, TRANSFORM3D)
-            rot = _body_block(body, ROTATEANIM)
+            t3d = _entry_attribute(body, TRANSFORM3D)
+            rot = _entry_attribute(body, ROTATEANIM)
             if t3d is None and rot is None:
                 continue  # 无可定位/动画来源 → fallback 原点，不动网格
 
             # 只取骨骼世界位置（head），不继承骨骼 rest 朝向：
             # Blender 骨骼默认沿 +Y，指向 +Z 的 MhBone 其 matrix_local 内嵌 +90°X 伪旋转，
             # 整体继承会把网格莫名转 +90°X。朝向统一交给 M_G2B 轴交换。
-            bone_base = _tsync.bone_base_matrix(armature, _tsync._body_bone_lim(body))
+            bone_base = _tsync.bone_base_matrix(armature, _tsync._entry_bone_lim(body))
             bone_pos = bone_base.to_translation() if bone_base is not None else None
 
             ent = {"mesh": mesh, "bone_pos": bone_pos}
@@ -614,14 +614,14 @@ def _collect_pairs(roots):
         if root_obj is None:
             continue
         for body in root_obj.children:
-            if body.get("~TYPE") != "EFX_BODY":
+            if body.get("~TYPE") != "EFX_ENTRY":
                 continue
             for blk in body.children:
-                if not _is_uvcontrol_block(blk):
+                if not _is_uvcontrol_attribute(blk):
                     continue
                 mesh_obj = _find_sibling_mesh_target(blk)
                 if mesh_obj is None:
-                    continue  # 同 body 没有绑定网格的 MESH 块 → 跳过
+                    continue  # 同 entry 没有绑定网格的 MESH 属性 → 跳过
                 tree = _active_node_tree(mesh_obj)
                 if tree is None:
                     missing.append((mesh_obj.name, "uvc.reason_no_node_mat"))
@@ -711,13 +711,13 @@ def _stop_preview():
 
 
 def _root_of(obj):
-    """从 EFX_BLOCK 上溯到 EFX_ROOT（block.parent=body, body.parent=root）。"""
+    """从 EFX_ATTRIBUTE 上溯到 EFX_ROOT（attribute.parent=entry, entry.parent=root）。"""
     body = obj.parent if obj is not None else None
     return body.parent if body is not None else None
 
 
 def _resolve_root(obj):
-    """从任意 EFX 对象（块/body/root）上溯到所属 EFX_ROOT；找不到返回 None。"""
+    """从任意 EFX 对象（属性/entry/root）上溯到所属 EFX_ROOT；找不到返回 None。"""
     cur = obj
     while cur is not None:
         if cur.get("~TYPE") == "EFX_ROOT":
@@ -727,7 +727,7 @@ def _resolve_root(obj):
 
 
 def _is_efx_object(obj) -> bool:
-    """该对象是否属于某个 EFX 树（块/body/root 任意一层）。"""
+    """该对象是否属于某个 EFX 树（属性/entry/root 任意一层）。"""
     return _resolve_root(obj) is not None
 
 
@@ -841,22 +841,22 @@ def _on_load(*_args):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Panel：MESH 块 → 网格绑定（顶层 N 面板，仅选中 MESH 块时显示）
+# Panel：MESH 属性 → 网格绑定（顶层 N 面板，仅选中 MESH 属性时显示）
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_mesh_binding(Panel):
-    """MESH 块的预览网格绑定（仅选中 MESH 块时显示）"""
+    """MESH 属性的预览网格绑定（仅选中 MESH 属性时显示）"""
 
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "EFX"
     bl_label = "Mesh Binding (Preview)"
-    bl_order = 0  # 压在 Block Properties（默认顺序）之上
+    bl_order = 0  # 压在 Attribute Properties（默认顺序）之上
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
-        return _is_mesh_block(context.active_object)
+        return _is_mesh_attribute(context.active_object)
 
     def draw(self, context):
         layout = self.layout
@@ -875,11 +875,11 @@ class EFX_PT_mesh_binding(Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Panel：UVCONTROL 块 → 预览控制（顶层 N 面板，仅选中 UVCONTROL 块时显示）
+# Panel：UVCONTROL 属性 → 预览控制（顶层 N 面板，仅选中 UVCONTROL 属性时显示）
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _draw_preview_controls(layout, context):
-    """预览进入/退出控件（UVCONTROL 块面板与 body 面板共用）。"""
+    """预览进入/退出控件（UVCONTROL 属性面板与 entry 面板共用）。"""
     layout.label(text=T("uvc.timeline_hint"), icon="TIME")
 
     if _state["active"]:
@@ -900,37 +900,37 @@ def _draw_preview_controls(layout, context):
 
 
 class EFX_PT_uvc_preview(Panel):
-    """UV Control 预览控制（仅选中 UVCONTROL 块时显示）"""
+    """UV Control 预览控制（仅选中 UVCONTROL 属性时显示）"""
 
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "EFX"
     bl_label = "UV Control Preview"
-    bl_order = 0  # 压在 Block Properties 之上
+    bl_order = 0  # 压在 Attribute Properties 之上
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
-        return _is_uvcontrol_block(context.active_object)
+        return _is_uvcontrol_attribute(context.active_object)
 
     def draw(self, context):
         _draw_preview_controls(self.layout, context)
 
 
-class EFX_PT_uvc_preview_body(Panel):
-    """全局预览（选中 EFX_BODY 时显示）—— body 级入口，默认驱动本 EFX 全部已绑定网格。"""
+class EFX_PT_uvc_preview_entry(Panel):
+    """全局预览（选中 EFX_ENTRY 时显示）—— entry 级入口，默认驱动本 EFX 全部已绑定网格。"""
 
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "EFX"
     bl_label = "Effect Preview"
-    bl_order = 0  # 压在 Body Properties 之上
+    bl_order = 0  # 压在 Entry Properties 之上
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
 
     def draw(self, context):
         _draw_preview_controls(self.layout, context)
@@ -944,14 +944,14 @@ _CLASSES = [
     EFX_OT_uvc_preview_enter,
     EFX_OT_uvc_preview_exit,
     EFX_PT_mesh_binding,
-    # EFX_PT_uvc_preview / EFX_PT_uvc_preview_body 已整合进统一「EFX Preview」面板
+    # EFX_PT_uvc_preview / EFX_PT_uvc_preview_entry 已整合进统一「EFX Preview」面板
     # （efx_preview.py），不再单独注册；算子保留供 EFX Preview 编排调用。
 ]
 
 
 def _on_mesh_target_update(self, context):
-    """绑定网格变更时：把该 MESH 块的旋转/缩放立即反映到新绑定的对象上。
-    self = 挂该属性的对象（应为 MESH 块）。"""
+    """绑定网格变更时：把该 MESH 属性的旋转/缩放立即反映到新绑定的对象上。
+    self = 挂该属性的对象（应为 MESH 属性）。"""
     try:
         from . import mesh_align
         mesh_align.apply_mesh_rotscale_to_object(self)
@@ -962,7 +962,7 @@ def _on_mesh_target_update(self, context):
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    # MESH 块绑定目标：仅网格对象可选；绑定后立即把 MESH 块旋转/缩放反映到该对象。
+    # MESH 属性绑定目标：仅网格对象可选；绑定后立即把 MESH 属性旋转/缩放反映到该对象。
     bpy.types.Object.efx_mesh_target = PointerProperty(
         name="Preview Mesh",
         description="UV 预览的目标网格对象（用户自备、需接好基础贴图的材质）",

@@ -1,16 +1,16 @@
 """
-efx_format/categories.py  —  块类型的功能分类表（纯 Python，零 bpy 依赖）
+efx_format/categories.py  —  属性类型的功能分类表（纯 Python，零 bpy 依赖）
 
-用途：把几十种块类型按功能分组，供
-  - 块预设的两级下拉（先选分类，再选类内块）
-  - 块预设按分类存盘（presets/__blocks__/<slug>/<NAME>.json）
+用途：把几十种属性类型按功能分组，供
+  - 属性预设的两级下拉（先选分类，再选类内属性）
+  - 属性预设按分类存盘（presets/__attributes__/<slug>/<NAME>.json）
 两处共用同一份分类事实，避免重复。
 
-分组依据见 docs/BLOCK_TYPES.md（2026-06 重分类，基于 738 文件 / 16758 body 统计）。
+分组依据见 docs/ATTRIBUTE_TYPES.md（2026-06 重分类，基于 738 文件 / 16758 entry 统计）。
 键为 type_hash（来自 hashes.py），未登记的类型一律归入 "misc"。
 
 分类逻辑摘要：
-  skeleton    — Body 骨架，每个 body 必有（TRANSFORM3D / PARENTOPTIONS / SPAWN / LIFE）
+  skeleton    — Entry 骨架，每个 entry 必有（TRANSFORM3D / PARENTOPTIONS / SPAWN / LIFE）
   renderer    — 渲染主体，互斥选一（BILLBOARD3D / RIBBON / MESH / PLANE /
                 FAKEPLANE / LIGHTNING / DUMMY / RIBBONBLADE / STRAINRIBBON / TUBELIGHT…）
   sprite_mod  — 面片渲染专属修饰（billboard/ribbon/plane 专用；与 MESH 完全不共存）
@@ -20,8 +20,8 @@ efx_format/categories.py  —  块类型的功能分类表（纯 Python，零 bp
   emitter     — 发射器 / 空间约束（EMITTERSHAPE3D / EMITTERBOUNDARY…）
   motion      — 运动 / 速度 / 动画（VELOCITY3D / SCALEANIM / ROTATEANIM / NOISE…）
   visibility  — 可见性 / 渐隐（FADE* / RAYCAST…）
-  lifecycle   — 生命周期触发，body 最后（PTCOLLISION / PTLIFE / PTTRIGGER）
-  extern_decl — 外部资源声明，body 最前（EXTERNREFERENCE）
+  lifecycle   — 生命周期触发，entry 最后（PTCOLLISION / PTLIFE / PTTRIGGER）
+  extern_decl — 外部资源声明，entry 最前（EXTERNREFERENCE）
   char_effect — 角色附着效果（PLEMISSIVE / PARENTEMISSIVE / PLSNOW / SHOVEL…）
   behavior    — 独立行为系统，与常规流程互斥（PTBEHAVIOR）
   ui_2d       — 2D / UI 变体（TRANSFORM2D / EMITTERSHAPE2D / VELOCITY2D / BILLBOARD2D；
@@ -65,8 +65,8 @@ from .hashes import (
 
 # ── slug → 双语显示名（下拉顺序按本 dict 的插入顺序）────────────────────────────
 # 纯数据：EN + ZH 都存这里，UI 层（blender_efx/i18n.py）按当前语言取用。
-BLOCK_CATEGORY_LABELS = {
-    "skeleton":    {"EN": "Body Skeleton",      "ZH": "Body 骨架"},
+ATTRIBUTE_CATEGORY_LABELS = {
+    "skeleton":    {"EN": "Entry Skeleton",     "ZH": "Entry 骨架"},
     "renderer":    {"EN": "Renderer",           "ZH": "渲染主体"},
     "sprite_mod":  {"EN": "Sprite Modifiers",   "ZH": "面片修饰"},
     "mesh_over":   {"EN": "Mesh Overrides",     "ZH": "MESH 覆盖"},
@@ -82,8 +82,8 @@ BLOCK_CATEGORY_LABELS = {
 }
 
 # ── type_hash → slug ──────────────────────────────────────────────────────────
-BLOCK_CATEGORY_OF = {
-    # ── Body 骨架（每个 body 必有） ───────────────────────────────────────────
+ATTRIBUTE_CATEGORY_OF = {
+    # ── Entry 骨架（每个 entry 必有） ───────────────────────────────────────────
     TRANSFORM3D:       "skeleton",
     PARENTOPTIONS:     "skeleton",
     SPAWN:             "skeleton",
@@ -142,12 +142,12 @@ BLOCK_CATEGORY_OF = {
     RAYCAST:           "visibility",
     LINKPARTSVISIBLE:  "visibility",
 
-    # ── 生命周期触发（body 最后，基于 play 段的事件触发器） ────────────────────
+    # ── 生命周期触发（entry 最后，基于 action 段的事件触发器） ────────────────────
     PTCOLLISION:       "lifecycle",
     PTLIFE:            "lifecycle",
     PTTRIGGER:         "lifecycle",
 
-    # ── 外部资源声明（body 最前，声明引用 extern 段） ─────────────────────────
+    # ── 外部资源声明（entry 最前，声明引用 extern 段） ─────────────────────────
     EXTERNREFERENCE:   "extern_decl",
 
     # ── 角色附着效果 ──────────────────────────────────────────────────────────
@@ -181,13 +181,13 @@ BLOCK_CATEGORY_OF = {
 
 
 def category_of(type_hash: int) -> str:
-    """返回块类型的分类 slug；未登记类型归 'misc'。"""
-    return BLOCK_CATEGORY_OF.get(type_hash, "misc")
+    """返回属性类型的分类 slug；未登记类型归 'misc'。"""
+    return ATTRIBUTE_CATEGORY_OF.get(type_hash, "misc")
 
 
 def category_label(slug: str, lang: str = "ZH") -> str:
     """slug → 显示名（lang: 'EN'/'ZH'）；未知 slug 原样返回。"""
-    entry = BLOCK_CATEGORY_LABELS.get(slug)
+    entry = ATTRIBUTE_CATEGORY_LABELS.get(slug)
     if entry is None:
         return slug
     return entry.get(lang) or entry.get("EN") or slug

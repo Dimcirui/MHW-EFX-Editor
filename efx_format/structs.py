@@ -880,13 +880,15 @@ assert _schema_size(ALPHACORRECTION_SCHEMA) == 20, \
 #   long  unkn0                              4 B
 #   float unkn1[3]                          12 B
 # data_bytes: 4+12 = 16 B ✓
+#
+# 实测（4059 个官方块）：unkn1[3] → Bleed/ColorScaler/TexelScaler（含义见 annotations.py）。
 # ─────────────────────────────────────────────────────────────────────────────
 
 LUMINANCEBLEED_SCHEMA = [
     ('unkn0', 'i'),
-    ('unkn1_0', 'f'),
-    ('unkn1_1', 'f'),
-    ('unkn1_2', 'f'),
+    ('bleed', 'f'),
+    ('colorScaler', 'f'),
+    ('texelScaler', 'f'),
 ]
 assert _schema_size(LUMINANCEBLEED_SCHEMA) == 16, \
     f"LUMINANCEBLEED_SCHEMA size mismatch: {_schema_size(LUMINANCEBLEED_SCHEMA)}"

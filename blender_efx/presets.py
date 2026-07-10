@@ -1,11 +1,11 @@
 """
 blender_efx/presets.py  —  预设公共工具 + 字段值序列化助手
 
-现存内容（旧「字段值预设」存/取盘函数 save/load_block_preset/reload_presets 已移除，
-块预设改为 block_ops 的整块增删机制）：
+现存内容（旧「字段值预设」存/取盘函数 save/load_attribute_preset/reload_presets 已移除，
+属性预设改为 attribute_ops 的整属性增删机制）：
   - 路径/命名助手：_presets_root / _preset_dir 无、_unique_ascii_filename /
     _read_display_name / _encode_path_ident / _decode_path_ident
-    （供 block_ops.py、add_ops.py 复用）
+    （供 attribute_ops.py、add_ops.py 复用）
   - 字段值序列化：_item_to_json_value / _json_value_to_item
     （供 operators.py 的字段即时复制/粘贴复用）
 
@@ -14,7 +14,7 @@ blender_efx/presets.py  —  预设公共工具 + 字段值序列化助手
   - 预设 JSON 里浮点用 repr 保证精度；uint 用字符串
   - read_only 字段加载时跳过（永远保持 orig_b64 路径）
 
-JSON 结构（保存一个块）：
+JSON 结构（保存一个属性）：
 {
   "type_hash": "1003792849",        # 十进制字符串
   "type_name": "EMITTERSHAPE3D",    # 显示名，仅供人读，load 不依赖此字段
@@ -138,21 +138,29 @@ def _migrate_presets_once(new_root: str):
     把包内 presets/ 目录的 JSON 文件同步到用户目录：
     - 跳过已存在的同名文件（用户自定义预设不覆盖）
     - 清理用户目录中已不属于当前分类体系的旧 slug 子目录
+    - 删除 3.0 重命名前遗留的 __bodies__/__blocks__ 旧目录（schema key 已不兼容，
+      不做迁移读取；用户若有自定义预设需手动搬到新目录）
     """
     import shutil
-    from ..efx_format.categories import BLOCK_CATEGORY_LABELS
+    from ..efx_format.categories import ATTRIBUTE_CATEGORY_LABELS
 
     here = os.path.dirname(os.path.abspath(__file__))
     old_root = os.path.join(os.path.dirname(here), "presets")
     if not os.path.isdir(old_root):
         return
 
-    # 清理用户目录里不再属于当前分类体系的旧 __blocks__ 子目录
-    blocks_user = os.path.join(new_root, "__blocks__")
-    if os.path.isdir(blocks_user):
-        for entry in os.listdir(blocks_user):
-            entry_path = os.path.join(blocks_user, entry)
-            if os.path.isdir(entry_path) and entry not in BLOCK_CATEGORY_LABELS:
+    # 3.0 重命名：__bodies__/__blocks__ 是旧目录名，直接清除（不兼容旧 schema key）
+    for stale_dir in ("__bodies__", "__blocks__"):
+        stale_path = os.path.join(new_root, stale_dir)
+        if os.path.isdir(stale_path):
+            shutil.rmtree(stale_path, ignore_errors=True)
+
+    # 清理用户目录里不再属于当前分类体系的旧 __attributes__ 子目录
+    attrs_user = os.path.join(new_root, "__attributes__")
+    if os.path.isdir(attrs_user):
+        for entry in os.listdir(attrs_user):
+            entry_path = os.path.join(attrs_user, entry)
+            if os.path.isdir(entry_path) and entry not in ATTRIBUTE_CATEGORY_LABELS:
                 shutil.rmtree(entry_path, ignore_errors=True)
 
     # 从包内预设目录复制新文件（跳过已有同名，保留用户自定义）

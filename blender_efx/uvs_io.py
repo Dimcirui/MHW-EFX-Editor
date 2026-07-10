@@ -55,9 +55,9 @@ def _get_uvsequence_path(obj) -> str:
     return ""
 
 
-def _is_uvsequence_block(obj) -> bool:
-    """该对象是否为 UVSEQUENCE 类型的 EFX_BLOCK。"""
-    if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+def _is_uvsequence_attribute(obj) -> bool:
+    """该对象是否为 UVSEQUENCE 类型的 EFX_ATTRIBUTE。"""
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
         return False
     try:
         from ..efx_format.hashes import UVSEQUENCE
@@ -283,7 +283,7 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return _is_uvsequence_block(context.active_object)
+        return _is_uvsequence_attribute(context.active_object)
 
     def execute(self, context):
         obj = context.active_object
@@ -318,7 +318,7 @@ class EFX_OT_uvs_export(Operator, ExportHelper):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return _is_uvsequence_block(obj) and getattr(
+        return _is_uvsequence_attribute(obj) and getattr(
             getattr(obj, "efx_uvs", None), "is_loaded", False
         )
 
@@ -359,7 +359,7 @@ class EFX_OT_uvs_reload(Operator):
     def poll(cls, context):
         obj = context.active_object
         props = getattr(obj, "efx_uvs", None)
-        return (_is_uvsequence_block(obj) and props is not None
+        return (_is_uvsequence_attribute(obj) and props is not None
                 and bool(props.filepath) and os.path.isfile(props.filepath))
 
     def execute(self, context):
@@ -394,13 +394,13 @@ class EFX_UL_uvs_groups(UIList):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Panel：UVS Edition（挂在 EFX_PT_block_fields 下）
+# Panel：UVS Edition（挂在 EFX_PT_attribute_fields 下）
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_uvs_edition(Panel):
-    """UVS Edition — 顶层面板，仅在选中 UVSEQUENCE 块时显示
+    """UVS Edition — 顶层面板，仅在选中 UVSEQUENCE 属性时显示
 
-    工具类特性 → 只放 N 面板（不放属性编辑器）；bl_order=0 压在 Block Properties 之上。
+    工具类特性 → 只放 N 面板（不放属性编辑器）；bl_order=0 压在 Attribute Properties 之上。
     """
 
     bl_space_type  = "VIEW_3D"
@@ -412,7 +412,7 @@ class EFX_PT_uvs_edition(Panel):
 
     @classmethod
     def poll(cls, context):
-        return _is_uvsequence_block(context.active_object)
+        return _is_uvsequence_attribute(context.active_object)
 
     def draw(self, context):
         layout = self.layout
@@ -742,7 +742,7 @@ class EFX_OT_uvs_edit(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return _is_uvsequence_block(obj) and getattr(
+        return _is_uvsequence_attribute(obj) and getattr(
             getattr(obj, "efx_uvs", None), "is_loaded", False
         )
 
@@ -1225,7 +1225,7 @@ class EFX_OT_uvs_group_add(Operator):
     def poll(cls, context):
         obj = context.active_object
         return (
-            _is_uvsequence_block(obj)
+            _is_uvsequence_attribute(obj)
             and getattr(getattr(obj, "efx_uvs", None), "is_loaded", False)
         )
 
@@ -1286,7 +1286,7 @@ class EFX_OT_uvs_group_remove(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if not _is_uvsequence_block(obj):
+        if not _is_uvsequence_attribute(obj):
             return False
         props = getattr(obj, "efx_uvs", None)
         return (
@@ -1337,7 +1337,7 @@ class EFX_OT_uvs_group_move(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if not _is_uvsequence_block(obj):
+        if not _is_uvsequence_attribute(obj):
             return False
         props = getattr(obj, "efx_uvs", None)
         return props is not None and props.is_loaded and len(props.groups) > 1
@@ -1389,7 +1389,7 @@ class EFX_OT_uvs_slot_add(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if not _is_uvsequence_block(obj):
+        if not _is_uvsequence_attribute(obj):
             return False
         props = getattr(obj, "efx_uvs", None)
         if props is None or not props.is_loaded:
@@ -1430,7 +1430,7 @@ class EFX_OT_uvs_slot_remove(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if not _is_uvsequence_block(obj):
+        if not _is_uvsequence_attribute(obj):
             return False
         props = getattr(obj, "efx_uvs", None)
         if props is None or not props.is_loaded:
@@ -1521,7 +1521,7 @@ class EFX_OT_uvs_gif_to_png(Operator, ImportHelper):
             return False
         obj = context.active_object
         return (
-            _is_uvsequence_block(obj)
+            _is_uvsequence_attribute(obj)
             and getattr(getattr(obj, "efx_uvs", None), "is_loaded", False)
         )
 

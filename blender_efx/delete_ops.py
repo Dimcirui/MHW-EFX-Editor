@@ -1,16 +1,16 @@
 """
-blender_efx/delete_ops.py  —  L2 #3b：删除条目（body / 块 / play / extern / subselect）
+blender_efx/delete_ops.py  —  L2 #3b：删除条目（entry / attribute / action / extern / subselect）
 
 算子（全部 bl_options={"REGISTER","UNDO"}，invoke 用 invoke_confirm 弹确认，均支持多选批量删除）：
-  efx.delete_body      —  删除所有选中 EFX_BODY（连带其全部 EFX_BLOCK 子块）
-  efx.delete_block     —  删除所有选中 EFX_BLOCK
-  efx.delete_play      —  删除所有选中 EFX_PLAY
+  efx.delete_entry      —  删除所有选中 EFX_ENTRY（连带其全部 EFX_ATTRIBUTE 子属性）
+  efx.delete_attribute     —  删除所有选中 EFX_ATTRIBUTE
+  efx.delete_action      —  删除所有选中 EFX_ACTION
   efx.delete_extern    —  删除所有选中 EFX_EXTERN
   efx.delete_subselect —  删除所有选中 EFX_SUBSELECT
 
 设计要点（参照 CLAUDE.md / reorder.py）：
   1. 删除职责只有三件：
-       ① 干净移除对象（body 连带块）；
+       ① 干净移除对象（entry 连带 attribute）；
        ② 剩余同级重新连续编号（efx_index 0..n-1）+ 重建显示名；
        ③ 置 dirty 标志（labels_dirty / eof_dirty / subselect_dirty），供导出端重算计数/标签/size。
   2. 引用是对象指针，删除后悬空指针（None）由导出端安全跳过、由 #4 校验报告。
@@ -18,8 +18,8 @@ blender_efx/delete_ops.py  —  L2 #3b：删除条目（body / 块 / play / exte
   3. 计数/size/eof 由 io_tree 导出端从实际内容重算，删除算子无需触碰头部数据。
 
 原生删除（用户直接选中对象按 X / Delete Hierarchy，不经过本文件的算子）：
-  ① 干净移除同样成立——block/body 是父子对象树，Blender 自己的递归删除即可；
-     play/extern/subselect 是 root 下的平级对象，直接删除即可。
+  ① 干净移除同样成立——attribute/entry 是父子对象树，Blender 自己的递归删除即可；
+     action/extern/subselect 是 root 下的平级对象，直接删除即可。
   ② efx_index 不会被重排（会留空洞），但 io_tree.py 收集同级时只把它当排序 key，
      不要求连续，空洞不影响导出正确性。
   ③ 本文件算子显式置的 dirty 标志会被跳过（原生删除根本不知道有这几个自定义
@@ -27,10 +27,10 @@ blender_efx/delete_ops.py  —  L2 #3b：删除条目（body / 块 / play / exte
      只在导入时写一次的"原始计数"和当前实际对象数），只要数量对不上就自动强制
      走重建路径，不依赖任何删除算子有没有主动置位。三个 dirty 属性现在是
      "算子显式置位 OR 自动检测" 里的第一项，冗余但无害，继续保留。
-  ④ 唯一的例外是删 body 时不删子块（普通 Delete 而非 Delete Hierarchy）：
-     子块会变成 parent=None 的孤儿对象，io_tree.py 按 parent 关系逐 body 收集
-     子块，孤儿不属于任何 body，从此在导出里彻底不可见（不报错，也不会被
-     误挂到别的 body 下）——是预期行为，不是 bug。
+  ④ 唯一的例外是删 entry 时不删子属性（普通 Delete 而非 Delete Hierarchy）：
+     子属性会变成 parent=None 的孤儿对象，io_tree.py 按 parent 关系逐 entry 收集
+     子属性，孤儿不属于任何 entry，从此在导出里彻底不可见（不报错，也不会被
+     误挂到别的 entry 下）——是预期行为，不是 bug。
 
 约束（参照 CLAUDE.md）：
   - Python 3.11 语法（目标 Blender 4.3.2）
@@ -43,11 +43,11 @@ import bpy
 
 from .reorder import (
     _collect_siblings_by_type,
-    _body_display_name,
-    _block_display_name,
-    _get_body_raw_label,
-    _get_block_type_name,
-    _get_block_parent_label,
+    _entry_display_name,
+    _attribute_display_name,
+    _get_entry_raw_label,
+    _get_attribute_type_name,
+    _get_attribute_parent_label,
 )
 
 
@@ -88,17 +88,17 @@ def _reindex_siblings(parent_obj, type_tag: str, rebuild_name_fn) -> int:
 # 重建显示名回调（各类型）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _rebuild_body_name(o, new_idx):
-    return _body_display_name(new_idx, _get_body_raw_label(o))
+def _rebuild_entry_name(o, new_idx):
+    return _entry_display_name(new_idx, _get_entry_raw_label(o))
 
 
-def _rebuild_block_name(o, new_idx):
-    return _block_display_name(
-        new_idx, _get_block_parent_label(o), _get_block_type_name(o)
+def _rebuild_attribute_name(o, new_idx):
+    return _attribute_display_name(
+        new_idx, _get_attribute_parent_label(o), _get_attribute_type_name(o)
     )
 
 
-def _rebuild_play_name(o, new_idx):
+def _rebuild_action_name(o, new_idx):
     label = str(o.get("efx_raw_label", ""))
     return f"{_nn(new_idx)} {label}"
 
@@ -115,19 +115,19 @@ def _rebuild_subselect_name(o, new_idx):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_OT_delete_body
+# EFX_OT_delete_entry
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_OT_delete_body(bpy.types.Operator):
-    """删除所有选中的 EFX_BODY（连带各自全部 EFX_BLOCK 子块），重排剩余 body"""
+class EFX_OT_delete_entry(bpy.types.Operator):
+    """删除所有选中的 EFX_ENTRY（连带各自全部 EFX_ATTRIBUTE 子属性），重排剩余 entry"""
 
-    bl_idname      = "efx.delete_body"
-    bl_label       = "Delete Body"
+    bl_idname      = "efx.delete_entry"
+    bl_label       = "Delete Entry"
     bl_description = (
-        "Delete all selected EFX_BODY objects (including their blocks); remaining bodies "
+        "Delete all selected EFX_ENTRY objects (including their attributes); remaining entries "
         "are renumbered consecutively. Safer than Blender's native Delete Hierarchy, which "
-        "deletes the hierarchy of every currently selected object — a stray selected block "
-        "belonging to a different body gets silently swept away too"
+        "deletes the hierarchy of every currently selected object — a stray selected attribute "
+        "belonging to a different entry gets silently swept away too"
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -136,7 +136,7 @@ class EFX_OT_delete_body(bpy.types.Operator):
         obj = context.active_object
         return (
             obj is not None
-            and obj.get("~TYPE") == "EFX_BODY"
+            and obj.get("~TYPE") == "EFX_ENTRY"
             and obj.parent is not None
         )
 
@@ -147,102 +147,102 @@ class EFX_OT_delete_body(bpy.types.Operator):
         active = context.active_object
         root = active.parent  # EFX_ROOT
 
-        # 收集选中的同 root 下所有 EFX_BODY；未多选时退化为只删 active
+        # 收集选中的同 root 下所有 EFX_ENTRY；未多选时退化为只删 active
         targets = [
             o for o in context.selected_objects
-            if o.get("~TYPE") == "EFX_BODY" and o.parent == root
+            if o.get("~TYPE") == "EFX_ENTRY" and o.parent == root
         ]
         if not targets:
             targets = [active]
 
-        # 批量删除（先删子块再删 body 本身）
+        # 批量删除（先删子属性再删 entry 本身）
         for obj in targets:
             children = [
                 c for c in bpy.data.objects
-                if c.parent == obj and c.get("~TYPE") in ("EFX_BLOCK", "EFX_TIML")
+                if c.parent == obj and c.get("~TYPE") in ("EFX_ATTRIBUTE", "EFX_TIML")
             ]
             for child in children:
                 bpy.data.objects.remove(child, do_unlink=True)
             bpy.data.objects.remove(obj, do_unlink=True)
 
-        # 统一重排剩余 body
-        remaining = _reindex_siblings(root, "EFX_BODY", _rebuild_body_name)
+        # 统一重排剩余 entry
+        remaining = _reindex_siblings(root, "EFX_ENTRY", _rebuild_entry_name)
 
-        # body 计数变 → 标签表变；导出端按 labels_dirty 重建 label_bytes/label_size
+        # entry 计数变 → 标签表变；导出端按 labels_dirty 重建 label_bytes/label_size
         root["labels_dirty"] = 1
-        # body 数变 → eof 里残留的越界 raw 哨兵成为陈旧错误索引，导出端 sanitize 清理
-        # （取代旧的 eof_ints[:len(bodies)] 长度截断，能去掉列表中部的哨兵）
+        # entry 数变 → eof 里残留的越界 raw 哨兵成为陈旧错误索引，导出端 sanitize 清理
+        # （取代旧的 eof_ints[:len(entries)] 长度截断，能去掉列表中部的哨兵）
         root["eof_dirty"] = 1
 
         self.report(
             {"INFO"},
-            f"Deleted {len(targets)} EFX_BODY(s), {remaining} body(s) remaining",
+            f"Deleted {len(targets)} EFX_ENTRY(s), {remaining} entry(s) remaining",
         )
         return {"FINISHED"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_OT_delete_block
+# EFX_OT_delete_attribute
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_OT_delete_block(bpy.types.Operator):
-    """删除所有选中的 EFX_BLOCK，重排各自所属 body 内剩余块"""
+class EFX_OT_delete_attribute(bpy.types.Operator):
+    """删除所有选中的 EFX_ATTRIBUTE，重排各自所属 entry 内剩余属性"""
 
-    bl_idname      = "efx.delete_block"
-    bl_label       = "Delete Block"
-    bl_description = "Delete all selected EFX_BLOCK objects; remaining blocks in each affected body are renumbered consecutively"
+    bl_idname      = "efx.delete_attribute"
+    bl_label       = "Delete Attribute"
+    bl_description = "Delete all selected EFX_ATTRIBUTE objects; remaining attributes in each affected entry are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return False
         parent = obj.parent
-        return parent is not None and parent.get("~TYPE") == "EFX_BODY"
+        return parent is not None and parent.get("~TYPE") == "EFX_ENTRY"
 
     def invoke(self, context, event):
         return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
-        # 收集选中的所有 EFX_BLOCK（跨 body 均可）；未多选时退化为只删 active
+        # 收集选中的所有 EFX_ATTRIBUTE（跨 entry 均可）；未多选时退化为只删 active
         targets = [
             o for o in context.selected_objects
-            if o.get("~TYPE") == "EFX_BLOCK"
+            if o.get("~TYPE") == "EFX_ATTRIBUTE"
             and o.parent is not None
-            and o.parent.get("~TYPE") == "EFX_BODY"
+            and o.parent.get("~TYPE") == "EFX_ENTRY"
         ]
         if not targets:
             targets = [context.active_object]
 
-        # 记录受影响的 body（删完后各自重排一次）
+        # 记录受影响的 entry（删完后各自重排一次）
         affected_bodies = {o.parent for o in targets}
 
-        # 块不在标签表，不设 labels_dirty；attr_count 由导出端自动重算。
+        # 属性不在标签表，不设 labels_dirty；attr_count 由导出端自动重算。
         for obj in targets:
             bpy.data.objects.remove(obj, do_unlink=True)
 
-        # 对每个受影响的 body 统一重排
+        # 对每个受影响的 entry 统一重排
         for body in affected_bodies:
-            _reindex_siblings(body, "EFX_BLOCK", _rebuild_block_name)
+            _reindex_siblings(body, "EFX_ATTRIBUTE", _rebuild_attribute_name)
 
         self.report(
             {"INFO"},
-            f"Deleted {len(targets)} EFX_BLOCK(s) across {len(affected_bodies)} body(s)",
+            f"Deleted {len(targets)} EFX_ATTRIBUTE(s) across {len(affected_bodies)} entry(s)",
         )
         return {"FINISHED"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_OT_delete_play
+# EFX_OT_delete_action
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_OT_delete_play(bpy.types.Operator):
-    """删除所有选中的 EFX_PLAY，重排剩余 play"""
+class EFX_OT_delete_action(bpy.types.Operator):
+    """删除所有选中的 EFX_ACTION，重排剩余 action"""
 
-    bl_idname      = "efx.delete_play"
-    bl_label       = "Delete Play"
-    bl_description = "Delete all selected EFX_PLAY objects; remaining plays are renumbered consecutively"
+    bl_idname      = "efx.delete_action"
+    bl_label       = "Delete Action"
+    bl_description = "Delete all selected EFX_ACTION objects; remaining actions are renumbered consecutively"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -250,7 +250,7 @@ class EFX_OT_delete_play(bpy.types.Operator):
         obj = context.active_object
         return (
             obj is not None
-            and obj.get("~TYPE") == "EFX_PLAY"
+            and obj.get("~TYPE") == "EFX_ACTION"
             and obj.parent is not None
         )
 
@@ -261,10 +261,10 @@ class EFX_OT_delete_play(bpy.types.Operator):
         active = context.active_object
         root = active.parent  # EFX_ROOT
 
-        # 收集选中的同 root 下所有 EFX_PLAY；未多选时退化为只删 active
+        # 收集选中的同 root 下所有 EFX_ACTION；未多选时退化为只删 active
         targets = [
             o for o in context.selected_objects
-            if o.get("~TYPE") == "EFX_PLAY" and o.parent == root
+            if o.get("~TYPE") == "EFX_ACTION" and o.parent == root
         ]
         if not targets:
             targets = [active]
@@ -272,14 +272,14 @@ class EFX_OT_delete_play(bpy.types.Operator):
         for obj in targets:
             bpy.data.objects.remove(obj, do_unlink=True)
 
-        remaining = _reindex_siblings(root, "EFX_PLAY", _rebuild_play_name)
+        remaining = _reindex_siblings(root, "EFX_ACTION", _rebuild_action_name)
 
-        # play 计数变 → 标签表变
+        # action 计数变 → 标签表变
         root["labels_dirty"] = 1
 
         self.report(
             {"INFO"},
-            f"Deleted {len(targets)} EFX_PLAY(s), {remaining} play(s) remaining",
+            f"Deleted {len(targets)} EFX_ACTION(s), {remaining} action(s) remaining",
         )
         return {"FINISHED"}
 
@@ -289,13 +289,13 @@ class EFX_OT_delete_play(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_delete_extern(bpy.types.Operator):
-    """删除所有选中的 EFX_EXTERN，重排剩余 extern（被引用的块指针变悬空，由校验报告）"""
+    """删除所有选中的 EFX_EXTERN，重排剩余 extern（被引用的属性指针变悬空，由校验报告）"""
 
     bl_idname      = "efx.delete_extern"
     bl_label       = "Delete Extern"
     bl_description = (
         "Delete all selected EFX_EXTERN objects; remaining externs are renumbered consecutively. "
-        "Note: pointers referenced by ExternReference blocks will dangle (check with pre-export validation)"
+        "Note: pointers referenced by ExternReference attributes will dangle (check with pre-export validation)"
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -323,8 +323,8 @@ class EFX_OT_delete_extern(bpy.types.Operator):
         if not targets:
             targets = [active]
 
-        # ⚠ Extern 多对一：被多个 EXTERNREFERENCE 块引用的对象删除后，
-        # 这些块的 extern_ref_ptr 变 None（悬空）——这是预期行为，由 #4 校验报告。
+        # ⚠ Extern 多对一：被多个 EXTERNREFERENCE 属性引用的对象删除后，
+        # 这些属性的 extern_ref_ptr 变 None（悬空）——这是预期行为，由 #4 校验报告。
         # 删除算子不主动清理引用。
         for obj in targets:
             bpy.data.objects.remove(obj, do_unlink=True)
@@ -398,9 +398,9 @@ class EFX_OT_delete_subselect(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CLASSES = (
-    EFX_OT_delete_body,
-    EFX_OT_delete_block,
-    EFX_OT_delete_play,
+    EFX_OT_delete_entry,
+    EFX_OT_delete_attribute,
+    EFX_OT_delete_action,
     EFX_OT_delete_extern,
     EFX_OT_delete_subselect,
 )

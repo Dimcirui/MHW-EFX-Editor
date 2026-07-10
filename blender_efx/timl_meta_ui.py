@@ -1,11 +1,11 @@
 """
 blender_efx/timl_meta_ui.py  —  TIML 头部元字段编辑（Dope Sheet 侧栏「EFX TIML」）
 
-直接编辑选中 EFX_BODY 的 TIML 头部元字段（无需任何外部工具）：
+直接编辑选中 EFX_ENTRY 的 TIML 头部元字段（无需任何外部工具）：
 
   - Animation Length（每条动画）—— 可内联编辑 + 「贴合最后关键帧」按钮（grow-only）。
   - Loop Control —— 四值英文下拉（No Loop / Loop / Unkn / Unkn Loop）。
-  - 「编辑时自动增长长度」开关（per-body，默认开）—— TIML 回写/导入时把长度增长到末关键帧。
+  - 「编辑时自动增长长度」开关（per-entry，默认开）—— TIML 回写/导入时把长度增长到末关键帧。
 
 实现要点
 --------
@@ -30,32 +30,32 @@ from ..efx_format import timl as _timl   # 完整解析/序列化（animation �
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# body 解析 / timl_bytes 读写
+# entry 解析 / timl_bytes 读写
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _resolve_active_body(obj):
-    """从活动对象解析所属 EFX_BODY：自身是 body 即取，否则沿 parent 上溯。"""
+def _resolve_active_entry(obj):
+    """从活动对象解析所属 EFX_ENTRY：自身是 entry 即取，否则沿 parent 上溯。"""
     cur = obj
     while cur is not None:
-        if cur.get("~TYPE") == "EFX_BODY":
+        if cur.get("~TYPE") == "EFX_ENTRY":
             return cur
         cur = cur.parent
     return None
 
 
-def _body_timl_bytes(body) -> bytes:
+def _entry_timl_bytes(body) -> bytes:
     try:
         return base64.b64decode(str(body.get("timl_bytes", "")))
     except Exception:
         return b""
 
 
-def _active_body():
-    """当前活动对象解析出的、带非空 TIML 的 EFX_BODY；否则 None。"""
-    body = _resolve_active_body(bpy.context.active_object)
+def _active_entry():
+    """当前活动对象解析出的、带非空 TIML 的 EFX_ENTRY；否则 None。"""
+    body = _resolve_active_entry(bpy.context.active_object)
     if body is None:
         return None
-    tb = _body_timl_bytes(body)
+    tb = _entry_timl_bytes(body)
     if not tm.is_timl(tb):
         return None
     return body
@@ -70,7 +70,7 @@ def _store_timl(body, data: bytes):
 # get/set 回调工厂（按 anim_index 绑定，挂在 WindowManager 上，瞬态不保存）
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 会话内：取活动 body 在 TIML 编辑会话中的 (entry, 内存模型 TimlData|None)；不在会话→(None, None)。
+# 会话内：取活动 entry 在 TIML 编辑会话中的 (entry, 内存模型 TimlData|None)；不在会话→(None, None)。
 # 会话进行中元字段(长度/循环)读写直接走内存模型 entry["timl"]，Apply 才落字节（与轨道增删一致）。
 def _session_anim(body, idx):
     try:
@@ -88,13 +88,13 @@ def _session_anim(body, idx):
 
 def _make_length_get(idx):
     def _get(self):
-        body = _active_body()
+        body = _active_entry()
         if body is None:
             return 0.0
         entry, anim = _session_anim(body, idx)
         if entry is not None:
             return float(anim.animation_length) if anim is not None else 0.0
-        anims = tm.parse_animations(_body_timl_bytes(body))
+        anims = tm.parse_animations(_entry_timl_bytes(body))
         if idx < len(anims):
             return float(anims[idx].animation_length)
         return 0.0
@@ -103,7 +103,7 @@ def _make_length_get(idx):
 
 def _make_length_set(idx):
     def _set(self, value):
-        body = _active_body()
+        body = _active_entry()
         if body is None:
             return
         entry, anim = _session_anim(body, idx)
@@ -113,7 +113,7 @@ def _make_length_set(idx):
                 from . import timl_edit as _te
                 _te.session_mark_edited(entry)
             return
-        data = _body_timl_bytes(body)
+        data = _entry_timl_bytes(body)
         new = tm.set_animation_length(data, idx, value)
         if new != data:
             _store_timl(body, new)
@@ -122,14 +122,14 @@ def _make_length_set(idx):
 
 def _make_loop_get(idx):
     def _get(self):
-        body = _active_body()
+        body = _active_entry()
         if body is None:
             return 0
         entry, anim = _session_anim(body, idx)
         if entry is not None:
             v = int(anim.loop_control) if anim is not None else 0
             return v if v in tm.LOOP_CONTROL_VALUES else 0
-        anims = tm.parse_animations(_body_timl_bytes(body))
+        anims = tm.parse_animations(_entry_timl_bytes(body))
         if idx < len(anims):
             v = int(anims[idx].loop_control)
             return v if v in tm.LOOP_CONTROL_VALUES else 0
@@ -139,7 +139,7 @@ def _make_loop_get(idx):
 
 def _make_loop_set(idx):
     def _set(self, value):
-        body = _active_body()
+        body = _active_entry()
         if body is None:
             return
         entry, anim = _session_anim(body, idx)
@@ -149,7 +149,7 @@ def _make_loop_set(idx):
                 from . import timl_edit as _te
                 _te.session_mark_edited(entry)
             return
-        data = _body_timl_bytes(body)
+        data = _entry_timl_bytes(body)
         new = tm.set_loop_control(data, idx, int(value))
         if new != data:
             _store_timl(body, new)
@@ -158,13 +158,13 @@ def _make_loop_set(idx):
 
 def _make_loopstart_get(idx):
     def _get(self):
-        body = _active_body()
+        body = _active_entry()
         if body is None:
             return 0.0
         entry, anim = _session_anim(body, idx)
         if entry is not None:
             return float(anim.loop_start_point) if anim is not None else 0.0
-        anims = tm.parse_animations(_body_timl_bytes(body))
+        anims = tm.parse_animations(_entry_timl_bytes(body))
         if idx < len(anims):
             return float(anims[idx].loop_start_point)
         return 0.0
@@ -173,7 +173,7 @@ def _make_loopstart_get(idx):
 
 def _make_loopstart_set(idx):
     def _set(self, value):
-        body = _active_body()
+        body = _active_entry()
         if body is None:
             return
         entry, anim = _session_anim(body, idx)
@@ -183,7 +183,7 @@ def _make_loopstart_set(idx):
                 from . import timl_edit as _te
                 _te.session_mark_edited(entry)
             return
-        data = _body_timl_bytes(body)
+        data = _entry_timl_bytes(body)
         new = tm.set_loop_start_point(data, idx, value)
         if new != data:
             _store_timl(body, new)
@@ -226,12 +226,12 @@ class EFX_OT_timlm_fit_last_keyframe(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_body() is not None
+        return _active_entry() is not None
 
     def execute(self, context):
-        body = _active_body()
+        body = _active_entry()
         if body is None:
-            self.report({"ERROR"}, T("timlm.no_body"))
+            self.report({"ERROR"}, T("timlm.no_entry"))
             return {"CANCELLED"}
         lk = _live_last_kf(body, self.anim_index)
         if lk is None:
@@ -249,7 +249,7 @@ class EFX_OT_timlm_fit_last_keyframe(Operator):
             _te.session_mark_edited(entry)
             self.report({"INFO"}, T("timlm.last_kf").format(f=lk))
             return {"FINISHED"}
-        data = _body_timl_bytes(body)
+        data = _entry_timl_bytes(body)
         anims = tm.parse_animations(data)
         cur = anims[self.anim_index].animation_length if self.anim_index < len(anims) else 0.0
         if lk <= cur:
@@ -285,10 +285,10 @@ class EFX_OT_timlm_enable_axis(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_body() is not None   # 会话内/外均可
+        return _active_entry() is not None   # 会话内/外均可
 
     def execute(self, context):
-        body = _active_body()
+        body = _active_entry()
         if body is None:
             return {"CANCELLED"}
         import copy
@@ -303,7 +303,7 @@ class EFX_OT_timlm_enable_axis(Operator):
             _te.session_capture(entry)
             t = entry["timl"]
         else:
-            t = _timl.parse_timl(_body_timl_bytes(body))
+            t = _timl.parse_timl(_entry_timl_bytes(body))
         if t is None:
             return {"CANCELLED"}
         slot = max(0, min(self.slot, 1))
@@ -334,10 +334,10 @@ class EFX_OT_timlm_clear_axis(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_body() is not None
+        return _active_entry() is not None
 
     def execute(self, context):
-        body = _active_body()
+        body = _active_entry()
         if body is None:
             return {"CANCELLED"}
         entry = None
@@ -350,7 +350,7 @@ class EFX_OT_timlm_clear_axis(Operator):
             _te.session_capture(entry)
             t = entry["timl"]
         else:
-            t = _timl.parse_timl(_body_timl_bytes(body))
+            t = _timl.parse_timl(_entry_timl_bytes(body))
         if t is None:
             return {"CANCELLED"}
         slot = self.slot
@@ -382,7 +382,7 @@ def _live_axis_present(body):
         m = None
     if m is not None:
         return [(s < len(m.animations) and m.animations[s] is not None) for s in (0, 1)]
-    anims = tm.parse_animations(_body_timl_bytes(body))
+    anims = tm.parse_animations(_entry_timl_bytes(body))
     return [_axis_present(anims, s) for s in (0, 1)]
 
 
@@ -403,25 +403,25 @@ def _live_last_kf(body, slot):
                             mx = kf.frame_timing
             return mx
         return None
-    return tm.last_keyframe_time(_body_timl_bytes(body), slot)
+    return tm.last_keyframe_time(_entry_timl_bytes(body), slot)
 
 
 def _draw_meta_panel(layout, context):
-    body = _active_body()
+    body = _active_entry()
     if body is None:
-        # 区分"没选 body"和"选了但没 TIML"
-        raw = _resolve_active_body(context.active_object)
+        # 区分"没选 entry"和"选了但没 TIML"
+        raw = _resolve_active_entry(context.active_object)
         if raw is not None:
             layout.label(text=T("timlm.no_timl"), icon="DOT")
         else:
-            layout.label(text=T("timlm.no_body"), icon="INFO")
+            layout.label(text=T("timlm.no_entry"), icon="INFO")
         return
 
     wm = context.window_manager
     edit_active = _edit_active()
     present = _live_axis_present(body)
 
-    # per-body 自动增长开关
+    # per-entry 自动增长开关
     layout.prop(body, "efx_timl_auto_grow", text=T("timlm.auto_grow"))
     if edit_active:
         # 通道编辑进行中：在此直接切 A0/A1/All 焦点（live 重建）
@@ -515,7 +515,7 @@ def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
-    # per-body 自动增长开关（保存在 body 对象上，默认开）
+    # per-entry 自动增长开关（保存在 entry 对象上，默认开）
     bpy.types.Object.efx_timl_auto_grow = bpy.props.BoolProperty(
         name="Auto-grow length on edit",
         description=T("timlm.auto_grow_desc"),

@@ -173,17 +173,17 @@ def register():
         bpy.utils.register_class(cls)
     S = bpy.types.Scene
     S.efx_prev_scope_all = BoolProperty(
-        name="All bodies in this EFX",
-        description="Apply preview to every body in the current EFX (else active only)",
+        name="All entries in this EFX",
+        description="Apply preview to every entry in the current EFX (else active only)",
         default=False)
     S.efx_prev_t_uvc = BoolProperty(name="UVCONTROL UV scroll", default=True,
-                                    description="Previews ONLY UVCONTROL blocks' UV scroll (drives the bound mesh's Mapping node during playback)")
+                                    description="Previews ONLY UVCONTROL attributes' UV scroll (drives the bound mesh's Mapping node during playback)")
     S.efx_prev_t_timl = BoolProperty(name="TIML transform playback", default=True,
                                      description="Plays the TIML transform3d animation in the viewport (read-only here; edits are discarded on exit)")
     S.efx_prev_t_mesh = BoolProperty(name="Mesh placement", default=False,
                                      description="Places bound mesh instances by TRANSFORM3D + MESH rotation/scale (static placement, re-aligns live when those fields are edited)")
     S.efx_prev_t_es3d = BoolProperty(name="EmitterShape3D shape", default=False,
-                                     description="Shows a transparent shape (cube/sphere/ring/spot) for each EmitterShape3D block, sized by its fields (live update when edited)")
+                                     description="Shows a transparent shape (cube/sphere/ring/spot) for each EmitterShape3D attribute, sized by its fields (live update when edited)")
 
 
 def unregister():

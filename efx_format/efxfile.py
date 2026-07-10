@@ -636,8 +636,8 @@ class EFXHeader:
 
 
 @dataclass
-class PlayEntry:
-    """One entry within a PlayData block: either PlayEFX or PlayEmitter."""
+class ActionEntry:
+    """One entry within a ActionData block: either PlayEFX or PlayEmitter."""
     type_hash: int
     raw: bytes  # the entry bytes EXCLUDING the 4-byte type_hash prefix
 
@@ -646,10 +646,10 @@ class PlayEntry:
 
 
 @dataclass
-class PlayData:
+class ActionData:
     """One countPlay entry in the Play section."""
-    play_type: int      # the 'long type' of PlayData
-    entries: List[PlayEntry]
+    play_type: int      # the 'long type' of ActionData
+    entries: List[ActionEntry]
 
     def serialize(self) -> bytes:
         out = struct.pack('<Ii', self.play_type, len(self.entries))
@@ -787,7 +787,7 @@ class AttrBlock:
 
 
 @dataclass
-class MainDataBody:
+class EntryData:
     """A Main_Data body (non-Root)."""
     body_type: int          # type hash (= jamcrc32 of label)
     unkn0: int
@@ -809,7 +809,7 @@ class MainDataBody:
 
 
 @dataclass
-class MainDataBodyExtended:
+class EntryDataExtended:
     """
     A Main_Data body with an extended 36-byte header (body_type == 1).
 
@@ -941,9 +941,9 @@ class EFXFile:
         self.header: EFXHeader = None
         self.label_bytes: bytes = b''         # raw EFX_Type section
         self.labels: List[str] = []
-        self.play: List[PlayData] = []
+        self.play: List[ActionData] = []
         self.extern: List[ExternAttribute] = []
-        self.main: List = []                  # List[MainDataBody | RootBody]
+        self.main: List = []                  # List[EntryData | RootBody]
         self.subselect: List[SubselectTable] = []
         self.eof_ints: List[int] = []
         self.eof_tail: bytes = b''     # eof 之后的不透明尾字节（部分游戏文件有，如 4 字节 footer）
@@ -1056,7 +1056,7 @@ class EFXFile:
 
     @staticmethod
     def _parse_play(data: bytes, pos: int, count: int):
-        """Parse countPlay PlayData entries."""
+        """Parse countPlay ActionData entries."""
         results = []
         for _ in range(count):
             play_type = struct.unpack_from('<I', data, pos)[0]
@@ -1087,8 +1087,8 @@ class EFXFile:
                     raise ValueError(
                         f'Unknown Play typeHash 0x{type_hash:08X} at offset {pos-4}'
                     )
-                entries.append(PlayEntry(type_hash=type_hash, raw=entry_raw))
-            results.append(PlayData(play_type=play_type, entries=entries))
+                entries.append(ActionEntry(type_hash=type_hash, raw=entry_raw))
+            results.append(ActionData(play_type=play_type, entries=entries))
         return results, pos
 
     @staticmethod
@@ -1366,7 +1366,7 @@ class EFXFile:
 
             attr_blocks, pos = EFXFile._parse_attr_blocks(data, pos, attr_count)
 
-            return MainDataBodyExtended(
+            return EntryDataExtended(
                 body_type=body_type, unkn0=unkn0, null0=null0, null1=null1,
                 unkn1=unkn1, unkn2=unkn2, attr_count=attr_count, null2=null2,
                 timl_length=timl_length, timl_bytes=timl_bytes,
@@ -1387,7 +1387,7 @@ class EFXFile:
         # Attribute blocks
         attr_blocks, pos = EFXFile._parse_attr_blocks(data, pos, attr_count)
 
-        return MainDataBody(
+        return EntryData(
             body_type=body_type, unkn0=unkn0, attr_count=attr_count,
             null=null, timl_length=timl_length,
             timl_bytes=timl_bytes, attr_blocks=attr_blocks,

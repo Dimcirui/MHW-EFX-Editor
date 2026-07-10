@@ -94,18 +94,18 @@ def _fixed3(float6_value):
     return (v[0], v[2], v[4])
 
 
-# ── 取块/字段 ─────────────────────────────────────────────────────────────────
+# ── 取属性/字段 ─────────────────────────────────────────────────────────────────
 
-def _iter_body_blocks(body_obj):
-    """枚举 body 下的 EFX_BLOCK 子对象。"""
+def _iter_entry_attributes(entry_obj):
+    """枚举 entry 下的 EFX_ATTRIBUTE 子对象。"""
     for blk in bpy.data.objects:
-        if blk.parent is body_obj and blk.get("~TYPE") == "EFX_BLOCK":
+        if blk.parent is entry_obj and blk.get("~TYPE") == "EFX_ATTRIBUTE":
             yield blk
 
 
-def _block_of_type(body_obj, type_hash):
-    """返回 body 下第一个指定 type_hash 的 EFX_BLOCK（无则 None）。"""
-    for blk in _iter_body_blocks(body_obj):
+def _attribute_of_type(entry_obj, type_hash):
+    """返回 entry 下第一个指定 type_hash 的 EFX_ATTRIBUTE（无则 None）。"""
+    for blk in _iter_entry_attributes(entry_obj):
         try:
             if int(blk.efx_block.type_hash_str) == type_hash:
                 return blk
@@ -114,9 +114,9 @@ def _block_of_type(body_obj, type_hash):
     return None
 
 
-def _body_bone_lim(body_obj):
-    """读 body 的 PARENTOPTIONS.bone_lim（int）；无 PARENTOPTIONS/字段 → None。"""
-    po = _block_of_type(body_obj, _parentopts_hash())
+def _entry_bone_lim(entry_obj):
+    """读 entry 的 PARENTOPTIONS.bone_lim（int）；无 PARENTOPTIONS/字段 → None。"""
+    po = _attribute_of_type(entry_obj, _parentopts_hash())
     if po is None:
         return None
     try:
@@ -128,12 +128,12 @@ def _body_bone_lim(body_obj):
     return None
 
 
-def _t3d_local_matrix(t3d_block):
+def _t3d_local_matrix(t3d_attribute):
     """把 TRANSFORM3D 块的 translate/rotate/resize 组装成 Blender 世界空间变换矩阵。
     使用 game→Blender 轴交换（M_G2B），适用于无骨骼基准的情形。"""
     vals = {}
     try:
-        for it in t3d_block.efx_block.field_items:
+        for it in t3d_attribute.efx_block.field_items:
             if it.ori_name in ("translate", "rotate", "resize") and it.data_type == "FLOAT6":
                 vals[it.ori_name] = _fixed3(it.float6_value)
     except Exception:
@@ -178,71 +178,71 @@ def bone_base_matrix(armature_obj, bone_lim):
     return armature_obj.matrix_world @ bone.matrix_local
 
 
-# ── 应用到单个 body ──────────────────────────────────────────────────────────
+# ── 应用到单个 entry ──────────────────────────────────────────────────────────
 
-def apply_body_transform(body_obj, armature_obj=None, base_override=None) -> bool:
+def apply_entry_transform(entry_obj, armature_obj=None, base_override=None) -> bool:
     """
-    按 body 的 TRANSFORM3D（基础变换）+ PARENTOPTIONS（bone_lim 绑定骨骼）
-    计算 body empty 的 matrix_world 并写入。返回是否成功。
+    按 entry 的 TRANSFORM3D（基础变换）+ PARENTOPTIONS（bone_lim 绑定骨骼）
+    计算 entry empty 的 matrix_world 并写入。返回是否成功。
 
-    base_override：锚定机制传入「基点 body 的 matrix_world」。提供时它**优先于**骨骼
-    （锚定 body 间接继承基点 body 的位置）。
+    base_override：锚定机制传入「基点 entry 的 matrix_world」。提供时它**优先于**骨骼
+    （锚定 entry 间接继承基点 entry 的位置）。
 
     ⚠ 三类基准都用 **M 共轭的 blender 局部** `_t3d_local_matrix`，局部朝向统一交给
     M_G2B 轴交换，与无骨骼路径一致 —— 关键是基准只贡献**位置**，不贡献朝向：
       - 骨骼基准：只取骨骼世界位置(head)，**不继承骨骼 rest 朝向**（与 uvc_preview 同款）。
         Blender 骨骼默认沿 +Y，指向 +Z 的 MhBone 其 matrix_local 内嵌 +90°X 伪旋转，
-        整体继承会让 body 平白绕 X 多转 90°（绑定竖直骨骼时尤其明显）。故只取 translation。
-      - 锚定基准：基点是另一个 EFX body 的 Blender 空间矩阵，同样用 blender 局部叠加。
+        整体继承会让 entry 平白绕 X 多转 90°（绑定竖直骨骼时尤其明显）。故只取 translation。
+      - 锚定基准：基点是另一个 EFX entry 的 Blender 空间矩阵，同样用 blender 局部叠加。
       - 无基准：直接 blender 局部（原有行为）。
     """
     try:
-        t3d = _block_of_type(body_obj, _t3d_hash())
+        t3d = _attribute_of_type(entry_obj, _t3d_hash())
         if t3d is None:
             return False
         local = _t3d_local_matrix(t3d)              # 统一：blender 空间（M 共轭）
         if local is None:
             return False
         if base_override is not None:
-            base = base_override                    # 锚定：继承基点 body 的完整矩阵
+            base = base_override                    # 锚定：继承基点 entry 的完整矩阵
         else:
-            bone = bone_base_matrix(armature_obj, _body_bone_lim(body_obj))
+            bone = bone_base_matrix(armature_obj, _entry_bone_lim(entry_obj))
             if bone is not None:
                 base = Matrix.Translation(bone.to_translation())  # 只取骨骼 head 位置，不继承朝向
             else:
                 base = None
-        body_obj.matrix_world = (base @ local) if base is not None else local
+        entry_obj.matrix_world = (base @ local) if base is not None else local
         return True
     except Exception:
         return False
 
 
-# ── 锚定机制：A 只被一个 action 调用、该 action 只被一个 body B 触发 → A 以 B 为基点 ──
+# ── 锚定机制：A 只被一个 action 调用、该 action 只被一个 entry B 触发 → A 以 B 为基点 ──
 
 def _iter_root_bodies(root_obj):
     for b in bpy.data.objects:
-        if b.get("~TYPE") == "EFX_BODY" and b.parent is root_obj:
+        if b.get("~TYPE") == "EFX_ENTRY" and b.parent is root_obj:
             yield b
 
 
-def _iter_root_plays(root_obj):
+def _iter_root_actions(root_obj):
     for p in bpy.data.objects:
-        if p.get("~TYPE") == "EFX_PLAY" and p.parent is root_obj:
+        if p.get("~TYPE") == "EFX_ACTION" and p.parent is root_obj:
             yield p
 
 
 def build_anchor_map(root_obj):
-    """构建 body→anchor_body 映射（实现用户规则）。
+    """构建 entry→anchor_entry 映射（实现用户规则）。
 
-    规则：bodyA 仅被一个 play 调用（出现在恰好一个 play 的 PlayEmitter targets 里），
-    且该 play 仅被一个 bodyB 触发（恰好一个 body 的 PTLIFE.relation_play_ptr 指向它），
+    规则：entryA 仅被一个 action 调用（出现在恰好一个 action 的 PlayEmitter targets 里），
+    且该 action 仅被一个 entryB 触发（恰好一个 entry 的 PTLIFE.relation_play_ptr 指向它），
     则 anchor[A] = B。
     """
     from ..efx_format.hashes import PTLIFE
 
-    # play → 它调用的 body 集合；body → 调用它的 play 集合
+    # action → 它调用的 entry 集合；entry → 调用它的 action 集合
     callers = {}   # body → set(play)
-    for play in _iter_root_plays(root_obj):
+    for play in _iter_root_actions(root_obj):
         pp = getattr(play, "efx_play", None)
         if pp is None:
             continue
@@ -254,10 +254,10 @@ def build_anchor_map(root_obj):
                 if body is not None:
                     callers.setdefault(body, set()).add(play)
 
-    # play → 触发它的 body 集合（body 的 PTLIFE.relation_play_ptr）
+    # action → 触发它的 entry 集合（entry 的 PTLIFE.relation_play_ptr）
     triggers = {}  # play → set(body)
     for body in _iter_root_bodies(root_obj):
-        for blk in _iter_body_blocks(body):
+        for blk in _iter_entry_attributes(body):
             try:
                 if int(blk.efx_block.type_hash_str) != PTLIFE:
                     continue
@@ -285,7 +285,7 @@ def build_anchor_map(root_obj):
 
 
 def _resolve_order(bodies, anchor):
-    """对 bodies 做拓扑序：anchor 基点排在被锚 body 之前；环检测兜底（环内按原序、不锚）。"""
+    """对 entries 做拓扑序：anchor 基点排在被锚 entry 之前；环检测兜底（环内按原序、不锚）。"""
     ordered = []
     placed = set()
 
@@ -308,31 +308,31 @@ def _resolve_order(bodies, anchor):
     return ordered
 
 
-def place_single_body(body_obj, armature_obj=None, use_anchor=True) -> bool:
-    """摆放单个 body（锚定感知）。供字段实时编辑回调用：编辑 TRANSFORM3D 时若该 body
-    满足锚定规则，仍以基点 body 为基准，而非掉回自身骨骼/原点。
+def place_single_entry(entry_obj, armature_obj=None, use_anchor=True) -> bool:
+    """摆放单个 entry（锚定感知）。供字段实时编辑回调用：编辑 TRANSFORM3D 时若该 entry
+    满足锚定规则，仍以基点 entry 为基准，而非掉回自身骨骼/原点。
 
-    基点 body 的位置取其当前 matrix_world（编辑的是被锚 body，自身基点未动 → 有效）。
+    基点 entry 的位置取其当前 matrix_world（编辑的是被锚 entry，自身基点未动 → 有效）。
     """
     base_override = None
     if use_anchor:
-        root = body_obj.parent
+        root = entry_obj.parent
         if root is not None and root.get("~TYPE") == "EFX_ROOT":
             try:
-                a = build_anchor_map(root).get(body_obj)
+                a = build_anchor_map(root).get(entry_obj)
                 if a is not None:
                     base_override = a.matrix_world.copy()
             except Exception:
                 base_override = None
-    return apply_body_transform(body_obj, armature_obj, base_override=base_override)
+    return apply_entry_transform(entry_obj, armature_obj, base_override=base_override)
 
 
 def sync_all_transform3d(root_obj, armature_obj=None, use_anchor=True) -> int:
     """
-    对 root_obj 下所有 EFX_BODY，按 TRANSFORM3D + bone_lim 摆位。返回处理数量。
+    对 root_obj 下所有 EFX_ENTRY，按 TRANSFORM3D + bone_lim 摆位。返回处理数量。
     供导入后一次性摆位、以及"刷新特效体位置"算子调用。
 
-    use_anchor=True 时启用锚定机制：满足规则的 body 以基点 body 的最终位置为基准
+    use_anchor=True 时启用锚定机制：满足规则的 entry 以基点 entry 的最终位置为基准
     （优先于自身骨骼），并按依赖顺序摆位确保基点先就位。
     """
     bodies = list(_iter_root_bodies(root_obj))
@@ -347,7 +347,7 @@ def sync_all_transform3d(root_obj, armature_obj=None, use_anchor=True) -> int:
         a = anchor.get(body)
         if a is not None and a in seen:
             base_override = a.matrix_world.copy()
-        if apply_body_transform(body, armature_obj, base_override=base_override):
+        if apply_entry_transform(body, armature_obj, base_override=base_override):
             n += 1
         seen.add(body)
     return n
@@ -359,8 +359,8 @@ class EFX_OT_sync_transform(bpy.types.Operator):
     """按 TRANSFORM3D + 绑定骨骼(bone_lim) 重新计算并摆放所有特效体（视口可视化，不影响导出）"""
 
     bl_idname      = "efx.sync_transform_to_view"
-    bl_label       = "Refresh Body Positions"
-    bl_description = ("Recompute every body's position from its TRANSFORM3D and bound bone "
+    bl_label       = "Refresh Entry Positions"
+    bl_description = ("Recompute every entry's position from its TRANSFORM3D and bound bone "
                       "(PARENTOPTIONS.bone_lim) using the selected armature (visual only, not written to file)")
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -381,7 +381,7 @@ class EFX_OT_sync_transform(bpy.types.Operator):
         armature = getattr(context.scene, "efx_armature", None)
         use_anchor = getattr(context.scene, "efx_anchor_placement", True)
         n = sync_all_transform3d(root, armature, use_anchor=use_anchor)
-        self.report({"INFO"}, f"Refreshed {n} body position(s)")
+        self.report({"INFO"}, f"Refreshed {n} entry position(s)")
         return {"FINISHED"}
 
 
@@ -398,13 +398,13 @@ def register():
         bpy.utils.register_class(cls)
     bpy.types.Scene.efx_armature = bpy.props.PointerProperty(
         name="Armature",
-        description="Skeleton used to position effect bodies by their bound bone (PARENTOPTIONS.bone_lim → MhBone_NNN)",
+        description="Skeleton used to position effect entries by their bound bone (PARENTOPTIONS.bone_lim → MhBone_NNN)",
         type=bpy.types.Object,
         poll=_armature_poll,
     )
     bpy.types.Scene.efx_anchor_placement = bpy.props.BoolProperty(
-        name="Anchor to triggering body",
-        description="定位时：若某 body 只被一个 action 调用、且该 action 只被一个 body 触发，"
+        name="Anchor to triggering entry",
+        description="定位时：若某 entry 只被一个 action 调用、且该 action 只被一个 entry 触发，"
                     "则前者以后者为基点（优先于自身绑定骨骼）。默认开",
         default=True,
     )

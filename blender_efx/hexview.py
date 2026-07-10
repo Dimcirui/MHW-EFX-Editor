@@ -1,12 +1,12 @@
 """
 blender_efx/hexview.py  —  只读整块 16 进制查看器
 
-为 opaque / 路径-only / 任意 EFX 块（及 opaque 的 root/unknown body）提供
+为 opaque / 路径-only / 任意 EFX 属性（及 opaque 的 root/unknown entry）提供
 只读的十六进制 dump 视图，便于检查那些尚未字段化的原始字节
 （MATERIAL / PTBEHAVIOR / TIML / 4 个退回路径-only 的 custom 类型 / RootBody 等）。
 
 设计：
-  - 面板 EFX_PT_hex_view（挂 EFX_PT_main，DEFAULT_CLOSED）——展开才渲染，避免大块卡顿。
+  - 面板 EFX_PT_hex_view（挂 EFX_PT_entry，DEFAULT_CLOSED）——展开才渲染，避免大块卡顿。
   - 面板内只显示前 _PANEL_MAX_BYTES 字节（截断提示），完整内容用"复制完整 hex"算子
     写入系统剪贴板（context.window_manager.clipboard），供外部 hex 工具粘贴。
   - 纯只读：不参与导出、不改任何字节。
@@ -33,26 +33,26 @@ def _get_object_raw_bytes(obj):
     """
     按 ~TYPE 返回该对象的原始字节（用于 hex 显示），取不到返回 None。
 
-      - EFX_BLOCK            → efx_block.raw_b64（导入时写入的原始 data_bytes）
-      - EFX_BODY(root/unknown) → obj["raw"]（opaque body 整段）
-      - EFX_PLAY / EFX_EXTERN → obj["raw_b64"]
+      - EFX_ATTRIBUTE            → efx_block.raw_b64（导入时写入的原始 data_bytes）
+      - EFX_ENTRY(root/unknown) → obj["raw"]（opaque entry 整段）
+      - EFX_ACTION / EFX_EXTERN → obj["raw_b64"]
     """
     if obj is None:
         return None
     t = obj.get("~TYPE")
     try:
-        if t == "EFX_BLOCK":
+        if t == "EFX_ATTRIBUTE":
             bp = obj.efx_block
             if bp.raw_b64:
                 return base64.b64decode(bp.raw_b64)
             # 回退：自定义属性 data_bytes
             if obj.get("data_bytes"):
                 return base64.b64decode(str(obj["data_bytes"]))
-        elif t == "EFX_BODY":
-            kind = str(obj.get("body_kind", ""))
+        elif t == "EFX_ENTRY":
+            kind = str(obj.get("entry_kind", ""))
             if kind in ("root", "unknown") and obj.get("raw"):
                 return base64.b64decode(str(obj["raw"]))
-        elif t in ("EFX_PLAY", "EFX_EXTERN"):
+        elif t in ("EFX_ACTION", "EFX_EXTERN"):
             if obj.get("raw_b64"):
                 return base64.b64decode(str(obj["raw_b64"]))
     except Exception:
@@ -117,26 +117,26 @@ def _parse_pure_hex(text: str):
 def _set_object_raw_bytes(obj, new_bytes: bytes) -> bool:
     """
     把 new_bytes 写回对象的原始字节存储（供导出使用）。仅支持安全的目标：
-      - EFX_BLOCK            → 写 obj["data_bytes"] + 重跑 init_block_props 重建字段模型，
+      - EFX_ATTRIBUTE            → 写 obj["data_bytes"] + 重跑 init_attribute_props 重建字段模型，
                                efx_dirty=False（导出走"非 dirty → raw data_bytes"路径）。
-      - EFX_BODY(root/unknown) → 写 obj["raw"]。
+      - EFX_ENTRY(root/unknown) → 写 obj["raw"]。
       - EFX_EXTERN           → 写 obj["raw_b64"]（导出直接用 raw_b64）。
-    EFX_PLAY 不支持（结构化导出可能覆盖 raw）→ 返回 False。
+    EFX_ACTION 不支持（结构化导出可能覆盖 raw）→ 返回 False。
     返回是否成功写回。
     """
     t = obj.get("~TYPE")
     b64 = base64.b64encode(new_bytes).decode("ascii")
     try:
-        if t == "EFX_BLOCK":
+        if t == "EFX_ATTRIBUTE":
             obj["data_bytes"] = b64
             # 重建字段模型（raw_b64 + field_items + extern_ref），并清 dirty
-            from .fields import init_block_props
+            from .fields import init_attribute_props
             from ..efx_format.efxfile import AttrBlock
             th = int(obj.efx_block.type_hash_str)
-            init_block_props(obj, AttrBlock(type_hash=th, data_bytes=new_bytes))
+            init_attribute_props(obj, AttrBlock(type_hash=th, data_bytes=new_bytes))
             obj.efx_block.efx_dirty = False
             return True
-        elif t == "EFX_BODY" and str(obj.get("body_kind", "")) in ("root", "unknown"):
+        elif t == "EFX_ENTRY" and str(obj.get("entry_kind", "")) in ("root", "unknown"):
             obj["raw"] = b64
             return True
         elif t == "EFX_EXTERN":
@@ -152,9 +152,9 @@ def _paste_supported(obj) -> bool:
     if obj is None:
         return False
     t = obj.get("~TYPE")
-    if t == "EFX_BLOCK" or t == "EFX_EXTERN":
+    if t == "EFX_ATTRIBUTE" or t == "EFX_EXTERN":
         return True
-    if t == "EFX_BODY" and str(obj.get("body_kind", "")) in ("root", "unknown"):
+    if t == "EFX_ENTRY" and str(obj.get("entry_kind", "")) in ("root", "unknown"):
         return True
     return False
 
@@ -163,12 +163,12 @@ def _paste_supported(obj) -> bool:
 # 算子：复制完整 hex 到剪贴板
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_OT_copy_block_hex(bpy.types.Operator):
+class EFX_OT_copy_attribute_hex(bpy.types.Operator):
     """把当前对象的完整原始字节以纯 hex 文本复制到系统剪贴板（可编辑后粘回）"""
 
-    bl_idname      = "efx.copy_block_hex"
+    bl_idname      = "efx.copy_attribute_hex"
     bl_label       = "Copy Hex"
-    bl_description = "Copy the full raw bytes of the current EFX block/object (space-separated pure hex) to the clipboard; edit and write back with Paste Hex"
+    bl_description = "Copy the full raw bytes of the current EFX attribute/object (space-separated pure hex) to the clipboard; edit and write back with Paste Hex"
     bl_options     = {"REGISTER"}
 
     @classmethod
@@ -185,14 +185,14 @@ class EFX_OT_copy_block_hex(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class EFX_OT_paste_block_hex(bpy.types.Operator):
+class EFX_OT_paste_attribute_hex(bpy.types.Operator):
     """从剪贴板粘贴纯 hex 写回当前对象的原始字节（同长度覆盖）"""
 
-    bl_idname      = "efx.paste_block_hex"
+    bl_idname      = "efx.paste_attribute_hex"
     bl_label       = "Paste Hex"
     bl_description = (
         "Write the clipboard's pure hex (space-separated two-digit hex) back to the current object's raw bytes. "
-        "**Same-length overwrite only** (EFX blocks have no length field; changing the byte count breaks file structure)"
+        "**Same-length overwrite only** (EFX attributes have no length field; changing the byte count breaks file structure)"
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -265,9 +265,9 @@ class EFX_PT_hex_view(bpy.types.Panel):
         row = layout.row()
         row.label(text=f"{T('hex.total_length')}{total} {T('hex.bytes')}", icon="FILE_BLANK")
         btns = row.row(align=True)
-        btns.operator("efx.copy_block_hex", text=T("hex.copy_hex"), icon="COPYDOWN")
+        btns.operator("efx.copy_attribute_hex", text=T("hex.copy_hex"), icon="COPYDOWN")
         if _paste_supported(context.active_object):
-            btns.operator("efx.paste_block_hex", text=T("hex.paste_hex"), icon="PASTEDOWN")
+            btns.operator("efx.paste_attribute_hex", text=T("hex.paste_hex"), icon="PASTEDOWN")
 
         truncated = total > _PANEL_MAX_BYTES
         rows = _format_hex_rows(data, max_bytes=_PANEL_MAX_BYTES)
@@ -288,8 +288,8 @@ class EFX_PT_hex_view(bpy.types.Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CLASSES = (
-    EFX_OT_copy_block_hex,
-    EFX_OT_paste_block_hex,
+    EFX_OT_copy_attribute_hex,
+    EFX_OT_paste_attribute_hex,
     EFX_PT_hex_view,
 )
 

@@ -1,6 +1,6 @@
 """
 blender_efx/panels.py  —  L1.1a + L1.2 预设 UI + L1.3 BT 注释接入 + L1.4 预设面板重构
-                           + L1.5 块字段显示重设计（语义化绘制 + ctc 现代风 + 友好字段名）
+                           + L1.5 属性字段显示重设计（语义化绘制 + ctc 现代风 + 友好字段名）
 
 约束（参照 CLAUDE.md）：
   - Python 3.11 语法（目标 Blender 4.3.2）
@@ -10,10 +10,10 @@ blender_efx/panels.py  —  L1.1a + L1.2 预设 UI + L1.3 BT 注释接入 + L1.4
   - 不使用 5.x 新增 API
 
 L1.4 预设 UI 重构：
-  - EFX_PT_main 顶部：移除旧预设按钮，只保留 Import/Export。
-  - _draw_block_fields_content 底部：移除旧 _draw_preset_ui 嵌入调用。
-  - 新增独立可展开面板 EFX_PT_block_presets（VIEW_3D N 面板），
-    与块字段面板平级，poll 要求 is_editable=True 的 EFX_BLOCK。
+  - EFX_PT_entry 顶部：移除旧预设按钮，只保留 Import/Export。
+  - _draw_attribute_fields_content 底部：移除旧 _draw_preset_ui 嵌入调用。
+  - 新增独立可展开面板 EFX_PT_presets（VIEW_3D N 面板），
+    与属性字段面板平级，poll 要求 is_editable=True 的 EFX_ATTRIBUTE。
     （属性编辑器预设变体 _props/_object 已按设计理念移除，工具功能仅保留在 N 面板）
   - 新面板内容从上到下：
       1. Copy / Paste 按钮行（即时内存剪贴板）
@@ -34,7 +34,7 @@ L1.4 预设 UI 重构：
   COLOR_RGBA 同时用于 spec='colour'（真 RGBA）和 spec=('XYZ',2)（XYZ type 2，第4字节为 alpha）。
   两者绘制逻辑统一，alpha 通道对两类字段均可见可编辑。
 
-L1.5 块字段显示重设计：
+L1.5 属性字段显示重设计：
   - 友好字段名：下划线→空格、camelCase 拆词、首字母大写（仅显示，逻辑仍用 ori_name）。
   - FLOAT6（XYZ type 0，6个float，顺序=[fixed_x,random_x,fixed_y,random_y,fixed_z,random_z]）：
     字段名一行 + 3 行（X Fixed/Random、Y Fixed/Random、Z Fixed/Random），
@@ -49,26 +49,26 @@ L1.5 块字段显示重设计：
 import re
 import bpy
 from .subselect import EFX_PT_subselect        # L2 #1a：Subselect 归属面板
-from .play_emitter import EFX_PT_play          # L2 #1b：Play 数据面板
+from .action_emitter import EFX_PT_action          # L2 #1b：Action 数据面板
 from .extern_ref import EFX_PT_extern_ref      # L2 #1c：ExternReference 指针面板
-from .body_play_ref import (                   # L2 #1d：PtLife/PtCollision/eof_ints 指针面板
+from .entry_action_ref import (                   # L2 #1d：PtLife/PtCollision/eof_ints 指针面板
     EFX_PT_ptlife_ref,
     EFX_PT_ptcollision_ref,
     EFX_PT_eof_list,
-    EFX_OT_eof_toggle_body,
+    EFX_OT_eof_toggle_entry,
     EFX_OT_eof_remove_entry,
-    EFX_OT_eof_add_body,
-    is_body_in_eof,
+    EFX_OT_eof_add_entry,
+    is_entry_in_eof,
 )
 from .backref import (                          # L2 反向引用视图（只读）
     EFX_PT_extern_backref,
-    EFX_PT_body_backref,
+    EFX_PT_entry_backref,
     EFX_PT_root_states,
-    is_body_action_triggered,
-    classify_body_activation,
+    is_entry_action_triggered,
+    classify_entry_activation,
 )
 from .add_ops import get_active_efx_root
-# L2 #3a：重排面板（body + block 上移/下移按钮）
+# L2 #3a：重排面板（entry + attribute 上移/下移按钮）
 from . import reorder as _reorder
 # 中英双语化：T() 查表 + 语言切换行
 from . import i18n
@@ -167,7 +167,7 @@ _SCALAR_PROP_ATTR = {
 }
 
 
-# SPAWN 块中不符合 Jitter 后缀约定、但语义上是抖动字段的名称
+# SPAWN 属性中不符合 Jitter 后缀约定、但语义上是抖动字段的名称
 _SPAWN_JITTER_NAMES = frozenset({
     "randomizedSpawnsPerFrame",
     "randomizedDelay",
@@ -399,7 +399,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     elif dtype == "ARRAY_STR":
         split.prop(item, "array_str", text="")
     elif dtype == "OPAQUE":
-        # opaque hint 项（路径块的提示行，ori_name 以 '__' 开头）
+        # opaque hint 项（路径属性的提示行，ori_name 以 '__' 开头）
         if item.ori_name.startswith("__"):
             split.label(text=item.opaque_str)
         else:
@@ -451,11 +451,11 @@ def _draw_tubelight_int_as_color(layout, item, type_name, label):
 
 def _draw_extern_ref_field(layout, obj) -> None:
     """
-    在块字段列表中，把 EXTERNREFERENCE 的 referenceIndex 字段
+    在属性字段列表中，把 EXTERNREFERENCE 的 referenceIndex 字段
     替换为 extern 指针选择器（内联在字段列表里，风格与其他字段一致）。
 
     三种显示情况：
-      - pointerized=False（死块）：显示只读标签"[dead block]"
+      - pointerized=False（死属性）：显示只读标签"[dead attribute]"
       - pointerized=True + none=True：显示"(-1 哨兵)"标签
       - pointerized=True + none=False：显示 EFX_EXTERN 对象选择器
     """
@@ -472,18 +472,18 @@ def _draw_extern_ref_field(layout, obj) -> None:
     split.label(text="Reference Index")
 
     if not props.extern_ref_pointerized:
-        # 死块/越界：只读提示 + 强制解锁按钮
+        # 死属性/越界：只读提示 + 强制解锁按钮
         val_row = split.row(align=True)
         sub = val_row.row(align=True)
         sub.enabled = False
-        sub.label(text="[dead block]", icon="ERROR")
+        sub.label(text="[dead attribute]", icon="ERROR")
         val_row.operator("efx.force_pointerize_extern_ref", text="", icon="UNLOCKED")
         return
 
     if props.extern_ref_none:
         # 哨兵 -1：无目标
         val_row = split.row(align=True)
-        val_row.label(text=T("block.sentinel_no_target"), icon="X")
+        val_row.label(text=T("attribute.sentinel_no_target"), icon="X")
         # 勾选 none 的按钮放在右侧
         row.prop(props, "extern_ref_none", text="", icon="X")
         return
@@ -496,28 +496,28 @@ def _draw_extern_ref_field(layout, obj) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 公共绘制函数：块字段内容（两个 Panel 共用，避免重复代码）
+# 公共绘制函数：属性字段内容（两个 Panel 共用，避免重复代码）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_block_fields_content(layout, context):
+def _draw_attribute_fields_content(layout, context):
     """
-    绘制 EFX_BLOCK 的字段内容。
-    被 EFX_PT_block_fields（N 面板）和 EFX_PT_block_fields_props（属性编辑器）共用。
+    绘制 EFX_ATTRIBUTE 的字段内容。
+    被 EFX_PT_attribute_fields（N 面板）和 EFX_PT_attribute_fields_props（属性编辑器）共用。
     """
     obj = context.active_object
 
-    if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
-        layout.label(text=T("block.select_hint"), icon="INFO")
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+        layout.label(text=T("attribute.select_hint"), icon="INFO")
         return
 
     # ── 获取 efx_block PropertyGroup ────────────────────────────────────────
     try:
         bp = obj.efx_block
     except AttributeError:
-        layout.label(text=T("block.not_registered"), icon="ERROR")
+        layout.label(text=T("attribute.not_registered"), icon="ERROR")
         return
 
-    # ── 解析当前块的类型名（用于查注释字典）────────────────────────────────────
+    # ── 解析当前属性的类型名（用于查注释字典）────────────────────────────────────
     # bp.type_hash_str 存的是十进制 uint32 字符串（如 "1003792849"）。
     # 通过 HASH_TO_NAME 查出名称（如 "EMITTERSHAPE3D"），再大写作为字典键。
     # 注释现在始终传给 _draw_field_item，由其内部按需显示 ⓘ 图标。
@@ -529,7 +529,7 @@ def _draw_block_fields_content(layout, context):
     except (ValueError, ImportError):
         type_name = ""
 
-    # ── 检测是否为 EXTERNREFERENCE 块（用于 referenceIndex 字段替换）──────────
+    # ── 检测是否为 EXTERNREFERENCE 属性（用于 referenceIndex 字段替换）──────────
     _is_extern_ref = False
     try:
         from ..efx_format.hashes import EXTERNREFERENCE as _EXTERNREFERENCE_HASH
@@ -538,9 +538,9 @@ def _draw_block_fields_content(layout, context):
         pass
 
     # ── PTLIFE / PTCOLLISION：指针化时隐藏原始 relationIndex / ieIndex 字段 ────
-    # 这两个字节由专用指针面板（Relation Index / IE Play Reference）控制，导出时
+    # 这两个字节由专用指针面板（Relation Action Reference / IE Action Reference）控制，导出时
     # overlay 在字段编码之后覆写，故原始字段编辑会被静默丢弃 → 二者竞争、不同步。
-    # 指针化时跳过原始字段（仅留指针面板这一处编辑源）；未指针化（越界死块）则照常
+    # 指针化时跳过原始字段（仅留指针面板这一处编辑源）；未指针化（越界死属性）则照常
     # 显示原始字段供查看/编辑（此时 overlay 不生效，字段即真值）。
     _ptlife_ptr_hidden = False
     _ptcoll_ptr_hidden = False
@@ -599,15 +599,15 @@ def _draw_block_fields_content(layout, context):
     except (ValueError, ImportError):
         pass
 
-    # ── 可编辑块：展示字段列表 ────────────────────────────────────────────────
+    # ── 可编辑属性：展示字段列表 ────────────────────────────────────────────────
     if bp.is_editable:
         if len(bp.field_items) == 0:
-            layout.label(text=T("block.no_fields"), icon="INFO")
+            layout.label(text=T("attribute.no_fields"), icon="INFO")
         else:
             # ctc 风格：字段列表包在 box 里，用 column 统一管理行高
             box = layout.box()
             col = box.column(align=True)
-            # 块类型名称区块标题行（含 dirty 标记）
+            # 属性类型名称区块标题行（含 dirty 标记）
             title_row = col.row(align=True)
             title_row.scale_y = 1.0
             block_title = type_name if type_name else f"Hash {bp.type_hash_str}"
@@ -620,19 +620,19 @@ def _draw_block_fields_content(layout, context):
                 mt_row = col.row(align=True)
                 mt_row.scale_y = 1.0
                 mt_row.label(text=T("material.type") + " " + _material_type, icon="MATERIAL")
-            # 部分可编辑（含 __opaque_hint__）：块名下一行灰字提示
+            # 部分可编辑（含 __opaque_hint__）：属性名下一行灰字提示
             _has_partial = any(
                 it.ori_name == "__opaque_hint__" for it in bp.field_items
             )
             if _has_partial:
                 _hint_row = col.row(align=True)
                 _hint_row.enabled = False
-                _hint_row.label(text=T("block.partial_edit"))
+                _hint_row.label(text=T("attribute.partial_edit"))
             # PTBEHAVIOR：param 数量因文件而异，仅支持现存 param 的修改
             if _is_ptbehavior:
                 _ptb_hint_row = col.row(align=True)
                 _ptb_hint_row.enabled = False
-                _ptb_hint_row.label(text=T("block.ptbehavior_hint"))
+                _ptb_hint_row.label(text=T("attribute.ptbehavior_hint"))
             col.separator(factor=0.5)
             # 逐字段绘制（带 value+jitter 位置配对：jitter 字段与紧邻前一个
             # 同类型标量 value 合并一行，模拟 XYZ Fixed/Random 分组风格）
@@ -737,28 +737,28 @@ def _draw_block_fields_content(layout, context):
                 _add_row = col.row(align=True)
                 _add_row.operator_menu_enum(
                     "efx.ptb_add_override", "key_choice",
-                    text=T("block.ptbehavior_add"), icon="ADD",
+                    text=T("attribute.ptbehavior_add"), icon="ADD",
                 )
 
     else:
         # 不可编辑（_custom / 未知 / 含嵌套结构）
         box = layout.box()
         col = box.column(align=True)
-        # 块类型名称区块标题行
+        # 属性类型名称区块标题行
         title_row = col.row(align=True)
         title_row.scale_y = 1.0
         block_title = type_name if type_name else f"Hash {bp.type_hash_str}"
         title_row.label(text=block_title, icon="MODIFIER")
         _hint_row = col.row(align=True)
         _hint_row.enabled = False
-        _hint_row.label(text=T("block.partial_edit"))
+        _hint_row.label(text=T("attribute.partial_edit"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_main  —  VIEW_3D 侧边栏 "EFX" 标签页
+# EFX_PT_entry  —  VIEW_3D 侧边栏 "EFX" 标签页
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_main(bpy.types.Panel):
+class EFX_PT_entry(bpy.types.Panel):
     """MHW EFX 编辑器主面板（N 面板 → EFX 标签页）"""
 
     bl_space_type  = "VIEW_3D"
@@ -775,120 +775,120 @@ class EFX_PT_main(bpy.types.Panel):
 
         # ── 顶部：Import / Export / New EFX ──────────────────────────────────
         row = layout.row(align=True)
-        row.operator("efx.import_efx", text=T("main.import"), icon="IMPORT")
-        row.operator("efx.export_efx", text=T("main.export"), icon="EXPORT")
-        layout.operator("efx.new_efx", text=T("main.new_efx"), icon="ADD")
+        row.operator("efx.import_efx", text=T("entry.import"), icon="IMPORT")
+        row.operator("efx.export_efx", text=T("entry.export"), icon="EXPORT")
+        layout.operator("efx.new_efx", text=T("entry.new_efx"), icon="ADD")
 
-        # ── Active EFX 选择器（新增 body 的目标根）────────────────────────────
-        layout.prop(context.scene, "efx_active_efx", text=T("main.active_efx"))
+        # ── Active EFX 选择器（新增 entry 的目标根）────────────────────────────
+        layout.prop(context.scene, "efx_active_efx", text=T("entry.active_efx"))
 
         # ── 骨架选择器 + 刷新特效体位置（按 TRANSFORM3D + bone_lim 绑定骨骼摆位）─
-        layout.prop(context.scene, "efx_armature", text=T("main.armature"))
-        layout.prop(context.scene, "efx_anchor_placement", text=T("main.anchor_placement"))
-        layout.prop(context.scene, "efx_blender_coords", text=T("main.blender_coords"))
+        layout.prop(context.scene, "efx_armature", text=T("entry.armature"))
+        layout.prop(context.scene, "efx_anchor_placement", text=T("entry.anchor_placement"))
+        layout.prop(context.scene, "efx_blender_coords", text=T("entry.blender_coords"))
         row = layout.row(align=True)
         row.operator("efx.sync_transform_to_view",
-                     text=T("main.sync_transform"), icon="ORIENTATION_GLOBAL")
+                     text=T("entry.sync_transform"), icon="ORIENTATION_GLOBAL")
         row.operator("efx.validate", text=T("validate.run_btn"), icon="CHECKMARK")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_presets  —  统一「预设」面板（Body 预设 / Block 预设，顶部模式切换）
+# EFX_PT_presets  —  统一「预设」面板（Entry 预设 / Attribute 预设，顶部模式切换）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_body_presets_content(layout, context):
-    """Body 预设模式：复制/粘贴 Body + 保存 + 选预设新增 + 打开文件夹。
-    目标 EFX 由 EFX_PT_main 顶部的 Active EFX 选择器决定。"""
+def _draw_entry_presets_content(layout, context):
+    """Entry 预设模式：复制/粘贴 Entry + 保存 + 选预设新增 + 打开文件夹。
+    目标 EFX 由 EFX_PT_entry 顶部的 Active EFX 选择器决定。"""
     wm = context.window_manager
 
-    # 1. 复制 Body / 粘贴 Body（整 body 内存剪贴板；算子 poll 自动灰）
+    # 1. 复制 Entry / 粘贴 Entry（整 entry 内存剪贴板；算子 poll 自动灰）
     row = layout.row(align=True)
-    row.operator("efx.copy_body", text=T("body.copy"), icon="COPYDOWN")
-    row.operator("efx.paste_body", text=T("body.paste"), icon="PASTEDOWN")
+    row.operator("efx.copy_entry", text=T("entry.copy"), icon="COPYDOWN")
+    row.operator("efx.paste_entry", text=T("entry.paste"), icon="PASTEDOWN")
 
-    # 2. 保存当前 body 为预设（需选中 EFX_BODY，poll 自动灰）
-    layout.operator("efx.save_body_preset", text=T("body.save_preset"), icon="ADD")
+    # 2. 保存当前 entry 为预设（需选中 EFX_ENTRY，poll 自动灰）
+    layout.operator("efx.save_entry_preset", text=T("entry.save_preset"), icon="ADD")
 
     layout.separator()
 
-    # 3. body 预设下拉 + 新增
+    # 3. entry 预设下拉 + 新增
     root = get_active_efx_root(context)
     if root is not None:
         efx_name = getattr(context.scene, "efx_active_efx", None)
         efx_label = efx_name.name if efx_name is not None else root.name
-        layout.label(text=T("body.add_to_prefix") + efx_label, icon="PLUS")
+        layout.label(text=T("entry.add_to_prefix") + efx_label, icon="PLUS")
     else:
         row2 = layout.row()
         row2.enabled = False
-        row2.label(text=T("body.add_to_prefix") + T("body.add_to_no_efx"), icon="PLUS")
+        row2.label(text=T("entry.add_to_prefix") + T("entry.add_to_no_efx"), icon="PLUS")
     row = layout.row(align=True)
-    row.prop(wm, "efx_body_preset_enum", text="")
-    selected = wm.efx_body_preset_enum
+    row.prop(wm, "efx_entry_preset_enum", text="")
+    selected = wm.efx_entry_preset_enum
     if selected:
-        op = row.operator("efx.add_body_from_preset", text=T("body.add"), icon="PLAY")
+        op = row.operator("efx.add_entry_from_preset", text=T("entry.add"), icon="PLAY")
         op.preset_path = selected
     else:
         sub = row.row()
         sub.enabled = False
-        sub.operator("efx.add_body_from_preset", text=T("body.add"), icon="PLAY")
+        sub.operator("efx.add_entry_from_preset", text=T("entry.add"), icon="PLAY")
 
     layout.separator()
 
     # 4. 打开预设文件夹
-    layout.operator("efx.open_body_preset_folder", text=T("body.open_folder"), icon="FILE_FOLDER")
+    layout.operator("efx.open_entry_preset_folder", text=T("entry.open_folder"), icon="FILE_FOLDER")
 
 
-def _draw_block_presets_content(layout, context):
-    """Block 预设模式：复制/保存整块 + 分类选择 + 选预设新增 + 粘贴块 + 打开文件夹。
-    新增块需选中 EFX_BODY 或其下的 EFX_BLOCK（连续新增块免切回 body），
-    保存/复制需选中 EFX_BLOCK，算子 poll 自动灰。"""
+def _draw_attribute_presets_content(layout, context):
+    """Attribute 预设模式：复制/保存整属性 + 分类选择 + 选预设新增 + 粘贴属性 + 打开文件夹。
+    新增属性需选中 EFX_ENTRY 或其下的 EFX_ATTRIBUTE（连续新增属性免切回 entry），
+    保存/复制需选中 EFX_ATTRIBUTE，算子 poll 自动灰。"""
     wm = context.window_manager
 
-    # 1. 复制整块（需选中 EFX_BLOCK）/ 粘贴块（需选中 EFX_BODY 或其 EFX_BLOCK），poll 自动灰
+    # 1. 复制整属性（需选中 EFX_ATTRIBUTE）/ 粘贴属性（需选中 EFX_ENTRY 或其 EFX_ATTRIBUTE），poll 自动灰
     row = layout.row(align=True)
-    row.operator("efx.copy_block", text=T("block.copy_whole"), icon="COPYDOWN")
-    row.operator("efx.paste_block", text=T("block.paste"), icon="PASTEDOWN")
+    row.operator("efx.copy_attribute", text=T("attribute.copy_whole"), icon="COPYDOWN")
+    row.operator("efx.paste_attribute", text=T("attribute.paste"), icon="PASTEDOWN")
 
-    # 2. 保存为块预设（需选中 EFX_BLOCK，poll 自动灰）
-    layout.operator("efx.save_block_preset", text=T("block.save_preset"), icon="ADD")
+    # 2. 保存为属性预设（需选中 EFX_ATTRIBUTE，poll 自动灰）
+    layout.operator("efx.save_attribute_preset", text=T("attribute.save_preset"), icon="ADD")
 
     layout.separator()
 
-    # 2. 分类 + 块预设下拉 + 新增（需选中 EFX_BODY，poll 自动灰）
+    # 2. 分类 + 属性预设下拉 + 新增（需选中 EFX_ENTRY，poll 自动灰）
     obj = context.active_object
-    if obj is not None and obj.get("~TYPE") == "EFX_BODY":
+    if obj is not None and obj.get("~TYPE") == "EFX_ENTRY":
         body_label = obj.get("efx_raw_label", "") or obj.name
-        layout.label(text=T("block.add_to_prefix") + body_label, icon="PLUS")
+        layout.label(text=T("attribute.add_to_prefix") + body_label, icon="PLUS")
     else:
         row_lbl = layout.row()
         row_lbl.enabled = False
-        row_lbl.label(text=T("block.add_to_prefix") + T("block.add_to_no_body"), icon="PLUS")
-    layout.prop(wm, "efx_block_category_enum", text=T("block.category"))
+        row_lbl.label(text=T("attribute.add_to_prefix") + T("attribute.add_to_no_entry"), icon="PLUS")
+    layout.prop(wm, "efx_block_category_enum", text=T("attribute.category"))
     row = layout.row(align=True)
     row.prop(wm, "efx_block_whole_preset_enum", text="")
     selected = wm.efx_block_whole_preset_enum
     if selected:
-        op = row.operator("efx.add_block_from_block_preset", text=T("block.add"), icon="PLAY")
+        op = row.operator("efx.add_attribute_from_preset", text=T("attribute.add"), icon="PLAY")
         op.preset_path = selected
     else:
         sub = row.row()
         sub.enabled = False
-        sub.operator("efx.add_block_from_block_preset", text=T("block.add"), icon="PLAY")
+        sub.operator("efx.add_attribute_from_preset", text=T("attribute.add"), icon="PLAY")
 
     layout.separator()
 
     # 3. 打开文件夹
-    layout.operator("efx.open_block_preset_folder", text=T("body.open_folder"), icon="FILE_FOLDER")
+    layout.operator("efx.open_attribute_preset_folder", text=T("entry.open_folder"), icon="FILE_FOLDER")
 
 
 class EFX_PT_presets(bpy.types.Panel):
-    """EFX 预设（Body 预设 / Block 预设，顶部模式切换）"""
+    """EFX 预设（Entry 预设 / Attribute 预设，顶部模式切换）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "Presets"
-    bl_parent_id    = "EFX_PT_main"
+    bl_parent_id    = "EFX_PT_entry"
     bl_options      = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
@@ -896,31 +896,31 @@ class EFX_PT_presets(bpy.types.Panel):
         wm = context.window_manager
         layout.row().prop(wm, "efx_preset_mode", expand=True)
         layout.separator(factor=0.3)
-        if wm.efx_preset_mode == "BLOCK":
-            _draw_block_presets_content(layout, context)
+        if wm.efx_preset_mode == "ATTRIBUTE":
+            _draw_attribute_presets_content(layout, context)
         else:
-            _draw_body_presets_content(layout, context)
+            _draw_entry_presets_content(layout, context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_body_status  —  Body Status 面板（选中 EFX_BODY 时显示）
-#   子栏：Activation / Body References。
+# EFX_PT_entry_status  —  Entry Status 面板（选中 EFX_ENTRY 时显示）
+#   子栏：Activation / Entry References。
 #   排序/重命名操作在 EFX_PT_delete（Edit 面板）。
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_body_status(bpy.types.Panel):
-    """EFX Body Status 父面板（容器）。子栏：Activation / Body References 同级附于其下。"""
+class EFX_PT_entry_status(bpy.types.Panel):
+    """EFX Entry Status 父面板（容器）。子栏：Activation / Entry References 同级附于其下。"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Body Status"
+    bl_label        = "Entry Status"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
 
     def draw(self, context):
         layout = self.layout
@@ -929,45 +929,45 @@ class EFX_PT_body_status(bpy.types.Panel):
         layout.label(text=f"[{idx}] {obj.name}", icon="OBJECT_DATA")
 
 
-class EFX_PT_body_activation(bpy.types.Panel):
-    """Body 激活态子栏：综合 EOF（直接触发）+ Play 召唤 + subselect 门控的派生有效态。
+class EFX_PT_entry_activation(bpy.types.Panel):
+    """Entry 激活态子栏：综合 EOF（直接触发）+ Action 召唤 + subselect 门控的派生有效态。
 
-    放在 Body 父面板下，与 Body References、TIML 同级。
+    放在 Entry 父面板下，与 Entry References、TIML 同级。
     """
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "Activation"
-    bl_parent_id    = "EFX_PT_body_status"
+    bl_parent_id    = "EFX_PT_entry_status"
     bl_options      = {"DEFAULT_CLOSED"}
 
     # 触发来源 → (i18n key, 图标)
     _SOURCE_UI = {
-        "both":   ("body.src_both",   "RADIOBUT_ON"),
-        "direct": ("body.src_direct", "RADIOBUT_ON"),
-        "action": ("body.src_action", "PLAY"),
-        "none":   ("body.src_none",   "RADIOBUT_OFF"),
+        "both":   ("entry.src_both",   "RADIOBUT_ON"),
+        "direct": ("entry.src_direct", "RADIOBUT_ON"),
+        "action": ("entry.src_action", "PLAY"),
+        "none":   ("entry.src_none",   "RADIOBUT_OFF"),
     }
 
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
 
     def draw(self, context):
         layout = self.layout
         obj = context.active_object
 
-        info = classify_body_activation(obj)
+        info = classify_entry_activation(obj)
 
         # ── 有效行为（派生结论，模型推测）：来源(并) + 门控(与) 修饰 ───────────────
         box = layout.box()
-        key, icon = self._SOURCE_UI.get(info["source"], ("body.src_none", "QUESTION"))
-        box.label(text=T("body.effective_label"), icon="INFO")
+        key, icon = self._SOURCE_UI.get(info["source"], ("entry.src_none", "QUESTION"))
+        box.label(text=T("entry.effective_label"), icon="INFO")
         eff_text = T(key)
         if info["gated"]:
-            eff_text += T("body.gate_qualifier")
+            eff_text += T("entry.gate_qualifier")
             if info["source"] != "none":
                 icon = "PROP_CON"
         box.label(text=eff_text, icon=icon)
@@ -976,64 +976,64 @@ class EFX_PT_body_activation(bpy.types.Panel):
         in_eof = info["in_eof"]
         row = layout.row(align=True)
         row.label(
-            text=T("body.game_active_yes") if in_eof else T("body.game_active_no"),
+            text=T("entry.game_active_yes") if in_eof else T("entry.game_active_no"),
             icon="RADIOBUT_ON" if in_eof else "RADIOBUT_OFF",
         )
-        toggle_text = T("body.remove_from_active") if in_eof else T("body.add_to_active")
-        row.operator("efx.eof_toggle_body", text=toggle_text,
+        toggle_text = T("entry.remove_from_active") if in_eof else T("entry.add_to_active")
+        row.operator("efx.eof_toggle_entry", text=toggle_text,
                      icon="PAUSE" if in_eof else "PLAY")
 
-        # ── 来源 2：动作触发（被 Play 召唤，只读）────────────────────────────────
+        # ── 来源 2：动作触发（被 Action 召唤，只读）────────────────────────────────
         in_action = info["in_action"]
         layout.label(
-            text=T("body.action_trigger_yes") if in_action else T("body.action_trigger_no"),
+            text=T("entry.action_trigger_yes") if in_action else T("entry.action_trigger_no"),
             icon="RADIOBUT_ON" if in_action else "RADIOBUT_OFF",
         )
 
         # ── 门控层：subselect 状态掩码 ──────────────────────────────────────────
         n = info["n_tables"]
         if n > 0:
-            layout.label(text=T("body.gating_yes").format(n=n), icon="PROP_CON")
+            layout.label(text=T("entry.gating_yes").format(n=n), icon="PROP_CON")
         else:
-            layout.label(text=T("body.gating_no"), icon="CHECKMARK")
+            layout.label(text=T("entry.gating_no"), icon="CHECKMARK")
 
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_body_properties / EFX_PT_body_unkn  —  Body 原始属性面板
-#   Body Properties：单行只读 Type + 子栏 Unkn Attributes + TIML 挂在其下。
-#   Body Status（EFX_PT_body_status）管激活状态和引用，Body Properties 管原始数据。
+# EFX_PT_entry_properties / EFX_PT_entry_unkn  —  Entry 原始属性面板
+#   Entry Properties：单行只读 Type + 子栏 Unkn Attributes + TIML 挂在其下。
+#   Entry Status（EFX_PT_entry_status）管激活状态和引用，Entry Properties 管原始数据。
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_body_properties(bpy.types.Panel):
-    """EFX Body 原始属性面板（Type / Unkn / TIML）"""
+class EFX_PT_entry_properties(bpy.types.Panel):
+    """EFX Entry 原始属性面板（Type / Unkn / TIML）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Body Properties"
+    bl_label        = "Entry Properties"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
 
     def draw(self, context):
         layout = self.layout
         obj = context.active_object
-        body_kind = str(obj.get("body_kind", "unknown"))
+        entry_kind = str(obj.get("entry_kind", "unknown"))
         kind_label = {
-            "standard": T("body.type_standard"),
-            "extended": T("body.type_extended"),
-        }.get(body_kind, body_kind)
+            "standard": T("entry.type_standard"),
+            "extended": T("entry.type_extended"),
+        }.get(entry_kind, entry_kind)
         row = layout.row()
         row.enabled = False
-        row.label(text=T("body.type_label") + kind_label, icon="INFO")
+        row.label(text=T("entry.type_label") + kind_label, icon="INFO")
 
-        # Root body 的 UnitBoundary 子条目（结构化时可编辑；含 RT/LayoutBank 的
+        # Root entry 的 UnitBoundary 子条目（结构化时可编辑；含 RT/LayoutBank 的
         # root 走 opaque 只读，不显示）。语义未完全逆向：ints[2] + floats[8]。
-        if body_kind == "root" and int(obj.get("root_structured", 0)) == 1:
+        if entry_kind == "root" and int(obj.get("root_structured", 0)) == 1:
             n = int(obj.get("root_ub_count", 0))
             if n == 0:
                 layout.label(text="(empty root — no sub-entries)", icon="DOT")
@@ -1048,29 +1048,29 @@ class EFX_PT_body_properties(bpy.types.Panel):
                     box.prop(obj, '["%s"]' % fk, text="Floats")
 
 
-class EFX_PT_body_unkn(bpy.types.Panel):
-    """Body 未知属性子栏（unkn0 / unkn1 / unkn2）"""
+class EFX_PT_entry_unkn(bpy.types.Panel):
+    """Entry 未知属性子栏（unkn0 / unkn1 / unkn2）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "Unkn Attributes"
-    bl_parent_id    = "EFX_PT_body_properties"
+    bl_parent_id    = "EFX_PT_entry_properties"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
 
     def draw(self, context):
         layout = self.layout
         obj = context.active_object
-        body_kind = str(obj.get("body_kind", "unknown"))
+        entry_kind = str(obj.get("entry_kind", "unknown"))
         col = layout.column(align=True)
         if "unkn0" in obj:
             col.prop(obj, '["unkn0"]', text="Unkn0")
-        if body_kind == "extended":
+        if entry_kind == "extended":
             if "unkn1" in obj:
                 col.prop(obj, '["unkn1"]', text="Unkn1")
             if "unkn2" in obj:
@@ -1078,76 +1078,76 @@ class EFX_PT_body_unkn(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_block_fields  —  属性栏（Properties > Object 或 N 面板子面板）
-# 在 VIEW_3D N 面板 EFX 标签页下挂一个子面板，当选中 EFX_BLOCK 时展示字段。
+# EFX_PT_attribute_fields  —  属性栏（Properties > Object 或 N 面板子面板）
+# 在 VIEW_3D N 面板 EFX 标签页下挂一个子面板，当选中 EFX_ATTRIBUTE 时展示字段。
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_block_fields(bpy.types.Panel):
-    """EFX 块字段属性栏（选中 EFX_BLOCK 对象时显示）"""
+class EFX_PT_attribute_fields(bpy.types.Panel):
+    """EFX 属性字段属性栏（选中 EFX_ATTRIBUTE 对象时显示）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Block Properties"
+    bl_label        = "Attribute Properties"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
-        """仅当选中对象是 EFX_BLOCK 时显示此面板。"""
+        """仅当选中对象是 EFX_ATTRIBUTE 时显示此面板。"""
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BLOCK"
+        return obj is not None and obj.get("~TYPE") == "EFX_ATTRIBUTE"
 
     def draw(self, context):
-        _draw_block_fields_content(self.layout, context)
+        _draw_attribute_fields_content(self.layout, context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_block_fields_props  —  属性编辑器 Object Data Properties 标签
+# EFX_PT_attribute_fields_props  —  属性编辑器 Object Data Properties 标签
 #
 # bl_context = 'data'：Empty 物体的 Object Data Properties（空物体设置页）。
 # 在 4.3.2 / 5.1 上，Empty 的 'data' 上下文是有效的（显示 Empty 尺寸/类型等），
 # 因此 'data' 是首选。
 #
-# 保底版本 EFX_PT_block_fields_object（bl_context='object'）同时注册：
+# 保底版本 EFX_PT_attribute_fields_object（bl_context='object'）同时注册：
 # 万一 'data' 在某版本的 Empty 上不渲染，用户仍可在 Object Properties 标签找到字段面板。
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_block_fields_props(bpy.types.Panel):
-    """EFX 块字段（属性编辑器 → Object Data Properties，选中 EFX_BLOCK 时显示）"""
+class EFX_PT_attribute_fields_props(bpy.types.Panel):
+    """EFX 属性字段（属性编辑器 → Object Data Properties，选中 EFX_ATTRIBUTE 时显示）"""
 
     bl_space_type   = "PROPERTIES"
     bl_region_type  = "WINDOW"
     bl_context      = "data"
-    bl_label        = "EFX Block Properties"
+    bl_label        = "EFX Attribute Properties"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
-        """仅当选中对象是 EFX_BLOCK 时显示此面板。"""
+        """仅当选中对象是 EFX_ATTRIBUTE 时显示此面板。"""
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BLOCK"
+        return obj is not None and obj.get("~TYPE") == "EFX_ATTRIBUTE"
 
     def draw(self, context):
-        _draw_block_fields_content(self.layout, context)
+        _draw_attribute_fields_content(self.layout, context)
 
 
-class EFX_PT_block_fields_object(bpy.types.Panel):
-    """EFX 块字段（属性编辑器 → Object Properties，保底版本）"""
+class EFX_PT_attribute_fields_object(bpy.types.Panel):
+    """EFX 属性字段（属性编辑器 → Object Properties，保底版本）"""
 
     bl_space_type   = "PROPERTIES"
     bl_region_type  = "WINDOW"
     bl_context      = "object"
-    bl_label        = "EFX Block Properties"
+    bl_label        = "EFX Attribute Properties"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
-        """仅当选中对象是 EFX_BLOCK 时显示此面板。"""
+        """仅当选中对象是 EFX_ATTRIBUTE 时显示此面板。"""
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BLOCK"
+        return obj is not None and obj.get("~TYPE") == "EFX_ATTRIBUTE"
 
     def draw(self, context):
-        _draw_block_fields_content(self.layout, context)
+        _draw_attribute_fields_content(self.layout, context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1176,26 +1176,26 @@ class EFX_PT_root_props(bpy.types.Panel):
         # 导出对话框勾「自动重算」会按 2.75× 文件大小自动抬高（默认开）。
         if obj is not None and "hdr_double_buffer" in obj:
             box = layout.box()
-            box.label(text=T("main.double_buffer"), icon="MODIFIER")
+            box.label(text=T("entry.double_buffer"), icon="MODIFIER")
             box.prop(obj, '["hdr_double_buffer"]', text="")
             tip = box.row()
             tip.enabled = False
-            tip.label(text=T("main.double_buffer_tip"))
+            tip.label(text=T("entry.double_buffer_tip"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_add_section  —  从无到有新建 Play / Extern / Subselect 段条目
+# EFX_PT_add_section  —  从无到有新建 Action / Extern / Subselect 段条目
 #   poll = 已选 Active EFX；三个按钮各建一个带合法空白模板的容器对象。
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_add_section(bpy.types.Panel):
-    """EFX 新建段条目（Play / Extern / Subselect）"""
+    """EFX 新建段条目（Action / Extern / Subselect）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "Add Section Entry"
-    bl_parent_id    = "EFX_PT_main"
+    bl_parent_id    = "EFX_PT_entry"
     bl_options      = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -1206,7 +1206,7 @@ class EFX_PT_add_section(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         col = layout.column(align=True)
-        col.operator("efx.add_play",      text=T("addsec.play"),      icon="PLAY")
+        col.operator("efx.add_action",      text=T("addsec.action"),      icon="PLAY")
         col.operator("efx.add_extern",    text=T("addsec.extern"),    icon="FILE_BLEND")
         col.operator("efx.add_subselect", text=T("addsec.subselect"), icon="OUTLINER_OB_EMPTY")
 
@@ -1218,9 +1218,9 @@ class EFX_PT_add_section(bpy.types.Panel):
 
 # ~TYPE → (算子 idname, 按钮文案 i18n key)
 _DELETE_BY_TYPE = {
-    "EFX_BODY":      ("efx.delete_body",      "del.body_btn"),
-    "EFX_BLOCK":     ("efx.delete_block",     "del.block_btn"),
-    "EFX_PLAY":      ("efx.delete_play",      "del.play_btn"),
+    "EFX_ENTRY":      ("efx.delete_entry",      "del.entry_btn"),
+    "EFX_ATTRIBUTE":     ("efx.delete_attribute",     "del.attribute_btn"),
+    "EFX_ACTION":      ("efx.delete_action",      "del.action_btn"),
     "EFX_EXTERN":    ("efx.delete_extern",    "del.extern_btn"),
     "EFX_SUBSELECT": ("efx.delete_subselect", "del.subselect_btn"),
 }
@@ -1247,40 +1247,24 @@ class EFX_PT_delete(bpy.types.Panel):
         obj = context.active_object
         t = obj.get("~TYPE") if obj is not None else None
 
-        # ── EFX_BLOCK：排序 + 字段复制/粘贴 ──────────────────────────────────
-        if t == "EFX_BLOCK":
+        # ── EFX_ATTRIBUTE：排序 + 字段复制/粘贴 ──────────────────────────────────
+        if t == "EFX_ATTRIBUTE":
             row = layout.row(align=True)
-            op_up = row.operator("efx.move_block", text=T("block.move_up"), icon="TRIA_UP")
+            op_up = row.operator("efx.move_attribute", text=T("attribute.move_up"), icon="TRIA_UP")
             op_up.direction = "UP"
-            op_dn = row.operator("efx.move_block", text=T("block.move_down"), icon="TRIA_DOWN")
+            op_dn = row.operator("efx.move_attribute", text=T("attribute.move_down"), icon="TRIA_DOWN")
             op_dn.direction = "DOWN"
 
             row2 = layout.row(align=True)
-            row2.operator("efx.copy_block_fields", text=T("block.copy_fields"), icon="COPYDOWN")
-            row2.operator("efx.paste_block_fields", text=T("block.paste_fields"), icon="PASTEDOWN")
+            row2.operator("efx.copy_attribute_fields", text=T("attribute.copy_fields"), icon="COPYDOWN")
+            row2.operator("efx.paste_attribute_fields", text=T("attribute.paste_fields"), icon="PASTEDOWN")
 
-        # ── EFX_BODY：排序 + 重命名 ───────────────────────────────────────────
-        elif t == "EFX_BODY":
+        # ── EFX_ENTRY：排序 + 重命名 ───────────────────────────────────────────
+        elif t == "EFX_ENTRY":
             row = layout.row(align=True)
-            op_up = row.operator("efx.move_body", text=T("block.move_up"), icon="TRIA_UP")
+            op_up = row.operator("efx.move_entry", text=T("attribute.move_up"), icon="TRIA_UP")
             op_up.direction = "UP"
-            op_dn = row.operator("efx.move_body", text=T("block.move_down"), icon="TRIA_DOWN")
-            op_dn.direction = "DOWN"
-
-            from .reorder import can_label_body
-            if can_label_body(obj):
-                layout.operator("efx.rename_body", text=T("body.rename"), icon="GREASEPENCIL")
-            else:
-                sub = layout.column()
-                sub.enabled = False
-                sub.operator("efx.rename_body", text=T("body.rename_blocked"), icon="GREASEPENCIL")
-
-        # ── EFX_PLAY / EFX_EXTERN：排序 + 重命名 ─────────────────────────────
-        elif t in ("EFX_PLAY", "EFX_EXTERN"):
-            row = layout.row(align=True)
-            op_up = row.operator("efx.move_entry", text=T("block.move_up"), icon="TRIA_UP")
-            op_up.direction = "UP"
-            op_dn = row.operator("efx.move_entry", text=T("block.move_down"), icon="TRIA_DOWN")
+            op_dn = row.operator("efx.move_entry", text=T("attribute.move_down"), icon="TRIA_DOWN")
             op_dn.direction = "DOWN"
 
             from .reorder import can_label_entry
@@ -1290,6 +1274,22 @@ class EFX_PT_delete(bpy.types.Panel):
                 sub = layout.column()
                 sub.enabled = False
                 sub.operator("efx.rename_entry", text=T("entry.rename_blocked"), icon="GREASEPENCIL")
+
+        # ── EFX_ACTION / EFX_EXTERN：排序 + 重命名 ─────────────────────────────
+        elif t in ("EFX_ACTION", "EFX_EXTERN"):
+            row = layout.row(align=True)
+            op_up = row.operator("efx.move_action_extern", text=T("attribute.move_up"), icon="TRIA_UP")
+            op_up.direction = "UP"
+            op_dn = row.operator("efx.move_action_extern", text=T("attribute.move_down"), icon="TRIA_DOWN")
+            op_dn.direction = "DOWN"
+
+            from .reorder import can_label_action_extern
+            if can_label_action_extern(obj):
+                layout.operator("efx.rename_action_extern", text=T("actionextern.rename"), icon="GREASEPENCIL")
+            else:
+                sub = layout.column()
+                sub.enabled = False
+                sub.operator("efx.rename_action_extern", text=T("actionextern.rename_blocked"), icon="GREASEPENCIL")
 
         # ── 删除按钮（按类型，始终显示）──────────────────────────────────────
         entry = _DELETE_BY_TYPE.get(t)
@@ -1304,12 +1304,12 @@ class EFX_PT_delete(bpy.types.Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────────────────────────────────────
-# _draw_plain_field_list — 纯字段列表渲染（value+jitter 配对，无体块专属逻辑）
+# _draw_plain_field_list — 纯字段列表渲染（value+jitter 配对，无属性专属逻辑）
 # 供 Extern 面板复用
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _draw_plain_field_list(col, field_items, type_name: str = "") -> None:
-    """渲染 field_items 列表（含 value+jitter 配对），无 EXTERNREFERENCE / PTLIFE 等体块专属逻辑。"""
+    """渲染 field_items 列表（含 value+jitter 配对），无 EXTERNREFERENCE / PTLIFE 等属性专属逻辑。"""
     items = list(field_items)
     n = len(items)
     i = 0
@@ -1425,34 +1425,34 @@ class EFX_PT_extern_props(bpy.types.Panel):
 
 _CLASSES = (
     # 主面板（Import/Export/Active EFX/Armature）
-    EFX_PT_main,
-    # 子面板（挂在 EFX_PT_main 下，无上下文依赖）
+    EFX_PT_entry,
+    # 子面板（挂在 EFX_PT_entry 下，无上下文依赖）
     EFX_PT_presets,
     EFX_PT_add_section,
-    # 顶级上下文面板（选中特定对象时出现，与 EFX_PT_main 同级）
+    # 顶级上下文面板（选中特定对象时出现，与 EFX_PT_entry 同级）
     EFX_PT_delete,
-    EFX_PT_body_status,
-    EFX_PT_body_activation,
-    EFX_PT_body_properties,
-    EFX_PT_body_unkn,
-    EFX_PT_block_fields,
-    EFX_PT_block_fields_props,
-    EFX_PT_block_fields_object,
+    EFX_PT_entry_status,
+    EFX_PT_entry_activation,
+    EFX_PT_entry_properties,
+    EFX_PT_entry_unkn,
+    EFX_PT_attribute_fields,
+    EFX_PT_attribute_fields_props,
+    EFX_PT_attribute_fields_object,
     EFX_PT_root_props,
     EFX_PT_subselect,
-    EFX_PT_play,
+    EFX_PT_action,
     EFX_PT_extern_props,
     EFX_PT_extern_ref,
     EFX_PT_ptlife_ref,
     EFX_PT_ptcollision_ref,
     EFX_PT_eof_list,
     # EOF 算子
-    EFX_OT_eof_toggle_body,
+    EFX_OT_eof_toggle_entry,
     EFX_OT_eof_remove_entry,
-    EFX_OT_eof_add_body,
+    EFX_OT_eof_add_entry,
     # 反向引用视图（只读）
     EFX_PT_extern_backref,
-    EFX_PT_body_backref,
+    EFX_PT_entry_backref,
     EFX_PT_root_states,
 )
 

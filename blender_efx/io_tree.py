@@ -13,10 +13,10 @@ blender_efx/io_tree.py  —  L1.0：EFX ↔ Blender 对象树 导入/导出
   <文件名集合> [COLOR_06]
   └── EFX_ROOT  (~TYPE='EFX_ROOT')          # 顶层 Empty，存 header 全字段
       ├── Main   子集合
-      │   └── EFX_BODY  (~TYPE='EFX_BODY')  # 每个 Main body
-      │       └── <hash_name>  (~TYPE='EFX_BLOCK')  # 每个 AttrBlock
+      │   └── EFX_ENTRY  (~TYPE='EFX_ENTRY')  # 每个 Main body
+      │       └── <hash_name>  (~TYPE='EFX_ATTRIBUTE')  # 每个 AttrBlock
       ├── Play   子集合
-      │   └── EFX_PLAY  (~TYPE='EFX_PLAY')  # L1.0：b64 原始字节
+      │   └── EFX_ACTION  (~TYPE='EFX_ACTION')  # L1.0：b64 原始字节
       ├── Extern 子集合
       │   └── EFX_EXTERN (~TYPE='EFX_EXTERN')
       └── Subselect 子集合
@@ -31,13 +31,13 @@ import struct
 from ..efx_format.efxfile import (
     EFXFile,
     EFXHeader,
-    PlayData,
-    PlayEntry,
+    ActionData,
+    ActionEntry,
     ExternAttribute,
     ExternDataItem,
     AttrBlock,
-    MainDataBody,
-    MainDataBodyExtended,
+    EntryData,
+    EntryDataExtended,
     RootBody,
     RootUnitBoundary,
     RootOpaqueEntry,
@@ -46,12 +46,12 @@ from ..efx_format.efxfile import (
 from ..efx_format.hashes import HASH_TO_NAME
 
 # 导入字段模型模块（延迟导入，避免注册顺序问题）
-# init_block_props 和 get_block_data_bytes 在实际调用时才被解析
+# init_attribute_props 和 get_attribute_data_bytes 在实际调用时才被解析
 from . import fields as _fields
 from . import subselect as _subselect
-from . import play_emitter as _play_emitter
+from . import action_emitter as _action_emitter
 from . import extern_ref as _extern_ref
-from . import body_play_ref as _body_play_ref
+from . import entry_action_ref as _entry_action_ref
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -96,34 +96,34 @@ def _set_parent(child: bpy.types.Object, parent: bpy.types.Object) -> None:
 # 为收敛割裂的 TIML 入口（导入导出 / 长度循环 / 预览），给每个**含 TIML 的 body** 建一个
 # ~TYPE="EFX_TIML" 子 Empty 作 UI 句柄：选中它即可在面板里访问全部 TIML 操作。
 # 它**不持有数据**——timl_bytes/timl_length 仍权威存于 body（导出字节逻辑原封不动，
-# 故 byte-perfect 不受影响；EFX_TIML 既非 EFX_BODY 也非 EFX_BLOCK，被导出/重排/删除/校验
-# 的类型过滤天然忽略）。所有面板/算子经 resolve_timl_body() 把句柄解析回父 body 后操作。
+# 故 byte-perfect 不受影响；EFX_TIML 既非 EFX_ENTRY 也非 EFX_ATTRIBUTE，被导出/重排/删除/校验
+# 的类型过滤天然忽略）。所有面板/算子经 resolve_timl_entry() 把句柄解析回父 body 后操作。
 
-def find_timl_handle(body_obj: bpy.types.Object):
+def find_timl_handle(entry_obj: bpy.types.Object):
     """返回 body 下的 EFX_TIML 句柄对象，无则 None。"""
-    if body_obj is None:
+    if entry_obj is None:
         return None
     for c in bpy.data.objects:
-        if c.parent == body_obj and c.get("~TYPE") == "EFX_TIML":
+        if c.parent == entry_obj and c.get("~TYPE") == "EFX_TIML":
             return c
     return None
 
 
-def make_timl_handle(body_obj: bpy.types.Object, collection: bpy.types.Collection = None):
+def make_timl_handle(entry_obj: bpy.types.Object, collection: bpy.types.Collection = None):
     """为 body 创建（或复用）EFX_TIML 句柄子对象。"""
-    existing = find_timl_handle(body_obj)
+    existing = find_timl_handle(entry_obj)
     if existing is not None:
         return existing
     if collection is None:
-        cols = body_obj.users_collection
+        cols = entry_obj.users_collection
         collection = cols[0] if cols else bpy.context.scene.collection
-    label = str(body_obj.get("efx_raw_label", "")) or body_obj.name
+    label = str(entry_obj.get("efx_raw_label", "")) or entry_obj.name
     h = bpy.data.objects.new("%s TIML" % label, None)
     h.empty_display_type = 'SPHERE'
     h.empty_display_size = 0.12
     collection.objects.link(h)
     h["~TYPE"] = "EFX_TIML"
-    h.parent = body_obj
+    h.parent = entry_obj
     return h
 
 
@@ -242,9 +242,9 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         root_obj["main_opaque_file_b64"] = _b64enc(raw_data)
 
     # ── 4. 建 4 个子集合（含序号前缀，控制大纲排序）────────────────────────
-    # 按 EFX 文件段顺序：0 Play、1 Extern、2 Main、3 Subselect
-    col_main      = _new_collection(file_stem + "_2 Main",      root_col)
-    col_play      = _new_collection(file_stem + "_0 Play",      root_col)
+    # 按 EFX 文件段顺序：0 Action、1 Extern、2 Entry、3 Subselect
+    col_entry      = _new_collection(file_stem + "_2 Entry",     root_col)
+    col_action      = _new_collection(file_stem + "_0 Action",    root_col)
     col_extern    = _new_collection(file_stem + "_1 Extern",    root_col)
     col_subselect = _new_collection(file_stem + "_3 Subselect", root_col)
 
@@ -275,16 +275,16 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         display_name = f"{nn} {raw_label}"
 
         # Blender 会自动给重名对象加 .001 后缀，这里不做额外处理
-        body_obj = _new_empty(display_name, col_main)
-        body_obj.empty_display_type = 'ARROWS'   # XYZ 三色轴，使特效体朝向直观可见
-        body_obj["~TYPE"]         = "EFX_BODY"
-        body_obj["efx_index"]     = body_idx  # 原始顺序，还原时用
-        body_obj["efx_raw_label"] = raw_label  # L2 #3a：原始标签，重排重建显示名用
-        body_obj["efx_has_label"] = int(has_label)  # 1=有原始标签, 0=合成标签
-        body_obj.parent           = root_obj
+        entry_obj = _new_empty(display_name, col_entry)
+        entry_obj.empty_display_type = 'ARROWS'   # XYZ 三色轴，使特效体朝向直观可见
+        entry_obj["~TYPE"]         = "EFX_ENTRY"
+        entry_obj["efx_index"]     = body_idx  # 原始顺序，还原时用
+        entry_obj["efx_raw_label"] = raw_label  # L2 #3a：原始标签，重排重建显示名用
+        entry_obj["efx_has_label"] = int(has_label)  # 1=有原始标签, 0=合成标签
+        entry_obj.parent           = root_obj
 
         if isinstance(body, RootBody):
-            body_obj["body_kind"] = "root"
+            entry_obj["entry_kind"] = "root"
             # 仅当全部子条目都是 UnitBoundary（实测 100% 官方样本如此）才结构化为
             # 可编辑字段；含 RenderTarget/LayoutBank 或整段不透明回退时存 base64 只读。
             structurable = (
@@ -292,67 +292,67 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
                 and all(isinstance(e, RootUnitBoundary) for e in body.entries)
             )
             if structurable:
-                body_obj["root_structured"] = 1
-                body_obj["root_const0"]     = str(body.const0)
-                body_obj["root_const1"]     = str(body.const1)
-                body_obj["root_ub_count"]   = len(body.entries)
+                entry_obj["root_structured"] = 1
+                entry_obj["root_const0"]     = str(body.const0)
+                entry_obj["root_const1"]     = str(body.const1)
+                entry_obj["root_ub_count"]   = len(body.entries)
                 for j, e in enumerate(body.entries):
                     # 原生数组 IDProperty → panel 可直接 layout.prop 编辑
-                    body_obj["root_ub%d_ints" % j]   = list(e.ints)
-                    body_obj["root_ub%d_floats" % j] = list(e.floats)
+                    entry_obj["root_ub%d_ints" % j]   = list(e.ints)
+                    entry_obj["root_ub%d_floats" % j] = list(e.floats)
             else:
-                body_obj["root_structured"] = 0
-                body_obj["raw"]             = _b64enc(body.serialize())
+                entry_obj["root_structured"] = 0
+                entry_obj["raw"]             = _b64enc(body.serialize())
 
-        elif isinstance(body, MainDataBodyExtended):
+        elif isinstance(body, EntryDataExtended):
             # 扩展头（body_type < 256，36B 头）
             # 所有数值字段存十进制字符串（uint32 可 ≥ 2^31，Blender C int 会溢出）
-            body_obj["body_kind"]    = "extended"
-            body_obj["body_type"]    = str(body.body_type)
-            body_obj["unkn0"]        = str(body.unkn0)
-            body_obj["null0"]        = str(body.null0)
-            body_obj["null1"]        = str(body.null1)
-            body_obj["unkn1"]        = str(body.unkn1)
-            body_obj["unkn2"]        = str(body.unkn2)
-            body_obj["attr_count"]   = str(body.attr_count)
-            body_obj["null2"]        = str(body.null2)
-            body_obj["timl_length"]  = str(body.timl_length)
-            body_obj["timl_bytes"]   = _b64enc(body.timl_bytes)
+            entry_obj["entry_kind"]    = "extended"
+            entry_obj["body_type"]    = str(body.body_type)
+            entry_obj["unkn0"]        = str(body.unkn0)
+            entry_obj["null0"]        = str(body.null0)
+            entry_obj["null1"]        = str(body.null1)
+            entry_obj["unkn1"]        = str(body.unkn1)
+            entry_obj["unkn2"]        = str(body.unkn2)
+            entry_obj["attr_count"]   = str(body.attr_count)
+            entry_obj["null2"]        = str(body.null2)
+            entry_obj["timl_length"]  = str(body.timl_length)
+            entry_obj["timl_bytes"]   = _b64enc(body.timl_bytes)
             # AttrBlock 子对象（extern 指针化在 §7b 二次 pass 完成）
-            _build_attr_block_children(body.attr_blocks, body_obj, col_main, raw_label)
+            _build_attr_attribute_children(body.attr_blocks, entry_obj, col_entry, raw_label)
             if body.timl_length > 0:
-                make_timl_handle(body_obj, col_main)   # TIML 统一入口句柄
+                make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
 
-        elif isinstance(body, MainDataBody):
+        elif isinstance(body, EntryData):
             # 标准头（20B 头）
             # 所有数值字段存十进制字符串（uint32 可 ≥ 2^31，Blender C int 会溢出）
-            body_obj["body_kind"]   = "standard"
-            body_obj["body_type"]   = str(body.body_type)
-            body_obj["unkn0"]       = str(body.unkn0)
-            body_obj["attr_count"]  = str(body.attr_count)
-            body_obj["null"]        = str(body.null)
-            body_obj["timl_length"] = str(body.timl_length)
-            body_obj["timl_bytes"]  = _b64enc(body.timl_bytes)
+            entry_obj["entry_kind"]   = "standard"
+            entry_obj["body_type"]   = str(body.body_type)
+            entry_obj["unkn0"]       = str(body.unkn0)
+            entry_obj["attr_count"]  = str(body.attr_count)
+            entry_obj["null"]        = str(body.null)
+            entry_obj["timl_length"] = str(body.timl_length)
+            entry_obj["timl_bytes"]  = _b64enc(body.timl_bytes)
             # AttrBlock 子对象（extern 指针化在 §7b 二次 pass 完成）
-            _build_attr_block_children(body.attr_blocks, body_obj, col_main, raw_label)
+            _build_attr_attribute_children(body.attr_blocks, entry_obj, col_entry, raw_label)
             if body.timl_length > 0:
-                make_timl_handle(body_obj, col_main)   # TIML 统一入口句柄
+                make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
 
         else:
             # 未知类型：保守存整段 serialize()
-            body_obj["body_kind"] = "unknown"
-            body_obj["raw"]       = _b64enc(body.serialize())
+            entry_obj["entry_kind"] = "unknown"
+            entry_obj["raw"]       = _b64enc(body.serialize())
 
     # ── 6. Play：L2 #1b 结构化存储（替换纯 opaque）────────────────────────────
     #
     # main_bodies_by_index 在 §8（Subselect）构建前暂不可用，
     # 但 §5 Main 段已建完——提前在此处用相同逻辑构建一次，供 PlayEmitter 解析用。
     # （Subselect 的 main_bodies_by_index 在 §8 再次独立构建，逻辑不重叠）
-    _play_bodies_by_index = {}
+    _action_entries_by_index = {}
     for _bo in bpy.data.objects:
-        if _bo.get("~TYPE") == "EFX_BODY" and _bo.parent == root_obj:
+        if _bo.get("~TYPE") == "EFX_ENTRY" and _bo.parent == root_obj:
             try:
-                _play_bodies_by_index[int(_bo["efx_index"])] = _bo
+                _action_entries_by_index[int(_bo["efx_index"])] = _bo
             except (KeyError, ValueError, TypeError):
                 pass
 
@@ -362,8 +362,8 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         play_label = _clean_labels[i] if has_label else f"play_{i}"
         nn = str(i).zfill(2) if i < 100 else str(i)
         obj_name = f"{nn} {play_label}" if play_label else f"{nn} play_{i}"
-        obj = _new_empty(obj_name, col_play)
-        obj["~TYPE"]         = "EFX_PLAY"
+        obj = _new_empty(obj_name, col_action)
+        obj["~TYPE"]         = "EFX_ACTION"
         obj["efx_index"]     = i
         obj["efx_raw_label"] = play_label       # 标签重建用
         obj["efx_has_label"] = int(has_label)   # 1=有原始标签, 0=合成名（不进标签表）
@@ -372,7 +372,7 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
 
         # ── L2 #1b：结构化初始化 ──────────────────────────────────────────────
         try:
-            _play_emitter.init_play_props(obj, pd, _play_bodies_by_index)
+            _action_emitter.init_action_props(obj, pd, _action_entries_by_index)
         except Exception:
             # 任何异常均安全回退：raw_b64 保证 byte-perfect
             pass
@@ -400,7 +400,7 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
 
     # ── 7b. ExternReference 指针化二次 pass（L2 #1c）──────────────────────────
     #
-    # §5 Main 段建立时 Extern 对象尚未存在，所以 init_block_props 当时拿不到
+    # §5 Main 段建立时 Extern 对象尚未存在，所以 init_attribute_props 当时拿不到
     # extern_objs_by_index。现在 §7 Extern 段已建完，补做二次 pass：
     # 遍历所有 EXTERNREFERENCE 块，调用 extern_ref.init_extern_ref_props 完成指针化。
     #
@@ -415,11 +415,11 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
 
     _count_extern = hdr.count_extern  # 文件头的 count_extern
 
-    # 遍历所有 EFX_BLOCK，找 EXTERNREFERENCE 类型补做指针化
+    # 遍历所有 EFX_ATTRIBUTE，找 EXTERNREFERENCE 类型补做指针化
     try:
         from ..efx_format.hashes import EXTERNREFERENCE as _EXTERNREFERENCE_HASH
         for _blk_obj in bpy.data.objects:
-            if _blk_obj.get("~TYPE") != "EFX_BLOCK":
+            if _blk_obj.get("~TYPE") != "EFX_ATTRIBUTE":
                 continue
             # 仅当父 body 的 parent == root_obj（属于本次导入的文件）
             if _blk_obj.parent is None or _blk_obj.parent.parent != root_obj:
@@ -449,20 +449,20 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     #   PTLIFE.relationIndex     → play(action) 指针（Play 局部 index）
     #   PTCOLLISION.ieIndex      → play 指针（Play 局部 index）
     #
-    # 构建 {efx_index → EFX_BODY} 和 {efx_index → EFX_PLAY} 映射
+    # 构建 {efx_index → EFX_ENTRY} 和 {efx_index → EFX_ACTION} 映射
     _main_bodies_by_index_1d = {}
     for _bo in bpy.data.objects:
-        if _bo.get("~TYPE") == "EFX_BODY" and _bo.parent == root_obj:
+        if _bo.get("~TYPE") == "EFX_ENTRY" and _bo.parent == root_obj:
             try:
                 _main_bodies_by_index_1d[int(_bo["efx_index"])] = _bo
             except (KeyError, ValueError, TypeError):
                 pass
 
-    _play_objs_by_index_1d = {}
+    _action_objs_by_index_1d = {}
     for _po in bpy.data.objects:
-        if _po.get("~TYPE") == "EFX_PLAY" and _po.parent == root_obj:
+        if _po.get("~TYPE") == "EFX_ACTION" and _po.parent == root_obj:
             try:
-                _play_objs_by_index_1d[int(_po["efx_index"])] = _po
+                _action_objs_by_index_1d[int(_po["efx_index"])] = _po
             except (KeyError, ValueError, TypeError):
                 pass
 
@@ -475,7 +475,7 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
             PTCOLLISION as _PTCOLLISION_HASH,
         )
         for _blk_obj in bpy.data.objects:
-            if _blk_obj.get("~TYPE") != "EFX_BLOCK":
+            if _blk_obj.get("~TYPE") != "EFX_ATTRIBUTE":
                 continue
             # 仅属于本次导入的文件
             if _blk_obj.parent is None or _blk_obj.parent.parent != root_obj:
@@ -486,17 +486,17 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
                 _data_bytes_1d = base64.b64decode(str(bp.raw_b64))
 
                 if _type_hash == _PTLIFE_HASH:
-                    _body_play_ref.init_ptlife_ref_props(
+                    _entry_action_ref.init_ptlife_ref_props(
                         _blk_obj,
                         _data_bytes_1d,
-                        _play_objs_by_index_1d,
+                        _action_objs_by_index_1d,
                         _count_play_1d,
                     )
                 elif _type_hash == _PTCOLLISION_HASH:
-                    _body_play_ref.init_ptcollision_ref_props(
+                    _entry_action_ref.init_ptcollision_ref_props(
                         _blk_obj,
                         _data_bytes_1d,
-                        _play_objs_by_index_1d,
+                        _action_objs_by_index_1d,
                         _count_play_1d,
                     )
             except Exception:
@@ -507,15 +507,15 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
 
     # ── 8. Subselect：L2 #1a 结构化存储（替换 opaque）──────────────────────────
     #
-    # 构建 {efx_index → EFX_BODY 对象} 映射，供 init_subselect_props 解析 entries。
+    # 构建 {efx_index → EFX_ENTRY 对象} 映射，供 init_subselect_props 解析 entries。
     # 此时 body_objs 列表已按 efx_index 排序（§5 中建立）；
     # 如未能在此处获取，则兜底用 bpy.data.objects 遍历。
     main_bodies_by_index = {}
-    for body_obj in bpy.data.objects:
-        if body_obj.get("~TYPE") == "EFX_BODY" and body_obj.parent == root_obj:
+    for entry_obj in bpy.data.objects:
+        if entry_obj.get("~TYPE") == "EFX_ENTRY" and entry_obj.parent == root_obj:
             try:
-                idx = int(body_obj["efx_index"])
-                main_bodies_by_index[idx] = body_obj
+                idx = int(entry_obj["efx_index"])
+                main_bodies_by_index[idx] = entry_obj
             except (KeyError, ValueError, TypeError):
                 pass
 
@@ -539,7 +539,7 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     #
     # 此时 main_bodies_by_index 已在 §8 构建完毕，可直接复用。
     try:
-        _body_play_ref.init_eof_list_props(
+        _entry_action_ref.init_eof_list_props(
             root_obj,
             efx.eof_ints,
             main_bodies_by_index,
@@ -559,7 +559,7 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     return root_obj
 
 
-def _build_attr_block_children(
+def _build_attr_attribute_children(
     attr_blocks,
     parent_obj: bpy.types.Object,
     collection: bpy.types.Collection,
@@ -568,17 +568,17 @@ def _build_attr_block_children(
     count_extern: int = 0,
 ) -> None:
     """
-    为 body 对象建 AttrBlock 子 Empty 列表（EFX_BLOCK）。
+    为 body 对象建 AttrBlock 子 Empty 列表（EFX_ATTRIBUTE）。
     子块保持原始顺序（存 efx_index）。
     必须把子对象也 link 到同一集合里（Blender 要求对象必须在集合里才可见）。
 
     L1.1a 新增：
-      - 调用 fields.init_block_props 初始化 obj.efx_block PropertyGroup
+      - 调用 fields.init_attribute_props 初始化 obj.efx_block PropertyGroup
         （含字段展开或 opaque 回退，加载完后 efx_dirty=False）
       - 继续保留自定义属性 data_bytes 用于不依赖 PropertyGroup 的场景
 
     L2 #1c 新增：
-      - extern_objs_by_index / count_extern 传入 init_block_props，
+      - extern_objs_by_index / count_extern 传入 init_attribute_props，
         供 EXTERNREFERENCE 块的 extern 指针化使用。
 
     命名方案（显示用，不影响导出顺序）：
@@ -598,7 +598,7 @@ def _build_attr_block_children(
         else:
             blk_name = f"{nn} {type_name}"
         blk_obj  = _new_empty(blk_name, collection)
-        blk_obj["~TYPE"]          = "EFX_BLOCK"
+        blk_obj["~TYPE"]          = "EFX_ATTRIBUTE"
         blk_obj["efx_index"]      = blk_idx
         blk_obj["type_hash"]      = str(blk.type_hash)   # uint32：存十进制字符串防溢出
         blk_obj["data_bytes"]     = _b64enc(blk.data_bytes)
@@ -606,10 +606,10 @@ def _build_attr_block_children(
         blk_obj.parent            = parent_obj
 
         # ── L1.1a + L2 #1c：初始化 efx_block PropertyGroup ──────────────────
-        # init_block_props 内部管理 _LOADING 守卫，填完后重置 efx_dirty=False。
+        # init_attribute_props 内部管理 _LOADING 守卫，填完后重置 efx_dirty=False。
         # L2 #1c：extra args extern_objs_by_index/count_extern 供 EXTERNREFERENCE 使用。
         try:
-            _fields.init_block_props(
+            _fields.init_attribute_props(
                 blk_obj, blk,
                 extern_objs_by_index=extern_objs_by_index,
                 count_extern=count_extern,
@@ -672,18 +672,18 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     # ── 3. 还原 eof_ints（L2 #1d：优先走 efx_eof_list 指针路径）────────────────
     # L2 #1d 前：逗号分隔十进制字符串；空字符串表示空列表
     # L2 #1d 后：由 export_eof_ints 从 CollectionProperty 还原（body 指针 + raw 值）。
-    # 注意：eof_ints 依赖 body_index_map，该 map 在 §4 收集 body_objs 后才能构建。
+    # 注意：eof_ints 依赖 entry_index_map，该 map 在 §4 收集 body_objs 后才能构建。
     # 故此处先占位，§4b 补填；最终在 §6 拼接字节前使用。
     eof_ints = None  # 占位，§4b 补填
 
     # ── 4. 收集 Main body 对象（按 efx_index 排序）────────────────────────
-    #   子对象通过 parent == root_object 且 ~TYPE == EFX_BODY 来找
-    body_objs = _collect_children_by_type(r, "EFX_BODY")
+    #   子对象通过 parent == root_object 且 ~TYPE == EFX_ENTRY 来找
+    body_objs = _collect_children_by_type(r, "EFX_ENTRY")
     body_objs.sort(key=lambda o: int(o["efx_index"]))
 
     # ── 4a0. 剔除零块的 standard/extended body（原生 Delete Hierarchy 的残留空壳）──
     # 2026-07-01 实测坐实：Blender 原生「Delete Hierarchy」在某些集合结构下只删掉
-    # body 的子对象（EFX_BLOCK/EFX_TIML），body 这个 Empty 本身却原样留在
+    # body 的子对象（EFX_ATTRIBUTE/EFX_TIML），body 这个 Empty 本身却原样留在
     # bpy.data.objects 里（默认 Outliner「View Layer」视图不可见，Purge Unused Data
     # 也清不掉——它仍链接在集合里，不算孤儿），把它当"真删掉了"完全是错觉。这类零块
     # body 在真实游戏内容里没有意义（不做任何事），直接在导出时当它不存在：不写进
@@ -693,24 +693,24 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     # 不需要额外清理——跟"真的用插件删除按钮删掉这个 body"效果一致。
     body_objs = [
         o for o in body_objs
-        if str(o.get("body_kind", "")) not in ("standard", "extended")
-        or _collect_children_by_type(o, "EFX_BLOCK")
+        if str(o.get("entry_kind", "")) not in ("standard", "extended")
+        or _collect_children_by_type(o, "EFX_ATTRIBUTE")
     ]
 
     # ── 4a. 提前构建 extern_index_map（L2 #1c）─────────────────────────────────
-    # 需要在遍历 main_bodies 时传给 _resolve_block_data_bytes，
+    # 需要在遍历 main_bodies 时传给 _resolve_attribute_data_bytes，
     # 所以在 §4 主循环开始前先收集并排序 EFX_EXTERN 对象。
     extern_objs = _collect_children_by_type(r, "EFX_EXTERN")
     extern_objs.sort(key=lambda o: int(o["efx_index"]))
     # {EFX_EXTERN Object → extern 段局部 0-based index}
     extern_index_map = {obj: idx for idx, obj in enumerate(extern_objs)}
 
-    # ── 4b. 构建 body_index_map 和 play_index_map（L2 #1d）─────────────────────
+    # ── 4b. 构建 entry_index_map 和 play_index_map（L2 #1d）─────────────────────
     # body_objs 已排序，enumerate 序号 == Main 局部 index（与导出顺序一致）
     body_index_map_export = {obj: idx for idx, obj in enumerate(body_objs)}
 
-    # play_objs 在 §5 收集；此处先收集排序以便 _resolve_block_data_bytes 使用
-    play_objs_prescan = _collect_children_by_type(r, "EFX_PLAY")
+    # play_objs 在 §5 收集；此处先收集排序以便 _resolve_attribute_data_bytes 使用
+    play_objs_prescan = _collect_children_by_type(r, "EFX_ACTION")
     play_objs_prescan.sort(key=lambda o: int(o["efx_index"]))
     play_index_map_export = {obj: idx for idx, obj in enumerate(play_objs_prescan)}
 
@@ -727,15 +727,15 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     # hdr_count_body/play/extern/subselect 只在导入时写一次、之后再不更新，天然
     # 就是"最后一次已知结构"的快照，不需要额外状态：跟当前实际对象数一比对，
     # 不管是走自定义算子还是原生删除/增加触发的变化，都能查出来。
-    _body_count_changed = len(body_objs) != int(str(r.get("hdr_count_body", len(body_objs))))
+    _entry_count_changed = len(body_objs) != int(str(r.get("hdr_count_body", len(body_objs))))
     _play_count_changed = len(play_objs_prescan) != int(str(r.get("hdr_count_play", len(play_objs_prescan))))
     _extern_count_changed = len(extern_objs) != int(str(r.get("hdr_count_extern", len(extern_objs))))
     _subselect_count_changed = len(subselect_objs_prescan) != int(str(r.get("hdr_count_subselect", len(subselect_objs_prescan))))
-    _labels_need_rebuild = _body_count_changed or _play_count_changed or _extern_count_changed
-    _eof_need_sanitize = _body_count_changed
+    _labels_need_rebuild = _entry_count_changed or _play_count_changed or _extern_count_changed
+    _eof_need_sanitize = _entry_count_changed
     # subselect 表内部会跳过 body_ptr 悬空的成员（见 subselect.py），所以 body 数变化
     # 也可能让某张表的字节变短，即使没有直接增删 subselect 对象本身，同样要重算。
-    _subselect_need_rebuild = _subselect_count_changed or _body_count_changed
+    _subselect_need_rebuild = _subselect_count_changed or _entry_count_changed
 
     # ── 2b. 决定 label_bytes（play/extern/body 对象均已收集）──────────────────
     # 混合策略（契合本仓库"未编辑走 verbatim"哲学）：
@@ -763,7 +763,7 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     except (ValueError, TypeError):
         _eof_sanitize = _eof_need_sanitize
     try:
-        eof_ints = _body_play_ref.export_eof_ints(
+        eof_ints = _entry_action_ref.export_eof_ints(
             r, body_index_map_export, sanitize=_eof_sanitize)
     except Exception:
         # 回退：旧字符串路径
@@ -779,100 +779,100 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
         # count_eof > count_body → 游戏闪退。
         # 成因：被删 body 的 eof 槽是哨兵原始值（非 body 指针），无法随 body 删除自动消失。
         # 例：fine 的 body[3] eof 值=16（越界哨兵），删 body[3] 后哨兵残留 → ceof=4>cb=3。
-        # 修复：截断到 n_body，丢弃尾部多余条目（哨兵总在末尾；已有指针的 body 删除
+        # 修复：截断到 n_entry，丢弃尾部多余条目（哨兵总在末尾；已有指针的 body 删除
         # 会走悬空跳过路径，不产生此问题）。78/78 不受影响（未编辑文件 len==count_body）。
         eof_ints = eof_ints[:len(body_objs)]
 
     main_bodies = []
-    for body_obj in body_objs:
-        kind = str(body_obj["body_kind"])
+    for entry_obj in body_objs:
+        kind = str(entry_obj["entry_kind"])
 
         if kind == "root":
-            if int(body_obj.get("root_structured", 0)) == 1:
-                n = int(body_obj.get("root_ub_count", 0))
+            if int(entry_obj.get("root_structured", 0)) == 1:
+                n = int(entry_obj.get("root_ub_count", 0))
                 entries = []
                 for j in range(n):
-                    ints = tuple(int(x) for x in body_obj["root_ub%d_ints" % j])
-                    floats = tuple(float(x) for x in body_obj["root_ub%d_floats" % j])
+                    ints = tuple(int(x) for x in entry_obj["root_ub%d_ints" % j])
+                    floats = tuple(float(x) for x in entry_obj["root_ub%d_floats" % j])
                     entries.append(RootUnitBoundary(ints=ints, floats=floats))
                 main_bodies.append(RootBody(
-                    const0=int(str(body_obj["root_const0"])),
-                    const1=int(str(body_obj["root_const1"])),
+                    const0=int(str(entry_obj["root_const0"])),
+                    const1=int(str(entry_obj["root_const1"])),
                     entries=entries,
                 ))
             else:
-                raw = _b64dec(str(body_obj["raw"]))
+                raw = _b64dec(str(entry_obj["raw"]))
                 main_bodies.append(RootBody(raw=raw))
 
         elif kind == "extended":
             # 收集 AttrBlock 子对象
-            blk_objs = _collect_children_by_type(body_obj, "EFX_BLOCK")
+            blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE")
             blk_objs.sort(key=lambda o: int(o["efx_index"]))
             attr_blocks = [
                 AttrBlock(
                     type_hash  = int(str(blk["type_hash"])),
-                    data_bytes = _resolve_block_data_bytes(
+                    data_bytes = _resolve_attribute_data_bytes(
                         blk, extern_index_map,
                         body_index_map_export, play_index_map_export,
                     ),
                 )
                 for blk in blk_objs
             ]
-            main_bodies.append(MainDataBodyExtended(
-                body_type   = int(str(body_obj["body_type"])),
-                unkn0       = int(str(body_obj["unkn0"])),
-                null0       = int(str(body_obj["null0"])),
-                null1       = int(str(body_obj["null1"])),
-                unkn1       = int(str(body_obj["unkn1"])),
-                unkn2       = int(str(body_obj["unkn2"])),
+            main_bodies.append(EntryDataExtended(
+                body_type   = int(str(entry_obj["body_type"])),
+                unkn0       = int(str(entry_obj["unkn0"])),
+                null0       = int(str(entry_obj["null0"])),
+                null1       = int(str(entry_obj["null1"])),
+                unkn1       = int(str(entry_obj["unkn1"])),
+                unkn2       = int(str(entry_obj["unkn2"])),
                 attr_count  = len(attr_blocks),  # L2 #3b：从实际块数重算（增删块后正确）
-                null2       = int(str(body_obj["null2"])),
-                timl_length = len(_b64dec(str(body_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
-                timl_bytes  = _b64dec(str(body_obj["timl_bytes"])),
+                null2       = int(str(entry_obj["null2"])),
+                timl_length = len(_b64dec(str(entry_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
+                timl_bytes  = _b64dec(str(entry_obj["timl_bytes"])),
                 attr_blocks = attr_blocks,
             ))
 
         elif kind == "standard":
-            blk_objs = _collect_children_by_type(body_obj, "EFX_BLOCK")
+            blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE")
             blk_objs.sort(key=lambda o: int(o["efx_index"]))
             attr_blocks = [
                 AttrBlock(
                     type_hash  = int(str(blk["type_hash"])),
-                    data_bytes = _resolve_block_data_bytes(
+                    data_bytes = _resolve_attribute_data_bytes(
                         blk, extern_index_map,
                         body_index_map_export, play_index_map_export,
                     ),
                 )
                 for blk in blk_objs
             ]
-            main_bodies.append(MainDataBody(
-                body_type   = int(str(body_obj["body_type"])),
-                unkn0       = int(str(body_obj["unkn0"])),
+            main_bodies.append(EntryData(
+                body_type   = int(str(entry_obj["body_type"])),
+                unkn0       = int(str(entry_obj["unkn0"])),
                 attr_count  = len(attr_blocks),  # L2 #3b：从实际块数重算（增删块后正确）
-                null        = int(str(body_obj["null"])),
-                timl_length = len(_b64dec(str(body_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
-                timl_bytes  = _b64dec(str(body_obj["timl_bytes"])),
+                null        = int(str(entry_obj["null"])),
+                timl_length = len(_b64dec(str(entry_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
+                timl_bytes  = _b64dec(str(entry_obj["timl_bytes"])),
                 attr_blocks = attr_blocks,
             ))
 
         else:
             # unknown：raw 存的是完整 serialize()，直接当 RootBody 原样拼接
-            raw = _b64dec(str(body_obj["raw"]))
+            raw = _b64dec(str(entry_obj["raw"]))
             main_bodies.append(RootBody(raw=raw))
 
-    # ── 5. Play：L2 #1b 结构化导出（PLAYEMITTER targets 经 body_index_map 重算）──
-    #   body_objs 已在 §4 按 efx_index 排序；body_index_map 在 §4b 构建。
+    # ── 5. Play：L2 #1b 结构化导出（PLAYEMITTER targets 经 entry_index_map 重算）──
+    #   body_objs 已在 §4 按 efx_index 排序；entry_index_map 在 §4b 构建。
     #   此处提前构建，以便 Play 导出也能用（Play 段在 Subselect 之前）。
     #   extern_objs 已在 §4a 收集并排序；extern_index_map 已在 §4a 构建。
     play_objs = play_objs_prescan  # §4b 已收集并排序，复用
 
-    # body_index_map：{EFX_BODY Object → main_local_index}（§4b 已构建）
-    _play_body_index_map = body_index_map_export
+    # entry_index_map：{EFX_ENTRY Object → main_local_index}（§4b 已构建）
+    _action_entry_index_map = body_index_map_export
 
     play_raw = b""
     for po in play_objs:
         try:
-            pd = _play_emitter.export_play_data(po, _play_body_index_map)
+            pd = _action_emitter.export_action_data(po, _action_entry_index_map)
             play_raw += pd.serialize()
         except Exception:
             # 回退：用 raw_b64 原样拼接（byte-perfect 保底）
@@ -895,14 +895,14 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     #   §4d 已收集排序过（结构变化检测用），直接复用。
     subselect_objs = subselect_objs_prescan
 
-    # 构建 {EFX_BODY object → main_local_index} 映射
+    # 构建 {EFX_ENTRY object → main_local_index} 映射
     # body_objs 已在 §4 按 efx_index 排序并 enumerate → 局部 index == enumerate 序号
-    body_index_map = {obj: idx for idx, obj in enumerate(body_objs)}
+    entry_index_map = {obj: idx for idx, obj in enumerate(body_objs)}
 
     subselect_raw = b""
     for ss_obj in subselect_objs:
         try:
-            tbl = _subselect.export_subselect_table(ss_obj, body_index_map)
+            tbl = _subselect.export_subselect_table(ss_obj, entry_index_map)
             subselect_raw += tbl.serialize()
         except Exception:
             # 回退：用 raw_b64 原样拼接（byte-perfect 保底）
@@ -939,16 +939,16 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     return out
 
 
-def _resolve_block_data_bytes(blk_obj: bpy.types.Object,
+def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
                               extern_index_map: dict = None,
-                              body_index_map: dict = None,
+                              entry_index_map: dict = None,
                               play_index_map: dict = None) -> bytes:
     """
-    L1.1a + L2 #1c + L2 #1d：决定导出时 EFX_BLOCK 的 data_bytes 来源。
+    L1.1a + L2 #1c + L2 #1d：决定导出时 EFX_ATTRIBUTE 的 data_bytes 来源。
 
     优先级：
       1. 若 efx_block.efx_dirty=True 且 is_editable=True
-         → fields.get_block_data_bytes（重新 encode 用户修改；
+         → fields.get_attribute_data_bytes（重新 encode 用户修改；
            对 EXTERNREFERENCE/PTLIFE/PTCOLLISION + pointerized=True 额外覆写字段）
       2. 否则 → 自定义属性 data_bytes（base64 原始，byte-perfect 回退；
            对 EXTERNREFERENCE/PTLIFE/PTCOLLISION + pointerized=True 同样覆写）
@@ -956,16 +956,16 @@ def _resolve_block_data_bytes(blk_obj: bpy.types.Object,
     自定义属性 data_bytes 始终在导入时写入，作为保险。
 
     extern_index_map : dict[bpy.types.Object, int] | None — L2 #1c
-    body_index_map   : dict[bpy.types.Object, int] | None — L2 #1d PTLIFE
+    entry_index_map   : dict[bpy.types.Object, int] | None — L2 #1d PTLIFE
     play_index_map   : dict[bpy.types.Object, int] | None — L2 #1d PTCOLLISION
     """
     try:
         bp = blk_obj.efx_block
         if bp.efx_dirty and bp.is_editable:
-            return _fields.get_block_data_bytes(
+            return _fields.get_attribute_data_bytes(
                 blk_obj,
                 extern_index_map=extern_index_map,
-                body_index_map=body_index_map,
+                entry_index_map=entry_index_map,
                 play_index_map=play_index_map,
             )
     except Exception:
@@ -974,9 +974,9 @@ def _resolve_block_data_bytes(blk_obj: bpy.types.Object,
     data = _b64dec(str(blk_obj["data_bytes"]))
     if extern_index_map is not None:
         data = _fields._apply_extern_ref_overlay(blk_obj, data, extern_index_map)
-    if body_index_map is not None or play_index_map is not None:
-        data = _fields._apply_body_play_ref_overlays(
-            blk_obj, data, body_index_map, play_index_map,
+    if entry_index_map is not None or play_index_map is not None:
+        data = _fields._apply_entry_action_ref_overlays(
+            blk_obj, data, entry_index_map, play_index_map,
         )
     return data
 

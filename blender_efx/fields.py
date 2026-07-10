@@ -1,5 +1,5 @@
 """
-blender_efx/fields.py  —  L1.1b+c + L1.3：通用块字段模型 + 脏标记 + 逐字段无损性 + 路径编辑 + 颜色色轮
+blender_efx/fields.py  —  L1.1b+c + L1.3：通用属性字段模型 + 脏标记 + 逐字段无损性 + 路径编辑 + 颜色色轮
 
 设计原则（参照 CLAUDE.md）：
   - Python 3.11 语法（目标 Blender 4.3.2）
@@ -22,7 +22,7 @@ blender_efx/fields.py  —  L1.1b+c + L1.3：通用块字段模型 + 脏标记 +
 
   健壮性闸门（roundtrip gate）：
     dict_to_items 完成后，立即用"全未编辑"路径重建 data_bytes，
-    与原始 data_bytes 断言相等；不等则该块退回 is_editable=False。
+    与原始 data_bytes 断言相等；不等则该属性退回 is_editable=False。
 
 数据类型映射（EFXFieldItem.data_type → 值槽）：
   FLOAT    → float_value   (单精度浮点)
@@ -85,15 +85,15 @@ from bpy.types import PropertyGroup
 _LOADING: bool = False
 """
 全局加载守卫。
-在 io_tree.import_efx_tree 的块字段填充阶段置 True，
+在 io_tree.import_efx_tree 的属性字段填充阶段置 True，
 填充完成后（导入末尾）重置为 False。
 所有 update 回调检查此标志，加载期间直接返回不置脏。
 """
 
 
-def _mark_block_dirty(self, context):
+def _mark_attribute_dirty(self, context):
     """
-    通用脏标记回调：编辑任何字段值 → 把所属 EFXBlockProps 的 efx_dirty 置 True，
+    通用脏标记回调：编辑任何字段值 → 把所属 EFXAttributeProps 的 efx_dirty 置 True，
     同时把该字段项的 edited 置 True（逐字段无损性：仅编辑过的字段走重新 pack 路径）。
     加载期间（_LOADING=True）跳过，避免填充字段时误置脏。
     """
@@ -110,27 +110,27 @@ def _mark_block_dirty(self, context):
                 from ..efx_format.hashes import TRANSFORM3D, MESH, EMITTERSHAPE3D
                 blk_hash = int(obj.efx_block.type_hash_str)
                 body = obj.parent
-                is_body = body is not None and body.get("~TYPE") == "EFX_BODY"
-                # TRANSFORM3D 的 translate/rotate/resize 编辑 → 实时重摆 body empty（单向、纯可视）
-                if (blk_hash == TRANSFORM3D and is_body
+                is_entry = body is not None and body.get("~TYPE") == "EFX_ENTRY"
+                # TRANSFORM3D 的 translate/rotate/resize 编辑 → 实时重摆 entry empty（单向、纯可视）
+                if (blk_hash == TRANSFORM3D and is_entry
                         and self.ori_name in ("translate", "rotate", "resize")):
                     from . import transform_sync
                     scene = getattr(context, "scene", None) or bpy.context.scene
                     armature = getattr(scene, "efx_armature", None) if scene else None
                     use_anchor = getattr(scene, "efx_anchor_placement", True) if scene else True
-                    # 锚定感知：被锚 body 编辑 transform3d 仍以基点为基准，不掉回原点
-                    transform_sync.place_single_body(body, armature, use_anchor=use_anchor)
-                    # 网格对齐会话进行中 → body empty 移动后，重对齐其实例
+                    # 锚定感知：被锚 entry 编辑 transform3d 仍以基点为基准，不掉回原点
+                    transform_sync.place_single_entry(body, armature, use_anchor=use_anchor)
+                    # 网格对齐会话进行中 → entry empty 移动后，重对齐其实例
                     from . import mesh_align
-                    mesh_align.realign_body_if_active(body)
+                    mesh_align.realign_entry_if_active(body)
                 # MESH 的 rotation/scale/global_scale 编辑 →
                 #   ① 直接作用到绑定对象本身（持久、实时反映旋转/缩放）
                 #   ② 若对齐预览会话进行中，重对齐其实例
                 elif blk_hash == MESH and self.ori_name in ("rotation", "scale", "global_scale"):
                     from . import mesh_align
                     mesh_align.apply_mesh_rotscale_to_object(obj)
-                    if is_body:
-                        mesh_align.realign_body_if_active(body)
+                    if is_entry:
+                        mesh_align.realign_entry_if_active(body)
                 # EMITTERSHAPE3D 的形状/尺寸/弧形裁剪字段编辑 → 形状预览会话进行中则重同步
                 elif blk_hash == EMITTERSHAPE3D and self.ori_name in (
                         "patternControl", "transform", "spawnAngleLimits"):
@@ -179,7 +179,7 @@ _DATA_TYPE_ITEMS = [
     # 不可表示
     ("OPAQUE",      "Opaque",       "不支持的复杂结构（base64 原始）"),
     # 路径字符串（custom-codec 含路径类型专用）
-    ("STRING",      "Path/String",  "路径字符串（custom-codec 含路径块的路径字段）"),
+    ("STRING",      "Path/String",  "路径字符串（custom-codec 含路径属性的路径字段）"),
 ]
 
 
@@ -304,8 +304,8 @@ def _float3_display_set(self, val):
 #
 # 两者都是打包成单个 int32 的 RGBA（非现成支持的 'colour'/('XYZ',2) 4-ubyte-list
 # 格式）。跟 float6_display/float3_display 一样：不单独存值，读写直接转发到真实
-# 值槽 int_value，写入时触发该值槽自身的 update=_mark_block_dirty，不需要额外
-# 挂 update。只有 TUBELIGHT 的 headColor/tailColor 用到，其余块的 item 上这个
+# 值槽 int_value，写入时触发该值槽自身的 update=_mark_attribute_dirty，不需要额外
+# 挂 update。只有 TUBELIGHT 的 headColor/tailColor 用到，其余属性的 item 上这个
 # 槽位始终空闲。
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -348,7 +348,7 @@ class EFXFieldItem(PropertyGroup):
     ori_name  ：schema 中的字段名（权威，用于重建 dict）。
     data_type ：字段数据类型枚举，决定读取哪个值槽。
     各值槽   ：按 data_type 只有一个槽有效数据。
-    每个值槽均挂 update=_mark_block_dirty 以在编辑时置脏。
+    每个值槽均挂 update=_mark_attribute_dirty 以在编辑时置脏。
     """
 
     ori_name: StringProperty(
@@ -402,41 +402,41 @@ class EFXFieldItem(PropertyGroup):
         name="",
         description="float32 value",
         precision=6,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     int_value: IntProperty(
         name="",
         description="int32/int16/int8 value",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     # uint32/uint64 存字符串，避免 Blender C int 32 位溢出
     uint_str: StringProperty(
         name="",
         description="uint value (decimal string, avoids overflow)",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     bool_value: BoolProperty(
         name="",
         description="Boolean value",
         default=False,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     byte1_value: IntProperty(
         name="",
         description="uint8 value [0, 255]",
         min=0, max=255,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     short1_value: IntProperty(
         name="",
         description="int16 value",
         min=-32768, max=32767,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     # ── 向量值槽（FloatVectorProperty）───────────────────────────────────────
@@ -445,28 +445,28 @@ class EFXFieldItem(PropertyGroup):
         name="",
         size=2,
         precision=6,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     float3_value: FloatVectorProperty(
         name="",
         size=3,
         precision=6,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     float4_value: FloatVectorProperty(
         name="",
         size=4,
         precision=6,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     float6_value: FloatVectorProperty(
         name="",
         size=6,
         precision=6,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     # ── Blender 坐标显示影子属性（toggle 开时由面板绘制；get/set 按字段单位换算）──
@@ -504,7 +504,7 @@ class EFXFieldItem(PropertyGroup):
         name="",
         size=4,
         min=0, max=255,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     # ── L1.3 颜色色轮值槽 ─────────────────────────────────────────────────────
@@ -519,7 +519,7 @@ class EFXFieldItem(PropertyGroup):
         size=4,
         min=0.0, max=1.0,
         default=(0.0, 0.0, 0.0, 1.0),
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     # COLOR_RGB：保留值槽（当前无 spec 映射到此 dtype；旧数据兼容）
@@ -531,25 +531,25 @@ class EFXFieldItem(PropertyGroup):
         size=3,
         min=0.0, max=1.0,
         default=(0.0, 0.0, 0.0),
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     int2_value: IntVectorProperty(
         name="",
         size=2,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     int3_value: IntVectorProperty(
         name="",
         size=3,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     int4_value: IntVectorProperty(
         name="",
         size=4,
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     # ── 较大数组：逗号分隔字符串 ──────────────────────────────────────────────
@@ -561,49 +561,49 @@ class EFXFieldItem(PropertyGroup):
     float2_str: StringProperty(
         name="",
         description="2 floats, comma-separated",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     float3_str: StringProperty(
         name="",
         description="3 floats, comma-separated",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     float5_str: StringProperty(
         name="",
         description="5 floats, comma-separated",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     float8_str: StringProperty(
         name="",
         description="8 floats, comma-separated",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     float16_str: StringProperty(
         name="",
         description="16 floats, comma-separated",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     int_pair_str: StringProperty(
         name="",
         description="2 ints, comma-separated",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     int10_str: StringProperty(
         name="",
         description="10 ints, comma-separated",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     int16_str: StringProperty(
         name="",
         description="16 ints, comma-separated",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     # ── 通用数组字符串（ARRAY_STR）────────────────────────────────────────────
@@ -612,7 +612,7 @@ class EFXFieldItem(PropertyGroup):
     array_str: StringProperty(
         name="",
         description="Generic array (comma-separated), for float/int arrays of any count",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     # ── 不可表示字段（base64 opaque）─────────────────────────────────────────
@@ -620,7 +620,7 @@ class EFXFieldItem(PropertyGroup):
     opaque_str: StringProperty(
         name="",
         description="Unsupported complex structure (base64 raw bytes)",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
     # ── 路径字符串槽（custom-codec 含路径类型，L1.1b）──────────────────────────
@@ -630,17 +630,17 @@ class EFXFieldItem(PropertyGroup):
     string_value: StringProperty(
         name="",
         description="Path string (in-game resource path, e.g. .dds/.efx/.mod3 paths)",
-        update=_mark_block_dirty,
+        update=_mark_attribute_dirty,
     )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFXBlockProps  —  挂到 Object 上的块属性 PropertyGroup
+# EFXAttributeProps  —  挂到 Object 上的属性 PropertyGroup
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFXBlockProps(PropertyGroup):
+class EFXAttributeProps(PropertyGroup):
     """
-    挂到 bpy.types.Object.efx_block 上（EFX_BLOCK Empty）。
+    挂到 bpy.types.Object.efx_block 上（EFX_ATTRIBUTE Empty）。
     存储 AttrBlock 的字段模型、脏标记和原始字节安全网。
     """
 
@@ -687,7 +687,7 @@ class EFXBlockProps(PropertyGroup):
 def _spec_to_dtype(spec) -> str:
     """
     把 schema 中的 spec 映射到 EFXFieldItem.data_type 枚举字符串。
-    返回 None 表示无法表示（触发整块 is_editable=False）。
+    返回 None 表示无法表示（触发整属性 is_editable=False）。
 
     支持的映射：
       'f'           → FLOAT
@@ -751,7 +751,7 @@ def _spec_to_dtype(spec) -> str:
         if tag in ('XYZ[]', 'colour[]', 'EPVColorSlot[]'):
             return None
 
-        # path → bytes，可用 base64 opaque，但整块判断
+        # path → bytes，可用 base64 opaque，但整属性判断
         if tag == 'path':
             return None
 
@@ -794,7 +794,7 @@ def _spec_to_dtype(spec) -> str:
 def _check_schema_all_flat(schema: list) -> bool:
     """
     检查 schema 中每个 spec 都能映射到支持的 data_type（非 None）。
-    若有任何字段返回 None，整块应标记 is_editable=False。
+    若有任何字段返回 None，整属性应标记 is_editable=False。
     """
     for _name, spec in schema:
         if _spec_to_dtype(spec) is None:
@@ -924,7 +924,7 @@ def dict_to_items(
     ----
     values     : dict  — AttrBlock.decode() 的返回值
     schema     : list  — 对应的 schema（用于确定 spec 类型，按顺序填充）
-    block_props: EFXBlockProps  — 目标 PropertyGroup
+    block_props: EFXAttributeProps  — 目标 PropertyGroup
     data_bytes : bytes | None  — 原始 data_bytes；若提供则按字节偏移填充
                                   每个 item.orig_b64 并判定 read_only。
 
@@ -1118,13 +1118,13 @@ def _float_to_ubyte(f: float) -> int:
 # items_to_dict  —  EFXFieldItem collection → values dict
 # ─────────────────────────────────────────────────────────────────────────────
 
-def items_to_dict(block_props: EFXBlockProps, schema: list) -> dict:
+def items_to_dict(block_props: EFXAttributeProps, schema: list) -> dict:
     """
     把 block_props.field_items 还原为 values dict，可直接喂给 AttrBlock.encode()。
 
     参数
     ----
-    block_props : EFXBlockProps
+    block_props : EFXAttributeProps
     schema      : list — 原始 schema（用于还原正确的 Python 类型）
 
     返回
@@ -1265,7 +1265,7 @@ def rebuild_data_bytes(block_props, schema: list) -> bytes:
 
     参数
     ----
-    block_props : EFXBlockProps（或 _MockBlockProps）
+    block_props : EFXAttributeProps（或 _MockAttributeProps）
     schema      : list — 原始 schema
 
     返回
@@ -1307,7 +1307,7 @@ def rebuild_data_bytes(block_props, schema: list) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# _init_custom_field_block  —  Phase A：custom 块固定标量字段展开
+# _init_custom_field_attribute  —  Phase A：custom 属性固定标量字段展开
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _decompose_custom_schema(schema):
@@ -1319,7 +1319,7 @@ def _decompose_custom_schema(schema):
 
     每条目 dict：{item_name, dtype, spec, get(values), set(values, x)}。
     get/set 在 decode 出的 values dict 上读写（处理嵌套 list/dict）。
-    若任一（子）spec 不可表示 → 返回 None（整块退回路径-only）。
+    若任一（子）spec 不可表示 → 返回 None（整属性退回路径-only）。
 
     build（值→item）与 rebuild（item→值）共用此分解，保证一致。
     """
@@ -1393,7 +1393,7 @@ def _build_custom_field_items(values, schema, bp) -> bool:
     return True
 
 
-def _init_custom_field_block(blk, bp, paths) -> bool:
+def _init_custom_field_attribute(blk, bp, paths) -> bool:
     """
     Phase A：对 CUSTOM_FIELD_SCHEMA_MAP 中的 custom 类型，把固定标量字段展开为
     可编辑 EFXFieldItem（路径仍建成 STRING item）。
@@ -1404,7 +1404,7 @@ def _init_custom_field_block(blk, bp, paths) -> bool:
       3. dict_to_items 建标量 item（data_bytes=None，不算 orig_b64）。
          成功后再 append 路径 STRING item（路径不在 schema，不会被 dict_to_items 建）。
          不加 __opaque_hint__（字段已全部可编辑）。
-      4. 统一闸门：rebuild_custom_field_block 对"未编辑态"重建 == 原 data_bytes？
+      4. 统一闸门：rebuild_custom_field_attribute 对"未编辑态"重建 == 原 data_bytes？
          不等 → 清理 + 返回 False（保守退回）。成功 → is_editable=True + 返回 True。
 
     返回 True = 成功展开（调用者直接 return）；False = 退回纯路径模式。
@@ -1456,7 +1456,7 @@ def _init_custom_field_block(blk, bp, paths) -> bool:
 
     # ── 统一闸门：未编辑态重建 == 原 data_bytes ──────────────────────────────
     try:
-        rebuilt = rebuild_custom_field_block(bp, type_hash)
+        rebuilt = rebuild_custom_field_attribute(bp, type_hash)
         if rebuilt != blk.data_bytes:
             bp.is_editable = False
             bp.field_items.clear()
@@ -1473,7 +1473,7 @@ def _init_custom_field_block(blk, bp, paths) -> bool:
     except Exception as _e:
         bp.is_editable = False
         bp.field_items.clear()
-        print(f"[EFX Phase A] {_tname}: rebuild_custom_field_block 抛出异常 → {_e}")
+        print(f"[EFX Phase A] {_tname}: rebuild_custom_field_attribute 抛出异常 → {_e}")
         return False
 
     bp.is_editable = True
@@ -1481,10 +1481,10 @@ def _init_custom_field_block(blk, bp, paths) -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# _init_path_block_props  —  L1.1b：初始化含路径 custom 类型的路径字段
+# _init_path_attribute_props  —  L1.1b：初始化含路径 custom 类型的路径字段
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _init_path_block_props(blk, bp) -> None:
+def _init_path_attribute_props(blk, bp) -> None:
     """
     对含路径的 custom-codec 类型（UVSEQUENCE / BILLBOARD3D / MESH / RIBBON /
     PLANE / RIBBONBLADE / TURBULENCE / LIGHTNING / RGBWATER），
@@ -1540,20 +1540,20 @@ def _init_path_block_props(blk, bp) -> None:
 
     # ── Phase A：固定标量字段展开（仅 CUSTOM_FIELD_SCHEMA_MAP 中的 9 种）──────
     # 这些类型把固定标量字段也建成可编辑 item（路径仍为 STRING item），导出走
-    # rebuild_custom_field_block（decode → 覆盖 → pack）。
+    # rebuild_custom_field_attribute（decode → 覆盖 → pack）。
     # 任一步退回 → 走下面的纯路径模式（仅路径 item + opaque hint，原 L1.1b 行为）。
     if type_hash in CUSTOM_FIELD_SCHEMA_MAP:
-        if _init_custom_field_block(blk, bp, paths):
+        if _init_custom_field_attribute(blk, bp, paths):
             return
-        # _init_custom_field_block 返回 False → 已自行清理，继续纯路径回退
+        # _init_custom_field_attribute 返回 False → 已自行清理，继续纯路径回退
 
     # ── Phase B：PTBEHAVIOR 全参数展开 ──────────────────────────────────────
     if type_hash == _PTBEHAVIOR_HASH():
-        if _init_ptbehavior_block(blk, bp):
+        if _init_ptbehavior_attribute(blk, bp):
             return
         # Phase B 失败 → 继续路径兜底
 
-    # ── 建路径字段项（纯路径模式：MATERIAL/PTBEHAVIOR 及 Phase A 退回的块）────
+    # ── 建路径字段项（纯路径模式：MATERIAL/PTBEHAVIOR 及 Phase A 退回的属性）────
     bp.field_items.clear()
 
     # 按类型确定路径字段命名方案：
@@ -1609,7 +1609,7 @@ def _PTBEHAVIOR_HASH() -> int:
 
 
 def _PTBEHAVIOR_HASH_RB() -> int:
-    """同 _PTBEHAVIOR_HASH，供 get_block_data_bytes 重建分发使用。"""
+    """同 _PTBEHAVIOR_HASH，供 get_attribute_data_bytes 重建分发使用。"""
     from ..efx_format.hashes import PTBEHAVIOR
     return PTBEHAVIOR
 
@@ -1694,12 +1694,12 @@ def _ptb_write_param_item(item, t: int, param: dict) -> None:
         item.int_value = int(param.get('unkn_type', 0))
 
 
-def _init_ptbehavior_block(blk, bp) -> bool:
+def _init_ptbehavior_attribute(blk, bp) -> bool:
     """
     Phase B：展开 PTBEHAVIOR 为可编辑 field_items。
 
     建 'b_type' STRING item + 每个 param 对应 item（t==0x15 展开为 4 个子 item）。
-    末尾运行 rebuild_ptbehavior_block 闸门，验证字节精度。
+    末尾运行 rebuild_ptbehavior_attribute 闸门，验证字节精度。
     返回 True=成功（bp.is_editable 由本函数设置）；False=失败（已清理 items）。
     """
     from ..efx_format.structs import unpack_ptbehavior
@@ -1758,7 +1758,7 @@ def _init_ptbehavior_block(blk, bp) -> bool:
 
     # 闸门：rebuild 必须 == 原始字节
     try:
-        rebuilt = rebuild_ptbehavior_block(bp, blk.data_bytes)
+        rebuilt = rebuild_ptbehavior_attribute(bp, blk.data_bytes)
         if rebuilt == blk.data_bytes:
             bp.is_editable = True
             return True
@@ -1770,13 +1770,13 @@ def _init_ptbehavior_block(blk, bp) -> bool:
     return False
 
 
-def rebuild_ptbehavior_block(bp, original_data: bytes = None) -> bytes:
+def rebuild_ptbehavior_attribute(bp, original_data: bytes = None) -> bytes:
     """
     Phase B 重建：unpack 原始字节 → 对 edited=True 的 item 覆盖值 → pack_ptbehavior。
 
     参数
     ----
-    bp            : EFXBlockProps
+    bp            : EFXAttributeProps
     original_data : bytes | None — 若 None 则从 bp.raw_b64 解码
     """
     from ..efx_format.structs import unpack_ptbehavior, pack_ptbehavior
@@ -1856,14 +1856,14 @@ def rebuild_ptbehavior_block(bp, original_data: bytes = None) -> bytes:
 
 def ptbehavior_current_bytes(bp) -> bytes:
     """烘焙待编辑值：返回当前 PTBEHAVIOR 的 data_bytes（含已编辑 item 的覆盖）。"""
-    return rebuild_ptbehavior_block(bp)
+    return rebuild_ptbehavior_attribute(bp)
 
 
 def reinit_ptbehavior_from_bytes(bp, new_bytes: bytes) -> bool:
     """
-    用 new_bytes 重置 PTBEHAVIOR 块：写 raw_b64 + 重建 field_items。
+    用 new_bytes 重置 PTBEHAVIOR 属性：写 raw_b64 + 重建 field_items。
     供增删覆盖项算子调用。期间置 _LOADING 抑制脏标记误触发，由调用方显式置脏。
-    返回 _init_ptbehavior_block 的成功与否。
+    返回 _init_ptbehavior_attribute 的成功与否。
     """
     global _LOADING
 
@@ -1876,14 +1876,14 @@ def reinit_ptbehavior_from_bytes(bp, new_bytes: bytes) -> bool:
     _LOADING = True
     try:
         bp.raw_b64 = base64.b64encode(new_bytes).decode("ascii")
-        return _init_ptbehavior_block(blk, bp)
+        return _init_ptbehavior_attribute(blk, bp)
     finally:
         _LOADING = prev
 
 
 def ptbehavior_addable_items(bp):
     """
-    返回当前块可新增的覆盖项 [(key_int, value_type_t, label), ...]（保持规范顺序）。
+    返回当前属性可新增的覆盖项 [(key_int, value_type_t, label), ...]（保持规范顺序）。
     label = 已知名 / 0x%08X。供添加下拉的 EnumProperty 回调使用。
     """
     from ..efx_format.structs import unpack_ptbehavior
@@ -1900,7 +1900,7 @@ def ptbehavior_addable_items(bp):
     return out
 
 
-def rebuild_path_block_data_bytes(bp, type_hash: int) -> bytes:
+def rebuild_path_attribute_data_bytes(bp, type_hash: int) -> bytes:
     """
     对含路径 custom 类型，从 block_props 的 path 字段项重建 data_bytes。
 
@@ -1913,7 +1913,7 @@ def rebuild_path_block_data_bytes(bp, type_hash: int) -> bytes:
 
     参数
     ----
-    bp        : EFXBlockProps — 含路径字段和 raw_b64 的块属性
+    bp        : EFXAttributeProps — 含路径字段和 raw_b64 的属性
     type_hash : int
 
     返回
@@ -1951,7 +1951,7 @@ def rebuild_path_block_data_bytes(bp, type_hash: int) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# rebuild_custom_field_block  —  Phase A：custom 块固定字段 + 路径重建
+# rebuild_custom_field_attribute  —  Phase A：custom 属性固定字段 + 路径重建
 #
 # 策略（decode → 覆盖 → pack）：
 #   1. unpack 原始字节得到精确原值 dict（含 NaN/精度/哨兵）。
@@ -1966,13 +1966,13 @@ def rebuild_path_block_data_bytes(bp, type_hash: int) -> bytes:
 # 仅用于 CUSTOM_FIELD_SCHEMA_MAP 中的 9 种类型（不含 MATERIAL/PTBEHAVIOR）。
 # ─────────────────────────────────────────────────────────────────────────────
 
-def rebuild_custom_field_block(bp, type_hash: int) -> bytes:
+def rebuild_custom_field_attribute(bp, type_hash: int) -> bytes:
     """
-    用字段项里的新值（标量 + 路径）重建 custom 块 data_bytes。
+    用字段项里的新值（标量 + 路径）重建 custom 属性 data_bytes。
 
     参数
     ----
-    bp        : EFXBlockProps — 含 field_items + raw_b64
+    bp        : EFXAttributeProps — 含 field_items + raw_b64
     type_hash : int — 必须在 CUSTOM_FIELD_SCHEMA_MAP 中
 
     返回
@@ -2027,10 +2027,10 @@ def rebuild_custom_field_block(bp, type_hash: int) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# init_block_props  —  供 io_tree 调用：初始化单个 EFX_BLOCK 的 efx_block
+# init_attribute_props  —  供 io_tree 调用：初始化单个 EFX_ATTRIBUTE 的 efx_block
 # ─────────────────────────────────────────────────────────────────────────────
 
-def init_block_props(obj: bpy.types.Object, blk,
+def init_attribute_props(obj: bpy.types.Object, blk,
                      extern_objs_by_index: dict = None,
                      count_extern: int = 0) -> None:
     """
@@ -2038,11 +2038,11 @@ def init_block_props(obj: bpy.types.Object, blk,
 
     参数
     ----
-    obj : bpy.types.Object  — EFX_BLOCK Empty
-    blk : AttrBlock         — 已解析的块对象
+    obj : bpy.types.Object  — EFX_ATTRIBUTE Empty
+    blk : AttrBlock         — 已解析的属性对象
     extern_objs_by_index : dict[int, bpy.types.Object] | None
         {efx_index → EFX_EXTERN 对象} 映射，供 EXTERNREFERENCE 指针化使用。
-        None 表示未提供（此时 EXTERNREFERENCE 块的 extern_ref_props 保持默认 pointerized=False）。
+        None 表示未提供（此时 EXTERNREFERENCE 属性的 extern_ref_props 保持默认 pointerized=False）。
     count_extern : int
         文件头 count_extern 字段值，供 EXTERNREFERENCE 范围检查使用。
 
@@ -2081,7 +2081,7 @@ def init_block_props(obj: bpy.types.Object, blk,
                             ok = dict_to_items(values, schema, bp, data_bytes=blk.data_bytes)
                             if ok:
                                 # ── 健壮性闸门：验证重建结果 == 原始字节 ──────
-                                # 这保证：只有能 bit 精确重建的块才开放编辑。
+                                # 这保证：只有能 bit 精确重建的属性才开放编辑。
                                 try:
                                     rebuilt = rebuild_data_bytes(bp, schema)
                                     if rebuilt == blk.data_bytes:
@@ -2098,7 +2098,7 @@ def init_block_props(obj: bpy.types.Object, blk,
                         bp.field_items.clear()
             else:
                 # ── L1.1b：_custom 类型含路径的路径字段初始化 ──────────────────
-                _init_path_block_props(blk, bp)
+                _init_path_attribute_props(blk, bp)
 
         # ── L2 #1c：EXTERNREFERENCE 指针化初始化 ─────────────────────────────────
         # 在 flat schema 处理之后（bp.raw_b64 已写入，无论 is_editable 与否均执行）。
@@ -2126,12 +2126,12 @@ def init_block_props(obj: bpy.types.Object, blk,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# get_block_data_bytes  —  供 io_tree 导出时调用
+# get_attribute_data_bytes  —  供 io_tree 导出时调用
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_block_data_bytes(obj: bpy.types.Object,
+def get_attribute_data_bytes(obj: bpy.types.Object,
                          extern_index_map: dict = None,
-                         body_index_map: dict = None,
+                         entry_index_map: dict = None,
                          play_index_map: dict = None) -> bytes:
     """
     从 obj.efx_block 还原 data_bytes。
@@ -2145,19 +2145,19 @@ def get_block_data_bytes(obj: bpy.types.Object,
     - L2 #1c（post-step）：若 type_hash==EXTERNREFERENCE 且 pointerized=True，
         额外调用 overlay_extern_ref_index 覆写 referenceIndex 字段（4 字节，偏移 4）。
     - L2 #1d（post-step）：若 type_hash==PTLIFE 或 PTCOLLISION 且 pointerized=True，
-        额外调用 apply_block_ref_overlays 覆写 relationIndex / ieIndex 字段。
+        额外调用 apply_attribute_ref_overlays 覆写 relationIndex / ieIndex 字段。
         此步骤在上述两条路径之后执行，故 dirty=False（orig_b64）和 dirty=True（重建）
         两条路径均受益。
 
     参数
     ----
-    obj : bpy.types.Object  — EFX_BLOCK Empty
+    obj : bpy.types.Object  — EFX_ATTRIBUTE Empty
     extern_index_map : dict[bpy.types.Object, int] | None
         {EFX_EXTERN Object → extern 段局部 0-based index}。None 时跳过 #1c 覆写。
-    body_index_map : dict[bpy.types.Object, int] | None
-        {EFX_BODY Object → main 段局部 0-based index}。None 时跳过 #1d body 覆写。
+    entry_index_map : dict[bpy.types.Object, int] | None
+        {EFX_ENTRY Object → main 段局部 0-based index}。None 时跳过 #1d entry 覆写。
     play_index_map : dict[bpy.types.Object, int] | None
-        {EFX_PLAY Object → play 段局部 0-based index}。None 时跳过 #1d play 覆写。
+        {EFX_ACTION Object → action 段局部 0-based index}。None 时跳过 #1d action 覆写。
 
     返回
     ----
@@ -2176,30 +2176,30 @@ def get_block_data_bytes(obj: bpy.types.Object,
             type_hash = int(bp.type_hash_str)
             entry = ATTR_SCHEMA_MAP.get(type_hash)
             if entry is None:
-                raise ValueError(f"get_block_data_bytes: 无 schema for hash {type_hash}")
+                raise ValueError(f"get_attribute_data_bytes: 无 schema for hash {type_hash}")
             schema, _expected_size = entry
 
             if schema == '_custom':
                 if type_hash in CUSTOM_FIELD_SCHEMA_MAP:
                     # Phase A：固定标量字段 + 路径 → decode→覆盖→pack 重建
-                    data = rebuild_custom_field_block(bp, type_hash)
+                    data = rebuild_custom_field_attribute(bp, type_hash)
                 elif type_hash in PATH_EDITABLE_CUSTOM_HASHES:
                     # Phase B：PTBEHAVIOR 全参数重建（b_type item 存在即为 Phase B）
                     _is_ptb = (type_hash == _PTBEHAVIOR_HASH_RB())
                     if _is_ptb and any(it.ori_name == 'b_type' for it in bp.field_items):
-                        data = rebuild_ptbehavior_block(bp)
+                        data = rebuild_ptbehavior_attribute(bp)
                     else:
                         # L1.1b/c：MATERIAL 等 → 仅路径感知重建
-                        data = rebuild_path_block_data_bytes(bp, type_hash)
+                        data = rebuild_path_attribute_data_bytes(bp, type_hash)
                 else:
                     # 不支持编辑的 custom 类型（TIML 等）→ 退回 raw_b64
-                    raise ValueError(f"get_block_data_bytes: custom 类型 0x{type_hash:08X} 不支持编辑")
+                    raise ValueError(f"get_attribute_data_bytes: custom 类型 0x{type_hash:08X} 不支持编辑")
             else:
                 # L1.1b：用逐字段重建路径（未编辑字段用 orig_b64，编辑字段重新 pack）
                 data = rebuild_data_bytes(bp, schema)
 
             data = _apply_extern_ref_overlay(obj, data, extern_index_map)
-            data = _apply_body_play_ref_overlays(obj, data, body_index_map, play_index_map)
+            data = _apply_entry_action_ref_overlays(obj, data, entry_index_map, play_index_map)
             return data
 
         except Exception:
@@ -2209,7 +2209,7 @@ def get_block_data_bytes(obj: bpy.types.Object,
     # 回退：使用原始 raw_b64
     data = base64.b64decode(bp.raw_b64)
     data = _apply_extern_ref_overlay(obj, data, extern_index_map)
-    data = _apply_body_play_ref_overlays(obj, data, body_index_map, play_index_map)
+    data = _apply_entry_action_ref_overlays(obj, data, entry_index_map, play_index_map)
     return data
 
 
@@ -2217,7 +2217,7 @@ def _apply_extern_ref_overlay(obj: bpy.types.Object,
                                data: bytes,
                                extern_index_map) -> bytes:
     """
-    L2 #1c 后处理：若该块是 EXTERNREFERENCE 且 pointerized=True，
+    L2 #1c 后处理：若该属性是 EXTERNREFERENCE 且 pointerized=True，
     覆写 data 中 referenceIndex 对应的 4 字节。
 
     extern_index_map 为 None 时直接返回（导出路径未提供 extern 映射，保守原样）。
@@ -2236,23 +2236,23 @@ def _apply_extern_ref_overlay(obj: bpy.types.Object,
         return data
 
 
-def _apply_body_play_ref_overlays(obj: bpy.types.Object,
+def _apply_entry_action_ref_overlays(obj: bpy.types.Object,
                                    data: bytes,
-                                   body_index_map,
+                                   entry_index_map,
                                    play_index_map) -> bytes:
     """
-    L2 #1d 后处理：若该块是 PTLIFE 或 PTCOLLISION 且 pointerized=True，
+    L2 #1d 后处理：若该属性是 PTLIFE 或 PTCOLLISION 且 pointerized=True，
     覆写 data 中对应的字段字节。
 
-    body_index_map / play_index_map 为 None 时跳过（保守原样）。
+    entry_index_map / play_index_map 为 None 时跳过（保守原样）。
     """
-    if body_index_map is None and play_index_map is None:
+    if entry_index_map is None and play_index_map is None:
         return data
     try:
-        from . import body_play_ref as _bpr
-        return _bpr.apply_block_ref_overlays(
+        from . import entry_action_ref as _bpr
+        return _bpr.apply_attribute_ref_overlays(
             data, obj,
-            body_index_map if body_index_map is not None else {},
+            entry_index_map if entry_index_map is not None else {},
             play_index_map if play_index_map is not None else {},
         )
     except Exception:
@@ -2266,12 +2266,12 @@ def _apply_body_play_ref_overlays(obj: bpy.types.Object,
 
 def verify_items_lossless(samples_dir: str) -> dict:
     """
-    对 samples_dir 下所有 .efx 文件，对每个 flat 可编辑块执行：
+    对 samples_dir 下所有 .efx 文件，对每个 flat 可编辑属性执行：
       decode() → dict_to_items（内存模拟，带 data_bytes）→ rebuild_data_bytes（全未编辑）
     断言结果 == 原始 data_bytes。
 
     L1.1b 路径：未编辑字段直接用 orig_b64（bit 精确），绕开 float NaN/精度问题，
-    理论上所有 is_editable 块必须 100% 通过。
+    理论上所有 is_editable 属性必须 100% 通过。
 
     此函数不依赖 Blender PropertyGroup 的 UI 层，使用一个内存模拟的
     block_props 容器（MockBlockProps）在纯 Python 中运行，可在 Blender
@@ -2285,9 +2285,9 @@ def verify_items_lossless(samples_dir: str) -> dict:
     ----
     dict :
       {
-        "total_blocks":   int,    # 遇到的全部 AttrBlock 数
-        "editable_blocks":int,    # flat schema 可编辑块数
-        "lossless_pass":  int,    # 通过往返测试的块数
+        "total_attributes":   int,    # 遇到的全部 AttrBlock 数
+        "editable_attributes":int,    # flat schema 可编辑属性数
+        "lossless_pass":  int,    # 通过往返测试的属性数
         "fails": [                # 失败条目
           {"file": str, "hash": str, "reason": str}, ...
         ]
@@ -2304,8 +2304,8 @@ def verify_items_lossless(samples_dir: str) -> dict:
         if fn.lower().endswith(".efx")
     )
 
-    total_blocks   = 0
-    editable_blocks = 0
+    total_attributes   = 0
+    editable_attributes = 0
     lossless_pass  = 0
     fails          = []
 
@@ -2320,13 +2320,13 @@ def verify_items_lossless(samples_dir: str) -> dict:
             continue
 
         # 收集所有 AttrBlock
-        all_blocks = []
+        all_attributes = []
         for body in efx.main:
             if hasattr(body, "attr_blocks"):
-                all_blocks.extend(body.attr_blocks)
+                all_attributes.extend(body.attr_blocks)
 
-        for blk in all_blocks:
-            total_blocks += 1
+        for blk in all_attributes:
+            total_attributes += 1
             hash_str = f"0x{blk.type_hash:08X}"
 
             entry = ATTR_SCHEMA_MAP.get(blk.type_hash)
@@ -2340,7 +2340,7 @@ def verify_items_lossless(samples_dir: str) -> dict:
             if not _check_schema_all_flat(schema):
                 continue  # 含复杂字段，不计入 editable
 
-            editable_blocks += 1
+            editable_attributes += 1
 
             # ── 往返测试（内存模拟，不建 Blender 对象）──────────────────────
             # L1.1b：改用 rebuild_data_bytes（全未编辑路径），
@@ -2356,7 +2356,7 @@ def verify_items_lossless(samples_dir: str) -> dict:
                     continue
 
                 # 2. dict_to_items → 模拟 block_props（带 data_bytes 以填充 orig_b64）
-                mock_bp = _MockBlockProps()
+                mock_bp = _MockAttributeProps()
                 ok = dict_to_items(values_orig, schema, mock_bp, data_bytes=blk.data_bytes)
                 if not ok:
                     fails.append({
@@ -2400,8 +2400,8 @@ def verify_items_lossless(samples_dir: str) -> dict:
                 })
 
     return {
-        "total_blocks":    total_blocks,
-        "editable_blocks": editable_blocks,
+        "total_attributes":    total_attributes,
+        "editable_attributes": editable_attributes,
         "lossless_pass":   lossless_pass,
         "fails":           fails,
     }
@@ -2413,7 +2413,7 @@ def verify_items_lossless(samples_dir: str) -> dict:
 
 def verify_paths_lossless(samples_dir: str) -> dict:
     """
-    对 samples_dir 下所有 .efx 文件，对每个含路径 custom 类型块执行：
+    对 samples_dir 下所有 .efx 文件，对每个含路径 custom 类型属性执行：
       extract_paths → rebuild_with_paths(原路径) == 原 data_bytes
 
     目标：100% 通过（identity 重建）。
@@ -2426,9 +2426,9 @@ def verify_paths_lossless(samples_dir: str) -> dict:
     ----
     dict :
       {
-        "total_custom_blocks": int,   # 遇到的全部 _custom 块数
-        "path_editable_blocks": int,  # 支持路径编辑的块数
-        "lossless_pass":        int,  # 通过 identity 验证的块数
+        "total_custom_attributes": int,   # 遇到的全部 _custom 属性数
+        "path_editable_attributes": int,  # 支持路径编辑的属性数
+        "lossless_pass":        int,  # 通过 identity 验证的属性数
         "path_samples": [             # 前 20 个路径样例（用于确认解对）
           {"file": str, "hash_name": str, "paths": list[str]}, ...
         ],
@@ -2454,8 +2454,8 @@ def verify_paths_lossless(samples_dir: str) -> dict:
         if fn.lower().endswith(".efx")
     )
 
-    total_custom_blocks  = 0
-    path_editable_blocks = 0
+    total_custom_attributes  = 0
+    path_editable_attributes = 0
     lossless_pass        = 0
     path_samples         = []
     fails                = []
@@ -2470,12 +2470,12 @@ def verify_paths_lossless(samples_dir: str) -> dict:
             fails.append({"file": fname, "hash": "N/A", "reason": f"解析失败: {exc}"})
             continue
 
-        all_blocks = []
+        all_attributes = []
         for body in efx.main:
             if hasattr(body, "attr_blocks"):
-                all_blocks.extend(body.attr_blocks)
+                all_attributes.extend(body.attr_blocks)
 
-        for blk in all_blocks:
+        for blk in all_attributes:
             entry = ATTR_SCHEMA_MAP.get(blk.type_hash)
             if entry is None:
                 continue
@@ -2483,13 +2483,13 @@ def verify_paths_lossless(samples_dir: str) -> dict:
             if schema != '_custom':
                 continue
 
-            total_custom_blocks += 1
+            total_custom_attributes += 1
             hash_str = f"0x{blk.type_hash:08X}"
 
             if blk.type_hash not in PATH_EDITABLE_CUSTOM_HASHES:
                 continue  # 不支持路径编辑的 custom 类型（TIML 等）
 
-            path_editable_blocks += 1
+            path_editable_attributes += 1
 
             try:
                 paths = extract_paths(blk.type_hash, blk.data_bytes)
@@ -2531,8 +2531,8 @@ def verify_paths_lossless(samples_dir: str) -> dict:
                 })
 
     return {
-        "total_custom_blocks":  total_custom_blocks,
-        "path_editable_blocks": path_editable_blocks,
+        "total_custom_attributes":  total_custom_attributes,
+        "path_editable_attributes": path_editable_attributes,
         "lossless_pass":        lossless_pass,
         "path_samples":         path_samples,
         "fails":                fails,
@@ -2540,7 +2540,7 @@ def verify_paths_lossless(samples_dir: str) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# _MockBlockProps  —  纯 Python 模拟 EFXBlockProps（用于验证钩子）
+# _MockAttributeProps  —  纯 Python 模拟 EFXAttributeProps（用于验证钩子）
 # ─────────────────────────────────────────────────────────────────────────────
 
 class _MockFieldItem:
@@ -2584,9 +2584,9 @@ class _MockFieldItem:
         self.string_value  = ""
 
 
-class _MockBlockProps:
+class _MockAttributeProps:
     """
-    模拟 EFXBlockProps，用于 verify_items_lossless 的内存往返测试。
+    模拟 EFXAttributeProps，用于 verify_items_lossless 的内存往返测试。
     实现 field_items 的 add() / clear() / 迭代接口。
     """
 

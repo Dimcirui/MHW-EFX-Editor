@@ -1,24 +1,24 @@
 """
 blender_efx/timl_edit.py  —  阶段2b：自建 TIML 通道编辑会话（完全自包含，无外部工具依赖）
 
-把 body 的 TIML 解析成**原生 Blender F 曲线**，用户在 Dope Sheet / Graph Editor 里改值/帧/
-插值/缓动，Apply 时读回曲线、用 efx_format.timl 重建 TIML 字节写回 body。整条链路只用我们
+把 entry 的 TIML 解析成**原生 Blender F 曲线**，用户在 Dope Sheet / Graph Editor 里改值/帧/
+插值/缓动，Apply 时读回曲线、用 efx_format.timl 重建 TIML 字节写回 entry。整条链路只用我们
 自己的 `efx_format/timl.py` + `timl_names.py`。
 
 机制
 ----
-- 每个 body 一个 EFX_TIML 句柄；句柄上挂 `efx_timl_channels` CollectionProperty + 一个 Action。
+- 每个 entry 一个 EFX_TIML 句柄；句柄上挂 `efx_timl_channels` CollectionProperty + 一个 Action。
 - transform3d 九条通道(data_type2 且命中 timl_names.transform_mapping) → 真实
   location/rotation_euler/scale 曲线(轴变换 game↔Blender) → 句柄自身 transform 动 = **视口可播**；
   撞车(同 prop+index)回退 synthetic。其余通道 → synthetic `efx_timl_channels[i].value`。
 - 关键帧映射(镜像 FK，编解码 28188/28188 验证)：co=(frame,value)、interpolation=transition、
   back=controlL、period=controlR。Color 拆 RGBA、Flag(hash∈BIG_FLAGS)拆 lo/hi、其余单条。
-- 绑定 MESH(_uvc._body_mesh_target)时加 Child Of 约束让网格跟随句柄动画(退出移除)；
+- 绑定 MESH(_uvc._entry_mesh_target)时加 Child Of 约束让网格跟随句柄动画(退出移除)；
   无绑定则仅句柄自身动 + 曲线/Action 在(用户可自行绑到网格)。
 - 回写：每 transform 收集子曲线 → 帧并集/逆轴变换 → encode_keyframe 重建 → Timl.dirty → serialize。
 - byte-perfect：**会话级无改动检测**(进入快照曲线签名，Apply 一致则不回写 → verbatim)。
 
-作用域(点③)：可勾选「同时编辑当前 EFX 集合内所有特效体」→ 每个含 TIML 的 body 各建一条编辑
+作用域(点③)：可勾选「同时编辑当前 EFX 集合内所有特效体」→ 每个含 TIML 的 entry 各建一条编辑
 条目(各自句柄+Action)，统一进入/应用/退出。
 
 约束(CLAUDE.md)：bpy 稳定子集；Python 3.10；纯胶水层；硬逻辑在 efx_format/timl*.py。
@@ -31,8 +31,8 @@ from bpy.types import Operator, Panel, PropertyGroup
 from bpy.props import FloatProperty, FloatVectorProperty, CollectionProperty
 
 from .i18n import T
-from . import timl_io as _tio          # resolve_timl_body / _body_timl_bytes / _body_has_timl
-from . import uvc_preview as _uvc       # _body_mesh_target / _resolve_root
+from . import timl_io as _tio          # resolve_timl_entry / _entry_timl_bytes / _entry_has_timl
+from . import uvc_preview as _uvc       # _entry_mesh_target / _resolve_root
 from ..efx_format import timl as _timl
 from ..efx_format import timl_names as _tn
 
@@ -108,7 +108,7 @@ class EFXTimlChannel(PropertyGroup):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 会话状态（多条目：每个 body 一条）
+# 会话状态（多条目：每个 entry 一条）
 # ─────────────────────────────────────────────────────────────────────────────
 # entry = {timl_obj, body, timl, channels, prior_action, created_anim, mesh, con_name, snapshot}
 # channel = {"mode":"xform", tf, kind, bl_index, path, index}
@@ -158,7 +158,7 @@ def _ch_fcurve(act, timl_obj, ch):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _resolve_scope_bodies(context):
-    """按作用域返回要编辑的 body 列表（均含非空 TIML）。"""
+    """按作用域返回要编辑的 entry 列表（均含非空 TIML）。"""
     active = context.active_object
     if getattr(context.scene, "efx_timle_all_bodies", False):
         root = None
@@ -167,15 +167,15 @@ def _resolve_scope_bodies(context):
         except Exception:
             root = None
         if root is None:
-            body = _tio.resolve_timl_body(active)
-            return [body] if _tio._body_has_timl(body) else []
+            body = _tio.resolve_timl_entry(active)
+            return [body] if _tio._entry_has_timl(body) else []
         out = []
         for c in bpy.data.objects:
-            if c.parent == root and c.get("~TYPE") == "EFX_BODY" and _tio._body_has_timl(c):
+            if c.parent == root and c.get("~TYPE") == "EFX_ENTRY" and _tio._entry_has_timl(c):
                 out.append(c)
         return out
-    body = _tio.resolve_timl_body(active)
-    return [body] if _tio._body_has_timl(body) else []
+    body = _tio.resolve_timl_entry(active)
+    return [body] if _tio._entry_has_timl(body) else []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -246,12 +246,12 @@ def _apply_frame_range(fmin, fmax):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 进入：为单个 body 建条目
+# 进入：为单个 entry 建条目
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_entry(timl_obj, body):
-    """为一个 body 建 Action+通道（按当前焦点），返回 (entry, fmin, fmax) 或 None。"""
-    data = _tio._body_timl_bytes(body)
+    """为一个 entry 建 Action+通道（按当前焦点），返回 (entry, fmin, fmax) 或 None。"""
+    data = _tio._entry_timl_bytes(body)
     t = _timl.parse_timl(data)
     if t is None:
         return None
@@ -287,7 +287,7 @@ def _build_entry(timl_obj, body):
 def _bind_mesh(timl_obj, body):
     """绑定 MESH 时加 Child Of 约束让网格跟随句柄。返回 (mesh, con_name) 或 (None, None)。"""
     try:
-        mesh = _uvc._body_mesh_target(body)
+        mesh = _uvc._entry_mesh_target(body)
     except Exception:
         mesh = None
     if mesh is None:
@@ -320,7 +320,7 @@ def _snapshot(act, timl_obj, channels):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _start_session(bodies):
-    """为多个 body 建条目。返回建成的条目数。"""
+    """为多个 entry 建条目。返回建成的条目数。"""
     # 焦点取自 Scene 枚举（默认 A0）；_build_entry 按 _state["focus"] 过滤
     _state["focus"] = getattr(bpy.context.scene, "efx_timle_focus", "A0")
     entries = []
@@ -379,7 +379,7 @@ def _session_action(entry):
 
 
 def _readback_entry_to_model(entry):
-    """把当前 Action（当前焦点的通道）读回内存模型 entry["timl"]（不写 body 字节）。
+    """把当前 Action（当前焦点的通道）读回内存模型 entry["timl"]（不写 entry 字节）。
     无改动则跳过；有改动则重建受影响 transform 的 keyframes 并标 entry["edited"]。返回是否改动。"""
     channels = entry["channels"]
     timl_obj = entry["timl_obj"]
@@ -407,7 +407,7 @@ def _readback_entry_to_model(entry):
 
 
 def _writeback_entry(entry):
-    """Apply：先读回当前焦点，再（若该 body 累计有改动）序列化整模型写回 body。"""
+    """Apply：先读回当前焦点，再（若该 entry 累计有改动）序列化整模型写回 entry。"""
     _readback_entry_to_model(entry)
     if not entry.get("edited"):
         return False
@@ -494,7 +494,7 @@ def _rebuild_entry_action(entry):
 
 def _switch_focus(new_focus):
     """会话内切换焦点（A0/A1/All）：读回当前焦点编辑 → 改焦点 → 各条目重建视图。
-    编辑保留在内存模型，跨切换不丢；body 字节仅在 Apply 时写。"""
+    编辑保留在内存模型，跨切换不丢；entry 字节仅在 Apply 时写。"""
     if not _state["active"]:
         _state["focus"] = new_focus
         return
@@ -577,7 +577,7 @@ def _teardown():
 # ─────────────────────────────────────────────────────────────────────────────
 # 会话内结构性编辑对接 API
 # （供 timl_tracks / timl_meta_ui 在会话进行中直接改内存模型 entry["timl"]，
-#  而非改 body 字节——会话期间字节是陈旧的，编辑都在模型里，Apply 才落字节）
+#  而非改 entry 字节——会话期间字节是陈旧的，编辑都在模型里，Apply 才落字节）
 # ─────────────────────────────────────────────────────────────────────────────
 
 def session_active() -> bool:
@@ -585,7 +585,7 @@ def session_active() -> bool:
 
 
 def session_entry(body):
-    """该 body 在当前会话中的 entry；不在会话 / 无会话 → None。"""
+    """该 entry 在当前会话中的 entry；不在会话 / 无会话 → None。"""
     if not _state["active"] or body is None:
         return None
     for e in _state["entries"]:
@@ -596,7 +596,7 @@ def session_entry(body):
 
 
 def session_model(body):
-    """该 body 在会话中的内存 Timl 模型（只读展示用）；无 → None。"""
+    """该 entry 在会话中的内存 Timl 模型（只读展示用）；无 → None。"""
     e = session_entry(body)
     return e["timl"] if e is not None else None
 
@@ -733,7 +733,7 @@ def _current_entry(context):
     if not _state["active"]:
         return None
     try:
-        body = _tio.resolve_timl_body(context.active_object)
+        body = _tio.resolve_timl_entry(context.active_object)
     except Exception:
         return None
     return session_entry(body)
@@ -965,8 +965,8 @@ def register():
         bpy.utils.register_class(cls)
     bpy.types.Object.efx_timl_channels = CollectionProperty(type=EFXTimlChannel)
     bpy.types.Scene.efx_timle_all_bodies = bpy.props.BoolProperty(
-        name="All bodies in this EFX",
-        description="Edit the TIML of every body in the current EFX collection at once",
+        name="All entries in this EFX",
+        description="Edit the TIML of every entry in the current EFX collection at once",
         default=False,
     )
     bpy.types.Scene.efx_timle_focus = bpy.props.EnumProperty(

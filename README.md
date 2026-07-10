@@ -28,29 +28,29 @@ For reference only. This interpretation does not reflect the actual structure of
 
 - **EFX Collection**
   - **EFX Sections**
-    1. **Body/Main**: The core EFX unit.
+    1. **Entry**: The core EFX unit.
        
-       Composed of typed Components (**Blocks**) that together define particle behaviors (transforms, emission, rendering, color and more).
-    2. **Play**: An action trigger.
+       Composed of typed Components (**Attributes**) that together define particle behaviors (transforms, emission, rendering, color and more).
+    2. **Action**: An action trigger.
        
-       Called by a Body's PTLIFE or PTCOLLISION block; activates one or more target Bodies (**PLAYEMITTER**) or external EFX files (**PLAYEFX**).
-    3. **Extern**: EFX Body replacer(?)
+       Called by an Entry's PTLIFE or PTCOLLISION attribute; activates one or more target Entries (**PLAYEMITTER**) or external EFX files (**PLAYEFX**).
+    3. **Extern**: EFX Entry replacer(?)
        
        There are two types, replacement parameters and external EFX references.
-       The former replaces the corresponding parameter in the block within the body when some conditions are met;
+       The former replaces the corresponding parameter in the attribute within the entry when some conditions are met;
        the specific mechanism of the latter is not yet clear.
-  - **EFX Subselect Table**: A subset of Bodies. Determines which EFX blocks from which subsets to call under some conditions.
+  - **EFX Subselect Table**: A subset of Entries. Determines which EFX attributes from which subsets to call under some conditions.
  
 
 ## Features
-- **TRANSFORM3D Visualization** — Reflects the actual trigger position of the EFX Body.
-  After you snap it to any armature, efx bodies can also snap to the bone binded (decided by PARENTOPTIONS).
+- **TRANSFORM3D Visualization** — Reflects the actual trigger position of the EFX Entry.
+  After you snap it to any armature, efx entries can also snap to the bone binded (decided by PARENTOPTIONS).
   This feature uses the same coordinate system as the MHW Model Editor.
-- **Pre-export Validation** — Check for errors & warnings that could cause the game to crash, such as null pointers, Play loop, block order, etc.
+- **Pre-export Validation** — Check for errors & warnings that could cause the game to crash, such as null pointers, Action loop, attribute order, etc.
   This feature does not guarantee that errors will never occur.
-- **Activation & Reference Status Check** — Display the calls to and from the selected Body, as well as its activation status.
-- **Hex View** — You can copy the entire hex value of a specific block, edit it, and then paste it back (ensuring that the bytes remain exactly the same).
-- **UVS Edit** — You can import/export and edit .uvs file at any UVSEQUENCE block. Gif to sequence png is also supported.
+- **Activation & Reference Status Check** — Display the calls to and from the selected Entry, as well as its activation status.
+- **Hex View** — You can copy the entire hex value of a specific attribute, edit it, and then paste it back (ensuring that the bytes remain exactly the same).
+- **UVS Edit** — You can import/export and edit .uvs file at any UVSEQUENCE attribute. Gif to sequence png is also supported.
 
 ## Supported Operations
 
@@ -60,25 +60,25 @@ For reference only. This interpretation does not reflect the actual structure of
 
 ### 1. Sections
 
-Universal section operations: **Add** (from preset) / **Delete** / **Reorder** (move up/down within body) / **Copy whole Body** / **Paste whole Body** / **Rename** / **Save** (to preset).
+Universal section operations: **Add** (from preset) / **Delete** / **Reorder** (move up/down within entry) / **Copy whole Entry** / **Paste whole Entry** / **Rename** / **Save** (to preset).
 
 | Section | Add | Delete | Edit | Note |
 |---|---|---|---|---|
-| **Play** | ✓ | ✓ | ✓ | |
+| **Action** | ✓ | ✓ | ✓ | |
 | **Extern** | **Partial** | ✓ | **Partial** | EXTERN-SPAWN/RGBFIRE/VELOCITY3D/SCALEANIM/TRANSFORM3D add&edit |
-| **Body / Main** | ✓ | ✓ | ✓ | TIML editable via .timl file import/export |
+| **Entry** | ✓ | ✓ | ✓ | TIML editable via .timl file import/export |
 
 ### 2. Subselection Table
 
 Fully Supported
 
-### 3. Body Block
+### 3. Entry Attributes
 
-Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (move up/down within body) / **Copy whole block** / **Paste whole block** / **Copy field values** / **Paste field values** / **Save** (to preset).
+Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder** (move up/down within entry) / **Copy whole attribute** / **Paste whole attribute** / **Copy field values** / **Paste field values** / **Save** (to preset).
 
-#### I. Body Skeleton (required in every EFX Body)
+#### I. Entry Skeleton (required in every EFX Entry)
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | TRANSFORM3D | ✓ |
 | PARENTOPTIONS | ✓ |
@@ -87,7 +87,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 #### II. Renderer (can be mutually exclusive)
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | BILLBOARD3D | ✓ |
 | PLANE | ✓ |
@@ -102,7 +102,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 #### III. Sprite Modifiers (face-rendered only, can conflict with MESH)
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | SHADERSETTINGS | ✓ |
 | UVSEQUENCE | ✓ |
@@ -115,14 +115,14 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 #### IV. Mesh Overrides (probably require MESH)
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | UVCONTROL | ✓ |
 | MATERIAL | **Partial** |
 
 #### V. Emitter / Space
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | EMITTERSHAPE3D | ✓ |
 | EMITTERSHAPEMESH | ✓ |
@@ -132,7 +132,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 #### VI. Motion / Velocity
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | VELOCITY3D | ✓ |
 | SCALEANIM | ✓ |
@@ -146,7 +146,7 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 #### VII. Visibility / Fade
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | FADEBYDEPTH | ✓ |
 | FADEBYANGLE | ✓ |
@@ -156,23 +156,23 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 | RAYCAST | ✓ |
 | LINKPARTSVISIBLE | ✓ |
 
-#### VIII. Lifecycle Triggers (almost certainly last in body)
+#### VIII. Lifecycle Triggers (almost certainly last in entry)
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | PTCOLLISION | ✓ |
 | PTLIFE | ✓ |
 | PTTRIGGER | ✓ |
 
-#### IX. Extern Declaration (almost certainly first in body)
+#### IX. Extern Declaration (almost certainly first in entry)
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | EXTERNREFERENCE | ✓ |
 
 #### X. Char Effects
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | PLEMISSIVE | ✓ |
 | PARENTEMISSIVE | ✓ |
@@ -184,22 +184,22 @@ Universal block operations: **Add** (from preset) / **Delete** / **Reorder** (mo
 
 #### XI. Behavior System (standalone, mutually exclusive with normal flow)
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | PTBEHAVIOR | ✓ |
 
-#### XII. 2D / UI Variants (for 2D effects — functional 2D equivalents of their 3D counterparts; many 3D blocks do not apply when these are present)
+#### XII. 2D / UI Variants (for 2D effects — functional 2D equivalents of their 3D counterparts; many 3D attributes do not apply when these are present)
 
-| Block Type | Field Editing | 3D Equivalent Section |
+| Attribute Type | Field Editing | 3D Equivalent Section |
 |---|---|---|
-| TRANSFORM2D | ✓ | I. Body Skeleton |
+| TRANSFORM2D | ✓ | I. Entry Skeleton |
 | EMITTERSHAPE2D | ✓ | V. Emitter / Space |
 | VELOCITY2D | ✓ | VI. Motion / Velocity |
 | BILLBOARD2D | ✓ | II. Renderer |
 
 #### XIII. Misc / Control
 
-| Block Type | Field Editing |
+| Attribute Type | Field Editing |
 |---|---|
 | RANDOMFIX | ✓ |
 | CHECKPUREATTRIBUTE | ✓ |

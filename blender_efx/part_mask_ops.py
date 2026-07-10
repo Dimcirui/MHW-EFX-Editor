@@ -12,7 +12,7 @@ PLEMISSIVE 的关联部位字段是二进制掩码（byte），文档（社区�
 ⚠ 实测语料 wp_p 高位（cycle）被大量使用（0x20/0x38 等占一半以上），携带真实数据，
   故 UI 既给低位勾选框、又额外暴露 cycle 数字，确保零数据丢失、可精确还原。
 
-实现：弹窗算子读取 active block 对应 field_item 的 int_value，拆成勾选框 + cycle，
+实现：弹窗算子读取 active attribute 对应 field_item 的 int_value，拆成勾选框 + cycle，
   确认后重组写回 int_value（其 update=_mark_block_dirty 会自动置脏 → 导出重 pack）。
 """
 
@@ -41,16 +41,16 @@ _WP_CYCLE = 4        # cycle 步长
 
 
 def _find_field_item(bp, ori_name):
-    """在 block PropertyGroup 的 field_items 里按 ori_name 找字段项。"""
+    """在 attribute PropertyGroup 的 field_items 里按 ori_name 找字段项。"""
     for it in bp.field_items:
         if it.ori_name == ori_name:
             return it
     return None
 
 
-def _is_plemissive_block(obj):
-    """obj 是否为 PLEMISSIVE 块对象。"""
-    if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+def _is_plemissive_attribute(obj):
+    """obj 是否为 PLEMISSIVE 属性对象。"""
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
         return False
     try:
         from ..efx_format.hashes import PLEMISSIVE
@@ -101,7 +101,7 @@ class EFX_OT_set_part_mask(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return _is_plemissive_block(context.active_object)
+        return _is_plemissive_attribute(context.active_object)
 
     def invoke(self, context, event):
         bp = context.active_object.efx_block

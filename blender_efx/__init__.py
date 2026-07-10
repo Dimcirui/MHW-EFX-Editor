@@ -36,16 +36,16 @@ from . import io_tree       # 供外部直接访问，如 MCP 调用
 from . import fields        # L1.1a：字段模型
 from . import presets       # L1.2：块字段值预设
 from . import subselect     # L2 #1a：Subselect 结构化存储
-from . import play_emitter  # L2 #1b：PlayEmitter targets 指针化
+from . import action_emitter  # L2 #1b：PlayEmitter targets 指针化
 from . import extern_ref    # L2 #1c：ExternReference referenceIndex 指针化
 from . import extern_props  # L2 #1c+：Extern 段字段展开（EFXExternProps）
-from . import body_play_ref # L2 #1d：PtLife/PtCollision/eof_ints 指针化
+from . import entry_action_ref # L2 #1d：PtLife/PtCollision/eof_ints 指针化
 from . import backref       # L2 反向引用视图（只读）
 from . import reorder       # L2 #3a：body / 块重排（上移/下移）
 from . import delete_ops    # L2 #3b：删除条目（body/块/play/extern/subselect）
 from . import add_ops       # L2 #3c：从整 body 预设新增 body + Active EFX 选择器
 from . import add_section_ops  # 从无到有新建 Play / Extern / Subselect 段条目
-from . import block_ops     # 块级组装：单块复制/粘贴/预设保存/新增
+from . import attribute_ops     # 块级组装：单块复制/粘贴/预设保存/新增
 from . import part_mask_ops # PLEMISSIVE body_p/wp_p 位掩码勾选编辑器
 from . import validate      # L2 #4：导出前校验
 from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始字节查看）
@@ -76,16 +76,16 @@ __all__ = [
     "fields",
     "presets",
     "subselect",
-    "play_emitter",
+    "action_emitter",
     "extern_ref",
     "extern_props",
-    "body_play_ref",
+    "entry_action_ref",
     "backref",
     "reorder",
     "delete_ops",
     "add_ops",
     "add_section_ops",
-    "block_ops",
+    "attribute_ops",
     "validate",
     "hexview",
     "timl_io",
@@ -108,31 +108,31 @@ def register():
     i18n.register()
 
     # ── L1.1a：先注册 PropertyGroup（顺序重要：子类先于容器类）────────────────
-    # EFXFieldItem 必须在 EFXBlockProps 之前注册，因为后者用 CollectionProperty(type=EFXFieldItem)
+    # EFXFieldItem 必须在 EFXAttributeProps 之前注册，因为后者用 CollectionProperty(type=EFXFieldItem)
     bpy.utils.register_class(fields.EFXFieldItem)
-    bpy.utils.register_class(fields.EFXBlockProps)
+    bpy.utils.register_class(fields.EFXAttributeProps)
 
-    # 把 EFXBlockProps 挂到 Object 上
+    # 把 EFXAttributeProps 挂到 Object 上
     bpy.types.Object.efx_block = PointerProperty(
         name="EFX Block Properties",
-        description="AttrBlock field model (EFX_BLOCK objects only)",
-        type=fields.EFXBlockProps,
+        description="AttrBlock field model (EFX_ATTRIBUTE objects only)",
+        type=fields.EFXAttributeProps,
     )
 
     # ── L2 #1a：Subselect 结构化存储（PropertyGroup + UIList + Operators）──────
     # subselect.register() 注册核心类（不含 Panel）并把 EFXSubselectProps 挂到 Object。
-    # EFX_PT_subselect 面板由下面的 panels.register() 注册（bl_parent_id='EFX_PT_main'
-    # 要求父面板先注册，而 EFX_PT_main 在 panels._CLASSES 首位，顺序正确）。
+    # EFX_PT_subselect 面板由下面的 panels.register() 注册（bl_parent_id='EFX_PT_entry'
+    # 要求父面板先注册，而 EFX_PT_entry 在 panels._CLASSES 首位，顺序正确）。
     subselect.register()
 
     # ── L2 #1b：Play 结构化存储（PropertyGroup + UIList + Operators）──────────
-    # play_emitter.register() 注册核心类（不含 Panel）并把 EFXPlayProps 挂到 Object。
-    # EFX_PT_play 面板由下面的 panels.register() 注册（bl_parent_id='EFX_PT_main'）。
-    play_emitter.register()
+    # action_emitter.register() 注册核心类（不含 Panel）并把 EFXActionProps 挂到 Object。
+    # EFX_PT_action 面板由下面的 panels.register() 注册（bl_parent_id='EFX_PT_entry'）。
+    action_emitter.register()
 
     # ── L2 #1c：ExternReference 指针化（PropertyGroup）────────────────────────
     # extern_ref.register() 注册核心类（不含 Panel）并把 EFXExternRefProps 挂到 Object。
-    # EFX_PT_extern_ref 面板由下面的 panels.register() 注册（bl_parent_id='EFX_PT_main'）。
+    # EFX_PT_extern_ref 面板由下面的 panels.register() 注册（bl_parent_id='EFX_PT_entry'）。
     extern_ref.register()
 
     # ── L2 #1c+：Extern 段字段展开（EFXExternInstanceProps/EFXExternItemProps/EFXExternProps）─
@@ -141,14 +141,14 @@ def register():
     extern_props.register()
 
     # ── L2 #1d：PtLife/PtCollision/eof_ints 指针化（PropertyGroup）─────────────
-    # body_play_ref.register() 注册核心类（不含 Panel）。
+    # entry_action_ref.register() 注册核心类（不含 Panel）。
     # 三个面板 EFX_PT_ptlife_ref/EFX_PT_ptcollision_ref/EFX_PT_eof_list 由 panels.register() 注册。
-    body_play_ref.register()
+    entry_action_ref.register()
 
     # ── L2 反向引用视图（只读）：算子无依赖，先注册；面板由 panels.register() 注册 ─
     backref.register()
 
-    # ── L2 #3a：body / 块重排算子（EFX_OT_move_body / EFX_OT_move_block）──────
+    # ── L2 #3a：body / 块重排算子（EFX_OT_move_entry / EFX_OT_move_attribute）──────
     reorder.register()
 
     # ── L2 #3b：删除条目算子（EFX_OT_delete_*）────────────────────────────────
@@ -161,7 +161,7 @@ def register():
     add_section_ops.register()
 
     # ── 块级组装：单块复制/粘贴/预设保存/新增（必须在 panels.register() 前）────────
-    block_ops.register()
+    attribute_ops.register()
 
     # ── PLEMISSIVE 位掩码勾选编辑器（算子，须在 panels.register() 前）─────────────
     part_mask_ops.register()
@@ -171,12 +171,12 @@ def register():
 
     # ── Operator / Panel ────────────────────────────────────────────────────
     operators.register()
-    panels.register()  # 包含 EFX_PT_main（父）和所有 L2 子面板
+    panels.register()  # 包含 EFX_PT_entry（父）和所有 L2 子面板
 
-    # ── 只读 hex 视图：面板 bl_parent_id='EFX_PT_main'，必须在 panels.register() 之后 ─
+    # ── 只读 hex 视图：面板 bl_parent_id='EFX_PT_entry'，必须在 panels.register() 之后 ─
     hexview.register()
 
-    # ── TIML 互导：面板 bl_parent_id='EFX_PT_main'，同样在 panels.register() 之后 ─
+    # ── TIML 互导：面板 bl_parent_id='EFX_PT_entry'，同样在 panels.register() 之后 ─
     timl_io.register()
 
     # ── TIML 头部元字段编辑：Dope Sheet 独立侧栏 N 面板，独立注册 ────────────────
@@ -233,7 +233,7 @@ def unregister():
 
     # ── 块级组装算子 ──────────────────────────────────────────────────────────
     part_mask_ops.unregister()
-    block_ops.unregister()
+    attribute_ops.unregister()
 
     # ── 从无到有新建 Play/Extern/Subselect 段条目 ────────────────────────────
     add_section_ops.unregister()
@@ -252,7 +252,7 @@ def unregister():
 
     # ── L2 #1d：PtLife/PtCollision/eof_ints 指针化核心类（PropertyGroup）──────
     # EFX_PT_ptlife_ref/EFX_PT_ptcollision_ref/EFX_PT_eof_list 已由 panels.unregister() 注销。
-    body_play_ref.unregister()
+    entry_action_ref.unregister()
 
     # ── L2 #1c+：Extern 段字段展开核心类（PropertyGroup + Operators）────────
     extern_props.unregister()
@@ -262,8 +262,8 @@ def unregister():
     extern_ref.unregister()
 
     # ── L2 #1b：Play 核心类（PropertyGroup + UIList + Operators）────────────
-    # EFX_PT_play 已由上面的 panels.unregister() 注销。
-    play_emitter.unregister()
+    # EFX_PT_action 已由上面的 panels.unregister() 注销。
+    action_emitter.unregister()
 
     # ── L2 #1a：Subselect 核心类（PropertyGroup + UIList + Operators）──────
     # EFX_PT_subselect 已由上面的 panels.unregister() 注销。
@@ -276,7 +276,7 @@ def unregister():
         pass
 
     # ── PropertyGroup（反序注销：先容器，再子类）────────────────────────────
-    bpy.utils.unregister_class(fields.EFXBlockProps)
+    bpy.utils.unregister_class(fields.EFXAttributeProps)
     bpy.utils.unregister_class(fields.EFXFieldItem)
 
     # ── 双语化基础设施：最后注销 ──────────────────────────────────────────────

@@ -20,7 +20,7 @@ blender_efx/annotations.py  —  L1.3 BT 注释接入
   - 数组字段（如 unkn0[3]）在 schema 里是单个字段名 "unkn0"，注释也映射到该名。
   - 路径字段（path/path1/path2）由 io_tree 负责，面板显示 STRING 类型，注释不重复。
   - EXTERN 变体与主类型共用同一 schema 名（如 EXTERNVELOCITY3D → "VELOCITY3D" 注释不适用），
-    Extern 块在 io_tree 中以不同 type_hash 存储，不在本字典；仅主 attr-block 类型有注释。
+    Extern 属性在 io_tree 中以不同 type_hash 存储，不在本字典；仅主 attribute 类型有注释。
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -542,19 +542,19 @@ FIELD_ANNOTATIONS = {
         "ZH": "反弹弹性的乘数",
     },
     ("PTCOLLISION", "ieIndex"): {
-        "EN": "0=Call PlayEFX Index?,  0xFFFFFFFF=Null",
-        "ZH": "0=调用 PlayEFX 索引？,  0xFFFFFFFF=空",
+        "EN": "0=Call ActionEFX Index?,  0xFFFFFFFF=Null",
+        "ZH": "0=调用 ActionEFX 索引？,  0xFFFFFFFF=空",
     },
 
     # ─── PTLIFE ───────────────────────────────────────────────────────────────
     # PtLife (EFX_Subtypes.bt)
     ("PTLIFE", "status"): {
-        "EN": "Determines when the specified Play is triggered. 0=On spawn, 1=Appear, 2=Keep, 3=Vanish, 4=On end, -1=Unknown",
-        "ZH": "决定何时触发指定的 Play。0=生成时，1=出现，2=保持，3=消失，4=结束时，-1=未知",
+        "EN": "Determines when the specified Action is triggered. 0=On spawn, 1=Appear, 2=Keep, 3=Vanish, 4=On end, -1=Unknown",
+        "ZH": "决定何时触发指定的 Action。0=生成时，1=出现，2=保持，3=消失，4=结束时，-1=未知",
     },
     ("PTLIFE", "relationIndex"): {
-        "EN": "Play Emitter / Play EFX Index that declares the children",
-        "ZH": "声明子级的 Play Emitter / Play EFX 索引",
+        "EN": "Action Emitter / Action EFX Index that declares the children",
+        "ZH": "声明子级的 Action Emitter / Action EFX 索引",
     },
 
     # ─── EMITTERBOUNDARY ──────────────────────────────────────────────────────
@@ -610,7 +610,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "观测范围 1–29。实测对归航行为无可观影响（非骨骼索引）。用途未知。",
     },
     ("HOMING", "unknown0"): {
-        "EN": "Always 44 in all 207 observed blocks — do not modify",
+        "EN": "Always 44 in all 207 observed attributes — do not modify",
         "ZH": "207 个块中恒为 44，请勿修改",
     },
     ("HOMING", "spacer"): {
@@ -684,7 +684,7 @@ FIELD_ANNOTATIONS = {
               "官方：0=72%，3=11%，2=8%，1=7%，4=2%。",
     },
     ("HOMING", "unknown1"): {
-        "EN": "Almost always 0 (97% of official blocks)",
+        "EN": "Almost always 0 (97% of official attributes)",
         "ZH": "几乎恒为 0（官方 97%）",
     },
 
@@ -740,6 +740,27 @@ FIELD_ANNOTATIONS = {
 
     # ─── DUMMY / RANDOMFIX / MASTERONLY / BLINK / LUMINANCEBLEED / REFRACTION ─
     # No significant inline comments in BT
+    ("LUMINANCEBLEED", "bleed"): {
+        "EN": "Bleed strength — how far/strongly bright pixels bleed into surrounding "
+              "pixels. 0 = no effect; increasing toward 1 gives a natural bloom-like glow. "
+              "Unclamped: values above 1 cause runaway overexposure. Practical range: 0~1.",
+        "ZH": "溢出强度——亮部像素向周围渗出的强度。0=无效果；增大到 1 产生自然的辉光效果。"
+              "无上限裁切：超过 1 会导致失控过曝。实际取值范围为 0~1。",
+    },
+    ("LUMINANCEBLEED", "colorScaler"): {
+        "EN": "Multiplies the bled-out light's own color/brightness (not its spread). "
+              "0 = pure black; 1 = neutral/unchanged (the overwhelming majority of usage); "
+              "high values (10+) blow it out to white and can overflow render bounds.",
+        "ZH": "对渗出光晕本身的颜色/亮度做倍乘（不影响渗出范围）。0=纯黑；1=中性不变"
+              "（绝大多数实际取值）；调高（10+）会冲成纯白，甚至溢出渲染边界。",
+    },
+    ("LUMINANCEBLEED", "texelScaler"): {
+        "EN": "Sampling/blur radius for the bleed, in texels. Larger = wider spread into "
+              "neighboring pixels (soft gradient expansion, distinct from colorScaler's hard "
+              "overflow). Usage clusters at small integers (1/2/3 texels).",
+        "ZH": "溢出效果的取样/模糊半径，以纹素为单位。数值越大扩散越宽（渐变式柔和扩散，"
+              "区别于 colorScaler 的硬边界溢出）。实际取值集中在 1/2/3 等小整数。",
+    },
     ("RANDOMFIX", "useRandomSeedTableCount"): {
         "EN": "Number of times this effect draws from the random seed table below.",
         "ZH": "该特效从下方随机种子表中抽取的次数。",
@@ -934,10 +955,13 @@ FIELD_ANNOTATIONS = {
         "EN": "Bitmask controlling texture flip: +1=Force horizontal flip,  "
               "+2=Randomize horizontal flip,  +4=Force vertical flip,  "
               "+8=Randomize vertical flip. Random picks happen once at particle spawn, "
-              "not re-rolled during the loop. (Combining flags hasn't been fully tested yet.)",
+              "not re-rolled during the loop. Two groups: {1,2} (horizontal) and {4,8} "
+              "(vertical) — combining flags within the same group cancels out (no effect), "
+              "while combining across groups (e.g. 1+4) stacks normally.",
         "ZH": "控制贴图翻转的位掩码：+1=强制左右翻转，+2=左右翻转随机取，"
               "+4=强制上下翻转，+8=上下翻转随机取。随机项在粒子生成时取一次，"
-              "循环期间不会重新取。（组合多个标志位的效果尚未完全测试。）",
+              "循环期间不会重新取。分两组：{1,2}（左右）与 {4,8}（上下）——"
+              "同组内叠加会相互抵消失效，跨组叠加（如 1+4）则可正常同时生效。",
     },
     ("UVSEQUENCE", "direction"): {
         "EN": "Playback direction: 0=Forward,  1=Reverse,  2=Randomly forward or reverse "
@@ -1380,11 +1404,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "内存对齐占位符（-842150656）。请勿编辑。",
     },
     ("LIGHTNING", "unkn02"): {
-        "EN": "Memory-alignment padding between color blocks. Do not edit.",
+        "EN": "Memory-alignment padding between color attributes. Do not edit.",
         "ZH": "颜色块之间的内存对齐占位符。请勿编辑。",
     },
     ("LIGHTNING", "unkn03"): {
-        "EN": "Memory-alignment padding between color blocks. Do not edit.",
+        "EN": "Memory-alignment padding between color attributes. Do not edit.",
         "ZH": "颜色块之间的内存对齐占位符。请勿编辑。",
     },
     ("LIGHTNING", "spacer05_00"): {
@@ -2254,14 +2278,6 @@ FIELD_ANNOTATIONS = {
     ("LINKPARTSVISIBLE", "unkn0_2"): {
         "EN": "Common values: [2, 13, 15].",
         "ZH": "常见取值为 [2, 13, 15]。",
-    },
-    ("LUMINANCEBLEED", "unkn1_1"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("LUMINANCEBLEED", "unkn1_2"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
     },
     ("MATERIAL", "block_count"): {
         "EN": "Common values: [0, 1, 2, 3, 5, 6, 7].",

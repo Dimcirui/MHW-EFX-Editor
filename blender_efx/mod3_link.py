@@ -1,5 +1,5 @@
 r"""
-blender_efx/mod3_link.py  —  EFX MESH 块引用的 mod3 自动导入 + 绑定（联动 MHW Model Editor，添头功能）
+blender_efx/mod3_link.py  —  EFX MESH 属性引用的 mod3 自动导入 + 绑定（联动 MHW Model Editor，添头功能）
 
 定位（与用户确认的边界）
 ------------------------
@@ -7,12 +7,12 @@ blender_efx/mod3_link.py  —  EFX MESH 块引用的 mod3 自动导入 + 绑定�
   拖入导入也不静默——弹窗让用户勾选后才导（见 operators.py 的 invoke）。
 - **Model Editor 是添头非依赖**：检测到 `mhw_mod3.import_mhw_mod3` 才解锁；缺席则开关禁用、提示安装。
 - **一个算子搞定 mod3+mrl3+材质**：Model Editor 的导入算子带 `loadMaterials`（默认开）+ `mrl3Path`
-  留空自动找——正是「一键装备」式联动。本模块只负责：把 EFX MESH 块的相对路径解析成磁盘上的
-  .mod3，调它导入，再把导入出的网格回填到该 MESH 块的 `efx_mesh_target`（与 UVC / TIML 浏览共用绑定）。
+  留空自动找——正是「一键装备」式联动。本模块只负责：把 EFX MESH 属性的相对路径解析成磁盘上的
+  .mod3，调它导入，再把导入出的网格回填到该 MESH 属性的 `efx_mesh_target`（与 UVC / TIML 浏览共用绑定）。
 
 路径解析
 --------
-- MESH 块 path1 形如 `vfx\mod\wp\wp03\md_wp03_000`（游戏内相对路径，反斜杠，**无扩展名**）；path2 多为空。
+- MESH 属性 path1 形如 `vfx\mod\wp\wp03\md_wp03_000`（游戏内相对路径，反斜杠，**无扩展名**）；path2 多为空。
 - 解析 = `<根>/vfx/mod/.../md_wp03_000.mod3`。根的优先级：① 手设 `Scene.efx_chunk_root`（填了才用）
   ② **从 efx 位置向上追溯到的第一个 nativePC（默认、自动）** ③ efx 同目录兜底。
   全找不到 → 收集到 unresolved 列表，导入结束统一提示，**不静默失败**。
@@ -45,12 +45,12 @@ def model_editor_available() -> bool:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MESH 块路径读取
+# MESH 属性路径读取
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _block_mod3_relpath(blk_obj):
-    """读 EFX_BLOCK（MESH 类型）的 mod3 相对路径（path1）；非 MESH / 空 / 异常返回 None。"""
-    if blk_obj is None or blk_obj.get("~TYPE") != "EFX_BLOCK":
+def _attribute_mod3_relpath(blk_obj):
+    """读 EFX_ATTRIBUTE（MESH 类型）的 mod3 相对路径（path1）；非 MESH / 空 / 异常返回 None。"""
+    if blk_obj is None or blk_obj.get("~TYPE") != "EFX_ATTRIBUTE":
         return None
     try:
         if int(blk_obj.get("type_hash", "0")) != MESH:
@@ -65,13 +65,13 @@ def _block_mod3_relpath(blk_obj):
     return rel or None
 
 
-def iter_mesh_blocks(root_obj):
-    """遍历 EFX_ROOT 下所有 MESH 块对象，yield (blk_obj, mod3_relpath)（仅含非空路径的）。"""
+def iter_mesh_attributes(root_obj):
+    """遍历 EFX_ROOT 下所有 MESH 属性对象，yield (blk_obj, mod3_relpath)（仅含非空路径的）。"""
     for body in root_obj.children:
-        if body.get("~TYPE") != "EFX_BODY":
+        if body.get("~TYPE") != "EFX_ENTRY":
             continue
         for blk in body.children:
-            rel = _block_mod3_relpath(blk)
+            rel = _attribute_mod3_relpath(blk)
             if rel is not None:
                 yield blk, rel
 
@@ -83,7 +83,7 @@ def iter_mesh_blocks(root_obj):
 def find_native_root(efx_dir):
     """从 efx 所在目录向上追溯，返回第一个名为 nativePC 的目录（绝对路径）；没有返回 None。
 
-    MHW 提取布局里 MESH 块的相对路径（vfx\\mod\\...）正是相对 nativePC 的，故据此自动重定位，
+    MHW 提取布局里 MESH 属性的相对路径（vfx\\mod\\...）正是相对 nativePC 的，故据此自动重定位，
     免去手设 Chunk Root。大小写不敏感（Windows / 某些提取工具用小写）。
     """
     if not efx_dir:
@@ -152,18 +152,18 @@ def _import_one_mod3(filepath):
 
 
 def import_and_bind(root_obj, context, chunk_root, efx_dir=None):
-    """对 EFX_ROOT 下每个带 mod3 路径的 MESH 块：解析→导入→绑定 efx_mesh_target。
+    """对 EFX_ROOT 下每个带 mod3 路径的 MESH 属性：解析→导入→绑定 efx_mesh_target。
 
     返回 (n_bound, unresolved)：
-      n_bound    = 成功导入并绑定的 MESH 块数
+      n_bound    = 成功导入并绑定的 MESH 属性数
       unresolved = [(blk_name, relpath)]  —— 路径解析失败，未导入
-    同一 mod3 路径只导入一次（去重），多个 MESH 块引用同一 mod3 时共绑首个导入网格。
+    同一 mod3 路径只导入一次（去重），多个 MESH 属性引用同一 mod3 时共绑首个导入网格。
     """
     n_bound = 0
     unresolved = []
     imported_cache = {}  # 绝对路径 → 首个网格对象（去重）
 
-    for blk, rel in iter_mesh_blocks(root_obj):
+    for blk, rel in iter_mesh_attributes(root_obj):
         abspath = resolve_mod3_path(rel, chunk_root, efx_dir)
         if abspath is None:
             unresolved.append((blk.name, rel))
@@ -196,7 +196,7 @@ def import_and_bind(root_obj, context, chunk_root, efx_dir=None):
 def register():
     bpy.types.Scene.efx_chunk_root = bpy.props.StringProperty(
         name="Chunk Root",
-        description="MHW 提取根目录（含 vfx/ 等）。MESH 块的 mod3 相对路径据此解析成磁盘文件",
+        description="MHW 提取根目录（含 vfx/ 等）。MESH 属性的 mod3 相对路径据此解析成磁盘文件",
         subtype="DIR_PATH",
         default="",
     )

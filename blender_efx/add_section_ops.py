@@ -1,5 +1,5 @@
 """
-blender_efx/add_section_ops.py  —  从无到有新建 Play / Extern / Subselect 段条目
+blender_efx/add_section_ops.py  —  从无到有新建 Action / Extern / Subselect 段条目
 
 设计原则（参照 CLAUDE.md / add_ops.py / delete_ops.py）：
   - Python 3.11 语法（目标 Blender 4.3.2）
@@ -10,21 +10,21 @@ blender_efx/add_section_ops.py  —  从无到有新建 Play / Extern / Subselec
     （count_* = len(对象)；labels_dirty=1 → 重建标签前缀；subselect_dirty=1 → 重算 size）。
 
 为什么是"容器式"创建（参照与用户的讨论）：
-  Play/Extern/Subselect 更像关系容器而非参数块——真正可调的视觉参数在 body 块里。
+  Action/Extern/Subselect 更像关系容器而非参数属性——真正可调的视觉参数在 entry 的属性里。
   所以"新建"= 建一个带合法空白模板的容器对象 + 设段局部 index + 置脏标志，
   导出端自动把它纳入 header / 标签表。引用（targets / 成员）由用户后续在面板里接线。
 
-标签前缀规则（与 reorder.can_label_body 同源）：
-  EFX_Type 标签表是 [Play|Extern|Main] 全局顺序的**连续前缀**。新建的 play/extern
+标签前缀规则（与 reorder.can_label_entry 同源）：
+  EFX_Type 标签表是 [Action|Extern|Entry] 全局顺序的**连续前缀**。新建的 action/extern
   追加在本组末尾，其 has_label = "它前面的所有条目（全局序）当前是否都有标签"：
-    - 全标签文件（语料 29/34）：前面 play/extern 都有标签 → 新条目也给标签；
+    - 全标签文件（语料 29/34）：前面 action/extern 都有标签 → 新条目也给标签；
     - 无标签文件（语料 5/34，nlabels=0）：前面无标签 → 新条目 has_label=0。
   这条规则可证明保持合法前缀（旧状态合法前缀 + 末尾追加）。subselect 不在标签表内，无此顾虑。
 
 模板字节来源（efx_samples 语料抓取）：
   - PLAYEMITTER unkn[7]：corpus 中最常见的 28 字节模式（int[2]==4 标记），xyz 缺省 (1,1,1) 缩放，0 targets。
   - ExternAttribute：最小的真实 extern（wp08_061.efx 的 EXTERNSPAWN，172 字节），整体作为起始模板。
-    ⚠ extern 内容当前 opaque 不可编辑，新建出来是个合法的"起始模板"，需配合 EXTERNREFERENCE 块使用。
+    ⚠ extern 内容当前 opaque 不可编辑，新建出来是个合法的"起始模板"，需配合 EXTERNREFERENCE 属性使用。
 """
 
 import base64
@@ -118,7 +118,7 @@ def _next_index(root_obj, type_tag) -> int:
 
 def _section_collection(root_obj, suffix: str):
     """
-    找 root_obj 所在根集合下、名字以 suffix 结尾的段集合（如 '_0 Play'）；
+    找 root_obj 所在根集合下、名字以 suffix 结尾的段集合（如 '_0 Action'）；
     找不到则按 <stem><suffix> 新建并挂到根集合下。返回 Collection 或 None。
     """
     root_cols = list(root_obj.users_collection)
@@ -130,13 +130,13 @@ def _section_collection(root_obj, suffix: str):
         if child.name.endswith(suffix):
             return child
 
-    # 从 Main 集合名推导 stem（'<stem>_2 Main'）；失败则用根集合名。
+    # 从 Entry 集合名推导 stem（'<stem>_2 Entry'）；失败则用根集合名。
     stem = root_col.name
     try:
-        from .subselect import find_main_collection
-        mc = find_main_collection(root_obj)
-        if mc is not None and mc.name.endswith("_2 Main"):
-            stem = mc.name[: -len("_2 Main")]
+        from .subselect import find_entry_collection
+        mc = find_entry_collection(root_obj)
+        if mc is not None and mc.name.endswith("_2 Entry"):
+            stem = mc.name[: -len("_2 Entry")]
     except Exception:
         pass
 
@@ -209,43 +209,43 @@ def add_subselect(root_obj) -> bpy.types.Object:
     return obj
 
 
-def add_play(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
+def add_action(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
     """
-    新建一个 Play（action）：含 1 个初始 entry，类型由 entry_type 决定。
+    新建一个 Action：含 1 个初始 entry，类型由 entry_type 决定。
       'PLAYEMITTER'：空白 PlayEmitter（0 targets，xyz=1,1,1）
       'PLAYEFX'    ：空白 PlayEFX（path=""，xyz=0,0,0）
-    targets / 路径由用户在 Play 面板里接线。
+    targets / 路径由用户在 Action 面板里接线。
     """
-    from ..efx_format.efxfile import PlayData, PlayEntry
+    from ..efx_format.efxfile import ActionData, ActionEntry
     from ..efx_format.hashes import PLAYEMITTER, PLAYEFX
-    from . import play_emitter as _play_emitter
+    from . import action_emitter as _action_emitter
 
-    col = _section_collection(root_obj, "_0 Play")
+    col = _section_collection(root_obj, "_0 Action")
     if col is None:
-        raise RuntimeError("找不到/无法新建 Play 集合")
+        raise RuntimeError("找不到/无法新建 Action 集合")
 
-    idx = _next_index(root_obj, "EFX_PLAY")
+    idx = _next_index(root_obj, "EFX_ACTION")
 
     if entry_type == 'PLAYEFX':
-        first_entry = PlayEntry(type_hash=PLAYEFX, raw=_BLANK_PLAYEFX_RAW)
+        first_entry = ActionEntry(type_hash=PLAYEFX, raw=_BLANK_PLAYEFX_RAW)
     else:
         emitter_raw = (_BLANK_EMITTER_UNKN7
                        + struct.pack("<3f", 1.0, 1.0, 1.0)
                        + b"\x00" * 12
                        + struct.pack("<i", 0))
-        first_entry = PlayEntry(type_hash=PLAYEMITTER, raw=emitter_raw)
+        first_entry = ActionEntry(type_hash=PLAYEMITTER, raw=emitter_raw)
 
-    # 标签前缀规则：新 play 追加在 play 组末尾，前面=现有所有 play。
-    has_label = _all_labeled(_sorted_children(root_obj, "EFX_PLAY"))
-    raw_label = f"play_{idx}"
+    # 标签前缀规则：新 action 追加在 action 组末尾，前面=现有所有 action。
+    has_label = _all_labeled(_sorted_children(root_obj, "EFX_ACTION"))
+    raw_label = f"action_{idx}"
 
-    # play_type = jamcrc(play 名)（实测 5251/5251 命中）。新建即按名字算，
-    # 避免名↔哈希从出生就不一致；重命名时由 EFX_OT_rename_entry 同步重算。
+    # play_type = jamcrc(action 名)（实测 5251/5251 命中）。新建即按名字算，
+    # 避免名↔哈希从出生就不一致；重命名时由 EFX_OT_rename_action_extern 同步重算。
     from ..efx_format.hashes import jamcrc
-    pd = PlayData(play_type=jamcrc(raw_label), entries=[first_entry])
+    pd = ActionData(play_type=jamcrc(raw_label), entries=[first_entry])
 
     obj = _new_empty(f"{_nn(idx)} {raw_label}", col)
-    obj["~TYPE"]         = "EFX_PLAY"
+    obj["~TYPE"]         = "EFX_ACTION"
     obj["efx_index"]     = idx
     obj["efx_raw_label"] = raw_label
     obj["efx_has_label"] = int(has_label)
@@ -253,7 +253,7 @@ def add_play(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
     obj.parent           = root_obj
 
     try:
-        _play_emitter.init_play_props(obj, pd, {})
+        _action_emitter.init_action_props(obj, pd, {})
     except Exception:
         pass
 
@@ -266,7 +266,7 @@ def add_extern(root_obj, extern_type='EXTERNSPAWN') -> bpy.types.Object:
     新建一个 Extern，extern_type 决定使用哪种模板字节（默认 EXTERNSPAWN）。
 
     ⚠ extern 内容当前 opaque 不可逐字段编辑——新建出来是个合法占位/起始模板，
-    供配合 EXTERNREFERENCE 块引用使用。
+    供配合 EXTERNREFERENCE 属性引用使用。
     """
     col = _section_collection(root_obj, "_1 Extern")
     if col is None:
@@ -274,8 +274,8 @@ def add_extern(root_obj, extern_type='EXTERNSPAWN') -> bpy.types.Object:
 
     idx = _next_index(root_obj, "EFX_EXTERN")
 
-    # 标签前缀规则：新 extern 追加在 extern 组末尾，前面=所有 play + 现有 extern。
-    before = _sorted_children(root_obj, "EFX_PLAY") + _sorted_children(root_obj, "EFX_EXTERN")
+    # 标签前缀规则：新 extern 追加在 extern 组末尾，前面=所有 action + 现有 extern。
+    before = _sorted_children(root_obj, "EFX_ACTION") + _sorted_children(root_obj, "EFX_EXTERN")
     has_label = _all_labeled(before)
     raw_label = f"extern_{idx}"
 
@@ -309,20 +309,20 @@ def add_extern(root_obj, extern_type='EXTERNSPAWN') -> bpy.types.Object:
 # 算子
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_OT_add_play(Operator):
-    """在 Active EFX 下新建一个 Play(action)，弹窗选择首条目类型"""
+class EFX_OT_add_action(Operator):
+    """在 Active EFX 下新建一个 Action，弹窗选择首条目类型"""
 
-    bl_idname      = "efx.add_play"
-    bl_label       = "Add Play (Action)"
-    bl_description = ("Create a new Play/Action; a dialog lets you choose PlayEmitter or PlayEFX "
+    bl_idname      = "efx.add_action"
+    bl_label       = "Add Action"
+    bl_description = ("Create a new Action; a dialog lets you choose PlayEmitter or PlayEFX "
                       "as the first entry. The exporter recomputes the header and label table automatically.")
     bl_options     = {"REGISTER", "UNDO"}
 
     entry_type: EnumProperty(
         name="Entry Type",
-        description="Type of the first entry in the new Play",
+        description="Type of the first entry in the new Action",
         items=[
-            ('PLAYEMITTER', "PlayEmitter", "Internal body reference (targets[] pointing to Main bodies)"),
+            ('PLAYEMITTER', "PlayEmitter", "Internal entry reference (targets[] pointing to Main entries)"),
             ('PLAYEFX',     "PlayEFX",     "External .efx file call (path + XYZ offset)"),
         ],
         default='PLAYEMITTER',
@@ -344,12 +344,12 @@ class EFX_OT_add_play(Operator):
             self.report({"ERROR"}, "Select an Active EFX collection first")
             return {"CANCELLED"}
         try:
-            obj = add_play(root, self.entry_type)
+            obj = add_action(root, self.entry_type)
         except Exception as exc:
-            self.report({"ERROR"}, f"Failed to add Play: {exc}")
+            self.report({"ERROR"}, f"Failed to add Action: {exc}")
             return {"CANCELLED"}
         _select_only(context, obj)
-        self.report({"INFO"}, f"Added Play: {obj.name}")
+        self.report({"INFO"}, f"Added Action: {obj.name}")
         return {"FINISHED"}
 
 
@@ -407,7 +407,7 @@ class EFX_OT_add_subselect(Operator):
 
     bl_idname      = "efx.add_subselect"
     bl_label       = "Add Subselect"
-    bl_description = ("Create a new empty Subselect table; add member bodies in its panel. "
+    bl_description = ("Create a new empty Subselect table; add member entries in its panel. "
                       "The exporter recomputes count_subselect and subselect_size automatically")
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -435,7 +435,7 @@ class EFX_OT_add_subselect(Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CLASSES = (
-    EFX_OT_add_play,
+    EFX_OT_add_action,
     EFX_OT_add_extern,
     EFX_OT_add_subselect,
 )

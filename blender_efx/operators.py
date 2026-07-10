@@ -8,8 +8,8 @@ blender_efx/operators.py  —  L1.0 + L1.2 + L1.3 扩展：导入/导出算子 +
   - 不使用 5.x 新增 API
   - 不改 io_tree.py / efx_format/
 
-字段复用：efx.copy_block_fields / efx.paste_block_fields（即时内存剪贴板）。
-  （旧「字段值预设」算子 save/apply_block_preset 已移除，整块预设见 block_ops。）
+字段复用：efx.copy_attribute_fields / efx.paste_attribute_fields（即时内存剪贴板）。
+  （旧「字段值预设」算子 save/apply_attribute_preset 已移除，整属性预设见 attribute_ops。）
 
 L1.3 拖入导入（FileHandler）：
   EFX_FH_import  —  注册 .efx 文件拖入 3D 视口时调用 efx.import_efx
@@ -17,11 +17,16 @@ L1.3 拖入导入（FileHandler）：
   同时保持原有"文件浏览器/按钮选文件导入"用法不变。
 """
 
+import os
+import re
 import struct
 
 import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
-from bpy.props import StringProperty, CollectionProperty, EnumProperty, IntProperty, BoolProperty
+from bpy.props import (
+    StringProperty, CollectionProperty, EnumProperty, IntProperty, BoolProperty,
+    PointerProperty,
+)
 
 from . import io_tree
 from .i18n import T
@@ -128,11 +133,11 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         options={"HIDDEN", "SKIP_SAVE"},
     )
 
-    # 可勾选项（默认关）：导入时一并把 MESH 块引用的 mod3（含 mrl3+材质）经 Model Editor 导入并绑定。
+    # 可勾选项（默认关）：导入时一并把 MESH 属性引用的 mod3（含 mrl3+材质）经 Model Editor 导入并绑定。
     # Model Editor 缺席时此项无效（draw 里禁用）。
     import_meshes: BoolProperty(
         name="Import referenced meshes (mod3)",
-        description="同时把每个 MESH 块引用的 mod3（含 mrl3 与材质）经 MHW Model Editor 导入并绑定到预览。"
+        description="同时把每个 MESH 属性引用的 mod3（含 mrl3 与材质）经 MHW Model Editor 导入并绑定到预览。"
                     "需安装 Model Editor。提取根目录默认从 efx 位置向上自动找 nativePC，找不到时再用下方 Chunk Root",
         default=False,
         options={"SKIP_SAVE"},
@@ -211,7 +216,7 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
             except Exception:
                 pass  # 摆位是可视化增强，失败不影响导入本身
 
-        # ── 可勾选：一并导入 MESH 块引用的 mod3（含 mrl3+材质）并绑定 ──────────────
+        # ── 可勾选：一并导入 MESH 属性引用的 mod3（含 mrl3+材质）并绑定 ──────────────
         # 默认关；仅当用户勾选 + Model Editor 在场时执行。失败不影响 EFX 导入本身。
         if imported_roots and self.import_meshes:
             from . import mod3_link
@@ -247,8 +252,77 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_OT_export
+# EFX_OT_export：目标 EFX 集合选择 + 文件名默认值/"记住自定义名"
 # ─────────────────────────────────────────────────────────────────────────────
+
+# 会话级记忆（模块全局，跨多次导出调用持续，Blender 重启清空）：
+#   _last_export_name  用户上次手动改过的导出文件名（不含扩展名）；None = 跟随目标集合名自动生成。
+#   _last_export_dir    用户上次导出用的目录，下次默认沿用；None = 回退到 .blend 所在目录。
+_last_export_name = None
+_last_export_dir = None
+# invoke() 内部给 target_efx 赋默认值时临时置真，防止其 update 回调误判为"用户手动切换"而清空 _last_export_name。
+_suppress_target_efx_reset = False
+
+
+def _efx_root_in_collection(col):
+    """col 直属对象里的 EFX_ROOT，找不到返回 None。"""
+    if col is None:
+        return None
+    for o in col.objects:
+        if o.get("~TYPE") == "EFX_ROOT":
+            return o
+    return None
+
+
+def _export_target_efx_poll(self, col):
+    """target_efx 下拉 poll：只列出直属含 EFX_ROOT 对象的集合（即某个已导入/新建的 EFX 文件）。"""
+    return _efx_root_in_collection(col) is not None
+
+
+def _default_export_basename(collection) -> str:
+    """
+    按集合名生成默认导出文件名（不含扩展名）：
+      去掉 Blender 因重名追加的 ".001" 等后缀，再去掉集合名里已带的 ".efx" 后缀。
+    collection 为 None（未选定目标）时返回 "untitled"。
+    """
+    if collection is None:
+        return "untitled"
+    name = re.sub(r'\.\d{3}$', '', collection.name)
+    if name.lower().endswith(".efx"):
+        name = name[:-4]
+    return name or "untitled"
+
+
+def _resolve_default_export_collection(context):
+    """
+    导出目标集合的默认值解析：
+      1. Scene.efx_active_efx（N 面板 Active EFX 选择器）已指向合法 EFX 集合 → 用它。
+      2. 否则回退：当前活动对象所属的 EFX 顶层集合（_find_efx_root 向上查找 EFX_ROOT 再取其集合）。
+      3. 都没有 → None（留给用户在导出弹窗里自己选）。
+    """
+    scn = getattr(context, "scene", None)
+    active_col = getattr(scn, "efx_active_efx", None) if scn is not None else None
+    if _efx_root_in_collection(active_col) is not None:
+        return active_col
+
+    root = _find_efx_root(context)
+    if root is not None:
+        cols = root.users_collection
+        if cols:
+            return cols[0]
+    return None
+
+
+def _on_export_target_efx_update(self, context):
+    """用户在导出弹窗里手动切换 EFX Collection 下拉 → 文件名刷新为该集合的默认名（放弃之前的自定义名）。"""
+    global _last_export_name
+    if _suppress_target_efx_reset:
+        return
+    _last_export_name = None
+    base = _default_export_basename(self.target_efx)
+    directory = os.path.dirname(self.filepath) if self.filepath else (_last_export_dir or "")
+    self.filepath = os.path.join(directory, base + ".efx") if directory else base + ".efx"
+
 
 class EFX_OT_export(bpy.types.Operator, ExportHelper):
     """将当前选中的 EFX 对象树导出为 .efx 文件"""
@@ -266,6 +340,17 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         maxlen=255,
     )
 
+    # 导出目标 EFX 集合：默认走 Active EFX / 活动对象回退（见 _resolve_default_export_collection）；
+    # 用户在此手动切换 → 文件名刷新为该集合的默认名（见 _on_export_target_efx_update）。
+    target_efx: PointerProperty(
+        name=T("export.target_efx"),
+        description=T("export.target_efx_tip"),
+        type=bpy.types.Collection,
+        poll=_export_target_efx_poll,
+        update=_on_export_target_efx_update,
+        options={"SKIP_SAVE"},
+    )
+
     # 自动重算 filesize_double（doubleBuffer，header 偏移 68）。
     # 勾选：导出后将其设为 max(Root 值, ceil16(2.75 × 文件大小))，防止增量编辑后缓冲偏小
     # 导致特效消失（公式实测覆盖 99.9% 官方样本；超额分配无害、欠额才消失，故取较大者）。
@@ -276,9 +361,9 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         default=True,
     )
 
-    # 导出前按游戏惯用顺序静默重排每个 body 内的块（见 reorder.py::auto_sort_body_blocks）。
-    # 不勾：保留用户自己排的块顺序，不做任何调整。
-    auto_sort_blocks: BoolProperty(
+    # 导出前按游戏惯用顺序静默重排每个 entry 内的属性（见 reorder.py::auto_sort_entry_attributes）。
+    # 不勾：保留用户自己排的属性顺序，不做任何调整。
+    auto_sort_attributes: BoolProperty(
         name=T("export.auto_sort"),
         description=T("export.auto_sort_tip"),
         default=True,
@@ -286,15 +371,36 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
     def draw(self, context):
         layout = self.layout
+        layout.prop(self, "target_efx")
         layout.prop(self, "recompute_double_buffer")
-        layout.prop(self, "auto_sort_blocks")
+        layout.prop(self, "auto_sort_attributes")
+
+    def invoke(self, context, event):
+        global _suppress_target_efx_reset
+        default_col = _resolve_default_export_collection(context)
+
+        _suppress_target_efx_reset = True
+        try:
+            self.target_efx = default_col
+        finally:
+            _suppress_target_efx_reset = False
+
+        base = _last_export_name or _default_export_basename(default_col)
+        directory = _last_export_dir
+        if not directory:
+            blend_path = context.blend_data.filepath
+            directory = os.path.dirname(blend_path) if blend_path else ""
+        self.filepath = os.path.join(directory, base + self.filename_ext) if directory else base + self.filename_ext
+
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
 
     def execute(self, context):
         # ── 1. 解析要导出的 EFX_ROOT ─────────────────────────────────────────
-        # 优先用 N 面板的 Active EFX（选中的 .efx 集合）；否则回退到活动对象所属的 EFX。
-        # 这样不必非得选中 EFX 内某个对象——选好 Active EFX 即可导出。
+        # 优先用导出弹窗里选的 target_efx；否则 N 面板的 Active EFX；否则活动对象所属的 EFX。
+        # 这样不必非得选中 EFX 内某个对象——选好任一个即可导出。
         from .add_ops import get_active_efx_root
-        root = get_active_efx_root(context) or _find_efx_root(context)
+        root = _efx_root_in_collection(self.target_efx) or get_active_efx_root(context) or _find_efx_root(context)
         if root is None:
             self.report(
                 {"ERROR"},
@@ -324,11 +430,11 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         skipped = [p for p in problems
                    if p.get("category") in ("dangling", "eof_raw")]
 
-        # ── 1.7 导出前静默规范化块顺序（可通过 auto_sort_blocks 关闭）────────────
-        if self.auto_sort_blocks:
+        # ── 1.7 导出前静默规范化属性顺序（可通过 auto_sort_attributes 关闭）────────────
+        if self.auto_sort_attributes:
             try:
-                from .reorder import auto_sort_body_blocks
-                auto_sort_body_blocks(root)
+                from .reorder import auto_sort_entry_attributes
+                auto_sort_entry_attributes(root)
             except Exception:
                 pass  # 排序失败不阻断导出
 
@@ -381,6 +487,14 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
                 _draw_skipped, title=T("op.export_skipped_title"), icon="INFO",
             )
 
+        # ── 3.6 记住本次用的文件名/目录，供下次导出弹窗默认值使用 ─────────────────
+        # 与自动默认名一致 → 视为"跟随目标集合"，下次继续自动生成；
+        # 不一致 → 视为用户自定义，下次沿用（除非用户在弹窗里手动重选 target_efx）。
+        global _last_export_name, _last_export_dir
+        _last_export_dir = os.path.dirname(self.filepath)
+        used_base = os.path.splitext(os.path.basename(self.filepath))[0]
+        _last_export_name = None if used_base == _default_export_basename(self.target_efx) else used_base
+
         _skip_note = f", {len(skipped)} ref(s) skipped" if skipped else ""
         self.report(
             {"INFO"},
@@ -391,8 +505,8 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # L1.4 即时复制/粘贴（内存剪贴板）
-#   （旧「字段值预设」算子 EFX_OT_save/apply_block_preset 已移除：块预设改为
-#    block_ops 的整块增删机制；字段复用保留为下方的即时复制/粘贴。）
+#   （旧「字段值预设」算子 EFX_OT_save/apply_attribute_preset 已移除：属性预设改为
+#    attribute_ops 的整属性增删机制；字段复用保留为下方的即时复制/粘贴。）
 # ─────────────────────────────────────────────────────────────────────────────
 
 # 模块级内存剪贴板：{"type_hash": str, "fields": {...同 preset JSON fields 结构...}}
@@ -400,18 +514,18 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 _FIELD_CLIPBOARD = {}
 
 
-class EFX_OT_copy_block_fields(bpy.types.Operator):
-    """把当前 EFX_BLOCK 的可编辑字段值复制到内存剪贴板"""
+class EFX_OT_copy_attribute_fields(bpy.types.Operator):
+    """把当前 EFX_ATTRIBUTE 的可编辑字段值复制到内存剪贴板"""
 
-    bl_idname      = "efx.copy_block_fields"
+    bl_idname      = "efx.copy_attribute_fields"
     bl_label       = "Copy Field Values"
-    bl_description = "Copy all editable field values of the current EFX_BLOCK to the in-memory clipboard (for pasting into a block of the same type)"
+    bl_description = "Copy all editable field values of the current EFX_ATTRIBUTE to the in-memory clipboard (for pasting into an attribute of the same type)"
     bl_options     = {"REGISTER"}
 
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return False
         try:
             return obj.efx_block.is_editable
@@ -446,21 +560,21 @@ class EFX_OT_copy_block_fields(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class EFX_OT_paste_block_fields(bpy.types.Operator):
-    """把内存剪贴板的字段值粘贴到所有选中的同类型 EFX_BLOCK"""
+class EFX_OT_paste_attribute_fields(bpy.types.Operator):
+    """把内存剪贴板的字段值粘贴到所有选中的同类型 EFX_ATTRIBUTE"""
 
-    bl_idname      = "efx.paste_block_fields"
+    bl_idname      = "efx.paste_attribute_fields"
     bl_label       = "Paste Field Values"
-    bl_description = "Write the clipboard field values into every selected EFX_BLOCK of the same type as the copy source"
+    bl_description = "Write the clipboard field values into every selected EFX_ATTRIBUTE of the same type as the copy source"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        """剪贴板为空、或当前块不可编辑、或类型不符时灰显。"""
+        """剪贴板为空、或当前属性不可编辑、或类型不符时灰显。"""
         if not _FIELD_CLIPBOARD:
             return False
         obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return False
         try:
             bp = obj.efx_block
@@ -479,18 +593,18 @@ class EFX_OT_paste_block_fields(bpy.types.Operator):
         clip_hash = _FIELD_CLIPBOARD.get("type_hash", "")
         fields_dict = _FIELD_CLIPBOARD.get("fields", {})
 
-        # 收集选中的、类型匹配且可编辑的 EFX_BLOCK；未多选（或选中里没有匹配类型）
+        # 收集选中的、类型匹配且可编辑的 EFX_ATTRIBUTE；未多选（或选中里没有匹配类型）
         # 时退化为只粘贴到 active（execute 再守一次类型校验，同 poll 逻辑）。
         targets = [
             o for o in context.selected_objects
-            if o.get("~TYPE") == "EFX_BLOCK"
+            if o.get("~TYPE") == "EFX_ATTRIBUTE"
             and hasattr(o, "efx_block")
             and o.efx_block.is_editable
             and o.efx_block.type_hash_str == clip_hash
         ]
         if not targets:
             active = context.active_object
-            if active is None or active.get("~TYPE") != "EFX_BLOCK" \
+            if active is None or active.get("~TYPE") != "EFX_ATTRIBUTE" \
                     or active.efx_block.type_hash_str != clip_hash:
                 self.report(
                     {"ERROR"},
@@ -532,7 +646,7 @@ class EFX_OT_paste_block_fields(bpy.types.Operator):
 
         self.report(
             {"INFO"},
-            f"EFX fields pasted into {len(targets)} block(s): {total_written} field write(s) total",
+            f"EFX fields pasted into {len(targets)} attribute(s): {total_written} field write(s) total",
         )
         return {"FINISHED"}
 
@@ -541,9 +655,9 @@ class EFX_OT_paste_block_fields(bpy.types.Operator):
 # #2 字段说明 tooltip 算子
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _is_ptbehavior_block(obj) -> bool:
-    """obj 是否为可编辑的 PTBEHAVIOR EFX_BLOCK。"""
-    if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+def _is_ptbehavior_attribute(obj) -> bool:
+    """obj 是否为可编辑的 PTBEHAVIOR EFX_ATTRIBUTE。"""
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
         return False
     try:
         from ..efx_format.hashes import PTBEHAVIOR
@@ -559,11 +673,11 @@ _PTB_ADD_ENUM_CACHE = []
 
 
 def _ptb_add_enum_items(self, context):
-    """添加覆盖下拉的 items 回调：列出当前块 b_type 尚未覆盖的属性。"""
+    """添加覆盖下拉的 items 回调：列出当前属性 b_type 尚未覆盖的属性。"""
     global _PTB_ADD_ENUM_CACHE
     obj = context.active_object
     items = []
-    if _is_ptbehavior_block(obj):
+    if _is_ptbehavior_attribute(obj):
         from . import fields as _fields
         for key, t, label in _fields.ptbehavior_addable_items(obj.efx_block):
             ident = str(key)
@@ -580,7 +694,7 @@ class EFX_OT_ptb_add_override(bpy.types.Operator):
 
     bl_idname      = "efx.ptb_add_override"
     bl_label       = "Add Override"
-    bl_description = "Add an override property to this PTBEHAVIOR block (inserted in canonical order)"
+    bl_description = "Add an override property to this PTBEHAVIOR attribute (inserted in canonical order)"
     bl_options     = {"REGISTER", "UNDO"}
 
     key_choice: EnumProperty(
@@ -591,7 +705,7 @@ class EFX_OT_ptb_add_override(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return _is_ptbehavior_block(context.active_object)
+        return _is_ptbehavior_attribute(context.active_object)
 
     def execute(self, context):
         from . import fields as _fields
@@ -628,14 +742,14 @@ class EFX_OT_ptb_remove_override(bpy.types.Operator):
 
     bl_idname      = "efx.ptb_remove_override"
     bl_label       = "Remove Override"
-    bl_description = "Remove this override property from the PTBEHAVIOR block"
+    bl_description = "Remove this override property from the PTBEHAVIOR attribute"
     bl_options     = {"REGISTER", "UNDO"}
 
     param_index: IntProperty(name="Param Index", default=-1)
 
     @classmethod
     def poll(cls, context):
-        return _is_ptbehavior_block(context.active_object)
+        return _is_ptbehavior_attribute(context.active_object)
 
     def execute(self, context):
         from . import fields as _fields
@@ -665,7 +779,7 @@ class EFX_OT_ptb_remove_override(bpy.types.Operator):
 class EFX_OT_field_help(bpy.types.Operator):
     """
     纯提示算子：执行无副作用，description 动态返回字段注释。
-    在 EFX_BLOCK 字段面板中，有注释的字段旁会显示 ⓘ 图标；
+    在 EFX_ATTRIBUTE 字段面板中，有注释的字段旁会显示 ⓘ 图标；
     悬停该图标即可在 tooltip 中读取 BT 注释说明。
     """
 
@@ -675,7 +789,7 @@ class EFX_OT_field_help(bpy.types.Operator):
 
     type_name: bpy.props.StringProperty(
         name="Type Name",
-        description="Block type name corresponding to HASH_TO_NAME (uppercase, e.g. EMITTERSHAPE3D)",
+        description="Attribute type name corresponding to HASH_TO_NAME (uppercase, e.g. EMITTERSHAPE3D)",
         default="",
         options={"SKIP_SAVE"},
     )
@@ -711,7 +825,7 @@ class EFX_OT_randomize_seed(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return False
         try:
             from ..efx_format.hashes import RANDOMFIX
@@ -755,7 +869,7 @@ class EFX_OT_randomfix_set_table_group(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return False
         try:
             from ..efx_format.hashes import RANDOMFIX
@@ -840,7 +954,7 @@ if _HAS_FILEHANDLER:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_new_efx(bpy.types.Operator):
-    """新建一个空白 EFX 集合（根对象 + 4 个空子集合），之后可直接添加 Play/Extern/Body"""
+    """新建一个空白 EFX 集合（根对象 + 4 个空子集合），之后可直接添加 Action/Extern/Entry"""
 
     bl_idname  = "efx.new_efx"
     bl_label   = "New EFX"
@@ -895,8 +1009,8 @@ class EFX_OT_new_efx(bpy.types.Operator):
         root_obj["eof_tail"]     = ""
 
         # ── 4 个空子集合（与导入时命名一致）──────────────────────────────────
-        io_tree._new_collection(stem + "_2 Main",      root_col)
-        io_tree._new_collection(stem + "_0 Play",      root_col)
+        io_tree._new_collection(stem + "_2 Entry",     root_col)
+        io_tree._new_collection(stem + "_0 Action",    root_col)
         io_tree._new_collection(stem + "_1 Extern",    root_col)
         io_tree._new_collection(stem + "_3 Subselect", root_col)
 
@@ -911,10 +1025,10 @@ _CLASSES = (
     EFX_OT_import,
     EFX_OT_export,
     EFX_OT_new_efx,
-    # 旧字段值预设算子（save/apply_block_preset、open_preset_folder）已删：
-    # 块预设改为 block_ops 整块机制；字段复用保留为即时复制/粘贴。
-    EFX_OT_copy_block_fields,
-    EFX_OT_paste_block_fields,
+    # 旧字段值预设算子（save/apply_attribute_preset、open_preset_folder）已删：
+    # 属性预设改为 attribute_ops 整属性机制；字段复用保留为即时复制/粘贴。
+    EFX_OT_copy_attribute_fields,
+    EFX_OT_paste_attribute_fields,
     EFX_OT_ptb_add_override,
     EFX_OT_ptb_remove_override,
     EFX_OT_field_help,

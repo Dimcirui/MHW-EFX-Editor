@@ -4,15 +4,15 @@ blender_efx/mesh_align.py  —  绑定网格随 TRANSFORM3D + MESH 旋转/缩放
 设计（与用户确认）
 ------------------
 - **预览式会话**（进入/退出，类 uvc/timl），但**会话内支持编辑实时重对齐**。
-- **实例化**：一个网格对象不能同时出现在多处，故为每个「MESH 块绑定」建一个**链接复制体**
-  （共享网格数据、各自独立 transform），解决「多个 body 复用同一网格也都显示」。
+- **实例化**：一个网格对象不能同时出现在多处，故为每个「MESH 属性绑定」建一个**链接复制体**
+  （共享网格数据、各自独立 transform），解决「多个 entry 复用同一网格也都显示」。
   进入时建实例 + 隐藏源网格；退出时删实例 + 恢复源网格可见，场景零残留。
 - **对齐公式**：`instance.matrix_world = body.matrix_world · mesh_local`
-    body.matrix_world = EFX_BODY empty 的世界矩阵（transform_sync 已据 TRANSFORM3D+骨骼+锚定摆好）
+    body.matrix_world = EFX_ENTRY empty 的世界矩阵（transform_sync 已据 TRANSFORM3D+骨骼+锚定摆好）
     mesh_local       = game_rot_matrix_blender(MESH.rotation) · Diag(game_scale_to_blender(MESH.scale)·global_scale)
   旋转/缩放复用 transform_sync 的正确转换器（基变换共轭，非朴素交换）。
-- **实时编辑**：会话期间，fields.py 的字段编辑回调会调用本模块 realign_body_if_active()——
-    编辑 TRANSFORM3D(translate/rotate/resize) → 先重摆 body empty，再重对齐其实例；
+- **实时编辑**：会话期间，fields.py 的字段编辑回调会调用本模块 realign_entry_if_active()——
+    编辑 TRANSFORM3D(translate/rotate/resize) → 先重摆 entry empty，再重对齐其实例；
     编辑 MESH(rotation/scale/global_scale) → 重对齐其实例。
 
 约束（CLAUDE.md）
@@ -33,11 +33,11 @@ _TEMP_COLLECTION = "EFX Mesh Align (preview)"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 块/字段读取
+# 属性/字段读取
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _block_type_hash(obj):
-    if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+def _attribute_type_hash(obj):
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
         return None
     try:
         return int(obj.efx_block.type_hash_str)
@@ -45,9 +45,9 @@ def _block_type_hash(obj):
         return None
 
 
-def _is_mesh_block(obj):
+def _is_mesh_attribute(obj):
     from ..efx_format.hashes import MESH
-    return _block_type_hash(obj) == MESH
+    return _attribute_type_hash(obj) == MESH
 
 
 def _read_field6_fixed(block, name):
@@ -72,11 +72,11 @@ def _read_float(block, name, default):
     return default
 
 
-def _mesh_local_matrix(mesh_block):
-    """MESH 块的本地变换矩阵：rotation(共轭) · Diag(scale·global_scale)。"""
-    rot_g = _read_field6_fixed(mesh_block, "rotation")
-    scl_g = _read_field6_fixed(mesh_block, "scale")
-    gscale = _read_float(mesh_block, "global_scale", 1.0)
+def _mesh_local_matrix(mesh_attribute):
+    """MESH 属性的本地变换矩阵：rotation(共轭) · Diag(scale·global_scale)。"""
+    rot_g = _read_field6_fixed(mesh_attribute, "rotation")
+    scl_g = _read_field6_fixed(mesh_attribute, "scale")
+    gscale = _read_float(mesh_attribute, "global_scale", 1.0)
     if gscale == 0.0:
         gscale = 1.0  # 0 视为未设，避免实例塌成不可见
 
@@ -89,29 +89,29 @@ def _mesh_local_matrix(mesh_block):
     return rot @ scl
 
 
-def apply_mesh_rotscale_to_object(mesh_block):
-    """把 MESH 块的 rotation/scale/global_scale 直接作用到其绑定对象（efx_mesh_target）。
+def apply_mesh_rotscale_to_object(mesh_attribute):
+    """把 MESH 属性的 rotation/scale/global_scale 直接作用到其绑定对象（efx_mesh_target）。
 
     持久、实时：保留对象当前位置，只覆盖其本地旋转与缩放（= mesh_local）。
-    仅对真正的 MESH 块生效；非 MESH 块或未绑定则忽略。
+    仅对真正的 MESH 属性生效；非 MESH 属性或未绑定则忽略。
     """
-    if not _is_mesh_block(mesh_block):
+    if not _is_mesh_attribute(mesh_attribute):
         return
-    obj = getattr(mesh_block, "efx_mesh_target", None)
+    obj = getattr(mesh_attribute, "efx_mesh_target", None)
     if obj is None:
         return
     try:
         loc = obj.matrix_basis.to_translation()   # 保留原位置
-        obj.matrix_basis = Matrix.Translation(loc) @ _mesh_local_matrix(mesh_block)
+        obj.matrix_basis = Matrix.Translation(loc) @ _mesh_local_matrix(mesh_attribute)
     except Exception:
         pass
 
 
-def _body_mesh_bindings(body_obj):
-    """返回 body 下 (mesh_block, source_obj) 列表：MESH 块且 efx_mesh_target 非空。"""
+def _entry_mesh_bindings(entry_obj):
+    """返回 entry 下 (mesh_attribute, source_obj) 列表：MESH 属性且 efx_mesh_target 非空。"""
     out = []
-    for blk in body_obj.children:
-        if not _is_mesh_block(blk):
+    for blk in entry_obj.children:
+        if not _is_mesh_attribute(blk):
             continue
         src = getattr(blk, "efx_mesh_target", None)
         if src is not None:
@@ -121,7 +121,7 @@ def _body_mesh_bindings(body_obj):
 
 def _iter_scope_bodies(root_obj):
     for b in root_obj.children:
-        if b.get("~TYPE") == "EFX_BODY":
+        if b.get("~TYPE") == "EFX_ENTRY":
             yield b
 
 
@@ -144,7 +144,7 @@ def _all_efx_roots():
 
 _state = {
     "active": False,
-    "by_body": {},          # body.name -> [(dup_obj, mesh_block)]
+    "by_entry": {},          # body.name -> [(dup_obj, mesh_attribute)]
     "instances": [],        # 所有 dup 对象
     "hidden": [],           # [(source_obj, orig_hide_viewport)]
     "collection": None,
@@ -168,7 +168,7 @@ def _make_instance(src, col, label):
     dup.name = "EFX_align::" + label
     dup["~EFX_ALIGN_INSTANCE"] = 1
     # ⚠ src.copy() 会继承源的隐藏状态：若源已被前一次循环隐藏，复制体会跟着隐藏
-    # （多 body 复用同源时只显示第一个的根因）→ 强制实例可见。
+    # （多 entry 复用同源时只显示第一个的根因）→ 强制实例可见。
     try:
         dup.hide_viewport = False
         dup.hide_render = False
@@ -186,22 +186,22 @@ def _make_instance(src, col, label):
     return dup
 
 
-def _align_instance(dup, body, mesh_block):
+def _align_instance(dup, body, mesh_attribute):
     try:
-        dup.matrix_world = body.matrix_world @ _mesh_local_matrix(mesh_block)
+        dup.matrix_world = body.matrix_world @ _mesh_local_matrix(mesh_attribute)
     except Exception:
         pass
 
 
-def realign_body_if_active(body):
-    """会话进行中，重对齐属于该 body 的全部实例（供 fields.py 编辑回调调用）。
+def realign_entry_if_active(body):
+    """会话进行中，重对齐属于该 entry 的全部实例（供 fields.py 编辑回调调用）。
 
     ⚠ 按**对象名**重新解析（不用缓存的对象引用）：Blender 撤销(undo)会让 Python 持有的
     bpy 对象引用失效，缓存引用会变悬空 → 实例无法继续跟随。按名每次重取即可幸免。
     """
     if not _state["active"] or body is None:
         return
-    entries = _state["by_body"].get(body.name)
+    entries = _state["by_entry"].get(body.name)
     if not entries:
         return
     for dup_name, blk_name in entries:
@@ -223,22 +223,22 @@ def _start(roots, armature, use_anchor):
     for root in roots:
         if root is None:
             continue
-        # 先确保 body empty 已据 TRANSFORM3D+骨骼+锚定摆好（body_world 来源）
+        # 先确保 entry empty 已据 TRANSFORM3D+骨骼+锚定摆好（entry_world 来源）
         try:
             _ts.sync_all_transform3d(root, armature, use_anchor=use_anchor)
         except Exception:
             pass
         for body in _iter_scope_bodies(root):
-            bindings = _body_mesh_bindings(body)
+            bindings = _entry_mesh_bindings(body)
             if not bindings:
                 continue
             entries = []
-            for mblock, src in bindings:
+            for mattribute, src in bindings:
                 label = str(body.get("efx_raw_label", "") or body.name)
                 dup = _make_instance(src, col, label)
-                _align_instance(dup, body, mblock)
-                # ⚠ 存对象名（非引用）：撤销后引用失效，名仍可重取（见 realign_body_if_active）
-                entries.append((dup.name, mblock.name))
+                _align_instance(dup, body, mattribute)
+                # ⚠ 存对象名（非引用）：撤销后引用失效，名仍可重取（见 realign_entry_if_active）
+                entries.append((dup.name, mattribute.name))
                 _state["instances"].append(dup.name)
                 # 隐藏源网格（每个源只隐一次，快照原状态）
                 if src.name not in hidden_seen:
@@ -250,7 +250,7 @@ def _start(roots, armature, use_anchor):
                         pass
                 n += 1
             if entries:
-                _state["by_body"][body.name] = entries
+                _state["by_entry"][body.name] = entries
     _state["collection"] = col.name
     _state["active"] = True
     return n
@@ -282,7 +282,7 @@ def _stop():
         except Exception:
             pass
     _state["active"] = False
-    _state["by_body"] = {}
+    _state["by_entry"] = {}
     _state["instances"] = []
     _state["hidden"] = []
     _state["collection"] = None
@@ -292,7 +292,7 @@ def _stop():
 def _on_load(*_args):
     # 换文件：旧引用失效，直接清状态（不碰已不存在的对象）
     _state["active"] = False
-    _state["by_body"] = {}
+    _state["by_entry"] = {}
     _state["instances"] = []
     _state["hidden"] = []
     _state["collection"] = None
@@ -364,7 +364,7 @@ class EFX_OT_mesh_align_exit(Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Panel（选中 EFX_BODY 时显示）
+# Panel（选中 EFX_ENTRY 时显示）
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_mesh_align(Panel):
@@ -380,7 +380,7 @@ class EFX_PT_mesh_align(Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
 
     def draw(self, context):
         layout = self.layout

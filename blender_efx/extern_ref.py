@@ -1,7 +1,7 @@
 """
 blender_efx/extern_ref.py  —  L2 #1c：ExternReference.referenceIndex → extern 指针化
 
-设计原则（参照 CLAUDE.md / subselect.py / play_emitter.py 模式）：
+设计原则（参照 CLAUDE.md / subselect.py / action_emitter.py 模式）：
   - Python 3.11 语法（目标 Blender 4.3.2）
   - bpy 只用稳定子集（PropertyGroup / PointerProperty / BoolProperty / Panel）
   - 不使用 5.x 新增 API
@@ -91,7 +91,7 @@ def _extern_object_poll(self, obj):
 
 class EFXExternRefProps(PropertyGroup):
     """
-    挂在 EFX_BLOCK（EXTERNREFERENCE 类型）对象上（obj.efx_extern_ref）。
+    挂在 EFX_ATTRIBUTE（EXTERNREFERENCE 类型）对象上（obj.efx_extern_ref）。
 
     字段
     ----
@@ -99,12 +99,12 @@ class EFXExternRefProps(PropertyGroup):
                            pointerized=True 且 none=False 时有效
     extern_ref_none      : BoolProperty   — True = referenceIndex == -1（哨兵/无目标）
     extern_ref_pointerized : BoolProperty — True = 已指针化（走新路径）；
-                                           False = 死块（保持 orig_b64，byte-perfect 回退）
+                                           False = 死属性（保持 orig_b64，byte-perfect 回退）
     """
 
     extern_ref_ptr: PointerProperty(
         name="Extern Reference",
-        description="The EFX_EXTERN object this ExternReference block points to (the extern corresponding to referenceIndex)",
+        description="The EFX_EXTERN object this ExternReference attribute points to (the extern corresponding to referenceIndex)",
         type=bpy.types.Object,
         poll=_extern_object_poll,
     )
@@ -119,7 +119,7 @@ class EFXExternRefProps(PropertyGroup):
         name="Pointerized",
         description=(
             "True = referenceIndex has been pointerized (valid range / -1 sentinel); "
-            "False = dead block / out of range, preserve original bytes (byte-perfect fallback)"
+            "False = dead attribute / out of range, preserve original bytes (byte-perfect fallback)"
         ),
         default=False,
     )
@@ -141,7 +141,7 @@ def init_extern_ref_props(
     参数
     ----
     blk_obj : bpy.types.Object
-        EFX_BLOCK Empty（EXTERNREFERENCE 类型）。
+        EFX_ATTRIBUTE Empty（EXTERNREFERENCE 类型）。
     data_bytes : bytes
         该块的 data_bytes（36 字节）。
     extern_objs_by_index : dict[int, bpy.types.Object]
@@ -206,9 +206,9 @@ def overlay_extern_ref_index(
     参数
     ----
     data_bytes : bytes
-        已由 fields.get_block_data_bytes（或 orig_b64）得到的 EXTERNREFERENCE data_bytes。
+        已由 fields.get_attribute_data_bytes（或 orig_b64）得到的 EXTERNREFERENCE data_bytes。
     blk_obj : bpy.types.Object
-        EFX_BLOCK Empty（EXTERNREFERENCE 类型）。
+        EFX_ATTRIBUTE Empty（EXTERNREFERENCE 类型）。
     extern_index_map : dict[bpy.types.Object, int]
         {EFX_EXTERN Object → extern 段局部 0-based index}，
         由 build_local_index_map(col_extern, 'EFX_EXTERN') 构建。
@@ -308,7 +308,7 @@ class EFX_OT_force_pointerize_extern_ref(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return False
         try:
             from ..efx_format.hashes import EXTERNREFERENCE
@@ -335,7 +335,7 @@ class EFX_PT_extern_ref(bpy.types.Panel):
     """
     ExternReference 块的 Extern 指针编辑面板（VIEW_3D N 面板 EFX 标签）。
 
-    选中 EFX_BLOCK（EXTERNREFERENCE 类型）时显示：
+    选中 EFX_ATTRIBUTE（EXTERNREFERENCE 类型）时显示：
       - pointerized=False：显示"死块/越界"警告（原始字节保留）
       - pointerized=True + none=False：EFX_EXTERN 对象选择器
       - pointerized=True + none=True：显示"无目标（-1 哨兵）"勾选
@@ -350,7 +350,7 @@ class EFX_PT_extern_ref(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return False
         # 仅当 type_hash == EXTERNREFERENCE 时显示
         try:
@@ -418,27 +418,27 @@ class EFX_PT_extern_ref(bpy.types.Panel):
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 注册顺序：PropertyGroup 先；Panel 依赖 EFX_PT_main（bl_parent_id），
-# 由 panels.register() 在 EFX_PT_main 之后注册。
+# 注册顺序：PropertyGroup 先；Panel 依赖 EFX_PT_entry（bl_parent_id），
+# 由 panels.register() 在 EFX_PT_entry 之后注册。
 _CLASSES_CORE = (
     EFXExternRefProps,
     EFX_OT_force_pointerize_extern_ref,
 )
 
-# EFX_PT_extern_ref 导出给 panels.py，由 panels.register() 在 EFX_PT_main 之后注册。
+# EFX_PT_extern_ref 导出给 panels.py，由 panels.register() 在 EFX_PT_entry 之后注册。
 
 
 def register():
     """
     注册 ExternRef 核心类（PropertyGroup）并把 EFXExternRefProps 挂到 Object 上。
-    注意：EFX_PT_extern_ref 面板由 panels.py 在 EFX_PT_main 之后注册。
+    注意：EFX_PT_extern_ref 面板由 panels.py 在 EFX_PT_entry 之后注册。
     """
     for cls in _CLASSES_CORE:
         bpy.utils.register_class(cls)
 
     bpy.types.Object.efx_extern_ref = PointerProperty(
         name="EFX Extern Reference Properties",
-        description="Extern pointer data for EFX_BLOCK (EXTERNREFERENCE type)",
+        description="Extern pointer data for EFX_ATTRIBUTE (EXTERNREFERENCE type)",
         type=EFXExternRefProps,
     )
 

@@ -1,8 +1,0 @@
-{
-    "efx_preset_kind": "block",
-    "type_hash": "1111321825",
-    "type_name": "EMITTERSHAPEMESH",
-    "display_name": "EMITTERSHAPEMESH（网格顶点发射器——粒子从引用 mesh 的顶点生成）",
-    "category": "emitter",
-    "data_bytes": "BwAAABgAAAAAzc3Nzc3Nzc3Nzc0BAQEAAAAAAAQAAAAA"
-}

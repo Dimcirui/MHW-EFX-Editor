@@ -86,8 +86,8 @@ def T(key: str) -> str:
 
 def type_label(type_name: str) -> str:
     """
-    返回块类型的本地化友好标签，如 'TRANSFORM3D（位置/变换）' / 'TRANSFORM3D – Position/Transform'。
-    用于块预设下拉项；type_name 始终保留（玩家需要类型名）。
+    返回属性类型的本地化友好标签，如 'TRANSFORM3D（位置/变换）' / 'TRANSFORM3D – Position/Transform'。
+    用于属性预设下拉项；type_name 始终保留（玩家需要类型名）。
     """
     lab = TYPE_LABELS.get(type_name, {})
     cn = lab.get("ZH")
@@ -137,8 +137,8 @@ def draw_language_toggle(layout):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 块类型友好标签（type_name → {EN, ZH}）
-# 来源：docs/BLOCK_TYPES.md。用于块预设下拉、（可选）块标题。
+# 属性类型友好标签（type_name → {EN, ZH}）
+# 来源：docs/BLOCK_TYPES.md。用于属性预设下拉、（可选）属性标题。
 # ─────────────────────────────────────────────────────────────────────────────
 
 TYPE_LABELS = {
@@ -186,7 +186,7 @@ TYPE_LABELS = {
     "PTBEHAVIOR":           {"EN": "Particle Behavior",  "ZH": "粒子行为"},
     "EXTERNREFERENCE":      {"EN": "Extern Reference",   "ZH": "外部引用"},
     "MASTERONLY":           {"EN": "Master Player Only", "ZH": "仅主玩家可见"},
-    "DUMMY":                {"EN": "Dummy (Placeholder)","ZH": "占位空块"},
+    "DUMMY":                {"EN": "Dummy (Placeholder)","ZH": "占位空属性"},
     "RANDOMFIX":            {"EN": "Random Seed Fix",    "ZH": "固定随机种子"},
     "SHOVEL":               {"EN": "Shovel (Snow)",      "ZH": "铲雪扰动"},
 }
@@ -194,7 +194,7 @@ TYPE_LABELS = {
 
 # ─────────────────────────────────────────────────────────────────────────────
 # UI 字符串表：key → {EN, ZH}
-# 命名约定：<区域>.<用途>，如 main.import / block.add / cat.render
+# 命名约定：<区域>.<用途>，如 entry.import / attribute.add / cat.render
 # ─────────────────────────────────────────────────────────────────────────────
 
 STRINGS = {
@@ -202,16 +202,16 @@ STRINGS = {
     "lang.label":            {"EN": "Language",            "ZH": "语言"},
 
     # ── 主面板 EFX_PT_main ───────────────────────────────────────────────────
-    "main.new_efx":          {"EN": "New EFX",             "ZH": "新建 EFX"},
-    "main.import":           {"EN": "Import EFX",          "ZH": "导入 EFX"},
-    "main.export":           {"EN": "Export EFX",          "ZH": "导出 EFX"},
-    "main.active_efx":       {"EN": "Active EFX",          "ZH": "当前 EFX"},
-    "main.armature":         {"EN": "Armature",            "ZH": "骨架"},
-    "main.sync_transform":   {"EN": "Refresh Body Positions", "ZH": "刷新特效体位置"},
-    "main.anchor_placement": {"EN": "Anchor to triggering body", "ZH": "锚定到触发它的特效体"},
-    "main.blender_coords":   {"EN": "Blender coordinate display", "ZH": "按 Blender 坐标显示 XYZ"},
-    "main.double_buffer":    {"EN": "Buffer Size (filesize_double)", "ZH": "缓冲大小 (filesize_double)"},
-    "main.double_buffer_tip":{"EN": "Runtime memory buffer hint. Too small → effect disappears. ~2-3.5x filesize.",
+    "entry.new_efx":          {"EN": "New EFX",             "ZH": "新建 EFX"},
+    "entry.import":           {"EN": "Import EFX",          "ZH": "导入 EFX"},
+    "entry.export":           {"EN": "Export EFX",          "ZH": "导出 EFX"},
+    "entry.active_efx":       {"EN": "Active EFX",          "ZH": "当前 EFX"},
+    "entry.armature":         {"EN": "Armature",            "ZH": "骨架"},
+    "entry.sync_transform":   {"EN": "Refresh Entry Positions", "ZH": "刷新特效体位置"},
+    "entry.anchor_placement": {"EN": "Anchor to triggering entry", "ZH": "锚定到触发它的特效体"},
+    "entry.blender_coords":   {"EN": "Blender coordinate display", "ZH": "按 Blender 坐标显示 XYZ"},
+    "entry.double_buffer":    {"EN": "Buffer Size (filesize_double)", "ZH": "缓冲大小 (filesize_double)"},
+    "entry.double_buffer_tip":{"EN": "Runtime memory buffer hint. Too small → effect disappears. ~2-3.5x filesize.",
                               "ZH": "运行时内存缓冲提示。过小→特效消失。约为文件大小的 2~3.5 倍。"},
     "export.recompute_db":   {"EN": "Auto-recompute filesize_double",
                               "ZH": "自动重算 filesize_double"},
@@ -219,39 +219,46 @@ STRINGS = {
                                      "Unchecked: use the value stored in Root.",
                                "ZH": "导出时将 filesize_double 设为 max(Root 值, 向上取整到16(2.75 × 文件大小))。"
                                      "不勾：用 Root 里写的值。"},
-    "export.auto_sort":      {"EN": "Auto-sort blocks",
+    "export.auto_sort":      {"EN": "Auto-sort attributes",
                               "ZH": "自动排序"},
-    "export.auto_sort_tip":  {"EN": "On export, silently reorder each body's blocks into the game's "
-                                     "conventional order. Uncheck to keep your own block order as-is.",
-                               "ZH": "导出时按游戏惯用顺序静默重排每个 body 内的块。取消勾选则保留你自己排的顺序。"},
+    "export.auto_sort_tip":  {"EN": "On export, silently reorder each entry's attributes into the game's "
+                                     "conventional order. Uncheck to keep your own attribute order as-is.",
+                               "ZH": "导出时按游戏惯用顺序静默重排每个 entry 内的属性。取消勾选则保留你自己排的顺序。"},
+    "export.target_efx":     {"EN": "EFX Collection",
+                              "ZH": "EFX 集合"},
+    "export.target_efx_tip": {"EN": "Which loaded EFX file to export. Defaults to the 'Active EFX' selector in "
+                                     "the N-panel, or the EFX collection containing the currently active object. "
+                                     "Changing this resets the filename below to that collection's default name.",
+                               "ZH": "选择要导出的 EFX 文件（集合）。默认跟随 N 面板的 Active EFX 选择器，或当前"
+                                     "活动对象所属的 EFX 集合。手动改选会把下方文件名刷新为该集合的默认名。"},
 
-    # ── 块预设 / 分类（block_ops + 新增块面板）───────────────────────────────
-    "block.add_section":     {"EN": "Add Block",           "ZH": "新增块"},
-    "block.add_to_prefix":   {"EN": "Add Block to: ",      "ZH": "新增块到："},
-    "block.add_to_no_body":  {"EN": "(select a Body)",     "ZH": "（请选中 Body）"},
-    "block.category":        {"EN": "Category",            "ZH": "分类"},
-    "block.add":             {"EN": "Add",                 "ZH": "新增"},
-    "block.paste":           {"EN": "Paste Block",         "ZH": "粘贴块"},
-    "block.copy_fields":     {"EN": "Copy Fields",         "ZH": "复制字段"},
-    "block.paste_fields":    {"EN": "Paste Fields",        "ZH": "粘贴字段"},
-    "block.copy_whole":      {"EN": "Copy Block",          "ZH": "复制整块"},
-    "block.save_preset":     {"EN": "Save as Block Preset","ZH": "保存为块预设"},
-    "block.move_up":         {"EN": "Up",                  "ZH": "上移"},
-    "block.move_down":       {"EN": "Down",                "ZH": "下移"},
-    "block.no_preset":       {"EN": "(no block presets)",  "ZH": "（无块预设）"},
-    "block.pick_category":   {"EN": "(pick a category)",   "ZH": "（先选分类）"},
-    "block.cat_empty":       {"EN": "(category empty)",    "ZH": "（该分类无预设）"},
+    # ── 属性预设 / 分类（attribute_ops + 新增属性面板）───────────────────────────────
+    "attribute.add_section":     {"EN": "Add Attribute",       "ZH": "新增属性"},
+    "attribute.add_to_prefix":   {"EN": "Add Attribute to: ",  "ZH": "新增属性到："},
+    "attribute.add_to_no_entry":  {"EN": "(select an Entry)",   "ZH": "（请选中 Entry）"},
+    "attribute.category":        {"EN": "Category",            "ZH": "分类"},
+    "attribute.add":             {"EN": "Add",                 "ZH": "新增"},
+    "attribute.paste":           {"EN": "Paste Attribute",     "ZH": "粘贴属性"},
+    "attribute.copy_fields":     {"EN": "Copy Fields",         "ZH": "复制字段"},
+    "attribute.paste_fields":    {"EN": "Paste Fields",        "ZH": "粘贴字段"},
+    "attribute.copy_whole":      {"EN": "Copy Attribute",      "ZH": "复制整属性"},
+    "attribute.save_preset":     {"EN": "Save as Attribute Preset","ZH": "保存为属性预设"},
+    "attribute.move_up":         {"EN": "Up",                  "ZH": "上移"},
+    "attribute.move_down":       {"EN": "Down",                "ZH": "下移"},
+    "attribute.no_preset":       {"EN": "(no attribute presets)",  "ZH": "（无属性预设）"},
+    "attribute.pick_category":   {"EN": "(pick a category)",   "ZH": "（先选分类）"},
+    "attribute.cat_empty":       {"EN": "(category empty)",    "ZH": "（该分类无预设）"},
 
     # ── 占位 / 通用 ──────────────────────────────────────────────────────────
-    "block.opaque":          {"EN": "(opaque, not editable yet)", "ZH": "（opaque，暂不可编辑）"},
-    "block.opaque_hint":     {"EN": "This block type has complex structure; raw bytes preserved.",
-                              "ZH": "此块类型含复杂结构，本轮仅保留原始字节。"},
-    "block.partial_edit":    {"EN": "Not fully editable",        "ZH": "不支持完全编辑"},
-    "block.ptbehavior_hint": {"EN": "Typed sparse override: each property = (key, type, value). Add/remove overrides below; unknown property names show as hash.",
+    "attribute.opaque":          {"EN": "(opaque, not editable yet)", "ZH": "（opaque，暂不可编辑）"},
+    "attribute.opaque_hint":     {"EN": "This attribute type has complex structure; raw bytes preserved.",
+                              "ZH": "此属性类型含复杂结构，本轮仅保留原始字节。"},
+    "attribute.partial_edit":    {"EN": "Not fully editable",        "ZH": "不支持完全编辑"},
+    "attribute.ptbehavior_hint": {"EN": "Typed sparse override: each property = (key, type, value). Add/remove overrides below; unknown property names show as hash.",
                               "ZH": "类型化稀疏覆盖：每条属性 = (key, 类型, 值)。可在下方增删覆盖项；未知属性名以哈希显示。"},
-    "block.ptbehavior_add":  {"EN": "Add Override",          "ZH": "添加覆盖属性"},
-    "block.no_fields":       {"EN": "(no fields)",         "ZH": "（无字段）"},
-    "block.select_hint":     {"EN": "Select an EFX_BLOCK object", "ZH": "请选中 EFX_BLOCK 对象"},
+    "attribute.ptbehavior_add":  {"EN": "Add Override",          "ZH": "添加覆盖属性"},
+    "attribute.no_fields":       {"EN": "(no fields)",         "ZH": "（无字段）"},
+    "attribute.select_hint":     {"EN": "Select an EFX_ATTRIBUTE object", "ZH": "请选中 EFX_ATTRIBUTE 对象"},
 
     # ── 导入/导出算子（operators.py）弹窗 ─────────────────────────────────────
     "op.export_validation_failed_header": {"EN": "Pre-export validation found errors, cancelled:", "ZH": "导出前校验发现错误，已取消："},
@@ -267,7 +274,7 @@ STRINGS = {
 
     # ── TIML 互导（timl_io.py）─────────────────────────────────────────────────
     "timl.segment_bytes": {"EN": "TIML segment: {n} bytes", "ZH": "TIML 段：{n} 字节"},
-    "timl.none":          {"EN": "No TIML segment in this body", "ZH": "本 body 无 TIML 段"},
+    "timl.none":          {"EN": "No TIML segment in this entry", "ZH": "本 entry 无 TIML 段"},
     "timl.export_btn":    {"EN": "Export as .timl File",    "ZH": "导出为 .timl 文件"},
     "timl.import_btn":    {"EN": "Reimport from .timl File","ZH": "从 .timl 文件回填"},
     "timl.add_btn":          {"EN": "Add TIML",          "ZH": "添加 TIML"},
@@ -281,8 +288,8 @@ STRINGS = {
 
     # ── TIML 头部元字段编辑面板（timl_meta_ui.py，Dope Sheet 侧栏 EFX TIML）────────
     "timlm.panel":          {"EN": "EFX TIML",                "ZH": "EFX TIML"},
-    "timlm.no_body":        {"EN": "Select an EFX body with a TIML segment", "ZH": "请选中带 TIML 段的 EFX 特效体"},
-    "timlm.no_timl":        {"EN": "This body has no TIML segment", "ZH": "本特效体无 TIML 段"},
+    "timlm.no_entry":        {"EN": "Select an EFX entry with a TIML segment", "ZH": "请选中带 TIML 段的 EFX 特效体"},
+    "timlm.no_timl":        {"EN": "This entry has no TIML segment", "ZH": "本特效体无 TIML 段"},
     "timlm.anim":           {"EN": "Animation {i}",           "ZH": "动画 {i}"},
     "timlm.length":         {"EN": "Animation Length",        "ZH": "动画长度"},
     "timlm.loop":           {"EN": "Loop Control",            "ZH": "循环控制"},
@@ -315,7 +322,7 @@ STRINGS = {
     "timle.enter":          {"EN": "Edit TIML",               "ZH": "编辑 TIML"},
     "timle.enter_hint":     {"EN": "Parses TIML into native F-curves; edit in Dope Sheet / Graph Editor, then Apply",
                              "ZH": "把 TIML 解析成原生 F 曲线；在 Dope Sheet / Graph Editor 编辑后点应用"},
-    "timle.editing":        {"EN": "Editing {0} channel(s) in {1} body(ies) — open Dope Sheet/Graph",
+    "timle.editing":        {"EN": "Editing {0} channel(s) in {1} entry(ies) — open Dope Sheet/Graph",
                              "ZH": "正在编辑 {0} 条通道（{1} 个特效体）——打开 Dope Sheet/Graph"},
     "timle.editor_hint":    {"EN": "Select an EFX_TIML handle's action in the Dope Sheet / Graph Editor",
                              "ZH": "在 Dope Sheet / Graph Editor 中编辑各 EFX_TIML 句柄的 Action"},
@@ -325,7 +332,7 @@ STRINGS = {
     "timle.focus":          {"EN": "Focus", "ZH": "焦点"},
     "timle.focus_note":     {"EN": "Switch A0/A1 live (edits kept across switches)", "ZH": "可会话内切 A0/A1（编辑跨切换不丢）"},
     "timle.entered":        {"EN": "TIML channel edit: {0} channel(s) built", "ZH": "TIML 通道编辑：已建 {0} 条通道"},
-    "timle.applied":        {"EN": "TIML written back: {0} body(ies)", "ZH": "已回写 TIML：{0} 个特效体"},
+    "timle.applied":        {"EN": "TIML written back: {0} entry(ies)", "ZH": "已回写 TIML：{0} 个特效体"},
 
     # ── 统一预览面板（efx_preview.py，点5）────────────────────────────────────────
     "efxprev.scope":        {"EN": "Scope", "ZH": "作用域"},
@@ -344,7 +351,7 @@ STRINGS = {
                              "ZH": "只读预览：退出一律丢弃。要编辑并回写请用 TIML 面板的「编辑 TIML」。"},
     "timle.applied_nochange": {"EN": "No changes — TIML left byte-identical", "ZH": "无改动——TIML 保持逐字节一致"},
     "timle.cancelled":      {"EN": "TIML channel edit cancelled (discarded)", "ZH": "已取消 TIML 通道编辑（丢弃）"},
-    "timle.no_timl":        {"EN": "Select an EFX_TIML handle (or a body with TIML) first", "ZH": "请先选中 EFX_TIML 句柄（或带 TIML 的特效体）"},
+    "timle.no_timl":        {"EN": "Select an EFX_TIML handle (or an entry with TIML) first", "ZH": "请先选中 EFX_TIML 句柄（或带 TIML 的特效体）"},
     "timle.no_content":     {"EN": "No editable TIML channels found", "ZH": "未找到可编辑的 TIML 通道"},
     "timle.build_failed":   {"EN": "Failed to build channels: {0}", "ZH": "建通道失败：{0}"},
     "timle.writeback_failed": {"EN": "Writeback failed: {0}", "ZH": "回写失败：{0}"},
@@ -359,30 +366,30 @@ STRINGS = {
     "sub.no_data":          {"EN": "(No efx_subselect data)", "ZH": "（无 efx_subselect 数据）"},
     "sub.table_meta":       {"EN": "Table Metadata",        "ZH": "表元数据"},
     "sub.members":          {"EN": "Members",               "ZH": "成员"},
-    "sub.body_object":      {"EN": "Body Object",           "ZH": "Body 对象"},
+    "sub.entry_object":      {"EN": "Entry Object",          "ZH": "Entry 对象"},
     "sub.members_dangling": {"EN": "member pointer(s) dangling (skipped on export)",
                              "ZH": "个成员指针悬空（导出时跳过）"},
 
-    # ── Play 面板（play_emitter.py）───────────────────────────────────────────
-    "play.unset":                 {"EN": "<Unset>",         "ZH": "<未设置>"},
-    "play.no_data":               {"EN": "(No efx_play data)", "ZH": "（无 efx_play 数据）"},
-    "play.play_meta":             {"EN": "Play Metadata",   "ZH": "Play 元数据"},
-    "play.pos_offset_xyz":        {"EN": "Position Offset XYZ", "ZH": "位置偏移 XYZ"},
-    "play.targets":               {"EN": "Targets",         "ZH": "目标"},
-    "play.body_object":           {"EN": "Body Object",     "ZH": "Body 对象"},
-    "play.targets_dangling":      {"EN": "target pointer(s) dangling (skipped on export)",
+    # ── Action 面板（action_emitter.py）───────────────────────────────────────────
+    "action.unset":                 {"EN": "<Unset>",         "ZH": "<未设置>"},
+    "action.no_data":               {"EN": "(No efx_play data)", "ZH": "（无 efx_play 数据）"},
+    "action.meta":             {"EN": "Action Metadata", "ZH": "Action 元数据"},
+    "action.pos_offset_xyz":        {"EN": "Position Offset XYZ", "ZH": "位置偏移 XYZ"},
+    "action.targets":               {"EN": "Targets",         "ZH": "目标"},
+    "action.entry_object":           {"EN": "Entry Object",    "ZH": "Entry 对象"},
+    "action.targets_dangling":      {"EN": "target pointer(s) dangling (skipped on export)",
                                    "ZH": "个 target 指针悬空（导出时跳过）"},
-    "play.efx_path":              {"EN": "EFX Path",        "ZH": "EFX 路径"},
-    "play.entry_type":            {"EN": "Entry Type",      "ZH": "条目类型"},
-    "play.add_entry":             {"EN": "Add Entry",       "ZH": "新增条目"},
-    "play.targets_dangling_total":{"EN": "target pointer(s) dangling in total",
+    "action.efx_path":              {"EN": "EFX Path",        "ZH": "EFX 路径"},
+    "action.entry_type":            {"EN": "Entry Type",      "ZH": "条目类型"},
+    "action.add_entry":             {"EN": "Add Entry",       "ZH": "新增条目"},
+    "action.targets_dangling_total":{"EN": "target pointer(s) dangling in total",
                                    "ZH": "个 target 指针悬空"},
 
     # ── ExternReference 指针面板（extern_ref.py）──────────────────────────────
     "extern.no_data":            {"EN": "(No efx_extern_ref data)", "ZH": "（无 efx_extern_ref 数据）"},
-    "extern.dead_title":         {"EN": "Reference Index (dead block)", "ZH": "Reference Index（死块）"},
-    "extern.dead_line1":         {"EN": "This block's referenceIndex is out of extern range,",
-                                  "ZH": "此块的 referenceIndex 超出 extern 范围，"},
+    "extern.dead_title":         {"EN": "Reference Index (dead attribute)", "ZH": "Reference Index（死属性）"},
+    "extern.dead_line1":         {"EN": "This attribute's referenceIndex is out of extern range,",
+                                  "ZH": "此属性的 referenceIndex 超出 extern 范围，"},
     "extern.dead_line2":         {"EN": "original bytes preserved (not editable).",
                                   "ZH": "原始字节已保留（不可编辑）。"},
     "extern.no_target_sentinel": {"EN": "No Target (-1 sentinel)", "ZH": "无目标（-1 哨兵）"},
@@ -392,62 +399,62 @@ STRINGS = {
     "extern.local_index":        {"EN": "Extern local index:", "ZH": "Extern 局部 index:"},
     "extern.force_unlock":       {"EN": "Force Unlock (dangling)", "ZH": "强制解锁（悬空指针）"},
 
-    # ── PtLife / PtCollision / EOF 指针面板（body_play_ref.py）────────────────
+    # ── PtLife / PtCollision / EOF 指针面板（entry_action_ref.py）────────────────
     "ptref.no_ptlife_data":      {"EN": "(No efx_ptlife_ref data)", "ZH": "（无 efx_ptlife_ref 数据）"},
     "ptref.relation_index_title":{"EN": "Relation Index (action reference)", "ZH": "Relation Index (action 引用)"},
     "ptref.relation_oob":        {"EN": "[Out of range/negative, original bytes preserved]",
                                   "ZH": "[越界/负值，原始字节保留]"},
-    "ptref.assign_play":         {"EN": "Assign Play target", "ZH": "指定 Play 目标"},
-    "ptref.assign_hint":         {"EN": "Pick a Play to re-link this block (original bytes kept until you do)",
-                                  "ZH": "选择一个 Play 重新关联本块（未选前保留原始字节）"},
-    "ptref.body_object":         {"EN": "Body Object",      "ZH": "Body 对象"},
+    "ptref.assign_action":         {"EN": "Assign Action target", "ZH": "指定 Action 目标"},
+    "ptref.assign_hint":         {"EN": "Pick an Action to re-link this attribute (original bytes kept until you do)",
+                                  "ZH": "选择一个 Action 重新关联本属性（未选前保留原始字节）"},
+    "ptref.entry_object":         {"EN": "Entry Object",     "ZH": "Entry 对象"},
     "ptref.dangling":            {"EN": "Dangling pointer (uses original bytes on export)",
                                   "ZH": "⚠ 指针悬空（导出时使用原始字节）"},
-    "ptref.body_local_index":    {"EN": "Body local index:", "ZH": "Body 局部 index:"},
+    "ptref.entry_local_index":    {"EN": "Entry local index:", "ZH": "Entry 局部 index:"},
     "ptref.no_ptcollision_data": {"EN": "(No efx_ptcollision_ref data)", "ZH": "（无 efx_ptcollision_ref 数据）"},
-    "ptref.ie_index_title":      {"EN": "IE Index (play reference)", "ZH": "IE Index (play 引用)"},
+    "ptref.ie_index_title":      {"EN": "IE Index (action reference)", "ZH": "IE Index (action 引用)"},
     "ptref.ie_oob":              {"EN": "[Out of range/count_play=0, original bytes preserved]",
                                   "ZH": "[越界/count_play=0，原始字节保留]"},
     "ptref.no_target_sentinel":  {"EN": "No Target (-1 sentinel)", "ZH": "无目标（-1 哨兵）"},
-    "ptref.play_object":         {"EN": "Play Object",      "ZH": "Play 对象"},
-    "ptref.play_local_index":    {"EN": "Play local index:", "ZH": "Play 局部 index:"},
+    "ptref.action_object":         {"EN": "Action Object",    "ZH": "Action 对象"},
+    "ptref.action_local_index":    {"EN": "Action local index:", "ZH": "Action 局部 index:"},
     "ptref.no_eof_data":         {"EN": "(No efx_eof_list data)", "ZH": "（无 efx_eof_list 数据）"},
-    "ptref.game_activated_bodies":{"EN": "Bodies triggered directly on EFX load", "ZH": "EFX 加载时直接触发的 Body"},
+    "ptref.game_activated_entries":{"EN": "Entries triggered directly on EFX load", "ZH": "EFX 加载时直接触发的 Entry"},
     "ptref.eof_empty":           {"EN": "(Empty - effect will not be triggered directly on load)",
-                                  "ZH": "（空——EFX 加载时不会直接触发任何 Body）"},
+                                  "ZH": "（空——EFX 加载时不会直接触发任何 Entry）"},
     "ptref.dangling_pointer":    {"EN": "[Dangling pointer]", "ZH": "[悬空指针]"},
     "ptref.eof_sentinel":        {"EN": "raw={v} (out-of-range sentinel)", "ZH": "raw={v}（越界空槽）"},
-    "ptref.eof_sentinel_hint":   {"EN": "Out-of-range entries are inactive-slot sentinels (no such body); dropped on export once the active set is edited",
-                                  "ZH": "越界条目是空槽哨兵（无对应 body）；编辑激活集后导出时会被清理"},
+    "ptref.eof_sentinel_hint":   {"EN": "Out-of-range entries are inactive-slot sentinels (no such entry); dropped on export once the active set is edited",
+                                  "ZH": "越界条目是空槽哨兵（无对应 entry）；编辑激活集后导出时会被清理"},
 
     # ── 反向引用视图（backref.py）─────────────────────────────────────────────
     "backref.extern_object":          {"EN": "Extern object:", "ZH": "Extern 对象："},
     "backref.referenced_by_n_prefix": {"EN": "Referenced by", "ZH": "被"},
-    "backref.referenced_by_n_suffix": {"EN": "EXTERNREFERENCE block(s):", "ZH": "个 EXTERNREFERENCE 块引用："},
-    "backref.not_referenced_by_extern":{"EN": "Not referenced by any EXTERNREFERENCE block",
-                                       "ZH": "未被任何 EXTERNREFERENCE 块引用"},
-    "backref.block":                  {"EN": "Block:",       "ZH": "块："},
-    "backref.body":                   {"EN": "Body:",        "ZH": "Body："},
-    "backref.body_unknown":           {"EN": "Body: (unknown)", "ZH": "Body：（未知）"},
-    "backref.jump_to_block":          {"EN": "Jump to this block", "ZH": "跳转到此块"},
-    "backref.body_object":            {"EN": "Body object:", "ZH": "Body 对象："},
-    "backref.not_referenced_by_ss_play":{"EN": "Not referenced by any Subselect / Play",
-                                        "ZH": "未被任何 Subselect / Play 引用"},
+    "backref.referenced_by_n_suffix": {"EN": "EXTERNREFERENCE attribute(s):", "ZH": "个 EXTERNREFERENCE 属性引用："},
+    "backref.not_referenced_by_extern":{"EN": "Not referenced by any EXTERNREFERENCE attribute",
+                                       "ZH": "未被任何 EXTERNREFERENCE 属性引用"},
+    "backref.attribute":                  {"EN": "Attribute:",   "ZH": "属性："},
+    "backref.entry":                   {"EN": "Entry:",       "ZH": "Entry："},
+    "backref.entry_unknown":           {"EN": "Entry: (unknown)", "ZH": "Entry：（未知）"},
+    "backref.jump_to_attribute":          {"EN": "Jump to this attribute", "ZH": "跳转到此属性"},
+    "backref.entry_object":            {"EN": "Entry object:", "ZH": "Entry 对象："},
+    "backref.not_referenced_by_ss_action":{"EN": "Not referenced by any Subselect / Action",
+                                        "ZH": "未被任何 Subselect / Action 引用"},
     "backref.referenced_total_prefix":{"EN": "Referenced",  "ZH": "共被引用"},
     "backref.referenced_total_mid":   {"EN": "time(s) (Subselect", "ZH": "次（Subselect"},
     "backref.subselect_tables_prefix":{"EN": "Subselect tables", "ZH": "Subselect 表"},
-    "backref.play_emitter_prefix":    {"EN": "Play Emitter", "ZH": "Play Emitter"},
+    "backref.action_emitter_prefix":    {"EN": "Play Emitter", "ZH": "Play Emitter"},
 
-    # ── Body 双向关系视图（Body References，backref.py §4）────────────────────
-    "bodyref.none":                {"EN": "No references to/from this body", "ZH": "此 body 无任何引用关系"},
-    "bodyref.triggers_header":     {"EN": "Triggers (this body spawns):", "ZH": "我触发谁（本 body 生成）："},
-    "bodyref.triggered_by_header": {"EN": "Triggered by (spawned by):", "ZH": "谁触发我（本 body 被生成）："},
-    "bodyref.externs_header":      {"EN": "Externs referenced", "ZH": "我引用的 Extern"},
-    "bodyref.subselect_header":    {"EN": "In Subselect tables", "ZH": "我所属的 Subselect"},
-    "bodyref.timing_spawn":        {"EN": "on spawn", "ZH": "生成时"},
-    "bodyref.timing_death":        {"EN": "on death", "ZH": "消亡时"},
-    "bodyref.timing_other":        {"EN": "timing", "ZH": "timing"},
-    "bodyref.trigger_collision":   {"EN": "on collision", "ZH": "碰撞时"},
+    # ── Entry 双向关系视图（Entry References，backref.py §4）────────────────────
+    "entryref.none":                {"EN": "No references to/from this entry", "ZH": "此 entry 无任何引用关系"},
+    "entryref.triggers_header":     {"EN": "Triggers (this entry spawns):", "ZH": "我触发谁（本 entry 生成）："},
+    "entryref.triggered_by_header": {"EN": "Triggered by (spawned by):", "ZH": "谁触发我（本 entry 被生成）："},
+    "entryref.externs_header":      {"EN": "Externs referenced", "ZH": "我引用的 Extern"},
+    "entryref.subselect_header":    {"EN": "In Subselect tables", "ZH": "我所属的 Subselect"},
+    "entryref.timing_spawn":        {"EN": "on spawn", "ZH": "生成时"},
+    "entryref.timing_death":        {"EN": "on death", "ZH": "消亡时"},
+    "entryref.timing_other":        {"EN": "timing", "ZH": "timing"},
+    "entryref.trigger_collision":   {"EN": "on collision", "ZH": "碰撞时"},
 
     # ── ROOT subselect 状态总览（backref.py §5；模型推测）──────────────────────
     "rootstate.no_states":        {"EN": "No subselect tables (no state gating)", "ZH": "无 subselect 表（无状态门控）"},
@@ -457,7 +464,7 @@ STRINGS = {
     "rootstate.always_on_header": {"EN": "Always-on (direct, ungated)", "ZH": "恒触发（直接、无门控）"},
     "rootstate.always_on_empty":  {"EN": "(none)", "ZH": "（无）"},
     "rootstate.hint":             {"EN": "Inferred model: the game picks which state fires at runtime; bodies in no table always fire",
-                                   "ZH": "推测模型：运行时由游戏选中触发哪个状态；不在任何表里的 body 恒触发"},
+                                   "ZH": "推测模型：运行时由游戏选中触发哪个状态；不在任何表里的 entry 恒触发"},
 
     # ── Hex 视图（hexview.py）─────────────────────────────────────────────────
     "hex.no_raw_bytes":  {"EN": "(no raw bytes)",  "ZH": "（无原始字节）"},
@@ -469,36 +476,36 @@ STRINGS = {
     "hex.trunc_suffix":  {"EN": " bytes only; use Copy Full Hex above for the full content",
                           "ZH": " 字节，完整请用上方“复制完整 hex”"},
 
-    # ── Body 预设区 + Body 属性区（panels.py）────────────────────────────────
-    "body.copy":             {"EN": "Copy Body",            "ZH": "复制 Body"},
-    "body.paste":            {"EN": "Paste Body",           "ZH": "粘贴 Body"},
-    "body.save_preset":      {"EN": "Save Current Body as Preset", "ZH": "保存当前 body 为预设"},
-    "body.add":              {"EN": "Add",                  "ZH": "新增"},
-    "body.open_folder":      {"EN": "Open Preset Folder",   "ZH": "打开预设文件夹"},
-    "body.game_active_yes":  {"EN": "Direct trigger: Yes",  "ZH": "直接触发：是"},
-    "body.game_active_no":   {"EN": "Direct trigger: No",   "ZH": "直接触发：否"},
-    "body.action_trigger_yes": {"EN": "Action trigger: Yes",  "ZH": "动作触发：是"},
-    "body.action_trigger_no":  {"EN": "Action trigger: No",   "ZH": "动作触发：否"},
+    # ── Entry 预设区 + Entry 属性区（panels.py）────────────────────────────────
+    "entry.copy":             {"EN": "Copy Entry",           "ZH": "复制 Entry"},
+    "entry.paste":            {"EN": "Paste Entry",          "ZH": "粘贴 Entry"},
+    "entry.save_preset":      {"EN": "Save Current Entry as Preset", "ZH": "保存当前 entry 为预设"},
+    "entry.add":              {"EN": "Add",                  "ZH": "新增"},
+    "entry.open_folder":      {"EN": "Open Preset Folder",   "ZH": "打开预设文件夹"},
+    "entry.game_active_yes":  {"EN": "Direct trigger: Yes",  "ZH": "直接触发：是"},
+    "entry.game_active_no":   {"EN": "Direct trigger: No",   "ZH": "直接触发：否"},
+    "entry.action_trigger_yes": {"EN": "Action trigger: Yes",  "ZH": "动作触发：是"},
+    "entry.action_trigger_no":  {"EN": "Action trigger: No",   "ZH": "动作触发：否"},
     # ── 有效激活态（派生，backref.classify_body_activation；模型推测）─────────────
-    "body.effective_label":    {"EN": "Effective (inferred):", "ZH": "有效行为（推测）："},
+    "entry.effective_label":    {"EN": "Effective (inferred):", "ZH": "有效行为（推测）："},
     # 触发来源（direct 与 action 是「并」/OR：两者都有则两种时机都触发）
-    "body.src_both":           {"EN": "Fires on load AND when summoned", "ZH": "加载时与被召唤时均触发"},
-    "body.src_direct":         {"EN": "Fires on load",               "ZH": "加载即触发"},
-    "body.src_action":         {"EN": "Fires when summoned by Play",  "ZH": "被 Play 召唤时触发"},
-    "body.src_none":           {"EN": "No trigger source",           "ZH": "无触发来源（孤儿/死块）"},
+    "entry.src_both":           {"EN": "Fires on load AND when summoned", "ZH": "加载时与被召唤时均触发"},
+    "entry.src_direct":         {"EN": "Fires on load",               "ZH": "加载即触发"},
+    "entry.src_action":         {"EN": "Fires when summoned by Action",  "ZH": "被 Action 召唤时触发"},
+    "entry.src_none":           {"EN": "No trigger source",           "ZH": "无触发来源（孤儿/死属性）"},
     # subselect 是更上层的「与」/AND 门控：还须满足该状态条件才触发
-    "body.gate_qualifier":     {"EN": " — only if its state is selected", "ZH": " — 还须其状态被选中"},
-    "body.gating_yes":         {"EN": "State-gated (AND) by {n} subselect table(s)", "ZH": "受 {n} 张 subselect 表门控（与）"},
-    "body.gating_no":          {"EN": "No subselect gating (fires unconditionally)",   "ZH": "无 subselect 门控（无条件触发）"},
-    "body.add_to_prefix":    {"EN": "Add Body to: ",         "ZH": "新增 Body 到："},
-    "body.add_to_no_efx":    {"EN": "(no active EFX)",       "ZH": "（未选中 EFX 文件）"},
-    "body.remove_from_active":{"EN": "Remove from Direct Trigger", "ZH": "移出直接触发列表"},
-    "body.add_to_active":    {"EN": "Add to Direct Trigger",   "ZH": "加入直接触发列表"},
-    "body.rename":           {"EN": "Rename",               "ZH": "重命名"},
-    "body.rename_blocked":   {"EN": "Rename (preceding item unnamed)", "ZH": "重命名（前有未命名条目）"},
-    "body.type_label":       {"EN": "Type: ",               "ZH": "类型："},
-    "body.type_standard":    {"EN": "Standard",             "ZH": "标准"},
-    "body.type_extended":    {"EN": "Extended",             "ZH": "扩展"},
+    "entry.gate_qualifier":     {"EN": " — only if its state is selected", "ZH": " — 还须其状态被选中"},
+    "entry.gating_yes":         {"EN": "State-gated (AND) by {n} subselect table(s)", "ZH": "受 {n} 张 subselect 表门控（与）"},
+    "entry.gating_no":          {"EN": "No subselect gating (fires unconditionally)",   "ZH": "无 subselect 门控（无条件触发）"},
+    "entry.add_to_prefix":    {"EN": "Add Entry to: ",        "ZH": "新增 Entry 到："},
+    "entry.add_to_no_efx":    {"EN": "(no active EFX)",       "ZH": "（未选中 EFX 文件）"},
+    "entry.remove_from_active":{"EN": "Remove from Direct Trigger", "ZH": "移出直接触发列表"},
+    "entry.add_to_active":    {"EN": "Add to Direct Trigger",   "ZH": "加入直接触发列表"},
+    "entry.rename":           {"EN": "Rename",               "ZH": "重命名"},
+    "entry.rename_blocked":   {"EN": "Rename (preceding item unnamed)", "ZH": "重命名（前有未命名条目）"},
+    "entry.type_label":       {"EN": "Type: ",               "ZH": "类型："},
+    "entry.type_standard":    {"EN": "Standard",             "ZH": "标准"},
+    "entry.type_extended":    {"EN": "Extended",             "ZH": "扩展"},
 
     # ── 校验按钮（panels 删除/校验面板）──────────────────────────────────────
     "validate.run_btn":      {"EN": "Pre-export Validation", "ZH": "导出前校验"},
@@ -506,30 +513,30 @@ STRINGS = {
     # ── 字段绘制 + 面板内通用提示（panels.py）────────────────────────────────
     "field.value":           {"EN": "Value",                "ZH": "值"},
     "field.jitter":          {"EN": "Jitter",               "ZH": "抖动"},
-    "field.ref_via_pointer": {"EN": "set in the Play pointer panel below", "ZH": "在下方 Play 指针面板设置"},
+    "field.ref_via_pointer": {"EN": "set in the Action pointer panel below", "ZH": "在下方 Action 指针面板设置"},
     "material.type":         {"EN": "Material type:", "ZH": "主材质类型："},
-    "block.not_registered":  {"EN": "efx_block not registered (reload the extension)",
+    "attribute.not_registered":  {"EN": "efx_block not registered (reload the extension)",
                               "ZH": "efx_block 未注册（请重载扩展）"},
-    "block.sentinel_no_target":{"EN": "(-1 sentinel, no target)", "ZH": "(-1 哨兵，无目标)"},
+    "attribute.sentinel_no_target":{"EN": "(-1 sentinel, no target)", "ZH": "(-1 哨兵，无目标)"},
 
     # ── 删除按钮（panels 删除/校验面板，按对象类型）──────────────────────────
-    "del.body_btn":      {"EN": "Delete Body",      "ZH": "删除 Body"},
-    "del.block_btn":     {"EN": "Delete Block",     "ZH": "删除块"},
-    "del.play_btn":      {"EN": "Delete Play",      "ZH": "删除 Play"},
+    "del.entry_btn":      {"EN": "Delete Entry",     "ZH": "删除 Entry"},
+    "del.attribute_btn":     {"EN": "Delete Attribute", "ZH": "删除属性"},
+    "del.action_btn":      {"EN": "Delete Action",    "ZH": "删除 Action"},
     "del.extern_btn":    {"EN": "Delete Extern",    "ZH": "删除 Extern"},
     "del.subselect_btn": {"EN": "Delete Subselect", "ZH": "删除 Subselect"},
 
     # ── 新建段条目（panels 新建面板）──────────────────────────────────────────
-    "addsec.play":      {"EN": "Add Play (Action)", "ZH": "新建 Play(动作)"},
+    "addsec.action":      {"EN": "Add Action",        "ZH": "新建 Action(动作)"},
     "addsec.extern":    {"EN": "Add Extern",        "ZH": "新建 Extern"},
     "addsec.subselect": {"EN": "Add Subselect",     "ZH": "新建 Subselect"},
     "addsec.hint":      {"EN": "Exporter recomputes header automatically",
                          "ZH": "导出端自动重算 header/标签"},
 
-    # ── Play / Extern 重命名 ─────────────────────────────────────────────────
-    "entry.rename":         {"EN": "Rename", "ZH": "重命名"},
-    "entry.rename_blocked": {"EN": "Rename (blocked: a preceding Play/Extern is unnamed)",
-                             "ZH": "重命名（被前导未命名 Play/Extern 锁定）"},
+    # ── Action / Extern 重命名 ─────────────────────────────────────────────────
+    "actionextern.rename":         {"EN": "Rename", "ZH": "重命名"},
+    "actionextern.rename_blocked": {"EN": "Rename (blocked: a preceding Action/Extern is unnamed)",
+                             "ZH": "重命名（被前导未命名 Action/Extern 锁定）"},
 
     # ── UVCONTROL 预览（uvc_preview.py）───────────────────────────────────────
     "uvc.bind_target_hint":  {"EN": "Preview target mesh (your own; a material with base textures is enough)",
@@ -549,16 +556,16 @@ STRINGS = {
     "uvc.all_efx":           {"EN": "Preview all EFX at once", "ZH": "同时播放所有 EFX"},
     "uvc.scope_all":         {"EN": "Will drive bound meshes of ALL EFX in the scene",
                               "ZH": "将驱动场景内所有 EFX 的已绑定网格"},
-    "uvc.scope_one":         {"EN": "Will drive all bound meshes of this EFX (bind on the MESH block)",
-                              "ZH": "将驱动本 EFX 全部已绑定网格（绑定在 MESH 块上设置）"},
+    "uvc.scope_one":         {"EN": "Will drive all bound meshes of this EFX (bind on the MESH attribute)",
+                              "ZH": "将驱动本 EFX 全部已绑定网格（绑定在 MESH 属性上设置）"},
     "uvc.entered":           {"EN": "Preview started (UV {0}, transformed mesh {1})",
                               "ZH": "已进入预览（UV {0} 个，变换网格 {1} 个）"},
     "uvc.exited":            {"EN": "Preview ended, materials restored", "ZH": "已退出预览，材质已还原"},
-    "uvc.no_content":        {"EN": "Nothing to preview (bind a mesh on the MESH block first)",
-                              "ZH": "没有可预览的内容（请先在 MESH 块上绑定网格）"},
+    "uvc.no_content":        {"EN": "Nothing to preview (bind a mesh on the MESH attribute first)",
+                              "ZH": "没有可预览的内容（请先在 MESH 属性上绑定网格）"},
     "uvc.no_efx_scene":      {"EN": "No EFX found in the scene", "ZH": "场景里找不到任何 EFX"},
-    "uvc.no_root":           {"EN": "EFX root not found (select an EFX body/block)",
-                              "ZH": "找不到 EFX 根集合（请选中某个 EFX 的 body/块）"},
+    "uvc.no_root":           {"EN": "EFX root not found (select an EFX entry/attribute)",
+                              "ZH": "找不到 EFX 根集合（请选中某个 EFX 的 entry/属性）"},
     "uvc.missing_header":    {"EN": "These bound meshes can't preview, fix their materials first: {0}",
                               "ZH": "以下绑定网格无法预览，请先处理好材质：{0}"},
 
@@ -571,19 +578,19 @@ STRINGS = {
     "align.previewing":      {"EN": "Aligning {0} instance(s)", "ZH": "正在对齐 {0} 个实例"},
     "align.entered":         {"EN": "Mesh align started ({0} instance)", "ZH": "已进入网格对齐（{0} 个实例）"},
     "align.exited":          {"EN": "Mesh align ended, instances removed", "ZH": "已退出网格对齐，实例已清除"},
-    "align.no_content":      {"EN": "Nothing to align (bind a mesh on a MESH block first)",
-                              "ZH": "没有可对齐的内容（请先在 MESH 块上绑定网格）"},
-    "align.no_root":         {"EN": "EFX root not found (select an EFX body/block)",
-                              "ZH": "找不到 EFX 根集合（请选中某个 EFX 的 body/块）"},
+    "align.no_content":      {"EN": "Nothing to align (bind a mesh on a MESH attribute first)",
+                              "ZH": "没有可对齐的内容（请先在 MESH 属性上绑定网格）"},
+    "align.no_root":         {"EN": "EFX root not found (select an EFX entry/attribute)",
+                              "ZH": "找不到 EFX 根集合（请选中某个 EFX 的 entry/属性）"},
     "align.failed":          {"EN": "Mesh align failed: {0}", "ZH": "网格对齐失败：{0}"},
 
     # ── EmitterShape3D 形状预览（es3d_preview） ────────────────────────────────
     "es3d.entered":          {"EN": "ES3D shape preview started ({0} shape(s))", "ZH": "已进入形状预览（{0} 个形状）"},
     "es3d.exited":           {"EN": "ES3D shape preview ended, shapes removed", "ZH": "已退出形状预览，预览几何体已清除"},
-    "es3d.no_content":       {"EN": "No EmitterShape3D block found to preview",
-                              "ZH": "没有可预览的 EmitterShape3D 块"},
-    "es3d.no_root":          {"EN": "EFX root not found (select an EFX body/block)",
-                              "ZH": "找不到 EFX 根集合（请选中某个 EFX 的 body/块）"},
+    "es3d.no_content":       {"EN": "No EmitterShape3D attribute found to preview",
+                              "ZH": "没有可预览的 EmitterShape3D 属性"},
+    "es3d.no_root":          {"EN": "EFX root not found (select an EFX entry/attribute)",
+                              "ZH": "找不到 EFX 根集合（请选中某个 EFX 的 entry/属性）"},
     "es3d.failed":           {"EN": "ES3D shape preview failed: {0}", "ZH": "形状预览失败：{0}"},
 }
 

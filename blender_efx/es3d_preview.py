@@ -4,7 +4,7 @@ blender_efx/es3d_preview.py  —  EMITTERSHAPE3D 发射器形状预览（透明�
 设计（与用户确认）
 ------------------
 - **预览式会话**（进入/退出，同 uvc/mesh_align），场景零残留：进入时按 patternControl/
-  transform/spawnAngleLimits 生成一个绑在该 ES3D 块下的透明预览网格子对象；退出即删除。
+  transform/spawnAngleLimits 生成一个绑在该 ES3D 属性下的透明预览网格子对象；退出即删除。
 - **形状 = patternControl**（0=Cube,1=Sphere,2=Ring,3=Spot；见 annotations.py 实测注释），
   **尺寸 = transform.xyz**（FLOAT6 取 idx 0/2/4，与 ES3D 变换共用同一批数据——"变换就是
   几何体的 XYZ"），**弧形裁剪 = spawnAngleLimits**（角度制，360=完整、调小挖去一段弧）。
@@ -15,9 +15,9 @@ blender_efx/es3d_preview.py  —  EMITTERSHAPE3D 发射器形状预览（透明�
     形状分支用 Switch(GEOMETRY) 三级嵌套（非 Index Switch，兼容更早版本的 GN）。
     弧形裁剪：Position→atan2(局部 X/Z，绕局部 Y 扫)→归一化[0,2π)→与 AngleLimit 比较
     →Delete Geometry（POINT 域），MCP 实机验证：Sphere/Ring 在 270° 下裁出正确的 90° 缺口。
-- **对象归属**：预览网格是子对象（parent=ES3D 块，恒等本地变换），不改 ES3D 本身的
-  Empty 类型——数据权威仍在 efx_block 字段，不破坏"块=Empty"既有类型约定（对齐 MESH
-  块绑定的既有模式，但此处网格是插件自动生成，非用户提供）。
+- **对象归属**：预览网格是子对象（parent=ES3D 属性，恒等本地变换），不改 ES3D 本身的
+  Empty 类型——数据权威仍在 efx_block 字段，不破坏"属性=Empty"既有类型约定（对齐 MESH
+  属性绑定的既有模式，但此处网格是插件自动生成，非用户提供）。
 - **实时编辑**：会话期间 fields.py 的字段编辑回调调用本模块 resync_if_active()。
   ⚠ 直接改 GN 修饰器的 ID property（mod[socket_id]=value）不会触发依赖图重算——
   MCP 实测确认，需要 mod.show_viewport 假关再开一次才能强制刷新（不能用
@@ -58,11 +58,11 @@ _MODIFIER_NAME = "EFX ES3D Shape"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 块类型判定 / 字段读取
+# 属性类型判定 / 字段读取
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _block_type_hash(obj):
-    if obj is None or obj.get("~TYPE") != "EFX_BLOCK":
+def _attribute_type_hash(obj):
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
         return None
     try:
         return int(obj.efx_block.type_hash_str)
@@ -70,9 +70,9 @@ def _block_type_hash(obj):
         return None
 
 
-def _is_es3d_block(obj) -> bool:
+def _is_es3d_attribute(obj) -> bool:
     from ..efx_format.hashes import EMITTERSHAPE3D
-    return _block_type_hash(obj) == EMITTERSHAPE3D
+    return _attribute_type_hash(obj) == EMITTERSHAPE3D
 
 
 def _read_int(block, name, default=0):
@@ -379,20 +379,20 @@ def _apply_params(obj, mod, params):
 
 _state = {
     "active": False,
-    "by_block": {},    # es3d_block.name -> preview_obj.name
+    "by_attribute": {},    # es3d_attribute.name -> preview_obj.name
     "instances": [],   # 全部预览对象名
     "collection": None,
 }
 
 
 def resync_if_active(es3d_obj):
-    """会话进行中，重同步该 ES3D 块的预览对象（供 fields.py 编辑回调调用）。
+    """会话进行中，重同步该 ES3D 属性的预览对象（供 fields.py 编辑回调调用）。
 
     ⚠ 按对象名重新解析（撤销会让 Python 持有的引用失效，名仍有效，同 mesh_align）。
     """
     if not _state["active"] or es3d_obj is None:
         return
-    obj_name = _state["by_block"].get(es3d_obj.name)
+    obj_name = _state["by_attribute"].get(es3d_obj.name)
     if not obj_name:
         return
     obj = bpy.data.objects.get(obj_name)
@@ -417,12 +417,12 @@ def _all_efx_roots():
     return [o for o in bpy.data.objects if o.get("~TYPE") == "EFX_ROOT"]
 
 
-def _iter_scope_es3d_blocks(root):
+def _iter_scope_es3d_attributes(root):
     for body in root.children:
-        if body.get("~TYPE") != "EFX_BODY":
+        if body.get("~TYPE") != "EFX_ENTRY":
             continue
         for blk in body.children:
-            if _is_es3d_block(blk):
+            if _is_es3d_attribute(blk):
                 yield blk
 
 
@@ -432,11 +432,11 @@ def _start(roots):
     for root in roots:
         if root is None:
             continue
-        for blk in _iter_scope_es3d_blocks(root):
+        for blk in _iter_scope_es3d_attributes(root):
             label = str(blk.get("efx_raw_label", "") or blk.name)
             obj, mod = _make_preview_object(blk, col, label)
             _apply_params(obj, mod, _read_es3d_params(blk))
-            _state["by_block"][blk.name] = obj.name
+            _state["by_attribute"][blk.name] = obj.name
             _state["instances"].append(obj.name)
             n += 1
     _state["collection"] = col.name
@@ -466,7 +466,7 @@ def _stop():
         except Exception:
             pass
     _state["active"] = False
-    _state["by_block"] = {}
+    _state["by_attribute"] = {}
     _state["instances"] = []
     _state["collection"] = None
 
@@ -474,7 +474,7 @@ def _stop():
 @persistent
 def _on_load(*_args):
     _state["active"] = False
-    _state["by_block"] = {}
+    _state["by_attribute"] = {}
     _state["instances"] = []
     _state["collection"] = None
 

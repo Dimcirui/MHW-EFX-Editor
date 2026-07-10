@@ -3,7 +3,7 @@ blender_efx/timl_tracks.py  —  T1/T2/T2b：TIML 轨道增删复制
 
 UI 入口
 -------
-  T1  — Dope Sheet 侧栏「EFX TIML」→「Tracks」子面板：当前 body 的轨道列表 + 删除/复制按钮
+  T1  — Dope Sheet 侧栏「EFX TIML」→「Tracks」子面板：当前 entry 的轨道列表 + 删除/复制按钮
   T2  — panels.py 字段标题行旁的 +A0/+A1 小按钮（仅六类"确认"字段显示）
   T2b — 同上 Dope Sheet 面板下方：语料调色板 + 「开放所有组合」开关
 
@@ -17,7 +17,7 @@ from bpy.props import StringProperty, IntProperty, BoolProperty
 from bpy.types import Operator, Panel
 
 from .i18n import T
-from .timl_meta_ui import _active_body, _body_timl_bytes, _store_timl, _edit_active
+from .timl_meta_ui import _active_entry, _entry_timl_bytes, _store_timl, _edit_active
 from ..efx_format import timl as _timl
 from ..efx_format.timl_names import (
     BLOCK_TO_TLP, FIELD_TO_DT, CORPUS_PAIRS,
@@ -42,11 +42,11 @@ def _is_zh() -> bool:
 
 
 def _parse_active_timl():
-    """返回 (body, Timl) 或 (None, None)。"""
-    body = _active_body()
+    """返回 (entry, Timl) 或 (None, None)。"""
+    body = _active_entry()
     if body is None:
         return None, None
-    tb = _body_timl_bytes(body)
+    tb = _entry_timl_bytes(body)
     timl = _timl.parse_timl(tb)
     return (body, timl) if timl is not None else (None, None)
 
@@ -54,21 +54,21 @@ def _parse_active_timl():
 def _resolve_for_edit():
     """统一解析"要编辑哪个 Timl 模型"，自动区分会话内/外：
 
-      - 会话进行中且 active body 在会话里 → 返回会话内存模型 entry["timl"] + entry。
+      - 会话进行中且 active entry 在会话里 → 返回会话内存模型 entry["timl"] + entry。
         改动只动模型，结构性改动调 session_capture()（改前）/ commit 调 session_refresh()（改后），
         Apply 才落字节；Cancel 丢弃。
-      - 否则 → 解析 body 字节出新模型 + entry=None，改完 _store_timl 立即落字节。
+      - 否则 → 解析 entry 字节出新模型 + entry=None，改完 _store_timl 立即落字节。
 
     返回 (body, timl, entry)；解析失败 (None, None, None)。
     """
-    body = _active_body()
+    body = _active_entry()
     if body is None:
         return None, None, None
     from . import timl_edit as _te
     entry = _te.session_entry(body)
     if entry is not None:
         return body, entry["timl"], entry
-    timl = _timl.parse_timl(_body_timl_bytes(body))
+    timl = _timl.parse_timl(_entry_timl_bytes(body))
     return (body, timl, None) if timl is not None else (None, None, None)
 
 
@@ -82,15 +82,15 @@ def _commit_edit(body, timl, entry):
 
 
 def _read_for_display():
-    """面板展示用：会话内取内存模型，会话外解析字节。返回 (body, timl) 或 (None, None)。"""
-    body = _active_body()
+    """面板展示用：会话内取内存模型，会话外解析字节。返回 (entry, timl) 或 (None, None)。"""
+    body = _active_entry()
     if body is None:
         return None, None
     from . import timl_edit as _te
     m = _te.session_model(body)
     if m is not None:
         return body, m
-    return body, _timl.parse_timl(_body_timl_bytes(body))
+    return body, _timl.parse_timl(_entry_timl_bytes(body))
 
 
 def _track_exists(timl_obj, slot: int, tlp_hash: int, dt_hash: int) -> bool:
@@ -113,7 +113,7 @@ def draw_field_timl_buttons(row, type_name: str, ori_name: str):
         return
     if BLOCK_TO_TLP.get(type_name.upper()) is None:
         return
-    body = _active_body()
+    body = _active_entry()
     has_timl = (body is not None)
     sub = row.row(align=True)
     sub.enabled = has_timl   # 会话内也可用：改内存模型并实时重建曲线
@@ -138,7 +138,7 @@ class EFX_OT_timl_field_add_menu(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_body() is not None   # 会话内/外均可
+        return _active_entry() is not None   # 会话内/外均可
 
     def invoke(self, context, event):
         return context.window_manager.invoke_popup(self, width=180)
@@ -150,7 +150,7 @@ class EFX_OT_timl_field_add_menu(Operator):
         layout.separator()
 
         specs = {0: ("+A0  (Emission)", "ANIM"), 1: ("+A1  (Lifetime)", "PARTICLES")}
-        # 母轴排第一并标推荐；非母轴排后面并加"该块在此轴通常不生效"提示。两轴都行→原序。
+        # 母轴排第一并标推荐；非母轴排后面并加"该属性在此轴通常不生效"提示。两轴都行→原序。
         order = [native, 1 - native] if native in (0, 1) else [0, 1]
         for slot in order:
             txt, icon = specs[slot]
@@ -167,10 +167,10 @@ class EFX_OT_timl_field_add_menu(Operator):
             axis_name = "A0" if native == 0 else "A1"
             layout.separator()
             if _is_zh():
-                layout.label(text="该块的动画在游戏里通常只在 %s 轴生效；" % axis_name, icon="INFO")
+                layout.label(text="该属性的动画在游戏里通常只在 %s 轴生效；" % axis_name, icon="INFO")
                 layout.label(text="加到另一条轴很可能静默无效。", icon="BLANK1")
             else:
-                layout.label(text="This block usually only works on %s in-game;" % axis_name, icon="INFO")
+                layout.label(text="This attribute usually only works on %s in-game;" % axis_name, icon="INFO")
                 layout.label(text="the other axis is likely a silent no-op.", icon="BLANK1")
 
     def execute(self, context):
@@ -194,7 +194,7 @@ class EFX_OT_timl_add_field_tracks(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_body() is not None
+        return _active_entry() is not None
 
     def execute(self, context):
         key = (self.block_type.upper(), self.field_name)
@@ -204,11 +204,11 @@ class EFX_OT_timl_add_field_tracks(Operator):
             return {"CANCELLED"}
         tlp_hash = BLOCK_TO_TLP.get(self.block_type.upper())
         if tlp_hash is None:
-            self.report({"ERROR"}, f"No TLP mapping for block type '{self.block_type}'")
+            self.report({"ERROR"}, f"No TLP mapping for attribute type '{self.block_type}'")
             return {"CANCELLED"}
         body, timl, entry = _resolve_for_edit()
         if timl is None:
-            self.report({"ERROR"}, "No valid TIML found on active body")
+            self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
 
         if entry is not None:
@@ -248,7 +248,7 @@ class EFX_OT_timl_add_track(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_body() is not None
+        return _active_entry() is not None
 
     def execute(self, context):
         try:
@@ -259,7 +259,7 @@ class EFX_OT_timl_add_track(Operator):
             return {"CANCELLED"}
         body, timl, entry = _resolve_for_edit()
         if timl is None:
-            self.report({"ERROR"}, "No valid TIML found on active body")
+            self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
 
         if entry is not None:
@@ -296,7 +296,7 @@ class EFX_OT_timl_delete_track(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_body() is not None
+        return _active_entry() is not None
 
     def execute(self, context):
         try:
@@ -307,7 +307,7 @@ class EFX_OT_timl_delete_track(Operator):
             return {"CANCELLED"}
         body, timl, entry = _resolve_for_edit()
         if timl is None:
-            self.report({"ERROR"}, "No valid TIML found on active body")
+            self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
 
         if entry is not None:
@@ -344,7 +344,7 @@ class EFX_OT_timl_copy_track(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_body() is not None
+        return _active_entry() is not None
 
     def execute(self, context):
         try:
@@ -355,7 +355,7 @@ class EFX_OT_timl_copy_track(Operator):
             return {"CANCELLED"}
         body, timl, entry = _resolve_for_edit()
         if timl is None:
-            self.report({"ERROR"}, "No valid TIML found on active body")
+            self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
 
         if entry is not None:
@@ -381,13 +381,13 @@ class EFX_OT_timl_copy_track(Operator):
 # T1 轨道列表 + T2b 语料调色板
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _get_body_block_tlps(body_obj) -> set:
-    """返回 body 下所有 EFX_BLOCK 子对象对应的 TLP hash 集合（经 BLOCK_TO_TLP 映射）。
-    同时包含该 body TIML 中已存在的 TLP hash（兼容手动添加或导入的已有轨道）。"""
+def _get_entry_attribute_tlps(entry_obj) -> set:
+    """返回 entry 下所有 EFX_ATTRIBUTE 子对象对应的 TLP hash 集合（经 BLOCK_TO_TLP 映射）。
+    同时包含该 entry TIML 中已存在的 TLP hash（兼容手动添加或导入的已有轨道）。"""
     from ..efx_format.hashes import HASH_TO_NAME
     tlps = set()
-    for child in body_obj.children:
-        if child.get("~TYPE") != "EFX_BLOCK":
+    for child in entry_obj.children:
+        if child.get("~TYPE") != "EFX_ATTRIBUTE":
             continue
         try:
             h = int(child.efx_block.type_hash_str)
@@ -401,12 +401,12 @@ def _get_body_block_tlps(body_obj) -> set:
 
 
 # 全局缓存：防止 Blender EnumProperty 动态回调因 GC 丢引用导致下拉乱码
-_tlp_enum_cache = [("NONE", "— 无匹配块 —", "")]
+_tlp_enum_cache = [("NONE", "— 无匹配属性 —", "")]
 
 
 def _tlp_enum_items(self, context):
     """TLP 下拉 EnumProperty 回调。
-    open_all=False：只列当前 body 有对应 EFX_BLOCK 的 TLP + TIML 已有的 TLP。
+    open_all=False：只列当前 entry 有对应 EFX_ATTRIBUTE 的 TLP + TIML 已有的 TLP。
     open_all=True ：列出 CORPUS_PAIRS 中所有已知 TLP。"""
     global _tlp_enum_cache
     if context is None:
@@ -414,7 +414,7 @@ def _tlp_enum_items(self, context):
 
     wm = context.window_manager
     open_all = getattr(wm, "efx_timl_tracks_open_all", False)
-    body = _active_body()
+    body = _active_entry()
 
     if open_all or body is None:
         # 显示 CORPUS_PAIRS 全部 TLP，按名称字母序
@@ -424,11 +424,11 @@ def _tlp_enum_items(self, context):
             key=lambda x: x[1],
         )
     else:
-        # 过滤：只列 body 块类型对应 TLP（+ TIML 已有 TLP）
-        allowed = _get_body_block_tlps(body)
+        # 过滤：只列 entry 属性类型对应 TLP（+ TIML 已有 TLP）
+        allowed = _get_entry_attribute_tlps(body)
         # 也补入 TIML 中已有的 TLP（避免手动添加的 TLP 从下拉消失）
         try:
-            tb = _body_timl_bytes(body)
+            tb = _entry_timl_bytes(body)
             t = _timl.parse_timl(tb)
             if t:
                 for anim in t.animations:
@@ -489,10 +489,10 @@ def _draw_corpus_add_row(layout, slot: int, tlp_hash: int, dt_hash: int,
 def _draw_tracks_panel(layout, context):
     """轨道增删面板内容（Dope Sheet / Graph Editor 共用）。
     会话进行中 → 数据源为会话内存模型，增删实时改模型+重建曲线（不锁死）；
-    会话外 → 数据源为 body 字节，增删立即落字节。"""
+    会话外 → 数据源为 entry 字节，增删立即落字节。"""
     body, timl = _read_for_display()
     if body is None:
-        layout.label(text="Select an EFX_BODY with TIML", icon="INFO")
+        layout.label(text="Select an EFX_ENTRY with TIML", icon="INFO")
         return
     if timl is None:
         layout.label(text="Failed to parse TIML", icon="ERROR")
@@ -536,7 +536,7 @@ def _draw_tracks_panel(layout, context):
     # 解析当前选中 TLP
     tlp_hex = getattr(wm, "efx_timl_tracks_tlp_filter", "NONE")
     if tlp_hex == "NONE" or not tlp_hex:
-        add_box.label(text="No matching block types in this EFX", icon="INFO")
+        add_box.label(text="No matching attribute types in this EFX", icon="INFO")
         return
 
     try:
@@ -602,7 +602,7 @@ def register():
 
     bpy.types.WindowManager.efx_timl_tracks_open_all = BoolProperty(
         name="Open All TLP",
-        description="开放全部：下拉列出所有 CORPUS_PAIRS TLP，而非只列当前 body 有对应块类型的",
+        description="开放全部：下拉列出所有 CORPUS_PAIRS TLP，而非只列当前 entry 有对应属性类型的",
         default=False,
     )
     bpy.types.WindowManager.efx_timl_tracks_tlp_filter = bpy.props.EnumProperty(

@@ -13,15 +13,15 @@ blender_efx/backref.py  —  L2 反向引用视图（只读）
 
 3. ``EFX_PT_extern_backref``
    Extern 对象反向视图（VIEW_3D N 面板，poll: EFX_EXTERN）。
-   扫描同一 EFX 树内所有 EFX_BLOCK，找出 type_hash==EXTERNREFERENCE
-   且 efx_extern_ref.extern_ref_ptr == 当前 extern 的块，
-   显示"被 N 个块引用"+ 每个块（块名 + 所属 body 名）+ 跳转按钮。
+   扫描同一 EFX 树内所有 EFX_ATTRIBUTE，找出 type_hash==EXTERNREFERENCE
+   且 efx_extern_ref.extern_ref_ptr == 当前 extern 的属性，
+   显示"被 N 个属性引用"+ 每个属性（属性名 + 所属 entry 名）+ 跳转按钮。
 
-4. ``EFX_PT_body_backref``
-   Body 对象反向视图（VIEW_3D N 面板，poll: EFX_BODY）。
-   扫描同一 EFX 树，列出引用该 body 的：
-     - Subselect 表（其 members 有指向该 body 的）
-     - Play emitter（其 entries[*].targets 有指向该 body 的）
+4. ``EFX_PT_entry_backref``
+   Entry 对象反向视图（VIEW_3D N 面板，poll: EFX_ENTRY）。
+   扫描同一 EFX 树，列出引用该 entry 的：
+     - Subselect 表（其 members 有指向该 entry 的）
+     - Action emitter（其 entries[*].targets 有指向该 entry 的）
    分组显示 + 跳转按钮。
 
 约束
@@ -93,7 +93,7 @@ def _collect_all_from_collection(col, out_by_type: dict) -> None:
     递归收集集合及子集合内所有 EFX 对象，按 ~TYPE 分类存入 out_by_type。
 
     out_by_type : dict[str, list[bpy.types.Object]]
-        key = ~TYPE 字符串（如 'EFX_BLOCK'），value = 对象列表（按收集顺序）
+        key = ~TYPE 字符串（如 'EFX_ATTRIBUTE'），value = 对象列表（按收集顺序）
     """
     for obj in col.objects:
         t = obj.get("~TYPE")
@@ -112,7 +112,7 @@ def get_efx_tree_objects(obj: bpy.types.Object) -> dict:
     返回
     ----
     dict[str, list[bpy.types.Object]]
-        key = ~TYPE 字符串（如 'EFX_BLOCK'、'EFX_BODY' 等）
+        key = ~TYPE 字符串（如 'EFX_ATTRIBUTE'、'EFX_ENTRY' 等）
         value = 该类型的对象列表
 
     若无法确定树根，返回空 dict（防御性）。
@@ -181,16 +181,16 @@ class EFX_OT_select_object(Operator):
 
 def _scan_extern_backrefs(extern_obj: bpy.types.Object) -> list:
     """
-    扫描同一 EFX 树内所有 EXTERNREFERENCE 块，
-    找出 efx_extern_ref.extern_ref_ptr == extern_obj 的块。
+    扫描同一 EFX 树内所有 EXTERNREFERENCE 属性，
+    找出 efx_extern_ref.extern_ref_ptr == extern_obj 的属性。
 
     返回
     ----
     list of dict：
         {
-            'block_obj': bpy.types.Object,   # EFX_BLOCK 对象
-            'block_name': str,               # 块对象名
-            'body_name': str,                # 所属 body 名（parent 对象名）
+            'block_obj': bpy.types.Object,   # EFX_ATTRIBUTE 对象
+            'block_name': str,               # 属性对象名
+            'body_name': str,                # 所属 entry 名（parent 对象名）
         }
 
     只读扫描，不修改任何数据。
@@ -198,7 +198,7 @@ def _scan_extern_backrefs(extern_obj: bpy.types.Object) -> list:
     results = []
 
     tree = get_efx_tree_objects(extern_obj)
-    block_objs = tree.get("EFX_BLOCK", [])
+    block_objs = tree.get("EFX_ATTRIBUTE", [])
 
     try:
         from ..efx_format.hashes import EXTERNREFERENCE
@@ -226,7 +226,7 @@ def _scan_extern_backrefs(extern_obj: bpy.types.Object) -> list:
         except AttributeError:
             continue
 
-        # 找所属 body（block 的 parent 是 body）
+        # 找所属 entry（attribute 的 parent 是 entry）
         body_name = ""
         if blk.parent is not None:
             body_name = blk.parent.name
@@ -244,8 +244,8 @@ class EFX_PT_extern_backref(bpy.types.Panel):
     """
     Extern 对象反向引用视图（VIEW_3D N 面板，选中 EFX_EXTERN 时显示）。
 
-    显示"被 N 个 EXTERNREFERENCE 块引用"，
-    以及每个引用块（块名 + 所属 body 名）+ 跳转按钮。
+    显示"被 N 个 EXTERNREFERENCE 属性引用"，
+    以及每个引用属性（属性名 + 所属 entry 名）+ 跳转按钮。
 
     纯只读：不在此编辑引用关系，不触碰任何字节/导出路径。
     """
@@ -292,46 +292,46 @@ class EFX_PT_extern_backref(bpy.types.Panel):
             )
             return
 
-        # ── 逐条显示引用块 ────────────────────────────────────────────────────
+        # ── 逐条显示引用属性 ────────────────────────────────────────────────────
         for ref in refs:
             ref_box = layout.box()
             col = ref_box.column(align=True)
 
-            # 块名行
+            # 属性名行
             row_name = col.row(align=True)
-            row_name.label(text=T("backref.block") + f" {ref['block_name']}", icon="MODIFIER")
+            row_name.label(text=T("backref.attribute") + f" {ref['block_name']}", icon="MODIFIER")
 
-            # 所属 body 行
-            row_body = col.row(align=True)
+            # 所属 entry 行
+            row_entry = col.row(align=True)
             if ref["body_name"]:
-                row_body.label(
-                    text=T("backref.body") + f" {ref['body_name']}",
+                row_entry.label(
+                    text=T("backref.entry") + f" {ref['body_name']}",
                     icon="OBJECT_DATA",
                 )
             else:
-                row_body.label(text=T("backref.body_unknown"), icon="QUESTION")
+                row_entry.label(text=T("backref.entry_unknown"), icon="QUESTION")
 
             # 跳转按钮行
             row_jump = col.row(align=True)
             op = row_jump.operator(
                 "efx.select_object",
-                text=T("backref.jump_to_block"),
+                text=T("backref.jump_to_attribute"),
                 icon="VIEWZOOM",
             )
             op.target_name = ref["block_name"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §4  Body 对象双向关系视图（Body References）
+# §4  Entry 对象双向关系视图（Entry References）
 #
-# 把单纯的"被谁引用"升级为以 body 为中心的双向关系导航（仍纯只读、不碰导出）：
-#   ⬇ 我触发谁     ：本 body 的 PTLIFE（status 区分生成/结束型）/ PTCOLLISION（碰撞时）
-#                    块 → action(play) → 该 play 的子 body(PLAYEMITTER targets) /
+# 把单纯的"被谁引用"升级为以 entry 为中心的双向关系导航（仍纯只读、不碰导出）：
+#   ⬇ 我触发谁     ：本 entry 的 PTLIFE（status 区分生成/结束型）/ PTCOLLISION（碰撞时）
+#                    属性 → action → 该 action 的子 entry(PLAYEMITTER targets) /
 #                    外部 efx(PLAYEFX path)
-#   ⬆ 谁触发我     ：哪些父 body 的 PTLIFE / PTCOLLISION → 某个 targets 含本 body 的 action
-#   ⬔ 我引用的 Extern：本 body 的 EXTERNREFERENCE 块 → extern 对象
-#   ⬓ 我所属的 Subselect：哪些 Subselect 表把本 body 列为成员
-# 全部边最终都落在 body 这个公共节点上（关系是 DAG，不是树），所以按"边的类型"
+#   ⬆ 谁触发我     ：哪些父 entry 的 PTLIFE / PTCOLLISION → 某个 targets 含本 entry 的 action
+#   ⬔ 我引用的 Extern：本 entry 的 EXTERNREFERENCE 属性 → extern 对象
+#   ⬓ 我所属的 Subselect：哪些 Subselect 表把本 entry 列为成员
+# 全部边最终都落在 entry 这个公共节点上（关系是 DAG，不是树），所以按"边的类型"
 # 分组列出 + 可跳转，天然处理多对一/共享，不需要枚举"谁套谁"。
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -339,8 +339,8 @@ class EFX_PT_extern_backref(bpy.types.Panel):
 _PTLIFE_TIMING_OFFSET = 4
 
 
-def _block_type_hash(blk) -> int:
-    """读 EFX_BLOCK 的 type_hash（失败返回 -1）。"""
+def _attribute_type_hash(blk) -> int:
+    """读 EFX_ATTRIBUTE 的 type_hash（失败返回 -1）。"""
     try:
         return int(blk.efx_block.type_hash_str)
     except (AttributeError, ValueError, TypeError):
@@ -348,7 +348,7 @@ def _block_type_hash(blk) -> int:
 
 
 def _read_ptlife_timing(blk):
-    """读 PTLIFE 块的 timing（short @ offset 4）；失败返回 None。"""
+    """读 PTLIFE 属性的 timing（short @ offset 4）；失败返回 None。"""
     try:
         raw = base64.b64decode(str(blk.efx_block.raw_b64))
         if len(raw) >= _PTLIFE_TIMING_OFFSET + 2:
@@ -358,8 +358,8 @@ def _read_ptlife_timing(blk):
     return None
 
 
-def _play_children(play_obj):
-    """返回 play_obj 的子引用：(child_body 对象列表, 外部 efx 路径列表)。"""
+def _action_children(play_obj):
+    """返回 play_obj 的子引用：(child_entry 对象列表, 外部 efx 路径列表)。"""
     children, paths = [], []
     try:
         props = play_obj.efx_play
@@ -377,24 +377,24 @@ def _play_children(play_obj):
     return children, paths
 
 
-def is_body_action_triggered(body_obj: bpy.types.Object) -> bool:
-    """True if any Play in the same EFX tree has body_obj as a target."""
-    tree = get_efx_tree_objects(body_obj)
-    for play in tree.get("EFX_PLAY", []):
-        children, _ = _play_children(play)
-        if body_obj in children:
+def is_entry_action_triggered(entry_obj: bpy.types.Object) -> bool:
+    """True if any Action in the same EFX tree has entry_obj as a target."""
+    tree = get_efx_tree_objects(entry_obj)
+    for play in tree.get("EFX_ACTION", []):
+        children, _ = _action_children(play)
+        if entry_obj in children:
             return True
     return False
 
 
-def count_body_subselect_tables(body_obj: bpy.types.Object) -> int:
-    """本 body 出现在同一 EFX 树的多少张 subselect 表里（每表至多计一次）。
+def count_entry_subselect_tables(entry_obj: bpy.types.Object) -> int:
+    """本 entry 出现在同一 EFX 树的多少张 subselect 表里（每表至多计一次）。
 
-    subselect 是叠在激活集上的「状态掩码」：出现在某表里的 body 只在选中该表的
-    状态下触发；不在任何表里的 direct-active body 恒触发。参见
+    subselect 是叠在激活集上的「状态掩码」：出现在某表里的 entry 只在选中该表的
+    状态下触发；不在任何表里的 direct-active entry 恒触发。参见
     memory: subselect-is-active-set-mask。
     """
-    tree = get_efx_tree_objects(body_obj)
+    tree = get_efx_tree_objects(entry_obj)
     n = 0
     for ss_obj in tree.get("EFX_SUBSELECT", []):
         try:
@@ -402,19 +402,19 @@ def count_body_subselect_tables(body_obj: bpy.types.Object) -> int:
         except AttributeError:
             continue
         for member in props.members:
-            if member.body_ptr is body_obj:
+            if member.body_ptr is entry_obj:
                 n += 1
                 break
     return n
 
 
-def classify_body_activation(body_obj: bpy.types.Object) -> dict:
-    """综合 EOF（direct）+ play 召唤（action）+ subselect 门控，推断 body 的「有效激活态」。
+def classify_entry_activation(entry_obj: bpy.types.Object) -> dict:
+    """综合 EOF（direct）+ action 召唤 + subselect 门控，推断 entry 的「有效激活态」。
 
     触发模型（用户确认）：
-      - **触发来源是「并」/OR**：direct（随 EFX 加载触发）与 action（被 Play 召唤触发）
-        各自独立生效；两者都有的块在「加载时」和「被召唤时」都会触发。
-      - **subselect 是更上层的「与」/AND 门控**：在某 subselect 表里的块，除来源条件外
+      - **触发来源是「并」/OR**：direct（随 EFX 加载触发）与 action（被 Action 召唤触发）
+        各自独立生效；两者都有的属性在「加载时」和「被召唤时」都会触发。
+      - **subselect 是更上层的「与」/AND 门控**：在某 subselect 表里的属性，除来源条件外
         还须满足该表对应的状态条件才触发；不在任何表里 = 无条件（来源满足即触发）。
 
     返回 dict：
@@ -422,17 +422,17 @@ def classify_body_activation(body_obj: bpy.types.Object) -> dict:
       'gated'     : bool — 是否被 subselect 门控（n_tables > 0）
       'n_tables'  : int  — 出现在几张 subselect 表里
       'in_eof'    : bool — 是否在直接触发列表（EOF）
-      'in_action' : bool — 是否被任意 Play target 召唤
+      'in_action' : bool — 是否被任意 Action target 召唤
 
     注意：这是基于语料逆向的**模型推断**，不是字节铁律——运行时由哪个状态选中哪张
     subselect 表，取决于 EFX 之外的游戏逻辑（动画事件/战斗状态）。UI 文案据此用
     "推测"口吻。
     """
-    from .body_play_ref import is_body_in_eof
+    from .entry_action_ref import is_entry_in_eof
 
-    in_eof    = is_body_in_eof(body_obj)
-    in_action = is_body_action_triggered(body_obj)
-    n_tables  = count_body_subselect_tables(body_obj)
+    in_eof    = is_entry_in_eof(entry_obj)
+    in_action = is_entry_action_triggered(entry_obj)
+    n_tables  = count_entry_subselect_tables(entry_obj)
 
     if in_eof and in_action:
         source = "both"
@@ -452,28 +452,28 @@ def classify_body_activation(body_obj: bpy.types.Object) -> dict:
     }
 
 
-def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
+def _scan_entry_relations(entry_obj: bpy.types.Object) -> dict:
     """
-    以 body_obj 为中心扫描同一 EFX 树的四类关系（只读）。
+    以 entry_obj 为中心扫描同一 EFX 树的四类关系（只读）。
 
     返回 dict：
       'triggers'     : list {play_obj, play_name, timing, children:[obj], paths:[str]}
-      'triggered_by' : list {body_obj, body_name, play_obj, play_name, timing}
+      'triggered_by' : list {entry_obj, body_name, play_obj, play_name, timing}
       'externs'      : list {extern_obj, extern_name, block_name}
       'subselects'   : list {ss_obj, ss_name}
     """
     from ..efx_format.hashes import PTLIFE, PTCOLLISION, EXTERNREFERENCE
 
-    tree = get_efx_tree_objects(body_obj)
-    blocks  = tree.get("EFX_BLOCK", [])
-    plays   = tree.get("EFX_PLAY", [])
+    tree = get_efx_tree_objects(entry_obj)
+    attrs   = tree.get("EFX_ATTRIBUTE", [])
+    plays   = tree.get("EFX_ACTION", [])
     result  = {"triggers": [], "triggered_by": [], "externs": [], "subselects": []}
 
-    # 本 body 直属的块（parent==body_obj）
-    my_blocks = [b for b in blocks if b.parent is body_obj]
+    # 本 entry 直属的属性（parent==entry_obj）
+    my_attributes = [b for b in attrs if b.parent is entry_obj]
 
-    def _ptlife_play(blk):
-        """PTLIFE 块 → 触发的 play 对象（pointerized 且非空才返回），否则 None。"""
+    def _ptlife_action(blk):
+        """PTLIFE 属性 → 触发的 action 对象（pointerized 且非空才返回），否则 None。"""
         try:
             ref = blk.efx_ptlife_ref
             if not ref.relation_pointerized:
@@ -482,8 +482,8 @@ def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
         except AttributeError:
             return None
 
-    def _ptcollision_play(blk):
-        """PTCOLLISION 块 → 触发的 play 对象（pointerized、非哨兵、非空才返回），否则 None。"""
+    def _ptcollision_action(blk):
+        """PTCOLLISION 属性 → 触发的 action 对象（pointerized、非哨兵、非空才返回），否则 None。"""
         try:
             ref = blk.efx_ptcollision_ref
             if not ref.ie_pointerized or ref.ie_none:
@@ -492,22 +492,22 @@ def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
         except AttributeError:
             return None
 
-    # 触发块种类表：(type_hash, kind 标识, 取 play 的函数, 取 timing 的函数)
+    # 触发属性种类表：(type_hash, kind 标识, 取 action 的函数, 取 timing 的函数)
     _TRIGGER_KINDS = (
-        (PTLIFE,      "ptlife",      _ptlife_play,      _read_ptlife_timing),
-        (PTCOLLISION, "ptcollision", _ptcollision_play, lambda _blk: None),
+        (PTLIFE,      "ptlife",      _ptlife_action,      _read_ptlife_timing),
+        (PTCOLLISION, "ptcollision", _ptcollision_action, lambda _blk: None),
     )
 
-    # ── ⬇ 我触发谁：本 body 的 PTLIFE / PTCOLLISION → play → 子 body / 外部 efx ──
-    for blk in my_blocks:
-        th = _block_type_hash(blk)
-        for type_hash, kind, get_play, get_timing in _TRIGGER_KINDS:
+    # ── ⬇ 我触发谁：本 entry 的 PTLIFE / PTCOLLISION → action → 子 entry / 外部 efx ──
+    for blk in my_attributes:
+        th = _attribute_type_hash(blk)
+        for type_hash, kind, get_action, get_timing in _TRIGGER_KINDS:
             if th != type_hash:
                 continue
-            play = get_play(blk)
+            play = get_action(blk)
             if play is None:
                 continue
-            children, paths = _play_children(play)
+            children, paths = _action_children(play)
             result["triggers"].append({
                 "play_obj": play,
                 "play_name": play.name,
@@ -517,26 +517,26 @@ def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
                 "paths": paths,
             })
 
-    # ── ⬆ 谁触发我：父 body 的 PTLIFE / PTCOLLISION → 某个 targets 含本 body 的 play ──
-    # 先找出 targets 含本 body 的 play 集合
+    # ── ⬆ 谁触发我：父 entry 的 PTLIFE / PTCOLLISION → 某个 targets 含本 entry 的 action ──
+    # 先找出 targets 含本 entry 的 action 集合
     plays_targeting_me = set()
     for play in plays:
-        children, _ = _play_children(play)
-        if body_obj in children:
+        children, _ = _action_children(play)
+        if entry_obj in children:
             plays_targeting_me.add(play)
-    # 再找哪些 body 的 PTLIFE / PTCOLLISION 指向这些 play
+    # 再找哪些 entry 的 PTLIFE / PTCOLLISION 指向这些 action
     if plays_targeting_me:
-        for blk in blocks:
-            if blk.parent is None or blk.parent is body_obj:
+        for blk in attrs:
+            if blk.parent is None or blk.parent is entry_obj:
                 continue
-            th = _block_type_hash(blk)
-            for type_hash, kind, get_play, get_timing in _TRIGGER_KINDS:
+            th = _attribute_type_hash(blk)
+            for type_hash, kind, get_action, get_timing in _TRIGGER_KINDS:
                 if th != type_hash:
                     continue
-                play = get_play(blk)
+                play = get_action(blk)
                 if play in plays_targeting_me:
                     result["triggered_by"].append({
-                        "body_obj": blk.parent,
+                        "entry_obj": blk.parent,
                         "body_name": blk.parent.name,
                         "play_obj": play,
                         "play_name": play.name,
@@ -544,9 +544,9 @@ def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
                         "timing": get_timing(blk),
                     })
 
-    # ── ⬔ 我引用的 Extern：本 body 的 EXTERNREFERENCE 块 → extern ─────────────
-    for blk in my_blocks:
-        if _block_type_hash(blk) != EXTERNREFERENCE:
+    # ── ⬔ 我引用的 Extern：本 entry 的 EXTERNREFERENCE 属性 → extern ─────────────
+    for blk in my_attributes:
+        if _attribute_type_hash(blk) != EXTERNREFERENCE:
             continue
         try:
             er = blk.efx_extern_ref
@@ -569,7 +569,7 @@ def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
         except AttributeError:
             continue
         for member in props.members:
-            if member.body_ptr is body_obj:
+            if member.body_ptr is entry_obj:
                 result["subselects"].append({
                     "ss_obj": ss_obj,
                     "ss_name": ss_obj.name,
@@ -582,16 +582,16 @@ def _scan_body_relations(body_obj: bpy.types.Object) -> dict:
 def _timing_label(timing) -> str:
     """timing → 人类可读（生成/结束/原值）。"""
     if timing == 0:
-        return T("bodyref.timing_spawn")
+        return T("entryref.timing_spawn")
     if timing == 4:
-        return T("bodyref.timing_death")
-    return T("bodyref.timing_other") + f"={timing}"
+        return T("entryref.timing_death")
+    return T("entryref.timing_other") + f"={timing}"
 
 
 def _trigger_label(t) -> str:
     """触发条目 → 方括号内标签：PTCOLLISION 显示"碰撞时"，PTLIFE 按 timing。"""
     if t.get("kind") == "ptcollision":
-        return T("bodyref.trigger_collision")
+        return T("entryref.trigger_collision")
     return _timing_label(t.get("timing"))
 
 
@@ -600,52 +600,52 @@ def _jump_button(row, target_name, text="", icon="VIEWZOOM"):
     op.target_name = target_name
 
 
-class EFX_PT_body_backref(bpy.types.Panel):
+class EFX_PT_entry_backref(bpy.types.Panel):
     """
-    Body 双向关系视图（VIEW_3D N 面板，选中 EFX_BODY 时显示）。
+    Entry 双向关系视图（VIEW_3D N 面板，选中 EFX_ENTRY 时显示）。
 
-    以本 body 为中心展示四类关系（我触发谁 / 谁触发我 / 我引用的 Extern /
+    以本 entry 为中心展示四类关系（我触发谁 / 谁触发我 / 我引用的 Extern /
     我所属的 Subselect），每条可跳转。纯只读，不碰任何字节/导出路径。
     """
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
-    bl_label       = "Body References"
-    bl_parent_id   = "EFX_PT_body_status"
+    bl_label       = "Entry References"
+    bl_parent_id   = "EFX_PT_entry_status"
     bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_BODY"
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
 
     def draw(self, context):
         layout = self.layout
-        body_obj = context.active_object
+        entry_obj = context.active_object
 
-        # ── Body 基本信息 ────────────────────────────────────────────────────
+        # ── Entry 基本信息 ────────────────────────────────────────────────────
         info_box = layout.box()
-        body_idx = body_obj.get("efx_index", "?")
+        body_idx = entry_obj.get("efx_index", "?")
         info_box.row().label(
-            text=T("backref.body_object") + f" {body_obj.name}  (index {body_idx})",
+            text=T("backref.entry_object") + f" {entry_obj.name}  (index {body_idx})",
             icon="OBJECT_DATA",
         )
 
-        rel = _scan_body_relations(body_obj)
+        rel = _scan_entry_relations(entry_obj)
         triggers     = rel["triggers"]
         triggered_by = rel["triggered_by"]
         externs      = rel["externs"]
         subselects   = rel["subselects"]
 
         if not (triggers or triggered_by or externs or subselects):
-            layout.label(text=T("bodyref.none"), icon="INFO")
+            layout.label(text=T("entryref.none"), icon="INFO")
             return
 
         # ── ⬇ 我触发谁 ────────────────────────────────────────────────────────
         if triggers:
             box = layout.box()
-            box.row().label(text=T("bodyref.triggers_header"), icon="FORWARD")
+            box.row().label(text=T("entryref.triggers_header"), icon="FORWARD")
             for t in triggers:
                 row = box.row(align=True)
                 row.label(text=f"{t['play_name']}  [{_trigger_label(t)}]", icon="PLAY")
@@ -664,7 +664,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
         # ── ⬆ 谁触发我 ────────────────────────────────────────────────────────
         if triggered_by:
             box = layout.box()
-            box.row().label(text=T("bodyref.triggered_by_header"), icon="BACK")
+            box.row().label(text=T("entryref.triggered_by_header"), icon="BACK")
             for t in triggered_by:
                 row = box.row(align=True)
                 row.label(
@@ -676,7 +676,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
         # ── ⬔ 我引用的 Extern ────────────────────────────────────────────────
         if externs:
             box = layout.box()
-            box.row().label(text=T("bodyref.externs_header") + f" ({len(externs)})", icon="LINKED")
+            box.row().label(text=T("entryref.externs_header") + f" ({len(externs)})", icon="LINKED")
             for e in externs:
                 row = box.row(align=True)
                 row.label(text=e["extern_name"], icon="FILE_BLEND")
@@ -685,7 +685,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
         # ── ⬓ 我所属的 Subselect ─────────────────────────────────────────────
         if subselects:
             box = layout.box()
-            box.row().label(text=T("bodyref.subselect_header") + f" ({len(subselects)})", icon="OUTLINER_OB_EMPTY")
+            box.row().label(text=T("entryref.subselect_header") + f" ({len(subselects)})", icon="OUTLINER_OB_EMPTY")
             for s in subselects:
                 row = box.row(align=True)
                 row.label(text=s["ss_name"], icon="MODIFIER")
@@ -697,7 +697,7 @@ class EFX_PT_body_backref(bpy.types.Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _table_members(ss_obj):
-    """返回 subselect 表的成员 body 对象列表（按 members 顺序，跳过悬空）。"""
+    """返回 subselect 表的成员 entry 对象列表（按 members 顺序，跳过悬空）。"""
     out = []
     try:
         props = ss_obj.efx_subselect
@@ -710,7 +710,7 @@ def _table_members(ss_obj):
 
 
 def _eof_direct_bodies(root_obj):
-    """返回 root 的 EOF（直接触发）列表里的有效 body 对象（按顺序）。"""
+    """返回 root 的 EOF（直接触发）列表里的有效 entry 对象（按顺序）。"""
     out = []
     try:
         props = root_obj.efx_eof_list
@@ -726,8 +726,8 @@ class EFX_PT_root_states(bpy.types.Panel):
     """
     EFX_ROOT 的 subselect 状态总览（VIEW_3D N 面板，选中 EFX_ROOT 时显示）。
 
-    把每张 subselect 表呈现为一个「状态/变体」，列出其成员 body（带跳转）；
-    再单列「恒触发」集合 = 在 EOF 直接触发列表里、却不在任何 subselect 表里的 body。
+    把每张 subselect 表呈现为一个「状态/变体」，列出其成员 entry（带跳转）；
+    再单列「恒触发」集合 = 在 EOF 直接触发列表里、却不在任何 subselect 表里的 entry。
 
     纯只读、纯导航。文案用"推测模型"口吻——运行时由哪个状态被选中触发取决于
     EFX 之外的游戏逻辑（见 memory: subselect-is-active-set-mask）。
@@ -752,7 +752,7 @@ class EFX_PT_root_states(bpy.types.Panel):
         ss_objs = tree.get("EFX_SUBSELECT", [])
 
         # ── 状态（subselect 表）─────────────────────────────────────────────────
-        gated_bodies = set()   # 出现在任意表里的 body，用于算「恒触发」
+        gated_bodies = set()   # 出现在任意表里的 entry，用于算「恒触发」
         if not ss_objs:
             layout.label(text=T("rootstate.no_states"), icon="INFO")
         else:
@@ -796,14 +796,14 @@ class EFX_PT_root_states(bpy.types.Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 # 算子：可在 panels.register() 之前单独注册（无依赖）。
-# 面板：bl_parent_id="EFX_PT_main"，必须在 EFX_PT_main 之后注册（由 panels.py 统一处理）。
+# 面板：bl_parent_id="EFX_PT_entry"，必须在 EFX_PT_entry 之后注册（由 panels.py 统一处理）。
 
 _CLASSES_CORE = (
     EFX_OT_select_object,
 )
 
-# EFX_PT_extern_backref 和 EFX_PT_body_backref 导出给 panels.py，
-# 由 panels.register() 在 EFX_PT_main 之后注册。
+# EFX_PT_extern_backref 和 EFX_PT_entry_backref 导出给 panels.py，
+# 由 panels.register() 在 EFX_PT_entry 之后注册。
 
 
 def register():

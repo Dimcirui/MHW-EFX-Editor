@@ -11,20 +11,20 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
 ------
 (1) 悬空指针（删除被引用对象后产生）—— **WARN**（category="dangling"），导出端安全跳过、不挡导出：
     - Subselect 成员 member.body_ptr is None
-    - Play targets target.body_ptr is None
+    - Action targets target.body_ptr is None
     - ExternReference extern_ref_ptr is None（pointerized && !none）
     - PtLife relation_play_ptr is None（pointerized；relationIndex=actionID，无 -1 哨兵字段）
     - PtCollision ie_play_ptr is None（pointerized && !ie_none）
-    悬空指针不再 ERROR：导出端各 export_* 早已对 None 指针安全跳过/回退（subselect/play/eof
+    悬空指针不再 ERROR：导出端各 export_* 早已对 None 指针安全跳过/回退（subselect/action/eof
     直接 skip，extern/ptlife/ptcollision 原样保留旧字节）。降级为 WARN + 导出时报告即可，
     不应仅因引用悬空就阻断导出。
 (1b) EOF 越界 raw 值（category="eof_raw"）—— WARN，仅当 eof 列表被编辑过（root["eof_dirty"]）时报告：
-    eof 条目整数落在 [0, body 数) 之外即存为 raw（is_ptr=False）。这些是原始文件里的
-    "空槽哨兵"（常见 33/99/==count_body），不指向真实 body。编辑激活集/增删 body 后它们成为
-    指向错误或不存在 body 的陈旧索引 → 破坏直接触发集 → 特效不生效。导出端在 eof_dirty 时丢弃。
+    eof 条目整数落在 [0, entry 数) 之外即存为 raw（is_ptr=False）。这些是原始文件里的
+    "空槽哨兵"（常见 33/99/==count_body），不指向真实 entry。编辑激活集/增删 entry 后它们成为
+    指向错误或不存在 entry 的陈旧索引 → 破坏直接触发集 → 特效不生效。导出端在 eof_dirty 时丢弃。
 (2) efx_index 重复（同级组内）—— ERROR
-(3) 死块 EXTERNREFERENCE（count_extern==0 却仍 pointerized）—— WARN（合法历史模式）
-(5k) standard/extended body 零块 —— WARN（提示性；io_tree.py §4a0 已自动从导出剔除这类
+(3) 死属性 EXTERNREFERENCE（count_extern==0 却仍 pointerized）—— WARN（合法历史模式）
+(5k) standard/extended entry 零属性 —— WARN（提示性；io_tree.py §4a0 已自动从导出剔除这类
      残留空壳，这里只是提醒用户手动清理场景里的对象；见该检查项内联注释）
 
 约束（参照 CLAUDE.md）：
@@ -56,15 +56,15 @@ def _build_trigger_graph(bodies, plays):
     """构建召唤触发有向图，返回 {obj: set(obj)} 邻接表。
 
     边方向 = 召唤/触发方向：
-      Play  → body ：play.efx_play.entries[].targets[].body_ptr （play 生成 body）
-      body  → Play ：PTLIFE.relation_play_ptr / PTCOLLISION.ie_play_ptr （body 触发 play）
+      Action → entry ：play.efx_play.entries[].targets[].body_ptr （action 生成 entry）
+      entry  → Action ：PTLIFE.relation_play_ptr / PTCOLLISION.ie_play_ptr （entry 触发 action）
 
     只保留终点也在本 root 节点集内的边（指针经 poll 已限定同文件，外指针忽略）。
     """
     node_set = set(bodies) | set(plays)
     adj = {n: set() for n in node_set}
 
-    # Play → body
+    # Action → entry
     for play in plays:
         pp = getattr(play, "efx_play", None)
         if pp is None:
@@ -86,9 +86,9 @@ def _build_trigger_graph(bodies, plays):
                 if tgt in node_set:
                     adj[play].add(tgt)
 
-    # body → Play
+    # entry → Action
     for body in bodies:
-        for blk in _children_by_type(body, "EFX_BLOCK"):
+        for blk in _children_by_type(body, "EFX_ATTRIBUTE"):
             pl = getattr(blk, "efx_ptlife_ref", None)
             if pl is not None:
                 try:
@@ -143,8 +143,8 @@ def _find_cycles(adj):
     return [list(c) for c in cycles]
 
 
-def _is_extern_ref_block(obj) -> bool:
-    """判断块对象是否是已指针化的 EXTERNREFERENCE（有 efx_extern_ref 且 pointerized）。"""
+def _is_extern_ref_attribute(obj) -> bool:
+    """判断属性对象是否是已指针化的 EXTERNREFERENCE（有 efx_extern_ref 且 pointerized）。"""
     props = getattr(obj, "efx_extern_ref", None)
     if props is None:
         return False
@@ -177,8 +177,8 @@ def validate_efx_tree(root_obj) -> list:
         return problems
 
     # 段对象集合
-    bodies     = _children_by_type(root_obj, "EFX_BODY")
-    plays      = _children_by_type(root_obj, "EFX_PLAY")
+    bodies     = _children_by_type(root_obj, "EFX_ENTRY")
+    plays      = _children_by_type(root_obj, "EFX_ACTION")
     externs    = _children_by_type(root_obj, "EFX_EXTERN")
     subselects = _children_by_type(root_obj, "EFX_SUBSELECT")
     count_extern = len(externs)
@@ -206,7 +206,7 @@ def validate_efx_tree(root_obj) -> list:
             except AttributeError:
                 continue
 
-    # Play targets（结构：efx_play.entries[].targets[].body_ptr）
+    # Action targets（结构：efx_play.entries[].targets[].body_ptr）
     for play in plays:
         play_props = getattr(play, "efx_play", None)
         if play_props is None:
@@ -227,7 +227,7 @@ def validate_efx_tree(root_obj) -> list:
                             "level": "WARN",
                             "category": "dangling",
                             "msg": (
-                                f"Play '{play.name}' entry {ei} target {ti} "
+                                f"Action '{play.name}' entry {ei} target {ti} "
                                 f"has a dangling pointer (skipped on export)"
                             ),
                             "obj": play.name,
@@ -235,9 +235,9 @@ def validate_efx_tree(root_obj) -> list:
                 except AttributeError:
                     continue
 
-    # 遍历全部块（EFX_BLOCK）做引用检查
+    # 遍历全部属性（EFX_ATTRIBUTE）做引用检查
     for body in bodies:
-        for blk in _children_by_type(body, "EFX_BLOCK"):
+        for blk in _children_by_type(body, "EFX_ATTRIBUTE"):
             # ExternReference 悬空
             er = getattr(blk, "efx_extern_ref", None)
             if er is not None:
@@ -249,18 +249,18 @@ def validate_efx_tree(root_obj) -> list:
                             "level": "WARN",
                             "category": "dangling",
                             "msg": (
-                                f"ExternReference block '{blk.name}' has a dangling pointer"
+                                f"ExternReference attribute '{blk.name}' has a dangling pointer"
                                 " (the referenced Extern was deleted; original index bytes kept on export)"
                             ),
                             "obj": blk.name,
                         })
-                    # (3) 死块 WARN：count_extern==0 却仍 pointerized
+                    # (3) 死属性 WARN：count_extern==0 却仍 pointerized
                     if er.extern_ref_pointerized and count_extern == 0:
                         problems.append({
                             "level": "WARN",
                             "msg": (
-                                f"ExternReference block '{blk.name}' is still pointerized, "
-                                "but the file has no Extern segment (count_extern=0, legal legacy dead block)"
+                                f"ExternReference attribute '{blk.name}' is still pointerized, "
+                                "but the file has no Extern segment (count_extern=0, legal legacy dead attribute)"
                             ),
                             "obj": blk.name,
                         })
@@ -276,8 +276,8 @@ def validate_efx_tree(root_obj) -> list:
                             "level": "WARN",
                             "category": "dangling",
                             "msg": (
-                                f"PtLife block '{blk.name}' relation has a dangling pointer"
-                                " (the referenced Action/Play was deleted; original index bytes kept on export)"
+                                f"PtLife attribute '{blk.name}' relation has a dangling pointer"
+                                " (the referenced Action was deleted; original index bytes kept on export)"
                             ),
                             "obj": blk.name,
                         })
@@ -295,15 +295,15 @@ def validate_efx_tree(root_obj) -> list:
                             "level": "WARN",
                             "category": "dangling",
                             "msg": (
-                                f"PtCollision block '{blk.name}' ie has a dangling pointer"
-                                " (the referenced Play was deleted; original index bytes kept on export)"
+                                f"PtCollision attribute '{blk.name}' ie has a dangling pointer"
+                                " (the referenced Action was deleted; original index bytes kept on export)"
                             ),
                             "obj": blk.name,
                         })
                 except AttributeError:
                     pass
 
-    # eof_ints 列表：悬空 body 指针不报（导出端跳过、count_eof 重算）。
+    # eof_ints 列表：悬空 entry 指针不报（导出端跳过、count_eof 重算）。
     # 但若 eof 列表被编辑过（eof_dirty），报告将被丢弃的越界 raw 值（空槽哨兵），
     # 让用户知道哪些陈旧索引被清理 —— 见 (1b) 说明。
     try:
@@ -351,17 +351,17 @@ def validate_efx_tree(root_obj) -> list:
                 "obj": "",
             })
 
-    _check_dup(bodies, "Body")
-    _check_dup(plays, "Play")
+    _check_dup(bodies, "Entry")
+    _check_dup(plays, "Action")
     _check_dup(externs, "Extern")
     _check_dup(subselects, "Subselect")
-    # 每个 body 内的块各自一组
+    # 每个 entry 内的属性各自一组
     for body in bodies:
-        blocks = _children_by_type(body, "EFX_BLOCK")
-        _check_dup(blocks, f"Body '{body.name}' blocks")
+        blocks = _children_by_type(body, "EFX_ATTRIBUTE")
+        _check_dup(blocks, f"Entry '{body.name}' attributes")
 
-    # ── (4) 召唤回绕（body↔play 触发图成环）—— WARN ────────────────────────────
-    # body 的 PTLIFE/PTCOLLISION 触发 Play，Play 的 targets 又指回（祖先）body，
+    # ── (4) 召唤回绕（entry↔action 触发图成环）—— WARN ────────────────────────────
+    # entry 的 PTLIFE/PTCOLLISION 触发 Action，Action 的 targets 又指回（祖先）entry，
     # 形成递归召唤 → 每轮按扇出倍增（如 12→144→1728…）直接卡死游戏。
     # 仅警告、不挡导出：保留刻意 loop 的自由，由用户判断该环是否有界。
     try:
@@ -370,7 +370,7 @@ def validate_efx_tree(root_obj) -> list:
             problems.append({
                 "level": "WARN",
                 "msg": (
-                    "Spawn cycle detected (body↔Play recursive summoning, may cause "
+                    "Spawn cycle detected (entry↔action recursive summoning, may cause "
                     "exponential particle explosion / game freeze): "
                     + " → ".join(cyc + [cyc[0]])
                 ),
@@ -380,7 +380,7 @@ def validate_efx_tree(root_obj) -> list:
         # 环检测失败不应阻断其它校验/导出
         pass
 
-    # ── (5) Block-level structural rules ──────────────────────────────────────
+    # ── (5) Attribute-level structural rules ──────────────────────────────────────
     # 依赖 efx_format.hashes；导入失败则跳过整节（不影响其他检查）。
     try:
         from ..efx_format.hashes import (
@@ -403,14 +403,14 @@ def validate_efx_tree(root_obj) -> list:
             _LIGHTNING, _DUMMY, _RIBBONBLADE, _SRBN, _TUBE, _BB2D,
         })
         _SPRITE_RENDERERS = frozenset({_BB3D, _RIBBON, _PLANE})
-        _block_rules_ok = True
+        _attribute_rules_ok = True
     except ImportError:
-        _block_rules_ok = False
+        _attribute_rules_ok = False
 
-    if _block_rules_ok:
+    if _attribute_rules_ok:
         for body in bodies:
             try:
-                blk_objs = _children_by_type(body, "EFX_BLOCK")
+                blk_objs = _children_by_type(body, "EFX_ATTRIBUTE")
                 hashes = []
                 for blk in blk_objs:
                     raw = blk.get("type_hash")
@@ -424,15 +424,15 @@ def validate_efx_tree(root_obj) -> list:
                     hash_count[h] = hash_count.get(h, 0) + 1
                 hash_set = set(hashes)
 
-                # (5a) 重复块类型 — ERROR
+                # (5a) 重复属性类型 — ERROR
                 for h, cnt in hash_count.items():
                     if cnt > 1:
                         name = _H2N.get(h, f"0x{h:08X}")
                         problems.append({
                             "level": "ERROR",
                             "msg": (
-                                f"Body '{body.name}' has {cnt}× {name} blocks "
-                                "(duplicate block types are not allowed)"
+                                f"Entry '{body.name}' has {cnt}× {name} attributes "
+                                "(duplicate attribute types are not allowed)"
                             ),
                             "obj": body.name,
                         })
@@ -442,7 +442,7 @@ def validate_efx_tree(root_obj) -> list:
                     problems.append({
                         "level": "ERROR",
                         "msg": (
-                            f"Body '{body.name}' has both RGBFIRE and RGBWATER "
+                            f"Entry '{body.name}' has both RGBFIRE and RGBWATER "
                             "(mutually exclusive global color effects)"
                         ),
                         "obj": body.name,
@@ -453,14 +453,14 @@ def validate_efx_tree(root_obj) -> list:
                     problems.append({
                         "level": "ERROR",
                         "msg": (
-                            f"Body '{body.name}' has both PLANE and FAKEPLANE "
+                            f"Entry '{body.name}' has both PLANE and FAKEPLANE "
                             "(mutually exclusive renderer types)"
                         ),
                         "obj": body.name,
                     })
 
-                # (5d) PTBEHAVIOR 与其他块共存 — 全部 WARN
-                # 实测大量第三方特效让 PTBEHAVIOR 与任意块（含渲染体）共存且不崩溃，
+                # (5d) PTBEHAVIOR 与其他属性共存 — 全部 WARN
+                # 实测大量第三方特效让 PTBEHAVIOR 与任意属性（含渲染体）共存且不崩溃，
                 # 故不再区分 hard/soft，统一降级为 WARN（仅提示，不挡导出）。
                 if _PTBEHAVIOR in hash_set and len(hash_set) > 1:
                     conflicts = hash_set - {_PTBEHAVIOR}
@@ -470,8 +470,8 @@ def validate_efx_tree(root_obj) -> list:
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Body '{body.name}' has PTBEHAVIOR alongside "
-                            f"other blocks ({names}) — PTBEHAVIOR is usually an "
+                            f"Entry '{body.name}' has PTBEHAVIOR alongside "
+                            f"other attributes ({names}) — PTBEHAVIOR is usually an "
                             "isolated system, but coexistence is observed not to crash; "
                             "verify in-game behavior"
                         ),
@@ -479,16 +479,16 @@ def validate_efx_tree(root_obj) -> list:
                     })
 
                 # (5e) 多个渲染体 — WARN
-                renderers_in_body = hash_set & _RENDERERS
-                if len(renderers_in_body) > 1:
+                renderers_in_entry = hash_set & _RENDERERS
+                if len(renderers_in_entry) > 1:
                     names = "/".join(
-                        _H2N.get(h, f"0x{h:08X}") for h in renderers_in_body
+                        _H2N.get(h, f"0x{h:08X}") for h in renderers_in_entry
                     )
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Body '{body.name}' has multiple renderers ({names}) — "
-                            "only one renderer per body is expected"
+                            f"Entry '{body.name}' has multiple renderers ({names}) — "
+                            "only one renderer per entry is expected"
                         ),
                         "obj": body.name,
                     })
@@ -498,7 +498,7 @@ def validate_efx_tree(root_obj) -> list:
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Body '{body.name}' has UVSEQUENCE without BILLBOARD3D/RIBBON/PLANE "
+                            f"Entry '{body.name}' has UVSEQUENCE without BILLBOARD3D/RIBBON/PLANE "
                             "(UVSEQUENCE is a sprite face UV animation system)"
                         ),
                         "obj": body.name,
@@ -509,7 +509,7 @@ def validate_efx_tree(root_obj) -> list:
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Body '{body.name}' has UVCONTROL without MESH "
+                            f"Entry '{body.name}' has UVCONTROL without MESH "
                             "(UVCONTROL is a MESH-exclusive UV scroller)"
                         ),
                         "obj": body.name,
@@ -520,8 +520,8 @@ def validate_efx_tree(root_obj) -> list:
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Body '{body.name}' has MATERIAL without MESH "
-                            "(MATERIAL overrides mrl3 material properties on a MESH body)"
+                            f"Entry '{body.name}' has MATERIAL without MESH "
+                            "(MATERIAL overrides mrl3 material properties on a MESH entry)"
                         ),
                         "obj": body.name,
                     })
@@ -532,27 +532,27 @@ def validate_efx_tree(root_obj) -> list:
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Body '{body.name}' has ALPHACORRECTION without SHADERSETTINGS "
+                            f"Entry '{body.name}' has ALPHACORRECTION without SHADERSETTINGS "
                             "(ALPHACORRECTION requires SHADERSETTINGS as its shader context; "
                             "all 738 sample files follow this rule)"
                         ),
                         "obj": body.name,
                     })
 
-                # (5k) standard/extended body 一个块都没有 — WARN（提示性，不挡导出）
-                # 正常特效体至少有 1 个块；0 块的 standard/extended body 几乎总是原生
-                # 「Delete Hierarchy」的残留空壳——2026-07-01 实测坐实：body 这个 Empty
+                # (5k) standard/extended entry 一个属性都没有 — WARN（提示性，不挡导出）
+                # 正常特效体至少有 1 个属性；0 属性的 standard/extended entry 几乎总是原生
+                # 「Delete Hierarchy」的残留空壳——2026-07-01 实测坐实：entry 这个 Empty
                 # 对象本身没被真正删除（残留在 bpy.data.objects，默认 Outliner「View
                 # Layer」视图不可见、Purge Unused Data 也清不掉，因为它仍链接在集合里、
-                # 不算孤儿），只有它的 EFX_BLOCK 子对象被删掉了。io_tree.py §4a0 已经会
-                # 在导出时自动把这类零块 body 当不存在（不写进文件），这里只是提示用户
+                # 不算孤儿），只有它的 EFX_ATTRIBUTE 子对象被删掉了。io_tree.py §4a0 已经会
+                # 在导出时自动把这类零属性 entry 当不存在（不写进文件），这里只是提示用户
                 # 场景里还留着这个空壳对象，建议手动清理（对导出结果无影响）。root 类型
-                # body 本来就没有块，不算在内。
-                if str(body.get("body_kind", "")) in ("standard", "extended") and not blk_objs:
+                # entry 本来就没有属性，不算在内。
+                if str(body.get("entry_kind", "")) in ("standard", "extended") and not blk_objs:
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Body '{body.name}' has zero blocks (leftover from Blender's "
+                            f"Entry '{body.name}' has zero attributes (leftover from Blender's "
                             "native \"Delete Hierarchy\" not fully removing it — check the "
                             "Outliner's \"Blender File\" view to confirm). It will be "
                             "automatically excluded from the export, but you may want to "
@@ -573,15 +573,15 @@ def validate_efx_tree(root_obj) -> list:
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Body '{body.name}' has {renderer_names} but no SHADERSETTINGS — "
+                            f"Entry '{body.name}' has {renderer_names} but no SHADERSETTINGS — "
                             "textures and transparency will not work in-game "
-                            "(88.3% of official rendering bodies include SHADERSETTINGS)"
+                            "(88.3% of official rendering entries include SHADERSETTINGS)"
                         ),
                         "obj": body.name,
                     })
 
             except Exception:
-                pass  # 单个 body 检查失败不影响整体
+                pass  # 单个 entry 检查失败不影响整体
 
     return problems
 
@@ -591,11 +591,11 @@ def validate_efx_tree(root_obj) -> list:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_validate(bpy.types.Operator):
-    """导出前校验：扫描悬空指针、重复索引、死块，弹窗报告"""
+    """导出前校验：扫描悬空指针、重复索引、死属性，弹窗报告"""
 
     bl_idname      = "efx.validate"
     bl_label       = "Pre-export Validation"
-    bl_description = "Scan the EFX object tree for dangling pointers / duplicate index / dead blocks and report issues in a popup"
+    bl_description = "Scan the EFX object tree for dangling pointers / duplicate index / dead attributes and report issues in a popup"
     bl_options     = {"REGISTER"}
 
     @classmethod
