@@ -395,9 +395,11 @@ PARENTOPTIONS_SCHEMA = [
     ('scale_tracking', ('XYZ', 1)),
     ('spawnTrack', 'i'),
     ('unkn1', 'i'),
-    ('spawnLock', 'i'),
-    ('bleedPos', 'i'),
-    ('bone_lim', 'i'),
+    # 原 spawnLock/bleedPos：实为一对 fixed+jitter，作用是"跨生成追踪启用后，达到该帧数即
+    # 停止追踪"（0=始终追踪），并非各自独立的"锁定位置/渗出位置"。
+    ('lockToPositionFrame', 'i'),
+    ('lockToPositionFrameJitter', 'i'),
+    ('bone_lim', 'i'),  # 绑定骨骼的序号
 ]
 assert _schema_size(PARENTOPTIONS_SCHEMA) == 60, \
     f"PARENTOPTIONS_SCHEMA size mismatch: {_schema_size(PARENTOPTIONS_SCHEMA)}"

@@ -144,19 +144,22 @@ FIELD_ANNOTATIONS = {
     },
     ("PARENTOPTIONS", "spawnTrack"): {
         "EN": "Track Across Spawns",
-        "ZH": "跨生成追踪",
+        "ZH": "设为 1 时，追踪绑定位置",
     },
-    ("PARENTOPTIONS", "spawnLock"): {
-        "EN": "Lock To Position (Frames)",
-        "ZH": "锁定到位置（帧数）",
+    ("PARENTOPTIONS", "lockToPositionFrame"): {
+        "EN": "Formerly spawnLock. Only meaningful when spawnTrack is enabled — after this "
+              "many frames, tracking stops and the effect locks to its current position. "
+              "0 = always keep tracking.",
+        "ZH": "原名 spawnLock。仅在 spawnTrack 启用时生效——达到该帧数后停止追踪，"
+              "特效锁定在当前位置。0 = 始终追踪。",
     },
-    ("PARENTOPTIONS", "bleedPos"): {
-        "EN": "Progressively Lock Elements to Position (Frames)",
-        "ZH": "逐步将元素锁定到位置（帧数）",
+    ("PARENTOPTIONS", "lockToPositionFrameJitter"): {
+        "EN": "Formerly bleedPos. Jitter paired with lockToPositionFrame.",
+        "ZH": "原名 bleedPos。与 lockToPositionFrame 配对的抖动量。",
     },
     ("PARENTOPTIONS", "bone_lim"): {
-        "EN": "Bone Limitation",
-        "ZH": "骨骼限制",
+        "EN": "Bone Limitation. The index/serial number of the bone this is bound to.",
+        "ZH": "骨骼限制。绑定到的骨骼的序号。",
     },
     ("PARENTOPTIONS", "unkn1"): {
         "EN": "Unknown. Observed: {0:20433, 1:9199}",
