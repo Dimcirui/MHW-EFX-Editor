@@ -133,38 +133,49 @@ def _presets_root() -> str:
     return new_root
 
 
+def _is_stock_duplicate(old_path: str, new_path: str) -> bool:
+    """
+    old_path（__blocks__ 里的旧文件）是否与 new_path（__attributes__ 里同分类/同文件名的
+    现行文件）内容完全一致（type_hash + data_bytes 均相同）。
+
+    只比这两个字段——efx_preset_kind/display_name 允许因重命名而不同（如 SHOVEL 改了译名），
+    不影响"是否为随插件下发的同一份内置预设"的判定。任一读取失败、或字段不一致，
+    都视为不是重复（保守：宁可留着，不误删用户内容）。
+    """
+    if not os.path.isfile(new_path):
+        return False
+    try:
+        with open(old_path, "r", encoding="utf-8") as f:
+            old = json.load(f)
+        with open(new_path, "r", encoding="utf-8") as f:
+            new = json.load(f)
+    except Exception:
+        return False
+    return (isinstance(old, dict) and isinstance(new, dict)
+            and old.get("type_hash") == new.get("type_hash")
+            and old.get("data_bytes") == new.get("data_bytes"))
+
+
 def _migrate_presets_once(new_root: str):
     """
     把包内 presets/ 目录的 JSON 文件同步到用户目录：
     - 跳过已存在的同名文件（用户自定义预设不覆盖）
-    - 清理用户目录中已不属于当前分类体系的旧 slug 子目录
-    - 删除 3.0 重命名前遗留的 __blocks__ 旧目录：这批全是随插件下发的现成预设，
-      __attributes__ 已有等价替代，直接清掉无损失。
-    - __bodies__ **不删**：这批基本是用户自己攒的自定义 entry 预设（不像 __blocks__
-      主要是官方现成属性预设），直接删等于丢用户数据。保留只读兼容
-      （list_entry_presets() 一并扫描 + add_entry_from_preset_dict() 自动
-      转换旧 schema key），新增/保存的预设仍统一写入 __entries__。
+    - 精准清理 3.0 重命名前遗留的 __blocks__ 旧目录：只删除与 __attributes__ 里
+      同分类/同文件名的现行文件内容完全一致的条目（即确认是随插件下发、现已有
+      __attributes__ 等价替代的内置预设），不区分就整个目录删掉的做法删过一次
+      用户数据，故改为逐文件比对，用户自定义/编辑过的文件不受影响地保留。
+      （类别本身发生变化的条目，如 SHOVEL 从 char_effect 挪到了 lifecycle，因两侧
+      路径不对应会被判定为"不是重复"而保留，属于无害的孤儿文件，可自行清理。）
+    - __bodies__ 不做删除/清理：这批基本是用户自己攒的自定义 entry 预设，已接
+      只读兼容读取（list_entry_presets() 一并扫描 + add_entry_from_preset_dict()
+      自动转换旧 schema key），无需清理。
     """
     import shutil
-    from ..efx_format.categories import ATTRIBUTE_CATEGORY_LABELS
 
     here = os.path.dirname(os.path.abspath(__file__))
     old_root = os.path.join(os.path.dirname(here), "presets")
     if not os.path.isdir(old_root):
         return
-
-    # 3.0 重命名：__blocks__ 是旧目录名，且全是现成预设，直接清除（不兼容旧 schema key）
-    stale_path = os.path.join(new_root, "__blocks__")
-    if os.path.isdir(stale_path):
-        shutil.rmtree(stale_path, ignore_errors=True)
-
-    # 清理用户目录里不再属于当前分类体系的旧 __attributes__ 子目录
-    attrs_user = os.path.join(new_root, "__attributes__")
-    if os.path.isdir(attrs_user):
-        for entry in os.listdir(attrs_user):
-            entry_path = os.path.join(attrs_user, entry)
-            if os.path.isdir(entry_path) and entry not in ATTRIBUTE_CATEGORY_LABELS:
-                shutil.rmtree(entry_path, ignore_errors=True)
 
     # 从包内预设目录复制新文件（跳过已有同名，保留用户自定义）
     for dirpath, _dirs, files in os.walk(old_root):
@@ -177,6 +188,29 @@ def _migrate_presets_once(new_root: str):
             if not os.path.exists(dst):
                 os.makedirs(dest_dir, exist_ok=True)
                 shutil.copy2(os.path.join(dirpath, fname), dst)
+
+    # 精准清理旧 __blocks__：仅删掉确认与 __attributes__ 里现行文件内容一致的条目
+    blocks_dir = os.path.join(new_root, "__blocks__")
+    attrs_dir = os.path.join(new_root, "__attributes__")
+    if os.path.isdir(blocks_dir):
+        for dirpath, _dirs, files in os.walk(blocks_dir):
+            for fname in files:
+                if not fname.endswith(".json"):
+                    continue
+                old_path = os.path.join(dirpath, fname)
+                rel = os.path.relpath(old_path, blocks_dir)
+                new_path = os.path.join(attrs_dir, rel)
+                if _is_stock_duplicate(old_path, new_path):
+                    try:
+                        os.remove(old_path)
+                    except OSError:
+                        pass
+        # 清掉迁移后变空的分类子目录/根目录（非空则 rmdir 失败，静默跳过——安全，不递归强删）
+        for dirpath, dirs, files in os.walk(blocks_dir, topdown=False):
+            try:
+                os.rmdir(dirpath)
+            except OSError:
+                pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
