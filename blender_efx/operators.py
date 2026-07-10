@@ -25,6 +25,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from bpy.props import (
     StringProperty, CollectionProperty, EnumProperty, IntProperty, BoolProperty,
+    PointerProperty,
 )
 
 from . import io_tree
@@ -257,16 +258,12 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
 # 会话级记忆（模块全局，跨多次导出调用持续，Blender 重启清空）：
 #   _last_export_name  用户上次手动改过的导出文件名（不含扩展名）；None = 跟随目标集合名自动生成。
 #   _last_export_dir    用户上次导出用的目录，下次默认沿用；None = 回退到 .blend 所在目录。
+#   _last_export_target_seen  draw() 里检测"用户是否手动改了目标集合下拉"的基准值
+#     （WindowManager 属性的 update 回调收到的是 wm 而非算子实例，摸不到 self.filepath，
+#     故改在 draw() 里逐帧比对；invoke() 设默认值后同步这个值，避免首次绘制误判为用户改动）。
 _last_export_name = None
 _last_export_dir = None
-# invoke() 内部给 target_efx 赋默认值时临时置真，防止其 update 回调误判为"用户手动切换"而清空 _last_export_name。
-_suppress_target_efx_reset = False
-
-# EnumProperty 动态回调缓存：Blender 要求返回的 items 在被使用期间保持存活，
-# 局部 list 每次调用都会被回收导致下拉乱码/崩溃（GC 陷阱，见 add_ops.py 顶部同类注释）。
-# 用模块全局重新赋值缓存，保证字符串对象在下次刷新前一直存活。
-_TARGET_EFX_NONE = "__NONE__"  # 非空占位 identifier；Blender EnumProperty item identifier 不建议用空字符串
-_target_efx_items_cache = [(_TARGET_EFX_NONE, "(none — pick a target)", "")]
+_last_export_target_seen = None
 
 
 def _efx_root_in_collection(col):
@@ -279,33 +276,20 @@ def _efx_root_in_collection(col):
     return None
 
 
-def _get_target_efx_items(self, context):
-    """
-    target_efx 下拉的动态 items：只列出直属含 EFX_ROOT 对象的集合（即某个已导入/新建的 EFX 文件）。
-    用集合名本身作为 enum identifier（Blender 内集合名恒唯一，导出时按名字反查 bpy.data.collections）。
-
-    注：操作符属性不支持 PointerProperty 指向 datablock 类型（Collection/Object 等）——
-    这是 Blender RNA 的限制（"could not register because this type doesn't support
-    data-block properties"），故用 EnumProperty + 名字反查代替直接的 Collection 指针。
-    """
-    global _target_efx_items_cache
-    items = [(_TARGET_EFX_NONE, "(none — pick a target)", "")]
-    for col in bpy.data.collections:
-        if _efx_root_in_collection(col) is not None:
-            items.append((col.name, col.name, ""))
-    _target_efx_items_cache = items
-    return _target_efx_items_cache
+def _export_target_poll(self, col):
+    """WindowManager.efx_export_target 的 poll：只允许选含 EFX_ROOT 对象的 EFX 文件集合。"""
+    return _efx_root_in_collection(col) is not None
 
 
-def _default_export_basename(collection_name: str) -> str:
+def _default_export_basename(collection) -> str:
     """
     按集合名生成默认导出文件名（不含扩展名）：
       去掉 Blender 因重名追加的 ".001" 等后缀，再去掉集合名里已带的 ".efx" 后缀。
-    collection_name 为空/占位 sentinel（未选定目标）时返回 "untitled"。
+    collection 为 None（未选定目标）时返回 "untitled"。
     """
-    if not collection_name or collection_name == _TARGET_EFX_NONE:
+    if collection is None:
         return "untitled"
-    name = re.sub(r'\.\d{3}$', '', collection_name)
+    name = re.sub(r'\.\d{3}$', '', collection.name)
     if name.lower().endswith(".efx"):
         name = name[:-4]
     return name or "untitled"
@@ -313,33 +297,22 @@ def _default_export_basename(collection_name: str) -> str:
 
 def _resolve_default_export_collection(context):
     """
-    导出目标集合的默认值解析，返回集合名字符串（用于填充 target_efx enum）：
+    导出目标集合的默认值解析：
       1. Scene.efx_active_efx（N 面板 Active EFX 选择器）已指向合法 EFX 集合 → 用它。
       2. 否则回退：当前活动对象所属的 EFX 顶层集合（_find_efx_root 向上查找 EFX_ROOT 再取其集合）。
-      3. 都没有 → _TARGET_EFX_NONE（留给用户在导出弹窗里自己选）。
+      3. 都没有 → None（留给用户在导出弹窗里自己选）。
     """
     scn = getattr(context, "scene", None)
     active_col = getattr(scn, "efx_active_efx", None) if scn is not None else None
     if _efx_root_in_collection(active_col) is not None:
-        return active_col.name
+        return active_col
 
     root = _find_efx_root(context)
     if root is not None:
         cols = root.users_collection
         if cols:
-            return cols[0].name
-    return _TARGET_EFX_NONE
-
-
-def _on_export_target_efx_update(self, context):
-    """用户在导出弹窗里手动切换 EFX Collection 下拉 → 文件名刷新为该集合的默认名（放弃之前的自定义名）。"""
-    global _last_export_name
-    if _suppress_target_efx_reset:
-        return
-    _last_export_name = None
-    base = _default_export_basename(self.target_efx)
-    directory = os.path.dirname(self.filepath) if self.filepath else (_last_export_dir or "")
-    self.filepath = os.path.join(directory, base + ".efx") if directory else base + ".efx"
+            return cols[0]
+    return None
 
 
 class EFX_OT_export(bpy.types.Operator, ExportHelper):
@@ -356,18 +329,6 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         default="*.efx",
         options={"HIDDEN"},
         maxlen=255,
-    )
-
-    # 导出目标 EFX 集合：默认走 Active EFX / 活动对象回退（见 _resolve_default_export_collection）；
-    # 用户在此手动切换 → 文件名刷新为该集合的默认名（见 _on_export_target_efx_update）。
-    # 用 EnumProperty（存集合名字符串）而非 PointerProperty(type=Collection)——
-    # 算子属性不支持指向 datablock 类型的指针（Blender RNA 限制）。
-    target_efx: EnumProperty(
-        name=T("export.target_efx"),
-        description=T("export.target_efx_tip"),
-        items=_get_target_efx_items,
-        update=_on_export_target_efx_update,
-        options={"SKIP_SAVE"},
     )
 
     # 自动重算 filesize_double（doubleBuffer，header 偏移 68）。
@@ -389,22 +350,31 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
     )
 
     def draw(self, context):
+        global _last_export_name, _last_export_target_seen
         layout = self.layout
-        layout.prop(self, "target_efx")
+        wm = context.window_manager
+        layout.prop(wm, "efx_export_target", text=T("export.target_efx"))
+
+        # WindowManager 属性没法在 update 回调里摸到这个算子实例（收到的是 wm 不是 self），
+        # 改在 draw() 里逐帧比对：目标集合变了就刷新文件名为该集合默认名（放弃自定义名）。
+        cur = wm.efx_export_target
+        if cur is not _last_export_target_seen:
+            _last_export_target_seen = cur
+            _last_export_name = None
+            base = _default_export_basename(cur)
+            directory = os.path.dirname(self.filepath) if self.filepath else (_last_export_dir or "")
+            self.filepath = os.path.join(directory, base + self.filename_ext) if directory else base + self.filename_ext
+
         layout.prop(self, "recompute_double_buffer")
         layout.prop(self, "auto_sort_attributes")
 
     def invoke(self, context, event):
-        global _suppress_target_efx_reset
-        default_name = _resolve_default_export_collection(context)
+        global _last_export_target_seen
+        default_col = _resolve_default_export_collection(context)
+        context.window_manager.efx_export_target = default_col
+        _last_export_target_seen = default_col   # 首次绘制时不算"用户手动改动"
 
-        _suppress_target_efx_reset = True
-        try:
-            self.target_efx = default_name
-        finally:
-            _suppress_target_efx_reset = False
-
-        base = _last_export_name or _default_export_basename(default_name)
+        base = _last_export_name or _default_export_basename(default_col)
         directory = _last_export_dir
         if not directory:
             blend_path = context.blend_data.filepath
@@ -416,11 +386,10 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
     def execute(self, context):
         # ── 1. 解析要导出的 EFX_ROOT ─────────────────────────────────────────
-        # 优先用导出弹窗里选的 target_efx；否则 N 面板的 Active EFX；否则活动对象所属的 EFX。
+        # 优先用导出弹窗里选的 efx_export_target；否则 N 面板的 Active EFX；否则活动对象所属的 EFX。
         # 这样不必非得选中 EFX 内某个对象——选好任一个即可导出。
         from .add_ops import get_active_efx_root
-        target_col = (bpy.data.collections.get(self.target_efx)
-                      if self.target_efx and self.target_efx != _TARGET_EFX_NONE else None)
+        target_col = context.window_manager.efx_export_target
         root = _efx_root_in_collection(target_col) or get_active_efx_root(context) or _find_efx_root(context)
         if root is None:
             self.report(
@@ -510,11 +479,11 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
         # ── 3.6 记住本次用的文件名/目录，供下次导出弹窗默认值使用 ─────────────────
         # 与自动默认名一致 → 视为"跟随目标集合"，下次继续自动生成；
-        # 不一致 → 视为用户自定义，下次沿用（除非用户在弹窗里手动重选 target_efx）。
+        # 不一致 → 视为用户自定义，下次沿用（除非用户在弹窗里手动重选 efx_export_target）。
         global _last_export_name, _last_export_dir
         _last_export_dir = os.path.dirname(self.filepath)
         used_base = os.path.splitext(os.path.basename(self.filepath))[0]
-        _last_export_name = None if used_base == _default_export_basename(self.target_efx) else used_base
+        _last_export_name = None if used_base == _default_export_basename(target_col) else used_base
 
         _skip_note = f", {len(skipped)} ref(s) skipped" if skipped else ""
         self.report(
@@ -1065,8 +1034,22 @@ def register():
     if _HAS_FILEHANDLER and EFX_FH_import is not None:
         bpy.utils.register_class(EFX_FH_import)
 
+    # 导出弹窗的目标 EFX 集合选择器：算子属性不支持 PointerProperty 指向 datablock
+    # 类型（Collection），故挂在 WindowManager 上（同 add_ops.py::efx_active_efx 的做法），
+    # 换来原生的 ID 搜索控件（图标+名字+清空按钮），而不是普通下拉框。
+    bpy.types.WindowManager.efx_export_target = PointerProperty(
+        name=T("export.target_efx"),
+        description=T("export.target_efx_tip"),
+        type=bpy.types.Collection,
+        poll=_export_target_poll,
+        options={"SKIP_SAVE"},
+    )
+
 
 def unregister():
+    if hasattr(bpy.types.WindowManager, "efx_export_target"):
+        del bpy.types.WindowManager.efx_export_target
+
     if _HAS_FILEHANDLER and EFX_FH_import is not None:
         try:
             bpy.utils.unregister_class(EFX_FH_import)
