@@ -163,6 +163,7 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 | PTCOLLISION | ✓ |
 | PTLIFE | ✓ |
 | PTTRIGGER | ✓ |
+| SHOVEL | ✓ |
 
 #### IX. Extern Declaration (almost certainly first in entry)
 
@@ -180,7 +181,6 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 | PARENTSNOW | ✓ |
 | OTOMOSNOW | ✓ |
 | PARENTMATERIAL | ✓ |
-| SHOVEL | ✓ |
 
 #### XI. Behavior System (standalone, mutually exclusive with normal flow)
 
@@ -212,12 +212,14 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 
 ## Credits
 
-This add-on builds on community documentation and format research. In particular:
+This plugin was developed based on community documentation and format research, as well as with the help of many people. In particular:
 
-- [UNOWEN-OwO/MHW-EFX-Template](https://github.com/UNOWEN-OwO/MHW-EFX-Template) — the source of most of
-  the 010 Editor format templates this add-on is built on.
-- [Monster Hunter World Modding Wiki](https://github.com/Ezekial711/MonsterHunterWorldModding/wiki) — the
-  community knowledge base.
+- [UNOWEN-OwO/MHW-EFX-Template](https://github.com/UNOWEN-OwO/MHW-EFX-Template) — The parsing method and initial parameter names used in this plugin are based on these templates.
+- [Monster Hunter World Modding Wiki](https://github.com/Ezekial711/MonsterHunterWorldModding/wiki) — Provided a basic explanation of efx.
+- [REE Lib](https://github.com/kagenocookie/RE-Engine-Lib) — Provides a wealth of valuable information for cross-validation of attributes.
+- Crimson — Provided insights into Attribute categorization and inspiration for many attributes.
+- 冰室菖蒲 — Provides guides on the Attributes for numerous Entries, as well as the structure of efx TIML.
+- 003 — Provides detailed guides on the Attributes for Lightning, StrainRibbon, and Homing
 
 Bone placement is designed to pair with the
 [MHW Model Editor](https://github.com/chikichikibangbang/MHW_Model_Editor).
