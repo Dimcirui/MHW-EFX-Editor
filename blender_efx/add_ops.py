@@ -62,6 +62,18 @@ def _entries_preset_dir() -> str:
     return os.path.join(_presets_root(), "__entries__")
 
 
+def _bodies_preset_dir_legacy() -> str:
+    """
+    返回 3.0 重命名前的旧 entry 预设目录 presets/__bodies__/ 的绝对路径（只读兼容）。
+
+    用户的自定义 entry 预设大多存在这里（不像属性预设主要是随插件下发的现成货），
+    重命名时特意不删——list_entry_presets() 一并扫描，add_entry_from_preset_dict()
+    自动识别并转换其中的旧 schema key（见 _normalize_legacy_entry_preset）。
+    新增/保存的预设不会再写回这里，统一走 __entries__。
+    """
+    return os.path.join(_presets_root(), "__bodies__")
+
+
 # 各 kind 的头字段名（除 timl_bytes/raw 外）——与 io_tree.py 导入端完全一致。
 _STANDARD_PROP_KEYS = ("body_type", "unkn0", "attr_count", "null", "timl_length")
 _EXTENDED_PROP_KEYS = (
@@ -296,6 +308,38 @@ def _append_to_eof(root_obj: bpy.types.Object,
     item.body_ptr = entry_obj
 
 
+def _normalize_legacy_entry_preset(preset: dict) -> dict:
+    """
+    兼容 3.0 重命名前的旧 entry 预设 schema（efx_preset_kind == "body"，来自
+    presets/__bodies__/）：把旧 key 名规整成当前 schema，使 add_entry_from_preset_dict
+    余下的逻辑不必关心新旧格式差异。已是新 schema（efx_preset_kind == "entry"）或
+    不认识的格式原样返回。
+
+    旧→新 key 对照（值本身不变，只是 key 名跟着 3.0 重命名走）：
+      efx_preset_kind: "body" → "entry"
+      body_kind        → entry_kind
+      blocks           → attributes
+      source_counts.body/play → source_counts.entry/action
+    """
+    if preset.get("efx_preset_kind") != "body":
+        return preset
+    out = dict(preset)
+    out["efx_preset_kind"] = "entry"
+    if "body_kind" in out:
+        out["entry_kind"] = out.pop("body_kind")
+    if "blocks" in out:
+        out["attributes"] = out.pop("blocks")
+    sc = out.get("source_counts")
+    if isinstance(sc, dict):
+        new_sc = dict(sc)
+        if "body" in new_sc:
+            new_sc["entry"] = new_sc.pop("body")
+        if "play" in new_sc:
+            new_sc["action"] = new_sc.pop("play")
+        out["source_counts"] = new_sc
+    return out
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # add_entry_from_preset
 # ─────────────────────────────────────────────────────────────────────────────
@@ -338,9 +382,14 @@ def add_entry_from_preset_dict(preset: dict,
                               root_obj: bpy.types.Object) -> bpy.types.Object:
     """
     按 preset dict 新建 entry（add_entry_from_preset 的核心；供文件版与"粘贴Entry"内存版共用）。
+
+    自动兼容 __bodies__/ 里的旧 schema 预设（efx_preset_kind == "body"），
+    见 _normalize_legacy_entry_preset。
     """
     from . import io_tree
     from ..efx_format.efxfile import AttrBlock
+
+    preset = _normalize_legacy_entry_preset(preset)
 
     if root_obj is None or root_obj.get("~TYPE") != "EFX_ROOT":
         raise ValueError("add_entry_from_preset_dict：root_obj 不是 EFX_ROOT")
@@ -598,14 +647,18 @@ def _find_entry_collection(root_obj: bpy.types.Object):
 
 def list_entry_presets():
     """
-    扫 __entries__/*.json，返回 EnumProperty items 列表：
+    扫 __entries__/*.json + 兼容旧目录 __bodies__/*.json，返回 EnumProperty items 列表：
       [(完整路径, 文件名去.json, ""), ...]
+    __bodies__ 是 3.0 重命名前的旧目录名，用户自定义预设多存在这里，只读兼容，
+    不再写入（新增/保存统一走 __entries__，见 _bodies_preset_dir_legacy）。
     空目录返回 [("", "（无预设）", "")]。
     """
-    preset_dir = _entries_preset_dir()
+    from .presets import _encode_path_ident, _read_display_name
+
     result = []
-    if os.path.isdir(preset_dir):
-        from .presets import _encode_path_ident, _read_display_name
+    for preset_dir in (_entries_preset_dir(), _bodies_preset_dir_legacy()):
+        if not os.path.isdir(preset_dir):
+            continue
         for entry in sorted(os.scandir(preset_dir), key=lambda e: e.name):
             if entry.is_file() and entry.name.lower().endswith(".json"):
                 # 显示名从 JSON 的 display_name 读（utf-8）；identifier 用 base64 路径

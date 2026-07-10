@@ -138,8 +138,12 @@ def _migrate_presets_once(new_root: str):
     把包内 presets/ 目录的 JSON 文件同步到用户目录：
     - 跳过已存在的同名文件（用户自定义预设不覆盖）
     - 清理用户目录中已不属于当前分类体系的旧 slug 子目录
-    - 删除 3.0 重命名前遗留的 __bodies__/__blocks__ 旧目录（schema key 已不兼容，
-      不做迁移读取；用户若有自定义预设需手动搬到新目录）
+    - 删除 3.0 重命名前遗留的 __blocks__ 旧目录：这批全是随插件下发的现成预设，
+      __attributes__ 已有等价替代，直接清掉无损失。
+    - __bodies__ **不删**：这批基本是用户自己攒的自定义 entry 预设（不像 __blocks__
+      主要是官方现成属性预设），直接删等于丢用户数据。保留只读兼容
+      （list_entry_presets() 一并扫描 + add_entry_from_preset_dict() 自动
+      转换旧 schema key），新增/保存的预设仍统一写入 __entries__。
     """
     import shutil
     from ..efx_format.categories import ATTRIBUTE_CATEGORY_LABELS
@@ -149,11 +153,10 @@ def _migrate_presets_once(new_root: str):
     if not os.path.isdir(old_root):
         return
 
-    # 3.0 重命名：__bodies__/__blocks__ 是旧目录名，直接清除（不兼容旧 schema key）
-    for stale_dir in ("__bodies__", "__blocks__"):
-        stale_path = os.path.join(new_root, stale_dir)
-        if os.path.isdir(stale_path):
-            shutil.rmtree(stale_path, ignore_errors=True)
+    # 3.0 重命名：__blocks__ 是旧目录名，且全是现成预设，直接清除（不兼容旧 schema key）
+    stale_path = os.path.join(new_root, "__blocks__")
+    if os.path.isdir(stale_path):
+        shutil.rmtree(stale_path, ignore_errors=True)
 
     # 清理用户目录里不再属于当前分类体系的旧 __attributes__ 子目录
     attrs_user = os.path.join(new_root, "__attributes__")
