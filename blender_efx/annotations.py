@@ -920,8 +920,8 @@ FIELD_ANNOTATIONS = {
 
     # ─── UVSEQUENCE (fixed part fields) ───────────────────────────────────────
     ("UVSEQUENCE", "uvs_index"): {
-        "EN": "UVS File Path Index",
-        "ZH": "UVS 文件路径索引",
+        "EN": "UVS File Path Index (see the paired Jitter field for spawn-time variance).",
+        "ZH": "UVS 文件路径索引（生成时的随机抖动量见旁边的 Jitter 字段）。",
     },
     ("UVSEQUENCE", "playbackMode"): {
         "EN": "Animation playback mode: 0=Show only the first frame,  1=Loop continuously,  "
@@ -3268,12 +3268,12 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [1, 2, 5, 6, 7, 8, 9, 11, 13, 14].",
         "ZH": "常见取值为 [1, 2, 5, 6, 7, 8, 9, 11, 13, 14]。",
     },
-    ("UVSEQUENCE", "unkn2"): {
-        "EN": "Unnamed integer parameter (BT template mislabels it 'NULL' — it is not a "
-              "fixed constant). Usually 0; other values seen are small integers 1~8. "
-              "Purpose unconfirmed.",
-        "ZH": "未命名的整数参数（BT 模板误标为 NULL，实际并非恒定值）。通常为 0；其余取值为 "
-              "1~8 的小整数。具体作用尚未确认。",
+    ("UVSEQUENCE", "uvsIndexJitter"): {
+        "EN": "Jitter added to uvs_index at spawn (BT template mislabels the raw byte "
+              "'NULL' — it is not a fixed constant). Usually 0; other values seen are "
+              "small integers 1~8.",
+        "ZH": "生成时叠加到 uvs_index 上的抖动量（BT 模板误标为 NULL，实际并非恒定值）。"
+              "通常为 0；其余取值为 1~8 的小整数。",
     },
     ("VELOCITY2D", "expansionDelay"): {
         "EN": "Common values: [0, 1, 2, 5, 16, 20].",

@@ -219,6 +219,11 @@ STRINGS = {
                                      "Unchecked: use the value stored in Root.",
                                "ZH": "导出时将 filesize_double 设为 max(Root 值, 向上取整到16(2.75 × 文件大小))。"
                                      "不勾：用 Root 里写的值。"},
+    "export.auto_sort":      {"EN": "Auto-sort blocks",
+                              "ZH": "自动排序"},
+    "export.auto_sort_tip":  {"EN": "On export, silently reorder each body's blocks into the game's "
+                                     "conventional order. Uncheck to keep your own block order as-is.",
+                               "ZH": "导出时按游戏惯用顺序静默重排每个 body 内的块。取消勾选则保留你自己排的顺序。"},
 
     # ── 块预设 / 分类（block_ops + 新增块面板）───────────────────────────────
     "block.add_section":     {"EN": "Add Block",           "ZH": "新增块"},

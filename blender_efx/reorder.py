@@ -623,8 +623,10 @@ class EFX_OT_rename_entry(bpy.types.Operator):
 #
 # 规范顺序层（sort key）：
 #    0  声明层      EXTERNREFERENCE / RANDOMFIX（永远最前）
-#   10  骨架层      TRANSFORM3D / PARENTOPTIONS / RAYCAST / LINKPARTSVISIBLE /
-#                   SPAWN / LIFE / SPAWNBYANGLE（实测 0.308，LIFE 之后）
+#   10  骨架层      TRANSFORM3D / TRANSFORM2D（2D 对应，与 3D 互斥，实测 0.000）/
+#                   PARENTOPTIONS / RAYCAST / LINKPARTSVISIBLE /
+#                   SPAWNBYOCCLUSION（实测 0.200）/ SPAWN / LIFE /
+#                   SPAWNBYANGLE（实测 0.308，LIFE 之后）
 #   20  早期可见性  FADEBYDEPTH / FADEBYANGLE / FADEBYEMITTERANGLE / FADEBYOCCLUSION
 #                   FAKEPLANE（地面检测，在发射器之前）
 #   30  发射器      EMITTERSHAPE3D / EMITTERSHAPE2D / EMITTERSHAPEMESH
@@ -678,9 +680,12 @@ def _build_block_sort_key_map() -> dict:
         RANDOMFIX:              1,    # 实测 0.000，与 EXTERNREFERENCE 并列最前
         # ── 10 骨架层 ─────────────────────────────────────────────────────────
         TRANSFORM3D:            10,
+        TRANSFORM2D:            10,   # 实测 0.000，TRANSFORM2D 是 TRANSFORM3D 的 2D 对应
+                                       # （offsetX/Y+rotation+scaleX/Y），与之互斥，同归骨架层
         PARENTOPTIONS:          11,
         RAYCAST:                12,   # 实测 0.167，骨架层内（FAKEPLANE 的地面探测前置）
         LINKPARTSVISIBLE:       13,   # 实测 0.182
+        SPAWNBYOCCLUSION:       13.5, # 实测 0.200（n=1），与 RAYCAST/LINKPARTSVISIBLE 同区间
         SPAWN:                  14,
         LIFE:                   15,
         SPAWNBYANGLE:           16,   # 实测 0.308，LIFE 之后、FADE 层之前
@@ -743,10 +748,8 @@ def _build_block_sort_key_map() -> dict:
         # ── 110 孤立行为系统 ──────────────────────────────────────────────────
         PTBEHAVIOR:             110,
         # ── 120 Misc/control ──────────────────────────────────────────────────
-        SPAWNBYOCCLUSION:       120,  # 实测 0.200（n=1，样本不足，暂置末尾）
         TIML:                   121,
         CHECKPUREATTRIBUTE:     122,
-        TRANSFORM2D:            123,  # 实测 0.000（n=2，样本不足，暂置末尾）
         FAKEDOF:                124,
         TONEMAPFILTER:          125,
         COLORCORRECTFILTER:     126,

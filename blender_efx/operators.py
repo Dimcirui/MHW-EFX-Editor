@@ -276,9 +276,18 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         default=True,
     )
 
+    # 导出前按游戏惯用顺序静默重排每个 body 内的块（见 reorder.py::auto_sort_body_blocks）。
+    # 不勾：保留用户自己排的块顺序，不做任何调整。
+    auto_sort_blocks: BoolProperty(
+        name=T("export.auto_sort"),
+        description=T("export.auto_sort_tip"),
+        default=True,
+    )
+
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "recompute_double_buffer")
+        layout.prop(self, "auto_sort_blocks")
 
     def execute(self, context):
         # ── 1. 解析要导出的 EFX_ROOT ─────────────────────────────────────────
@@ -315,12 +324,13 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         skipped = [p for p in problems
                    if p.get("category") in ("dangling", "eof_raw")]
 
-        # ── 1.7 导出前静默规范化块顺序 ────────────────────────────────────────
-        try:
-            from .reorder import auto_sort_body_blocks
-            auto_sort_body_blocks(root)
-        except Exception:
-            pass  # 排序失败不阻断导出
+        # ── 1.7 导出前静默规范化块顺序（可通过 auto_sort_blocks 关闭）────────────
+        if self.auto_sort_blocks:
+            try:
+                from .reorder import auto_sort_body_blocks
+                auto_sort_body_blocks(root)
+            except Exception:
+                pass  # 排序失败不阻断导出
 
         # ── 2. 导出为字节 ───────────────────────────────────────────────────
         try:

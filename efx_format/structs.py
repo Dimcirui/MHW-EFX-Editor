@@ -1873,7 +1873,10 @@ assert _schema_size(REPEATAREA_SCHEMA) == 52, \
 _UVSEQUENCE_FIXED_SCHEMA = [
     ('unkn0',                   'i'),
     ('uvs_index',               'i'),
-    ('unkn2',                   'i'),  # 原 NULL；实测 99.3% 为 0，其余为 1~8 的小整数，并非恒定值
+    ('uvsIndexJitter',          'i'),  # 原 unkn2/NULL；实测为 uvs_index 的抖动量：99.3% 为
+                                        # 0，其余为 1~8 的小整数（并非恒定值），与 startingFrame/
+                                        # startingFrameJitter 等同一套 value+Jitter 命名约定，
+                                        # 改名后自动被 UI 的 value+jitter 配对逻辑合并显示。
     ('startingFrame',           'i'),
     ('startingFrameJitter',     'i'),
     ('animationSpeed',          'f'),
