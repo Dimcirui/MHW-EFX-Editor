@@ -20,9 +20,10 @@ efx_format/categories.py  —  属性类型的功能分类表（纯 Python，零
   emitter     — 发射器 / 空间约束（EMITTERSHAPE3D / EMITTERBOUNDARY…）
   motion      — 运动 / 速度 / 动画（VELOCITY3D / SCALEANIM / ROTATEANIM / NOISE…）
   visibility  — 可见性 / 渐隐（FADE* / RAYCAST…）
-  lifecycle   — 生命周期触发，entry 最后（PTCOLLISION / PTLIFE / PTTRIGGER）
+  lifecycle   — 生命周期触发，entry 最后（PTCOLLISION / PTLIFE / PTTRIGGER / SHOVEL——
+                地面接触触发地面特效，非角色专属，故不归 char_effect）
   extern_decl — 外部资源声明，entry 最前（EXTERNREFERENCE）
-  char_effect — 角色附着效果（PLEMISSIVE / PARENTEMISSIVE / PLSNOW / SHOVEL…）
+  char_effect — 角色附着效果（PLEMISSIVE / PARENTEMISSIVE / PLSNOW…）
   behavior    — 独立行为系统，与常规流程互斥（PTBEHAVIOR）
   ui_2d       — 2D / UI 变体（TRANSFORM2D / EMITTERSHAPE2D / VELOCITY2D / BILLBOARD2D；
                 2D 特效专用，存在时多数 3D 属性不可用）
@@ -146,6 +147,10 @@ ATTRIBUTE_CATEGORY_OF = {
     PTCOLLISION:       "lifecycle",
     PTLIFE:            "lifecycle",
     PTTRIGGER:         "lifecycle",
+    # SHOVEL：接近地面时在接触点生成地面特效（非玩家专属，如引擎喷火烤焦地面）；
+    # 位置统计上与 PTLIFE/PTCOLLISION/PTTRIGGER 同属尾部触发层，语义也是接触触发，
+    # 归 char_effect 不准确（2026-07 由 char_effect 改归 lifecycle）
+    SHOVEL:            "lifecycle",
 
     # ── 外部资源声明（entry 最前，声明引用 extern 段） ─────────────────────────
     EXTERNREFERENCE:   "extern_decl",
@@ -157,7 +162,6 @@ ATTRIBUTE_CATEGORY_OF = {
     PARENTSNOW:        "char_effect",
     OTOMOSNOW:         "char_effect",
     PARENTMATERIAL:    "char_effect",
-    SHOVEL:            "char_effect",   # 宿主 100% 为 DUMMY
 
     # ── 独立行为系统（与常规渲染/物理流程完全不兼容） ────────────────────────
     PTBEHAVIOR:        "behavior",

@@ -3837,6 +3837,11 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
                 off += 4  # unkn_type
         return paths
 
+    # FAKEDOF：无嵌入路径（32B fixed + 可选 20B tail，全部标量），返回空列表即可
+    # 复用路径闸门机制，让 CUSTOM_FIELD_SCHEMA_MAP 里的固定字段展开生效。
+    if type_hash == FAKEDOF:
+        return []
+
     raise ValueError(f"extract_paths: 不支持的类型 hash 0x{type_hash:08X}")
 
 
@@ -4085,6 +4090,11 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 parts.append(data_bytes[off:off + 4]); off += 4
         return b''.join(parts)
 
+    # FAKEDOF：无嵌入路径，new_paths 恒为空，原样返回（非路径字节走 Phase A 的
+    # rebuild_custom_field_attribute 覆盖，不经过这里）
+    if type_hash == FAKEDOF:
+        return data_bytes
+
     raise ValueError(f"rebuild_with_paths: 不支持的类型 hash 0x{type_hash:08X}")
 
 
@@ -4108,6 +4118,8 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     EMITTERSHAPEMESH,
     BILLBOARD2D,
     TONEMAPFILTER,
+    # 无嵌入路径但需要 Phase A 固定字段展开：extract_paths/rebuild_with_paths 均按 0 路径处理
+    FAKEDOF,
 })
 
 
@@ -4144,7 +4156,8 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
                   if e[0] not in ('path', 'path_len')],
     TUBELIGHT:        _TUBELIGHT_FIXED_SCHEMA,
     EMITTERSHAPEMESH: _EMITTERSHAPEMESH_FIXED_SCHEMA,
-    # FAKEDOF：仅暴露恒在的 32B fixed 字段（尾段 present-conditional，不暴露为标量）
+    # FAKEDOF：暴露恒在的 32B fixed 字段；尾段（20B，present-conditional）不在此表，
+    # 但 unpack_fakedof/pack_fakedof 会原样保留（_has_tail 未编辑字段精确回填）
     FAKEDOF:          _FAKEDOF_FIXED_SCHEMA,
     BILLBOARD2D:      [e for e in _BILLBOARD2D_FIXED_SCHEMA if e[0] != 'path_len'],
     # TonemapFilter：3 个 fixed 标量字段（unkn0[2]/unkn1/unkn2[3]）；path/path_len

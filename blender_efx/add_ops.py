@@ -86,9 +86,11 @@ def _root_obj_in_collection(col):
 
 def get_active_efx_root(context):
     """
-    解析当前活动 EFX 根对象（供新增 entry / 导出等用）。
+    解析当前活动 EFX 根对象（供新增 entry / 复制粘贴 / 导出等用）。
 
     优先 scene.efx_active_efx（用户在 N 面板选的 EFX 文件**集合**）→ 取其内的 EFX_ROOT 对象；
+    否则回退：活动对象所属的 EFX 顶层（向上找 EFX_ROOT）——这样跨文件复制/粘贴 entry 时，
+    只要点一下目标文件里的任意对象就行，不必来回切 Active EFX 选择器；
     否则扫场景：若恰好有一个 EFX_ROOT 对象，返回它；
     否则返回 None（让用户显式选择）。
     """
@@ -97,6 +99,14 @@ def get_active_efx_root(context):
         root = _root_obj_in_collection(getattr(scn, "efx_active_efx", None))
         if root is not None:
             return root
+
+    try:
+        from .operators import _find_efx_root
+        root = _find_efx_root(context)
+        if root is not None:
+            return root
+    except Exception:
+        pass
 
     roots = [o for o in bpy.data.objects if o.get("~TYPE") == "EFX_ROOT"]
     if len(roots) == 1:
@@ -675,8 +685,8 @@ class EFX_OT_add_entry_from_preset(bpy.types.Operator):
         if root is None:
             if _HAS_POLL_MESSAGE_SET:
                 cls.poll_message_set(
-                    "Select the target EFX collection in the 'Active EFX' selector above first "
-                    "(needed when more than one EFX file is loaded in the scene)"
+                    "No target EFX resolved: select the target file's collection in 'Active EFX' above, "
+                    "or click any object belonging to it in the target file first"
                 )
             return False
         return True
@@ -684,7 +694,7 @@ class EFX_OT_add_entry_from_preset(bpy.types.Operator):
     def execute(self, context):
         root = get_active_efx_root(context)
         if root is None:
-            self.report({"ERROR"}, "Select an Active EFX collection in the EFX tools area first")
+            self.report({"ERROR"}, "No target EFX resolved: set Active EFX above, or select an object in the target file first")
             return {"CANCELLED"}
 
         if not self.preset_path:
@@ -781,8 +791,8 @@ class EFX_OT_paste_entry(bpy.types.Operator):
         if get_active_efx_root(context) is None:
             if _HAS_POLL_MESSAGE_SET:
                 cls.poll_message_set(
-                    "Select the target EFX collection in the 'Active EFX' selector above first "
-                    "(needed when more than one EFX file is loaded in the scene)"
+                    "No target EFX resolved: select the target file's collection in 'Active EFX' above, "
+                    "or click any object belonging to it in the target file first"
                 )
             return False
         return True
@@ -793,7 +803,7 @@ class EFX_OT_paste_entry(bpy.types.Operator):
             return {"CANCELLED"}
         root = get_active_efx_root(context)
         if root is None:
-            self.report({"ERROR"}, "No Active EFX collection specified")
+            self.report({"ERROR"}, "No target EFX resolved: set Active EFX above, or select an object in the target file first")
             return {"CANCELLED"}
         try:
             new_obj = add_entry_from_preset_dict(_ENTRY_CLIPBOARD, root)

@@ -188,7 +188,7 @@ TYPE_LABELS = {
     "MASTERONLY":           {"EN": "Master Player Only", "ZH": "仅主玩家可见"},
     "DUMMY":                {"EN": "Dummy (Placeholder)","ZH": "占位空属性"},
     "RANDOMFIX":            {"EN": "Random Seed Fix",    "ZH": "固定随机种子"},
-    "SHOVEL":               {"EN": "Shovel (Snow)",      "ZH": "铲雪扰动"},
+    "SHOVEL":               {"EN": "Ground Impact Effect","ZH": "地面扰动"},
 }
 
 
