@@ -2,7 +2,7 @@
     "efx_preset_kind": "attribute",
     "type_hash": "71967929",
     "type_name": "LUMINANCEBLEED",
-    "display_name": "LUMINANCEBLEED（亮度溢出）",
+    "display_name": "LUMINANCEBLEED（亮度辉光）",
     "category": "sprite_mod",
     "data_bytes": "zc3NzQAAAD8AAIA/AACAPw=="
 }

@@ -744,21 +744,21 @@ FIELD_ANNOTATIONS = {
         "EN": "Bleed strength — how far/strongly bright pixels bleed into surrounding "
               "pixels. 0 = no effect; increasing toward 1 gives a natural bloom-like glow. "
               "Unclamped: values above 1 cause runaway overexposure. Practical range: 0~1.",
-        "ZH": "溢出强度——亮部像素向周围渗出的强度。0=无效果；增大到 1 产生自然的辉光效果。"
+        "ZH": "辉光强度——亮部像素向周围渗出的强度。0=无效果；增大到 1 产生自然的辉光效果。"
               "无上限裁切：超过 1 会导致失控过曝。实际取值范围为 0~1。",
     },
     ("LUMINANCEBLEED", "colorScaler"): {
         "EN": "Multiplies the bled-out light's own color/brightness (not its spread). "
               "0 = pure black; 1 = neutral/unchanged (the overwhelming majority of usage); "
               "high values (10+) blow it out to white and can overflow render bounds.",
-        "ZH": "对渗出光晕本身的颜色/亮度做倍乘（不影响渗出范围）。0=纯黑；1=中性不变"
+        "ZH": "对辉光本身的颜色/亮度做倍乘（不影响辉光范围）。0=纯黑；1=中性不变"
               "（绝大多数实际取值）；调高（10+）会冲成纯白，甚至溢出渲染边界。",
     },
     ("LUMINANCEBLEED", "texelScaler"): {
         "EN": "Sampling/blur radius for the bleed, in texels. Larger = wider spread into "
               "neighboring pixels (soft gradient expansion, distinct from colorScaler's hard "
               "overflow). Usage clusters at small integers (1/2/3 texels).",
-        "ZH": "溢出效果的取样/模糊半径，以纹素为单位。数值越大扩散越宽（渐变式柔和扩散，"
+        "ZH": "辉光效果的取样/模糊半径，以纹素为单位。数值越大扩散越宽（渐变式柔和扩散，"
               "区别于 colorScaler 的硬边界溢出）。实际取值集中在 1/2/3 等小整数。",
     },
     ("RANDOMFIX", "useRandomSeedTableCount"): {

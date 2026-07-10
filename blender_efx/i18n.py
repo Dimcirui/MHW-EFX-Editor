@@ -173,7 +173,7 @@ TYPE_LABELS = {
     "RGBFIRE":              {"EN": "RGB Fire",           "ZH": "火焰双色"},
     "RGBWATER":             {"EN": "RGB Water",          "ZH": "水面颜色"},
     "BLINK":                {"EN": "Blink",              "ZH": "闪烁"},
-    "LUMINANCEBLEED":       {"EN": "Luminance Bleed",    "ZH": "亮度溢出"},
+    "LUMINANCEBLEED":       {"EN": "Luminance Bleed",    "ZH": "亮度辉光"},
     "REFRACTION":           {"EN": "Refraction",         "ZH": "折射"},
     "FADEBYDEPTH":          {"EN": "Fade by Depth",      "ZH": "按深度渐隐"},
     "FADEBYANGLE":          {"EN": "Fade by Angle",      "ZH": "按角度渐隐"},
