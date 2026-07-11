@@ -31,13 +31,18 @@ Blender 加载时此目录被视为包 bl_ext.user_default.efx_editor。
   #   efx_editor.blender_efx.export_efx_tree(root)  →  导出
 """
 
+# 版本号常量：与 blender_manifest.toml 的 version 同步改（两处）。
+# ⚠ 单独抽常量的原因：4.2+ 扩展系统加载时会**剥离/忽略模块里的 bl_info**（扩展用 manifest），
+# 故 register() 里绝不能引用 `bl_info` 这个名字（扩展路径下 NameError）——改用本常量。
+_VERSION = (0, 3, 20)
+
 # bl_info：仅供 Blender 老式 addon 系统（<4.2，如 3.6）识别。
 # 4.2+ 扩展系统忽略它、改用 blender_manifest.toml。两者并存无冲突。
 # 老式 addon 打包变体（tools/build_extension.py --legacy）会把本包套进 efx_editor/ 文件夹。
 bl_info = {
     "name": "MHW EFX Editor",
     "author": "Dimcirui",
-    "version": (0, 3, 19),
+    "version": _VERSION,
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > EFX",
     "description": "Import and export Monster Hunter World EFX effect files",
@@ -84,8 +89,9 @@ class EFX_UpdaterPreferences(AddonPreferences):
 
 def register():
     """注册扩展（Blender 扩展系统入口）。"""
-    # 更新器须先注册（clear_state + 读取 bl_info 版本），再注册偏好设置类
-    addon_updater_ops.register(bl_info)
+    # 更新器须先注册（clear_state + 读取版本），再注册偏好设置类。
+    # ⚠ 传 {"version": _VERSION} 而非 bl_info——扩展路径下 bl_info 名字可能已被剥离（见上）。
+    addon_updater_ops.register({"version": _VERSION})
     bpy.utils.register_class(EFX_UpdaterPreferences)
     blender_efx.register()
     blender_epv.register()
