@@ -54,6 +54,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from .hashes import jamcrc
+from .timl_names import DT_TRANSFORM
 
 _MAGIC = b"timl"
 
@@ -438,12 +439,14 @@ def _make_default_keyframes(data_type: int, dt_hash: int,
                             anim_length: float = 30.0) -> "List[TimlKeyframe]":
     """生成两个默认关键帧（frame=0 和 frame=anim_length），作为新轨道起始内容。"""
     frames = [0.0, max(1.0, anim_length)]
+    xform = DT_TRANSFORM.get(dt_hash & 0xFFFFFFFF)
+    default_value = 1.0 if (xform is not None and xform[3] == "scl") else 0.0
     kfs = []
     for fr in frames:
         if data_type == 3:  # Color RGBA：白色全透
             subs = [{"value": 255, "back": 0.0, "period": 0.0} for _ in range(4)]
-        else:               # Float/SInt/Int/Bool：0.0
-            subs = [{"value": 0.0, "back": 0.0, "period": 0.0}]
+        else:               # Float/SInt/Int/Bool：scl 轴默认 1.0(缩放系数)，其余 0.0
+            subs = [{"value": default_value, "back": 0.0, "period": 0.0}]
         raw = encode_keyframe(data_type, dt_hash, fr, 1, data_type, subs)  # transition=1=LINEAR
         kfs.append(TimlKeyframe(raw=raw, frame_timing=fr, transition=1, data_type=data_type))
     return kfs

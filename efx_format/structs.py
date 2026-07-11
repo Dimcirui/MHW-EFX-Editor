@@ -109,11 +109,12 @@ def _xyz_size(t: int) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 # EPVColorSlot helper (36 B)
 # EFX_Utils.bt:
-#   long  EPVColorSlotHead     (4 B)
+#   long  EPVColorSlotHead     (4 B)  # schema 字段名 epvColorSlot（原 head，
+#                                     # 与 RIBBONBLADE 外层 head/tailEnd 槽位名冲突，已改名）
 #   XYZ   color1(2)            (4 B)  ubyte x,y,z + pad
 #   long  NULL2                (4 B)
 #   XYZ   color2(2)            (4 B)  ubyte x,y,z + pad
-#   int   spacer4              (4 B)
+#   int   spacer4               (4 B)
 #   int   unkn15               (4 B)
 #   float size                 (4 B)
 #   int   unkn17               (4 B)
@@ -123,10 +124,12 @@ def _xyz_size(t: int) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _EPVCSLOT_FIELDS = [
-    ('head', 'i'),
+    ('epvColorSlot', 'i'),
     ('color1', ('XYZ', 2)),
     ('null2', 'i'),
     ('color2', ('XYZ', 2)),
+    # 恒为 0xcdcdcd00（head/tailEnd 各 62/62）。曾拆出最低字节暴露实机测试（unkn19，2026-07-11），
+    # 用户测试无效果，已改回纯占位（2026-07-11）。
     ('spacer4', 'i'),
     ('unkn15', 'i'),
     ('size', 'f'),
@@ -925,14 +928,17 @@ assert _schema_size(REFRACTION_SCHEMA) == 12, \
 #   int   section_length                     4 B
 #   long  spacer                             4 B
 #   float main_axis_speed                    4 B
-#   float secondary_axis_speed              4 B
+#   float main_axis_speed_jitter            4 B
 #   float teleport_radius                   4 B
-#   float smooth_radius_randomized          4 B
+#   float teleport_radius_jitter            4 B
 #   float main_axis_speed2                  4 B
-#   float secondary_axis_speed2             4 B
+#   float main_axis_speed2_jitter           4 B
 #   float teleport_radius2                  4 B
-#   float smooth_radius_randomized2         4 B
+#   float teleport_radius2_jitter           4 B
 # data_bytes: 4+4+4+8×4 = 44 B ✓
+# main_axis_speed_jitter/2（原 secondary_axis_speed/2）、teleport_radius_jitter/2
+# （原 smooth_radius_randomized/2）实测确认（2026-07-11）：分别是前一个字段的 jitter，
+# 不是独立的"次轴速度"/"平滑半径随机"字段。
 # ─────────────────────────────────────────────────────────────────────────────
 
 NOISE_SCHEMA = [
@@ -940,13 +946,13 @@ NOISE_SCHEMA = [
     ('section_length', 'i'),
     ('spacer', 'i'),
     ('main_axis_speed', 'f'),
-    ('secondary_axis_speed', 'f'),
+    ('main_axis_speed_jitter', 'f'),  # 原 secondary_axis_speed
     ('teleport_radius', 'f'),
-    ('smooth_radius_randomized', 'f'),
+    ('teleport_radius_jitter', 'f'),  # 原 smooth_radius_randomized
     ('main_axis_speed2', 'f'),
-    ('secondary_axis_speed2', 'f'),
+    ('main_axis_speed2_jitter', 'f'),  # 原 secondary_axis_speed2
     ('teleport_radius2', 'f'),
-    ('smooth_radius_randomized2', 'f'),
+    ('teleport_radius2_jitter', 'f'),  # 原 smooth_radius_randomized2
 ]
 assert _schema_size(NOISE_SCHEMA) == 44, \
     f"NOISE_SCHEMA size mismatch: {_schema_size(NOISE_SCHEMA)}"
@@ -1427,28 +1433,33 @@ assert _schema_size(RAYCAST_SCHEMA) == 78, \
 #
 # BT (EFX_Subtypes.bt):
 #   int unknown(4) + int unknown0(4) + long spacer(4) +
-#   float f0(4) + float speed(4) + float speedMultiplier(4) +
-#   float f3(4) + float f4(4) + float radius(4) +
-#   long i0(4) + long i1(4) +
-#   int enableRadialVanish(4) + int unknown1(4)
+#   float restoringForce(4) + float speed(4) + float speedMultiplier(4) +
+#   float f3(4) + float vanishDistance(4) + float forceFieldDistance(4) +
+#   long homingTarget(4) + long vanishMode(4) +
+#   int forceFieldMode(4) + int unknown1(4)
 # = 4+4+4+4+4+4+4+4+4+4+4+4+4 = 52 B ✓
 # Note: SPEC.md confirms HOMING = 56 B (with +12 offset often 0xCDCDCD00),
 # matches efxfile.py: 4(type)+4+4+4+24+8+8 = 4+52 = 56 full.
+# homingTarget 原名 i0，实测确认（2026-07-11）：归航运动始终指向目标点的**实时**位置
+# （非旧假说所说的"触发时捕获定住"）。restoringForce/vanishDistance/vanishMode/
+# forceFieldMode 原名 f0/f4/i1/enableRadialVanish，2026-07-11 按实测语义改名；
+# vanishDistance/forceFieldDistance（原 activationDistance/radius）2026-07-11 二次改名，
+# 分别对应 vanishMode/forceFieldMode 各自的距离阈值。
 # ─────────────────────────────────────────────────────────────────────────────
 
 HOMING_SCHEMA = [
     ('unknown',              'i'),
     ('unknown0',             'i'),
     ('spacer',               'i'),
-    ('f0',                   'f'),
+    ('restoringForce',       'f'),  # 原 f0
     ('speed',                'f'),
     ('speedMultiplier',      'f'),
     ('f3',                   'f'),
-    ('f4',                   'f'),
-    ('radius',               'f'),
-    ('i0',                   'i'),
-    ('i1',                   'i'),
-    ('enableRadialVanish',   'i'),
+    ('vanishDistance',       'f'),  # 原 f4 / activationDistance
+    ('forceFieldDistance',   'f'),  # 原 radius
+    ('homingTarget',         'i'),  # 原 i0
+    ('vanishMode',           'i'),  # 原 i1
+    ('forceFieldMode',       'i'),  # 原 enableRadialVanish
     ('unknown1',             'i'),
 ]
 assert _schema_size(HOMING_SCHEMA) == 52, \
@@ -2349,7 +2360,10 @@ _RIBBON_FIXED_SCHEMA = [
     ('unkn22_0', 'f'),
     ('unkn22_1', 'i'),
     ('unkn22_2', 'i'),
-    ('tailTiedToBone',           'i'),
+    # 原 4B int 恒为 0xCDCDCD00/0xCDCDCD01（未初始化填充）；实测只有最低字节（文件里的
+    # 第 1 个字节）在 0/1 之间变化，真正承载语义，其余 3 字节恒为 0xCD 纯占位（2026-07-10）。
+    ('tailTiedToBone',           'B'),
+    ('spacer6',                  ('B', 3)),
     ('unkn23_0', 'f'),
     ('unkn23_1', 'f'),
     ('unkn23_2', 'f'),
@@ -2492,10 +2506,10 @@ def pack_plane(values: dict) -> bytes:
 #
 # From efxfile.py: path_len at offset 198 from block start (= offset 194 in data_bytes)
 # fixed structure before path_len (194 B in data_bytes):
-#   unkn0[2](8)+spacer0(4)+unkn03(4)+unkn04(4)+unkn05[2](8)+spacer1(4)+unkn07[2](8)+
+#   unkn0[2](8)+spacer0(4)+widthDirection(4)+width(4)+length+unkn05_1(8)+spacer1(4)+unkn07_0+lengthMode(8)+
 #   5 floats(20)+spacer2(4)+unkn10(4)+uvRep(4)+unkn12[3](12)+spacer3(4)+
 #   EPVColorSlot head(36)+EPVColorSlot tailEnd(36)+
-#   4*(float+long)(32)+short NULL9(2)
+#   flowmap 4*(value+jitter)(32)+short NULL9(2)
 # = 8+4+4+4+8+4+8+20+4+4+4+12+4+36+36+32+2 = 198 B total data before path_len
 # Then: path_len(4) + path[path_len]
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2504,13 +2518,21 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     ('unkn0_0', 'i'),
     ('unkn0_1', 'i'),
     ('spacer0',     'i'),
-    ('unkn03',      'i'),
-    ('unkn04',      'f'),
-    ('unkn05_0', 'i'),
+    # widthDirection：Width 延伸朝向 enum。实测确认（2026-07-11）：
+    #   0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON.restitution_direction 同款枚举，
+    #   证实 RIBBON/RIBBONBLADE 共用部分渲染参数语义。
+    ('widthDirection', 'i'),  # 原 unkn03
+    ('width',       'f'),  # 原 unkn04；刀光纵边宽度（用户命名，2026-07-10）
+    # length：拖尾长度（仅当 lengthMode=0 时生效，此时收缩速度固定内置，与
+    # contractionSpeed 字段无关）。实测确认（2026-07-11）：与拖尾长度近似成正比，值越高越长。
+    ('length', 'i'),  # 原 unkn05_0
     ('unkn05_1', 'i'),
     ('spacer1',     'i'),
     ('unkn07_0', 'i'),
-    ('unkn07_1', 'i'),
+    # lengthMode：拖尾长度控制模式。实测确认（2026-07-11）：
+    #   0=由 length 字段近似正比决定，收缩速度固定内置；
+    #   1=由 maxLengthLimit + contractionSpeed 共同决定（contractionSpeed=0 时不主动收缩，除非达到 maxLengthLimit 上限）。
+    ('lengthMode', 'i'),  # 原 unkn07_1
     # 5 floats: maxLengthLimit, contractionSpeed, colourTransitionPoint, emissiveStrength, unkn08
     ('maxLengthLimit',          'f'),
     ('contractionSpeed',        'f'),
@@ -2523,18 +2545,22 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     ('unkn12_0', 'f'),
     ('unkn12_1', 'i'),
     ('unkn12_2', 'i'),
+    # 恒为 0xcdcdcd00（62/62）。曾拆出最低字节暴露实机测试（unkn13，2026-07-11），
+    # 用户测试无效果，已改回纯占位（2026-07-11）。
     ('spacer3',     'i'),
     ('head',        'EPVColorSlot'),
     ('tailEnd',     'EPVColorSlot'),
-    # 4*(float+long) = 4*(4+4) = 32 B
-    ('unkn23',      'f'),
-    ('NULL5',       'i'),
-    ('unkn24',      'f'),
-    ('NULL6',       'i'),
-    ('unkn25',      'f'),
-    ('NULL7',       'i'),
-    ('unkn26',      'f'),
-    ('NULL8',       'i'),
+    # flowmap 四件套 + jitter：实测确认（2026-07-11，用户系统测试 unkn25/26，其余按同结构类推）。
+    # NULL5~8 全语料恒为 0（int/float 位模式相同,无法从静态数据判定类型),按 jitter 惯例先定为 float,
+    # 待实机测试非零值验证。
+    ('flowmapSpeed',                    'f'),  # 原 unkn23
+    ('flowmapSpeedJitter',              'f'),  # 原 NULL5 (i->f)
+    ('flowmapAcceleration',             'f'),  # 原 unkn24
+    ('flowmapAccelerationJitter',       'f'),  # 原 NULL6 (i->f)
+    ('flowmapStrength',                 'f'),  # 原 unkn25
+    ('flowmapStrengthJitter',           'f'),  # 原 NULL7 (i->f)
+    ('flowmapStrengthAcceleration',     'f'),  # 原 unkn26
+    ('flowmapStrengthAccelerationJitter', 'f'),  # 原 NULL8 (i->f)
     ('NULL9',       'h'),
 ]
 assert _schema_size(_RIBBONBLADE_FIXED_SCHEMA) == 194, \

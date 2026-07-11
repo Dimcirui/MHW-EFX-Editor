@@ -393,16 +393,16 @@ def validate_efx_tree(root_obj) -> list:
             DUMMY as _DUMMY,           RIBBONBLADE as _RIBBONBLADE,
             STRAINRIBBON as _SRBN,     TUBELIGHT as _TUBE,
             BILLBOARD2D as _BB2D,
-            UVSEQUENCE as _UVSEQ,      UVCONTROL as _UVCTL,
+            UVCONTROL as _UVCTL,
             MATERIAL as _MATERIAL,
             ALPHACORRECTION as _ALPHACORR,
             SHADERSETTINGS as _SHADERSET,
+            HOMING as _HOMING,         VELOCITY3D as _VEL3D,
         )
         _RENDERERS = frozenset({
             _BB3D, _RIBBON, _MESH, _PLANE, _FAKEPLANE,
             _LIGHTNING, _DUMMY, _RIBBONBLADE, _SRBN, _TUBE, _BB2D,
         })
-        _SPRITE_RENDERERS = frozenset({_BB3D, _RIBBON, _PLANE})
         _attribute_rules_ok = True
     except ImportError:
         _attribute_rules_ok = False
@@ -493,13 +493,17 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5f) UVSEQUENCE without BILLBOARD3D/RIBBON/PLANE — WARN
-                if _UVSEQ in hash_set and not (hash_set & _SPRITE_RENDERERS):
+                # (5m) HOMING without VELOCITY3D — WARN
+                # 全语料 212 个 HOMING 条目统计：95.3% 伴随 VELOCITY3D（另 95.8% 伴随
+                # EMITTERSHAPE3D）；归航行为强依赖粒子速度矢量才能计算转向。
+                if _HOMING in hash_set and _VEL3D not in hash_set:
                     problems.append({
                         "level": "WARN",
                         "msg": (
-                            f"Entry '{body.name}' has UVSEQUENCE without BILLBOARD3D/RIBBON/PLANE "
-                            "(UVSEQUENCE is a sprite face UV animation system)"
+                            f"Entry '{body.name}' has HOMING without VELOCITY3D — "
+                            "homing steers particle velocity, so it strongly depends on "
+                            "VELOCITY3D being present (95.3% of official HOMING entries "
+                            "have it)"
                         ),
                         "obj": body.name,
                     })

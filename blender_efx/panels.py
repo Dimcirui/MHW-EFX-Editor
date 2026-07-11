@@ -599,6 +599,13 @@ def _draw_attribute_fields_content(layout, context):
     except (ValueError, ImportError):
         pass
 
+    _is_ribbonblade = False
+    try:
+        from ..efx_format.hashes import RIBBONBLADE as _RIBBONBLADE_HASH_P
+        _is_ribbonblade = (int(bp.type_hash_str) == _RIBBONBLADE_HASH_P)
+    except (ValueError, ImportError):
+        pass
+
     # ── 可编辑属性：展示字段列表 ────────────────────────────────────────────────
     if bp.is_editable:
         if len(bp.field_items) == 0:
@@ -705,6 +712,22 @@ def _draw_attribute_fields_content(layout, context):
                     _bcol = _pm_row.column(align=True)
                     _op = _bcol.operator("efx.set_part_mask", text="", icon="DOWNARROW_HLT")
                     _op.field = item.ori_name
+                    i += 1
+                    continue
+                # RIBBONBLADE：head.*/tailEnd.*（EPVColorSlot 嵌套字段）统一加
+                # [Head]/[Tail] 前缀标签，避免内层 "head" 字段跟外层槽位名撞车看不清。
+                if _is_ribbonblade and "." in item.ori_name and item.ori_name.split(".", 1)[0] in ("head", "tailEnd"):
+                    _slot_key, _sub_key = item.ori_name.split(".", 1)
+                    from .i18n import get_lang as _get_lang_rb
+                    _zh_rb = _get_lang_rb() == "ZH"
+                    _prefix_rb = ("[头部]" if _zh_rb else "[Head]") if _slot_key == "head" else ("[尾部]" if _zh_rb else "[Tail]")
+                    _sub_overrides_rb = {
+                        "epvColorSlot": ("EPV 颜色槽" if _zh_rb else "EPV Color Slot"),
+                        "color1":       ("颜色" if _zh_rb else "Color"),
+                        "color2":       ("颜色范围" if _zh_rb else "Color Range"),
+                    }
+                    _sub_lbl_rb = _sub_overrides_rb.get(_sub_key) or _friendly_name(_sub_key, type_name)
+                    _draw_field_item(col, item, type_name=type_name, label_override=f"{_prefix_rb} {_sub_lbl_rb}")
                     i += 1
                     continue
                 # MATERIAL：path_N 用其贴图槽名（tAlbedoMap…）当标签，取代独立只读面板

@@ -606,85 +606,126 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── HOMING ───────────────────────────────────────────────────────────────
-    # 字段语义来自 207 个官方块的统计 + 系统性实测逆向（2026-06）。
+    # 字段语义来自全语料 212 个官方块统计 + 系统性实测逆向（2026-07 重新解释，
+    # 推翻此前 2026-06 的"轨道力学"假说：不是角速度/轨道半径，而是一个指向
+    # 目标点实时位置的力，restoringForce 是回复力强度，speed/speedMultiplier 是
+    # 字面上的速度/加速度）。unknown/unknown0/spacer 是大部分 attribute 都有的头部
+    # 字段，疑似 flag/分类用，不追求具体数值语义。
     ("HOMING", "unknown"): {
-        "EN": "Observed range 1–29. Testing showed NO observable effect on homing "
-              "behavior (not a bone index). Purpose unknown.",
-        "ZH": "观测范围 1–29。实测对归航行为无可观影响（非骨骼索引）。用途未知。",
+        "EN": "Header field shared by most attribute types, likely a flag/category "
+              "marker rather than a meaningful value. Not worth chasing specific numbers.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似 flag/分类标记，不必追求具体数值。",
     },
     ("HOMING", "unknown0"): {
-        "EN": "Always 44 in all 207 observed attributes — do not modify",
-        "ZH": "207 个块中恒为 44，请勿修改",
+        "EN": "Always 44 across the whole corpus — do not modify",
+        "ZH": "全语料恒为 44，请勿修改",
     },
     ("HOMING", "spacer"): {
         "EN": "Always 0xCDCDCD00 — do not modify",
         "ZH": "恒为 0xCDCDCD00，请勿修改",
     },
-    ("HOMING", "f0"): {
-        "EN": "Angular velocity: ω ∝ F0 (linear). Rotates velocity vector each frame. "
-              "Best range 90–360. Above ~18000 force overflows and fails.",
-        "ZH": "角速度参数，ω ∝ F0（线性）；每帧旋转速度向量方向。"
-              "推荐范围 90~360，超过约 18000 引力溢出失效。",
+    ("HOMING", "restoringForce"): {
+        "EN": "Pull-back force degree that pulls particles back toward the homing "
+              "target after they pass it. 0=no pull-back at all (particles fly straight "
+              "through and never return). Higher=stronger pull-back, converging to a "
+              "smaller resting radius around the target. Common range 90–360. "
+              "Formerly f0.",
+        "ZH": "把粒子拉回归航目标的拉回力度（越过目标点之后生效）。0=完全没有拉回力"
+              "（粒子直线飞离，不会再回来）；值越大拉回越强，最终停留半径越小。"
+              "常见取值在 90~360 之间。原名 f0。",
     },
     ("HOMING", "speed"): {
-        "EN": "Damping / convergence rate. Higher = faster spiral to orbit, "
-              "does NOT change final orbit size. 0 = particles invisible (no motion, trail hidden).",
-        "ZH": "阻尼/收敛速率，值越大越快螺旋到轨道，不影响最终轨道大小。"
-              "0=粒子不可见（静止，拖尾渲染不显示）。",
+        "EN": "Speed toward the homing target. Negative values cause particles to "
+              "escape outward instead of homing in.",
+        "ZH": "朝归航目标运动的速度。负值会让粒子向外逃逸，而不是被吸引过去。",
     },
     ("HOMING", "speedMultiplier"): {
-        "EN": "Per-frame tangential force (not initial velocity). "
-              "Sets natural orbit radius: r ∝ speedMultiplier^1.5 / F0. "
-              "Large values cause outward spiral over many loops before settling.",
-        "ZH": "每帧持续切向力（非初始速度）。决定自然轨道半径：r ∝ speedMultiplier^1.5 / F0。"
-              "值过大时粒子需要多圈螺旋才能收敛到轨道。",
+        "EN": "Acceleration toward the homing target. 0 or negative makes particles "
+              "stay stationary (no matter what speed is set to).",
+        "ZH": "朝归航目标运动的加速度。0 或负值会让粒子保持静止（无论 speed 设成多少）。",
     },
     ("HOMING", "f3"): {
-        "EN": "No observed effect on orbit (0.0–1.0 tested). "
-              "Likely render-layer fade: opacity/brightness decay multiplier per frame. "
-              "Official use: 84% = 1.0 (no decay).",
-        "ZH": "对轨道无可见影响（已测 0.0–1.0）。"
-              "推测为渲染衰减：每帧透明度/亮度乘数。官方 84% 使用 1.0（不衰减）。",
+        "EN": "No observed effect (0.0–1.0 tested). Meaning not identified — "
+              "deliberately left untranslated. Common value 1.0 (84%).",
+        "ZH": "未观察到可见影响（已测 0.0–1.0）。含义未确认，故意不给译名。"
+              "常见取值为 1.0（84%）。",
     },
-    ("HOMING", "f4"): {
-        "EN": "Homing force activation distance threshold. "
-              "f4 < natural orbit radius → orbit expands (particles exit activation zone). "
-              "f4 > natural orbit radius → orbit constrained to natural radius. "
-              "Official default 50 (73%).",
-        "ZH": "归航力激活距离阈值。f4 < 自然轨道半径 → 轨道膨胀（粒子飞出激活区）；"
-              "f4 > 自然轨道半径 → 轨道约束到自然半径。官方默认 50（73%）。",
+    ("HOMING", "vanishDistance"): {
+        "EN": "Distance threshold from the homing target: when a particle's distance "
+              "to the target shrinks to vanishDistance, vanishMode's effect "
+              "triggers (see vanishMode). Particles disappear almost immediately if "
+              "vanishDistance is close to the emitter shape's spawn radius, while a "
+              "small vanishDistance (e.g. <5) leaves a small fraction of particles "
+              "persisting (they never quite reach that distance). Common value 50 (72%). "
+              "Formerly f4/activationDistance.",
+        "ZH": "距归航目标的距离阈值：当粒子与目标的距离缩小到 vanishDistance 时，"
+              "触发 vanishMode 的效果（见 vanishMode）。若 vanishDistance 接近发射"
+              "形状的出生半径，粒子几乎刚出生就消失；vanishDistance 较小（如 <5）"
+              "时会有少部分粒子不消失（它们运动过程中没有真正缩小到这个距离）。"
+              "常见取值为 50（72%）。原名 f4/activationDistance。",
     },
-    ("HOMING", "radius"): {
-        "EN": "Force falloff distance — minimal effect on orbit in tests (50–1000 range tested). "
-              "Official default 1000 (71%).",
-        "ZH": "力场衰减距离，实测对轨道影响极小（已测 50–1000）。官方默认 1000（71%）。",
+    ("HOMING", "forceFieldDistance"): {
+        "EN": "Force-field boundary radius, meaning depends on forceFieldMode's mode: "
+              "1=exclusion field (particles spawned outside this radius vanish "
+              "immediately, checked only at spawn); 2=deceleration field (particles "
+              "entering this boundary slow down); 3=escape-catch field (particles "
+              "escaping outward are not forcibly dragged back by restoringForce — they "
+              "keep escaping until they hit this boundary, then get redirected back "
+              "toward the target; restoringForce still matters here, since "
+              "restoringForce=0 means an escaped particle is never caught at all); "
+              "4=acceleration field (particles entering this boundary speed up). "
+              "Common value 1000 (71%). Formerly radius.",
+        "ZH": "力场边界半径，含义取决于力场模式（forceFieldMode）：1=排除场"
+              "（出生时在此半径外的粒子直接消失，只在出生时判定）；2=减速场（进入此边界"
+              "的粒子减速）；3=逃逸抓取场（逃逸中的粒子不会被 restoringForce 强行拉回，"
+              "会一直逃逸到碰到这个边界才被转向拉回目标；但 restoringForce 依然起作用"
+              "——restoringForce=0 时逃逸的粒子完全不会被抓回来）；4=加速场（进入此边界"
+              "的粒子加速）。常见取值为 1000（71%）。原名 radius。",
     },
-    ("HOMING", "i0"): {
-        "EN": "Homing target = (i0 mod 4): 0=spawn point (emitter pos), "
-              "1=model/character origin (feet), 2/3=world origin (map center). "
-              "Cycles every 4 (4=spawn, 5=model, …). Target captured at trigger time. "
-              "Trajectory: 0/2=straight, 1=arc. Orbit plane = surface normal at trigger point. "
-              "Official: 0=84%, 1=13%, 2=4%.",
-        "ZH": "归航目标 = (i0 mod 4)：0=生成点（发射器位置），"
-              "1=模型/角色原点（脚下），2/3=世界原点（地图中心）。"
-              "每 4 循环（4=生成点, 5=模型原点…）。目标在触发时捕获。"
-              "轨迹：0/2=直线，1=弧线。轨道面由触发面法线决定。官方用值：0=84%，1=13%，2=4%。",
+    ("HOMING", "homingTarget"): {
+        "EN": "Homing target = (homingTarget mod 4): 0=spawn point (emitter pos), "
+              "1=model/character origin (feet), 2/3=world origin (map center). Cycles "
+              "every 4 (4=spawn, 5=model, …). Motion always tracks the target's "
+              "real-time position (not captured once at trigger time). "
+              "Official: 0=83%, 1=14%, 2=4%.",
+        "ZH": "归航目标 = (homingTarget mod 4)：0=生成点（发射器位置），1=模型/角色原点"
+              "（脚下），2/3=世界原点（地图中心）。每 4 循环（4=生成点, 5=模型原点…）。"
+              "运动始终指向目标点的**实时**位置（不是触发时捕获定住）。"
+              "官方用值：0=83%，1=14%，2=4%。",
     },
-    ("HOMING", "i1"): {
-        "EN": "Visibility flag. bit0=1 AND bit1=1 (values 3,7,11…) = normal; "
-              "bit0=0 AND bit1=1 (values 2,6,10…) = particles disappear. "
-              "Official: 0=73%, 2=26%, 1=2%.",
-        "ZH": "可见性标志。bit0=1且bit1=1（3,7,11…）=正常；"
-              "bit0=0且bit1=1（2,6,10…）=粒子消失。官方：0=73%，2=26%，1=2%。",
+    ("HOMING", "vanishMode"): {
+        "EN": "Vanish mode, triggered when a particle's distance to the homing "
+              "target reaches vanishDistance (see vanishDistance). "
+              "0=nothing happens, particles never vanish this way. "
+              "1=cancels an otherwise-infinite LIFE at that moment, but LIFE's duration "
+              "timer keeps running normally from spawn (not reset) — if the duration "
+              "already elapsed by the time of contact, the particle vanishes "
+              "immediately; otherwise it keeps counting down as normal and vanishes "
+              "when the duration ends. "
+              "2=particle vanishes immediately on contact. "
+              "Official: 0=72%, 2=27%, 1=1%. Formerly i1.",
+        "ZH": "消失模式，当粒子与归航目标的距离缩小到 vanishDistance 时触发"
+              "（见 vanishDistance）。0=不触发，粒子不会因此消失；"
+              "1=触发那一刻取消原本的无限寿命，但 LIFE 的持续时间计时器从出生起就正常"
+              "走时（不会重置/重新开始）——如果触发时持续时间已经到了，粒子立即消失；"
+              "没到的话就继续正常计时，到时间后再消失；2=触发瞬间粒子立即消失。"
+              "官方：0=72%，2=27%，1=1%。原名 i1。",
     },
-    ("HOMING", "enableRadialVanish"): {
-        "EN": "Orbit escape behavior. 0=normal (particle ejected radially after a few orbits). "
-              "1=homing force disabled (free expansion). 2/4=persistent orbit (no ejection). "
-              "3=periodic radial escape: orbit one loop → dash outward radially → orbit again, repeating. "
-              "Official: 0=72%, 3=11%, 2=8%, 1=7%, 4=2%.",
-        "ZH": "轨道逃逸行为。0=正常（绕几圈后径向甩出）；1=归航引力失效（自由扩散）；"
-              "2/4=持续轨道（不甩出）；3=周期性径向逃逸：绕一圈→径向冲出一段→再绕一圈，反复。"
-              "官方：0=72%，3=11%，2=8%，1=7%，4=2%。",
+    ("HOMING", "forceFieldMode"): {
+        "EN": "Force field mode, changes what forceFieldDistance means (see "
+              "forceFieldDistance). 0=normal (no special force-field behavior; at high "
+              "restoringForce particles stay orbiting tightly near the target). "
+              "1=exclusion field. 2=deceleration field. 3=escape-catch field "
+              "(restoringForce's pull-back is partially disabled — escaping particles "
+              "are not dragged back until they hit the forceFieldDistance boundary). "
+              "4=acceleration field. "
+              "Official: 0=73%, 3=10%, 2=8%, 1=7%, 4=2%. Formerly enableRadialVanish.",
+        "ZH": "力场模式，决定 forceFieldDistance 字段的含义（见 forceFieldDistance）。"
+              "0=普通（无特殊力场行为；同样很高的 restoringForce 下粒子基本只在目标点"
+              "附近运动）；1=排除场；2=减速场；3=逃逸抓取场（restoringForce 的拉回力"
+              "在一定程度上失效——逃逸的粒子不会被强行拉回，直到碰到 forceFieldDistance"
+              " 边界才被拉回）；"
+              "4=加速场。官方：0=73%，3=10%，2=8%，1=7%，4=2%。原名 enableRadialVanish。",
     },
     ("HOMING", "unknown1"): {
         "EN": "Almost always 0 (97% of official attributes)",
@@ -1054,6 +1095,10 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── RIBBONBLADE (fixed part fields) ──────────────────────────────────────
+    ("RIBBONBLADE", "width"): {
+        "EN": "Blade streak's lengthwise edge width. Formerly unkn04.",
+        "ZH": "刀光的纵边宽度。原名 unkn04。",
+    },
     ("RIBBONBLADE", "contractionSpeed"): {
         "EN": "0=Lingers,  1=Retracts,  ∞=Retracts instantly",
         "ZH": "0=驻留,  1=回缩,  ∞=瞬间回缩",
@@ -1061,6 +1106,43 @@ FIELD_ANNOTATIONS = {
     ("RIBBONBLADE", "colourTransitionPoint"): {
         "EN": "0=Instantly start transition,  1=Start at the end",
         "ZH": "0=立即开始过渡,  1=在末端开始",
+    },
+    ("RIBBONBLADE", "head.epvColorSlot"): {
+        "EN": "EPV color slot for the blade streak's head (the leading edge).",
+        "ZH": "刀光头部（前端）对应的 EPV 颜色槽。",
+    },
+    ("RIBBONBLADE", "tailEnd.epvColorSlot"): {
+        "EN": "EPV color slot for the blade streak's tail (the trailing edge).",
+        "ZH": "刀光尾部（后端）对应的 EPV 颜色槽。",
+    },
+    ("RIBBONBLADE", "head.color1"): {
+        "EN": "Head color. Mostly pure white; occasionally tinted (e.g. blue).",
+        "ZH": "头部颜色。大多为纯白，偶见染色（如蓝色）。",
+    },
+    ("RIBBONBLADE", "head.color2"): {
+        "EN": "Head color range. Almost always white (rarely touched).",
+        "ZH": "头部颜色范围。几乎恒为白色（很少被使用）。",
+    },
+    ("RIBBONBLADE", "tailEnd.color1"): {
+        "EN": "Tail color. Usually white with varying alpha — commonly used for a fade-out "
+              "on the trailing edge rather than a color tint.",
+        "ZH": "尾部颜色。通常为白色但 alpha 不同——多用于尾部渐隐效果，而非染色。",
+    },
+    ("RIBBONBLADE", "tailEnd.color2"): {
+        "EN": "Tail color range. Almost always white (rarely touched).",
+        "ZH": "尾部颜色范围。几乎恒为白色（很少被使用）。",
+    },
+    ("RIBBONBLADE", "tailEnd.unkn18_1"): {
+        "EN": "Boolean-looking (0/1 across the corpus). Purpose not yet identified.",
+        "ZH": "布尔型取值（全语料 0/1）。用途尚未确定。",
+    },
+    ("RIBBONBLADE", "head.unkn18_1"): {
+        "EN": "Always 0xCD across the whole corpus on the head side (the tailEnd-side "
+              "counterpart is a real 0/1 boolean). Exposed for in-game testing on the "
+              "precedent that flowmap jitter fields were also always 0 in the corpus yet "
+              "confirmed functional in-game.",
+        "ZH": "头部侧全语料恒为 0xCD（尾部侧同名字段是真实的 0/1 布尔）。参照 flowmap jitter "
+              "字段的先例（语料恒 0 但实机确认有效）暴露出来供实机测试。",
     },
 
     # ─── TURBULENCE (fixed part fields) ───────────────────────────────────────
@@ -2362,13 +2444,21 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("NOISE", "secondary_axis_speed"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("NOISE", "main_axis_speed_jitter"): {
+        "EN": "Jitter for main_axis_speed. Common range: 0~100. Formerly secondary_axis_speed.",
+        "ZH": "main_axis_speed 的抖动。常见取值在 0~100 之间。原名 secondary_axis_speed。",
     },
-    ("NOISE", "secondary_axis_speed2"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("NOISE", "main_axis_speed2_jitter"): {
+        "EN": "Jitter for main_axis_speed2. Common range: 0~100. Formerly secondary_axis_speed2.",
+        "ZH": "main_axis_speed2 的抖动。常见取值在 0~100 之间。原名 secondary_axis_speed2。",
+    },
+    ("NOISE", "teleport_radius_jitter"): {
+        "EN": "Jitter for teleport_radius. Formerly smooth_radius_randomized.",
+        "ZH": "teleport_radius 的抖动。原名 smooth_radius_randomized。",
+    },
+    ("NOISE", "teleport_radius2_jitter"): {
+        "EN": "Jitter for teleport_radius2. Formerly smooth_radius_randomized2.",
+        "ZH": "teleport_radius2 的抖动。原名 smooth_radius_randomized2。",
     },
     ("NOISE", "section_length"): {
         "EN": "Common values: [0, 36].",
@@ -2865,6 +2955,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
+    ("RIBBON", "tailTiedToBone"): {
+        "EN": "Boolean flag (0/1). Formerly read as a 4-byte int that was always "
+              "0xCDCDCD00/0xCDCDCD01 (uninitialized-memory fill) — only the lowest byte "
+              "was ever real data, now split out; the other 3 bytes are pure padding "
+              "(spacer6). 0=82%, 1=18% across the corpus.",
+        "ZH": "布尔开关（0/1）。原先按 4 字节 int 读取，恒为 0xCDCDCD00/0xCDCDCD01"
+              "（未初始化内存填充）——只有最低字节是真实数据，现已拆分；其余 3 字节纯占位"
+              "（spacer6）。全语料 0 占 82%，1 占 18%。",
+    },
     ("RIBBON", "unkn23_1"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
@@ -2905,9 +3004,18 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 256].",
         "ZH": "常见取值为 [0, 1, 256]。",
     },
-    ("RIBBONBLADE", "unkn03"): {
-        "EN": "Common values: [1, 2, 4, 5].",
-        "ZH": "常见取值为 [1, 2, 4, 5]。",
+    ("RIBBONBLADE", "widthDirection"): {
+        "EN": "Direction the streak's width extends toward. 0=Left, 1=Up, 2=Forward, "
+              "3=Right, 4=Down, 5=Backwards. Same enum as RIBBON.restitution_direction. "
+              "Formerly unkn03.",
+        "ZH": "刀光宽度延伸的朝向。0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON."
+              "restitution_direction 是同一套枚举。原名 unkn03。",
+    },
+    ("RIBBONBLADE", "length"): {
+        "EN": "Tail length, only effective when lengthMode=0 (contraction speed is then "
+              "fixed internally). Roughly proportional: higher = longer tail. Formerly unkn05_0.",
+        "ZH": "拖尾长度，仅当 lengthMode=0 时生效（此时收缩速度固定内置）。近似成正比："
+              "值越高拖尾越长。原名 unkn05_0。",
     },
     ("RIBBONBLADE", "unkn05_1"): {
         "EN": "Common values: [0, 2, 3, 4, 6, 20].",
@@ -2917,9 +3025,14 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RIBBONBLADE", "unkn07_1"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+    ("RIBBONBLADE", "lengthMode"): {
+        "EN": "Tail length control mode. 0=driven by the length field (fixed internal "
+              "contraction speed). 1=driven by maxLengthLimit + contractionSpeed together "
+              "(contractionSpeed=0 means no active contraction unless maxLengthLimit is hit). "
+              "Formerly unkn07_1.",
+        "ZH": "拖尾长度控制模式。0=由 length 字段决定（收缩速度固定内置）。1=由 "
+              "maxLengthLimit + contractionSpeed 共同决定（contractionSpeed=0 时不主动收缩，"
+              "除非到达 maxLengthLimit 上限）。原名 unkn07_1。",
     },
     ("RIBBONBLADE", "unkn08"): {
         "EN": "Common values: 0/1.",
@@ -2937,17 +3050,39 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RIBBONBLADE", "unkn23"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("RIBBONBLADE", "flowmapSpeed"): {
+        "EN": "Flowmap speed. Common range: 0~1. Part of the flowmap quartet "
+              "(speed/acceleration/strength/strengthAcceleration). Formerly unkn23.",
+        "ZH": "流光贴图速度。常见取值在 0~1 之间。属于 flowmap 四件套"
+              "（速度/加速度/强度/强度加速度）之一。原名 unkn23。",
     },
-    ("RIBBONBLADE", "unkn25"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBONBLADE", "flowmapAcceleration"): {
+        "EN": "Flowmap acceleration. Part of the flowmap quartet. Formerly unkn24.",
+        "ZH": "流光贴图加速度。属于 flowmap 四件套之一。原名 unkn24。",
     },
-    ("RIBBONBLADE", "unkn26"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("RIBBONBLADE", "flowmapStrength"): {
+        "EN": "Flowmap strength. Common range: 0~100. Confirmed in-game. Formerly unkn25.",
+        "ZH": "流光贴图强度。常见取值在 0~100 之间。已实机确认。原名 unkn25。",
+    },
+    ("RIBBONBLADE", "flowmapStrengthAcceleration"): {
+        "EN": "Flowmap strength acceleration. Common range: 0~1. Confirmed in-game. Formerly unkn26.",
+        "ZH": "流光贴图强度加速度。常见取值在 0~1 之间。已实机确认。原名 unkn26。",
+    },
+    ("RIBBONBLADE", "flowmapSpeedJitter"): {
+        "EN": "Jitter for flowmapSpeed. Confirmed float in-game. Formerly NULL5.",
+        "ZH": "flowmapSpeed 的抖动。已实机确认为 float。原名 NULL5。",
+    },
+    ("RIBBONBLADE", "flowmapAccelerationJitter"): {
+        "EN": "Jitter for flowmapAcceleration. Confirmed float in-game. Formerly NULL6.",
+        "ZH": "flowmapAcceleration 的抖动。已实机确认为 float。原名 NULL6。",
+    },
+    ("RIBBONBLADE", "flowmapStrengthJitter"): {
+        "EN": "Jitter for flowmapStrength. Confirmed float in-game. Formerly NULL7.",
+        "ZH": "flowmapStrength 的抖动。已实机确认为 float。原名 NULL7。",
+    },
+    ("RIBBONBLADE", "flowmapStrengthAccelerationJitter"): {
+        "EN": "Jitter for flowmapStrengthAcceleration. Confirmed float in-game. Formerly NULL8.",
+        "ZH": "flowmapStrengthAcceleration 的抖动。已实机确认为 float。原名 NULL8。",
     },
     ("RIBBONBLADE", "uvRepetition"): {
         "EN": "Common range: 0~100.",

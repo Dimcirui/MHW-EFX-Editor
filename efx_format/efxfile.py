@@ -533,7 +533,7 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
         return 4 + 8 + 4 + 4 + 4 + 24 + 32 + 1  # = 81
 
     # Homing: 4(type) + int*2(8) + long spacer(4) + float*6(24) + long*2(8) + int*2(8) = 56B
-    # BT: type+unknown+unknown0+spacer+f0+speed+speedMultiplier+f3+f4+radius+i0+i1+enableRadialVanish+unknown1
+    # BT: type+unknown+unknown0+spacer+restoringForce+speed+speedMultiplier+f3+vanishDistance+forceFieldDistance+homingTarget+vanishMode+forceFieldMode+unknown1
     if h == HOMING:
         return 4 + 8 + 4 + 24 + 8 + 8  # = 56
 
@@ -585,7 +585,7 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
         return 4 + 8 + 4  # = 16
 
     # RibbonBlade: variable (has path_len near end)
-    # Structure: type(4)+unkn0[2](8)+spacer0(4)+unkn03(4)+unkn04(4)+unkn05[2](8)+spacer1(4)+unkn07[2](8)+
+    # Structure: type(4)+unkn0[2](8)+spacer0(4)+unkn03(4)+width(4)+unkn05[2](8)+spacer1(4)+unkn07[2](8)+
     #   5 floats(20)+spacer2(4)+unkn10(4)+uvRep(4)+unkn12[3](12)+spacer3(4)+
     #   EPVColorSlot head(36)+EPVColorSlot tailEnd(36)+4*(float+long)(32)+
     #   short NULL9(2)+int path_len(4)+char p[path_len]

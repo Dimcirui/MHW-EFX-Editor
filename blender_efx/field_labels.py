@@ -34,8 +34,9 @@ FIELD_LABELS_ZH = {
     "spin_acceleration": "自旋加速度",
     "main_axis_speed": "主轴速度",
     "main_axis_speed2": "主轴速度2",
-    "secondary_axis_speed": "次轴速度",
-    "secondary_axis_speed2": "次轴速度2",
+    # 原 secondary_axis_speed/2，实测确认（2026-07-11）是 main_axis_speed/2 的 jitter
+    "main_axis_speed_jitter": "主轴速度抖动",
+    "main_axis_speed2_jitter": "主轴速度2抖动",
     "energyOnAxisX": "X 轴能量",
     "energyOnAxisY": "Y 轴能量",
     "energyOnAxisZ": "Z 轴能量",
@@ -235,8 +236,9 @@ FIELD_LABELS_ZH = {
     "area_of_aura": "光环范围",
     "teleport_radius": "传送半径",
     "teleport_radius2": "传送半径2",
-    "smooth_radius_randomized": "平滑半径随机",
-    "smooth_radius_randomized2": "平滑半径随机2",
+    # 原 smooth_radius_randomized/2，实测确认（2026-07-11）是 teleport_radius/2 的 jitter
+    "teleport_radius_jitter": "传送半径抖动",
+    "teleport_radius2_jitter": "传送半径2抖动",
     "expansion_radius_limit": "扩散范围",
     "expansion_radius_jitter": "扩散范围偏差",
     "expansion_radius_elasticity": "扩散弹性",
@@ -274,7 +276,7 @@ FIELD_LABELS_ZH = {
     # ── 位标志 / 控制 ───────────────────────────────────────────────────────
     "controlBitflag": "控制位标志",
     "enableVelocityBitflag": "启用速度位标志",
-    "enableRadialVanish": "归航力控制",
+    "forceFieldMode": "力场模式",
     "viewAngleLimit": "视角限制",
     "visibleOnPreview": "预览中可见",
     # RIBBON 实测：原观测名 visiblePreview，实为"可见性修正"。非 0 会破坏 TIML 正常
@@ -387,13 +389,13 @@ FIELD_LABELS_ZH_BY_TYPE = {
     ("LIGHTNING", "EPVColorSlot1"): "EPV 颜色槽1",
     ("LIGHTNING", "EPVColorSlot2"): "EPV 颜色槽2",
 
-    # ── HOMING（归航，系统实测逆向，2026-06）─────────────────────────────────
-    ("HOMING", "f0"):              "归航角速度",
-    ("HOMING", "f3"):              "渲染衰减系数",
-    ("HOMING", "f4"):              "归航激活距离",
-    ("HOMING", "radius"):          "力场衰减距离",
-    ("HOMING", "i0"):              "归航模式",
-    ("HOMING", "i1"):              "可见性标志",
+    # ── HOMING（归航，2026-06 初测 + 2026-07 重新解释/改名）───────────────────
+    # f3 语义未确认（无可观影响），故意不给译名，保留原始标识符 f3。
+    ("HOMING", "restoringForce"): "拉回力度",
+    ("HOMING", "vanishDistance"): "消失距离",
+    ("HOMING", "forceFieldDistance"): "力场距离",
+    ("HOMING", "homingTarget"):    "归航目标",
+    ("HOMING", "vanishMode"):      "消失模式",
 
     # ── VELOCITY2D（2D 速度，来源 EFX_Subtypes.bt）────────────────────────────
     ("VELOCITY2D", "unkn10"):                          "未知10",
@@ -436,6 +438,19 @@ FIELD_LABELS_ZH_BY_TYPE = {
     ("RANDOMFIX", "randomSeedTable6"): "随机种子表 6",
     ("RANDOMFIX", "randomSeedTable7"): "随机种子表 7",
     ("RANDOMFIX", "tableSelectionGroup"): "种子表选择组",
+
+    # ── RIBBONBLADE（刀光，2026-07-11 实机确认）────────────────────────────
+    ("RIBBONBLADE", "widthDirection"): "宽度延伸方向",
+    ("RIBBONBLADE", "length"): "拖尾长度",
+    ("RIBBONBLADE", "lengthMode"): "拖尾长度模式",
+    ("RIBBONBLADE", "flowmapSpeed"): "流光贴图速度",
+    ("RIBBONBLADE", "flowmapSpeedJitter"): "流光贴图速度抖动",
+    ("RIBBONBLADE", "flowmapAcceleration"): "流光贴图加速度",
+    ("RIBBONBLADE", "flowmapAccelerationJitter"): "流光贴图加速度抖动",
+    ("RIBBONBLADE", "flowmapStrength"): "流光贴图强度",
+    ("RIBBONBLADE", "flowmapStrengthJitter"): "流光贴图强度抖动",
+    ("RIBBONBLADE", "flowmapStrengthAcceleration"): "流光贴图强度加速度",
+    ("RIBBONBLADE", "flowmapStrengthAccelerationJitter"): "流光贴图强度加速度抖动",
 }
 
 
@@ -459,8 +474,10 @@ def label_zh(ori_name, type_name=None):
 # 编辑无意义且易写坏；导出时未编辑字段走原始字节，byte-perfect 不受影响。
 # 键 = (type_name, ori_name)。如需放行某字段，删对应行即可。
 # 重新生成：python3 tools/scan_fill_fields.py --all --emit-set
-# ⚠ 已手动排除 3 个名字像真实字段、可能有语义的项（--emit-set 会再次列出它们，
-#   重生成后需重新删除）：PLSNOW.alpha_effect、RIBBON.tailTiedToBone、STRAINRIBBON.color3_w。
+# ⚠ 已手动排除 2 个名字像真实字段、可能有语义的项（--emit-set 会再次列出它们，
+#   重生成后需重新删除）：PLSNOW.alpha_effect、STRAINRIBBON.color3_w。
+#   （RIBBON.tailTiedToBone 曾在此列，2026-07-10 查明其 4B 恒为 0xCDCDCD00/01——只有
+#   最低字节 0/1 是真实数据，已拆成 tailTiedToBone(B,真实)+spacer6(B×3,纯填充)。）
 # ─────────────────────────────────────────────────────────────────────────────
 
 RESERVED_FILL_FIELDS = frozenset({
@@ -505,6 +522,7 @@ RESERVED_FILL_FIELDS = frozenset({
     ('RIBBON', 'spacer3'),
     ('RIBBON', 'spacer4'),
     ('RIBBON', 'spacer5'),
+    ('RIBBON', 'spacer6'),
     ('RIBBON', 'spacer7'),
     ('RIBBON', 'spacer8'),
     ('RIBBON', 'spacer9'),
@@ -513,6 +531,13 @@ RESERVED_FILL_FIELDS = frozenset({
     ('RIBBONBLADE', 'spacer1'),
     ('RIBBONBLADE', 'spacer2'),
     ('RIBBONBLADE', 'spacer3'),
+    # EPVColorSlot 嵌套字段（head.*/tailEnd.* 全语料 62/62 恒为 0xCD 填充，2026-07-10 确认）
+    ('RIBBONBLADE', 'head.spacer4'),
+    ('RIBBONBLADE', 'head.spacer5'),
+    # head.unkn18_1 曾按恒为 0xCD 排除；tailEnd 侧同名字段是真实数据(0/1 布尔)，鉴于
+    # flowmap jitter 的先例（语料恒 0 但实机确认有效），改为可编辑供实机测试（2026-07-11）。
+    ('RIBBONBLADE', 'tailEnd.spacer4'),
+    ('RIBBONBLADE', 'tailEnd.spacer5'),
     ('SCREENSPACECOLLISION', 'spacer'),
     ('SHADERSETTINGS', 'spacer'),
     ('SHOVEL', 'spacer'),
@@ -525,6 +550,30 @@ RESERVED_FILL_FIELDS = frozenset({
     ('TONEMAPFILTER', 'unkn1'),
     ('TUBELIGHT', 'unkn3_2'),
     ('TUBELIGHT', 'unkn5_1'),  # 恒 0xCDCDCDCD 未初始化标记（2026-07-01 实机测试确认，schema 拆分后新增）
+
+    # ── "section_length" 类结构性长度标记（非 0xCD 填充，2026-07-11 全语料统计确认）───
+    # 这批字段是各类型 schema 的第 2 个 4B 字段，全语料 100% 恒等于「该 attribute 总字节数
+    # - 8」（即该字段自身结束位置到块尾的剩余字节数）——是引擎自描述的剩余长度标记，不是
+    # 可调参数，改动会破坏解析。判据/复现见 2026-07-11 对 44 个候选类型的系统扫描。
+    # ⚠ SHADERSETTINGS.unkn1（99.9% 恒 104，但按同公式应为 108，差 4）未确认属于同一机制，
+    # 结构相同的 RAYCAST/HOMING/SCREENSPACECOLLISION/SHOVEL 均按标准公式吻合，故未列入。
+    ('NOISE', 'section_length'),
+    ('DUMMY', 'unkn0_1'),
+    ('BLINK', 'unkn0_1'),
+    ('FADEBYEMITTERANGLE', 'unkn0_1'),
+    ('RAYCAST', 'fixed70'),
+    ('HOMING', 'unknown0'),
+    ('SCREENSPACECOLLISION', 'unkn0_1'),
+    ('SHOVEL', 'unkn01'),
+    ('PATHCHAIN', 'unkn0_1'),
+    ('PTTRIGGER', 'unkn0_1'),
+    ('SPAWNBYANGLE', 'unkn0_1'),
+    ('CHECKPUREATTRIBUTE', 'unkn0_1'),
+    ('SPAWNBYOCCLUSION', 'unkn0_1'),
+    ('PARENTSNOW', 'unkn0_1'),
+    ('OTOMOSNOW', 'unkn0_1'),
+    ('FAKEPLANE', 'unkn0_1'),
+    ('REPEATAREA', 'unkn1'),
 })
 
 
