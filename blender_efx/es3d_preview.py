@@ -46,11 +46,12 @@ import math
 import bpy
 from bpy.props import BoolProperty
 from bpy.types import Operator
-from bpy.app.handlers import persistent
 
 from .i18n import T
+from . import session_core as _sc
 
 _TEMP_COLLECTION = "EFX ES3D Preview"
+_PREVIEW_MARKER = "~EFX_ES3D_PREVIEW"   # 预览对象标记（无 Python 状态，标记扫描派生活跃/清理）
 _NODE_GROUP_NAME = "EFX ES3D Shape"
 _NODE_GROUP_VER = 1  # 图结构版本标记；不匹配则重建（开发期迭代用）
 _MATERIAL_NAME = "EFX ES3D Preview Material"
@@ -316,17 +317,6 @@ def _ensure_material():
 # 预览对象：创建 / 应用参数 / 刷新
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _get_temp_collection():
-    col = bpy.data.collections.get(_TEMP_COLLECTION)
-    if col is None:
-        col = bpy.data.collections.new(_TEMP_COLLECTION)
-        try:
-            bpy.context.scene.collection.children.link(col)
-        except Exception:
-            pass
-    return col
-
-
 def _make_preview_object(es3d_obj, col, label):
     ng = _ensure_node_group()
     mesh_data = bpy.data.meshes.new("EFX_es3d_preview_mesh")
@@ -334,7 +324,7 @@ def _make_preview_object(es3d_obj, col, label):
     col.objects.link(obj)
     # 恒等本地变换的子对象：obj.matrix_world == es3d.matrix_world（"变换就是几何体 XYZ"）
     obj.parent = es3d_obj
-    obj["~EFX_ES3D_PREVIEW"] = 1
+    obj[_PREVIEW_MARKER] = 1
 
     mod = obj.modifiers.new(_MODIFIER_NAME, "NODES")
     mod.node_group = ng
@@ -374,34 +364,28 @@ def _apply_params(obj, mod, params):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 会话状态
+# 会话（无 Python 状态：真相在场景标记，见 session_core 设计原则）
 # ─────────────────────────────────────────────────────────────────────────────
 
-_state = {
-    "active": False,
-    "by_attribute": {},    # es3d_attribute.name -> preview_obj.name
-    "instances": [],   # 全部预览对象名
-    "collection": None,
-}
+def _is_active() -> bool:
+    """会话是否活跃：场景里有无 ES3D 预览对象（标记扫描派生）。"""
+    return bool(_sc.iter_marked(_PREVIEW_MARKER))
 
 
 def resync_if_active(es3d_obj):
     """会话进行中，重同步该 ES3D 属性的预览对象（供 fields.py 编辑回调调用）。
 
-    ⚠ 按对象名重新解析（撤销会让 Python 持有的引用失效，名仍有效，同 mesh_align）。
+    ⚠ 完全按场景派生：预览对象 parented 到其 ES3D 属性，故按 `.parent is es3d_obj` 反查，
+    零 Python 缓存——撤销/热重载让引用失效也无所谓。
     """
-    if not _state["active"] or es3d_obj is None:
+    if es3d_obj is None or not _is_active():
         return
-    obj_name = _state["by_attribute"].get(es3d_obj.name)
-    if not obj_name:
-        return
-    obj = bpy.data.objects.get(obj_name)
-    if obj is None:
-        return
-    mod = obj.modifiers.get(_MODIFIER_NAME)
-    if mod is None:
-        return
-    _apply_params(obj, mod, _read_es3d_params(es3d_obj))
+    for obj in _sc.iter_marked(_PREVIEW_MARKER):
+        if obj.parent is not es3d_obj:
+            continue
+        mod = obj.modifiers.get(_MODIFIER_NAME)
+        if mod is not None:
+            _apply_params(obj, mod, _read_es3d_params(es3d_obj))
 
 
 def _resolve_root(obj):
@@ -426,8 +410,16 @@ def _iter_scope_es3d_attributes(root):
                 yield blk
 
 
+def _reconcile():
+    """清场：删掉全部 ES3D 预览对象（及其孤儿 mesh）+ 删临时集合。按标记，幂等安全。"""
+    _sc.purge_marked(_PREVIEW_MARKER)   # remove_object 顺带回收无引用的 preview mesh
+    _sc.remove_collection_named(_TEMP_COLLECTION)
+
+
 def _start(roots):
-    col = _get_temp_collection()
+    """建预览。进入前先清场（marker 扫描），杜绝孤儿累积。"""
+    _reconcile()
+    col = _sc.get_or_create_collection(_TEMP_COLLECTION)
     n = 0
     for root in roots:
         if root is None:
@@ -436,47 +428,13 @@ def _start(roots):
             label = str(blk.get("efx_raw_label", "") or blk.name)
             obj, mod = _make_preview_object(blk, col, label)
             _apply_params(obj, mod, _read_es3d_params(blk))
-            _state["by_attribute"][blk.name] = obj.name
-            _state["instances"].append(obj.name)
             n += 1
-    _state["collection"] = col.name
-    _state["active"] = True
     return n
 
 
 def _stop():
-    for name in _state["instances"]:
-        obj = bpy.data.objects.get(name)
-        if obj is None:
-            continue
-        mesh = obj.data
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        except Exception:
-            pass
-        try:
-            if mesh is not None and mesh.users == 0:
-                bpy.data.meshes.remove(mesh)
-        except Exception:
-            pass
-    col = bpy.data.collections.get(_state["collection"]) if _state["collection"] else None
-    if col is not None:
-        try:
-            bpy.data.collections.remove(col)
-        except Exception:
-            pass
-    _state["active"] = False
-    _state["by_attribute"] = {}
-    _state["instances"] = []
-    _state["collection"] = None
-
-
-@persistent
-def _on_load(*_args):
-    _state["active"] = False
-    _state["by_attribute"] = {}
-    _state["instances"] = []
-    _state["collection"] = None
+    """退出：清场。按标记，撤销/热重载脱节也不残留。"""
+    _reconcile()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -500,7 +458,7 @@ class EFX_OT_es3d_preview_enter(Operator):
 
     @classmethod
     def poll(cls, context):
-        if _state["active"]:
+        if _is_active():
             return False
         if getattr(context.scene, "efx_es3d_preview_all", False):
             return True
@@ -534,7 +492,7 @@ class EFX_OT_es3d_preview_exit(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _state["active"]
+        return _is_active()
 
     def execute(self, context):
         _stop()
@@ -560,17 +518,11 @@ def register():
         description="Preview EmitterShape3D shapes for every EFX in the scene (else current EFX only)",
         default=False,
     )
-    if _on_load not in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(_on_load)
+    # 无 Python 状态需要 load 复位（真相全在场景标记）；孤儿清理靠 enter 先清场。
 
 
 def unregister():
     _stop()
-    if _on_load in bpy.app.handlers.load_post:
-        try:
-            bpy.app.handlers.load_post.remove(_on_load)
-        except Exception:
-            pass
     if hasattr(bpy.types.Scene, "efx_es3d_preview_all"):
         del bpy.types.Scene.efx_es3d_preview_all
     for cls in reversed(_CLASSES):

@@ -176,14 +176,9 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
                 data = _tm.auto_grow_lengths(data)
             except Exception:
                 pass
-        obj["timl_bytes"]  = base64.b64encode(data).decode("ascii")
-        obj["timl_length"] = str(len(data))  # 重算长度（导出端也会再重算，双保险）
-        # 确保该 entry 有 TIML 统一入口句柄（从无到有添加 TIML 时创建）
-        try:
-            from . import io_tree as _iot
-            _iot.make_timl_handle(obj)
-        except Exception:
-            pass
+        # 咽喉点：写字节 + 建句柄 + 从新字节重建持久 fcurve（替换整段 TIML → 新字节为准）
+        from . import timl_edit as _te
+        _te.set_entry_timl(obj, data)
         self.report(
             {"INFO"},
             f"TIML reimported: {len(data)} bytes (was {old_len}). timl_length is auto-recomputed on export.",
@@ -224,13 +219,9 @@ class EFX_OT_create_entry_timl(bpy.types.Operator):
 
         from ..efx_format.timl import make_blank_timl
         data = make_blank_timl()
-        obj["timl_bytes"]  = base64.b64encode(data).decode("ascii")
-        obj["timl_length"] = str(len(data))
-        try:
-            from . import io_tree as _iot
-            _iot.make_timl_handle(obj)
-        except Exception:
-            pass
+        # 咽喉点：新建 → 写字节 + 建句柄（空 TIML 无动画，不建 fcurve，符合预期）
+        from . import timl_edit as _te
+        _te.set_entry_timl(obj, data)
         self.report({"INFO"}, f"Blank TIML created ({len(data)} bytes). Use EFX TIML panel to enable axes.")
         return {"FINISHED"}
 
@@ -260,16 +251,9 @@ class EFX_OT_delete_entry_timl(bpy.types.Operator):
             self.report({"ERROR"}, "Current object is not an EFX_ENTRY containing TIML")
             return {"CANCELLED"}
         old_len = len(_entry_timl_bytes(obj))
-        obj["timl_bytes"]  = ""    # base64 of empty = b""
-        obj["timl_length"] = "0"   # 导出端也会再重算，双保险
-        # 移除该 entry 的 TIML 句柄（清空后不再有 TIML）
-        try:
-            from . import io_tree as _iot
-            h = _iot.find_timl_handle(obj)
-            if h is not None:
-                bpy.data.objects.remove(h, do_unlink=True)
-        except Exception:
-            pass
+        # 咽喉点：删除 → 清空字节 + 删句柄+持久 Action
+        from . import timl_edit as _te
+        _te.set_entry_timl(obj, b"")
         self.report({"INFO"}, f"TIML deleted ({old_len} bytes removed). timl_length=0.")
         return {"FINISHED"}
 

@@ -23,13 +23,25 @@ blender_efx/mesh_align.py  —  绑定网格随 TRANSFORM3D + MESH 旋转/缩放
 import bpy
 from mathutils import Matrix, Vector
 from bpy.types import Operator, Panel
-from bpy.app.handlers import persistent
 
 from .i18n import T
 from . import transform_sync as _ts
+from . import session_core as _sc
 
 
 _TEMP_COLLECTION = "EFX Mesh Align (preview)"
+
+# 标记：会话产物一律打自定义属性，"是否活跃/有哪些实例"由标记扫描派生，不用 Python _state
+# （见 session_core 设计原则：状态=场景事实的派生量，undo/reload/热重载不残留孤儿）。
+_INSTANCE_MARKER = "~EFX_ALIGN_INSTANCE"   # 实例对象标记
+_BODY_KEY = "~EFX_ALIGN_BODY"              # 实例记源 entry 名（重对齐时反查）
+_ATTR_KEY = "~EFX_ALIGN_ATTR"             # 实例记源 MESH 属性名（重对齐时反查）
+_HID_FLAG = "~EFX_ALIGN_HID_ORIG"         # 被隐藏源网格记原 hide_viewport 值（还原用）
+
+
+def _is_active() -> bool:
+    """会话是否活跃：场景里有无对齐实例（标记扫描派生，非 Python 状态）。"""
+    return bool(_sc.iter_marked(_INSTANCE_MARKER))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -139,34 +151,16 @@ def _all_efx_roots():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 会话状态
+# 会话（无 Python 状态：真相全在场景标记，见文件头设计原则）
 # ─────────────────────────────────────────────────────────────────────────────
 
-_state = {
-    "active": False,
-    "by_entry": {},          # body.name -> [(dup_obj, mesh_attribute)]
-    "instances": [],        # 所有 dup 对象
-    "hidden": [],           # [(source_obj, orig_hide_viewport)]
-    "collection": None,
-}
-
-
-def _get_temp_collection():
-    col = bpy.data.collections.get(_TEMP_COLLECTION)
-    if col is None:
-        col = bpy.data.collections.new(_TEMP_COLLECTION)
-        try:
-            bpy.context.scene.collection.children.link(col)
-        except Exception:
-            pass
-    return col
-
-
-def _make_instance(src, col, label):
-    """建链接复制体（共享网格数据），返回新对象。"""
+def _make_instance(src, col, label, body, mesh_attribute):
+    """建链接复制体（共享网格数据）并打标记，返回新对象。"""
     dup = src.copy()          # 默认共享 .data（链接复制）
     dup.name = "EFX_align::" + label
-    dup["~EFX_ALIGN_INSTANCE"] = 1
+    dup[_INSTANCE_MARKER] = 1
+    dup[_BODY_KEY] = body.name          # 反查用：重对齐按 body 名筛实例
+    dup[_ATTR_KEY] = mesh_attribute.name
     # ⚠ src.copy() 会继承源的隐藏状态：若源已被前一次循环隐藏，复制体会跟着隐藏
     # （多 entry 复用同源时只显示第一个的根因）→ 强制实例可见。
     try:
@@ -196,18 +190,16 @@ def _align_instance(dup, body, mesh_attribute):
 def realign_entry_if_active(body):
     """会话进行中，重对齐属于该 entry 的全部实例（供 fields.py 编辑回调调用）。
 
-    ⚠ 按**对象名**重新解析（不用缓存的对象引用）：Blender 撤销(undo)会让 Python 持有的
-    bpy 对象引用失效，缓存引用会变悬空 → 实例无法继续跟随。按名每次重取即可幸免。
+    ⚠ 完全按**场景标记**重新解析（零 Python 缓存）：扫所有对齐实例，取 _BODY_KEY==body.name 的，
+    按 _ATTR_KEY 反查 MESH 属性对象再对齐。undo/reload 让引用失效也无所谓——每次按名重取。
     """
-    if not _state["active"] or body is None:
+    if body is None or not _is_active():
         return
-    entries = _state["by_entry"].get(body.name)
-    if not entries:
-        return
-    for dup_name, blk_name in entries:
-        dup = bpy.data.objects.get(dup_name)
-        blk = bpy.data.objects.get(blk_name)
-        if dup is not None and blk is not None:
+    for dup in _sc.iter_marked(_INSTANCE_MARKER):
+        if dup.get(_BODY_KEY) != body.name:
+            continue
+        blk = bpy.data.objects.get(dup.get(_ATTR_KEY, "") or "")
+        if blk is not None:
             _align_instance(dup, body, blk)
 
 
@@ -215,10 +207,18 @@ def realign_entry_if_active(body):
 # 进入 / 退出
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _reconcile():
+    """清场：删掉全部对齐实例、还原全部被隐藏源、删临时集合。按标记，非缓存引用。
+    幂等、可重复安全调用；进入前先跑一次即根治历史遗留孤儿（"越进越乱"）。"""
+    _sc.purge_marked(_INSTANCE_MARKER)
+    _sc.restore_hidden(_HID_FLAG)
+    _sc.remove_collection_named(_TEMP_COLLECTION)
+
+
 def _start(roots, armature, use_anchor):
-    """建实例并对齐。返回实例数。"""
-    col = _get_temp_collection()
-    hidden_seen = set()
+    """建实例并对齐。返回实例数。进入前先清场（marker 扫描），杜绝孤儿累积。"""
+    _reconcile()
+    col = _sc.get_or_create_collection(_TEMP_COLLECTION)
     n = 0
     for root in roots:
         if root is None:
@@ -232,70 +232,19 @@ def _start(roots, armature, use_anchor):
             bindings = _entry_mesh_bindings(body)
             if not bindings:
                 continue
-            entries = []
             for mattribute, src in bindings:
                 label = str(body.get("efx_raw_label", "") or body.name)
-                dup = _make_instance(src, col, label)
+                dup = _make_instance(src, col, label, body, mattribute)
                 _align_instance(dup, body, mattribute)
-                # ⚠ 存对象名（非引用）：撤销后引用失效，名仍可重取（见 realign_entry_if_active）
-                entries.append((dup.name, mattribute.name))
-                _state["instances"].append(dup.name)
-                # 隐藏源网格（每个源只隐一次，快照原状态）
-                if src.name not in hidden_seen:
-                    hidden_seen.add(src.name)
-                    _state["hidden"].append((src.name, src.hide_viewport))
-                    try:
-                        src.hide_viewport = True
-                    except Exception:
-                        pass
+                # 隐藏源网格：原 hide 值存源对象自定义属性（flag_hidden 幂等，多源复用只记一次）
+                _sc.flag_hidden(src, _HID_FLAG)
                 n += 1
-            if entries:
-                _state["by_entry"][body.name] = entries
-    _state["collection"] = col.name
-    _state["active"] = True
     return n
 
 
 def _stop():
-    """删实例、恢复源网格可见、删临时集合、清状态。可重复安全调用。
-
-    全部按**名**重新解析（撤销后引用失效；名仍有效）。
-    """
-    for dup_name in _state["instances"]:
-        dup = bpy.data.objects.get(dup_name)
-        if dup is not None:
-            try:
-                bpy.data.objects.remove(dup, do_unlink=True)
-            except Exception:
-                pass
-    for src_name, orig in _state["hidden"]:
-        src = bpy.data.objects.get(src_name)
-        if src is not None:
-            try:
-                src.hide_viewport = orig
-            except Exception:
-                pass
-    col = bpy.data.collections.get(_state["collection"]) if _state["collection"] else None
-    if col is not None:
-        try:
-            bpy.data.collections.remove(col)
-        except Exception:
-            pass
-    _state["active"] = False
-    _state["by_entry"] = {}
-    _state["instances"] = []
-    _state["hidden"] = []
-    _state["collection"] = None
-
-
-@persistent
-def _on_load(*_args):
-    # 换文件：旧引用失效，直接清状态（不碰已不存在的对象）
-    _state["active"] = False
-    _state["by_entry"] = {}
-    _state["instances"] = []
-    _state["hidden"] = []
-    _state["collection"] = None
+    """退出：清场（删实例/还原源/删集合）。按标记，撤销/热重载脱节也不残留。"""
+    _reconcile()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +268,7 @@ class EFX_OT_mesh_align_enter(Operator):
 
     @classmethod
     def poll(cls, context):
-        if _state["active"]:
+        if _is_active():
             return False
         if getattr(context.scene, "efx_align_all_efx", False):
             return True
@@ -355,7 +304,7 @@ class EFX_OT_mesh_align_exit(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _state["active"]
+        return _is_active()
 
     def execute(self, context):
         _stop()
@@ -385,9 +334,9 @@ class EFX_PT_mesh_align(Panel):
     def draw(self, context):
         layout = self.layout
         layout.label(text=T("align.hint"), icon="SNAP_ON")
-        if _state["active"]:
+        if _is_active():
             box = layout.box()
-            box.label(text=T("align.previewing").format(len(_state["instances"])), icon="PLAY")
+            box.label(text=T("align.previewing").format(len(_sc.iter_marked(_INSTANCE_MARKER))), icon="PLAY")
             row = box.row()
             row.scale_y = 1.3
             row.operator("efx.mesh_align_exit", text=T("align.exit"), icon="X")
@@ -418,17 +367,11 @@ def register():
         description="进入对齐时处理场景内所有 EFX 的绑定网格（不勾则仅当前 EFX）",
         default=False,
     )
-    if _on_load not in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(_on_load)
+    # 无 Python 状态需要 load 复位（真相全在场景标记）；孤儿清理靠 enter 先清场。
 
 
 def unregister():
     _stop()
-    if _on_load in bpy.app.handlers.load_post:
-        try:
-            bpy.app.handlers.load_post.remove(_on_load)
-        except Exception:
-            pass
     if hasattr(bpy.types.Scene, "efx_align_all_efx"):
         del bpy.types.Scene.efx_align_all_efx
     for cls in reversed(_CLASSES):

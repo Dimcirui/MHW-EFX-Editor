@@ -1,27 +1,21 @@
 """
-blender_efx/timl_edit.py  —  阶段2b：自建 TIML 通道编辑会话（完全自包含，无外部工具依赖）
+blender_efx/timl_edit.py  —  持久化 TIML 通道编辑（Phase 3：导入即建 fcurve，字节=结构权威）
 
-把 entry 的 TIML 解析成**原生 Blender F 曲线**，用户在 Dope Sheet / Graph Editor 里改值/帧/
-插值/缓动，Apply 时读回曲线、用 efx_format.timl 重建 TIML 字节写回 entry。整条链路只用我们
-自己的 `efx_format/timl.py` + `timl_names.py`。
+模型（见 memory timl-fcurve-persistence-refactor-plan / timl-phase3-persistent-fcurve-detail）
+------------------------------------------------------------------------------------------
+- **EFX 导入时**即把 entry 的 TIML 解析成句柄(EFX_TIML)Action 上的**持久原生 fcurve**
+  （`build_persistent_fcurves`）。fcurve 是「值编辑面」，用户随时在 Dope/Graph 里改值/帧/插值。
+- **导出时**把 fcurve 值合并回 `timl_bytes` 结构再序列化（`sync_fcurves_to_bytes`，io_tree 调）。
+- **timl_bytes = 结构权威**（labelHash/dataIx/loop/轴/hash/顺序/opaque，fcurve 装不下）。
+- **弃 Apply/Cancel**：编辑即时持久（像普通 Blender 动画），丢弃靠原生 Ctrl+Z——由构造闭合
+  "Apply后撤销不回态 / 会话内撤销失效"两个旧 bug。进入/退出编辑退化为**绑定/解绑网格预览**。
+- **单一咽喉点 `set_entry_timl`**：所有 timl_bytes 变更（新建/替换/删除）必经它，写字节+建/删句柄+
+  从新字节重建 fcurve——否则 fcurve 陈旧，导出会拿旧 fcurve 反向覆盖新字节丢数据。结构编辑先
+  `commit_fcurves_to_bytes` 提交进行中的关键帧编辑，再改字节、再 set_entry_timl 重建。
+- byte-perfect：build→sync 全语料逐字节还原（仅变换值 loc/rot 亚-ULP 用户已接受，见
+  timl-loc-fcurve-precision-finding）；不再靠脏门控/未编辑短路。
 
-机制
-----
-- 每个 entry 一个 EFX_TIML 句柄；句柄上挂 `efx_timl_channels` CollectionProperty + 一个 Action。
-- transform3d 九条通道(data_type2 且命中 timl_names.transform_mapping) → 真实
-  location/rotation_euler/scale 曲线(轴变换 game↔Blender) → 句柄自身 transform 动 = **视口可播**；
-  撞车(同 prop+index)回退 synthetic。其余通道 → synthetic `efx_timl_channels[i].value`。
-- 关键帧映射(镜像 FK，编解码 28188/28188 验证)：co=(frame,value)、interpolation=transition、
-  back=controlL、period=controlR。Color 拆 RGBA、Flag(hash∈BIG_FLAGS)拆 lo/hi、其余单条。
-- 绑定 MESH(_uvc._entry_mesh_target)时加 Child Of 约束让网格跟随句柄动画(退出移除)；
-  无绑定则仅句柄自身动 + 曲线/Action 在(用户可自行绑到网格)。
-- 回写：每 transform 收集子曲线 → 帧并集/逆轴变换 → encode_keyframe 重建 → Timl.dirty → serialize。
-- byte-perfect：**会话级无改动检测**(进入快照曲线签名，Apply 一致则不回写 → verbatim)。
-
-作用域(点③)：可勾选「同时编辑当前 EFX 集合内所有特效体」→ 每个含 TIML 的 entry 各建一条编辑
-条目(各自句柄+Action)，统一进入/应用/退出。
-
-约束(CLAUDE.md)：bpy 稳定子集；Python 3.10；纯胶水层；硬逻辑在 efx_format/timl*.py。
+约束（CLAUDE.md）：bpy 稳定子集；Python 3.10；纯胶水层；硬逻辑在 efx_format/timl*.py。
 """
 
 import base64
@@ -33,19 +27,18 @@ from bpy.props import FloatProperty, FloatVectorProperty, CollectionProperty
 from .i18n import T
 from . import timl_io as _tio          # resolve_timl_entry / _entry_timl_bytes / _entry_has_timl
 from . import uvc_preview as _uvc       # _entry_mesh_target / _resolve_root
+from . import session_core as _sc       # 标记式 reconcile（bind/unbind 用）
 from ..efx_format import timl as _timl
 from ..efx_format import timl_names as _tn
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Action fcurves 兼容层
+# Action fcurves 兼容层（Blender 4.4+ 把 Action 改成 layers/strips/slots/channelbag）
 # ─────────────────────────────────────────────────────────────────────────────
-# Blender 4.4+ 把 Action 改成 layers/strips/slots/channelbag 的分层结构，
-# Action.fcurves 被彻底移除（不是 deprecated，是 AttributeError）。旧版(<4.4，
-# 含 3.6/4.3 目标运行版本)Action.fcurves 仍是直接的 F 曲线集合。这层薄代理把
-# 两套 API 收敛成旧版接口(new/find/remove/迭代)，业务代码统一走 _act_fcurves()，
-# 不分裂成 if 版本 分支。
-_LEGACY_ACTION_FCURVES = hasattr(bpy.types.Action, "fcurves")
+# 4.4+ Action.fcurves 被移除（AttributeError，非 deprecated）；旧版(<4.4，含 3.6/4.3 目标运行
+# 版本)仍是直接 F 曲线集合。这层薄代理把两套 API 收敛成旧版接口，业务代码统一走 _act_fcurves()。
+# ⚠ 判据必须用 bpy.app.version（类级 RNA 数据属性 hasattr 不可靠，4.3 上误返回 False）。
+_LEGACY_ACTION_FCURVES = bpy.app.version < (4, 4, 0)
 
 
 class _ChannelbagFCurvesProxy:
@@ -78,8 +71,7 @@ class _ChannelbagFCurvesProxy:
 
 
 def _ensure_channelbag(act, timl_obj):
-    """新版 API 专用：按需建 slot/layer/strip，返回 timl_obj 对应的 ActionChannelbag。
-    要求 act 已经是 timl_obj.animation_data.action（否则 action_slot 赋值语义不对）。"""
+    """新版(4.4+) API 专用：按需建 slot/layer/strip，返回 timl_obj 对应的 ActionChannelbag。"""
     ad = timl_obj.animation_data
     slot = ad.action_slot if (ad is not None and ad.action_slot is not None) else None
     if slot is None:
@@ -108,14 +100,8 @@ class EFXTimlChannel(PropertyGroup):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 会话状态（多条目：每个 entry 一条）
+# 通道映射辅助
 # ─────────────────────────────────────────────────────────────────────────────
-# entry = {timl_obj, body, timl, channels, prior_action, created_anim, mesh, con_name, snapshot}
-# channel = {"mode":"xform", tf, kind, bl_index, path, index}
-#         | {"mode":"syn",   tf, sub, path, index}
-
-_state = {"active": False, "entries": [], "frame_start": 0, "frame_end": 1, "focus": "A0"}
-
 
 def _anim_role(slot):
     # 通道组名前缀（发射轴 / 寿命轴 的短名，随 UI 语言）
@@ -158,7 +144,7 @@ def _ch_fcurve(act, timl_obj, ch):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _resolve_scope_bodies(context):
-    """按作用域返回要编辑的 entry 列表（均含非空 TIML）。"""
+    """按作用域返回要预览的 entry 列表（均含非空 TIML）。"""
     active = context.active_object
     if getattr(context.scene, "efx_timle_all_bodies", False):
         root = None
@@ -179,244 +165,148 @@ def _resolve_scope_bodies(context):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 把模型的（焦点）通道铺进 Action —— 初次构建与切焦点重建共用
+# 通道走法（纯遍历，build 与 sync 共用 → synthetic ci 编号 / xform 碰撞判定一致）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _focus_includes(slot: int) -> bool:
-    f = _state.get("focus", "A0")
-    if f == "A0":
-        return slot == 0
-    if f == "A1":
-        return slot == 1
-    return True   # ALL
-
-
-def _populate_action(timl_obj, t, act):
-    """按当前焦点把 t 的通道铺进 act（建 fcurve + 关键帧）。返回 (channels, fmin, fmax)。"""
+def _walk_channels(t):
+    """按确定顺序产出通道描述符列表。ALL 语义（两轴全建），无 focus 过滤。"""
     channels = []
     used_slots = set()
-    fmin, fmax = 0.0, 1.0
+    ci = 0
     for slot, d in enumerate(t.animations):
-        if d is None or not _focus_includes(slot):
+        if d is None:
             continue
         for ty in d.types:
             for f in ty.transforms:
                 labels = _timl.channel_sublabels(f.data_type, f.datatype_hash)
-                decoded = [_timl.decode_keyframe(kf.raw, f.data_type, f.datatype_hash)
-                           for kf in f.keyframes]
                 tmap = _tn.transform_mapping(f.datatype_hash) if (
                     f.data_type == 2 and len(labels) == 1) else None
-
                 if tmap is not None and (tmap[0], tmap[1]) not in used_slots:
                     bl_prop, bl_index, kind = tmap
                     used_slots.add((bl_prop, bl_index))
-                    fc = _act_fcurves(act, timl_obj).new(data_path=bl_prop, index=bl_index)
-                    for dec in decoded:
-                        s = dec["subs"][0]
-                        val = _tn.game_to_blender(kind, bl_index, s["value"])
-                        kp = fc.keyframe_points.insert(dec["frame"], float(val))
-                        _set_kp(kp, dec["transition"], s["back"], s["period"])
-                        fmin = min(fmin, dec["frame"]); fmax = max(fmax, dec["frame"])
-                    fc.update()
                     channels.append({"mode": "xform", "tf": f, "kind": kind,
                                      "bl_index": bl_index, "path": bl_prop, "index": bl_index})
                 else:
                     for sub_idx, sub_label in enumerate(labels):
-                        ci = len(timl_obj.efx_timl_channels)
-                        timl_obj.efx_timl_channels.add()
-                        gname = _channel_group_name(d.anim_index, ty.timeline_param_hash,
-                                                    f.datatype_hash, f.data_type, sub_label)
-                        path = "efx_timl_channels[%d].value" % ci
-                        fc = _act_fcurves(act, timl_obj).new(data_path=path, index=0, action_group=gname)
-                        for dec in decoded:
-                            s = dec["subs"][sub_idx]
-                            kp = fc.keyframe_points.insert(dec["frame"], float(s["value"]))
-                            _set_kp(kp, dec["transition"], s["back"], s["period"])
-                            fmin = min(fmin, dec["frame"]); fmax = max(fmax, dec["frame"])
-                        fc.update()
-                        channels.append({"mode": "syn", "tf": f, "sub": sub_idx,
-                                         "path": path, "index": 0})
-    return channels, fmin, fmax
+                        channels.append({
+                            "mode": "syn", "tf": f, "sub": sub_idx, "index": 0, "ci": ci,
+                            "path": "efx_timl_channels[%d].value" % ci,
+                            "gname": _channel_group_name(d.anim_index, ty.timeline_param_hash,
+                                                         f.datatype_hash, f.data_type, sub_label)})
+                        ci += 1
+    return channels
 
 
-def _apply_frame_range(fmin, fmax):
-    scene = bpy.context.scene
-    scene.frame_start = int(fmin)
-    scene.frame_end = max(int(round(fmax)), int(fmin) + 1)
+def _get_timl_action(handle):
+    ad = handle.animation_data if handle is not None else None
+    return ad.action if ad is not None else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 进入：为单个 entry 建条目
+# 导入建 fcurve / 导出同步回字节 / 结构重建
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _build_entry(timl_obj, body):
-    """为一个 entry 建 Action+通道（按当前焦点），返回 (entry, fmin, fmax) 或 None。"""
+_TIML_ACTION_MARKER = "~EFX_TIML_FC"   # 持久 TIML Action 标记
+
+
+def build_persistent_fcurves(handle, body):
+    """导入用：从 body 的 timl_bytes 在 handle 的 Action 上建**持久** fcurve（幂等：先清后建）。
+    空 TIML / 死数据（无非空动画）/ 非-timl → 不建 fcurve，返回 0（导出时走 verbatim）。返回通道数。"""
+    if handle is None or body is None:
+        return 0
+    data = _tio._entry_timl_bytes(body)
+    t = _timl.parse_timl(data)
+    if t is None or not any(a is not None for a in t.animations):
+        _clear_timl_fcurves(handle)
+        return 0
+
+    handle.efx_timl_channels.clear()
+    act = _get_timl_action(handle)
+    if act is None:
+        act = bpy.data.actions.new("EFX_TIML::%s" % (body.get("efx_raw_label", "") or body.name))
+        act.use_fake_user = True
+        act[_TIML_ACTION_MARKER] = 1
+        if handle.animation_data is None:
+            handle.animation_data_create()
+        handle.animation_data.action = act
+    else:
+        fcs = _act_fcurves(act, handle)
+        while len(fcs):
+            fcs.remove(fcs[0])
+
+    channels = _walk_channels(t)
+    for ch in channels:
+        f = ch["tf"]
+        decoded = [_timl.decode_keyframe(kf.raw, f.data_type, f.datatype_hash)
+                   for kf in f.keyframes]
+        if ch["mode"] == "xform":
+            fc = _act_fcurves(act, handle).new(data_path=ch["path"], index=ch["index"])
+            for dec in decoded:
+                s = dec["subs"][0]
+                val = _tn.game_to_blender(ch["kind"], ch["bl_index"], s["value"])
+                kp = fc.keyframe_points.insert(dec["frame"], float(val))
+                _set_kp(kp, dec["transition"], s["back"], s["period"])
+            fc.update()
+        else:
+            handle.efx_timl_channels.add()   # 顺序 add → 集合索引 == ch["ci"]
+            fc = _act_fcurves(act, handle).new(data_path=ch["path"], index=0,
+                                               action_group=ch["gname"])
+            for dec in decoded:
+                s = dec["subs"][ch["sub"]]
+                kp = fc.keyframe_points.insert(dec["frame"], float(s["value"]))
+                _set_kp(kp, dec["transition"], s["back"], s["period"])
+            fc.update()
+    return len(channels)
+
+
+def sync_fcurves_to_bytes(handle, body):
+    """导出用：把 handle 的 fcurve 值合并回 body 的 timl_bytes 结构并序列化，返回新字节。
+    无 fcurve / 非-timl → 原 timl_bytes verbatim（空/死数据/未建 fcurve 都走这条，保 byte-perfect）。"""
     data = _tio._entry_timl_bytes(body)
     t = _timl.parse_timl(data)
     if t is None:
-        return None
+        return data
+    act = _get_timl_action(handle)
+    if act is None or not len(_act_fcurves(act, handle)):
+        return data
 
-    # ⚠ 快照句柄进入前的 transform：transform3d 曲线会驱动句柄 location/rot/scale，
-    # 移除 Action 后值停在最后评估帧 → 退出时据此还原回原位（否则句柄停在末帧位置）。
-    basis_snap = timl_obj.matrix_basis.copy()
-    timl_obj.efx_timl_channels.clear()
-    act = bpy.data.actions.new("EFX_TIML::%s" % (body.get("efx_raw_label", "") or body.name))
-    # ⚠ 会话 Action 必须靠自己的引用清理，不能指望退出时重新读 animation_data.action
-    # 再删——用户在 Dope Sheet/Action Editor 原生控件上点 New/Browse/Unlink 都会改掉
-    # ad.action，届时 teardown 读到的就不是这个真正的会话 Action 了，导致真正该删的
-    # Action 找不到、永久残留在 bpy.data.actions 里（哪怕显示 0 用户也不会被清）。
-    # fake_user=True 顺便防止会话期间被意外当孤儿数据回收。
-    act.use_fake_user = True
-    created = False
-    if timl_obj.animation_data is None:
-        timl_obj.animation_data_create()
-        created = True
-    prior = timl_obj.animation_data.action
-    timl_obj.animation_data.action = act
-
-    channels, fmin, fmax = _populate_action(timl_obj, t, act)
-
-    mesh, con_name = _bind_mesh(timl_obj, body)
-    entry = {"timl_obj": timl_obj, "body": body, "timl": t, "channels": channels,
-             "action": act, "prior_action": prior, "created_anim": created, "mesh": mesh,
-             "con_name": con_name, "basis_snap": basis_snap, "edited": False,
-             "snapshot": _snapshot(act, timl_obj, channels)}
-    return entry, fmin, fmax
-
-
-def _bind_mesh(timl_obj, body):
-    """绑定 MESH 时加 Child Of 约束让网格跟随句柄。返回 (mesh, con_name) 或 (None, None)。"""
-    try:
-        mesh = _uvc._entry_mesh_target(body)
-    except Exception:
-        mesh = None
-    if mesh is None:
-        return None, None
-    try:
-        con = mesh.constraints.new("CHILD_OF")
-        con.name = "EFX_TIML_PREVIEW"
-        con.target = timl_obj
-        con.inverse_matrix = timl_obj.matrix_world.inverted()
-        return mesh, con.name
-    except Exception:
-        return None, None
-
-
-def _snapshot(act, timl_obj, channels):
-    sig = []
+    channels = _walk_channels(t)
+    by_tf = {}
     for ch in channels:
-        fc = _ch_fcurve(act, timl_obj, ch)
-        if fc is None:
-            sig.append(()); continue
-        sig.append(tuple(sorted(
-            (round(kp.co[0], 4), round(kp.co[1], 5), kp.interpolation,
-             round(kp.back, 5), round(kp.period, 5))
-            for kp in fc.keyframe_points)))
-    return tuple(sig)
+        e = by_tf.setdefault(id(ch["tf"]), {"tf": ch["tf"], "xform": None, "syn": {}})
+        if ch["mode"] == "xform":
+            e["xform"] = ch
+        else:
+            e["syn"][ch["sub"]] = ch
+    for e in by_tf.values():
+        tf = e["tf"]
+        if e["xform"] is not None:
+            tf.keyframes = _rebuild_xform(act, handle, e["xform"], tf)
+        else:
+            tf.keyframes = _rebuild_synthetic(act, handle, e["syn"], tf)
+    t.dirty = True
+    return t.serialize()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 会话级进入 / 退出
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _start_session(bodies):
-    """为多个 entry 建条目。返回建成的条目数。"""
-    # 焦点取自 Scene 枚举（默认 A0）；_build_entry 按 _state["focus"] 过滤
-    _state["focus"] = getattr(bpy.context.scene, "efx_timle_focus", "A0")
-    entries = []
-    fmin, fmax = 0.0, 1.0
-    from . import io_tree as _iot
-    seen = set()
-    for body in bodies:
-        if body is None or body.name in seen:
-            continue
-        seen.add(body.name)
-        h = _iot.find_timl_handle(body)
-        if h is None:
-            h = _iot.make_timl_handle(body)
-        built = _build_entry(h, body)
-        if built is None:
-            continue
-        entry, lo, hi = built
-        entries.append(entry)
-        fmin = min(fmin, lo); fmax = max(fmax, hi)
-    if not entries:
-        return 0
-    scene = bpy.context.scene
-    _state.update(active=True, entries=entries,
-                  frame_start=scene.frame_start, frame_end=scene.frame_end)
-    scene.frame_start = int(fmin)
-    scene.frame_end = max(int(round(fmax)), int(fmin) + 1)
-    return len(entries)
-
-
-def _channel_total():
-    return sum(len(e["channels"]) for e in _state["entries"])
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 回写（逐条目）
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _session_action(entry):
-    """取该 entry 真正的会话 Action，并把 animation_data.action 重新绑回它（自愈）。
-
-    用户在 Dope Sheet/Graph Editor 的原生 Action Editor 控件上点 New/Browse/Unlink
-    会改掉 timl_obj.animation_data.action，但 entry["action"] 这个引用本身不受影响——
-    每次读写前都重新绑一次，编辑/回写/退出清理才始终对着真正的会话 Action，不会被
-    用户误操作带偏。"""
-    act = entry.get("action")
-    timl_obj = entry.get("timl_obj")
-    if act is None or timl_obj is None:
-        return act
+def _clear_timl_fcurves(handle):
+    """清空 handle 上的持久 TIML fcurve + synthetic 通道集合（结构重建/删除用）。"""
+    act = _get_timl_action(handle)
+    if act is not None:
+        try:
+            fcs = _act_fcurves(act, handle)
+            while len(fcs):
+                fcs.remove(fcs[0])
+        except Exception:
+            pass
     try:
-        ad = timl_obj.animation_data
-        if ad is not None and ad.action is not act:
-            ad.action = act
+        handle.efx_timl_channels.clear()
     except Exception:
         pass
-    return act
 
 
-def _readback_entry_to_model(entry):
-    """把当前 Action（当前焦点的通道）读回内存模型 entry["timl"]（不写 entry 字节）。
-    无改动则跳过；有改动则重建受影响 transform 的 keyframes 并标 entry["edited"]。返回是否改动。"""
-    channels = entry["channels"]
-    timl_obj = entry["timl_obj"]
-    act = _session_action(entry)
-    if act is None:
-        return False
-    if _snapshot(act, timl_obj, channels) == entry["snapshot"]:
-        return False   # 当前焦点无改动 → 不动模型（byte-perfect 友好）
-
-    by_transform = {}
-    for ch in channels:
-        ent = by_transform.setdefault(id(ch["tf"]), {"tf": ch["tf"], "xform": None, "syn": {}})
-        if ch["mode"] == "xform":
-            ent["xform"] = ch
-        else:
-            ent["syn"][ch["sub"]] = ch
-    for ent in by_transform.values():
-        tf = ent["tf"]
-        if ent["xform"] is not None:
-            tf.keyframes = _rebuild_xform(act, timl_obj, ent["xform"], tf)
-        else:
-            tf.keyframes = _rebuild_synthetic(act, timl_obj, ent["syn"], tf)
-    entry["edited"] = True
-    return True
-
-
-def _writeback_entry(entry):
-    """Apply：先读回当前焦点，再（若该 entry 累计有改动）序列化整模型写回 entry。"""
-    _readback_entry_to_model(entry)
-    if not entry.get("edited"):
-        return False
-    t = entry["timl"]; body = entry["body"]
-    t.dirty = True
-    out = t.serialize()
-    body["timl_bytes"] = base64.b64encode(out).decode("ascii")
-    body["timl_length"] = str(len(out))
-    return True
+def rebuild_fcurves(handle, body):
+    """结构编辑后：从当前 timl_bytes 重建 fcurve（= 清空 + build）。build 已幂等，直接转发。"""
+    return build_persistent_fcurves(handle, body)
 
 
 def _rebuild_xform(act, timl_obj, ch, tf):
@@ -472,182 +362,155 @@ def _rebuild_synthetic(act, timl_obj, syn, tf):
     return out
 
 
-def _rebuild_entry_action(entry):
-    """切焦点：清空该条目的 Action/通道，按当前焦点重铺。"""
-    timl_obj = entry["timl_obj"]
-    act = _session_action(entry)
-    if act is None:
-        return 0.0, 1.0
-    fcs = _act_fcurves(act, timl_obj)
-    while fcs:
-        fcs.remove(fcs[0])
-    timl_obj.efx_timl_channels.clear()
-    # 重铺前把句柄归位（上个焦点播放可能已驱动它偏移）
-    snap = entry.get("basis_snap")
-    if snap is not None:
-        timl_obj.matrix_basis = snap
-    channels, fmin, fmax = _populate_action(timl_obj, entry["timl"], act)
-    entry["channels"] = channels
-    entry["snapshot"] = _snapshot(act, timl_obj, channels)
+# ─────────────────────────────────────────────────────────────────────────────
+# 单一咽喉点 API（供 io/tracks/meta_ui 变更 TIML；见文件头"单一咽喉点"）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def read_model(body):
+    """解析 body 当前 timl_bytes 为 Timl 模型（展示/结构编辑用）；无/非-timl → None。"""
+    return _timl.parse_timl(_tio._entry_timl_bytes(body))
+
+
+def _store_bytes(body, data):
+    body["timl_bytes"] = base64.b64encode(bytes(data)).decode("ascii")
+    body["timl_length"] = str(len(data))   # 导出端也会再重算，双保险
+
+
+def commit_fcurves_to_bytes(body):
+    """把 body 句柄上 fcurve 的当前值同步进 timl_bytes（提交进行中的关键帧编辑）。
+    结构编辑【前】调用，避免随后 rebuild 用旧字节冲掉正在改的关键帧。无句柄/无 fcurve → 无操作。"""
+    if body is None:
+        return
+    from . import io_tree as _iot
+    h = _iot.find_timl_handle(body)
+    if h is None:
+        return
+    try:
+        _store_bytes(body, sync_fcurves_to_bytes(h, body))
+    except Exception:
+        pass
+
+
+def set_entry_timl(body, new_bytes):
+    """**所有 timl_bytes 变更（新建/替换/删除）的唯一咽喉点**：写字节+长度、按需建/删 EFX_TIML
+    句柄、从新字节重建持久 fcurve。空 bytes → 删句柄+Action。不做 commit-first（新字节为准，
+    旧 fcurve 编辑按替换语义丢弃）；结构编辑请在调用前先 commit_fcurves_to_bytes。"""
+    from . import io_tree as _iot
+    new_bytes = bytes(new_bytes)
+    _store_bytes(body, new_bytes)
+    h = _iot.find_timl_handle(body)
+    if not new_bytes:
+        if h is not None:
+            _delete_timl_handle(h)
+        return
+    if h is None:
+        h = _iot.make_timl_handle(body)
+    build_persistent_fcurves(h, body)   # 幂等清+建；无动画则清空不建
+
+
+def _delete_timl_handle(handle):
+    """删除 TIML 句柄对象及其持久 Action（清 fake_user 防残留）。"""
+    act = _get_timl_action(handle)
+    if act is not None:
+        try:
+            act.use_fake_user = False
+            bpy.data.actions.remove(act, do_unlink=True)
+        except Exception:
+            pass
+    try:
+        bpy.data.objects.remove(handle, do_unlink=True)
+    except Exception:
+        pass
+
+
+def has_timl_fcurves(body):
+    """body 句柄上是否有持久 TIML fcurve（供消费者判断 live 编辑面是否存在）。"""
+    from . import io_tree as _iot
+    h = _iot.find_timl_handle(body)
+    if h is None:
+        return False
+    act = _get_timl_action(h)
+    return act is not None and len(_act_fcurves(act, h)) > 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 网格预览绑定（进入/退出编辑退化为绑定/解绑）
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PREVIEW_FLAG = "efx_timl_preview_on"    # Scene 上的预览开关
+_FR_BACKUP = ("efx_timl_fr0", "efx_timl_fr1")   # 帧范围备份（Scene 自定义属性）
+_BOUND_MARKER = "~EFX_TIML_BOUND"        # 被绑定跟随的 mesh 标记（session_core reconcile）
+_CON_NAME = "EFX_TIML_PREVIEW"
+
+
+def _bind_entry_mesh(body, handle):
+    """给 body 绑定的 MESH 加 Child-Of 约束跟随句柄动画。成功返回 True。"""
+    try:
+        mesh = _uvc._entry_mesh_target(body)
+    except Exception:
+        mesh = None
+    if mesh is None:
+        return False
+    try:
+        con = mesh.constraints.new("CHILD_OF")
+        con.name = _CON_NAME
+        con.target = handle
+        con.inverse_matrix = handle.matrix_world.inverted()
+        mesh[_BOUND_MARKER] = 1
+        return True
+    except Exception:
+        return False
+
+
+def unbind_all():
+    """解绑所有被 TIML 预览绑定的 mesh（按标记 reconcile，脱节也不残留）。"""
+    for mesh in _sc.iter_marked(_BOUND_MARKER):
+        try:
+            con = mesh.constraints.get(_CON_NAME)
+            if con is not None:
+                mesh.constraints.remove(con)
+        except Exception:
+            pass
+        try:
+            del mesh[_BOUND_MARKER]
+        except Exception:
+            pass
+
+
+def _frame_range(bodies):
+    """从这些 body 句柄的 fcurve 求 [fmin, fmax]。"""
+    from . import io_tree as _iot
+    fmin, fmax = 0.0, 1.0
+    for body in bodies:
+        h = _iot.find_timl_handle(body)
+        if h is None:
+            continue
+        act = _get_timl_action(h)
+        if act is None:
+            continue
+        for fc in _act_fcurves(act, h):
+            for kp in fc.keyframe_points:
+                fmin = min(fmin, kp.co[0]); fmax = max(fmax, kp.co[0])
     return fmin, fmax
 
 
-def _switch_focus(new_focus):
-    """会话内切换焦点（A0/A1/All）：读回当前焦点编辑 → 改焦点 → 各条目重建视图。
-    编辑保留在内存模型，跨切换不丢；entry 字节仅在 Apply 时写。"""
-    if not _state["active"]:
-        _state["focus"] = new_focus
-        return
-    for entry in _state["entries"]:
-        _readback_entry_to_model(entry)
-    _state["focus"] = new_focus
-    fmin, fmax = 0.0, 1.0
-    for entry in _state["entries"]:
-        lo, hi = _rebuild_entry_action(entry)
-        fmin = min(fmin, lo); fmax = max(fmax, hi)
-    _apply_frame_range(fmin, fmax)
-    try:
-        bpy.context.scene.frame_set(bpy.context.scene.frame_start)
-    except Exception:
-        pass
-
-
-def _teardown():
-    # ⚠ 每一步独立 try：早先一步抛异常不得阻断后续的 Action 删除（否则会话 Action 残留）。
-    for entry in _state["entries"]:
-        # 1) 解除 mesh 预览约束
-        mesh = entry.get("mesh"); con_name = entry.get("con_name")
-        if mesh is not None and con_name:
-            try:
-                con = mesh.constraints.get(con_name)
-                if con is not None:
-                    mesh.constraints.remove(con)
-            except Exception:
-                pass
-        timl_obj = entry.get("timl_obj")
-        if timl_obj is None:
-            continue
-        # 2) 取回会话 Action 引用——直接用 entry["action"]，不要重新读
-        #    animation_data.action：用户在 Dope Sheet/Action Editor 原生控件上点过
-        #    New/Browse/Unlink 的话 ad.action 早就不是这个会话 Action 了，届时读出来
-        #    删掉的是错的（或 None），真正的会话 Action 找不到主人、永久残留在
-        #    bpy.data.actions 里（哪怕显示 0 用户也不会被自动清掉）。
-        cur = entry.get("action")
-        # 3) 还原进入前的 Action（独立 try，失败也不挡删除）
-        try:
-            ad = timl_obj.animation_data
-            if ad is not None:
-                ad.action = entry.get("prior_action")
-        except Exception:
-            pass
-        # 4) 删除会话 Action 数据块——清 fake_user 防止残留在 .blend 的 Action 列表里
-        if cur is not None:
-            try:
-                cur.use_fake_user = False
-                bpy.data.actions.remove(cur, do_unlink=True)
-            except Exception:
-                pass
-        # 5) 进会话时若新建过 animation_data，整体清除（恢复"无动画"状态）
-        try:
-            if entry.get("created_anim") and timl_obj.animation_data is not None:
-                timl_obj.animation_data_clear()
-        except Exception:
-            pass
-        # 6) 清 synthetic 通道集合
-        try:
-            timl_obj.efx_timl_channels.clear()
-        except Exception:
-            pass
-        # 7) 还原句柄进入前的 transform（清 Action 后值会停在末帧，须显式还原）
-        try:
-            snap = entry.get("basis_snap")
-            if snap is not None:
-                timl_obj.matrix_basis = snap
-        except Exception:
-            pass
-    try:
-        scene = bpy.context.scene
-        scene.frame_start = _state["frame_start"]
-        scene.frame_end = _state["frame_end"]
-    except Exception:
-        pass
-    _state.update(active=False, entries=[], frame_start=0, frame_end=1)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 会话内结构性编辑对接 API
-# （供 timl_tracks / timl_meta_ui 在会话进行中直接改内存模型 entry["timl"]，
-#  而非改 entry 字节——会话期间字节是陈旧的，编辑都在模型里，Apply 才落字节）
-# ─────────────────────────────────────────────────────────────────────────────
-
-def session_active() -> bool:
-    return bool(_state["active"])
-
-
-def session_entry(body):
-    """该 entry 在当前会话中的 entry；不在会话 / 无会话 → None。"""
-    if not _state["active"] or body is None:
-        return None
-    for e in _state["entries"]:
-        b = e.get("body")
-        if b is body or (b is not None and getattr(b, "name", None) == body.name):
-            return e
-    return None
-
-
-def session_model(body):
-    """该 entry 在会话中的内存 Timl 模型（只读展示用）；无 → None。"""
-    e = session_entry(body)
-    return e["timl"] if e is not None else None
-
-
-def session_capture(entry):
-    """结构性改动【前】调用：把当前焦点的曲线编辑读回内存模型，避免进行中的编辑被重建覆盖。"""
-    try:
-        _readback_entry_to_model(entry)
-    except Exception:
-        pass
-
-
-def session_mark_edited(entry):
-    """仅标脏（元字段如长度/循环改动用，不触碰曲线）。"""
-    entry["edited"] = True
-
-
-def session_refresh(entry):
-    """结构性改动【后】调用：标脏 + 按当前焦点重建 Action（含新轨道）+ 重设帧范围。"""
-    entry["edited"] = True
-    try:
-        lo, hi = _rebuild_entry_action(entry)
-        _apply_frame_range(lo, hi)
-    except Exception:
-        pass
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Operators
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _select_session_handles(context):
-    """选中所有会话条目的 TIML 句柄并把第一个设为 active。
-
-    Dope Sheet / Graph Editor 默认「只显示选中物体」，进入编辑会话后如果不主动选中
-    句柄，新建好的 Action 曲线不会自动出现在编辑器里——之前 enter 完全没做这一步，
-    表现为"新建/进入编辑后不会跳转到指定的动作"，得用户自己去大纲视图手动点句柄。"""
+def _select_handles(context, bodies):
+    """选中这些 body 的 TIML 句柄并把第一个设为 active（Dope/Graph 默认只显示选中物体）。"""
+    from . import io_tree as _iot
     try:
         for obj in context.view_layer.objects:
             obj.select_set(False)
     except Exception:
         pass
     first = None
-    for entry in _state["entries"]:
-        obj = entry.get("timl_obj")
-        if obj is None:
+    for body in bodies:
+        h = _iot.find_timl_handle(body)
+        if h is None:
             continue
         try:
-            obj.select_set(True)
+            h.select_set(True)
             if first is None:
-                first = obj
+                first = h
         except Exception:
             pass
     if first is not None:
@@ -657,15 +520,23 @@ def _select_session_handles(context):
             pass
 
 
+def preview_active(context) -> bool:
+    return bool(context.scene.get(_PREVIEW_FLAG))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Operators：进入预览（绑定）/ 退出预览（解绑）
+# ─────────────────────────────────────────────────────────────────────────────
+
 class EFX_OT_timl_edit_enter(Operator):
-    """进入 TIML 通道编辑（解析成原生 F 曲线，在 Dope/Graph 编辑）"""
+    """浏览 TIML transform 效果：绑定网格跟随句柄的 TIML 动画 + 设帧范围（编辑随时在 Dope Sheet 进行）"""
     bl_idname = "efx.timl_edit_enter"
-    bl_label = "Edit TIML"
+    bl_label = "Browse TIML Transform"
     bl_options = {"REGISTER"}
 
     @classmethod
     def poll(cls, context):
-        if _state["active"]:
+        if preview_active(context):
             return False
         return bool(_resolve_scope_bodies(context))
 
@@ -674,76 +545,97 @@ class EFX_OT_timl_edit_enter(Operator):
         if not bodies:
             self.report({"ERROR"}, T("timle.no_timl"))
             return {"CANCELLED"}
+        unbind_all()   # 先清场（历史遗留绑定）
+        scene = context.scene
+        scene[_FR_BACKUP[0]] = scene.frame_start
+        scene[_FR_BACKUP[1]] = scene.frame_end
+        # ⚠ 先设帧范围 + 跳到起始帧 + 刷新 depsgraph，让句柄按 t=0 求值，**再**绑定 mesh：
+        # Child-Of 的 inverse_matrix 须在起始帧（参考系=t=0）捕获，否则在任意当前帧捕获会让
+        # 网格运动错乱、且随捕获帧不同而不同（用户实测的"错乱"根因）。
+        fmin, fmax = _frame_range(bodies)
+        scene.frame_start = int(fmin)
+        scene.frame_end = max(int(round(fmax)), int(fmin) + 1)
         try:
-            n = _start_session(bodies)
-        except Exception as exc:
-            _teardown()
-            self.report({"ERROR"}, T("timle.build_failed").format(exc))
-            return {"CANCELLED"}
-        if n == 0:
-            self.report({"WARNING"}, T("timle.no_content"))
-            return {"CANCELLED"}
-        _select_session_handles(context)
-        try:
-            context.scene.frame_set(context.scene.frame_start)
+            scene.frame_set(scene.frame_start)
+            context.view_layer.update()   # 强制 depsgraph 重算 handle.matrix_world 到 t=0
         except Exception:
             pass
-        self.report({"INFO"}, T("timle.entered").format(_channel_total()))
+        nbound = 0
+        for body in bodies:
+            from . import io_tree as _iot
+            h = _iot.find_timl_handle(body)
+            if h is not None and _bind_entry_mesh(body, h):
+                nbound += 1
+        _select_handles(context, bodies)
+        scene[_PREVIEW_FLAG] = 1
+        self.report({"INFO"}, T("timle.entered").format(nbound))
         return {"FINISHED"}
 
 
 class EFX_OT_timl_edit_exit(Operator):
-    """退出 TIML 通道编辑（Apply=回写后退出；Cancel=丢弃）"""
+    """退出 TIML 预览：解绑网格、还原帧范围（编辑已持久，无需回写/丢弃）"""
     bl_idname = "efx.timl_edit_exit"
-    bl_label = "Exit TIML Channel Edit"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_label = "Exit TIML Preview"
+    bl_options = {"REGISTER"}
 
+    # 兼容旧调用签名（efx_preview 曾传 apply=False）；现忽略——编辑始终持久。
     apply: bpy.props.BoolProperty(default=False, options={"HIDDEN"})
 
     @classmethod
     def poll(cls, context):
-        return _state["active"]
+        return preview_active(context)
 
     def execute(self, context):
-        wrote = 0
-        if self.apply:
-            for entry in _state["entries"]:
-                try:
-                    if _writeback_entry(entry):
-                        wrote += 1
-                except Exception as exc:
-                    self.report({"WARNING"}, T("timle.writeback_failed").format(exc))
-        _teardown()
-        if self.apply:
-            self.report({"INFO"}, T("timle.applied").format(wrote) if wrote
-                        else T("timle.applied_nochange"))
-        else:
-            self.report({"INFO"}, T("timle.cancelled"))
+        unbind_all()
+        scene = context.scene
+        try:
+            if _FR_BACKUP[0] in scene:
+                scene.frame_start = int(scene[_FR_BACKUP[0]])
+            if _FR_BACKUP[1] in scene:
+                scene.frame_end = int(scene[_FR_BACKUP[1]])
+        except Exception:
+            pass
+        for k in (_PREVIEW_FLAG,) + _FR_BACKUP:
+            try:
+                del scene[k]
+            except Exception:
+                pass
+        self.report({"INFO"}, T("timle.cancelled"))
         return {"FINISHED"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 色轮（Color Wheel）—— 把 RGB(A) 4 条 synthetic 标量通道聚合成一个色轮控件
-# 只在会话中存在（synthetic fcurve 只在编辑会话期间挂在句柄 Action 上）；
-# 色轮不改数据模型，只是读写这 4 条真实 fcurve 在当前帧的关键帧——与直接在
-# Dope Sheet 里逐条调值等价，Apply 时走同一条 _readback_entry_to_model 路径。
+# 持久化模型下 fcurve 始终存在，色轮随时可用；读写这 4 条真实 fcurve 在当前帧的关键帧
+# （与直接在 Dope Sheet 逐条调值等价，导出走同一条 sync_fcurves_to_bytes 路径）。
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _current_entry(context):
-    if not _state["active"]:
-        return None
+def _current_ctx(context):
+    """当前活动 entry 的 {handle, body, act, channels}；无 TIML fcurve → None。"""
     try:
         body = _tio.resolve_timl_entry(context.active_object)
     except Exception:
         return None
-    return session_entry(body)
+    if body is None:
+        return None
+    from . import io_tree as _iot
+    h = _iot.find_timl_handle(body)
+    if h is None:
+        return None
+    act = _get_timl_action(h)
+    if act is None or not len(_act_fcurves(act, h)):
+        return None
+    t = read_model(body)
+    if t is None:
+        return None
+    return {"handle": h, "body": body, "act": act, "channels": _walk_channels(t)}
 
 
-def _find_color_groups(entry):
-    """按 tf 聚合该 entry 里所有 dataType==Color(3) 的 synthetic 通道组。"""
+def _find_color_groups(channels):
+    """按 tf 聚合所有 dataType==Color(3) 的 synthetic 通道组。"""
     groups = {}
     order = []
-    for ch in entry["channels"]:
+    for ch in channels:
         if ch["mode"] != "syn" or ch["tf"].data_type != 3:
             continue
         key = id(ch["tf"])
@@ -754,23 +646,19 @@ def _find_color_groups(entry):
     return [groups[k] for k in order if len(groups[k]["subs"]) >= 3]
 
 
-def _active_color_group(context, entry):
-    """确定色轮当前操作哪一组：唯一一组直接用；多组按 Dope Sheet/Graph 里选中的
-    通道行（fcurve.select）判定；都没选中则二义，不猜（返回 None）。"""
-    act = _session_action(entry)
-    if act is None:
-        return None, None
-    groups = _find_color_groups(entry)
+def _active_color_group(ctx):
+    """确定色轮当前操作哪一组：唯一一组直接用；多组按 fcurve.select 判定；都没选中则二义（None）。"""
+    groups = _find_color_groups(ctx["channels"])
     if not groups:
-        return None, act
+        return None
     if len(groups) == 1:
-        return groups[0], act
+        return groups[0]
     for g in groups:
         for ch in g["subs"].values():
-            fc = _ch_fcurve(act, entry["timl_obj"], ch)
+            fc = _ch_fcurve(ctx["act"], ctx["handle"], ch)
             if fc is not None and fc.select:
-                return g, act
-    return None, act
+                return g
+    return None
 
 
 def _write_scalar_keyframe(fc, frame, value):
@@ -786,16 +674,16 @@ def _write_scalar_keyframe(fc, frame, value):
 
 def _color_wheel_get(self):
     try:
-        entry = _current_entry(bpy.context)
-        if entry is None:
+        ctx = _current_ctx(bpy.context)
+        if ctx is None:
             return (0.0, 0.0, 0.0)
-        group, act = _active_color_group(bpy.context, entry)
+        group = _active_color_group(ctx)
         if group is None:
             return (0.0, 0.0, 0.0)
         frame = bpy.context.scene.frame_current
         out = [0.0, 0.0, 0.0]
         for i in range(3):
-            fc = _ch_fcurve(act, entry["timl_obj"], group["subs"][i])
+            fc = _ch_fcurve(ctx["act"], ctx["handle"], group["subs"][i]) if i in group["subs"] else None
             if fc is not None:
                 out[i] = max(0.0, min(255.0, fc.evaluate(frame))) / 255.0
         return tuple(out)
@@ -805,15 +693,15 @@ def _color_wheel_get(self):
 
 def _color_wheel_set(self, value):
     try:
-        entry = _current_entry(bpy.context)
-        if entry is None:
+        ctx = _current_ctx(bpy.context)
+        if ctx is None:
             return
-        group, act = _active_color_group(bpy.context, entry)
+        group = _active_color_group(ctx)
         if group is None:
             return
         frame = bpy.context.scene.frame_current
         for i in range(3):
-            fc = _ch_fcurve(act, entry["timl_obj"], group["subs"].get(i)) if i in group["subs"] else None
+            fc = _ch_fcurve(ctx["act"], ctx["handle"], group["subs"].get(i)) if i in group["subs"] else None
             if fc is not None:
                 _write_scalar_keyframe(fc, frame, max(0.0, min(1.0, value[i])) * 255.0)
     except Exception:
@@ -822,13 +710,13 @@ def _color_wheel_set(self, value):
 
 def _color_alpha_get(self):
     try:
-        entry = _current_entry(bpy.context)
-        if entry is None:
+        ctx = _current_ctx(bpy.context)
+        if ctx is None:
             return 1.0
-        group, act = _active_color_group(bpy.context, entry)
+        group = _active_color_group(ctx)
         if group is None or 3 not in group["subs"]:
             return 1.0
-        fc = _ch_fcurve(act, entry["timl_obj"], group["subs"][3])
+        fc = _ch_fcurve(ctx["act"], ctx["handle"], group["subs"][3])
         if fc is None:
             return 1.0
         return max(0.0, min(255.0, fc.evaluate(bpy.context.scene.frame_current))) / 255.0
@@ -838,13 +726,13 @@ def _color_alpha_get(self):
 
 def _color_alpha_set(self, value):
     try:
-        entry = _current_entry(bpy.context)
-        if entry is None:
+        ctx = _current_ctx(bpy.context)
+        if ctx is None:
             return
-        group, act = _active_color_group(bpy.context, entry)
+        group = _active_color_group(ctx)
         if group is None or 3 not in group["subs"]:
             return
-        fc = _ch_fcurve(act, entry["timl_obj"], group["subs"][3])
+        fc = _ch_fcurve(ctx["act"], ctx["handle"], group["subs"][3])
         if fc is not None:
             _write_scalar_keyframe(fc, bpy.context.scene.frame_current, max(0.0, min(1.0, value)) * 255.0)
     except Exception:
@@ -853,16 +741,16 @@ def _color_alpha_set(self, value):
 
 def draw_color_wheel(layout, context):
     """TIML 色轮控件：聚合当前选中颜色通道组的 R/G/B(/A) 为一个色轮 + Alpha 滑条。"""
-    entry = _current_entry(context)
-    if entry is None:
+    ctx = _current_ctx(context)
+    if ctx is None:
         layout.label(text=T("timle.color_need_session"), icon="INFO")
         return
-    groups = _find_color_groups(entry)
+    groups = _find_color_groups(ctx["channels"])
     if not groups:
         layout.label(text=T("timle.color_none"), icon="INFO")
         return
-    group, act = _active_color_group(context, entry)
-    if group is None or act is None:
+    group = _active_color_group(ctx)
+    if group is None:
         layout.label(text=T("timle.color_ambiguous"), icon="INFO")
         return
     col = layout.column(align=True)
@@ -883,10 +771,9 @@ class EFX_PT_timl_color_wheel(Panel):
 
     @classmethod
     def poll(cls, context):
-        return _state["active"]
+        return _current_ctx(context) is not None
 
     def draw(self, context):
-        # ⚠ 同 EFX_PT_timl_tracks：异常直接显示在面板里而不是让内容静默消失。
         try:
             draw_color_wheel(self.layout, context)
         except Exception:
@@ -904,31 +791,20 @@ class EFX_PT_timl_color_wheel_graph(EFX_PT_timl_color_wheel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 绘制控件（供 timl_io 的 TIML 面板调用 —— 点1：编辑入口归入 TIML 栏目）
+# 绘制控件（供 timl_io 的 TIML 面板调用）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def draw_focus(layout, context):
-    """焦点选择（A0/A1/All）——会话内改它即 live 切换；可在 TIML 面板与 Dope Sheet 侧栏复用。"""
-    layout.prop(context.scene, "efx_timle_focus", text=T("timle.focus"), expand=True)
-
-
 def draw_edit_controls(layout, context):
-    if _state["active"]:
+    """持久化模型：TIML 始终在 Dope Sheet 可编辑；此处提供网格预览的绑定/解绑开关。"""
+    if preview_active(context):
         box = layout.box()
-        box.label(text=T("timle.editing").format(_channel_total(), len(_state["entries"])),
-                  icon="FCURVE")
-        # 焦点切换（会话内 live 重建；默认 A0 仅发射轴）
-        draw_focus(box, context)
         box.label(text=T("timle.editor_hint"), icon="ACTION")
         row = box.row()
         row.scale_y = 1.3
-        op = row.operator("efx.timl_edit_exit", text=T("timle.apply"), icon="CHECKMARK")
-        op.apply = True
-        op = box.row().operator("efx.timl_edit_exit", text=T("timle.cancel"), icon="X")
+        op = row.operator("efx.timl_edit_exit", text=T("timle.cancel"), icon="X")
         op.apply = False
     else:
         layout.prop(context.scene, "efx_timle_all_bodies", text=T("timle.all_bodies"))
-        draw_focus(layout, context)
         row = layout.row()
         row.scale_y = 1.3
         row.operator("efx.timl_edit_enter", text=T("timle.enter"), icon="FCURVE")
@@ -938,18 +814,6 @@ def draw_edit_controls(layout, context):
 # ─────────────────────────────────────────────────────────────────────────────
 # 注册
 # ─────────────────────────────────────────────────────────────────────────────
-
-_FOCUS_ITEMS = [
-    ("ALL", "All", "Both axes (transform preview may mix the two axes)"),
-    ("A0", "A0 Emission", "Emission axis — t=0 at effect trigger (system timeline)"),
-    ("A1", "A1 Lifetime", "Lifetime axis — t=0 at each particle's birth"),
-]
-
-
-def _on_focus_update(self, context):
-    # 会话内切焦点 → live 重建（读回当前编辑→改焦点→重铺视图）；非会话仅记默认
-    _switch_focus(self.efx_timle_focus)
-
 
 _CLASSES = (
     EFXTimlChannel,
@@ -966,13 +830,8 @@ def register():
     bpy.types.Object.efx_timl_channels = CollectionProperty(type=EFXTimlChannel)
     bpy.types.Scene.efx_timle_all_bodies = bpy.props.BoolProperty(
         name="All entries in this EFX",
-        description="Edit the TIML of every entry in the current EFX collection at once",
+        description="Preview the TIML of every entry in the current EFX collection at once",
         default=False,
-    )
-    bpy.types.Scene.efx_timle_focus = bpy.props.EnumProperty(
-        name="Focus", items=_FOCUS_ITEMS, default="ALL", update=_on_focus_update,
-        description="Which axis to build/edit/play. Default All (most TIML use only one axis). "
-                    "Pick A0/A1 to isolate when both are present.",
     )
     bpy.types.Scene.efx_timle_color_rgb = FloatVectorProperty(
         name="Color", subtype="COLOR", size=3, min=0.0, max=1.0,
@@ -988,13 +847,14 @@ def register():
 
 
 def unregister():
-    _teardown()
+    try:
+        unbind_all()
+    except Exception:
+        pass
     if hasattr(bpy.types.Scene, "efx_timle_color_a"):
         del bpy.types.Scene.efx_timle_color_a
     if hasattr(bpy.types.Scene, "efx_timle_color_rgb"):
         del bpy.types.Scene.efx_timle_color_rgb
-    if hasattr(bpy.types.Scene, "efx_timle_focus"):
-        del bpy.types.Scene.efx_timle_focus
     if hasattr(bpy.types.Scene, "efx_timle_all_bodies"):
         del bpy.types.Scene.efx_timle_all_bodies
     if hasattr(bpy.types.Object, "efx_timl_channels"):

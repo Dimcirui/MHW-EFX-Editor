@@ -127,6 +127,46 @@ def make_timl_handle(entry_obj: bpy.types.Object, collection: bpy.types.Collecti
     return h
 
 
+# 导出时是否把 TIML 长度重算为末帧+1（由 export_efx_tree 的 recalc_timl_length 逐次设置）
+_EXPORT_RECALC_TIML_LEN = False
+
+
+def _recalc_timl_length(data: bytes) -> bytes:
+    """把每条存在的 TIML 动画的 animation_length 精确设为 末关键帧+1（逐轴）。定长原地 patch。"""
+    from ..efx_format import timl_meta as _tm
+    try:
+        anims = _tm.parse_animations(data)
+    except Exception:
+        return data
+    for slot, a in enumerate(anims):
+        if getattr(a, "data_offset", 0) == 0:
+            continue
+        lk = _tm.last_keyframe_time(data, slot)
+        if lk is not None:
+            data = _tm.set_animation_length(data, slot, float(lk) + 1.0)
+    return data
+
+
+def _export_timl_bytes(entry_obj: bpy.types.Object) -> bytes:
+    """Phase 3 导出用 TIML 字节：句柄有持久 fcurve → 从 fcurve 同步回字节（含用户编辑）；
+    无 fcurve / 空 / 非-timl → 存储的 timl_bytes verbatim（sync_fcurves_to_bytes 内部已兜底）。
+    最后若开启 recalc_timl_length，逐轴把长度设为末帧+1。"""
+    stored = _b64dec(str(entry_obj.get("timl_bytes", "")))
+    if not stored:
+        return stored
+    data = stored
+    try:
+        from . import timl_edit as _te
+        h = find_timl_handle(entry_obj)
+        if h is not None:
+            data = bytes(_te.sync_fcurves_to_bytes(h, entry_obj))
+    except Exception:
+        data = stored
+    if _EXPORT_RECALC_TIML_LEN and data[:4] == b"timl":
+        data = _recalc_timl_length(data)
+    return data
+
+
 def _hash_display_name(type_hash: int) -> str:
     """用 hash 查已知名；没注册的用 0x 十六进制。"""
     return HASH_TO_NAME.get(type_hash, f"0x{type_hash:08X}")
@@ -321,7 +361,13 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
             # AttrBlock 子对象（extern 指针化在 §7b 二次 pass 完成）
             _build_attr_attribute_children(body.attr_blocks, entry_obj, col_entry, raw_label)
             if body.timl_length > 0:
-                make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
+                _h = make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
+                # Phase 3：导入即把 TIML 持久化为句柄上的原生 fcurve（值编辑面；导出时同步回字节）
+                try:
+                    from . import timl_edit as _te
+                    _te.build_persistent_fcurves(_h, entry_obj)
+                except Exception:
+                    pass
 
         elif isinstance(body, EntryData):
             # 标准头（20B 头）
@@ -336,7 +382,13 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
             # AttrBlock 子对象（extern 指针化在 §7b 二次 pass 完成）
             _build_attr_attribute_children(body.attr_blocks, entry_obj, col_entry, raw_label)
             if body.timl_length > 0:
-                make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
+                _h = make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
+                # Phase 3：导入即把 TIML 持久化为句柄上的原生 fcurve（值编辑面；导出时同步回字节）
+                try:
+                    from . import timl_edit as _te
+                    _te.build_persistent_fcurves(_h, entry_obj)
+                except Exception:
+                    pass
 
         else:
             # 未知类型：保守存整段 serialize()
@@ -623,7 +675,7 @@ def _build_attr_attribute_children(
 # export_efx_tree
 # ─────────────────────────────────────────────────────────────────────────────
 
-def export_efx_tree(root_object: bpy.types.Object) -> bytes:
+def export_efx_tree(root_object: bpy.types.Object, recalc_timl_length: bool = False) -> bytes:
     """
     从 EFX_ROOT 对象树还原 .efx 文件字节。
 
@@ -631,13 +683,18 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
     ----
     root_object : bpy.types.Object
         由 import_efx_tree 创建的 EFX_ROOT Empty。
+    recalc_timl_length : bool
+        True 时导出把每条 TIML 动画的 animation_length 精确设为 末关键帧+1（逐轴 A0/A1）。
+        理由：帧长 ≤ 实际结束帧会导致游戏内动画播不完，+1 刚好覆盖到末帧之后。
 
     返回
     ----
     bytes
         完整 .efx 文件字节（byte-perfect）。
     """
+    global _EXPORT_RECALC_TIML_LEN
     r = root_object  # 简写
+    _EXPORT_RECALC_TIML_LEN = bool(recalc_timl_length)  # _export_timl_bytes 读取（导出非重入）
 
     # ── 0. main 段不可解析的 opaque 回退文件：整文件 verbatim 透传 ───────────
     # 这类文件 main 段含我们无法定界的块，导入时整段存为 opaque blob。无法重建
@@ -818,6 +875,7 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
                 )
                 for blk in blk_objs
             ]
+            _ext_timl = _export_timl_bytes(entry_obj)   # Phase 3：句柄有 fcurve → 同步回字节
             main_bodies.append(EntryDataExtended(
                 body_type   = int(str(entry_obj["body_type"])),
                 unkn0       = int(str(entry_obj["unkn0"])),
@@ -827,8 +885,8 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
                 unkn2       = int(str(entry_obj["unkn2"])),
                 attr_count  = len(attr_blocks),  # L2 #3b：从实际块数重算（增删块后正确）
                 null2       = int(str(entry_obj["null2"])),
-                timl_length = len(_b64dec(str(entry_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
-                timl_bytes  = _b64dec(str(entry_obj["timl_bytes"])),
+                timl_length = len(_ext_timl),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
+                timl_bytes  = _ext_timl,
                 attr_blocks = attr_blocks,
             ))
 
@@ -845,13 +903,14 @@ def export_efx_tree(root_object: bpy.types.Object) -> bytes:
                 )
                 for blk in blk_objs
             ]
+            _std_timl = _export_timl_bytes(entry_obj)   # Phase 3：句柄有 fcurve → 同步回字节
             main_bodies.append(EntryData(
                 body_type   = int(str(entry_obj["body_type"])),
                 unkn0       = int(str(entry_obj["unkn0"])),
                 attr_count  = len(attr_blocks),  # L2 #3b：从实际块数重算（增删块后正确）
                 null        = int(str(entry_obj["null"])),
-                timl_length = len(_b64dec(str(entry_obj["timl_bytes"]))),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
-                timl_bytes  = _b64dec(str(entry_obj["timl_bytes"])),
+                timl_length = len(_std_timl),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
+                timl_bytes  = _std_timl,
                 attr_blocks = attr_blocks,
             ))
 

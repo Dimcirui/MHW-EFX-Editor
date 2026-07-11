@@ -349,6 +349,14 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         default=True,
     )
 
+    # 导出时把每条 TIML 动画长度精确设为 末关键帧+1（逐轴 A0/A1）。
+    # 理由：帧长 ≤ 实际结束帧会导致游戏内动画播不完，+1 刚好覆盖到末帧之后。
+    recalc_timl_length: BoolProperty(
+        name=T("export.recalc_timl_len"),
+        description=T("export.recalc_timl_len_tip"),
+        default=True,
+    )
+
     def draw(self, context):
         global _last_export_name, _last_export_target_seen
         layout = self.layout
@@ -367,6 +375,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
         layout.prop(self, "recompute_double_buffer")
         layout.prop(self, "auto_sort_attributes")
+        layout.prop(self, "recalc_timl_length")
 
     def invoke(self, context, event):
         global _last_export_target_seen
@@ -430,7 +439,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
         # ── 2. 导出为字节 ───────────────────────────────────────────────────
         try:
-            data = io_tree.export_efx_tree(root)
+            data = io_tree.export_efx_tree(root, recalc_timl_length=self.recalc_timl_length)
         except Exception as exc:
             import traceback
             self.report(

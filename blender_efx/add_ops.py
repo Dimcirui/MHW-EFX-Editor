@@ -442,14 +442,20 @@ def add_entry_from_preset_dict(preset: dict,
     if entry_kind == "standard":
         for key in _STANDARD_PROP_KEYS:
             entry_obj[key] = str(props.get(key, "0"))
-        entry_obj["timl_bytes"] = str(preset.get("timl_bytes", ""))
+        # 咽喉点：从预设写 TIML（新建/替换）→ 写字节 + 建句柄 + 从新字节建持久 fcurve
+        import base64 as _b64
+        from . import timl_edit as _te
+        _te.set_entry_timl(entry_obj, _b64.b64decode(str(preset.get("timl_bytes", "")) or ""))
         _build_attributes(io_tree, AttrBlock, preset.get("attributes", []),
                       entry_obj, col_entry, raw_label)
 
     elif entry_kind == "extended":
         for key in _EXTENDED_PROP_KEYS:
             entry_obj[key] = str(props.get(key, "0"))
-        entry_obj["timl_bytes"] = str(preset.get("timl_bytes", ""))
+        # 咽喉点：从预设写 TIML（新建/替换）→ 写字节 + 建句柄 + 从新字节建持久 fcurve
+        import base64 as _b64
+        from . import timl_edit as _te
+        _te.set_entry_timl(entry_obj, _b64.b64decode(str(preset.get("timl_bytes", "")) or ""))
         _build_attributes(io_tree, AttrBlock, preset.get("attributes", []),
                       entry_obj, col_entry, raw_label)
 

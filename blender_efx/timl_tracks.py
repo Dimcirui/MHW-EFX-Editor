@@ -17,7 +17,7 @@ from bpy.props import StringProperty, IntProperty, BoolProperty
 from bpy.types import Operator, Panel
 
 from .i18n import T
-from .timl_meta_ui import _active_entry, _entry_timl_bytes, _store_timl, _edit_active
+from .timl_meta_ui import _active_entry, _entry_timl_bytes, _store_timl
 from ..efx_format import timl as _timl
 from ..efx_format.timl_names import (
     BLOCK_TO_TLP, FIELD_TO_DT, CORPUS_PAIRS,
@@ -52,44 +52,29 @@ def _parse_active_timl():
 
 
 def _resolve_for_edit():
-    """统一解析"要编辑哪个 Timl 模型"，自动区分会话内/外：
-
-      - 会话进行中且 active entry 在会话里 → 返回会话内存模型 entry["timl"] + entry。
-        改动只动模型，结构性改动调 session_capture()（改前）/ commit 调 session_refresh()（改后），
-        Apply 才落字节；Cancel 丢弃。
-      - 否则 → 解析 entry 字节出新模型 + entry=None，改完 _store_timl 立即落字节。
-
-    返回 (body, timl, entry)；解析失败 (None, None, None)。
-    """
-    body = _active_entry()
-    if body is None:
-        return None, None, None
-    from . import timl_edit as _te
-    entry = _te.session_entry(body)
-    if entry is not None:
-        return body, entry["timl"], entry
-    timl = _timl.parse_timl(_entry_timl_bytes(body))
-    return (body, timl, None) if timl is not None else (None, None, None)
-
-
-def _commit_edit(body, timl, entry):
-    """落实 _resolve_for_edit() 后的结构性改动：会话内重建 Action，会话外写字节。"""
-    from . import timl_edit as _te
-    if entry is not None:
-        _te.session_refresh(entry)          # 标脏 + 重建 F 曲线（含新增/删除的轨道）+ 帧范围
-    else:
-        _store_timl(body, timl.serialize())  # 直接落字节
-
-
-def _read_for_display():
-    """面板展示用：会话内取内存模型，会话外解析字节。返回 (entry, timl) 或 (None, None)。"""
+    """持久化模型：解析"要编辑哪个 Timl 模型"。**先提交进行中的关键帧编辑**（commit
+    fcurves→字节），再从字节解析——否则随后 set_entry_timl 重建会用旧字节冲掉正在改的关键帧。
+    返回 (body, timl)；无 entry / 解析失败 (None, None)。"""
     body = _active_entry()
     if body is None:
         return None, None
     from . import timl_edit as _te
-    m = _te.session_model(body)
-    if m is not None:
-        return body, m
+    _te.commit_fcurves_to_bytes(body)
+    timl = _te.read_model(body)
+    return (body, timl) if timl is not None else (None, None)
+
+
+def _commit_edit(body, timl):
+    """落实结构性改动：经咽喉点存字节 + 从新字节重建持久 fcurve（含新增/删除的轨道）。"""
+    from . import timl_edit as _te
+    _te.set_entry_timl(body, timl.serialize())
+
+
+def _read_for_display():
+    """面板展示用：从 timl_bytes 解析（持久化模型下字节即结构权威）。返回 (body, timl)。"""
+    body = _active_entry()
+    if body is None:
+        return None, None
     return body, _timl.parse_timl(_entry_timl_bytes(body))
 
 
@@ -206,14 +191,10 @@ class EFX_OT_timl_add_field_tracks(Operator):
         if tlp_hash is None:
             self.report({"ERROR"}, f"No TLP mapping for attribute type '{self.block_type}'")
             return {"CANCELLED"}
-        body, timl, entry = _resolve_for_edit()
+        body, timl = _resolve_for_edit()   # 已 commit 进行中关键帧编辑
         if timl is None:
             self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
-
-        if entry is not None:
-            from . import timl_edit as _te
-            _te.session_capture(entry)   # 改前先把进行中的曲线编辑读回模型
 
         added = 0
         for dt_hash, data_type in entries:
@@ -223,10 +204,9 @@ class EFX_OT_timl_add_field_tracks(Operator):
             self.report({"WARNING"}, "All tracks already exist")
             return {"CANCELLED"}
 
-        _commit_edit(body, timl, entry)
+        _commit_edit(body, timl)
         slot_lbl = _SLOT_LABEL.get(self.slot, str(self.slot))
-        where = " (live in session)" if entry is not None else ""
-        self.report({"INFO"}, f"Added {added} track(s) to {slot_lbl} for {self.block_type}.{self.field_name}{where}")
+        self.report({"INFO"}, f"Added {added} track(s) to {slot_lbl} for {self.block_type}.{self.field_name}")
         return {"FINISHED"}
 
 
@@ -257,25 +237,20 @@ class EFX_OT_timl_add_track(Operator):
         except ValueError:
             self.report({"ERROR"}, "Invalid hash hex value")
             return {"CANCELLED"}
-        body, timl, entry = _resolve_for_edit()
+        body, timl = _resolve_for_edit()
         if timl is None:
             self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
-
-        if entry is not None:
-            from . import timl_edit as _te
-            _te.session_capture(entry)
 
         added = _timl.add_transform(timl, self.slot, tlp, dt, self.data_type)
         if not added:
             self.report({"WARNING"}, "Track already exists")
             return {"CANCELLED"}
 
-        _commit_edit(body, timl, entry)
+        _commit_edit(body, timl)
         lbl = channel_label(tlp, dt)
         slot_lbl = _SLOT_LABEL.get(self.slot, str(self.slot))
-        where = " (live)" if entry is not None else ""
-        self.report({"INFO"}, f"Added {lbl} → {slot_lbl}{where}")
+        self.report({"INFO"}, f"Added {lbl} → {slot_lbl}")
         return {"FINISHED"}
 
 
@@ -305,24 +280,19 @@ class EFX_OT_timl_delete_track(Operator):
         except ValueError:
             self.report({"ERROR"}, "Invalid hash hex value")
             return {"CANCELLED"}
-        body, timl, entry = _resolve_for_edit()
+        body, timl = _resolve_for_edit()
         if timl is None:
             self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
-
-        if entry is not None:
-            from . import timl_edit as _te
-            _te.session_capture(entry)
 
         ok = _timl.delete_transform(timl, self.slot, tlp, dt)
         if not ok:
             self.report({"WARNING"}, "Track not found")
             return {"CANCELLED"}
 
-        _commit_edit(body, timl, entry)
+        _commit_edit(body, timl)
         lbl = channel_label(tlp, dt)
-        where = " (live)" if entry is not None else ""
-        self.report({"INFO"}, f"Deleted {lbl} from {_SLOT_LABEL.get(self.slot, str(self.slot))}{where}")
+        self.report({"INFO"}, f"Deleted {lbl} from {_SLOT_LABEL.get(self.slot, str(self.slot))}")
         return {"FINISHED"}
 
 
@@ -353,26 +323,21 @@ class EFX_OT_timl_copy_track(Operator):
         except ValueError:
             self.report({"ERROR"}, "Invalid hash hex value")
             return {"CANCELLED"}
-        body, timl, entry = _resolve_for_edit()
+        body, timl = _resolve_for_edit()
         if timl is None:
             self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
-
-        if entry is not None:
-            from . import timl_edit as _te
-            _te.session_capture(entry)
 
         ok = _timl.copy_transform(timl, self.src_slot, self.dst_slot, tlp, dt)
         if not ok:
             self.report({"WARNING"}, "Source track not found")
             return {"CANCELLED"}
 
-        _commit_edit(body, timl, entry)
+        _commit_edit(body, timl)
         lbl = channel_label(tlp, dt)
         src_lbl = _SLOT_LABEL.get(self.src_slot, str(self.src_slot))
         dst_lbl = _SLOT_LABEL.get(self.dst_slot, str(self.dst_slot))
-        where = " (live)" if entry is not None else ""
-        self.report({"INFO"}, f"Copied {lbl}: {src_lbl} → {dst_lbl}{where}")
+        self.report({"INFO"}, f"Copied {lbl}: {src_lbl} → {dst_lbl}")
         return {"FINISHED"}
 
 
@@ -499,8 +464,6 @@ def _draw_tracks_panel(layout, context):
         return
 
     wm = context.window_manager
-    if _edit_active():
-        layout.label(text="Editing live — changes apply on Apply", icon="REC")
 
     # ── T1: 当前轨道列表 ──────────────────────────────────────────────────
     for slot in (0, 1):

@@ -70,34 +70,15 @@ def _store_timl(body, data: bytes):
 # get/set 回调工厂（按 anim_index 绑定，挂在 WindowManager 上，瞬态不保存）
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 会话内：取活动 entry 在 TIML 编辑会话中的 (entry, 内存模型 TimlData|None)；不在会话→(None, None)。
-# 会话进行中元字段(长度/循环)读写直接走内存模型 entry["timl"]，Apply 才落字节（与轨道增删一致）。
-def _session_anim(body, idx):
-    try:
-        from . import timl_edit as _te
-        entry = _te.session_entry(body)
-    except Exception:
-        entry = None
-    if entry is None:
-        return None, None
-    m = entry["timl"]
-    if 0 <= idx < len(m.animations) and m.animations[idx] is not None:
-        return entry, m.animations[idx]
-    return entry, None
-
-
+# 持久化模型（见 timl_edit Phase 3）：无独立编辑会话。元字段(长度/循环/循环起点)不进 fcurve，
+# 直接轻量 patch timl_bytes——导出 sync 只覆盖关键帧、保留这些结构字段，故安全高效、无需重建 fcurve。
 def _make_length_get(idx):
     def _get(self):
         body = _active_entry()
         if body is None:
             return 0.0
-        entry, anim = _session_anim(body, idx)
-        if entry is not None:
-            return float(anim.animation_length) if anim is not None else 0.0
         anims = tm.parse_animations(_entry_timl_bytes(body))
-        if idx < len(anims):
-            return float(anims[idx].animation_length)
-        return 0.0
+        return float(anims[idx].animation_length) if idx < len(anims) else 0.0
     return _get
 
 
@@ -105,13 +86,6 @@ def _make_length_set(idx):
     def _set(self, value):
         body = _active_entry()
         if body is None:
-            return
-        entry, anim = _session_anim(body, idx)
-        if entry is not None:
-            if anim is not None:
-                anim.animation_length = float(value)
-                from . import timl_edit as _te
-                _te.session_mark_edited(entry)
             return
         data = _entry_timl_bytes(body)
         new = tm.set_animation_length(data, idx, value)
@@ -125,10 +99,6 @@ def _make_loop_get(idx):
         body = _active_entry()
         if body is None:
             return 0
-        entry, anim = _session_anim(body, idx)
-        if entry is not None:
-            v = int(anim.loop_control) if anim is not None else 0
-            return v if v in tm.LOOP_CONTROL_VALUES else 0
         anims = tm.parse_animations(_entry_timl_bytes(body))
         if idx < len(anims):
             v = int(anims[idx].loop_control)
@@ -142,13 +112,6 @@ def _make_loop_set(idx):
         body = _active_entry()
         if body is None:
             return
-        entry, anim = _session_anim(body, idx)
-        if entry is not None:
-            if anim is not None:
-                anim.loop_control = int(value)
-                from . import timl_edit as _te
-                _te.session_mark_edited(entry)
-            return
         data = _entry_timl_bytes(body)
         new = tm.set_loop_control(data, idx, int(value))
         if new != data:
@@ -161,13 +124,8 @@ def _make_loopstart_get(idx):
         body = _active_entry()
         if body is None:
             return 0.0
-        entry, anim = _session_anim(body, idx)
-        if entry is not None:
-            return float(anim.loop_start_point) if anim is not None else 0.0
         anims = tm.parse_animations(_entry_timl_bytes(body))
-        if idx < len(anims):
-            return float(anims[idx].loop_start_point)
-        return 0.0
+        return float(anims[idx].loop_start_point) if idx < len(anims) else 0.0
     return _get
 
 
@@ -176,27 +134,11 @@ def _make_loopstart_set(idx):
         body = _active_entry()
         if body is None:
             return
-        entry, anim = _session_anim(body, idx)
-        if entry is not None:
-            if anim is not None:
-                anim.loop_start_point = float(value)
-                from . import timl_edit as _te
-                _te.session_mark_edited(entry)
-            return
         data = _entry_timl_bytes(body)
         new = tm.set_loop_start_point(data, idx, value)
         if new != data:
             _store_timl(body, new)
     return _set
-
-
-def _edit_active() -> bool:
-    """通道编辑会话进行中？（进行中时禁止结构性增删，避免模型与字节脱节）"""
-    try:
-        from . import timl_edit as _te
-        return bool(_te._state.get("active"))
-    except Exception:
-        return False
 
 
 # loopControl 枚举项：identifier / 名称（英文，无 0123）/ 描述 / 图标 / 数值(=loopControl 原值)
@@ -233,28 +175,20 @@ class EFX_OT_timlm_fit_last_keyframe(Operator):
         if body is None:
             self.report({"ERROR"}, T("timlm.no_entry"))
             return {"CANCELLED"}
+        # 先把进行中的关键帧编辑从 fcurve 提交进字节，末帧才准
+        from . import timl_edit as _te
+        _te.commit_fcurves_to_bytes(body)
         lk = _live_last_kf(body, self.anim_index)
         if lk is None:
             self.report({"WARNING"}, T("timlm.no_kf"))
             return {"CANCELLED"}
-        # 会话内 → 改内存模型长度；会话外 → patch 字节
-        entry, anim = _session_anim(body, self.anim_index)
-        if entry is not None:
-            cur = anim.animation_length if anim is not None else 0.0
-            if lk <= cur:
-                self.report({"INFO"}, T("timlm.grow_only"))
-                return {"CANCELLED"}
-            anim.animation_length = float(lk)
-            from . import timl_edit as _te
-            _te.session_mark_edited(entry)
-            self.report({"INFO"}, T("timlm.last_kf").format(f=lk))
-            return {"FINISHED"}
         data = _entry_timl_bytes(body)
         anims = tm.parse_animations(data)
         cur = anims[self.anim_index].animation_length if self.anim_index < len(anims) else 0.0
         if lk <= cur:
             self.report({"INFO"}, T("timlm.grow_only"))
             return {"CANCELLED"}
+        # 长度是结构字段、不进 fcurve，直接 patch 字节（导出 sync 保留）
         _store_timl(body, tm.set_animation_length(data, self.anim_index, lk))
         self.report({"INFO"}, T("timlm.last_kf").format(f=lk))
         return {"FINISHED"}
@@ -292,18 +226,10 @@ class EFX_OT_timlm_enable_axis(Operator):
         if body is None:
             return {"CANCELLED"}
         import copy
-        # 会话内 → 改内存模型并重建曲线；会话外 → 解析字节并立即落字节
-        entry = None
-        try:
-            from . import timl_edit as _te
-            entry = _te.session_entry(body)
-        except Exception:
-            entry = None
-        if entry is not None:
-            _te.session_capture(entry)
-            t = entry["timl"]
-        else:
-            t = _timl.parse_timl(_entry_timl_bytes(body))
+        # 结构改动（增轴 → 新通道）：先提交进行中关键帧编辑，再改字节、经咽喉点重建 fcurve
+        from . import timl_edit as _te
+        _te.commit_fcurves_to_bytes(body)
+        t = _te.read_model(body)
         if t is None:
             return {"CANCELLED"}
         slot = max(0, min(self.slot, 1))
@@ -315,10 +241,7 @@ class EFX_OT_timlm_enable_axis(Operator):
         t.count = len(t.animations)
         _set_anim_indices(t)
         t.dirty = True
-        if entry is not None:
-            _te.session_refresh(entry)
-        else:
-            _store_timl(body, t.serialize())
+        _te.set_entry_timl(body, t.serialize())   # 存 + 重建持久 fcurve
         self.report({"INFO"}, T("timlm.enabled_axis").format(T(_AXIS_LABEL.get(slot, ""))))
         return {"FINISHED"}
 
@@ -340,17 +263,9 @@ class EFX_OT_timlm_clear_axis(Operator):
         body = _active_entry()
         if body is None:
             return {"CANCELLED"}
-        entry = None
-        try:
-            from . import timl_edit as _te
-            entry = _te.session_entry(body)
-        except Exception:
-            entry = None
-        if entry is not None:
-            _te.session_capture(entry)
-            t = entry["timl"]
-        else:
-            t = _timl.parse_timl(_entry_timl_bytes(body))
+        from . import timl_edit as _te
+        _te.commit_fcurves_to_bytes(body)
+        t = _te.read_model(body)
         if t is None:
             return {"CANCELLED"}
         slot = self.slot
@@ -361,10 +276,7 @@ class EFX_OT_timlm_clear_axis(Operator):
         t.count = len(t.animations)
         _set_anim_indices(t)
         t.dirty = True
-        if entry is not None:
-            _te.session_refresh(entry)
-        else:
-            _store_timl(body, t.serialize())
+        _te.set_entry_timl(body, t.serialize())   # 存 + 重建持久 fcurve
         self.report({"INFO"}, T("timlm.cleared_axis").format(T(_AXIS_LABEL.get(slot, ""))))
         return {"FINISHED"}
 
@@ -374,35 +286,14 @@ class EFX_OT_timlm_clear_axis(Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _live_axis_present(body):
-    """[A0存在, A1存在]：会话内看内存模型，会话外看字节。"""
-    try:
-        from . import timl_edit as _te
-        m = _te.session_model(body)
-    except Exception:
-        m = None
-    if m is not None:
-        return [(s < len(m.animations) and m.animations[s] is not None) for s in (0, 1)]
+    """[A0存在, A1存在]：从 timl_bytes 读（结构字段；持久化模型下字节即结构权威）。"""
     anims = tm.parse_animations(_entry_timl_bytes(body))
     return [_axis_present(anims, s) for s in (0, 1)]
 
 
 def _live_last_kf(body, slot):
-    """该轴最后关键帧时间：会话内从内存模型算，会话外从字节算。无 → None。"""
-    try:
-        from . import timl_edit as _te
-        m = _te.session_model(body)
-    except Exception:
-        m = None
-    if m is not None:
-        if slot < len(m.animations) and m.animations[slot] is not None:
-            mx = None
-            for ty in m.animations[slot].types:
-                for tf in ty.transforms:
-                    for kf in tf.keyframes:
-                        if mx is None or kf.frame_timing > mx:
-                            mx = kf.frame_timing
-            return mx
-        return None
+    """该轴最后关键帧时间（从字节算，无 → None）。⚠ 展示用可能略滞后于未提交的 fcurve 编辑；
+    需精确时（如 fit 算子）调用方先 commit_fcurves_to_bytes(body)。"""
     return tm.last_keyframe_time(_entry_timl_bytes(body), slot)
 
 
@@ -418,21 +309,10 @@ def _draw_meta_panel(layout, context):
         return
 
     wm = context.window_manager
-    edit_active = _edit_active()
     present = _live_axis_present(body)
 
     # per-entry 自动增长开关
     layout.prop(body, "efx_timl_auto_grow", text=T("timlm.auto_grow"))
-    if edit_active:
-        # 通道编辑进行中：在此直接切 A0/A1/All 焦点（live 重建）
-        box = layout.box()
-        box.label(text=T("timlm.edit_active"), icon="FCURVE")
-        try:
-            from . import timl_edit as _te
-            _te.draw_focus(box, context)
-            box.label(text=T("timle.focus_note"), icon="BLANK1")
-        except Exception:
-            pass
 
     # A0 / A1 两个固定独立的轴槽（不是可增删的列表）
     for slot in (0, 1):

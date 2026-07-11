@@ -103,15 +103,12 @@ class EFX_OT_preview_exit(Operator):
         return _any_active()
 
     def execute(self, context):
-        # 预览定位为只读：TIML 编辑会话以 discard 退出（不回写）；其余直接退出。
+        # 持久化模型：TIML 编辑始终 live 持久（丢弃靠原生 Ctrl+Z）；退出仅解绑网格预览。
         for key, _en, ex, _t, _s in _TARGETS:
             if not _try_poll(ex):
                 continue
             try:
-                if key == "timl":
-                    _op(ex)(apply=False)
-                else:
-                    _op(ex)()
+                _op(ex)()
             except Exception as exc:
                 self.report({"WARNING"}, "%s: %s" % (key, exc))
         self.report({"INFO"}, T("efxprev.exited"))
@@ -179,7 +176,7 @@ def register():
     S.efx_prev_t_uvc = BoolProperty(name="UVCONTROL UV scroll", default=True,
                                     description="Previews ONLY UVCONTROL attributes' UV scroll (drives the bound mesh's Mapping node during playback)")
     S.efx_prev_t_timl = BoolProperty(name="TIML transform playback", default=True,
-                                     description="Plays the TIML transform3d animation in the viewport (read-only here; edits are discarded on exit)")
+                                     description="Binds bound meshes to follow the TIML transform3d animation during viewport playback (TIML is always editable in the Dope Sheet; edits are persistent)")
     S.efx_prev_t_mesh = BoolProperty(name="Mesh placement", default=False,
                                      description="Places bound mesh instances by TRANSFORM3D + MESH rotation/scale (static placement, re-aligns live when those fields are edited)")
     S.efx_prev_t_es3d = BoolProperty(name="EmitterShape3D shape", default=False,

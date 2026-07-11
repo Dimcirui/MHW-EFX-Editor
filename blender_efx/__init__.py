@@ -49,6 +49,7 @@ from . import attribute_ops     # 块级组装：单块复制/粘贴/预设保�
 from . import part_mask_ops # PLEMISSIVE body_p/wp_p 位掩码勾选编辑器
 from . import validate      # L2 #4：导出前校验
 from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始字节查看）
+from . import session_core  # 会话/预览类公共基础设施：标记式孤儿清理 + 生命周期缓存复位
 from . import timl_io       # TIML ↔ .timl 文件互导 + EFX_TIML 句柄解析
 from . import timl_meta_ui  # TIML 头部元字段编辑（Dope Sheet 侧栏 EFX TIML：长度/循环控制）
 from . import timl_edit      # 阶段2b：自建 TIML 通道编辑会话（原生 F 曲线，零 FK）
@@ -200,6 +201,9 @@ def register():
     # ── mod3 自动导入联动：注册 Scene.efx_chunk_root（导入算子 draw/execute 用）────
     mod3_link.register()
 
+    # ── 会话/预览类公共基础设施（标记式孤儿清理 + load_post 缓存复位）先于消费者注册 ──
+    session_core.register()
+
     # ── 绑定网格实时对齐预览（预览式+可编辑+实例化）：顶层 N 面板，独立注册 ────────
     mesh_align.register()
 
@@ -216,6 +220,7 @@ def unregister():
     efx_preview.unregister()
     es3d_preview.unregister()
     mesh_align.unregister()
+    session_core.unregister()
     mod3_link.unregister()
     uvc_preview.unregister()
     uvs_io.unregister()

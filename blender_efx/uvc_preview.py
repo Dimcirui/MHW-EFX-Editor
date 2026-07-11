@@ -529,15 +529,44 @@ def _transform_matrix(ent, t):
 # 预览会话状态（模块级，生命周期与 handler 绑定）
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ⚠ uvc 是 handler+还原数据模型（持活节点引用），非实例对象——session_core 的对象标记模型不适用。
+# 但同样怕状态脱节：热重载/undo 后 _state 是新模块的空 dict，却有**旧模块的 _on_frame** 还挂在
+# frame_change_post 上驱动真实节点（"越用越黏"）。故 handler 一律**按函数名+模块识别**移除（不靠
+# 缓存引用），"是否活跃"也由 handler 是否在册派生——跨热重载都能认出并清掉旧 handler。
 _state = {
-    "active": False,
-    "handler": None,       # frame_change_post handler 引用
+    "handler": None,       # frame_change_post handler 引用（仅本模块内用；清理不靠它）
     "pairs": [],           # [(params_dict, mapping_node)]  —— UV 驱动
     "restore": [],         # [restore_record]（见 _prepare_material）
     "xform": [],           # [entry]  —— 网格变换动画（见 _collect_transform_entries）
     "xform_snaps": [],     # [(mesh, 原 matrix_world)]
     "start_frame": 0,
 }
+
+
+def _our_frame_handlers():
+    """frame_change_post 里所有属于本模块的 _on_frame（按名+模块识别，跨热重载有效）。"""
+    out = []
+    for h in list(bpy.app.handlers.frame_change_post):
+        if (getattr(h, "__name__", None) == "_on_frame"
+                and getattr(h, "__module__", "").endswith("uvc_preview")):
+            out.append(h)
+    return out
+
+
+def _remove_our_frame_handlers():
+    """移除所有本模块 handler（含热重载残留的旧模块 handler）。返回移除数。"""
+    removed = 0
+    for h in _our_frame_handlers():
+        try:
+            bpy.app.handlers.frame_change_post.remove(h); removed += 1
+        except Exception:
+            pass
+    return removed
+
+
+def _is_active() -> bool:
+    """预览是否活跃：本模块 handler 是否在册（场景事实派生，非 _state 布尔）。"""
+    return bool(_our_frame_handlers())
 
 
 def _scene_fps(scene):
@@ -592,7 +621,8 @@ def _apply_frame(scene):
 
 @persistent
 def _on_frame(scene, depsgraph=None):
-    if _state["active"]:
+    # handler 在册即活跃；有 pairs/xform 才有活可干（热重载残留的旧 handler 其 _state 为空 → 空转无害）
+    if _state["pairs"] or _state["xform"]:
         _apply_frame(scene)
 
 
@@ -693,15 +723,9 @@ def _restore():
 
 
 def _stop_preview():
-    """退出预览：注销 handler、还原节点、清空状态。可重复安全调用。"""
-    h = _state["handler"]
-    if h is not None and h in bpy.app.handlers.frame_change_post:
-        try:
-            bpy.app.handlers.frame_change_post.remove(h)
-        except Exception:
-            pass
+    """退出预览：注销 handler（含热重载残留）、还原节点、清空状态。可重复安全调用。"""
+    _remove_our_frame_handlers()
     _restore()
-    _state["active"] = False
     _state["handler"] = None
     _state["pairs"] = []
     _state["restore"] = []
@@ -744,7 +768,7 @@ class EFX_OT_uvc_preview_enter(Operator):
 
     @classmethod
     def poll(cls, context):
-        if _state["active"]:
+        if _is_active():
             return False
         if getattr(context.scene, "efx_uvc_preview_all", False):
             return True
@@ -791,9 +815,8 @@ class EFX_OT_uvc_preview_enter(Operator):
         _state["xform_snaps"] = xform_snaps
         _state["start_frame"] = context.scene.frame_current
         _state["handler"] = _on_frame
-        if _on_frame not in bpy.app.handlers.frame_change_post:
-            bpy.app.handlers.frame_change_post.append(_on_frame)
-        _state["active"] = True
+        _remove_our_frame_handlers()   # 先清任何残留（含热重载旧模块 handler），杜绝重复/黏连
+        bpy.app.handlers.frame_change_post.append(_on_frame)
 
         # 立即按当前帧应用一次（不必等用户拖动时间轴）
         _apply_frame(context.scene)
@@ -810,7 +833,7 @@ class EFX_OT_uvc_preview_exit(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _state["active"]
+        return _is_active()
 
     def execute(self, context):
         _stop_preview()
@@ -824,14 +847,9 @@ class EFX_OT_uvc_preview_exit(Operator):
 
 @persistent
 def _on_load(*_args):
-    # 新文件里旧的 node 引用全失效，直接清状态（不调用 _restore，节点已不存在）
-    h = _state["handler"]
-    if h is not None and h in bpy.app.handlers.frame_change_post:
-        try:
-            bpy.app.handlers.frame_change_post.remove(h)
-        except Exception:
-            pass
-    _state["active"] = False
+    # 新文件里旧的 node 引用全失效，直接清状态（不调用 _restore，节点已不存在）。
+    # handler 按名+模块移除（含热重载残留），不靠缓存引用。
+    _remove_our_frame_handlers()
     _state["handler"] = None
     _state["pairs"] = []
     _state["restore"] = []
@@ -882,7 +900,7 @@ def _draw_preview_controls(layout, context):
     """预览进入/退出控件（UVCONTROL 属性面板与 entry 面板共用）。"""
     layout.label(text=T("uvc.timeline_hint"), icon="TIME")
 
-    if _state["active"]:
+    if _is_active():
         box = layout.box()
         box.label(text=T("uvc.previewing").format(len(_state["pairs"])), icon="PLAY")
         row = box.row()

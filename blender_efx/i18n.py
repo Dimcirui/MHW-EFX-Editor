@@ -224,6 +224,13 @@ STRINGS = {
     "export.auto_sort_tip":  {"EN": "On export, silently reorder each entry's attributes into the game's "
                                      "conventional order. Uncheck to keep your own attribute order as-is.",
                                "ZH": "导出时按游戏惯用顺序静默重排每个 entry 内的属性。取消勾选则保留你自己排的顺序。"},
+    "export.recalc_timl_len":    {"EN": "Recalc TIML length (last frame + 1)",
+                                  "ZH": "重算 TIML 长度（末帧+1）"},
+    "export.recalc_timl_len_tip":{"EN": "On export, set each TIML animation's length to its last keyframe + 1 "
+                                        "(per axis A0/A1). A length <= the actual end frame cuts the animation "
+                                        "short in-game; +1 covers just past the last frame.",
+                                  "ZH": "导出时把每条 TIML 动画的长度设为其末关键帧+1（逐轴 A0/A1）。"
+                                        "帧长 <= 实际结束帧会导致游戏内动画播不完，+1 刚好覆盖到末帧之后。"},
     "export.target_efx":     {"EN": "EFX Collection",
                               "ZH": "EFX 集合"},
     "export.target_efx_tip": {"EN": "Which loaded EFX file to export. Defaults to the 'Active EFX' selector in "
@@ -319,19 +326,16 @@ STRINGS = {
                              "ZH": "通道编辑进行中——退出后才能启用/清空轴"},
 
     # ── TIML 通道编辑会话（timl_edit.py，阶段2b，自建零 FK）──────────────────────
-    "timle.enter":          {"EN": "Edit TIML",               "ZH": "编辑 TIML"},
-    "timle.enter_hint":     {"EN": "Parses TIML into native F-curves; edit in Dope Sheet / Graph Editor, then Apply",
-                             "ZH": "把 TIML 解析成原生 F 曲线；在 Dope Sheet / Graph Editor 编辑后点应用"},
-    "timle.editing":        {"EN": "Editing {0} channel(s) in {1} entry(ies) — open Dope Sheet/Graph",
-                             "ZH": "正在编辑 {0} 条通道（{1} 个特效体）——打开 Dope Sheet/Graph"},
-    "timle.editor_hint":    {"EN": "Select an EFX_TIML handle's action in the Dope Sheet / Graph Editor",
-                             "ZH": "在 Dope Sheet / Graph Editor 中编辑各 EFX_TIML 句柄的 Action"},
-    "timle.apply":          {"EN": "Apply & Exit",            "ZH": "应用并退出"},
-    "timle.cancel":         {"EN": "Cancel",                  "ZH": "取消"},
-    "timle.all_bodies":     {"EN": "All bodies in this EFX",  "ZH": "同时编辑本 EFX 内所有特效体"},
-    "timle.focus":          {"EN": "Focus", "ZH": "焦点"},
-    "timle.focus_note":     {"EN": "Switch A0/A1 live (edits kept across switches)", "ZH": "可会话内切 A0/A1（编辑跨切换不丢）"},
-    "timle.entered":        {"EN": "TIML channel edit: {0} channel(s) built", "ZH": "TIML 通道编辑：已建 {0} 条通道"},
+    "timle.enter":          {"EN": "Browse TIML Transform",   "ZH": "浏览 TIML transform 效果"},
+    "timle.enter_hint":     {"EN": "Binds meshes to follow the TIML transform animation for viewport preview. "
+                                   "TIML is always editable in the Dope Sheet / Graph Editor (edits are live).",
+                             "ZH": "绑定网格跟随 TIML transform 动画以在视口预览。TIML 随时可在 "
+                                   "Dope Sheet / Graph Editor 编辑（编辑即时生效）。"},
+    "timle.editor_hint":    {"EN": "Previewing — meshes follow the TIML transform. Exit to unbind.",
+                             "ZH": "预览中——网格跟随 TIML transform。退出以解绑。"},
+    "timle.cancel":         {"EN": "Exit Preview",            "ZH": "退出预览"},
+    "timle.all_bodies":     {"EN": "All bodies in this EFX",  "ZH": "本 EFX 内所有特效体一起预览"},
+    "timle.entered":        {"EN": "TIML preview: {0} mesh(es) bound", "ZH": "TIML 预览：已绑定 {0} 个网格"},
     "timle.applied":        {"EN": "TIML written back: {0} entry(ies)", "ZH": "已回写 TIML：{0} 个特效体"},
 
     # ── 统一预览面板（efx_preview.py，点5）────────────────────────────────────────
