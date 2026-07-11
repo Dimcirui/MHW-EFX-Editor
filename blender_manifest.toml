@@ -5,7 +5,7 @@ type    = "add-on"
 
 name     = "MHW EFX Editor"
 tagline  = "Import and export Monster Hunter World EFX effect files"
-version  = "0.3.18"
+version  = "0.3.19"
 
 maintainer = "Dimcirui"
 
@@ -15,6 +15,10 @@ license = ["SPDX:GPL-3.0-or-later"]
 
 # 标签（在扩展浏览器中显示）
 tags = ["Import-Export"]
+
+# 4.2+ 扩展需显式声明权限。addon_updater 检查/下载 GitHub 发行版需要网络访问。
+[permissions]
+network = "Check for and download add-on updates from GitHub"
 
 # 扩展包根目录相对于 blender_manifest.toml 的子目录说明：
 # 打包正式扩展时应把 blender_efx/ 和 efx_format/ 都放入包根目录，

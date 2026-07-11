@@ -29,3 +29,6 @@ stats/
 
 # 开发/构建/测试脚本：非插件本体内容，本地保留，不入库
 tools/
+
+# addon_updater 运行时暂存/备份目录（下载更新用，非源码）
+efx_editor_updater/

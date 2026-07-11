@@ -37,19 +37,56 @@ Blender 加载时此目录被视为包 bl_ext.user_default.efx_editor。
 bl_info = {
     "name": "MHW EFX Editor",
     "author": "Dimcirui",
-    "version": (0, 3, 18),
+    "version": (0, 3, 19),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > EFX",
     "description": "Import and export Monster Hunter World EFX effect files",
     "category": "Import-Export",
 }
 
+import bpy
+from bpy.types import AddonPreferences
+from bpy.props import BoolProperty, IntProperty
+
+from . import addon_updater_ops   # CGCookie Blender Add-on Updater（从 Modding-Toolkit 移植）
 from . import blender_efx
 from . import blender_epv
 
 
+# ── 插件更新器偏好设置（Edit > Preferences > Add-ons > MHW EFX Editor）───────────
+# CGCookie addon_updater：检查 GitHub 发行版（Dimcirui/MHW-EFX-Editor）并可下载/安装。
+# ⚠ 更新器主要面向老式 addon（zip 手动安装）分发；4.2+ 扩展由 Blender 扩展系统管理更新，
+#   自动就地安装未必可靠，但"检查更新 + 打开下载页"两版本都可用。扩展需 manifest 声明网络权限。
+class EFX_UpdaterPreferences(AddonPreferences):
+    bl_idname = __name__
+
+    auto_check_update: BoolProperty(
+        name="Auto-check for Update",
+        description="If enabled, auto-check for updates using an interval",
+        default=False,
+    )
+    updater_interval_months: IntProperty(
+        name="Months", description="Number of months between checking for updates",
+        default=0, min=0)
+    updater_interval_days: IntProperty(
+        name="Days", description="Number of days between checking for updates",
+        default=7, min=0)
+    updater_interval_hours: IntProperty(
+        name="Hours", description="Number of hours between checking for updates",
+        default=0, min=0, max=23)
+    updater_interval_minutes: IntProperty(
+        name="Minutes", description="Number of minutes between checking for updates",
+        default=0, min=0, max=59)
+
+    def draw(self, context):
+        addon_updater_ops.update_settings_ui(self, context)
+
+
 def register():
     """注册扩展（Blender 扩展系统入口）。"""
+    # 更新器须先注册（clear_state + 读取 bl_info 版本），再注册偏好设置类
+    addon_updater_ops.register(bl_info)
+    bpy.utils.register_class(EFX_UpdaterPreferences)
     blender_efx.register()
     blender_epv.register()
 
@@ -58,3 +95,5 @@ def unregister():
     """注销扩展（Blender 扩展系统入口）。"""
     blender_epv.unregister()
     blender_efx.unregister()
+    bpy.utils.unregister_class(EFX_UpdaterPreferences)
+    addon_updater_ops.unregister()
