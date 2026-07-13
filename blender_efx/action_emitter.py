@@ -623,9 +623,10 @@ class EFX_UL_action_targets(bpy.types.UIList):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class EFX_PT_action(bpy.types.Panel):
+def _draw_action_content(layout, context):
     """
-    Action 数据面板（VIEW_3D N 面板 EFX 标签）。
+    绘制 EFX_ACTION 的数据内容。
+    被 EFX_PT_action（N 面板）和 EFX_PT_action_props/_object（属性编辑器）共用。
 
     选中 EFX_ACTION 对象时显示：
       - play_type 元数据（只读）
@@ -633,6 +634,100 @@ class EFX_PT_action(bpy.types.Panel):
           PLAYEFX  → 路径（只读字符串）
           PLAYEMITTER → target entry 指针列表（可编辑指向）
       - 悬空 target 指针警告
+    """
+    obj = context.active_object
+
+    try:
+        props = obj.efx_play
+    except AttributeError:
+        layout.label(text=T("action.no_data"), icon="ERROR")
+        return
+
+    # ── 元数据行（只读）─────────────────────────────────────────────────────
+    meta_box = layout.box()
+    meta_box.label(text=T("action.meta"), icon="INFO")
+    meta_box.label(text=f"Play Type: {props.play_type_str}")
+    meta_box.label(text=f"Entries: {len(props.entries)}")
+
+    layout.separator()
+
+    # ── 各 entry 展开 ────────────────────────────────────────────────────────
+    total_dangling = 0
+    for ei, entry in enumerate(props.entries):
+        entry_box = layout.box()
+
+        if entry.is_emitter:
+            # ── PLAYEMITTER ────────────────────────────────────────────────
+            hdr = entry_box.row(align=True)
+            hdr.label(text=f"Entry {ei}  PLAYEMITTER", icon="LINKED")
+            rem_op = hdr.operator("efx.action_entry_remove", text="", icon="X")
+            rem_op.entry_index = ei
+
+            entry_box.prop(entry, "xyz", text=T("action.pos_offset_xyz"))
+
+            tgt_count = len(entry.targets)
+            entry_box.label(
+                text=f"{T('action.targets')}({tgt_count})",
+                icon="OUTLINER_OB_EMPTY",
+            )
+
+            list_row = entry_box.row()
+            list_row.template_list(
+                "EFX_UL_action_targets",
+                f"play_targets_{ei}",
+                entry, "targets",
+                entry, "active_target_index",
+                rows=3,
+            )
+
+            btn_col = list_row.column(align=True)
+            add_op = btn_col.operator("efx.action_target_add", text="", icon="ADD")
+            add_op.entry_index = ei
+            rem_op2 = btn_col.operator("efx.action_target_remove", text="", icon="REMOVE")
+            rem_op2.entry_index = ei
+
+            ati = entry.active_target_index
+            if 0 <= ati < tgt_count:
+                entry_box.row().prop(entry.targets[ati], "body_ptr", text=T("action.entry_object"))
+
+            dangling = sum(1 for t in entry.targets if t.body_ptr is None)
+            total_dangling += dangling
+            if dangling > 0:
+                warn = entry_box.row()
+                warn.alert = True
+                warn.label(
+                    text=f"⚠ {dangling} {T('action.targets_dangling')}",
+                    icon="ERROR",
+                )
+
+        else:
+            # ── PLAYEFX ────────────────────────────────────────────────────
+            hdr = entry_box.row(align=True)
+            hdr.label(text=f"Entry {ei}  PLAYEFX", icon="FILE_BLEND")
+            rem_op = hdr.operator("efx.action_entry_remove", text="", icon="X")
+            rem_op.entry_index = ei
+
+            entry_box.prop(entry, "efx_path", text=T("action.efx_path"))
+            entry_box.prop(entry, "xyz", text=T("action.pos_offset_xyz"))
+
+    # ── 新增 entry 按钮 ──────────────────────────────────────────────────────
+    layout.separator()
+    layout.operator("efx.action_entry_add", text=T("action.add_entry"), icon="ADD")
+
+    # ── 整体悬空警告 ─────────────────────────────────────────────────────────
+    if total_dangling > 0:
+        layout.separator()
+        warn_row = layout.row()
+        warn_row.alert = True
+        warn_row.label(
+            text=f"⚠ {total_dangling} {T('action.targets_dangling_total')}",
+            icon="ERROR",
+        )
+
+
+class EFX_PT_action(bpy.types.Panel):
+    """
+    Action 数据面板（VIEW_3D N 面板 EFX 标签）。
 
     设计理念（CLAUDE §4）：
       Action ↔ entry 归属关系是结构关系（工具功能），放 N 面板。
@@ -650,95 +745,43 @@ class EFX_PT_action(bpy.types.Panel):
         return obj is not None and obj.get("~TYPE") == "EFX_ACTION"
 
     def draw(self, context):
-        layout = self.layout
+        _draw_action_content(self.layout, context)
+
+
+class EFX_PT_action_props(bpy.types.Panel):
+    """Action 数据（属性编辑器 → Object Data Properties，选中 EFX_ACTION 时显示）"""
+
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "data"
+    bl_label        = "EFX Action Data"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
         obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_ACTION"
 
-        try:
-            props = obj.efx_play
-        except AttributeError:
-            layout.label(text=T("action.no_data"), icon="ERROR")
-            return
+    def draw(self, context):
+        _draw_action_content(self.layout, context)
 
-        # ── 元数据行（只读）─────────────────────────────────────────────────────
-        meta_box = layout.box()
-        meta_box.label(text=T("action.meta"), icon="INFO")
-        meta_box.label(text=f"Play Type: {props.play_type_str}")
-        meta_box.label(text=f"Entries: {len(props.entries)}")
 
-        layout.separator()
+class EFX_PT_action_object(bpy.types.Panel):
+    """Action 数据（属性编辑器 → Object Properties，保底版本）"""
 
-        # ── 各 entry 展开 ────────────────────────────────────────────────────────
-        total_dangling = 0
-        for ei, entry in enumerate(props.entries):
-            entry_box = layout.box()
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "object"
+    bl_label        = "EFX Action Data"
+    bl_options      = {"DEFAULT_CLOSED"}
 
-            if entry.is_emitter:
-                # ── PLAYEMITTER ────────────────────────────────────────────────
-                hdr = entry_box.row(align=True)
-                hdr.label(text=f"Entry {ei}  PLAYEMITTER", icon="LINKED")
-                rem_op = hdr.operator("efx.action_entry_remove", text="", icon="X")
-                rem_op.entry_index = ei
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_ACTION"
 
-                entry_box.prop(entry, "xyz", text=T("action.pos_offset_xyz"))
-
-                tgt_count = len(entry.targets)
-                entry_box.label(
-                    text=f"{T('action.targets')}({tgt_count})",
-                    icon="OUTLINER_OB_EMPTY",
-                )
-
-                list_row = entry_box.row()
-                list_row.template_list(
-                    "EFX_UL_action_targets",
-                    f"play_targets_{ei}",
-                    entry, "targets",
-                    entry, "active_target_index",
-                    rows=3,
-                )
-
-                btn_col = list_row.column(align=True)
-                add_op = btn_col.operator("efx.action_target_add", text="", icon="ADD")
-                add_op.entry_index = ei
-                rem_op2 = btn_col.operator("efx.action_target_remove", text="", icon="REMOVE")
-                rem_op2.entry_index = ei
-
-                ati = entry.active_target_index
-                if 0 <= ati < tgt_count:
-                    entry_box.row().prop(entry.targets[ati], "body_ptr", text=T("action.entry_object"))
-
-                dangling = sum(1 for t in entry.targets if t.body_ptr is None)
-                total_dangling += dangling
-                if dangling > 0:
-                    warn = entry_box.row()
-                    warn.alert = True
-                    warn.label(
-                        text=f"⚠ {dangling} {T('action.targets_dangling')}",
-                        icon="ERROR",
-                    )
-
-            else:
-                # ── PLAYEFX ────────────────────────────────────────────────────
-                hdr = entry_box.row(align=True)
-                hdr.label(text=f"Entry {ei}  PLAYEFX", icon="FILE_BLEND")
-                rem_op = hdr.operator("efx.action_entry_remove", text="", icon="X")
-                rem_op.entry_index = ei
-
-                entry_box.prop(entry, "efx_path", text=T("action.efx_path"))
-                entry_box.prop(entry, "xyz", text=T("action.pos_offset_xyz"))
-
-        # ── 新增 entry 按钮 ──────────────────────────────────────────────────────
-        layout.separator()
-        layout.operator("efx.action_entry_add", text=T("action.add_entry"), icon="ADD")
-
-        # ── 整体悬空警告 ─────────────────────────────────────────────────────────
-        if total_dangling > 0:
-            layout.separator()
-            warn_row = layout.row()
-            warn_row.alert = True
-            warn_row.label(
-                text=f"⚠ {total_dangling} {T('action.targets_dangling_total')}",
-                icon="ERROR",
-            )
+    def draw(self, context):
+        _draw_action_content(self.layout, context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

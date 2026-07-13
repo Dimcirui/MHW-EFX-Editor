@@ -324,10 +324,8 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
     # ── PTLIFE / PTCOLLISION 引用指针化 ───────────────────────────────────────
     # init_attribute_props 只处理 EXTERNREFERENCE；PTLIFE/PTCOLLISION 在 io_tree 导入时
     # 由独立第二 pass 指针化，而单属性新增路径没有该 pass → 此处补上。
-    # 关键：预设里 baked 的 relationIndex/ieIndex 来自源文件，对新文件几乎必然越界，
-    # init_*_ref_props 会因此置 pointerized=False（不可编辑、导出保留陈旧值）。
-    # 新增属性无 byte-perfect 义务，故越界时**强制指针化为悬空**，让用户能在面板里
-    # 指定合法 Action（导出按段局部 index 重写；未指定则 validate 报悬空挡导出）。
+    # 2026-07 简化后 init_*_ref_props 本身就总是留下可编辑状态（越界/死值 → play_ptr
+    # 留空=无目标，导出自动写 -1），不再需要额外"强制转悬空"补丁。
     if root_obj is not None:
         play_objs = {}
         for obj in _rc.collect_top_level(root_obj, "EFX_ACTION"):
@@ -336,26 +334,15 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
             except (ValueError, TypeError):
                 pass
         count_play = len(play_objs)
-        if count_play > 0:
-            try:
-                from ..efx_format.hashes import PTLIFE as _PTLIFE, PTCOLLISION as _PTCOLLISION
-                from . import entry_action_ref as _bpr
-                if type_hash == _PTLIFE:
-                    _bpr.init_ptlife_ref_props(blk_obj, data_bytes, play_objs, count_play)
-                    p = blk_obj.efx_ptlife_ref
-                    if not p.relation_pointerized:
-                        p.relation_pointerized = True   # 越界 baked 值 → 转可编辑悬空
-                        p.relation_play_ptr = None
-                elif type_hash == _PTCOLLISION:
-                    _bpr.init_ptcollision_ref_props(blk_obj, data_bytes, play_objs, count_play)
-                    p = blk_obj.efx_ptcollision_ref
-                    if not p.ie_pointerized:
-                        p.ie_pointerized = True
-                        p.ie_none = False
-                        p.ie_play_ptr = None
-            except Exception:
-                # 任何异常安全跳过（保持默认 pointerized=False）
-                pass
+        try:
+            from ..efx_format.hashes import PTLIFE as _PTLIFE, PTCOLLISION as _PTCOLLISION
+            from . import entry_action_ref as _bpr
+            if type_hash == _PTLIFE:
+                _bpr.init_ptlife_ref_props(blk_obj, data_bytes, play_objs, count_play)
+            elif type_hash == _PTCOLLISION:
+                _bpr.init_ptcollision_ref_props(blk_obj, data_bytes, play_objs, count_play)
+        except Exception:
+            pass
 
     # attr_count 由导出端自动重算，无需设 labels_dirty（属性不在标签表）
     return blk_obj

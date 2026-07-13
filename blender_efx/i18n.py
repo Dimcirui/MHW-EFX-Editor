@@ -403,25 +403,10 @@ STRINGS = {
     "extern.local_index":        {"EN": "Extern local index:", "ZH": "Extern 局部 index:"},
     "extern.force_unlock":       {"EN": "Force Unlock (dangling)", "ZH": "强制解锁（悬空指针）"},
 
-    # ── PtLife / PtCollision / EOF 指针面板（entry_action_ref.py）────────────────
-    "ptref.no_ptlife_data":      {"EN": "(No efx_ptlife_ref data)", "ZH": "（无 efx_ptlife_ref 数据）"},
-    "ptref.relation_index_title":{"EN": "Relation Index (action reference)", "ZH": "Relation Index (action 引用)"},
-    "ptref.relation_oob":        {"EN": "[Out of range/negative, original bytes preserved]",
-                                  "ZH": "[越界/负值，原始字节保留]"},
-    "ptref.assign_action":         {"EN": "Assign Action target", "ZH": "指定 Action 目标"},
-    "ptref.assign_hint":         {"EN": "Pick an Action to re-link this attribute (original bytes kept until you do)",
-                                  "ZH": "选择一个 Action 重新关联本属性（未选前保留原始字节）"},
-    "ptref.entry_object":         {"EN": "Entry Object",     "ZH": "Entry 对象"},
-    "ptref.dangling":            {"EN": "Dangling pointer (uses original bytes on export)",
-                                  "ZH": "⚠ 指针悬空（导出时使用原始字节）"},
-    "ptref.entry_local_index":    {"EN": "Entry local index:", "ZH": "Entry 局部 index:"},
-    "ptref.no_ptcollision_data": {"EN": "(No efx_ptcollision_ref data)", "ZH": "（无 efx_ptcollision_ref 数据）"},
-    "ptref.ie_index_title":      {"EN": "IE Index (action reference)", "ZH": "IE Index (action 引用)"},
-    "ptref.ie_oob":              {"EN": "[Out of range/count_play=0, original bytes preserved]",
-                                  "ZH": "[越界/count_play=0，原始字节保留]"},
-    "ptref.no_target_sentinel":  {"EN": "No Target (-1 sentinel)", "ZH": "无目标（-1 哨兵）"},
-    "ptref.action_object":         {"EN": "Action Object",    "ZH": "Action 对象"},
-    "ptref.action_local_index":    {"EN": "Action local index:", "ZH": "Action 局部 index:"},
+    # ── EOF 指针面板（entry_action_ref.py）───────────────────────────────────────
+    # PtLife/PtCollision 的 relationIndex/ieIndex 指针选择器已合并进 Attribute
+    # Properties 面板内联渲染（_draw_ptlife_ref_field/_draw_ptcollision_ref_field），
+    # 不再有独立面板，相关 i18n key 已删除。
     "ptref.game_activated_entries":{"EN": "Entries triggered directly on EFX load", "ZH": "EFX 加载时直接触发的 Entry"},
     "ptref.eof_empty":           {"EN": "(Empty - effect will not be triggered directly on load)",
                                   "ZH": "（空——EFX 加载时不会直接触发任何 Entry）"},
@@ -467,16 +452,6 @@ STRINGS = {
     "rootstate.hint":             {"EN": "Inferred model: the game picks which state fires at runtime; bodies in no table always fire",
                                    "ZH": "推测模型：运行时由游戏选中触发哪个状态；不在任何表里的 entry 恒触发"},
 
-    # ── Hex 视图（hexview.py）─────────────────────────────────────────────────
-    "hex.no_raw_bytes":  {"EN": "(no raw bytes)",  "ZH": "（无原始字节）"},
-    "hex.total_length":  {"EN": "Total length: ",  "ZH": "总长度："},
-    "hex.bytes":         {"EN": "bytes",           "ZH": "字节"},
-    "hex.copy_hex":      {"EN": "Copy Hex",        "ZH": "复制 hex"},
-    "hex.paste_hex":     {"EN": "Paste Hex",       "ZH": "粘贴 hex"},
-    "hex.trunc_prefix":  {"EN": "… showing first ", "ZH": "… 仅显示前 "},
-    "hex.trunc_suffix":  {"EN": " bytes only; use Copy Full Hex above for the full content",
-                          "ZH": " 字节，完整请用上方“复制完整 hex”"},
-
     # ── Entry 预设区 + Entry 属性区（panels.py）────────────────────────────────
     "entry.copy":             {"EN": "Copy Entry",           "ZH": "复制 Entry"},
     "entry.paste":            {"EN": "Paste Entry",          "ZH": "粘贴 Entry"},
@@ -514,7 +489,6 @@ STRINGS = {
     # ── 字段绘制 + 面板内通用提示（panels.py）────────────────────────────────
     "field.value":           {"EN": "Value",                "ZH": "值"},
     "field.jitter":          {"EN": "Jitter",               "ZH": "抖动"},
-    "field.ref_via_pointer": {"EN": "set in the Action pointer panel below", "ZH": "在下方 Action 指针面板设置"},
     "material.type":         {"EN": "Material type:", "ZH": "主材质类型："},
     "attribute.not_registered":  {"EN": "efx_block not registered (reload the extension)",
                               "ZH": "efx_block 未注册（请重载扩展）"},
@@ -528,7 +502,8 @@ STRINGS = {
     "del.subselect_btn": {"EN": "Delete Subselect", "ZH": "删除 Subselect"},
 
     # ── 新建段条目（panels 新建面板）──────────────────────────────────────────
-    "addsec.action":      {"EN": "Add Action",        "ZH": "新建 Action(动作)"},
+    "addsec.action":      {"EN": "Add Action",        "ZH": "新建 Action"},
+    "addsec.entry":       {"EN": "Add Entry",          "ZH": "新建 Entry"},
     "addsec.extern":    {"EN": "Add Extern",        "ZH": "新建 Extern"},
     "addsec.subselect": {"EN": "Add Subselect",     "ZH": "新建 Subselect"},
     "addsec.hint":      {"EN": "Exporter recomputes header automatically",

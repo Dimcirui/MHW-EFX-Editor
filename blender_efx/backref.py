@@ -442,22 +442,16 @@ def _scan_entry_relations(entry_obj: bpy.types.Object) -> dict:
     my_attributes = [b for b in attrs if b.parent is entry_obj]
 
     def _ptlife_action(blk):
-        """PTLIFE 属性 → 触发的 action 对象（pointerized 且非空才返回），否则 None。"""
+        """PTLIFE 属性 → 触发的 action 对象（None = 无目标）。"""
         try:
-            ref = blk.efx_ptlife_ref
-            if not ref.relation_pointerized:
-                return None
-            return ref.relation_play_ptr
+            return blk.efx_ptlife_ref.relation_play_ptr
         except AttributeError:
             return None
 
     def _ptcollision_action(blk):
-        """PTCOLLISION 属性 → 触发的 action 对象（pointerized、非哨兵、非空才返回），否则 None。"""
+        """PTCOLLISION 属性 → 触发的 action 对象（None = 无目标）。"""
         try:
-            ref = blk.efx_ptcollision_ref
-            if not ref.ie_pointerized or ref.ie_none:
-                return None
-            return ref.ie_play_ptr
+            return blk.efx_ptcollision_ref.ie_play_ptr
         except AttributeError:
             return None
 

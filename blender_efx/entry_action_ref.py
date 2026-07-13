@@ -137,50 +137,28 @@ def _action_object_poll(self, obj):
     return obj.get("~TYPE") == "EFX_ACTION" and _same_root_as_active(obj)
 
 
-def _relation_ptr_update(self, context):
-    """选中 action 目标后，自动把越界/死属性（pointerized=False）翻转为已指针化，
-    使 N 面板成为可恢复入口而非死胡同。清空（None）不改变 pointerized，
-    以免误清掉悬空指针的已指针化状态（由现有 dangling 警告负责）。"""
-    if self.relation_play_ptr is not None and not self.relation_pointerized:
-        self.relation_pointerized = True
-
-
-def _ie_ptr_update(self, context):
-    """PtCollision 版本：选中 action 后从越界/死属性翻转为已指针化。"""
-    if self.ie_play_ptr is not None and not self.ie_pointerized:
-        self.ie_pointerized = True
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # §1  PtLife.relationIndex → EFX_ENTRY 指针
 # ─────────────────────────────────────────────────────────────────────────────
+#
+# 2026-07 简化：不再区分"已指针化/死属性/越界"三态，只留一个可空指针
+# relation_play_ptr——None 统一表示"无目标"（不管是本来就没有、越界/死值、还是
+# 悬空），导出时自动写 -1 哨兵（int16 全 1）。不再假设"语料未观测到 -1 就不能
+# 用 -1"——用户决定：不合法就写 -1 更安全，也让字段在合并进 Attribute
+# Properties 后始终可编辑，不需要"越界/死属性"这种只读中间态。
 
 class EFXPtLifeRefProps(PropertyGroup):
-    """
-    挂在 EFX_ATTRIBUTE（PTLIFE 类型）对象上（obj.efx_ptlife_ref）。
+    """挂在 EFX_ATTRIBUTE（PTLIFE 类型）对象上（obj.efx_ptlife_ref）。
 
-    字段
-    ----
-    relation_play_ptr    : PointerProperty → EFX_ACTION 对象（poll=EFX_ACTION）
-                           pointerized=True 时有效（非负有效范围内的 action）
-    relation_pointerized : BoolProperty    — True=已指针化；False=死属性/越界，原样保留
+    relation_play_ptr : PointerProperty → EFX_ACTION 对象（poll=EFX_ACTION）。
+                         None = 无目标（导出写 -1）。
     """
 
     relation_play_ptr: PointerProperty(
         name="Relation Action",
-        description="The EFX_ACTION (action) object this PtLife attribute's relationIndex points to (action section local index = actionID)",
+        description="The EFX_ACTION (action) object this PtLife attribute's relationIndex points to (action section local index = actionID). Empty = no target, writes -1 on export",
         type=bpy.types.Object,
         poll=_action_object_poll,
-        update=_relation_ptr_update,
-    )
-
-    relation_pointerized: BoolProperty(
-        name="Pointerized",
-        description=(
-            "True = relationIndex has been pointerized (0 <= v < count_play); "
-            "False = out of range / negative / dead attribute, preserve original bytes (byte-perfect fallback)"
-        ),
-        default=False,
     )
 
 
@@ -193,43 +171,18 @@ def init_ptlife_ref_props(
     """
     初始化 blk_obj.efx_ptlife_ref PropertyGroup。
 
-    参数
-    ----
-    blk_obj : bpy.types.Object
-        EFX_ATTRIBUTE Empty（PTLIFE 类型）。
-    data_bytes : bytes
-        该属性的 data_bytes（20 字节）。
-    play_objs_by_index : dict[int, bpy.types.Object]
-        {efx_index → EFX_ACTION 对象} 映射。
-    count_play : int
-        文件头的 count_play 字段值（hdr.count_play）。
-
-    三种情况：
-      1. 0 <= v < count_play → ptr 指向 efx_index==v 的 EFX_ACTION；pointerized=True
-      2. 其他（负值/越界）   → pointerized=False（原样，byte-perfect）
+    0 <= v < count_play 且能映射到对象 → relation_play_ptr 指向该 EFX_ACTION；
+    其他（负值/越界/count_play==0/映射缺失）→ 留空（None，无目标）。
     """
     props = blk_obj.efx_ptlife_ref
-
-    # 防御：data_bytes 至少 10 字节（偏移 8 的 int16 需要 8+2=10）
     if len(data_bytes) < 10:
-        props.relation_pointerized = False
         return
-
     # 读 relationIndex（有符号 int16，小端）= actionID（action 段局部 index）
     v = struct.unpack_from('<h', data_bytes, _RELATION_INDEX_OFFSET)[0]
-
-    # 只指针化 [0, count_play) 范围内的值
     if count_play > 0 and 0 <= v < count_play:
         target_obj = play_objs_by_index.get(v)
         if target_obj is not None:
             props.relation_play_ptr = target_obj
-            props.relation_pointerized = True
-        else:
-            # 映射缺失（理论上不该发生），安全回退
-            props.relation_pointerized = False
-    else:
-        # 越界/负值（含 count_play==0 的死属性）→ 原样保留
-        props.relation_pointerized = False
 
 
 def overlay_ptlife_relation_index(
@@ -238,49 +191,20 @@ def overlay_ptlife_relation_index(
     play_index_map: dict,
 ) -> bytes:
     """
-    若 blk_obj.efx_ptlife_ref.relation_pointerized==True，
-    覆写 data_bytes 偏移 8 处的 int16（relationIndex）为重算的 action 局部 index。
+    把 data_bytes 偏移 8 处的 int16（relationIndex）覆写为 relation_play_ptr 对应的
+    action 局部 index；无目标/悬空/跨文件解析不到 → 写 -1 哨兵。
 
-    参数
-    ----
-    data_bytes : bytes
-        PTLIFE 属性的 data_bytes（20 字节）。
-    blk_obj : bpy.types.Object
-        EFX_ATTRIBUTE Empty（PTLIFE 类型）。
-    play_index_map : dict[bpy.types.Object, int]
-        {EFX_ACTION Object → Action 段局部 0-based index}，
-        由 build_local_index_map(col_action, 'EFX_ACTION') 或 enumerate(play_objs) 构建。
-
-    返回
-    ----
-    bytes — 覆写后的 data_bytes；不指针化则原样返回。
-
-    注意
-    ----
-    - int16：struct.pack_into('<h', buf, 8, new_index)
-    - 悬空指针（relation_play_ptr=None）：安全回退，原样返回。
+    参数同旧版；返回覆写后的 data_bytes（字节不足 10 时原样返回，防御性兜底）。
     """
-    try:
-        props = blk_obj.efx_ptlife_ref
-    except AttributeError:
-        return data_bytes
-
-    if not props.relation_pointerized:
-        return data_bytes
-
-    play_obj = props.relation_play_ptr
-    if play_obj is None:
-        # 悬空：安全回退
-        return data_bytes
-
-    new_index = play_index_map.get(play_obj)
-    if new_index is None:
-        # play_obj 不在当前 Action 段（跨文件等极端情况）
-        return data_bytes
-
     if len(data_bytes) < 10:
         return data_bytes
-
+    try:
+        play_obj = blk_obj.efx_ptlife_ref.relation_play_ptr
+    except AttributeError:
+        play_obj = None
+    new_index = play_index_map.get(play_obj) if play_obj is not None else None
+    if new_index is None:
+        new_index = -1
     buf = bytearray(data_bytes)
     struct.pack_into('<h', buf, _RELATION_INDEX_OFFSET, new_index)
     return bytes(buf)
@@ -290,39 +214,21 @@ def overlay_ptlife_relation_index(
 # §2  PtCollision.ieIndex → EFX_ACTION 指针
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFXPtCollisionRefProps(PropertyGroup):
-    """
-    挂在 EFX_ATTRIBUTE（PTCOLLISION 类型）对象上（obj.efx_ptcollision_ref）。
+# 2026-07 简化：跟 §1 PtLife 同款——只留一个可空指针 ie_play_ptr，None 统一表示
+# "无目标"（原本就是 -1 哨兵 / 越界死值 / 悬空，三者不再区分），导出时自动写 -1。
 
-    字段
-    ----
-    ie_play_ptr        : PointerProperty → EFX_ACTION 对象（poll=EFX_ACTION）
-                         pointerized=True 且 ie_none=False 时有效
-    ie_none            : BoolProperty   — True = ieIndex == -1（哨兵/无目标）
-    ie_pointerized     : BoolProperty   — True=已指针化；False=死属性/越界，原样保留
+class EFXPtCollisionRefProps(PropertyGroup):
+    """挂在 EFX_ATTRIBUTE（PTCOLLISION 类型）对象上（obj.efx_ptcollision_ref）。
+
+    ie_play_ptr : PointerProperty → EFX_ACTION 对象（poll=EFX_ACTION）。
+                  None = 无目标（导出写 -1）。
     """
 
     ie_play_ptr: PointerProperty(
         name="IE Action",
-        description="The EFX_ACTION object this PtCollision attribute's ieIndex points to (action section local index)",
+        description="The EFX_ACTION object this PtCollision attribute's ieIndex points to (action section local index). Empty = no target, writes -1 on export",
         type=bpy.types.Object,
         poll=_action_object_poll,
-        update=_ie_ptr_update,
-    )
-
-    ie_none: BoolProperty(
-        name="No Target (-1)",
-        description="True = ieIndex == -1 (sentinel, no action target)",
-        default=False,
-    )
-
-    ie_pointerized: BoolProperty(
-        name="Pointerized",
-        description=(
-            "True = ieIndex has been pointerized (valid range / -1 sentinel); "
-            "False = dead attribute / out of range, preserve original bytes (byte-perfect fallback)"
-        ),
-        default=False,
     )
 
 
@@ -335,49 +241,18 @@ def init_ptcollision_ref_props(
     """
     初始化 blk_obj.efx_ptcollision_ref PropertyGroup。
 
-    参数
-    ----
-    blk_obj : bpy.types.Object
-        EFX_ATTRIBUTE Empty（PTCOLLISION 类型）。
-    data_bytes : bytes
-        该属性的 data_bytes（112 字节）。
-    play_objs_by_index : dict[int, bpy.types.Object]
-        {efx_index → EFX_ACTION 对象} 映射。
-    count_play : int
-        文件头的 count_play 字段值（hdr.count_play）。
-
-    三种情况：
-      1. v == -1                → none=True；pointerized=True（哨兵）
-      2. 0 <= v < count_play   → ptr 指向 efx_index==v 的 EFX_ACTION；pointerized=True
-      3. 其他（越界/count_play=0）→ pointerized=False（原样，byte-perfect）
+    v == -1（哨兵）或负值/越界/count_play==0/映射缺失 → 留空（None，无目标）；
+    0 <= v < count_play 且能映射到对象 → ie_play_ptr 指向该 EFX_ACTION。
     """
     props = blk_obj.efx_ptcollision_ref
-
-    # 防御：data_bytes 至少 100 字节（偏移 96 的 int32 需要 96+4=100）
     if len(data_bytes) < 100:
-        props.ie_pointerized = False
         return
-
     # 读 ieIndex（有符号 int32，小端）
     v = struct.unpack_from('<i', data_bytes, _IE_INDEX_OFFSET)[0]
-
-    if v == _SENTINEL_INT32:
-        # 哨兵 -1：无目标
-        props.ie_none = True
-        props.ie_pointerized = True
-        return
-
     if count_play > 0 and 0 <= v < count_play:
         target_obj = play_objs_by_index.get(v)
         if target_obj is not None:
             props.ie_play_ptr = target_obj
-            props.ie_pointerized = True
-        else:
-            props.ie_pointerized = False
-        return
-
-    # 越界/count_play=0：死属性路径
-    props.ie_pointerized = False
 
 
 def overlay_ptcollision_ie_index(
@@ -386,47 +261,18 @@ def overlay_ptcollision_ie_index(
     play_index_map: dict,
 ) -> bytes:
     """
-    若 blk_obj.efx_ptcollision_ref.ie_pointerized==True，
-    覆写 data_bytes 偏移 96 处的 int32（ieIndex）为重算的 action 局部 index。
-
-    参数
-    ----
-    data_bytes : bytes
-        PTCOLLISION 属性的 data_bytes（112 字节）。
-    blk_obj : bpy.types.Object
-        EFX_ATTRIBUTE Empty（PTCOLLISION 类型）。
-    play_index_map : dict[bpy.types.Object, int]
-        {EFX_ACTION Object → Action 段局部 0-based index}，
-        由 build_local_index_map(col_action, 'EFX_ACTION') 或 enumerate(play_objs) 构建。
-
-    返回
-    ----
-    bytes — 覆写后的 data_bytes；不指针化则原样返回。
-
-    哨兵路径：ie_none=True → 写 -1（0xFFFFFFFF 有符号补码）。
-    悬空指针：ie_play_ptr=None 且 ie_none=False → 安全回退，原样返回。
+    把 data_bytes 偏移 96 处的 int32（ieIndex）覆写为 ie_play_ptr 对应的
+    action 局部 index；无目标/悬空/跨文件解析不到 → 写 -1 哨兵。
     """
-    try:
-        props = blk_obj.efx_ptcollision_ref
-    except AttributeError:
-        return data_bytes
-
-    if not props.ie_pointerized:
-        return data_bytes
-
-    if props.ie_none:
-        new_index = _SENTINEL_INT32  # -1
-    else:
-        play_obj = props.ie_play_ptr
-        if play_obj is None:
-            return data_bytes
-        new_index = play_index_map.get(play_obj)
-        if new_index is None:
-            return data_bytes
-
     if len(data_bytes) < 100:
         return data_bytes
-
+    try:
+        play_obj = blk_obj.efx_ptcollision_ref.ie_play_ptr
+    except AttributeError:
+        play_obj = None
+    new_index = play_index_map.get(play_obj) if play_obj is not None else None
+    if new_index is None:
+        new_index = _SENTINEL_INT32
     buf = bytearray(data_bytes)
     struct.pack_into('<i', buf, _IE_INDEX_OFFSET, new_index)
     return bytes(buf)
@@ -584,150 +430,10 @@ def apply_attribute_ref_overlays(
     return data_bytes
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# §5  面板：PtLife relationIndex / PtCollision ieIndex
-# ─────────────────────────────────────────────────────────────────────────────
-
-class EFX_PT_ptlife_ref(bpy.types.Panel):
-    """
-    PtLife 属性的 relationIndex action 指针编辑面板（VIEW_3D N 面板 EFX 标签）。
-
-    选中 EFX_ATTRIBUTE（PTLIFE 类型）时显示：
-      - pointerized=False：显示"越界/死块"警告（原始字节保留）
-      - pointerized=True ：EFX_ACTION(action) 对象选择器
-    """
-
-    bl_space_type  = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category    = "EFX"
-    bl_label       = "Relation Action Reference"
-    bl_options     = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
-            return False
-        try:
-            from ..efx_format.hashes import PTLIFE as _PTLIFE_HASH
-            bp = obj.efx_block
-            return int(bp.type_hash_str) == _PTLIFE_HASH
-        except (AttributeError, ValueError, ImportError):
-            return False
-
-    def draw(self, context):
-        layout = self.layout
-        obj = context.active_object
-
-        try:
-            props = obj.efx_ptlife_ref
-        except AttributeError:
-            layout.label(text=T("ptref.no_ptlife_data"), icon="ERROR")
-            return
-
-        box = layout.box()
-        box.label(text=T("ptref.relation_index_title"), icon="LINKED")
-
-        if not props.relation_pointerized:
-            # 越界/死属性：原始字节保留。提供 action 选择器作为恢复入口——
-            # 选中后 _relation_ptr_update 翻转 pointerized=True，导出时 overlay
-            # 在 fallback 路径写回正确索引（不依赖 efx_dirty）。
-            warn = box.row()
-            warn.enabled = False
-            warn.label(text=T("ptref.relation_oob"), icon="ERROR")
-            box.prop(props, "relation_play_ptr", text=T("ptref.assign_action"))
-            hint = box.row()
-            hint.enabled = False
-            hint.label(text=T("ptref.assign_hint"))
-            return
-
-        row = box.row(align=True)
-        row.prop(props, "relation_play_ptr", text=T("ptref.action_object"))
-
-        if props.relation_play_ptr is None:
-            warn = box.row()
-            warn.alert = True
-            warn.label(text=T("ptref.dangling"), icon="ERROR")
-        else:
-            play_obj = props.relation_play_ptr
-            play_idx = play_obj.get("efx_index", "?")
-            info = box.row()
-            info.label(text=T("ptref.action_local_index") + " " + str(play_idx), icon="INFO")
-
-
-class EFX_PT_ptcollision_ref(bpy.types.Panel):
-    """
-    PtCollision 属性的 ieIndex action 指针编辑面板（VIEW_3D N 面板 EFX 标签）。
-
-    选中 EFX_ATTRIBUTE（PTCOLLISION 类型）时显示：
-      - pointerized=False：显示"越界/死块"警告
-      - pointerized=True + ie_none=True：显示"无目标（-1 哨兵）"
-      - pointerized=True + ie_none=False：EFX_ACTION 对象选择器
-    """
-
-    bl_space_type  = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category    = "EFX"
-    bl_label       = "IE Action Reference"
-    bl_options     = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
-            return False
-        try:
-            from ..efx_format.hashes import PTCOLLISION as _PTCOLLISION_HASH
-            bp = obj.efx_block
-            return int(bp.type_hash_str) == _PTCOLLISION_HASH
-        except (AttributeError, ValueError, ImportError):
-            return False
-
-    def draw(self, context):
-        layout = self.layout
-        obj = context.active_object
-
-        try:
-            props = obj.efx_ptcollision_ref
-        except AttributeError:
-            layout.label(text=T("ptref.no_ptcollision_data"), icon="ERROR")
-            return
-
-        box = layout.box()
-        box.label(text=T("ptref.ie_index_title"), icon="LINKED")
-
-        if not props.ie_pointerized:
-            # 越界/死属性：原始字节保留。提供 action 选择器作为恢复入口——
-            # 选中后 _ie_ptr_update 翻转 ie_pointerized=True，导出时 overlay 写回。
-            warn = box.row()
-            warn.enabled = False
-            warn.label(text=T("ptref.ie_oob"), icon="ERROR")
-            box.prop(props, "ie_play_ptr", text=T("ptref.assign_action"))
-            hint = box.row()
-            hint.enabled = False
-            hint.label(text=T("ptref.assign_hint"))
-            return
-
-        row = box.row(align=True)
-        row.prop(props, "ie_none", text=T("ptref.no_target_sentinel"))
-
-        if props.ie_none:
-            row2 = box.row(align=True)
-            row2.enabled = False
-            row2.prop(props, "ie_play_ptr", text=T("ptref.action_object"))
-        else:
-            row2 = box.row(align=True)
-            row2.prop(props, "ie_play_ptr", text=T("ptref.action_object"))
-            if props.ie_play_ptr is None:
-                warn = box.row()
-                warn.alert = True
-                warn.label(text=T("ptref.dangling"), icon="ERROR")
-            else:
-                play_obj = props.ie_play_ptr
-                play_idx = play_obj.get("efx_index", "?")
-                info = box.row()
-                info.label(text=T("ptref.action_local_index") + " " + str(play_idx), icon="INFO")
-
+# 独立的 "Relation Action Reference" / "IE Action Reference" 面板已删除
+# （2026-07）：relation_play_ptr / ie_play_ptr 的编辑控件合并进 Attribute
+# Properties 面板内联渲染（见 panels.py::_draw_ptlife_ref_field /
+# _draw_ptcollision_ref_field，替换原 relationIndex/ieIndex 字段行）。
 
 # ─────────────────────────────────────────────────────────────────────────────
 # §6  EOF Entry 激活切换算子 + 面板
@@ -881,8 +587,6 @@ _OPERATOR_CLASSES = (
 
 # 面板类：由 panels.py 在 EFX_PT_entry 之后注册（bl_parent_id='EFX_PT_entry'）
 _PANEL_CLASSES = (
-    EFX_PT_ptlife_ref,
-    EFX_PT_ptcollision_ref,
     EFX_PT_eof_list,
 )
 

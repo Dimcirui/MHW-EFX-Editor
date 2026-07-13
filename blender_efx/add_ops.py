@@ -506,21 +506,13 @@ def _repointerize_refs(preset: dict,
                     fmt='<i', target_count=target_count_extern,
                     src_count=src_extern)
             elif th == PTLIFE:
+                # 2026-07 简化：init 本身就总是留下可编辑状态（越界/死值 → 无目标），
+                # 不再需要跨文件断引用的额外标记补丁。
                 entry_action_ref.init_ptlife_ref_props(
                     blk, data_bytes, target_play_map, target_count_play)
-                _flag_if_cross_file_broken(
-                    blk.efx_ptlife_ref, "relation_play_ptr",
-                    "relation_pointerized", data_bytes, offset=8,
-                    fmt='<h', target_count=target_count_play,
-                    src_count=src_action)
             elif th == PTCOLLISION:
                 entry_action_ref.init_ptcollision_ref_props(
                     blk, data_bytes, target_play_map, target_count_play)
-                _flag_if_cross_file_broken(
-                    blk.efx_ptcollision_ref, "ie_play_ptr",
-                    "ie_pointerized", data_bytes, offset=96,
-                    fmt='<i', target_count=target_count_play,
-                    src_count=src_action)
         except Exception:
             # 单属性引用问题不阻断整个新增流程
             continue

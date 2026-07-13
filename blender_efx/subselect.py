@@ -423,17 +423,88 @@ class EFX_UL_subselect_members(bpy.types.UIList):
 # §3b  面板：N 面板 EFX 标签 Subselect 成员编辑
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFX_PT_subselect(bpy.types.Panel):
+def _draw_subselect_content(layout, context):
     """
-    Subselect 归属面板（VIEW_3D N 面板 EFX 标签）。
+    绘制 EFX_SUBSELECT 的归属内容。
+    被 EFX_PT_subselect（N 面板）和 EFX_PT_subselect_data/_object（属性编辑器）共用。
 
     选中 EFX_SUBSELECT 对象时显示：
       - table_type / unkn0 元数据（只读显示，显示原始十进制字符串）
       - members 列表（可编辑：增删成员、改 body_ptr 指向）
       - 当前成员的 body_ptr 对象名（方便确认指向）
+    """
+    obj = context.active_object
+
+    try:
+        props = obj.efx_subselect
+    except AttributeError:
+        layout.label(text=T("sub.no_data"), icon="ERROR")
+        return
+
+    # ── 元数据（可编辑）──────────────────────────────────────────────────
+    meta_box = layout.box()
+    meta_box.label(text=T("sub.table_meta"), icon="INFO")
+    meta_box.prop(props, "table_type_str")
+    # 只读提示：把十进制 table_type 展示成 hex + bit 分解（纯展示，不改存储）。
+    hint_row = meta_box.row()
+    hint_row.enabled = False
+    hint_row.label(text=_table_type_hint(props.table_type_str))
+    meta_box.prop(props, "unkn0_0_str")
+    row1 = meta_box.row(align=True)
+    row1.prop(props, "unkn0_1_str")
+    row1.label(text="(usually 0)")
+    row2 = meta_box.row(align=True)
+    row2.prop(props, "unkn0_2_str")
+    row2.label(text="(usually 0)")
+
+    layout.separator()
+
+    # ── members 列表 ────────────────────────────────────────────────────────
+    list_box = layout.box()
+    list_box.label(text=f"{T('sub.members')}({len(props.members)})", icon="OUTLINER_OB_EMPTY")
+
+    # template_list：UIList + 增删按钮
+    row = list_box.row()
+    row.template_list(
+        "EFX_UL_subselect_members",   # UIList bl_idname
+        "",                            # list_id（空字符串即可）
+        props,                         # data（含 members 的 PropertyGroup）
+        "members",                     # propname（CollectionProperty 字段名）
+        props,                         # active_data
+        "active_member_index",         # active_propname
+        rows=4,
+    )
+
+    # 增删按钮列（右侧垂直排列）
+    col = row.column(align=True)
+    col.operator("efx.subselect_member_add",    text="", icon="ADD")
+    col.operator("efx.subselect_member_remove", text="", icon="REMOVE")
+
+    # ── 激活成员详情 ─────────────────────────────────────────────────────────
+    idx = props.active_member_index
+    if 0 <= idx < len(props.members):
+        active_item = props.members[idx]
+        detail_row = list_box.row()
+        detail_row.prop(active_item, "body_ptr", text=T("sub.entry_object"))
+
+    # ── 悬空成员警告 ─────────────────────────────────────────────────────────
+    dangling = sum(1 for m in props.members if m.body_ptr is None)
+    if dangling > 0:
+        warn_row = layout.row()
+        warn_row.alert = True
+        warn_row.label(
+            text=f"⚠ {dangling} {T('sub.members_dangling')}",
+            icon="ERROR",
+        )
+
+
+class EFX_PT_subselect(bpy.types.Panel):
+    """
+    Subselect 归属面板（VIEW_3D N 面板 EFX 标签）。
 
     设计理念（CLAUDE §4）：
-      Subselect ↔ entry 归属关系是结构关系（工具功能），放 N 面板，不放属性编辑器。
+      Subselect ↔ entry 归属关系是结构关系（工具功能），主入口放 N 面板；
+      属性编辑器 Data/Object 标签也加一份入口方便习惯用属性编辑器的用户。
     """
 
     bl_space_type  = "VIEW_3D"
@@ -448,70 +519,43 @@ class EFX_PT_subselect(bpy.types.Panel):
         return obj is not None and obj.get("~TYPE") == "EFX_SUBSELECT"
 
     def draw(self, context):
-        layout = self.layout
+        _draw_subselect_content(self.layout, context)
+
+
+class EFX_PT_subselect_data(bpy.types.Panel):
+    """Subselect 归属（属性编辑器 → Object Data Properties，选中 EFX_SUBSELECT 时显示）"""
+
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "data"
+    bl_label        = "EFX Subselect Ownership"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
         obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_SUBSELECT"
 
-        try:
-            props = obj.efx_subselect
-        except AttributeError:
-            layout.label(text=T("sub.no_data"), icon="ERROR")
-            return
+    def draw(self, context):
+        _draw_subselect_content(self.layout, context)
 
-        # ── 元数据（可编辑）──────────────────────────────────────────────────
-        meta_box = layout.box()
-        meta_box.label(text=T("sub.table_meta"), icon="INFO")
-        meta_box.prop(props, "table_type_str")
-        # 只读提示：把十进制 table_type 展示成 hex + bit 分解（纯展示，不改存储）。
-        hint_row = meta_box.row()
-        hint_row.enabled = False
-        hint_row.label(text=_table_type_hint(props.table_type_str))
-        meta_box.prop(props, "unkn0_0_str")
-        row1 = meta_box.row(align=True)
-        row1.prop(props, "unkn0_1_str")
-        row1.label(text="(usually 0)")
-        row2 = meta_box.row(align=True)
-        row2.prop(props, "unkn0_2_str")
-        row2.label(text="(usually 0)")
 
-        layout.separator()
+class EFX_PT_subselect_object(bpy.types.Panel):
+    """Subselect 归属（属性编辑器 → Object Properties，保底版本）"""
 
-        # ── members 列表 ────────────────────────────────────────────────────────
-        list_box = layout.box()
-        list_box.label(text=f"{T('sub.members')}({len(props.members)})", icon="OUTLINER_OB_EMPTY")
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "object"
+    bl_label        = "EFX Subselect Ownership"
+    bl_options      = {"DEFAULT_CLOSED"}
 
-        # template_list：UIList + 增删按钮
-        row = list_box.row()
-        row.template_list(
-            "EFX_UL_subselect_members",   # UIList bl_idname
-            "",                            # list_id（空字符串即可）
-            props,                         # data（含 members 的 PropertyGroup）
-            "members",                     # propname（CollectionProperty 字段名）
-            props,                         # active_data
-            "active_member_index",         # active_propname
-            rows=4,
-        )
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_SUBSELECT"
 
-        # 增删按钮列（右侧垂直排列）
-        col = row.column(align=True)
-        col.operator("efx.subselect_member_add",    text="", icon="ADD")
-        col.operator("efx.subselect_member_remove", text="", icon="REMOVE")
-
-        # ── 激活成员详情 ─────────────────────────────────────────────────────────
-        idx = props.active_member_index
-        if 0 <= idx < len(props.members):
-            active_item = props.members[idx]
-            detail_row = list_box.row()
-            detail_row.prop(active_item, "body_ptr", text=T("sub.entry_object"))
-
-        # ── 悬空成员警告 ─────────────────────────────────────────────────────────
-        dangling = sum(1 for m in props.members if m.body_ptr is None)
-        if dangling > 0:
-            warn_row = layout.row()
-            warn_row.alert = True
-            warn_row.label(
-                text=f"⚠ {dangling} {T('sub.members_dangling')}",
-                icon="ERROR",
-            )
+    def draw(self, context):
+        _draw_subselect_content(self.layout, context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

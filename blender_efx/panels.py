@@ -48,12 +48,10 @@ L1.5 属性字段显示重设计：
 
 import re
 import bpy
-from .subselect import EFX_PT_subselect        # L2 #1a：Subselect 归属面板
-from .action_emitter import EFX_PT_action          # L2 #1b：Action 数据面板
+from .subselect import EFX_PT_subselect, EFX_PT_subselect_data, EFX_PT_subselect_object  # L2 #1a：Subselect 归属面板
+from .action_emitter import EFX_PT_action, EFX_PT_action_props, EFX_PT_action_object  # L2 #1b：Action 数据面板
 from .extern_ref import EFX_PT_extern_ref      # L2 #1c：ExternReference 指针面板
-from .entry_action_ref import (                   # L2 #1d：PtLife/PtCollision/EOF 归属面板
-    EFX_PT_ptlife_ref,
-    EFX_PT_ptcollision_ref,
+from .entry_action_ref import (                   # L2 #1d：EOF 归属面板
     EFX_PT_eof_list,
     EFX_OT_eof_toggle_entry,
     is_entry_in_eof,
@@ -494,6 +492,52 @@ def _draw_extern_ref_field(layout, obj) -> None:
     row.prop(props, "extern_ref_none", text="", icon="X")
 
 
+def _draw_ptlife_ref_field(layout, obj) -> None:
+    """
+    在属性字段列表中，把 PTLIFE 的 relationIndex 字段替换为 action 指针选择器
+    （2026-07 从独立的 Relation Action Reference 面板合并进来）。
+
+    只留一个可空指针：None = 无目标（导出自动写 -1），不再有"越界/死属性"这种
+    只读中间态——不合法就是没有目标，直接在这里选一个即可。
+    """
+    try:
+        props = obj.efx_ptlife_ref
+    except AttributeError:
+        return
+
+    row = layout.row(align=True)
+    row.scale_y = 1.1
+    row.use_property_split = False
+    split = row.split(factor=0.45)
+    split.label(text="Relation Index")
+    val_row = split.row(align=True)
+    val_row.prop(props, "relation_play_ptr", text="", icon="LINKED")
+    if props.relation_play_ptr is None:
+        hint = val_row.row(align=True)
+        hint.enabled = False
+        hint.label(text=T("attribute.sentinel_no_target"), icon="X")
+
+
+def _draw_ptcollision_ref_field(layout, obj) -> None:
+    """PTCOLLISION 版本：把 ieIndex 字段替换为 action 指针选择器（同上，None=无目标）。"""
+    try:
+        props = obj.efx_ptcollision_ref
+    except AttributeError:
+        return
+
+    row = layout.row(align=True)
+    row.scale_y = 1.1
+    row.use_property_split = False
+    split = row.split(factor=0.45)
+    split.label(text="IE Index")
+    val_row = split.row(align=True)
+    val_row.prop(props, "ie_play_ptr", text="", icon="LINKED")
+    if props.ie_play_ptr is None:
+        hint = val_row.row(align=True)
+        hint.enabled = False
+        hint.label(text=T("attribute.sentinel_no_target"), icon="X")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 公共绘制函数：属性字段内容（两个 Panel 共用，避免重复代码）
 # ─────────────────────────────────────────────────────────────────────────────
@@ -536,22 +580,17 @@ def _draw_attribute_fields_content(layout, context):
     except (ValueError, ImportError):
         pass
 
-    # ── PTLIFE / PTCOLLISION：指针化时隐藏原始 relationIndex / ieIndex 字段 ────
-    # 这两个字节由专用指针面板（Relation Action Reference / IE Action Reference）控制，导出时
-    # overlay 在字段编码之后覆写，故原始字段编辑会被静默丢弃 → 二者竞争、不同步。
-    # 指针化时跳过原始字段（仅留指针面板这一处编辑源）；未指针化（越界死属性）则照常
-    # 显示原始字段供查看/编辑（此时 overlay 不生效，字段即真值）。
-    _ptlife_ptr_hidden = False
-    _ptcoll_ptr_hidden = False
+    # ── PTLIFE / PTCOLLISION：relationIndex / ieIndex 字段替换为 action 指针选择器
+    # （2026-07 从独立的 Relation/IE Action Reference 面板合并进来，见
+    # _draw_ptlife_ref_field / _draw_ptcollision_ref_field）。overlay 在字段编码
+    # 之后总是覆写这两个字节，原始数值字段编辑会被静默丢弃，故始终替换、不显示原始字段。
+    _is_ptlife = False
+    _is_ptcollision = False
     try:
         from ..efx_format.hashes import PTLIFE as _PTLIFE_HASH, PTCOLLISION as _PTCOLLISION_HASH
         _th = int(bp.type_hash_str)
-        if _th == _PTLIFE_HASH:
-            pl = getattr(obj, "efx_ptlife_ref", None)
-            _ptlife_ptr_hidden = bool(pl and pl.relation_pointerized)
-        elif _th == _PTCOLLISION_HASH:
-            pc = getattr(obj, "efx_ptcollision_ref", None)
-            _ptcoll_ptr_hidden = bool(pc and pc.ie_pointerized)
+        _is_ptlife = (_th == _PTLIFE_HASH)
+        _is_ptcollision = (_th == _PTCOLLISION_HASH)
     except (ValueError, ImportError):
         pass
 
@@ -656,17 +695,14 @@ def _draw_attribute_fields_content(layout, context):
                     _draw_extern_ref_field(col, obj)
                     i += 1
                     continue
-                # PTLIFE/PTCOLLISION 指针化时隐藏原始索引字段（由专用指针面板控制），
-                # 改为一行只读提示，避免与指针面板竞争、互不同步。
-                if ((_ptlife_ptr_hidden and item.ori_name == "relationIndex")
-                        or (_ptcoll_ptr_hidden and item.ori_name == "ieIndex")):
-                    hint = col.row()
-                    hint.enabled = False
-                    hint.label(
-                        text=f"{_friendly_name(item.ori_name, type_name)}: "
-                             + T("field.ref_via_pointer"),
-                        icon="LINKED",
-                    )
+                # PTLIFE/PTCOLLISION：relationIndex/ieIndex 原始字段替换为 action
+                # 指针选择器（内联，样式跟 EXTERNREFERENCE 的 referenceIndex 一致）。
+                if _is_ptlife and item.ori_name == "relationIndex":
+                    _draw_ptlife_ref_field(col, obj)
+                    i += 1
+                    continue
+                if _is_ptcollision and item.ori_name == "ieIndex":
+                    _draw_ptcollision_ref_field(col, obj)
                     i += 1
                     continue
                 # PTBEHAVIOR：param 行用属性 key 标签（hint_name=已知名/0x%08X）+ 行尾移除按钮
@@ -787,6 +823,7 @@ class EFX_PT_entry(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "MHW EFX"
+    bl_order       = 0  # 固定顺序：MHW EFX > Edit > Add Section > Presets > 其他（默认顺序）
 
     def draw(self, context):
         layout = self.layout
@@ -795,11 +832,11 @@ class EFX_PT_entry(bpy.types.Panel):
         i18n.draw_language_toggle(layout)
         layout.separator(factor=0.5)
 
-        # ── 顶部：Import / Export / New EFX ──────────────────────────────────
+        # ── 顶部：New EFX / Import / Export ──────────────────────────────────
+        layout.operator("efx.new_efx", text=T("entry.new_efx"), icon="ADD")
         row = layout.row(align=True)
         row.operator("efx.import_efx", text=T("entry.import"), icon="IMPORT")
         row.operator("efx.export_efx", text=T("entry.export"), icon="EXPORT")
-        layout.operator("efx.new_efx", text=T("entry.new_efx"), icon="ADD")
 
         # ── Active EFX 选择器（新增 entry 的目标根）────────────────────────────
         layout.prop(context.scene, "efx_active_efx", text=T("entry.active_efx"))
@@ -910,8 +947,8 @@ class EFX_PT_presets(bpy.types.Panel):
     bl_region_type  = "UI"
     bl_category     = "EFX"
     bl_label        = "Presets"
-    bl_parent_id    = "EFX_PT_entry"
     bl_options      = {"DEFAULT_CLOSED"}
+    bl_order        = 3  # 固定顺序：MHW EFX > Edit > Add Section > Presets > 其他
 
     def draw(self, context):
         layout = self.layout
@@ -1027,8 +1064,41 @@ class EFX_PT_entry_activation(bpy.types.Panel):
 #   Entry Status（EFX_PT_entry_status）管激活状态和引用，Entry Properties 管原始数据。
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _draw_entry_properties_content(layout, context):
+    """
+    绘制 EFX_ENTRY 的原始属性内容（Type / Root UnitBoundary）。
+    被 EFX_PT_entry_properties（N 面板）和 EFX_PT_entry_properties_data/_object
+    （属性编辑器）共用。
+    """
+    obj = context.active_object
+    entry_kind = str(obj.get("entry_kind", "unknown"))
+    kind_label = {
+        "standard": T("entry.type_standard"),
+        "extended": T("entry.type_extended"),
+    }.get(entry_kind, entry_kind)
+    row = layout.row()
+    row.enabled = False
+    row.label(text=T("entry.type_label") + kind_label, icon="INFO")
+
+    # Root entry 的 UnitBoundary 子条目（结构化时可编辑；含 RT/LayoutBank 的
+    # root 走 opaque 只读，不显示）。语义未完全逆向：ints[2] + floats[8]。
+    if entry_kind == "root" and int(obj.get("root_structured", 0)) == 1:
+        n = int(obj.get("root_ub_count", 0))
+        if n == 0:
+            layout.label(text="(empty root — no sub-entries)", icon="DOT")
+        for j in range(n):
+            box = layout.box()
+            box.label(text="Unit Boundary %d" % j, icon="SHADING_BBOX")
+            ik = "root_ub%d_ints" % j
+            fk = "root_ub%d_floats" % j
+            if ik in obj:
+                box.prop(obj, '["%s"]' % ik, text="Ints")
+            if fk in obj:
+                box.prop(obj, '["%s"]' % fk, text="Floats")
+
+
 class EFX_PT_entry_properties(bpy.types.Panel):
-    """EFX Entry 原始属性面板（Type / Unkn / TIML）"""
+    """EFX Entry 原始属性面板（Type / Unkn / TIML，VIEW_3D N 面板）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
@@ -1042,32 +1112,43 @@ class EFX_PT_entry_properties(bpy.types.Panel):
         return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
 
     def draw(self, context):
-        layout = self.layout
-        obj = context.active_object
-        entry_kind = str(obj.get("entry_kind", "unknown"))
-        kind_label = {
-            "standard": T("entry.type_standard"),
-            "extended": T("entry.type_extended"),
-        }.get(entry_kind, entry_kind)
-        row = layout.row()
-        row.enabled = False
-        row.label(text=T("entry.type_label") + kind_label, icon="INFO")
+        _draw_entry_properties_content(self.layout, context)
 
-        # Root entry 的 UnitBoundary 子条目（结构化时可编辑；含 RT/LayoutBank 的
-        # root 走 opaque 只读，不显示）。语义未完全逆向：ints[2] + floats[8]。
-        if entry_kind == "root" and int(obj.get("root_structured", 0)) == 1:
-            n = int(obj.get("root_ub_count", 0))
-            if n == 0:
-                layout.label(text="(empty root — no sub-entries)", icon="DOT")
-            for j in range(n):
-                box = layout.box()
-                box.label(text="Unit Boundary %d" % j, icon="SHADING_BBOX")
-                ik = "root_ub%d_ints" % j
-                fk = "root_ub%d_floats" % j
-                if ik in obj:
-                    box.prop(obj, '["%s"]' % ik, text="Ints")
-                if fk in obj:
-                    box.prop(obj, '["%s"]' % fk, text="Floats")
+
+class EFX_PT_entry_properties_data(bpy.types.Panel):
+    """EFX Entry 原始属性（属性编辑器 → Object Data Properties，选中 EFX_ENTRY 时显示）"""
+
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "data"
+    bl_label        = "EFX Entry Properties"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+
+    def draw(self, context):
+        _draw_entry_properties_content(self.layout, context)
+
+
+class EFX_PT_entry_properties_object(bpy.types.Panel):
+    """EFX Entry 原始属性（属性编辑器 → Object Properties，保底版本）"""
+
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "object"
+    bl_label        = "EFX Entry Properties"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+
+    def draw(self, context):
+        _draw_entry_properties_content(self.layout, context)
 
 
 class EFX_PT_entry_unkn(bpy.types.Panel):
@@ -1181,14 +1262,14 @@ class EFX_PT_attribute_fields_object(bpy.types.Panel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_add_section(bpy.types.Panel):
-    """EFX 新建段条目（Action / Extern / Subselect）"""
+    """EFX 新建段条目（Entry / Action / Extern / Subselect）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Add Section Entry"
-    bl_parent_id    = "EFX_PT_entry"
+    bl_label        = "Add Section"
     bl_options      = {"DEFAULT_CLOSED"}
+    bl_order        = 2  # 固定顺序：MHW EFX > Edit > Add Section > Presets > 其他
 
     @classmethod
     def poll(cls, context):
@@ -1198,6 +1279,7 @@ class EFX_PT_add_section(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         col = layout.column(align=True)
+        col.operator("efx.add_entry",     text=T("addsec.entry"),     icon="OBJECT_DATA")
         col.operator("efx.add_action",      text=T("addsec.action"),      icon="PLAY")
         col.operator("efx.add_extern",    text=T("addsec.extern"),    icon="FILE_BLEND")
         col.operator("efx.add_subselect", text=T("addsec.subselect"), icon="OUTLINER_OB_EMPTY")
@@ -1226,6 +1308,7 @@ class EFX_PT_delete(bpy.types.Panel):
     bl_category     = "EFX"
     bl_label        = "Edit"
     bl_options      = {"DEFAULT_CLOSED"}
+    bl_order        = 1  # 固定顺序：MHW EFX > Edit > Add Section > Presets > 其他
 
     @classmethod
     def poll(cls, context):
@@ -1328,8 +1411,84 @@ def _draw_plain_field_list(col, field_items, type_name: str = "") -> None:
 # EFX_PT_extern_props — Extern 段字段展开面板（选中 EFX_EXTERN 时显示）
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _draw_extern_props_content(layout, context):
+    """
+    绘制 EFX_EXTERN 的属性内容。
+    被 EFX_PT_extern_props（N 面板）和 EFX_PT_extern_props_data/_object（属性编辑器）共用。
+    """
+    obj = context.active_object
+
+    try:
+        ep = obj.efx_extern
+    except AttributeError:
+        layout.label(text="Extern props not registered", icon="ERROR")
+        return
+
+    if len(ep.items) == 0:
+        layout.label(text="No extern data", icon="INFO")
+        return
+
+    # 多 item 时显示 item 切换器（实测语料通常只有 1 个）
+    if len(ep.items) > 1:
+        row = layout.row(align=True)
+        row.label(text=f"Item {ep.active_item + 1} / {len(ep.items)}", icon="NODETREE")
+        sub = row.row(align=True)
+        decr = sub.operator("efx.extern_item_prev", text="", icon="TRIA_LEFT")  # noqa: F841
+        incr = sub.operator("efx.extern_item_next", text="", icon="TRIA_RIGHT")  # noqa: F841
+
+    ai = min(ep.active_item, len(ep.items) - 1)
+    it = ep.items[ai]
+
+    # 解析 type_name 用于字段注释查表
+    type_name = ""
+    try:
+        from ..efx_format.hashes import HASH_TO_NAME
+        type_name = HASH_TO_NAME.get(int(it.type_hash_str), "").upper()
+    except Exception:
+        pass
+    display_name = type_name or f"0x{int(it.type_hash_str):08X}"
+
+    if not it.is_editable:
+        box = layout.box()
+        col = box.column(align=True)
+        col.label(text=display_name, icon="MODIFIER")
+        col.label(text="Not supported yet", icon="INFO")
+        return
+
+    # 实例切换器（attr_count 个实例）
+    n_inst = len(it.instances)
+    if n_inst > 1:
+        row = layout.row(align=True)
+        row.label(text=f"Instance {it.active_instance + 1} / {n_inst}")
+        nav = row.row(align=True)
+        nav.operator("efx.extern_instance_prev", text="", icon="TRIA_LEFT")
+        nav.operator("efx.extern_instance_next", text="", icon="TRIA_RIGHT")
+
+    inst_idx = min(it.active_instance, n_inst - 1)
+    inst = it.instances[inst_idx]
+
+    box = layout.box()
+    col = box.column(align=True)
+
+    title = display_name
+    if n_inst > 1:
+        title += f"  [{inst_idx + 1}/{n_inst}]"
+    col.label(text=title, icon="MODIFIER")
+    col.separator(factor=0.5)
+
+    if not inst.is_editable:
+        col.label(text="Not supported yet", icon="INFO")
+        return
+
+    if len(inst.field_items) == 0:
+        col.label(text="No fields", icon="INFO")
+        return
+
+    _draw_plain_field_list(col, inst.field_items, type_name=type_name)
+
+
 class EFX_PT_extern_props(bpy.types.Panel):
-    """EFX Extern 属性展开面板"""
+    """EFX Extern 属性展开面板（VIEW_3D N 面板）"""
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
@@ -1343,76 +1502,43 @@ class EFX_PT_extern_props(bpy.types.Panel):
         return obj is not None and obj.get("~TYPE") == "EFX_EXTERN"
 
     def draw(self, context):
-        layout = self.layout
-        obj    = context.active_object
+        _draw_extern_props_content(self.layout, context)
 
-        try:
-            ep = obj.efx_extern
-        except AttributeError:
-            layout.label(text="Extern props not registered", icon="ERROR")
-            return
 
-        if len(ep.items) == 0:
-            layout.label(text="No extern data", icon="INFO")
-            return
+class EFX_PT_extern_props_data(bpy.types.Panel):
+    """EFX Extern 属性（属性编辑器 → Object Data Properties，选中 EFX_EXTERN 时显示）"""
 
-        # 多 item 时显示 item 切换器（实测语料通常只有 1 个）
-        if len(ep.items) > 1:
-            row = layout.row(align=True)
-            row.label(text=f"Item {ep.active_item + 1} / {len(ep.items)}", icon="NODETREE")
-            sub = row.row(align=True)
-            decr = sub.operator("efx.extern_item_prev", text="", icon="TRIA_LEFT")  # noqa: F841
-            incr = sub.operator("efx.extern_item_next", text="", icon="TRIA_RIGHT")  # noqa: F841
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "data"
+    bl_label        = "EFX Extern Properties"
+    bl_options      = {"DEFAULT_CLOSED"}
 
-        ai = min(ep.active_item, len(ep.items) - 1)
-        it = ep.items[ai]
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_EXTERN"
 
-        # 解析 type_name 用于字段注释查表
-        type_name = ""
-        try:
-            from ..efx_format.hashes import HASH_TO_NAME
-            type_name = HASH_TO_NAME.get(int(it.type_hash_str), "").upper()
-        except Exception:
-            pass
-        display_name = type_name or f"0x{int(it.type_hash_str):08X}"
+    def draw(self, context):
+        _draw_extern_props_content(self.layout, context)
 
-        if not it.is_editable:
-            box = layout.box()
-            col = box.column(align=True)
-            col.label(text=display_name, icon="MODIFIER")
-            col.label(text="Not supported yet", icon="INFO")
-            return
 
-        # 实例切换器（attr_count 个实例）
-        n_inst = len(it.instances)
-        if n_inst > 1:
-            row = layout.row(align=True)
-            row.label(text=f"Instance {it.active_instance + 1} / {n_inst}")
-            nav = row.row(align=True)
-            nav.operator("efx.extern_instance_prev", text="", icon="TRIA_LEFT")
-            nav.operator("efx.extern_instance_next", text="", icon="TRIA_RIGHT")
+class EFX_PT_extern_props_object(bpy.types.Panel):
+    """EFX Extern 属性（属性编辑器 → Object Properties，保底版本）"""
 
-        inst_idx = min(it.active_instance, n_inst - 1)
-        inst = it.instances[inst_idx]
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "object"
+    bl_label        = "EFX Extern Properties"
+    bl_options      = {"DEFAULT_CLOSED"}
 
-        box = layout.box()
-        col = box.column(align=True)
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_EXTERN"
 
-        title = display_name
-        if n_inst > 1:
-            title += f"  [{inst_idx + 1}/{n_inst}]"
-        col.label(text=title, icon="MODIFIER")
-        col.separator(factor=0.5)
-
-        if not inst.is_editable:
-            col.label(text="Not supported yet", icon="INFO")
-            return
-
-        if len(inst.field_items) == 0:
-            col.label(text="No fields", icon="INFO")
-            return
-
-        _draw_plain_field_list(col, inst.field_items, type_name=type_name)
+    def draw(self, context):
+        _draw_extern_props_content(self.layout, context)
 
 
 _CLASSES = (
@@ -1426,16 +1552,22 @@ _CLASSES = (
     EFX_PT_entry_status,
     EFX_PT_entry_activation,
     EFX_PT_entry_properties,
+    EFX_PT_entry_properties_data,
+    EFX_PT_entry_properties_object,
     EFX_PT_entry_unkn,
     EFX_PT_attribute_fields,
     EFX_PT_attribute_fields_props,
     EFX_PT_attribute_fields_object,
     EFX_PT_subselect,
+    EFX_PT_subselect_data,
+    EFX_PT_subselect_object,
     EFX_PT_action,
+    EFX_PT_action_props,
+    EFX_PT_action_object,
     EFX_PT_extern_props,
+    EFX_PT_extern_props_data,
+    EFX_PT_extern_props_object,
     EFX_PT_extern_ref,
-    EFX_PT_ptlife_ref,
-    EFX_PT_ptcollision_ref,
     EFX_PT_eof_list,
     # EOF 算子
     EFX_OT_eof_toggle_entry,

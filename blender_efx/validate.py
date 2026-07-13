@@ -13,11 +13,11 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
     - Subselect 成员 member.body_ptr is None
     - Action targets target.body_ptr is None
     - ExternReference extern_ref_ptr is None（pointerized && !none）
-    - PtLife relation_play_ptr is None（pointerized；relationIndex=actionID，无 -1 哨兵字段）
-    - PtCollision ie_play_ptr is None（pointerized && !ie_none）
-    悬空指针不再 ERROR：导出端各 export_* 早已对 None 指针安全跳过/回退（subselect/action/eof
-    直接 skip，extern/ptlife/ptcollision 原样保留旧字节）。降级为 WARN + 导出时报告即可，
-    不应仅因引用悬空就阻断导出。
+    悬空指针不再 ERROR：导出端各 export_* 早已对 None 指针安全跳过/回退（subselect/action
+    直接 skip，extern 原样保留旧字节）。降级为 WARN + 导出时报告即可，不应仅因引用悬空
+    就阻断导出。
+    PtLife.relation_play_ptr / PtCollision.ie_play_ptr **不**在此列——2026-07 简化后 None
+    是这两个字段的正常合法状态（无目标），导出时自动写 -1，不再是需要提醒的"悬空"。
 (1b) EOF 异常归属（per_entry 模型，Entry 下 Direct Trigger / Not Direct Trigger 两个
     对称子集合）—— WARN，两种情况：
     - 双重挂载（category="eof_dual_membership"）：同一 entry 同时 link 在两个子集合里。
@@ -26,7 +26,6 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
     - 孤儿（category="eof_orphan_entry"）：entry 不在任何一个子集合里，误留在 Entry
       叶子集合直接子级（拖拽失误）。导出 fail-safe 视为直接触发（宁可多触发不漏触发）。
     两者都只是提醒用户清理，不挡导出。
-(2) efx_index 重复（同级组内）—— ERROR
 (3) 死属性 EXTERNREFERENCE（count_extern==0 却仍 pointerized）—— WARN（合法历史模式）
 (5k) standard/extended entry 零属性 —— WARN（提示性；io_tree.py §4a0 已自动从导出剔除这类
      残留空壳，这里只是提醒用户手动清理场景里的对象；见该检查项内联注释）
@@ -104,15 +103,14 @@ def _build_trigger_graph(bodies, plays):
             pl = getattr(blk, "efx_ptlife_ref", None)
             if pl is not None:
                 try:
-                    if pl.relation_pointerized and pl.relation_play_ptr in node_set:
+                    if pl.relation_play_ptr in node_set:
                         adj[body].add(pl.relation_play_ptr)
                 except AttributeError:
                     pass
             pc = getattr(blk, "efx_ptcollision_ref", None)
             if pc is not None:
                 try:
-                    if (pc.ie_pointerized and not pc.ie_none
-                            and pc.ie_play_ptr in node_set):
+                    if pc.ie_play_ptr in node_set:
                         adj[body].add(pc.ie_play_ptr)
                 except AttributeError:
                     pass
@@ -279,41 +277,8 @@ def validate_efx_tree(root_obj) -> list:
                 except AttributeError:
                     pass
 
-            # PtLife relation 悬空（relationIndex 无 -1 哨兵字段）
-            pl = getattr(blk, "efx_ptlife_ref", None)
-            if pl is not None:
-                try:
-                    if pl.relation_pointerized and pl.relation_play_ptr is None:
-                        problems.append({
-                            "level": "WARN",
-                            "category": "dangling",
-                            "msg": (
-                                f"PtLife attribute '{blk.name}' relation has a dangling pointer"
-                                " (the referenced Action was deleted; original index bytes kept on export)"
-                            ),
-                            "obj": blk.name,
-                        })
-                except AttributeError:
-                    pass
-
-            # PtCollision ie 悬空
-            pc = getattr(blk, "efx_ptcollision_ref", None)
-            if pc is not None:
-                try:
-                    if (pc.ie_pointerized
-                            and not pc.ie_none
-                            and pc.ie_play_ptr is None):
-                        problems.append({
-                            "level": "WARN",
-                            "category": "dangling",
-                            "msg": (
-                                f"PtCollision attribute '{blk.name}' ie has a dangling pointer"
-                                " (the referenced Action was deleted; original index bytes kept on export)"
-                            ),
-                            "obj": blk.name,
-                        })
-                except AttributeError:
-                    pass
+            # PtLife.relation_play_ptr / PtCollision.ie_play_ptr：None 是正常的"无目标"
+            # 状态（2026-07 简化，见文件头说明），导出时自动写 -1，不再检查/报告悬空。
 
     # EOF 异常归属：per_entry 模型下 entry 应恰好属于 Direct Trigger / Not Direct
     # Trigger 两个子集合之一。正常切换/拖拽是互斥移动，不会产生异常；只有手动
@@ -347,33 +312,13 @@ def validate_efx_tree(root_obj) -> list:
                     "obj": b.name,
                 })
 
-    # ── (2) efx_index 重复 ──────────────────────────────────────────────────
-
-    def _check_dup(objs, group_name):
-        seen = {}
-        for o in objs:
-            idx = o.get("efx_index")
-            if idx is None:
-                continue
-            idx = int(idx)
-            seen.setdefault(idx, []).append(o.name)
-        dups = {k: v for k, v in seen.items() if len(v) > 1}
-        if dups:
-            dup_str = ", ".join(str(k) for k in sorted(dups))
-            problems.append({
-                "level": "ERROR",
-                "msg": f"{group_name} segment has duplicate efx_index: {dup_str}",
-                "obj": "",
-            })
-
-    _check_dup(bodies, "Entry")
-    _check_dup(plays, "Action")
-    _check_dup(externs, "Extern")
-    _check_dup(subselects, "Subselect")
-    # 每个 entry 内的属性各自一组
-    for body in bodies:
-        blocks = _children_by_type(body, "EFX_ATTRIBUTE")
-        _check_dup(blocks, f"Entry '{body.name}' attributes")
+    # efx_index 重复（如原生 Shift+D 复制后新旧对象撞号）不检查——已确认无害：
+    # 导出端从不直接按存储的 efx_index 写字节位置，而是先按 efx_index 排序
+    # （Python 稳定排序，撞号只影响并列时的相对顺序）再用 enumerate() 位置重算
+    # 真正的段局部 index（entry/action/extern/subselect 均如此，见 io_tree.py
+    # 的 collect_top_level → enumerate 模式）；attribute 更进一步——字节格式里
+    # 根本没有 index 字段，序列化顺序就是列表顺序。曾经在此报 ERROR 挡导出，
+    # 但这恰恰是原生复制的正常产物，不该拦——已移除。
 
     # ── (4) 召唤回绕（entry↔action 触发图成环）—— WARN ────────────────────────────
     # entry 的 PTLIFE/PTCOLLISION 触发 Action，Action 的 targets 又指回（祖先）entry，

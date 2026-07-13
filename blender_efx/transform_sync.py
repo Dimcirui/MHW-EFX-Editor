@@ -262,7 +262,7 @@ def build_anchor_map(root_obj):
             except Exception:
                 continue
             ref = getattr(blk, "efx_ptlife_ref", None)
-            if ref is None or not getattr(ref, "relation_pointerized", False):
+            if ref is None:
                 continue
             play = getattr(ref, "relation_play_ptr", None)
             if play is not None:

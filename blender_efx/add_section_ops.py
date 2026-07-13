@@ -1,5 +1,5 @@
 """
-blender_efx/add_section_ops.py  —  从无到有新建 Action / Extern / Subselect 段条目
+blender_efx/add_section_ops.py  —  从无到有新建 Entry / Action / Extern / Subselect 段条目
 
 设计原则（参照 CLAUDE.md / add_ops.py / delete_ops.py）：
   - Python 3.11 语法（目标 Blender 4.3.2）
@@ -13,6 +13,7 @@ blender_efx/add_section_ops.py  —  从无到有新建 Action / Extern / Subsel
   Action/Extern/Subselect 更像关系容器而非参数属性——真正可调的视觉参数在 entry 的属性里。
   所以"新建"= 建一个带合法空白模板的容器对象 + 设段局部 index + 置脏标志，
   导出端自动把它纳入 header / 标签表。引用（targets / 成员）由用户后续在面板里接线。
+  Entry 则直接是"基础骨架"（0 属性的 standard entry），用户后续自己逐个加属性。
 
 标签前缀规则（与 reorder.can_label_entry 同源）：
   EFX_Type 标签表是 [Action|Extern|Entry] 全局顺序的**连续前缀**。新建的 action/extern
@@ -199,6 +200,52 @@ def add_subselect(root_obj) -> bpy.types.Object:
     return obj
 
 
+def add_entry(root_obj) -> bpy.types.Object:
+    """
+    新建一个空白 standard Entry（基础骨架：0 属性、无 TIML、body_type=jamcrc(名)）。
+    供用户后续在 Attribute Properties 面板里逐个加属性；attr_count=0 是合法常态
+    （语料实证：官方 750/982 个 standard entry timl_length==0，0 属性同理合法）。
+    """
+    col = _section_collection(root_obj, "_2 Entry")
+    if col is None:
+        raise RuntimeError("找不到/无法新建 Entry 集合")
+
+    idx = _next_index(root_obj, "EFX_ENTRY")
+
+    # 标签前缀规则：entry 是 [Play|Extern|Entry] 顺序里的最后一组，新 entry 追加在
+    # 全局标签表末尾，前面 = 所有 action + extern + 现有 entry。
+    before = (_sorted_children(root_obj, "EFX_ACTION")
+              + _sorted_children(root_obj, "EFX_EXTERN")
+              + _sorted_children(root_obj, "EFX_ENTRY"))
+    has_label = _all_labeled(before)
+    raw_label = f"entry_{idx}"
+
+    from ..efx_format.hashes import jamcrc
+    body_type = jamcrc(raw_label)
+
+    obj = _new_empty(f"{_nn(idx)} {raw_label}", col)
+    obj.empty_display_type = 'ARROWS'   # XYZ 三色轴，跟导入的 entry 一致
+    obj["~TYPE"]         = "EFX_ENTRY"
+    obj["efx_index"]     = idx
+    obj["efx_raw_label"] = raw_label
+    obj["efx_has_label"] = int(has_label)
+    obj["entry_kind"]    = "standard"
+    obj["body_type"]     = str(body_type)
+    obj["unkn0"]         = "0"
+    obj["attr_count"]    = "0"
+    obj["null"]          = "0"
+    obj["timl_length"]   = "0"
+    obj["timl_bytes"]    = ""
+
+    # 新建 entry 默认不直接触发（安全默认，跟"粘贴 entry 但源无 in_eof 信息"一致）；
+    # opaque 模型 / 无 eof_model 时 place_new_entry 是无操作，entry 留在 Entry 叶子集合本身。
+    from . import entry_action_ref
+    entry_action_ref.place_new_entry(root_obj, obj, False)
+
+    root_obj["labels_dirty"] = 1
+    return obj
+
+
 def add_action(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
     """
     新建一个 Action：含 1 个初始 entry，类型由 entry_type 决定。
@@ -296,6 +343,34 @@ def add_extern(root_obj, extern_type='EXTERNSPAWN') -> bpy.types.Object:
 # ─────────────────────────────────────────────────────────────────────────────
 # 算子
 # ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_OT_add_entry(Operator):
+    """在 Active EFX 下新建一个空白 Entry（基础骨架，0 属性）"""
+
+    bl_idname      = "efx.add_entry"
+    bl_label       = "Add Entry"
+    bl_description = ("Create a new blank standard Entry (0 attributes, no TIML) as a starting "
+                      "skeleton. Add attributes afterward via the Attribute Properties panel.")
+    bl_options     = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return get_active_efx_root(context) is not None
+
+    def execute(self, context):
+        root = get_active_efx_root(context)
+        if root is None:
+            self.report({"ERROR"}, "Select an Active EFX collection first")
+            return {"CANCELLED"}
+        try:
+            obj = add_entry(root)
+        except Exception as exc:
+            self.report({"ERROR"}, f"Failed to add Entry: {exc}")
+            return {"CANCELLED"}
+        _select_only(context, obj)
+        self.report({"INFO"}, f"Added Entry: {obj.name}")
+        return {"FINISHED"}
+
 
 class EFX_OT_add_action(Operator):
     """在 Active EFX 下新建一个 Action，弹窗选择首条目类型"""
@@ -423,6 +498,7 @@ class EFX_OT_add_subselect(Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CLASSES = (
+    EFX_OT_add_entry,
     EFX_OT_add_action,
     EFX_OT_add_extern,
     EFX_OT_add_subselect,

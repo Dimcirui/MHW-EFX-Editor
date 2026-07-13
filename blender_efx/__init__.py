@@ -49,7 +49,6 @@ from . import add_section_ops  # 从无到有新建 Play / Extern / Subselect �
 from . import attribute_ops     # 块级组装：单块复制/粘贴/预设保存/新增
 from . import part_mask_ops # PLEMISSIVE body_p/wp_p 位掩码勾选编辑器
 from . import validate      # L2 #4：导出前校验
-from . import hexview       # 只读 hex 视图（opaque/路径-only 块原始字节查看）
 from . import session_core  # 会话/预览类公共基础设施：标记式孤儿清理 + 生命周期缓存复位
 from . import timl_io       # TIML ↔ .timl 文件互导 + EFX_TIML 句柄解析
 from . import timl_meta_ui  # TIML 头部元字段编辑（Dope Sheet 侧栏 EFX TIML：长度/循环控制）
@@ -89,7 +88,6 @@ __all__ = [
     "add_section_ops",
     "attribute_ops",
     "validate",
-    "hexview",
     "timl_io",
     "timl_meta_ui",
     "timl_tracks",
@@ -147,7 +145,8 @@ def register():
 
     # ── L2 #1d：PtLife/PtCollision/eof_ints 指针化（PropertyGroup）─────────────
     # entry_action_ref.register() 注册核心类（不含 Panel）。
-    # 三个面板 EFX_PT_ptlife_ref/EFX_PT_ptcollision_ref/EFX_PT_eof_list 由 panels.register() 注册。
+    # EFX_PT_eof_list 面板由 panels.register() 注册（PtLife/PtCollision 已无独立面板，
+    # 合并进 Attribute Properties 内联渲染）。
     entry_action_ref.register()
 
     # ── L2 反向引用视图（只读）：算子无依赖，先注册；面板由 panels.register() 注册 ─
@@ -177,9 +176,6 @@ def register():
     # ── Operator / Panel ────────────────────────────────────────────────────
     operators.register()
     panels.register()  # 包含 EFX_PT_entry（父）和所有 L2 子面板
-
-    # ── 只读 hex 视图：面板 bl_parent_id='EFX_PT_entry'，必须在 panels.register() 之后 ─
-    hexview.register()
 
     # ── TIML 互导：面板 bl_parent_id='EFX_PT_entry'，同样在 panels.register() 之后 ─
     timl_io.register()
@@ -233,7 +229,6 @@ def unregister():
     timl_edit.unregister()
     timl_meta_ui.unregister()
     timl_io.unregister()
-    hexview.unregister()
     panels.unregister()
     operators.unregister()
 
@@ -260,7 +255,7 @@ def unregister():
     backref.unregister()
 
     # ── L2 #1d：PtLife/PtCollision/eof_ints 指针化核心类（PropertyGroup）──────
-    # EFX_PT_ptlife_ref/EFX_PT_ptcollision_ref/EFX_PT_eof_list 已由 panels.unregister() 注销。
+    # EFX_PT_eof_list 已由 panels.unregister() 注销。
     entry_action_ref.unregister()
 
     # ── L2 #1c+：Extern 段字段展开核心类（PropertyGroup + Operators）────────
