@@ -117,8 +117,10 @@ def _parse_pure_hex(text: str):
 def _set_object_raw_bytes(obj, new_bytes: bytes) -> bool:
     """
     把 new_bytes 写回对象的原始字节存储（供导出使用）。仅支持安全的目标：
-      - EFX_ATTRIBUTE            → 写 obj["data_bytes"] + 重跑 init_attribute_props 重建字段模型，
-                               efx_dirty=False（导出走"非 dirty → raw data_bytes"路径）。
+      - EFX_ATTRIBUTE            → 写 obj["data_bytes"] + 重跑 init_attribute_props 重建字段模型
+                               （重建后每个字段的 orig_b64 即反映新字节，导出重建路径天然
+                               还原为新字节，无需依赖 efx_dirty），efx_dirty=False 仅重置
+                               UI"已修改"徽章为未修改基线。
       - EFX_ENTRY(root/unknown) → 写 obj["raw"]。
       - EFX_EXTERN           → 写 obj["raw_b64"]（导出直接用 raw_b64）。
     EFX_ACTION 不支持（结构化导出可能覆盖 raw）→ 返回 False。

@@ -587,11 +587,13 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
             # 任何异常均安全回退：raw_b64 保证 byte-perfect
             pass
 
-    # ── 9. eof_ints：L2 #1d 指针化（替换逗号字符串存储）────────────────────────
+    # ── 9. eof：载体下放到 entry（hybrid 闸门，结构权威下放重构）────────────────
     #
-    # 此时 main_bodies_by_index 已在 §8 构建完毕，可直接复用。
+    # 干净(升序+无重复+全 in-range) → per_entry：设每个 entry 的 efx_direct_trigger 布尔，
+    #   悬空指针从原理上消失、raw 噪声清零。不干净(evc 浮点结构) → opaque：root["eof_ints"]
+    #   字符串原样直通（§3 已写入）。main_bodies_by_index 已在 §8 构建完毕。
     try:
-        _entry_action_ref.init_eof_list_props(
+        _entry_action_ref.init_eof_per_entry(
             root_obj,
             efx.eof_ints,
             main_bodies_by_index,
@@ -599,6 +601,17 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         )
     except Exception:
         # 任何异常安全跳过：root_obj["eof_ints"] 字符串仍在，导出回退路径保证 byte-perfect
+        pass
+
+    # ── 10. 满命名（结构权威下放）：给未命名 action/extern/entry 补标签 ─────────
+    # 只写标签层（has_label/raw_label/显示名），不动 body_type/play_type 身份哈希
+    # （未命名段的哈希是权威身份，语料实证保留即可）。满命名后标签前缀恒满，
+    # copy/duplicate 不再破坏前缀。有补名 → labels_dirty=1 使导出按全命名重建标签表。
+    try:
+        from . import normalize
+        if normalize.ensure_all_named(root_obj):
+            root_obj["labels_dirty"] = 1
+    except Exception:
         pass
 
     # ── 导入后：按 TRANSFORM3D 基础变换摆放各 body empty（单向可视化，不影响导出）──
@@ -748,11 +761,25 @@ def export_efx_tree(root_object: bpy.types.Object, recalc_timl_length: bool = Fa
     # 引用它的 Play/PtLife/PtCollision/Subselect/EOF 一律走既有的悬空指针安全路径
     # （保留原字节/跳过，见各 export_* 与 validate.py 的"悬空不阻断导出"设计），
     # 不需要额外清理——跟"真的用插件删除按钮删掉这个 body"效果一致。
-    body_objs = [
-        o for o in body_objs
-        if str(o.get("entry_kind", "")) not in ("standard", "extended")
-        or _collect_children_by_type(o, "EFX_ATTRIBUTE")
-    ]
+    #
+    # ⚠ 2026-07 修正：判据从"零块"收紧为"零块 **且 导入时 attr_count>0**"。
+    # 成因：原判据误伤 **合法的空 entry**——如 evc 事件特效 evc1005_008 的 entry[13]
+    # 本就 attr_count==0（格式层 byte-perfect 已证其合法），却被当成删除残留丢掉，
+    # 导致 count_body 少 1、后续 eof/引用索引整体错位。区分依据：
+    #   - 合法空 entry：导入时 attr_count==0（文件本就无块）→ 保留。
+    #   - 原生 Delete Hierarchy 残留：导入时 attr_count>0（原本有块），原生删子对象
+    #     不更新此快照，故 children==0 而 attr_count>0 → 剔除。
+    #   - attr_count 为负（evc 哨兵）视同非正 → 保留。
+    def _is_native_delete_leftover(o):
+        if str(o.get("entry_kind", "")) not in ("standard", "extended"):
+            return False
+        if _collect_children_by_type(o, "EFX_ATTRIBUTE"):
+            return False  # 还有块 → 不是空壳
+        try:
+            return int(str(o.get("attr_count", "0"))) > 0
+        except (ValueError, TypeError):
+            return False
+    body_objs = [o for o in body_objs if not _is_native_delete_leftover(o)]
 
     # ── 4a. 提前构建 extern_index_map（L2 #1c）─────────────────────────────────
     # 需要在遍历 main_bodies 时传给 _resolve_attribute_data_bytes，
@@ -820,7 +847,8 @@ def export_efx_tree(root_object: bpy.types.Object, recalc_timl_length: bool = Fa
     except (ValueError, TypeError):
         _eof_sanitize = _eof_need_sanitize
     try:
-        eof_ints = _entry_action_ref.export_eof_ints(
+        # hybrid：per_entry 从 efx_direct_trigger 升序重建；opaque 原样；旧 .blend 回退 §3
+        eof_ints = _entry_action_ref.export_eof_per_entry(
             r, body_index_map_export, sanitize=_eof_sanitize)
     except Exception:
         # 回退：旧字符串路径
@@ -1005,14 +1033,20 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
     """
     L1.1a + L2 #1c + L2 #1d：决定导出时 EFX_ATTRIBUTE 的 data_bytes 来源。
 
-    优先级：
-      1. 若 efx_block.efx_dirty=True 且 is_editable=True
-         → fields.get_attribute_data_bytes（重新 encode 用户修改；
-           对 EXTERNREFERENCE/PTLIFE/PTCOLLISION + pointerized=True 额外覆写字段）
-      2. 否则 → 自定义属性 data_bytes（base64 原始，byte-perfect 回退；
-           对 EXTERNREFERENCE/PTLIFE/PTCOLLISION + pointerized=True 同样覆写）
+    2026-07 退休 block 级 efx_dirty 门控（结构权威下放收尾，见 memory
+    attribute-dirty-gate-retired）：
+      1. is_editable=True → 永远走 fields.get_attribute_data_bytes（不再看 efx_dirty）。
+         安全性由 rebuild_data_bytes 的**逐字段** orig_b64 兜底保证——未编辑字段
+         （item.edited=False）本就重建为原字节，block 级"整体走 raw 还是走重建"
+         这道外层开关在数学上是冗余的短路优化。语料实测 650 官方文件 83045 个
+         可编辑属性强制重建 0 处不一致，与逐字段兜底的架构保证一致（非偶然）。
+         对 EXTERNREFERENCE/PTLIFE/PTCOLLISION + pointerized=True 额外覆写字段。
+      2. is_editable=False（opaque）→ 自定义属性 data_bytes（base64 原始，唯一回退；
+         对 EXTERNREFERENCE/PTLIFE/PTCOLLISION + pointerized=True 同样覆写）。
 
-    自定义属性 data_bytes 始终在导入时写入，作为保险。
+    efx_dirty 本身保留（仍是面板"● 已修改"徽章的唯一数据源），只是不再影响
+    本函数的路径选择——与 efx_format.timl.Timl.dirty 的转型（"有模型就强制重建"）
+    同一哲学。
 
     extern_index_map : dict[bpy.types.Object, int] | None — L2 #1c
     entry_index_map   : dict[bpy.types.Object, int] | None — L2 #1d PTLIFE
@@ -1020,7 +1054,7 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
     """
     try:
         bp = blk_obj.efx_block
-        if bp.efx_dirty and bp.is_editable:
+        if bp.is_editable:
             return _fields.get_attribute_data_bytes(
                 blk_obj,
                 extern_index_map=extern_index_map,
@@ -1029,7 +1063,7 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
             )
     except Exception:
         pass
-    # 回退：原始自定义属性，再走 L2 #1c / #1d overlay
+    # 回退：opaque（is_editable=False）或编码异常 → 原始自定义属性，再走 L2 #1c / #1d overlay
     data = _b64dec(str(blk_obj["data_bytes"]))
     if extern_index_map is not None:
         data = _fields._apply_extern_ref_overlay(blk_obj, data, extern_index_map)

@@ -429,6 +429,16 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         skipped = [p for p in problems
                    if p.get("category") in ("dangling", "eof_raw")]
 
+        # ── 1.65 导出前规范化：efx_index 撞车重编号 + 满命名（结构权威下放）────────────
+        # 兜底原生 Shift+D 造成的同级 index 撞车（重编号成唯一 0..n-1）+ 给会话中新增/
+        # 未命名段补标签。放在 auto_sort 之前：先化解撞车，再由 auto_sort 施加类型顺序。
+        try:
+            from . import normalize
+            if normalize.normalize_root(root):
+                root["labels_dirty"] = 1  # 满命名/重编号可能改标签表 → 导出重建
+        except Exception:
+            pass  # 规范化失败不阻断导出
+
         # ── 1.7 导出前静默规范化属性顺序（可通过 auto_sort_attributes 关闭）────────────
         if self.auto_sort_attributes:
             try:

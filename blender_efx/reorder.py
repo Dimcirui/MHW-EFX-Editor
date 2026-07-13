@@ -192,57 +192,59 @@ def _swap_objects(obj_a: bpy.types.Object, obj_b: bpy.types.Object,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _move_labeled_entry(obj, direction: str, type_tag: str, report) -> set:
-    """上移/下移顶层带标签条目（EFX_ENTRY / EFX_ACTION / EFX_EXTERN）。"""
+    """
+    上移/下移顶层带标签条目（EFX_ENTRY / EFX_ACTION / EFX_EXTERN）。
+
+    重构（结构权威下放）：从"交换两个 efx_index"改为"列表重排 + 全组重编号"——
+      1. 同级按 (efx_index, name) 稳定排序成列表（撞车的两个副本靠 name 拆成确定前后）；
+      2. 目标与相邻项交换列表位置；
+      3. 全组按新列表顺序重赋 efx_index = 0..n-1 + 重建显示名。
+    这样：① 永不"转移失败"（同名同 index 也已被 name 拆序，必动）；
+         ② 永不留撞车（末尾恒 0..n-1 唯一）——撞车不再是需处理的 case。
+    满命名后所有条目都在标签表内，原"标签前缀守卫"作废，已移除。
+    """
+    from . import normalize
     root = obj.parent
     if root is None:
         report({"ERROR"}, "EFX_ROOT not found")
         return {"CANCELLED"}
 
-    siblings = _collect_siblings_by_type(root, type_tag)
-    if len(siblings) < 2:
+    sibs = normalize._collect_group(root, type_tag)  # (efx_index, name) 稳定序
+    if len(sibs) < 2:
         report({"INFO"}, "Only 1 entry, cannot move")
         return {"CANCELLED"}
 
-    cur_idx = next((i for i, s in enumerate(siblings) if s == obj), None)
-    if cur_idx is None:
+    try:
+        pos = sibs.index(obj)
+    except ValueError:
         report({"ERROR"}, "Cannot find current entry's position in the sibling list")
         return {"CANCELLED"}
 
     if direction == "UP":
-        if cur_idx == 0:
+        if pos == 0:
             report({"INFO"}, "Already at the top, cannot move up")
             return {"CANCELLED"}
-        neighbor = siblings[cur_idx - 1]
+        npos = pos - 1
     else:
-        if cur_idx == len(siblings) - 1:
+        if pos == len(sibs) - 1:
             report({"INFO"}, "Already at the bottom, cannot move down")
             return {"CANCELLED"}
-        neighbor = siblings[cur_idx + 1]
+        npos = pos + 1
 
-    # 标签前缀守卫
-    if int(obj.get("efx_has_label", 0)) != int(neighbor.get("efx_has_label", 0)):
-        report(
-            {"WARNING"},
-            "Cannot reorder across a label boundary: one entry has a label and the "
-            "other does not — swapping would corrupt the positional label table. "
-            "Name the unlabeled entry first, or move within a labeled/unlabeled group.",
-        )
-        return {"CANCELLED"}
+    # 交换列表位置 → 全组重赋 efx_index=0..n-1 + 重建显示名
+    sibs[pos], sibs[npos] = sibs[npos], sibs[pos]
+    for i, o in enumerate(sibs):
+        o["efx_index"] = i
+        try:
+            o.name = normalize._display_name(o, type_tag, i)
+        except Exception:
+            pass
 
-    # 交换 efx_index + 重建显示名（顶层条目命名同 entry 规则）
-    idx_a = int(obj.get("efx_index", 0))
-    idx_b = int(neighbor.get("efx_index", 0))
-    obj["efx_index"] = idx_b
-    neighbor["efx_index"] = idx_a
-    obj.name = _entry_display_name(idx_b, _get_entry_raw_label(obj))
-    neighbor.name = _entry_display_name(idx_a, _get_entry_raw_label(neighbor))
-
-    # 任一有标签 → 导出需按新顺序重建标签表
-    if int(obj.get("efx_has_label", 0)) or int(neighbor.get("efx_has_label", 0)):
-        root["labels_dirty"] = 1
+    # 顶层条目在标签表内 → 顺序变，导出需按新序重建标签表
+    root["labels_dirty"] = 1
 
     dir_str = "up" if direction == "UP" else "down"
-    report({"INFO"}, f"Moved {dir_str}: {obj.name} ↔ {neighbor.name}")
+    report({"INFO"}, f"Moved {dir_str}: {obj.name}")
     return {"FINISHED"}
 
 
@@ -314,45 +316,47 @@ class EFX_OT_move_attribute(bpy.types.Operator):
         return parent is not None and parent.get("~TYPE") == "EFX_ENTRY"
 
     def execute(self, context):
+        # 重构：列表重排 + 全组重编号（同 _move_labeled_entry），撞车/失败均不可能。
+        from . import normalize
         obj = context.active_object
         body = obj.parent  # EFX_ENTRY
 
-        # 收集同一 entry 下的全部 EFX_ATTRIBUTE，已按 efx_index 升序排列
-        siblings = _collect_siblings_by_type(body, "EFX_ATTRIBUTE")
-        if len(siblings) < 2:
+        # 同一 entry 下的 EFX_ATTRIBUTE 按 (efx_index, name) 稳定排序
+        sibs = [o for o in bpy.data.objects
+                if o.parent == body and o.get("~TYPE") == "EFX_ATTRIBUTE"]
+        sibs.sort(key=lambda o: (int(o.get("efx_index", 0)), o.name))
+        if len(sibs) < 2:
             self.report({"INFO"}, "Only 1 attribute, cannot move")
             return {"CANCELLED"}
 
-        # 找当前属性在列表中的位置
-        cur_idx = None
-        for i, sibling in enumerate(siblings):
-            if sibling == obj:
-                cur_idx = i
-                break
-
-        if cur_idx is None:
+        try:
+            pos = sibs.index(obj)
+        except ValueError:
             self.report({"ERROR"}, "Cannot find current attribute's position in the sibling list")
             return {"CANCELLED"}
 
         if self.direction == "UP":
-            if cur_idx == 0:
+            if pos == 0:
                 self.report({"INFO"}, "Already at the top, cannot move up")
                 return {"CANCELLED"}
-            neighbor = siblings[cur_idx - 1]
+            npos = pos - 1
         else:  # DOWN
-            if cur_idx == len(siblings) - 1:
+            if pos == len(sibs) - 1:
                 self.report({"INFO"}, "Already at the bottom, cannot move down")
                 return {"CANCELLED"}
-            neighbor = siblings[cur_idx + 1]
+            npos = pos + 1
 
-        # 执行交换（efx_index + 显示名）
-        _swap_objects(obj, neighbor, is_entry=False)
+        # 交换列表位置 → 全组重赋 efx_index=0..n-1 + 重建显示名
+        sibs[pos], sibs[npos] = sibs[npos], sibs[pos]
+        for i, o in enumerate(sibs):
+            o["efx_index"] = i
+            try:
+                o.name = normalize._display_name(o, "EFX_ATTRIBUTE", i)
+            except Exception:
+                pass
 
         dir_str = "up" if self.direction == "UP" else "down"
-        self.report(
-            {"INFO"},
-            f"EFX_ATTRIBUTE moved {dir_str}: {obj.name} ↔ {neighbor.name}",
-        )
+        self.report({"INFO"}, f"EFX_ATTRIBUTE moved {dir_str}: {obj.name}")
         return {"FINISHED"}
 
 
@@ -494,6 +498,17 @@ class EFX_OT_rename_entry(bpy.types.Operator):
         obj["efx_has_label"] = 1   # 边界 entry 提升为有标签
         obj.name = _entry_display_name(idx, new_name)
         root["labels_dirty"] = 1
+
+        # body_type = jamcrc(entry 名)（standard entry，实测 99.7%+ 命中，见
+        # memory play-type-is-jamcrc-of-name）。用户手动改名 = 改身份，必须重算，
+        # 否则名↔哈希不一致，按名字哈希定位该 entry 的外部工具会失效。
+        # extended（body_type≡1）/ root（≡ROOT_MARKER）不是名字哈希，不动。
+        if str(obj.get("entry_kind", "")) == "standard":
+            try:
+                from ..efx_format.hashes import jamcrc
+                obj["body_type"] = str(jamcrc(new_name) & 0xFFFFFFFF)
+            except Exception:
+                pass
 
         self.report({"INFO"}, f"Renamed to: {new_name} (written to label table on export)")
         return {"FINISHED"}

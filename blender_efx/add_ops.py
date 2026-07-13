@@ -278,27 +278,29 @@ def _read_source_counts(entry_obj: bpy.types.Object) -> dict:
 
 
 def _is_entry_in_eof(entry_obj: bpy.types.Object) -> bool:
-    """entry_obj 的 efx_index 是否出现在所属 EFX_ROOT 的 efx_eof_list 中。"""
-    root = entry_obj.parent
-    if root is None or root.get("~TYPE") != "EFX_ROOT":
-        return False
+    """entry_obj 是否在所属 EFX_ROOT 的 eof 直接触发集中（模型无关，委托 entry_action_ref）。"""
     try:
-        props = root.efx_eof_list
-    except AttributeError:
+        from . import entry_action_ref
+        return entry_action_ref.is_entry_in_eof(entry_obj)
+    except Exception:
         return False
-    try:
-        my_idx = int(entry_obj.get("efx_index", -1))
-    except (ValueError, TypeError):
-        return False
-    for item in props.items:
-        if item.is_ptr and item.body_ptr == entry_obj:
-            return True
-    return False
 
 
 def _append_to_eof(root_obj: bpy.types.Object,
                    entry_obj: bpy.types.Object) -> None:
-    """向 root_obj.efx_eof_list 末尾追加一条指向 entry_obj 的指针条目。"""
+    """把 entry_obj 加入 eof 直接触发集（hybrid 模型感知）。
+    per_entry → 置 efx_direct_trigger=True；opaque → 跳过（事件特效 eof 只读）；
+    旧 .blend → 追加 efx_eof_list 指针条目。"""
+    model = str(root_obj.get("eof_model", ""))
+    if model == "per_entry":
+        try:
+            entry_obj.efx_direct_trigger = True
+        except (AttributeError, TypeError):
+            pass
+        return
+    if model == "opaque":
+        return  # evc 事件特效 eof 非索引结构，不可追加
+    # 旧 .blend：efx_eof_list 指针条目
     try:
         props = root_obj.efx_eof_list
     except AttributeError:

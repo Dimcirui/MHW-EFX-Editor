@@ -651,13 +651,18 @@ class EFXAttributeProps(PropertyGroup):
 
     efx_dirty: BoolProperty(
         name="Modified",
-        description="Set True after a field is edited by the user; re-encode on export",
+        description=(
+            "Set True after a field is edited by the user. UI indicator only "
+            "(shows the '● Modified' badge) — does not affect export: exporting "
+            "always rebuilds from the field model when this attribute is editable, "
+            "regardless of this flag"
+        ),
         default=False,
     )
 
     raw_b64: StringProperty(
         name="Original Bytes (base64)",
-        description="base64 backup of data_bytes; used to restore on export if dirty=False or is_editable=False",
+        description="base64 backup of data_bytes; used as the opaque export fallback when is_editable=False, and per-field for any field never edited by the user",
     )
 
     field_items: CollectionProperty(
@@ -2136,18 +2141,22 @@ def get_attribute_data_bytes(obj: bpy.types.Object,
     """
     从 obj.efx_block 还原 data_bytes。
 
-    策略
+    策略（2026-07 退休 block 级 efx_dirty 门控，见 memory attribute-dirty-gate-retired）
     ----
-    - 若 efx_dirty=True 且 is_editable=True：
-        items_to_dict → AttrBlock.encode → 返回新字节（用户编辑生效）
-    - 否则：
-        raw_b64 → 原始字节（byte-perfect 回退）
+    - 若 is_editable=True（不再看 efx_dirty）：
+        schema 驱动的重建路径（rebuild_data_bytes / rebuild_custom_field_attribute /
+        rebuild_ptbehavior_attribute / rebuild_path_attribute_data_bytes 之一）
+        → 未编辑字段用 orig_b64 逐字段 verbatim、编辑字段重新 pack，返回新字节。
+        本函数唯一调用方 `io_tree._resolve_attribute_data_bytes` 已先做过同一
+        is_editable 判断才会调用到这里，故此处判断对当前调用链是重复但无害的
+        防御，保留是为了这个函数被直接调用时同样安全。
+    - 否则（is_editable=False，或编码异常）：
+        raw_b64 → 原始字节（opaque 回退）
     - L2 #1c（post-step）：若 type_hash==EXTERNREFERENCE 且 pointerized=True，
         额外调用 overlay_extern_ref_index 覆写 referenceIndex 字段（4 字节，偏移 4）。
     - L2 #1d（post-step）：若 type_hash==PTLIFE 或 PTCOLLISION 且 pointerized=True，
         额外调用 apply_attribute_ref_overlays 覆写 relationIndex / ieIndex 字段。
-        此步骤在上述两条路径之后执行，故 dirty=False（orig_b64）和 dirty=True（重建）
-        两条路径均受益。
+        此步骤在重建/回退两条路径之后执行，两条路径均受益。
 
     参数
     ----
@@ -2165,7 +2174,7 @@ def get_attribute_data_bytes(obj: bpy.types.Object,
     """
     bp = obj.efx_block
 
-    if bp.efx_dirty and bp.is_editable:
+    if bp.is_editable:
         try:
             from ..efx_format.structs import (
                 ATTR_SCHEMA_MAP,
