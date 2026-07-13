@@ -13,25 +13,20 @@ L2：路径仍是可编辑字符串（保 byte-perfect）；提供匹配指示 +
 import bpy
 from bpy.props import IntProperty, EnumProperty
 
+from ..blender_efx import root_collection as _rc
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 匹配工具
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _efx_roots():
-    """返回场景中所有 EFX：[(stem, collection, root_obj), ...]。"""
+    """返回场景中所有 EFX：[(stem, root_col), ...]（root_col 本身即 ~TYPE==EFX_ROOT 集合）。"""
     out = []
-    for col in bpy.data.collections:
-        root = None
-        for o in col.objects:
-            if o.get("~TYPE") == "EFX_ROOT":
-                root = o
-                break
-        if root is None:
-            continue
+    for col in _rc.all_root_collections():
         name = col.name
         stem = name[:-4] if name.lower().endswith(".efx") else name
-        out.append((stem, col, root))
+        out.append((stem, col))
     return out
 
 
@@ -42,14 +37,27 @@ def _path_stem(path):
 
 
 def find_efx_for_path(path):
-    """按 stem 找匹配的 efx 根对象；找不到返回 None。"""
+    """按 stem 找匹配的 efx 根集合；找不到返回 None。"""
     if not path:
         return None
     stem = _path_stem(path)
-    for s, _col, root in _efx_roots():
+    for s, root in _efx_roots():
         if s == stem:
             return root
     return None
+
+
+def _find_layer_collection(view_layer, target_col):
+    """在 view_layer 的图层集合树里找 target_col 对应的 LayerCollection（递归）。"""
+    def _walk(lc):
+        if lc.collection is target_col:
+            return lc
+        for child in lc.children:
+            found = _walk(child)
+            if found is not None:
+                return found
+        return None
+    return _walk(view_layer.layer_collection)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -76,10 +84,20 @@ class EPV_OT_jump_to_efx(bpy.types.Operator):
             self.report({"WARNING"}, f"No imported EFX matches '{path}'")
             return {"CANCELLED"}
 
+        # ROOT 是集合（2026-07 起不再是 Empty 对象），没有"选中它"这个概念——
+        # 改把它设为大纲的活动集合（触发 EFX Root/Direct Trigger 等 N 面板），
+        # 并额外选中/激活它下面的第一个 entry（保证视口里有可见的落点）。
+        lc = _find_layer_collection(context.view_layer, root)
+        if lc is not None:
+            context.view_layer.active_layer_collection = lc
+
         for o in context.selected_objects:
             o.select_set(False)
-        root.select_set(True)
-        context.view_layer.objects.active = root
+        entries = _rc.collect_top_level(root, "EFX_ENTRY")
+        if entries:
+            entries[0].select_set(True)
+            context.view_layer.objects.active = entries[0]
+
         self.report({"INFO"}, f"Jumped to EFX: {root.name}")
         return {"FINISHED"}
 
@@ -96,7 +114,7 @@ def _efx_enum_items(self, context):
     global _EFX_ENUM_CACHE
     roots = _efx_roots()
     if roots:
-        _EFX_ENUM_CACHE = [(s, s, "") for s, _c, _r in roots]
+        _EFX_ENUM_CACHE = [(s, s, "") for s, _c in roots]
     else:
         _EFX_ENUM_CACHE = [("", "(no imported EFX)", "")]
     return _EFX_ENUM_CACHE

@@ -30,6 +30,7 @@ from bpy.props import PointerProperty
 
 # ── 子模块（同包相对导入）────────────────────────────────────────────────────
 from . import i18n          # 中英双语化基础设施（语言状态 + T() + 切换算子）
+from . import root_collection  # ROOT 集合化：文件归属改由 Collection 承载（无依赖，最先注册）
 from . import operators
 from . import panels
 from . import io_tree       # 供外部直接访问，如 MCP 调用
@@ -107,6 +108,9 @@ def register():
     """注册扩展的全部 PropertyGroup、Operator 和 Panel 类。"""
     # ── 双语化基础设施：最先注册（语言切换算子 + 读回语言偏好；panels 绘制时要用 T()）─
     i18n.register()
+
+    # ── ROOT 集合化：Collection.efx_root_ptr 反向指针，全仓库找 root 的唯一依赖，最先注册 ──
+    root_collection.register()
 
     # ── L1.1a：先注册 PropertyGroup（顺序重要：子类先于容器类）────────────────
     # EFXFieldItem 必须在 EFXAttributeProps 之前注册，因为后者用 CollectionProperty(type=EFXFieldItem)
@@ -283,6 +287,9 @@ def unregister():
     # ── PropertyGroup（反序注销：先容器，再子类）────────────────────────────
     bpy.utils.unregister_class(fields.EFXAttributeProps)
     bpy.utils.unregister_class(fields.EFXFieldItem)
+
+    # ── ROOT 集合化反向指针：最后注销（其余模块可能在自身 unregister 里间接用到）──────
+    root_collection.unregister()
 
     # ── 双语化基础设施：最后注销 ──────────────────────────────────────────────
     i18n.unregister()

@@ -30,74 +30,36 @@ from bpy.props import (
 
 from . import io_tree
 from .i18n import T
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 内部工具：从 context 解析 EFX_ROOT 对象
+# 内部工具：从 context 解析 EFX_ROOT 集合
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _find_efx_root(context):
     """
-    从 context.active_object 向上查找 ~TYPE == 'EFX_ROOT' 的对象。
+    解析当前活动 EFX 顶层文件集合（root_col）。
 
-    搜索策略：
-      1. 先检查 active_object 本身是否就是 EFX_ROOT。
-      2. 沿 parent 链向上爬，找到第一个 ~TYPE == 'EFX_ROOT'。
-      3. 若上述均未找到，在 active_object 所在的全部集合中
-         枚举集合里的对象，寻找 ~TYPE == 'EFX_ROOT'。
-      4. 仍找不到则返回 None。
+    优先 context.active_object 归属的集合（O(1)，见 root_collection.find_root_collection）；
+    若无活动对象或解析不到，退回 context.collection（大纲当前选中的集合，可能就是
+    某个 EFX_ROOT 集合本身，比如用户直接点了顶层紫色集合）。
 
     返回
     ----
-    bpy.types.Object 或 None
+    bpy.types.Collection 或 None
     """
     obj = context.active_object
-    if obj is None:
-        return None
+    if obj is not None:
+        root = _rc.find_root_collection(obj)
+        if root is not None:
+            return root
 
-    # ── 策略 1 & 2：自身或祖先链 ────────────────────────────────────────────
-    cur = obj
-    while cur is not None:
-        if cur.get("~TYPE") == "EFX_ROOT":
-            return cur
-        cur = cur.parent
-
-    # ── 策略 3：同集合内搜索 ─────────────────────────────────────────────────
-    # 收集 active_object 所属的全部集合（对象可属于多个集合）
-    for col in obj.users_collection:
-        # 向上找顶层集合（parent_recursive），也检查同集合兄弟
-        for candidate in col.objects:
-            if candidate.get("~TYPE") == "EFX_ROOT":
-                return candidate
-        # 遍历父集合层级
-        for parent_col in _parent_collections(col, context.scene.collection):
-            for candidate in parent_col.objects:
-                if candidate.get("~TYPE") == "EFX_ROOT":
-                    return candidate
+    col = getattr(context, "collection", None)
+    if _rc.is_root_collection(col):
+        return col
 
     return None
-
-
-def _parent_collections(col, scene_collection):
-    """
-    生成 col 在场景集合树中所有祖先集合（不含 col 自身）。
-    用于策略 3 向上枚举集合层级。
-    """
-    results = []
-    _walk_for_parent(scene_collection, col, results)
-    return results
-
-
-def _walk_for_parent(current, target, acc):
-    """递归：若 current 的子集合包含 target，把 current 加入 acc 并向上继续。"""
-    for child in current.children:
-        if child == target:
-            acc.append(current)
-            return True
-        if _walk_for_parent(child, target, acc):
-            acc.append(current)
-            return True
-    return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -267,17 +229,12 @@ _last_export_target_seen = None
 
 
 def _efx_root_in_collection(col):
-    """col 直属对象里的 EFX_ROOT，找不到返回 None。"""
-    if col is None:
-        return None
-    for o in col.objects:
-        if o.get("~TYPE") == "EFX_ROOT":
-            return o
-    return None
+    """col 本身是否是合法 EFX_ROOT 顶层文件集合；是则原样返回，否则 None。"""
+    return col if _rc.is_root_collection(col) else None
 
 
 def _export_target_poll(self, col):
-    """WindowManager.efx_export_target 的 poll：只允许选含 EFX_ROOT 对象的 EFX 文件集合。"""
+    """WindowManager.efx_export_target 的 poll：只允许选 EFX_ROOT 顶层文件集合本身。"""
     return _efx_root_in_collection(col) is not None
 
 
@@ -299,7 +256,7 @@ def _resolve_default_export_collection(context):
     """
     导出目标集合的默认值解析：
       1. Scene.efx_active_efx（N 面板 Active EFX 选择器）已指向合法 EFX 集合 → 用它。
-      2. 否则回退：当前活动对象所属的 EFX 顶层集合（_find_efx_root 向上查找 EFX_ROOT 再取其集合）。
+      2. 否则回退：当前活动对象所属的 EFX 顶层文件集合（_find_efx_root 解析）。
       3. 都没有 → None（留给用户在导出弹窗里自己选）。
     """
     scn = getattr(context, "scene", None)
@@ -309,9 +266,7 @@ def _resolve_default_export_collection(context):
 
     root = _find_efx_root(context)
     if root is not None:
-        cols = root.users_collection
-        if cols:
-            return cols[0]
+        return root
     return None
 
 
@@ -980,48 +935,42 @@ class EFX_OT_new_efx(bpy.types.Operator):
 
     def execute(self, context):
         import base64 as _b64
-        from . import io_tree
 
         stem = self.name.strip() or "new_efx"
         col_name = stem + ".efx"
 
-        # ── 顶层集合（紫色，与导入保持一致）──────────────────────────────────
+        # ── 顶层文件集合（紫色，~TYPE=EFX_ROOT，本身即"文件"，不再建 Empty）────────
         scene_col = context.scene.collection
-        root_col = io_tree._new_collection(col_name, scene_col)
-        root_col.color_tag = "COLOR_06"
-
-        # ── EFX_ROOT Empty ────────────────────────────────────────────────────
-        root_obj = io_tree._new_empty(stem + "_ROOT", root_col)
-        root_obj["~TYPE"] = "EFX_ROOT"
+        root_col = _rc.new_root_collection(col_name, scene_col)
 
         # header：使用语料库最普遍值（从 78 精选样本统计）
-        root_obj["hdr_signature"]       = "45465800"      # "EFX\x00"
-        root_obj["hdr_version"]         = "711800"
-        root_obj["hdr_constant"]        = "402786304,0,1254190883,402786304,402786304"
-        root_obj["hdr_efxr"]            = "65667872"      # "efxr"
-        root_obj["hdr_unkn0"]           = "1"
-        root_obj["hdr_unkn1"]           = "4294967295"    # 0xFFFFFFFF
-        root_obj["hdr_count_body"]      = "0"
-        root_obj["hdr_label_size"]      = "1"
-        root_obj["hdr_count_play"]      = "0"
-        root_obj["hdr_count_extern"]    = "0"
-        root_obj["hdr_count_subselect"] = "0"
-        root_obj["hdr_subselect_size"]  = "0"
-        root_obj["hdr_count_eof"]       = "0"
-        root_obj["hdr_double_buffer"]   = "15000"
+        root_col["hdr_signature"]       = "45465800"      # "EFX\x00"
+        root_col["hdr_version"]         = "711800"
+        root_col["hdr_constant"]        = "402786304,0,1254190883,402786304,402786304"
+        root_col["hdr_efxr"]            = "65667872"      # "efxr"
+        root_col["hdr_unkn0"]           = "1"
+        root_col["hdr_unkn1"]           = "4294967295"    # 0xFFFFFFFF
+        root_col["hdr_count_body"]      = "0"
+        root_col["hdr_label_size"]      = "1"
+        root_col["hdr_count_play"]      = "0"
+        root_col["hdr_count_extern"]    = "0"
+        root_col["hdr_count_subselect"] = "0"
+        root_col["hdr_subselect_size"]  = "0"
+        root_col["hdr_count_eof"]       = "0"
+        root_col["hdr_double_buffer"]   = "15000"
 
         # label_bytes：单 null 字节；labels_dirty=1 让导出端按实际内容重建
-        root_obj["label_bytes"]  = _b64.b64encode(b"\x00").decode("ascii")
-        root_obj["label_tail"]   = ""
-        root_obj["labels_dirty"] = 1
-        root_obj["eof_ints"]     = ""
-        root_obj["eof_tail"]     = ""
+        root_col["label_bytes"]  = _b64.b64encode(b"\x00").decode("ascii")
+        root_col["label_tail"]   = ""
+        root_col["labels_dirty"] = 1
+        root_col["eof_ints"]     = ""
+        root_col["eof_tail"]     = ""
 
-        # ── 4 个空子集合（与导入时命名一致）──────────────────────────────────
-        io_tree._new_collection(stem + "_2 Entry",     root_col)
-        io_tree._new_collection(stem + "_0 Action",    root_col)
-        io_tree._new_collection(stem + "_1 Extern",    root_col)
-        io_tree._new_collection(stem + "_3 Subselect", root_col)
+        # ── 4 个空叶子子集合（与导入时命名一致，~TYPE + efx_root_ptr 反向指针）───────
+        _rc.new_leaf_collection(stem + "_2 Entry",     root_col, "EFX_ENTRY")
+        _rc.new_leaf_collection(stem + "_0 Action",    root_col, "EFX_ACTION")
+        _rc.new_leaf_collection(stem + "_1 Extern",    root_col, "EFX_EXTERN")
+        _rc.new_leaf_collection(stem + "_3 Subselect", root_col, "EFX_SUBSELECT")
 
         # Active EFX 自动切换到新建集合
         context.scene.efx_active_efx = root_col

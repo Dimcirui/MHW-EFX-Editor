@@ -30,6 +30,7 @@ import bpy
 
 from ..efx_format.hashes import MESH
 from ..efx_format.structs import extract_paths
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -67,9 +68,7 @@ def _attribute_mod3_relpath(blk_obj):
 
 def iter_mesh_attributes(root_obj):
     """遍历 EFX_ROOT 下所有 MESH 属性对象，yield (blk_obj, mod3_relpath)（仅含非空路径的）。"""
-    for body in root_obj.children:
-        if body.get("~TYPE") != "EFX_ENTRY":
-            continue
+    for body in _rc.collect_top_level(root_obj, "EFX_ENTRY"):
         for blk in body.children:
             rel = _attribute_mod3_relpath(blk)
             if rel is not None:

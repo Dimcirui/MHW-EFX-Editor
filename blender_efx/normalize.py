@@ -39,8 +39,10 @@ reorder 重排算子共用。三件事：
 
 import bpy
 
+from . import root_collection as _rc
 
-# 顶层段（parent==root、参与 efx_index 重编号）
+
+# 顶层段（归属 root 所在文件集合、参与 efx_index 重编号）
 _ROOT_GROUP_TYPES = ("EFX_ENTRY", "EFX_ACTION", "EFX_EXTERN", "EFX_SUBSELECT")
 
 # 满命名合成标签前缀（仅 label 表条目：action/extern/entry；subselect 不在标签表）
@@ -57,9 +59,10 @@ def _nn(idx: int) -> str:
 
 
 def _collect_group(root, type_tag: str) -> list:
-    """收集 root 直接子对象中 ~TYPE==type_tag 的对象，按 (efx_index, name) 稳定排序。"""
-    objs = [o for o in bpy.data.objects
-            if o.parent == root and o.get("~TYPE") == type_tag]
+    """收集 root 文件集合下 ~TYPE==type_tag 的顶层对象，按 (efx_index, name) 稳定排序
+    （root_collection.collect_top_level 已按 efx_index 排序，这里补 name 次级键，
+    保证 Shift+D 撞车出的同 index 副本按 name 拆出确定前后顺序）。"""
+    objs = _rc.collect_top_level(root, type_tag)
     objs.sort(key=lambda o: (int(o.get("efx_index", 0)), o.name))
     return objs
 

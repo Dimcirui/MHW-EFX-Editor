@@ -41,13 +41,13 @@ blender_efx/add_ops.py  —  L2 #3c：从「整 entry 预设」新增 entry + Ac
 
 import json
 import os
-import re
 import time
 
 import bpy
 from bpy.props import EnumProperty, PointerProperty, StringProperty
 
 from .presets import _presets_root
+from . import root_collection as _rc
 
 # poll_message_set 是 4.0+ API（3.6 上不存在），用于给禁用状态的按钮显示原因提示。
 _HAS_POLL_MESSAGE_SET = hasattr(bpy.types.Operator, "poll_message_set")
@@ -86,31 +86,21 @@ _EXTENDED_PROP_KEYS = (
 # Active EFX root helper
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _root_obj_in_collection(col):
-    """返回集合内直接的 EFX_ROOT 对象（root_obj 直接 link 在 EFX 文件集合里），无则 None。"""
-    if col is None:
-        return None
-    for o in col.objects:
-        if o.get("~TYPE") == "EFX_ROOT":
-            return o
-    return None
-
-
 def get_active_efx_root(context):
     """
-    解析当前活动 EFX 根对象（供新增 entry / 复制粘贴 / 导出等用）。
+    解析当前活动 EFX 根集合（供新增 entry / 复制粘贴 / 导出等用）。
 
-    优先 scene.efx_active_efx（用户在 N 面板选的 EFX 文件**集合**）→ 取其内的 EFX_ROOT 对象；
-    否则回退：活动对象所属的 EFX 顶层（向上找 EFX_ROOT）——这样跨文件复制/粘贴 entry 时，
-    只要点一下目标文件里的任意对象就行，不必来回切 Active EFX 选择器；
-    否则扫场景：若恰好有一个 EFX_ROOT 对象，返回它；
+    优先 scene.efx_active_efx（用户在 N 面板选的 EFX 文件**集合**，本身即 ROOT）；
+    否则回退：活动对象所属的 EFX 顶层集合（find_root_collection）——这样跨文件
+    复制/粘贴 entry 时，只要点一下目标文件里的任意对象就行，不必来回切 Active EFX 选择器；
+    否则扫场景：若恰好有一个 EFX_ROOT 集合，返回它；
     否则返回 None（让用户显式选择）。
     """
     scn = getattr(context, "scene", None)
     if scn is not None:
-        root = _root_obj_in_collection(getattr(scn, "efx_active_efx", None))
-        if root is not None:
-            return root
+        active = getattr(scn, "efx_active_efx", None)
+        if _rc.is_root_collection(active):
+            return active
 
     try:
         from .operators import _find_efx_root
@@ -120,7 +110,7 @@ def get_active_efx_root(context):
     except Exception:
         pass
 
-    roots = [o for o in bpy.data.objects if o.get("~TYPE") == "EFX_ROOT"]
+    roots = _rc.all_root_collections()
     if len(roots) == 1:
         return roots[0]
     return None
@@ -225,12 +215,10 @@ def _collect_attribute_dicts(entry_obj: bpy.types.Object) -> list:
     import base64
     from . import io_tree
 
-    root = entry_obj.parent  # EFX_ROOT
+    root = _rc.find_root_collection(entry_obj)  # 顶层文件集合
 
     def _localmap(type_tag):
-        objs = [o for o in bpy.data.objects
-                if o.parent == root and o.get("~TYPE") == type_tag]
-        objs.sort(key=lambda o: int(o.get("efx_index", 0)))
+        objs = _rc.collect_top_level(root, type_tag)
         return {o: i for i, o in enumerate(objs)}
 
     extern_map = _localmap("EFX_EXTERN") if root is not None else {}
@@ -257,15 +245,15 @@ def _collect_attribute_dicts(entry_obj: bpy.types.Object) -> list:
 
 def _read_source_counts(entry_obj: bpy.types.Object) -> dict:
     """
-    从 entry_obj 的根对象（parent，~TYPE=='EFX_ROOT'）读出源文件段计数，
+    从 entry_obj 所属的根集合读出源文件段计数，
     用于 #3c 跨文件断引用判定（区分"源有效但目标越界"与"源也越界"）。
 
     根属性 hdr_count_extern / hdr_count_body / hdr_count_play 都是十进制字符串。
     取不到（防御）→ 该项存 0。
     """
     counts = {"extern": 0, "entry": 0, "action": 0}
-    root = entry_obj.parent
-    if root is None or root.get("~TYPE") != "EFX_ROOT":
+    root = _rc.find_root_collection(entry_obj)
+    if root is None:
         return counts
     for key, attr in (("extern", "hdr_count_extern"),
                       ("entry", "hdr_count_body"),
@@ -347,9 +335,9 @@ def _normalize_legacy_entry_preset(preset: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def add_entry_from_preset(preset_path: str,
-                         root_obj: bpy.types.Object) -> bpy.types.Object:
+                         root_obj: bpy.types.Collection) -> bpy.types.Object:
     """
-    按 entry 预设新建一个 EFX_ENTRY 对象（含属性子对象），挂到 root_obj 下。
+    按 entry 预设新建一个 EFX_ENTRY 对象（含属性子对象），归属 root_obj 文件集合。
 
     复用 io_tree 的构建逻辑，属性 data_bytes 逐字保留为 raw（v1 不跨文件指针化）。
     新增后置 root_obj["labels_dirty"]=1，导出端按实际内容重算 header。
@@ -357,7 +345,7 @@ def add_entry_from_preset(preset_path: str,
     参数
     ----
     preset_path : str    — entry 预设 JSON 路径
-    root_obj    : Object — 目标 EFX_ROOT 对象
+    root_obj    : Collection — 目标 EFX_ROOT 顶层文件集合
 
     返回
     ----
@@ -381,7 +369,7 @@ def add_entry_from_preset(preset_path: str,
 
 
 def add_entry_from_preset_dict(preset: dict,
-                              root_obj: bpy.types.Object) -> bpy.types.Object:
+                              root_obj: bpy.types.Collection) -> bpy.types.Object:
     """
     按 preset dict 新建 entry（add_entry_from_preset 的核心；供文件版与"粘贴Entry"内存版共用）。
 
@@ -406,12 +394,11 @@ def add_entry_from_preset_dict(preset: dict,
 
     # ── 计算新 efx_index = 现有 entry 最大 index + 1 ───────────────────────────
     max_idx = -1
-    for obj in bpy.data.objects:
-        if obj.parent == root_obj and obj.get("~TYPE") == "EFX_ENTRY":
-            try:
-                max_idx = max(max_idx, int(obj.get("efx_index", 0)))
-            except (ValueError, TypeError):
-                pass
+    for obj in _rc.collect_top_level(root_obj, "EFX_ENTRY"):
+        try:
+            max_idx = max(max_idx, int(obj.get("efx_index", 0)))
+        except (ValueError, TypeError):
+            pass
     new_index = max_idx + 1
 
     # ── 建 entry 对象 ──────────────────────────────────────────────────────────
@@ -426,7 +413,7 @@ def add_entry_from_preset_dict(preset: dict,
     entry_obj["efx_raw_label"] = raw_label
     entry_obj["efx_has_label"] = 0           # 先置 0；下方在安全时提升
     entry_obj["entry_kind"]     = entry_kind
-    entry_obj.parent           = root_obj
+    # 归属靠 col_entry（其 efx_root_ptr 指回 root_obj），不再额外 parent 到 ROOT
 
     # 若预设源 entry 有名字、且追加位置处于标签前缀边界（前面条目全有标签），
     # 给新 entry 一个真正的标签槽——名字才能持久化、也可被重命名。
@@ -481,7 +468,7 @@ def add_entry_from_preset_dict(preset: dict,
 
 def _repointerize_refs(preset: dict,
                        entry_obj: bpy.types.Object,
-                       root_obj: bpy.types.Object) -> None:
+                       root_obj: bpy.types.Collection) -> None:
     """
     对刚新增 entry（entry_obj）下的引用属性（EXTERNREFERENCE/PTLIFE/PTCOLLISION），
     按**目标文件**（root_obj）的段重新指针化。
@@ -499,23 +486,18 @@ def _repointerize_refs(preset: dict,
     from ..efx_format.hashes import EXTERNREFERENCE, PTLIFE, PTCOLLISION
 
     # 1. 构建目标文件的段映射（按 efx_index）+ 计数
-    target_extern_map = {}
-    target_entry_map = {}
-    target_play_map = {}
-    for obj in bpy.data.objects:
-        if obj.parent is not root_obj:
-            continue
-        t = obj.get("~TYPE")
-        try:
-            idx = int(obj.get("efx_index", 0))
-        except (ValueError, TypeError):
-            continue
-        if t == "EFX_EXTERN":
-            target_extern_map[idx] = obj
-        elif t == "EFX_ENTRY":
-            target_entry_map[idx] = obj
-        elif t == "EFX_ACTION":
-            target_play_map[idx] = obj
+    def _idx_map(type_tag):
+        out = {}
+        for obj in _rc.collect_top_level(root_obj, type_tag):
+            try:
+                out[int(obj.get("efx_index", 0))] = obj
+            except (ValueError, TypeError):
+                pass
+        return out
+
+    target_extern_map = _idx_map("EFX_EXTERN")
+    target_entry_map = _idx_map("EFX_ENTRY")
+    target_play_map = _idx_map("EFX_ACTION")
 
     target_count_extern = len(target_extern_map)
     target_count_entry = len(target_entry_map)
@@ -614,38 +596,15 @@ def _build_attributes(io_tree, AttrBlock, attribute_list, entry_obj,
     io_tree._build_attr_attribute_children(attr_blocks, entry_obj, col_entry, raw_label)
 
 
-def _find_entry_collection(root_obj: bpy.types.Object):
+def _find_entry_collection(root_obj: bpy.types.Collection):
     """
-    找新增 entry 应落入的 Entry 集合：
-      1. 优先：任一现有 EFX_ENTRY 子对象的 users_collection[0]。
-      2. 回退：root_obj 集合树里名字以 "_2 Entry" 结尾的集合。
-      3. 兜底：root_obj 的 users_collection[0]（保证对象可见）。
+    找新增 entry 应落入的 Entry 叶子集合：直接读 root_obj（顶层文件集合）下
+    ~TYPE=="EFX_ENTRY_COLLECTION" 的子集合（O(1)，不再靠名字后缀猜）。
+    极端兜底（叶子集合缺失，理论不该发生）：场景主集合。
     """
-    # 1. 现有 entry 所在集合
-    for obj in bpy.data.objects:
-        if obj.parent == root_obj and obj.get("~TYPE") == "EFX_ENTRY":
-            cols = obj.users_collection
-            if cols:
-                return cols[0]
-
-    # 2. root 集合树里找 "_2 Entry" 集合
-    root_cols = list(root_obj.users_collection)
-    visited = set()
-    stack = list(root_cols)
-    while stack:
-        col = stack.pop()
-        if col.name in visited:
-            continue
-        visited.add(col.name)
-        if re.search(r'_2 Entry(\.\d+)?$', col.name):
-            return col
-        stack.extend(col.children)
-
-    # 3. 兜底
-    if root_cols:
-        return root_cols[0]
-
-    # 极端兜底：场景主集合
+    col = _rc.get_leaf_collection(root_obj, "EFX_ENTRY")
+    if col is not None:
+        return col
     return bpy.context.scene.collection
 
 
@@ -896,8 +855,8 @@ _CLASSES = (
 
 
 def _active_efx_poll(self, col):
-    """Scene.efx_active_efx 的 poll：仅允许选含 EFX_ROOT 对象的 EFX 文件集合。"""
-    return any(o.get("~TYPE") == "EFX_ROOT" for o in col.objects)
+    """Scene.efx_active_efx 的 poll：仅允许选顶层 EFX 文件集合本身（~TYPE==EFX_ROOT）。"""
+    return _rc.is_root_collection(col)
 
 
 # EnumProperty 动态回调缓存（GC 陷阱说明见 panels.py 顶部）。

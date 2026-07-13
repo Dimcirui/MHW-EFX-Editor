@@ -99,6 +99,7 @@ from bpy.types import PropertyGroup
 
 from .subselect import build_local_index_map
 from .i18n import T
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -119,27 +120,13 @@ _SENTINEL_INT32 = -1
 # poll 函数
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _find_root_obj(obj):
-    """沿 parent 链向上找 ~TYPE == 'EFX_ROOT' 的对象，找不到返回 None。"""
-    cur = obj
-    while cur is not None:
-        if cur.get("~TYPE") == "EFX_ROOT":
-            return cur
-        cur = cur.parent
-    return None
-
-
 def _same_root_as_active(obj):
-    """obj 是否与当前活动对象处于同一 EFX 文件（同一 EFX_ROOT）。
+    """obj 是否与当前活动对象处于同一 EFX 文件（同一 root_col）。
     活动对象或任一方无 root 时不限制（返回 True），仅在确属不同 root 时排除。"""
     editing = getattr(bpy.context, "active_object", None)
     if editing is None:
         return True
-    root_self = _find_root_obj(editing)
-    root_obj = _find_root_obj(obj)
-    if root_self is not None and root_obj is not None and root_self is not root_obj:
-        return False
-    return True
+    return _rc.same_root(editing, obj)
 
 
 def _entry_object_poll(self, obj):
@@ -924,12 +911,11 @@ class EFX_OT_eof_toggle_entry(bpy.types.Operator):
         obj = context.active_object
         if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
             return False
-        root = obj.parent
-        return root is not None and root.get("~TYPE") == "EFX_ROOT"
+        return _rc.find_root_collection(obj) is not None
 
     def execute(self, context):
         entry_obj = context.active_object
-        root = entry_obj.parent
+        root = _rc.find_root_collection(entry_obj)
 
         # per_entry 模型（新导入）：直接翻转 entry 的 efx_direct_trigger 布尔。
         if str(root.get("eof_model", "")) == "per_entry":
@@ -971,8 +957,8 @@ class EFX_OT_eof_toggle_entry(bpy.types.Operator):
 
 def is_entry_in_eof(entry_obj: bpy.types.Object) -> bool:
     """查询 entry_obj 是否在所属根文件的 eof 直接触发集中。供面板绘制使用。"""
-    root = entry_obj.parent if entry_obj else None
-    if root is None or root.get("~TYPE") != "EFX_ROOT":
+    root = _rc.find_root_collection(entry_obj) if entry_obj else None
+    if root is None:
         return False
     # per_entry 模型：直接读布尔。
     if str(root.get("eof_model", "")) == "per_entry":
@@ -998,14 +984,13 @@ class EFX_OT_eof_add_entry(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        root = context.active_object
-        if root is None or root.get("~TYPE") != "EFX_ROOT":
+        if not _rc.is_root_collection(context.collection):
             return False
         wm = context.window_manager
         return getattr(wm, "efx_eof_entry_to_add", None) is not None
 
     def execute(self, context):
-        root = context.active_object
+        root = context.collection
         wm = context.window_manager
         entry_obj = wm.efx_eof_entry_to_add
         if entry_obj is None:
@@ -1038,11 +1023,10 @@ class EFX_OT_eof_remove_entry(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ROOT"
+        return _rc.is_root_collection(context.collection)
 
     def execute(self, context):
-        root = context.active_object
+        root = context.collection
         try:
             props = root.efx_eof_list
         except AttributeError:
@@ -1064,20 +1048,17 @@ class EFX_PT_eof_list(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ROOT"
+        return _rc.is_root_collection(context.collection)
 
     def draw(self, context):
         layout = self.layout
-        obj = context.active_object
+        obj = context.collection
         model = str(obj.get("eof_model", ""))
 
         # ── per_entry 模型（新导入的干净文件）：每个 entry 一个直接触发勾选 ──────────
         # 载体下放到 entry 的 efx_direct_trigger，悬空/raw 噪声从原理上不存在。
         if model == "per_entry":
-            entries = [c for c in bpy.data.objects
-                       if c.parent == obj and c.get("~TYPE") == "EFX_ENTRY"]
-            entries.sort(key=lambda o: int(o.get("efx_index", 0)))
+            entries = _rc.collect_top_level(obj, "EFX_ENTRY")
             n_active = sum(1 for e in entries if getattr(e, "efx_direct_trigger", False))
             layout.label(text=T("ptref.game_activated_entries") + f"({n_active})", icon="SORTBYEXT")
             col = layout.column(align=True)
@@ -1117,8 +1098,7 @@ class EFX_PT_eof_list(bpy.types.Panel):
             return
 
         # 当前 entry 数（有效 eof 索引上界）：判定 raw 值是否越界空槽哨兵
-        n_bodies = sum(1 for c in bpy.data.objects
-                       if c.parent == obj and c.get("~TYPE") == "EFX_ENTRY")
+        n_bodies = len(_rc.collect_top_level(obj, "EFX_ENTRY"))
         has_oob_raw = False
 
         col = layout.column(align=True)

@@ -37,6 +37,7 @@ from bpy.props import (
 from bpy.types import PropertyGroup, Operator
 
 from .i18n import T
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -93,29 +94,6 @@ def _collect_typed_objects(col, type_tag: str, out: list) -> None:
         _collect_typed_objects(child_col, type_tag, out)
 
 
-def find_entry_collection(root_obj: bpy.types.Object):
-    """
-    从 EFX_ROOT 对象出发，找到 Entry 段集合（名含 ' Entry' 后缀的子集合）。
-
-    返回 bpy.types.Collection 或 None（找不到时）。
-    在导出时用于构建 entry_index_map。
-    """
-    for col in bpy.data.collections:
-        # Entry 集合命名规则：<file_stem>_2 Entry（见 io_tree.py §4）
-        if col.name.endswith("_2 Entry"):
-            # 验证：该集合是 root_obj 所在根集合的子集合
-            for parent_col in bpy.data.collections:
-                if col.name in [c.name for c in parent_col.children]:
-                    # 再验证 root_obj 在 parent_col 里
-                    if root_obj in list(parent_col.objects):
-                        return col
-    # 宽松回退：只匹配名字
-    for col in bpy.data.collections:
-        if col.name.endswith("_2 Entry"):
-            return col
-    return None
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # §2  PropertyGroup：Subselect 结构化存储
 # ─────────────────────────────────────────────────────────────────────────────
@@ -144,30 +122,17 @@ def _table_type_hint(table_type_str: str) -> str:
     return f"{hexs}  bits {','.join(bits)}"
 
 
-def _find_root_obj(obj):
-    """沿 parent 链向上找 ~TYPE == 'EFX_ROOT' 的对象，找不到返回 None。"""
-    cur = obj
-    while cur is not None:
-        if cur.get("~TYPE") == "EFX_ROOT":
-            return cur
-        cur = cur.parent
-    return None
-
-
 def _entry_object_poll(self, obj):
     """PointerProperty poll：只允许选 ~TYPE == 'EFX_ENTRY'，且限定为活动对象
-    所在 EFX 文件（同一 EFX_ROOT）内的 entry——多 EFX 集合并存时防串文件。
+    所在 EFX 文件（同一 root_col）内的 entry——多 EFX 集合并存时防串文件。
     已从所有集合解链的孤儿对象（Purge 可清除）排除。"""
     if obj.get("~TYPE") != "EFX_ENTRY":
         return False
     if not obj.users_collection:
         return False
     editing = getattr(bpy.context, "active_object", None)
-    if editing is not None:
-        root_self = _find_root_obj(editing)
-        root_obj = _find_root_obj(obj)
-        if root_self is not None and root_obj is not None and root_self is not root_obj:
-            return False
+    if editing is not None and not _rc.same_root(editing, obj):
+        return False
     return True
 
 

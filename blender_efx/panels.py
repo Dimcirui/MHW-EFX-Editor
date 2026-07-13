@@ -73,6 +73,7 @@ from . import reorder as _reorder
 # 中英双语化：T() 查表 + 语言切换行
 from . import i18n
 from .i18n import T
+from . import root_collection as _rc
 # Extern 字段展开面板
 from . import extern_props as _extern_props
 
@@ -1174,33 +1175,38 @@ class EFX_PT_attribute_fields_object(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_root_props  —  属性编辑器 Object Properties（选中 EFX_ROOT 时显示）
+# EFX_PT_root_props  —  VIEW_3D N 面板（选中 EFX_ROOT 顶层文件集合时显示）
 #   只在 ROOT 对象上暴露 filesize_double（doubleBuffer）编辑，避免主面板臃肿。
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_root_props(bpy.types.Panel):
-    """EFX 根属性（属性编辑器 → Object Properties，选中 EFX_ROOT 时显示）"""
+    """EFX 根属性（VIEW_3D N 面板，选中 EFX_ROOT 顶层文件集合时显示）
 
-    bl_space_type   = "PROPERTIES"
-    bl_region_type  = "WINDOW"
-    bl_context      = "object"
-    bl_label        = "EFX Root"
-    bl_options      = {"DEFAULT_CLOSED"}
+    2026-07 ROOT 集合化后不再是 Object Properties 面板——Properties 编辑器的
+    "object" 上下文只在有活动对象时显示，而 ROOT 现在是 Collection，没有对应的
+    活动对象。改为 VIEW_3D 侧栏，poll 读 context.collection（大纲当前选中的集合），
+    与 EFX_PT_eof_list 同一套触发机制。
+    """
+
+    bl_space_type  = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category    = "EFX"
+    bl_label       = "EFX Root"
+    bl_options     = {"DEFAULT_CLOSED"}
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ROOT"
+        return _rc.is_root_collection(context.collection)
 
     def draw(self, context):
         layout = self.layout
-        obj = context.active_object
+        col = context.collection
         # filesize_double（doubleBuffer）：运行时内存缓冲提示，过小会致特效消失。
         # 导出对话框勾「自动重算」会按 2.75× 文件大小自动抬高（默认开）。
-        if obj is not None and "hdr_double_buffer" in obj:
+        if col is not None and "hdr_double_buffer" in col:
             box = layout.box()
             box.label(text=T("entry.double_buffer"), icon="MODIFIER")
-            box.prop(obj, '["hdr_double_buffer"]', text="")
+            box.prop(col, '["hdr_double_buffer"]', text="")
             tip = box.row()
             tip.enabled = False
             tip.label(text=T("entry.double_buffer_tip"))

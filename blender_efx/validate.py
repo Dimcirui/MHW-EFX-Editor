@@ -38,6 +38,7 @@ import bpy
 
 from .operators import _find_efx_root
 from .i18n import T
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -45,7 +46,14 @@ from .i18n import T
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _children_by_type(parent_obj, type_tag: str) -> list:
-    """收集 parent_obj 的直接子对象中 ~TYPE == type_tag 的全部对象。"""
+    """
+    收集 parent_obj 下 ~TYPE == type_tag 的对象。
+    parent_obj 是顶层文件集合（Collection，entry/action/extern/subselect 场景）时走
+    集合归属收集；是 EFX_ENTRY 对象（attribute 场景）时走原 parent 收集（不受
+    ROOT 集合化影响）。
+    """
+    if isinstance(parent_obj, bpy.types.Collection):
+        return _rc.collect_top_level(parent_obj, type_tag)
     return [
         o for o in bpy.data.objects
         if o.parent == parent_obj and o.get("~TYPE") == type_tag

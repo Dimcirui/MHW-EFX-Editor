@@ -49,6 +49,7 @@ from bpy.types import Operator
 
 from .i18n import T
 from . import session_core as _sc
+from . import root_collection as _rc
 
 _TEMP_COLLECTION = "EFX ES3D Preview"
 _PREVIEW_MARKER = "~EFX_ES3D_PREVIEW"   # 预览对象标记（无 Python 状态，标记扫描派生活跃/清理）
@@ -389,22 +390,15 @@ def resync_if_active(es3d_obj):
 
 
 def _resolve_root(obj):
-    cur = obj
-    while cur is not None:
-        if cur.get("~TYPE") == "EFX_ROOT":
-            return cur
-        cur = cur.parent
-    return None
+    return _rc.find_root_collection(obj)
 
 
 def _all_efx_roots():
-    return [o for o in bpy.data.objects if o.get("~TYPE") == "EFX_ROOT"]
+    return _rc.all_root_collections()
 
 
 def _iter_scope_es3d_attributes(root):
-    for body in root.children:
-        if body.get("~TYPE") != "EFX_ENTRY":
-            continue
+    for body in _rc.collect_top_level(root, "EFX_ENTRY"):
         for blk in body.children:
             if _is_es3d_attribute(blk):
                 yield blk

@@ -41,6 +41,7 @@ from bpy.props import StringProperty
 from bpy.types import Operator
 
 from .i18n import T
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -48,44 +49,9 @@ from .i18n import T
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _find_root_collection(obj: bpy.types.Object):
-    """
-    给任意 EFX 对象，找到它所属的顶层 EFX 集合（即紫色 .efx 集合）。
-
-    策略
-    ----
-    顶层 EFX 集合命名约定：文件名含 '.efx'（如 'boom.efx'）。
-    从 bpy.data.collections 中找到包含 obj 或其祖先的、名含 '.efx' 的集合。
-
-    若找不到（极端情况），返回 None。
-    """
-    # 收集 obj 所有直接所在的集合
-    obj_cols = set()
-    for col in bpy.data.collections:
-        if obj in col.objects.values():
-            obj_cols.add(col)
-
-    if not obj_cols:
-        return None
-
-    # 向上找：哪个顶级集合包含这些集合（直接或间接）
-    # 顶级 EFX 集合名含 '.efx'（来自 io_tree.py §2：file_name = basename(filepath)）
-    for root_col in bpy.data.collections:
-        if ".efx" not in root_col.name:
-            continue
-        if _collection_contains_obj(root_col, obj):
-            return root_col
-
-    return None
-
-
-def _collection_contains_obj(col, obj: bpy.types.Object) -> bool:
-    """递归检查集合（含子集合）是否包含 obj。"""
-    if obj in col.objects.values():
-        return True
-    for child in col.children:
-        if _collection_contains_obj(child, obj):
-            return True
-    return False
+    """给任意 EFX 对象，O(1) 找到它所属的顶层 EFX 集合（委托 root_collection，
+    2026-07 ROOT 集合化后的规范实现——反向指针，不再需要全场景按名字扫描）。"""
+    return _rc.find_root_collection(obj)
 
 
 def _collect_all_from_collection(col, out_by_type: dict) -> None:
@@ -105,9 +71,9 @@ def _collect_all_from_collection(col, out_by_type: dict) -> None:
         _collect_all_from_collection(child, out_by_type)
 
 
-def get_efx_tree_objects(obj: bpy.types.Object) -> dict:
+def get_efx_tree_objects(obj) -> dict:
     """
-    给任意 EFX 对象，返回同一 EFX 树内按 ~TYPE 分类的全部对象。
+    给任意 EFX 对象**或**顶层文件集合本身，返回同一 EFX 树内按 ~TYPE 分类的全部对象。
 
     返回
     ----
@@ -121,7 +87,10 @@ def get_efx_tree_objects(obj: bpy.types.Object) -> dict:
     ----
     反向扫描只在同树内进行，避免多个导入的 EFX 文件之间混淆。
     """
-    root_col = _find_root_collection(obj)
+    if isinstance(obj, bpy.types.Collection):
+        root_col = obj if _rc.is_root_collection(obj) else None
+    else:
+        root_col = _find_root_collection(obj)
     if root_col is None:
         return {}
     out = {}
@@ -741,12 +710,11 @@ class EFX_PT_root_states(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ROOT"
+        return _rc.is_root_collection(context.collection)
 
     def draw(self, context):
         layout = self.layout
-        root_obj = context.active_object
+        root_obj = context.collection
 
         tree = get_efx_tree_objects(root_obj)
         ss_objs = tree.get("EFX_SUBSELECT", [])

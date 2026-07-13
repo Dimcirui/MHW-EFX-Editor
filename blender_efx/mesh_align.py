@@ -27,6 +27,7 @@ from bpy.types import Operator, Panel
 from .i18n import T
 from . import transform_sync as _ts
 from . import session_core as _sc
+from . import root_collection as _rc
 
 
 _TEMP_COLLECTION = "EFX Mesh Align (preview)"
@@ -132,22 +133,15 @@ def _entry_mesh_bindings(entry_obj):
 
 
 def _iter_scope_bodies(root_obj):
-    for b in root_obj.children:
-        if b.get("~TYPE") == "EFX_ENTRY":
-            yield b
+    yield from _rc.collect_top_level(root_obj, "EFX_ENTRY")
 
 
 def _resolve_root(obj):
-    cur = obj
-    while cur is not None:
-        if cur.get("~TYPE") == "EFX_ROOT":
-            return cur
-        cur = cur.parent
-    return None
+    return _rc.find_root_collection(obj)
 
 
 def _all_efx_roots():
-    return [o for o in bpy.data.objects if o.get("~TYPE") == "EFX_ROOT"]
+    return _rc.all_root_collections()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -10,17 +10,20 @@ blender_efx/io_tree.py  —  L1.0：EFX ↔ Blender 对象树 导入/导出
   - byte-perfect：拿不准的结构全部 base64 原样保存
 
 对象树结构（COLOR_06 紫色，~TYPE 标记类型）：
-  <文件名集合> [COLOR_06]
-  └── EFX_ROOT  (~TYPE='EFX_ROOT')          # 顶层 Empty，存 header 全字段
-      ├── Main   子集合
-      │   └── EFX_ENTRY  (~TYPE='EFX_ENTRY')  # 每个 Main body
-      │       └── <hash_name>  (~TYPE='EFX_ATTRIBUTE')  # 每个 AttrBlock
-      ├── Play   子集合
-      │   └── EFX_ACTION  (~TYPE='EFX_ACTION')  # L1.0：b64 原始字节
-      ├── Extern 子集合
-      │   └── EFX_EXTERN (~TYPE='EFX_EXTERN')
-      └── Subselect 子集合
-          └── EFX_SUBSELECT (~TYPE='EFX_SUBSELECT')
+  <文件名集合> [COLOR_06]  (~TYPE='EFX_ROOT')   # 顶层集合本身即"文件"，存 header 全字段
+  ├── _0 Action  子集合 (~TYPE='EFX_ACTION_COLLECTION')
+  │   └── EFX_ACTION  (~TYPE='EFX_ACTION')
+  ├── _1 Extern  子集合 (~TYPE='EFX_EXTERN_COLLECTION')
+  │   └── EFX_EXTERN  (~TYPE='EFX_EXTERN')
+  ├── _2 Entry   子集合 (~TYPE='EFX_ENTRY_COLLECTION')
+  │   └── EFX_ENTRY  (~TYPE='EFX_ENTRY')  # 每个 Main body
+  │       └── <hash_name>  (~TYPE='EFX_ATTRIBUTE')  # 每个 AttrBlock（.parent=entry，嵌套关系不变）
+  └── _3 Subselect 子集合 (~TYPE='EFX_SUBSELECT_COLLECTION')
+      └── EFX_SUBSELECT (~TYPE='EFX_SUBSELECT')
+
+2026-07 起 EFX_ROOT 不再是 Empty 对象——"entry/action/extern/subselect 属于哪个文件"
+不再靠 `obj.parent == root_obj`，改靠集合归属（见 root_collection.py）。
+attribute→entry / EFX_TIML→entry 这两层嵌套 parent 完全不受影响。
 """
 
 import bpy
@@ -52,6 +55,7 @@ from . import subselect as _subselect
 from . import action_emitter as _action_emitter
 from . import extern_ref as _extern_ref
 from . import entry_action_ref as _entry_action_ref
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -207,7 +211,7 @@ def split_labels_tail(label_bytes: bytes, n_max: int):
 # import_efx_tree
 # ─────────────────────────────────────────────────────────────────────────────
 
-def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
+def import_efx_tree(filepath: str, context=None) -> bpy.types.Collection:
     """
     解析 .efx 文件，在场景里建立对象树。
 
@@ -220,8 +224,9 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
 
     返回
     ----
-    bpy.types.Object
-        顶层 EFX_ROOT Empty 对象。
+    bpy.types.Collection
+        顶层文件集合（root_col，~TYPE=='EFX_ROOT'）。2026-07 起 ROOT 不再是
+        Empty 对象，调用方若期望 Object 需相应更新（见 root_collection.py）。
     """
     ctx = context if context is not None else bpy.context
 
@@ -234,59 +239,55 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     file_stem = os.path.splitext(os.path.basename(filepath))[0]
     file_name = os.path.basename(filepath)   # 含 .efx 后缀，用作顶层集合名（仿 mrl3）
 
-    # ── 2. 建顶层集合（紫色 COLOR_06）──────────────────────────────────────
+    # ── 2. 建顶层集合（紫色 COLOR_06，本身即"文件"，~TYPE=EFX_ROOT）────────────
     scene_col = ctx.scene.collection
-    root_col = _new_collection(file_name, scene_col)
-    root_col.color_tag = "COLOR_06"
+    root_col = _rc.new_root_collection(file_name, scene_col)
 
-    # ── 3. 建 EFX_ROOT Empty，存 header 全部字段 ──────────────────────────
-    root_obj = _new_empty(file_stem + "_ROOT", root_col)
-    root_obj["~TYPE"] = "EFX_ROOT"
-
+    # ── 3. header 全部字段直接存 root_col 自定义属性（不再建 Empty）────────────
     # header 字段：signature/efxr 存 hex；
     # 所有 uint32 字段存十进制字符串（避免 Blender C int 32 位溢出）；
     # constant（5 × uint32）存逗号分隔十进制字符串。
-    root_obj["hdr_signature"]       = hdr.signature.hex()          # "45465800"
-    root_obj["hdr_version"]         = str(hdr.version)
-    root_obj["hdr_constant"]        = ",".join(str(x) for x in hdr.constant)
-    root_obj["hdr_efxr"]            = hdr.efxr.hex()               # "65667872"
-    root_obj["hdr_unkn0"]           = str(hdr.unkn0)
-    root_obj["hdr_unkn1"]           = str(hdr.unkn1)
-    root_obj["hdr_count_body"]      = str(hdr.count_body)
-    root_obj["hdr_label_size"]      = str(hdr.label_size)
-    root_obj["hdr_count_play"]      = str(hdr.count_play)
-    root_obj["hdr_count_extern"]    = str(hdr.count_extern)
-    root_obj["hdr_count_subselect"] = str(hdr.count_subselect)
-    root_obj["hdr_subselect_size"]  = str(hdr.subselect_size)
-    root_obj["hdr_count_eof"]       = str(hdr.count_eof)
-    root_obj["hdr_double_buffer"]   = str(hdr.double_buffer)
+    root_col["hdr_signature"]       = hdr.signature.hex()          # "45465800"
+    root_col["hdr_version"]         = str(hdr.version)
+    root_col["hdr_constant"]        = ",".join(str(x) for x in hdr.constant)
+    root_col["hdr_efxr"]            = hdr.efxr.hex()               # "65667872"
+    root_col["hdr_unkn0"]           = str(hdr.unkn0)
+    root_col["hdr_unkn1"]           = str(hdr.unkn1)
+    root_col["hdr_count_body"]      = str(hdr.count_body)
+    root_col["hdr_label_size"]      = str(hdr.label_size)
+    root_col["hdr_count_play"]      = str(hdr.count_play)
+    root_col["hdr_count_extern"]    = str(hdr.count_extern)
+    root_col["hdr_count_subselect"] = str(hdr.count_subselect)
+    root_col["hdr_subselect_size"]  = str(hdr.subselect_size)
+    root_col["hdr_count_eof"]       = str(hdr.count_eof)
+    root_col["hdr_double_buffer"]   = str(hdr.double_buffer)
 
     # label_bytes：整段 base64（label 表是 opaque blob，导出默认 verbatim 走它）
-    root_obj["label_bytes"]         = _b64enc(efx.label_bytes)
+    root_col["label_bytes"]         = _b64enc(efx.label_bytes)
     # 干净切分标签 + tail（重建路径用）：标签位置性映射到 [Play|Extern|Main] 前 k 个条目，
     # tail 是不透明尾字节（含非零字节，须 verbatim 保留）。详见 split_labels_tail。
     _clean_labels, _label_tail = split_labels_tail(
         efx.label_bytes, hdr.count_play + hdr.count_extern + hdr.count_body)
-    root_obj["label_tail"]          = _b64enc(_label_tail)
+    root_col["label_tail"]          = _b64enc(_label_tail)
     # labels_dirty：0=未编辑标签/结构 → 导出 emit verbatim blob；1=改名/增删 → 重建。
-    root_obj["labels_dirty"]        = 0
+    root_col["labels_dirty"]        = 0
     _n_labels                       = len(_clean_labels)  # 全局有标签条目数 k
     # eof_ints：每个元素是 uint32，存逗号分隔十进制字符串；空列表存 ""
-    root_obj["eof_ints"]            = ",".join(str(x) for x in efx.eof_ints)
+    root_col["eof_ints"]            = ",".join(str(x) for x in efx.eof_ints)
     # eof 后不透明 footer（部分游戏文件有，如 jichu1.efx 末尾 4 字节）；多数为空
-    root_obj["eof_tail"]            = _b64enc(efx.eof_tail)
+    root_col["eof_tail"]            = _b64enc(efx.eof_tail)
 
     # main 段不可解析的 opaque 回退文件：整段（main 起点→EOF）无法逐块解析，
     # 存整文件原始字节，导出时 verbatim 透传（保证 byte-perfect，但此文件只读）。
     if getattr(efx, "main_opaque", False):
-        root_obj["main_opaque_file_b64"] = _b64enc(raw_data)
+        root_col["main_opaque_file_b64"] = _b64enc(raw_data)
 
-    # ── 4. 建 4 个子集合（含序号前缀，控制大纲排序）────────────────────────
+    # ── 4. 建 4 个叶子子集合（含序号前缀，控制大纲排序；~TYPE + efx_root_ptr 反向指针）──
     # 按 EFX 文件段顺序：0 Action、1 Extern、2 Entry、3 Subselect
-    col_entry      = _new_collection(file_stem + "_2 Entry",     root_col)
-    col_action      = _new_collection(file_stem + "_0 Action",    root_col)
-    col_extern    = _new_collection(file_stem + "_1 Extern",    root_col)
-    col_subselect = _new_collection(file_stem + "_3 Subselect", root_col)
+    col_entry     = _rc.new_leaf_collection(file_stem + "_2 Entry",     root_col, "EFX_ENTRY")
+    col_action    = _rc.new_leaf_collection(file_stem + "_0 Action",    root_col, "EFX_ACTION")
+    col_extern    = _rc.new_leaf_collection(file_stem + "_1 Extern",    root_col, "EFX_EXTERN")
+    col_subselect = _rc.new_leaf_collection(file_stem + "_3 Subselect", root_col, "EFX_SUBSELECT")
 
     # ── 5. Main：每个 body 建 Empty ─────────────────────────────────────────
     #
@@ -321,7 +322,7 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         entry_obj["efx_index"]     = body_idx  # 原始顺序，还原时用
         entry_obj["efx_raw_label"] = raw_label  # L2 #3a：原始标签，重排重建显示名用
         entry_obj["efx_has_label"] = int(has_label)  # 1=有原始标签, 0=合成标签
-        entry_obj.parent           = root_obj
+        # 归属靠 col_entry（其 efx_root_ptr 指回 root_col），不再额外 parent 到 ROOT
 
         if isinstance(body, RootBody):
             entry_obj["entry_kind"] = "root"
@@ -400,13 +401,10 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     # main_bodies_by_index 在 §8（Subselect）构建前暂不可用，
     # 但 §5 Main 段已建完——提前在此处用相同逻辑构建一次，供 PlayEmitter 解析用。
     # （Subselect 的 main_bodies_by_index 在 §8 再次独立构建，逻辑不重叠）
-    _action_entries_by_index = {}
-    for _bo in bpy.data.objects:
-        if _bo.get("~TYPE") == "EFX_ENTRY" and _bo.parent == root_obj:
-            try:
-                _action_entries_by_index[int(_bo["efx_index"])] = _bo
-            except (KeyError, ValueError, TypeError):
-                pass
+    _action_entries_by_index = {
+        int(_bo["efx_index"]): _bo
+        for _bo in _rc.collect_top_level(root_col, "EFX_ENTRY")
+    }
 
     for i, pd in enumerate(efx.play):
         # Play 段全局位置 = i（[Play|Extern|Main] 最前）；前 _n_labels 个才有标签
@@ -420,7 +418,6 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         obj["efx_raw_label"] = play_label       # 标签重建用
         obj["efx_has_label"] = int(has_label)   # 1=有原始标签, 0=合成名（不进标签表）
         obj["raw_b64"]       = _b64enc(pd.serialize())
-        obj.parent           = root_obj
 
         # ── L2 #1b：结构化初始化 ──────────────────────────────────────────────
         try:
@@ -443,7 +440,6 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         obj["efx_raw_label"] = extern_label     # 标签重建用
         obj["efx_has_label"] = int(has_label)   # 1=有原始标签, 0=合成名（不进标签表）
         obj["raw_b64"]       = _b64enc(ea.serialize())
-        obj.parent           = root_obj
         try:
             from . import extern_props as _ep
             _ep.init_extern_props(obj, ea)
@@ -457,13 +453,10 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     # 遍历所有 EXTERNREFERENCE 块，调用 extern_ref.init_extern_ref_props 完成指针化。
     #
     # 构建 {efx_index → EFX_EXTERN 对象} 映射
-    _extern_objs_by_index = {}
-    for _eo in bpy.data.objects:
-        if _eo.get("~TYPE") == "EFX_EXTERN" and _eo.parent == root_obj:
-            try:
-                _extern_objs_by_index[int(_eo["efx_index"])] = _eo
-            except (KeyError, ValueError, TypeError):
-                pass
+    _extern_objs_by_index = {
+        int(_eo["efx_index"]): _eo
+        for _eo in _rc.collect_top_level(root_col, "EFX_EXTERN")
+    }
 
     _count_extern = hdr.count_extern  # 文件头的 count_extern
 
@@ -473,8 +466,9 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         for _blk_obj in bpy.data.objects:
             if _blk_obj.get("~TYPE") != "EFX_ATTRIBUTE":
                 continue
-            # 仅当父 body 的 parent == root_obj（属于本次导入的文件）
-            if _blk_obj.parent is None or _blk_obj.parent.parent != root_obj:
+            # 仅当属于本次导入的文件（attribute 与其所属 entry 同挂在 col_entry 下，
+            # O(1) 读 col_entry.efx_root_ptr 判断）
+            if _rc.find_root_collection(_blk_obj) is not root_col:
                 continue
             try:
                 bp = _blk_obj.efx_block
@@ -502,21 +496,14 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     #   PTCOLLISION.ieIndex      → play 指针（Play 局部 index）
     #
     # 构建 {efx_index → EFX_ENTRY} 和 {efx_index → EFX_ACTION} 映射
-    _main_bodies_by_index_1d = {}
-    for _bo in bpy.data.objects:
-        if _bo.get("~TYPE") == "EFX_ENTRY" and _bo.parent == root_obj:
-            try:
-                _main_bodies_by_index_1d[int(_bo["efx_index"])] = _bo
-            except (KeyError, ValueError, TypeError):
-                pass
-
-    _action_objs_by_index_1d = {}
-    for _po in bpy.data.objects:
-        if _po.get("~TYPE") == "EFX_ACTION" and _po.parent == root_obj:
-            try:
-                _action_objs_by_index_1d[int(_po["efx_index"])] = _po
-            except (KeyError, ValueError, TypeError):
-                pass
+    _main_bodies_by_index_1d = {
+        int(_bo["efx_index"]): _bo
+        for _bo in _rc.collect_top_level(root_col, "EFX_ENTRY")
+    }
+    _action_objs_by_index_1d = {
+        int(_po["efx_index"]): _po
+        for _po in _rc.collect_top_level(root_col, "EFX_ACTION")
+    }
 
     _count_body_1d = hdr.count_body
     _count_play_1d = hdr.count_play
@@ -529,8 +516,8 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         for _blk_obj in bpy.data.objects:
             if _blk_obj.get("~TYPE") != "EFX_ATTRIBUTE":
                 continue
-            # 仅属于本次导入的文件
-            if _blk_obj.parent is None or _blk_obj.parent.parent != root_obj:
+            # 仅属于本次导入的文件（O(1) 集合归属判断）
+            if _rc.find_root_collection(_blk_obj) is not root_col:
                 continue
             try:
                 bp = _blk_obj.efx_block
@@ -560,16 +547,10 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     # ── 8. Subselect：L2 #1a 结构化存储（替换 opaque）──────────────────────────
     #
     # 构建 {efx_index → EFX_ENTRY 对象} 映射，供 init_subselect_props 解析 entries。
-    # 此时 body_objs 列表已按 efx_index 排序（§5 中建立）；
-    # 如未能在此处获取，则兜底用 bpy.data.objects 遍历。
-    main_bodies_by_index = {}
-    for entry_obj in bpy.data.objects:
-        if entry_obj.get("~TYPE") == "EFX_ENTRY" and entry_obj.parent == root_obj:
-            try:
-                idx = int(entry_obj["efx_index"])
-                main_bodies_by_index[idx] = entry_obj
-            except (KeyError, ValueError, TypeError):
-                pass
+    main_bodies_by_index = {
+        int(entry_obj["efx_index"]): entry_obj
+        for entry_obj in _rc.collect_top_level(root_col, "EFX_ENTRY")
+    }
 
     for i, tbl in enumerate(efx.subselect):
         nn = str(i).zfill(2) if i < 100 else str(i)
@@ -578,7 +559,6 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
         obj["efx_index"] = i
         # raw_b64：byte-perfect 回退（始终写入，与 L1.0 一致；结构化导出优先）
         obj["raw_b64"]   = _b64enc(tbl.serialize())
-        obj.parent       = root_obj
 
         # ── L2 #1a：结构化初始化 ──────────────────────────────────────────────
         try:
@@ -590,17 +570,17 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     # ── 9. eof：载体下放到 entry（hybrid 闸门，结构权威下放重构）────────────────
     #
     # 干净(升序+无重复+全 in-range) → per_entry：设每个 entry 的 efx_direct_trigger 布尔，
-    #   悬空指针从原理上消失、raw 噪声清零。不干净(evc 浮点结构) → opaque：root["eof_ints"]
+    #   悬空指针从原理上消失、raw 噪声清零。不干净(evc 浮点结构) → opaque：root_col["eof_ints"]
     #   字符串原样直通（§3 已写入）。main_bodies_by_index 已在 §8 构建完毕。
     try:
         _entry_action_ref.init_eof_per_entry(
-            root_obj,
+            root_col,
             efx.eof_ints,
             main_bodies_by_index,
             hdr.count_body,
         )
     except Exception:
-        # 任何异常安全跳过：root_obj["eof_ints"] 字符串仍在，导出回退路径保证 byte-perfect
+        # 任何异常安全跳过：root_col["eof_ints"] 字符串仍在，导出回退路径保证 byte-perfect
         pass
 
     # ── 10. 满命名（结构权威下放）：给未命名 action/extern/entry 补标签 ─────────
@@ -609,19 +589,19 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Object:
     # copy/duplicate 不再破坏前缀。有补名 → labels_dirty=1 使导出按全命名重建标签表。
     try:
         from . import normalize
-        if normalize.ensure_all_named(root_obj):
-            root_obj["labels_dirty"] = 1
+        if normalize.ensure_all_named(root_col):
+            root_col["labels_dirty"] = 1
     except Exception:
         pass
 
     # ── 导入后：按 TRANSFORM3D 基础变换摆放各 body empty（单向可视化，不影响导出）──
     try:
         from . import transform_sync
-        transform_sync.sync_all_transform3d(root_obj)
+        transform_sync.sync_all_transform3d(root_col)
     except Exception:
         pass
 
-    return root_obj
+    return root_col
 
 
 def _build_attr_attribute_children(
@@ -688,14 +668,15 @@ def _build_attr_attribute_children(
 # export_efx_tree
 # ─────────────────────────────────────────────────────────────────────────────
 
-def export_efx_tree(root_object: bpy.types.Object, recalc_timl_length: bool = False) -> bytes:
+def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool = False) -> bytes:
     """
     从 EFX_ROOT 对象树还原 .efx 文件字节。
 
     参数
     ----
-    root_object : bpy.types.Object
-        由 import_efx_tree 创建的 EFX_ROOT Empty。
+    root_object : bpy.types.Collection
+        由 import_efx_tree 创建的顶层文件集合（root_col，2026-07 起 ROOT
+        不再是 Empty 对象；形参名沿用 root_object 只是历史命名，不改调用方签名）。
     recalc_timl_length : bool
         True 时导出把每条 TIML 动画的 animation_length 精确设为 末关键帧+1（逐轴 A0/A1）。
         理由：帧长 ≤ 实际结束帧会导致游戏内动画播不完，+1 刚好覆盖到末帧之后。
@@ -747,9 +728,8 @@ def export_efx_tree(root_object: bpy.types.Object, recalc_timl_length: bool = Fa
     eof_ints = None  # 占位，§4b 补填
 
     # ── 4. 收集 Main body 对象（按 efx_index 排序）────────────────────────
-    #   子对象通过 parent == root_object 且 ~TYPE == EFX_ENTRY 来找
-    body_objs = _collect_children_by_type(r, "EFX_ENTRY")
-    body_objs.sort(key=lambda o: int(o["efx_index"]))
+    #   子对象通过集合归属（root_col 下 _2 Entry 叶子集合）+ ~TYPE == EFX_ENTRY 来找
+    body_objs = _rc.collect_top_level(r, "EFX_ENTRY")
 
     # ── 4a0. 剔除零块的 standard/extended body（原生 Delete Hierarchy 的残留空壳）──
     # 2026-07-01 实测坐实：Blender 原生「Delete Hierarchy」在某些集合结构下只删掉
@@ -784,8 +764,7 @@ def export_efx_tree(root_object: bpy.types.Object, recalc_timl_length: bool = Fa
     # ── 4a. 提前构建 extern_index_map（L2 #1c）─────────────────────────────────
     # 需要在遍历 main_bodies 时传给 _resolve_attribute_data_bytes，
     # 所以在 §4 主循环开始前先收集并排序 EFX_EXTERN 对象。
-    extern_objs = _collect_children_by_type(r, "EFX_EXTERN")
-    extern_objs.sort(key=lambda o: int(o["efx_index"]))
+    extern_objs = _rc.collect_top_level(r, "EFX_EXTERN")
     # {EFX_EXTERN Object → extern 段局部 0-based index}
     extern_index_map = {obj: idx for idx, obj in enumerate(extern_objs)}
 
@@ -794,13 +773,11 @@ def export_efx_tree(root_object: bpy.types.Object, recalc_timl_length: bool = Fa
     body_index_map_export = {obj: idx for idx, obj in enumerate(body_objs)}
 
     # play_objs 在 §5 收集；此处先收集排序以便 _resolve_attribute_data_bytes 使用
-    play_objs_prescan = _collect_children_by_type(r, "EFX_ACTION")
-    play_objs_prescan.sort(key=lambda o: int(o["efx_index"]))
+    play_objs_prescan = _rc.collect_top_level(r, "EFX_ACTION")
     play_index_map_export = {obj: idx for idx, obj in enumerate(play_objs_prescan)}
 
     # subselect_objs 在 §5b 才用，这里提前收集只为下面的结构变化检测；§5b 直接复用。
-    subselect_objs_prescan = _collect_children_by_type(r, "EFX_SUBSELECT")
-    subselect_objs_prescan.sort(key=lambda o: int(o["efx_index"]))
+    subselect_objs_prescan = _rc.collect_top_level(r, "EFX_SUBSELECT")
 
     # ── 4d. 结构变化自动兜底（原生 Blender 删除的安全网）──────────────────────
     # labels_dirty/eof_dirty/subselect_dirty 只由本插件自己的删除/增删算子显式置位；

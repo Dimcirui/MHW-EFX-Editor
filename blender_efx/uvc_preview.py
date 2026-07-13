@@ -30,6 +30,7 @@ from bpy.app.handlers import persistent
 
 from .i18n import T  # 运行时双语查表（draw / report 文案）
 from . import transform_sync as _tsync
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -442,9 +443,7 @@ def _collect_transform_entries(roots, armature):
     for root in roots:
         if root is None:
             continue
-        for body in root.children:
-            if body.get("~TYPE") != "EFX_ENTRY":
-                continue
+        for body in _rc.collect_top_level(root, "EFX_ENTRY"):
             mesh = _entry_mesh_target(body)
             if mesh is None or mesh.name in seen:
                 continue
@@ -643,9 +642,7 @@ def _collect_pairs(roots):
     for root_obj in roots:
         if root_obj is None:
             continue
-        for body in root_obj.children:
-            if body.get("~TYPE") != "EFX_ENTRY":
-                continue
+        for body in _rc.collect_top_level(root_obj, "EFX_ENTRY"):
             for blk in body.children:
                 if not _is_uvcontrol_attribute(blk):
                     continue
@@ -674,12 +671,8 @@ def _collect_pairs(roots):
 
 
 def _all_efx_roots():
-    """返回场景里所有 EFX_ROOT 对象。"""
-    roots = []
-    for obj in bpy.data.objects:
-        if obj.get("~TYPE") == "EFX_ROOT":
-            roots.append(obj)
-    return roots
+    """返回场景里所有 EFX_ROOT 顶层文件集合。"""
+    return _rc.all_root_collections()
 
 
 def _restore():
@@ -735,19 +728,13 @@ def _stop_preview():
 
 
 def _root_of(obj):
-    """从 EFX_ATTRIBUTE 上溯到 EFX_ROOT（attribute.parent=entry, entry.parent=root）。"""
-    body = obj.parent if obj is not None else None
-    return body.parent if body is not None else None
+    """从任意 EFX 对象找它所属的顶层文件集合（O(1)，见 root_collection）。"""
+    return _rc.find_root_collection(obj)
 
 
 def _resolve_root(obj):
-    """从任意 EFX 对象（属性/entry/root）上溯到所属 EFX_ROOT；找不到返回 None。"""
-    cur = obj
-    while cur is not None:
-        if cur.get("~TYPE") == "EFX_ROOT":
-            return cur
-        cur = cur.parent
-    return None
+    """从任意 EFX 对象（属性/entry/…）找所属 EFX_ROOT 顶层文件集合；找不到返回 None。"""
+    return _rc.find_root_collection(obj)
 
 
 def _is_efx_object(obj) -> bool:

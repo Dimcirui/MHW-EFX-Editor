@@ -27,6 +27,8 @@ blender_efx/reorder.py  —  L2 #3a：entry / attribute 的重排（上移/下�
 import bpy
 from bpy.props import EnumProperty
 
+from . import root_collection as _rc
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 工具函数：收集同级对象、重建显示名
@@ -204,7 +206,7 @@ def _move_labeled_entry(obj, direction: str, type_tag: str, report) -> set:
     满命名后所有条目都在标签表内，原"标签前缀守卫"作废，已移除。
     """
     from . import normalize
-    root = obj.parent
+    root = _rc.find_root_collection(obj)
     if root is None:
         report({"ERROR"}, "EFX_ROOT not found")
         return {"CANCELLED"}
@@ -276,8 +278,8 @@ class EFX_OT_move_entry(bpy.types.Operator):
         obj = context.active_object
         if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
             return False
-        # 需要有父对象（EFX_ROOT）才能找同级
-        return obj.parent is not None
+        # 需要能解析出所属文件集合才能找同级
+        return _rc.find_root_collection(obj) is not None
 
     def execute(self, context):
         return _move_labeled_entry(context.active_object, self.direction, "EFX_ENTRY", self.report)
@@ -389,7 +391,7 @@ class EFX_OT_move_action_extern(bpy.types.Operator):
         obj = context.active_object
         return (obj is not None
                 and obj.get("~TYPE") in ("EFX_ACTION", "EFX_EXTERN")
-                and obj.parent is not None)
+                and _rc.find_root_collection(obj) is not None)
 
     def execute(self, context):
         obj = context.active_object
@@ -399,14 +401,6 @@ class EFX_OT_move_action_extern(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 # entry 命名能力判定 + EFX_OT_rename_entry
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _find_root(obj):
-    """沿 parent 链找 EFX_ROOT。"""
-    cur = obj
-    while cur is not None and cur.get("~TYPE") != "EFX_ROOT":
-        cur = cur.parent
-    return cur
-
 
 def can_label_entry(obj) -> bool:
     """
@@ -423,15 +417,12 @@ def can_label_entry(obj) -> bool:
         return False
     if int(obj.get("efx_has_label", 0)) == 1:
         return True
-    root = _find_root(obj)
+    root = _rc.find_root_collection(obj)
     if root is None:
         return False
 
     def _children(type_tag):
-        objs = [o for o in bpy.data.objects
-                if o.parent == root and o.get("~TYPE") == type_tag]
-        objs.sort(key=lambda o: int(o.get("efx_index", 0)))
-        return objs
+        return _rc.collect_top_level(root, type_tag)
 
     bodies = _children("EFX_ENTRY")
     if obj not in bodies:
@@ -487,7 +478,7 @@ class EFX_OT_rename_entry(bpy.types.Operator):
             self.report({"ERROR"}, "Name cannot contain NUL characters")
             return {"CANCELLED"}
 
-        root = _find_root(obj)
+        root = _rc.find_root_collection(obj)
         if root is None:
             self.report({"ERROR"}, "EFX_ROOT not found")
             return {"CANCELLED"}
@@ -528,12 +519,9 @@ _LABELED_TYPES = ("EFX_ACTION", "EFX_EXTERN", "EFX_ENTRY")
 
 def _global_ordered_entries(root):
     """root 下按 [Action|Extern|Entry] 全局顺序排列的有标签段条目（各段内按 efx_index）。"""
-    def _children(type_tag):
-        objs = [o for o in bpy.data.objects
-                if o.parent == root and o.get("~TYPE") == type_tag]
-        objs.sort(key=lambda o: int(o.get("efx_index", 0)))
-        return objs
-    return _children("EFX_ACTION") + _children("EFX_EXTERN") + _children("EFX_ENTRY")
+    return (_rc.collect_top_level(root, "EFX_ACTION")
+            + _rc.collect_top_level(root, "EFX_EXTERN")
+            + _rc.collect_top_level(root, "EFX_ENTRY"))
 
 
 def can_label_action_extern(obj) -> bool:
@@ -547,7 +535,7 @@ def can_label_action_extern(obj) -> bool:
         return False
     if int(obj.get("efx_has_label", 0)) == 1:
         return True
-    root = _find_root(obj)
+    root = _rc.find_root_collection(obj)
     if root is None:
         return False
     ordered = _global_ordered_entries(root)
@@ -606,7 +594,7 @@ class EFX_OT_rename_action_extern(bpy.types.Operator):
             self.report({"ERROR"}, "Name cannot contain NUL characters")
             return {"CANCELLED"}
 
-        root = _find_root(obj)
+        root = _rc.find_root_collection(obj)
         if root is None:
             self.report({"ERROR"}, "EFX_ROOT not found")
             return {"CANCELLED"}
@@ -803,7 +791,7 @@ def auto_sort_entry_attributes(root_obj) -> int:
         return 0
 
     modified = 0
-    bodies = _collect_siblings_by_type(root_obj, "EFX_ENTRY")
+    bodies = _rc.collect_top_level(root_obj, "EFX_ENTRY")
     for body in bodies:
         try:
             blocks = _collect_siblings_by_type(body, "EFX_ATTRIBUTE")

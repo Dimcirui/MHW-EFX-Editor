@@ -26,6 +26,8 @@ from math import radians
 import bpy
 from mathutils import Matrix, Euler, Vector
 
+from . import root_collection as _rc
+
 
 def _t3d_hash() -> int:
     from ..efx_format.hashes import TRANSFORM3D
@@ -220,15 +222,11 @@ def apply_entry_transform(entry_obj, armature_obj=None, base_override=None) -> b
 # ── 锚定机制：A 只被一个 action 调用、该 action 只被一个 entry B 触发 → A 以 B 为基点 ──
 
 def _iter_root_bodies(root_obj):
-    for b in bpy.data.objects:
-        if b.get("~TYPE") == "EFX_ENTRY" and b.parent is root_obj:
-            yield b
+    yield from _rc.collect_top_level(root_obj, "EFX_ENTRY")
 
 
 def _iter_root_actions(root_obj):
-    for p in bpy.data.objects:
-        if p.get("~TYPE") == "EFX_ACTION" and p.parent is root_obj:
-            yield p
+    yield from _rc.collect_top_level(root_obj, "EFX_ACTION")
 
 
 def build_anchor_map(root_obj):
@@ -316,8 +314,8 @@ def place_single_entry(entry_obj, armature_obj=None, use_anchor=True) -> bool:
     """
     base_override = None
     if use_anchor:
-        root = entry_obj.parent
-        if root is not None and root.get("~TYPE") == "EFX_ROOT":
+        root = _rc.find_root_collection(entry_obj)
+        if root is not None:
             try:
                 a = build_anchor_map(root).get(entry_obj)
                 if a is not None:
@@ -371,10 +369,7 @@ class EFX_OT_sync_transform(bpy.types.Operator):
         except Exception:
             root = None
         if root is None:
-            cur = context.active_object
-            while cur is not None and cur.get("~TYPE") != "EFX_ROOT":
-                cur = cur.parent
-            root = cur
+            root = _rc.find_root_collection(context.active_object)
         if root is None:
             self.report({"ERROR"}, "EFX_ROOT not found (select an Active EFX or an EFX object)")
             return {"CANCELLED"}

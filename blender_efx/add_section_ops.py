@@ -36,6 +36,7 @@ from bpy.types import Operator
 
 from .i18n import T
 from .add_ops import get_active_efx_root
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -98,11 +99,8 @@ def _nn(idx: int) -> str:
 
 
 def _sorted_children(root_obj, type_tag):
-    """收集 root_obj 直属、~TYPE==type_tag 的对象，按 efx_index 升序。"""
-    objs = [o for o in bpy.data.objects
-            if o.parent == root_obj and o.get("~TYPE") == type_tag]
-    objs.sort(key=lambda o: int(o.get("efx_index", 0)))
-    return objs
+    """收集 root_obj（顶层文件集合）下 ~TYPE==type_tag 的顶层对象，按 efx_index 升序。"""
+    return _rc.collect_top_level(root_obj, type_tag)
 
 
 def _next_index(root_obj, type_tag) -> int:
@@ -116,33 +114,26 @@ def _next_index(root_obj, type_tag) -> int:
     return mx + 1
 
 
+_SUFFIX_TO_TYPE = {
+    "_0 Action":    "EFX_ACTION",
+    "_1 Extern":    "EFX_EXTERN",
+    "_2 Entry":     "EFX_ENTRY",
+    "_3 Subselect": "EFX_SUBSELECT",
+}
+
+
 def _section_collection(root_obj, suffix: str):
     """
-    找 root_obj 所在根集合下、名字以 suffix 结尾的段集合（如 '_0 Action'）；
-    找不到则按 <stem><suffix> 新建并挂到根集合下。返回 Collection 或 None。
+    找 root_obj（顶层文件集合）下对应 suffix 段的叶子集合（按 ~TYPE 标记，O(1)）；
+    找不到则按 <stem><suffix> 新建（~TYPE + efx_root_ptr 反向指针一并设好）。
     """
-    root_cols = list(root_obj.users_collection)
-    root_col = root_cols[0] if root_cols else None
-    if root_col is None:
+    type_tag = _SUFFIX_TO_TYPE.get(suffix)
+    if type_tag is None:
         return None
-
-    for child in root_col.children:
-        if child.name.endswith(suffix):
-            return child
-
-    # 从 Entry 集合名推导 stem（'<stem>_2 Entry'）；失败则用根集合名。
-    stem = root_col.name
-    try:
-        from .subselect import find_entry_collection
-        mc = find_entry_collection(root_obj)
-        if mc is not None and mc.name.endswith("_2 Entry"):
-            stem = mc.name[: -len("_2 Entry")]
-    except Exception:
-        pass
-
-    newc = bpy.data.collections.new(stem + suffix)
-    root_col.children.link(newc)
-    return newc
+    stem = root_obj.name
+    if stem.lower().endswith(".efx"):
+        stem = stem[:-4]
+    return _rc.ensure_leaf_collection(stem + suffix, root_obj, type_tag)
 
 
 def _new_empty(name: str, collection) -> bpy.types.Object:
@@ -198,7 +189,6 @@ def add_subselect(root_obj) -> bpy.types.Object:
     obj["~TYPE"]     = "EFX_SUBSELECT"
     obj["efx_index"] = idx
     obj["raw_b64"]   = _b64enc(tbl.serialize())
-    obj.parent       = root_obj
 
     try:
         _subselect.init_subselect_props(obj, tbl, {})
@@ -250,7 +240,6 @@ def add_action(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
     obj["efx_raw_label"] = raw_label
     obj["efx_has_label"] = int(has_label)
     obj["raw_b64"]       = _b64enc(pd.serialize())
-    obj.parent           = root_obj
 
     try:
         _action_emitter.init_action_props(obj, pd, {})
@@ -287,7 +276,6 @@ def add_extern(root_obj, extern_type='EXTERNSPAWN') -> bpy.types.Object:
     obj["efx_raw_label"] = raw_label
     obj["efx_has_label"] = int(has_label)
     obj["raw_b64"]       = raw_b64
-    obj.parent           = root_obj
 
     # 解析模板字节，填充 efx_extern PropertyGroup（同 io_tree import 路径）
     try:

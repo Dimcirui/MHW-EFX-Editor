@@ -47,6 +47,7 @@ from bpy.props import (
 from bpy.types import PropertyGroup, Operator
 
 from .i18n import T
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -61,27 +62,14 @@ _SENTINEL_VALUE = -1          # 哨兵：无 extern 目标
 # §1  poll 函数
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _find_root_obj(obj):
-    """沿 parent 链向上找 ~TYPE == 'EFX_ROOT' 的对象，找不到返回 None。"""
-    cur = obj
-    while cur is not None:
-        if cur.get("~TYPE") == "EFX_ROOT":
-            return cur
-        cur = cur.parent
-    return None
-
-
 def _extern_object_poll(self, obj):
     """PointerProperty poll：只允许选 ~TYPE == 'EFX_EXTERN'，且限定为活动对象
-    所在 EFX 文件（同一 EFX_ROOT）内的 extern——多 EFX 集合并存时防串文件。"""
+    所在 EFX 文件（同一 root_col）内的 extern——多 EFX 集合并存时防串文件。"""
     if obj.get("~TYPE") != "EFX_EXTERN":
         return False
     editing = getattr(bpy.context, "active_object", None)
-    if editing is not None:
-        root_self = _find_root_obj(editing)
-        root_obj = _find_root_obj(obj)
-        if root_self is not None and root_obj is not None and root_self is not root_obj:
-            return False
+    if editing is not None and not _rc.same_root(editing, obj):
+        return False
     return True
 
 
@@ -261,20 +249,6 @@ def overlay_extern_ref_index(
 # ─────────────────────────────────────────────────────────────────────────────
 # §5  辅助：找 Extern 段集合 + 构建 extern_index_map
 # ─────────────────────────────────────────────────────────────────────────────
-
-def find_extern_collection(root_obj: bpy.types.Object):
-    """
-    从 EFX_ROOT 对象出发，找到 Extern 段集合（名含 '_1 Extern' 后缀）。
-
-    返回 bpy.types.Collection 或 None（找不到时）。
-    在导出时用于构建 extern_index_map。
-    """
-    for col in bpy.data.collections:
-        if col.name.endswith("_1 Extern"):
-            # 验证：root_obj 在此集合的上层集合里（宽松匹配）
-            return col
-    return None
-
 
 def build_extern_index_map(extern_objs: list) -> dict:
     """

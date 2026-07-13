@@ -43,6 +43,7 @@ from .presets import _presets_root, _unique_ascii_filename, _read_display_name, 
 from ..efx_format.categories import category_of, category_label, ATTRIBUTE_CATEGORY_LABELS
 from . import i18n
 from .i18n import T
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,14 +78,12 @@ def build_attribute_preset_dict(blk_obj: bpy.types.Object) -> dict:
     from ..efx_format.hashes import HASH_TO_NAME
 
     # 构建导出端所需的 index 映射（与 _collect_attribute_dicts 同款）
-    root = blk_obj.parent.parent if blk_obj.parent else None  # entry → root
+    root = _rc.find_root_collection(blk_obj)  # attribute 直接归属该 root（同集合）
 
     def _localmap(type_tag):
         if root is None:
             return {}
-        objs = [o for o in bpy.data.objects
-                if o.parent == root and o.get("~TYPE") == type_tag]
-        objs.sort(key=lambda o: int(o.get("efx_index", 0)))
+        objs = _rc.collect_top_level(root, type_tag)
         return {o: i for i, o in enumerate(objs)}
 
     extern_map = _localmap("EFX_EXTERN")
@@ -302,15 +301,14 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
 
     # ── 初始化 efx_block PropertyGroup ────────────────────────────────────────
     # 构建 extern 映射（供 EXTERNREFERENCE 属性指针化）
-    root_obj = entry_obj.parent
+    root_obj = _rc.find_root_collection(entry_obj)
     extern_objs = {}
-    if root_obj is not None and root_obj.get("~TYPE") == "EFX_ROOT":
-        for obj in bpy.data.objects:
-            if obj.parent == root_obj and obj.get("~TYPE") == "EFX_EXTERN":
-                try:
-                    extern_objs[int(obj.get("efx_index", 0))] = obj
-                except (ValueError, TypeError):
-                    pass
+    if root_obj is not None:
+        for obj in _rc.collect_top_level(root_obj, "EFX_EXTERN"):
+            try:
+                extern_objs[int(obj.get("efx_index", 0))] = obj
+            except (ValueError, TypeError):
+                pass
 
     blk = AttrBlock(type_hash=type_hash, data_bytes=data_bytes)
     try:
@@ -330,14 +328,13 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
     # init_*_ref_props 会因此置 pointerized=False（不可编辑、导出保留陈旧值）。
     # 新增属性无 byte-perfect 义务，故越界时**强制指针化为悬空**，让用户能在面板里
     # 指定合法 Action（导出按段局部 index 重写；未指定则 validate 报悬空挡导出）。
-    if root_obj is not None and root_obj.get("~TYPE") == "EFX_ROOT":
+    if root_obj is not None:
         play_objs = {}
-        for obj in bpy.data.objects:
-            if obj.parent == root_obj and obj.get("~TYPE") == "EFX_ACTION":
-                try:
-                    play_objs[int(obj.get("efx_index", 0))] = obj
-                except (ValueError, TypeError):
-                    pass
+        for obj in _rc.collect_top_level(root_obj, "EFX_ACTION"):
+            try:
+                play_objs[int(obj.get("efx_index", 0))] = obj
+            except (ValueError, TypeError):
+                pass
         count_play = len(play_objs)
         if count_play > 0:
             try:

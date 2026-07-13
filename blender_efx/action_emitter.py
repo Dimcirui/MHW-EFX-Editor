@@ -59,25 +59,16 @@ from bpy.types import PropertyGroup, Operator
 
 from ..efx_format.hashes import PLAYEMITTER, PLAYEFX
 from .i18n import T
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # §1  poll 函数
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _find_root_obj(obj):
-    """沿 parent 链向上找 ~TYPE == 'EFX_ROOT' 的对象，找不到返回 None。"""
-    cur = obj
-    while cur is not None:
-        if cur.get("~TYPE") == "EFX_ROOT":
-            return cur
-        cur = cur.parent
-    return None
-
-
 def _entry_object_poll(self, obj):
     """PointerProperty poll：只允许选 ~TYPE == 'EFX_ENTRY' 的对象，
-    且限定为当前编辑的 action 对象**同一个 EFX 文件**（同一 EFX_ROOT）内的 entry——
+    且限定为当前编辑的 action 对象**同一个 EFX 文件**（同一 root_col）内的 entry——
     多个 EFX 集合并存时，避免把别的文件的 entry 列进下拉。
     已从所有集合解链的孤儿对象（Purge 可清除）排除。"""
     if obj.get("~TYPE") != "EFX_ENTRY":
@@ -86,11 +77,8 @@ def _entry_object_poll(self, obj):
         return False
     # 当前正在编辑 targets 的 action 对象 = 活动对象；按它的 root 限定范围。
     editing = getattr(bpy.context, "active_object", None)
-    if editing is not None:
-        root_self = _find_root_obj(editing)
-        root_obj = _find_root_obj(obj)
-        if root_self is not None and root_obj is not None and root_self is not root_obj:
-            return False
+    if editing is not None and not _rc.same_root(editing, obj):
+        return False
     return True
 
 

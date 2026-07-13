@@ -49,6 +49,7 @@ from .reorder import (
     _get_attribute_type_name,
     _get_attribute_parent_label,
 )
+from . import root_collection as _rc
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -60,24 +61,21 @@ def _nn(idx: int) -> str:
     return str(idx).zfill(2) if idx < 100 else str(idx)
 
 
-def _find_root(obj):
-    """沿 parent 链向上找 ~TYPE == 'EFX_ROOT' 的对象，找不到返回 None。"""
-    cur = obj
-    while cur is not None:
-        if cur.get("~TYPE") == "EFX_ROOT":
-            return cur
-        cur = cur.parent
-    return None
-
-
 def _reindex_siblings(parent_obj, type_tag: str, rebuild_name_fn) -> int:
     """
     收集 parent_obj 下 type_tag 类型的剩余同级（已按 efx_index 排序），
     重新赋 efx_index = 0,1,2,... 并用 rebuild_name_fn(obj, new_idx) 重建显示名。
 
+    parent_obj 是顶层文件集合（Collection，entry/action/extern/subselect 场景）时走
+    集合归属收集；是 EFX_ENTRY 对象（attribute 场景）时走原 parent 收集（不受本次
+    ROOT 集合化影响）。
+
     返回剩余数量。
     """
-    siblings = _collect_siblings_by_type(parent_obj, type_tag)
+    if isinstance(parent_obj, bpy.types.Collection):
+        siblings = _rc.collect_top_level(parent_obj, type_tag)
+    else:
+        siblings = _collect_siblings_by_type(parent_obj, type_tag)
     for new_idx, o in enumerate(siblings):
         o["efx_index"] = new_idx
         o.name = rebuild_name_fn(o, new_idx)
@@ -137,7 +135,7 @@ class EFX_OT_delete_entry(bpy.types.Operator):
         return (
             obj is not None
             and obj.get("~TYPE") == "EFX_ENTRY"
-            and obj.parent is not None
+            and _rc.find_root_collection(obj) is not None
         )
 
     def invoke(self, context, event):
@@ -145,12 +143,12 @@ class EFX_OT_delete_entry(bpy.types.Operator):
 
     def execute(self, context):
         active = context.active_object
-        root = active.parent  # EFX_ROOT
+        root = _rc.find_root_collection(active)
 
         # 收集选中的同 root 下所有 EFX_ENTRY；未多选时退化为只删 active
         targets = [
             o for o in context.selected_objects
-            if o.get("~TYPE") == "EFX_ENTRY" and o.parent == root
+            if o.get("~TYPE") == "EFX_ENTRY" and _rc.find_root_collection(o) is root
         ]
         if not targets:
             targets = [active]
@@ -251,7 +249,7 @@ class EFX_OT_delete_action(bpy.types.Operator):
         return (
             obj is not None
             and obj.get("~TYPE") == "EFX_ACTION"
-            and obj.parent is not None
+            and _rc.find_root_collection(obj) is not None
         )
 
     def invoke(self, context, event):
@@ -259,12 +257,12 @@ class EFX_OT_delete_action(bpy.types.Operator):
 
     def execute(self, context):
         active = context.active_object
-        root = active.parent  # EFX_ROOT
+        root = _rc.find_root_collection(active)
 
         # 收集选中的同 root 下所有 EFX_ACTION；未多选时退化为只删 active
         targets = [
             o for o in context.selected_objects
-            if o.get("~TYPE") == "EFX_ACTION" and o.parent == root
+            if o.get("~TYPE") == "EFX_ACTION" and _rc.find_root_collection(o) is root
         ]
         if not targets:
             targets = [active]
@@ -305,7 +303,7 @@ class EFX_OT_delete_extern(bpy.types.Operator):
         return (
             obj is not None
             and obj.get("~TYPE") == "EFX_EXTERN"
-            and obj.parent is not None
+            and _rc.find_root_collection(obj) is not None
         )
 
     def invoke(self, context, event):
@@ -313,12 +311,12 @@ class EFX_OT_delete_extern(bpy.types.Operator):
 
     def execute(self, context):
         active = context.active_object
-        root = active.parent  # EFX_ROOT
+        root = _rc.find_root_collection(active)
 
         # 收集选中的同 root 下所有 EFX_EXTERN；未多选时退化为只删 active
         targets = [
             o for o in context.selected_objects
-            if o.get("~TYPE") == "EFX_EXTERN" and o.parent == root
+            if o.get("~TYPE") == "EFX_EXTERN" and _rc.find_root_collection(o) is root
         ]
         if not targets:
             targets = [active]
@@ -359,7 +357,7 @@ class EFX_OT_delete_subselect(bpy.types.Operator):
         return (
             obj is not None
             and obj.get("~TYPE") == "EFX_SUBSELECT"
-            and obj.parent is not None
+            and _rc.find_root_collection(obj) is not None
         )
 
     def invoke(self, context, event):
@@ -367,12 +365,12 @@ class EFX_OT_delete_subselect(bpy.types.Operator):
 
     def execute(self, context):
         active = context.active_object
-        root = active.parent  # EFX_ROOT
+        root = _rc.find_root_collection(active)
 
         # 收集选中的同 root 下所有 EFX_SUBSELECT；未多选时退化为只删 active
         targets = [
             o for o in context.selected_objects
-            if o.get("~TYPE") == "EFX_SUBSELECT" and o.parent == root
+            if o.get("~TYPE") == "EFX_SUBSELECT" and _rc.find_root_collection(o) is root
         ]
         if not targets:
             targets = [active]

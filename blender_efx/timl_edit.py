@@ -28,6 +28,7 @@ from .i18n import T
 from . import timl_io as _tio          # resolve_timl_entry / _entry_timl_bytes / _entry_has_timl
 from . import uvc_preview as _uvc       # _entry_mesh_target / _resolve_root
 from . import session_core as _sc       # 标记式 reconcile（bind/unbind 用）
+from . import root_collection as _rc
 from ..efx_format import timl as _timl
 from ..efx_format import timl_names as _tn
 
@@ -155,11 +156,8 @@ def _resolve_scope_bodies(context):
         if root is None:
             body = _tio.resolve_timl_entry(active)
             return [body] if _tio._entry_has_timl(body) else []
-        out = []
-        for c in bpy.data.objects:
-            if c.parent == root and c.get("~TYPE") == "EFX_ENTRY" and _tio._entry_has_timl(c):
-                out.append(c)
-        return out
+        return [c for c in _rc.collect_top_level(root, "EFX_ENTRY")
+                if _tio._entry_has_timl(c)]
     body = _tio.resolve_timl_entry(active)
     return [body] if _tio._entry_has_timl(body) else []
 
