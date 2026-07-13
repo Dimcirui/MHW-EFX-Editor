@@ -558,6 +558,7 @@ RESERVED_FILL_FIELDS = frozenset({
     # ⚠ SHADERSETTINGS.unkn1（99.9% 恒 104，但按同公式应为 108，差 4）未确认属于同一机制，
     # 结构相同的 RAYCAST/HOMING/SCREENSPACECOLLISION/SHOVEL 均按标准公式吻合，故未列入。
     ('NOISE', 'section_length'),
+    ('RIBBON', 'section_length'),  # 2026-07-11：变长块(custom codec)里恒 352=固定核心 360-8，只管固定部分不含尾部变长路径
     ('DUMMY', 'unkn0_1'),
     ('BLINK', 'unkn0_1'),
     ('FADEBYEMITTERANGLE', 'unkn0_1'),
@@ -573,7 +574,8 @@ RESERVED_FILL_FIELDS = frozenset({
     ('PARENTSNOW', 'unkn0_1'),
     ('OTOMOSNOW', 'unkn0_1'),
     ('FAKEPLANE', 'unkn0_1'),
-    ('REPEATAREA', 'unkn1'),
+    ('REPEATAREA', 'section_length'),
+    ('FAKEDOF', 'section_length'),  # 原 unkn1，跟 RepeatArea 同一机制，之前漏归类，2026-07 补上
 })
 
 

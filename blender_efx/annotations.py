@@ -2176,7 +2176,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("EMITTERSHAPEMESH", "unkn2_1"): {
+    ("EMITTERSHAPEMESH", "ddsUsageType"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2184,7 +2184,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("EMITTERSHAPEMESH", "unkn2_3"): {
+    ("EMITTERSHAPEMESH", "visconIndex"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },

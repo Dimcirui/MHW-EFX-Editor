@@ -1845,10 +1845,17 @@ assert _schema_size(FAKEPLANE_SCHEMA) == 60, \
 # RepeatArea (56B total, 52B data) — 无 BT，按全 135 实例列分析推断字段类型：
 #   off0 小整数(0~10) / off4 恒为 44 / off8..23 为 0xcd 未初始化区(16B) /
 #   off24..47 为 6 个 float / off48 小整数。
+# EFX.bt(新，refs/EFX_Subtypes.bt)把这个类型按变长结构描述：
+#   int unkn0; int length; long unkn1[length/4-5]; float unkn2[3]; int unkn3[2];
+# 即 off4 是"剩余字节数"自描述长度标记（跟 NOISE.section_length 等同一机制，已在
+# field_labels.py RESERVED_FILL_FIELDS 里按此归类），全语料 135/135 恒为 44，故正式
+# 改名 section_length。新 bt 认为 off8..23 是变长 long 数组的一部分，但实测这 16 字节
+# 每份样本都是固定的 `00 CD CD ... CD`（首字节 0x00 + 其余 0xCD），是保留未用容量，
+# 不是有效数据，故沿用 unkn2 原名（已在 RESERVED_FILL_FIELDS 标注只读）。
 REPEATAREA_SCHEMA = [
     ('unkn0', 'i'),        # 4B  索引/计数
-    ('unkn1', 'i'),        # 4B  恒 44（子结构大小？）
-    ('unkn2', ('b', 16)),  # 16B 0xcd 未初始化区
+    ('section_length', 'i'),  # 4B  原 unkn1；恒 44，剩余字节数自描述标记（非可调参数）
+    ('unkn2', ('b', 16)),  # 16B 0xcd 未初始化区（首字节固定 0x00，其余固定 0xCD）
     ('unkn3_0', 'f'),
     ('unkn3_1', 'f'),
     ('unkn3_2', 'f'),
@@ -3354,9 +3361,9 @@ _EMITTERSHAPEMESH_FIXED_SCHEMA = [
     ('unkn1_1', 'i'),
     ('unkn1_2', 'i'),   # 12B (long=4B)
     ('unkn2_0', 'b'),
-    ('unkn2_1', 'b'),
+    ('ddsUsageType', 'b'),  # 原 unkn2_1；EFX.bt(新，refs/EFX_Subtypes.bt)具名，语义未实机验证
     ('unkn2_2', 'b'),
-    ('unkn2_3', 'b'),
+    ('visconIndex', 'b'),   # 原 unkn2_3；EFX.bt(新)具名，语义未实机验证
     ('unkn2_4', 'b'),
     ('unkn2_5', 'b'),
     ('unkn2_6', 'b'),
@@ -3386,16 +3393,24 @@ def pack_emittershapemesh(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 # FakeDoF (变长：32B fixed + 可选 20B tail，两种实测尺寸 32B / 52B)
 #
-# 无内部长度字段——off24 等都不是判别符（off24=2 在 32B 与 52B 均出现）；尾段
-# 的有无由 forward_scan 定界（块 36B/56B 皆 4 对齐，扫描可靠）。codec 据
+# 无内部长度字段控制 tail 有无——off24 等都不是判别符（off24=2 在 32B 与 52B 均出现）；
+# 尾段的有无由 forward_scan 定界（块 36B/56B 皆 4 对齐，扫描可靠）。codec 据
 # data_bytes 剩余长度自适应：满 20B 则解出 tail，否则止于 32B。无路径。
 # 字段类型按全 16 实例（尾段 13 实例）逐列分析：off8 为 0xcd → int；off32 为
 # hash/seed（大幅波动）→ int 防 float 异常；其余清晰浮点用 float。
+#
+# EFX.bt(新，refs/EFX_Subtypes.bt)对同一 off4 字段的描述跟 RepeatArea 共用同一 struct
+# （int unkn0; int length; long unkn1[length/4-5]; float unkn2[3]; int unkn3[2];），
+# 全语料 16/16 恒为 24——是"该字段结束位置到 32B 固定核心块尾"的剩余字节数自描述标记
+# （24 = 32 - 8），跟 NOISE.section_length 等同一机制，与 RepeatArea 的 section_length
+# 同源（这里之前漏掉没归类，已一并补上 RESERVED_FILL_FIELDS）。off8 那个 0xcd 未初始化
+# 单元，正好对应新 bt 模型里"length 声明了容量但从未真正写入数据"的那个数组槽位，
+# 佐证了它确实是保留位而非有效数据。
 # ─────────────────────────────────────────────────────────────────────────────
 
 _FAKEDOF_FIXED_SCHEMA = [
     ('unkn0', 'i'),        # 4B  off0  (索引/计数 1~5)
-    ('unkn1', 'i'),        # 4B  off4  (恒 24)
+    ('section_length', 'i'),  # 4B  原 unkn1；off4，恒 24，剩余字节数自描述标记（非可调参数）
     ('unkn2', 'i'),        # 4B  off8  (0xcd 未初始化)
     ('unkn3_0', 'f'),
     ('unkn3_1', 'f'),   # 8B  off12-19
