@@ -461,14 +461,14 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Collection:
     _count_extern = hdr.count_extern  # 文件头的 count_extern
 
     # 遍历所有 EFX_ATTRIBUTE，找 EXTERNREFERENCE 类型补做指针化
+    # 只扫 col_entry.objects（本次导入这一个文件的 Entry 叶子集合，attribute 与其
+    # 所属 entry 同挂在这里）——不扫全场景 bpy.data.objects。曾经错误地扫全场景，
+    # 导入耗时随场景里已加载的其它 EFX 文件数量线性增长，累计多文件导入接近
+    # O(n²)，已修（find_root_collection 校验因此也变得多余，直接删掉）。
     try:
         from ..efx_format.hashes import EXTERNREFERENCE as _EXTERNREFERENCE_HASH
-        for _blk_obj in bpy.data.objects:
+        for _blk_obj in col_entry.objects:
             if _blk_obj.get("~TYPE") != "EFX_ATTRIBUTE":
-                continue
-            # 仅当属于本次导入的文件（attribute 与其所属 entry 同挂在 col_entry 下，
-            # O(1) 读 col_entry.efx_root_ptr 判断）
-            if _rc.find_root_collection(_blk_obj) is not root_col:
                 continue
             try:
                 bp = _blk_obj.efx_block
@@ -508,16 +508,14 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Collection:
     _count_body_1d = hdr.count_body
     _count_play_1d = hdr.count_play
 
+    # 同上：只扫 col_entry.objects，不扫全场景（见 §7b 同款修复说明）。
     try:
         from ..efx_format.hashes import (
             PTLIFE as _PTLIFE_HASH,
             PTCOLLISION as _PTCOLLISION_HASH,
         )
-        for _blk_obj in bpy.data.objects:
+        for _blk_obj in col_entry.objects:
             if _blk_obj.get("~TYPE") != "EFX_ATTRIBUTE":
-                continue
-            # 仅属于本次导入的文件（O(1) 集合归属判断）
-            if _rc.find_root_collection(_blk_obj) is not root_col:
                 continue
             try:
                 bp = _blk_obj.efx_block
@@ -731,6 +729,11 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
     #   子对象通过集合归属（root_col 下 _2 Entry 叶子集合）+ ~TYPE == EFX_ENTRY 来找
     body_objs = _rc.collect_top_level(r, "EFX_ENTRY")
 
+    # 一次性建 {entry: [attribute 子对象]} 映射，本函数下面多处按 entry 逐个取
+    # attribute 子对象都查这张表（O(1)），不再各自现场扫全场景 bpy.data.objects——
+    # 那样是 O(entry 数 × 场景对象数)，随场景里已加载的其它 EFX 文件数量增长明显变慢。
+    _attr_children_map = _build_attr_children_map(_rc.get_leaf_collection(r, "EFX_ENTRY"))
+
     # ── 4a0. 剔除零块的 standard/extended body（原生 Delete Hierarchy 的残留空壳）──
     # 2026-07-01 实测坐实：Blender 原生「Delete Hierarchy」在某些集合结构下只删掉
     # body 的子对象（EFX_ATTRIBUTE/EFX_TIML），body 这个 Empty 本身却原样留在
@@ -753,7 +756,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
     def _is_native_delete_leftover(o):
         if str(o.get("entry_kind", "")) not in ("standard", "extended"):
             return False
-        if _collect_children_by_type(o, "EFX_ATTRIBUTE"):
+        if _collect_children_by_type(o, "EFX_ATTRIBUTE", _attr_children_map):
             return False  # 还有块 → 不是空壳
         try:
             return int(str(o.get("attr_count", "0"))) > 0
@@ -862,7 +865,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
 
         elif kind == "extended":
             # 收集 AttrBlock 子对象
-            blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE")
+            blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
             blk_objs.sort(key=lambda o: int(o["efx_index"]))
             attr_blocks = [
                 AttrBlock(
@@ -890,7 +893,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             ))
 
         elif kind == "standard":
-            blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE")
+            blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
             blk_objs.sort(key=lambda o: int(o["efx_index"]))
             attr_blocks = [
                 AttrBlock(
@@ -1045,14 +1048,43 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
     return data
 
 
+def _build_attr_children_map(entry_col) -> dict:
+    """一次性递归扫 entry_col（含嵌套的 Direct Trigger/Not Direct Trigger 子集合），
+    按 .parent 分组 EFX_ATTRIBUTE 子对象，返回 {parent_entry: [attrs]}。
+
+    供导出主循环替代"每个 entry 各扫一遍全场景 bpy.data.objects"的写法——后者是
+    O(entry 数 × 场景对象数)，场景里已加载的其它 EFX 文件越多，单次导出越慢
+    （跟 import 端 §7b/§7c 是同一类 bug，一并修）。"""
+    out = {}
+    if entry_col is None:
+        return out
+
+    def _walk(c):
+        for o in c.objects:
+            if o.get("~TYPE") == "EFX_ATTRIBUTE" and o.parent is not None:
+                out.setdefault(o.parent, []).append(o)
+        for child in c.children:
+            _walk(child)
+
+    _walk(entry_col)
+    return out
+
+
 def _collect_children_by_type(
     parent_obj: bpy.types.Object,
     type_tag: str,
+    children_map: dict = None,
 ) -> list:
     """
     收集 parent_obj 的直接子对象中 ~TYPE == type_tag 的所有对象。
-    注意：Blender 没有直接的"children"列表，需遍历 bpy.data.objects。
+
+    children_map（可选）：_build_attr_children_map() 的结果，仅当 type_tag ==
+    "EFX_ATTRIBUTE" 时可用；传了就直接查表（O(1)），不传则现场全量扫
+    bpy.data.objects（注意：批量场景——如导出主循环里对多个 entry 逐个调用——
+    不传会退化成 O(entry 数 × 场景对象数)，务必传）。
     """
+    if children_map is not None and type_tag == "EFX_ATTRIBUTE":
+        return list(children_map.get(parent_obj, []))
     results = []
     for obj in bpy.data.objects:
         if obj.parent == parent_obj and obj.get("~TYPE") == type_tag:

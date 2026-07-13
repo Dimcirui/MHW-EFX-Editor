@@ -98,16 +98,38 @@ def _fixed3(float6_value):
 
 # ── 取属性/字段 ─────────────────────────────────────────────────────────────────
 
-def _iter_entry_attributes(entry_obj):
-    """枚举 entry 下的 EFX_ATTRIBUTE 子对象。"""
+def _iter_entry_attributes(entry_obj, children_map=None):
+    """枚举 entry 下的 EFX_ATTRIBUTE 子对象。
+
+    children_map（可选）：build_entry_attr_map() 的结果——批量场景（如
+    sync_all_transform3d/build_anchor_map 遍历全部 entry）应传，否则每次调用都
+    全场景扫 bpy.data.objects，是 O(entry 数 × 场景对象数) 的性能陷阱（2026-07
+    曾在此把"导入即摆位"拖得很慢，场景里已加载的其它 EFX 文件越多越明显，已修）。
+    """
+    if children_map is not None:
+        yield from children_map.get(entry_obj, [])
+        return
     for blk in bpy.data.objects:
         if blk.parent is entry_obj and blk.get("~TYPE") == "EFX_ATTRIBUTE":
             yield blk
 
 
-def _attribute_of_type(entry_obj, type_hash):
+def build_entry_attr_map(root_obj):
+    """一次性扫 bpy.data.objects，按 .parent 分组 EFX_ATTRIBUTE 子对象，返回
+    {entry: [attrs]}。供批量摆位（sync_all_transform3d/build_anchor_map）替代
+    逐 entry 各扫一遍全场景的写法。"""
+    out = {}
+    for blk in bpy.data.objects:
+        if blk.get("~TYPE") == "EFX_ATTRIBUTE":
+            p = blk.parent
+            if p is not None:
+                out.setdefault(p, []).append(blk)
+    return out
+
+
+def _attribute_of_type(entry_obj, type_hash, children_map=None):
     """返回 entry 下第一个指定 type_hash 的 EFX_ATTRIBUTE（无则 None）。"""
-    for blk in _iter_entry_attributes(entry_obj):
+    for blk in _iter_entry_attributes(entry_obj, children_map):
         try:
             if int(blk.efx_block.type_hash_str) == type_hash:
                 return blk
@@ -116,9 +138,9 @@ def _attribute_of_type(entry_obj, type_hash):
     return None
 
 
-def _entry_bone_lim(entry_obj):
+def _entry_bone_lim(entry_obj, children_map=None):
     """读 entry 的 PARENTOPTIONS.bone_lim（int）；无 PARENTOPTIONS/字段 → None。"""
-    po = _attribute_of_type(entry_obj, _parentopts_hash())
+    po = _attribute_of_type(entry_obj, _parentopts_hash(), children_map)
     if po is None:
         return None
     try:
@@ -182,7 +204,7 @@ def bone_base_matrix(armature_obj, bone_lim):
 
 # ── 应用到单个 entry ──────────────────────────────────────────────────────────
 
-def apply_entry_transform(entry_obj, armature_obj=None, base_override=None) -> bool:
+def apply_entry_transform(entry_obj, armature_obj=None, base_override=None, children_map=None) -> bool:
     """
     按 entry 的 TRANSFORM3D（基础变换）+ PARENTOPTIONS（bone_lim 绑定骨骼）
     计算 entry empty 的 matrix_world 并写入。返回是否成功。
@@ -199,7 +221,7 @@ def apply_entry_transform(entry_obj, armature_obj=None, base_override=None) -> b
       - 无基准：直接 blender 局部（原有行为）。
     """
     try:
-        t3d = _attribute_of_type(entry_obj, _t3d_hash())
+        t3d = _attribute_of_type(entry_obj, _t3d_hash(), children_map)
         if t3d is None:
             return False
         local = _t3d_local_matrix(t3d)              # 统一：blender 空间（M 共轭）
@@ -208,7 +230,7 @@ def apply_entry_transform(entry_obj, armature_obj=None, base_override=None) -> b
         if base_override is not None:
             base = base_override                    # 锚定：继承基点 entry 的完整矩阵
         else:
-            bone = bone_base_matrix(armature_obj, _entry_bone_lim(entry_obj))
+            bone = bone_base_matrix(armature_obj, _entry_bone_lim(entry_obj, children_map))
             if bone is not None:
                 base = Matrix.Translation(bone.to_translation())  # 只取骨骼 head 位置，不继承朝向
             else:
@@ -229,14 +251,20 @@ def _iter_root_actions(root_obj):
     yield from _rc.collect_top_level(root_obj, "EFX_ACTION")
 
 
-def build_anchor_map(root_obj):
+def build_anchor_map(root_obj, children_map=None):
     """构建 entry→anchor_entry 映射（实现用户规则）。
 
     规则：entryA 仅被一个 action 调用（出现在恰好一个 action 的 PlayEmitter targets 里），
     且该 action 仅被一个 entryB 触发（恰好一个 entry 的 PTLIFE.relation_play_ptr 指向它），
     则 anchor[A] = B。
+
+    children_map（可选）：build_entry_attr_map() 的结果；不传则内部现建一次
+    （仍比"逐 entry 各扫一遍全场景"快得多——批量调用方应自建一次并传入复用）。
     """
     from ..efx_format.hashes import PTLIFE
+
+    if children_map is None:
+        children_map = build_entry_attr_map(root_obj)
 
     # action → 它调用的 entry 集合；entry → 调用它的 action 集合
     callers = {}   # body → set(play)
@@ -255,7 +283,7 @@ def build_anchor_map(root_obj):
     # action → 触发它的 entry 集合（entry 的 PTLIFE.relation_play_ptr）
     triggers = {}  # play → set(body)
     for body in _iter_root_bodies(root_obj):
-        for blk in _iter_entry_attributes(body):
+        for blk in _iter_entry_attributes(body, children_map):
             try:
                 if int(blk.efx_block.type_hash_str) != PTLIFE:
                     continue
@@ -333,8 +361,12 @@ def sync_all_transform3d(root_obj, armature_obj=None, use_anchor=True) -> int:
     use_anchor=True 时启用锚定机制：满足规则的 entry 以基点 entry 的最终位置为基准
     （优先于自身骨骼），并按依赖顺序摆位确保基点先就位。
     """
+    # 批量：一次性建 {entry: [attribute 子对象]} 映射，下面对每个 entry 的
+    # TRANSFORM3D/PARENTOPTIONS/PTLIFE 查找全部复用它，不再各自现场扫全场景
+    # bpy.data.objects（每次导入都跑这个函数，曾是明显的性能陷阱，已修）。
+    children_map = build_entry_attr_map(root_obj)
     bodies = list(_iter_root_bodies(root_obj))
-    anchor = build_anchor_map(root_obj) if use_anchor else {}
+    anchor = build_anchor_map(root_obj, children_map) if use_anchor else {}
     order = _resolve_order(bodies, anchor) if anchor else bodies
 
     n = 0
@@ -345,7 +377,7 @@ def sync_all_transform3d(root_obj, armature_obj=None, use_anchor=True) -> int:
         a = anchor.get(body)
         if a is not None and a in seen:
             base_override = a.matrix_world.copy()
-        if apply_entry_transform(body, armature_obj, base_override=base_override):
+        if apply_entry_transform(body, armature_obj, base_override=base_override, children_map=children_map):
             n += 1
         seen.add(body)
     return n

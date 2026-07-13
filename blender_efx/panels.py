@@ -823,7 +823,10 @@ class EFX_PT_entry(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "MHW EFX"
-    bl_order       = 0  # 固定顺序：MHW EFX > Edit > Add Section > Presets > 其他（默认顺序）
+    # 固定顺序：MHW EFX > Add Section > Presets > Edit > 其他（默认顺序，bl_order 未设时=0）。
+    # 必须用负数——Blender 未显式设 bl_order 的面板默认值就是 0，正数反而排到那些"默认顺序"
+    # 面板后面（之前用 0/1/2/3 试过，Presets=3 直接被挤到全局最后，只有负数才保证排在最前）。
+    bl_order       = -4
 
     def draw(self, context):
         layout = self.layout
@@ -948,7 +951,7 @@ class EFX_PT_presets(bpy.types.Panel):
     bl_category     = "EFX"
     bl_label        = "Presets"
     bl_options      = {"DEFAULT_CLOSED"}
-    bl_order        = 3  # 固定顺序：MHW EFX > Edit > Add Section > Presets > 其他
+    bl_order        = -2  # 固定顺序：MHW EFX > Add Section > Presets > Edit > 其他
 
     def draw(self, context):
         layout = self.layout
@@ -1269,7 +1272,7 @@ class EFX_PT_add_section(bpy.types.Panel):
     bl_category     = "EFX"
     bl_label        = "Add Section"
     bl_options      = {"DEFAULT_CLOSED"}
-    bl_order        = 2  # 固定顺序：MHW EFX > Edit > Add Section > Presets > 其他
+    bl_order        = -3  # 固定顺序：MHW EFX > Add Section > Presets > Edit > 其他
 
     @classmethod
     def poll(cls, context):
@@ -1308,7 +1311,7 @@ class EFX_PT_delete(bpy.types.Panel):
     bl_category     = "EFX"
     bl_label        = "Edit"
     bl_options      = {"DEFAULT_CLOSED"}
-    bl_order        = 1  # 固定顺序：MHW EFX > Edit > Add Section > Presets > 其他
+    bl_order        = -1  # 固定顺序：MHW EFX > Add Section > Presets > Edit > 其他
 
     @classmethod
     def poll(cls, context):

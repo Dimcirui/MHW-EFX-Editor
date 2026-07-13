@@ -291,11 +291,20 @@ def eof_is_clean(eof_ints: list, count_body: int) -> bool:
     return lst == sorted(set(lst))
 
 
-def _entry_subtree_objects(entry_obj: bpy.types.Object) -> list:
+def _entry_subtree_objects(entry_obj: bpy.types.Object, children_by_parent: dict = None) -> list:
     """entry_obj 本身 + 其直属 EFX_ATTRIBUTE/EFX_TIML 子对象。root_collection.py 的
     不变式是"entry 和它的 attribute/TIML 句柄都直接 link 在同一个叶子集合里"——
     EOF 归属在 Entry 叶子集合 ↔ 嵌套 Direct Trigger 子集合之间挪动时，必须整棵子树
-    一起挪，只挪 entry 本身会让属性/TIML 句柄留在原集合，破坏该不变式。"""
+    一起挪，只挪 entry 本身会让属性/TIML 句柄留在原集合，破坏该不变式。
+
+    children_by_parent（可选）：预先按 .parent 分组好的 {parent_obj: [children]}
+    映射（见 _build_children_by_parent）。不传则现场全量扫 bpy.data.objects——
+    单个 entry 调用（toggle/新建）这样没问题，但对**很多** entry 逐个调用
+    （如 init_eof_per_entry 遍历全部 entry）是 O(entry 数 × 场景对象数) 的性能
+    陷阱（2026-07 曾把导入拖慢，已修：批量场景改传预建映射）。
+    """
+    if children_by_parent is not None:
+        return [entry_obj] + children_by_parent.get(entry_obj, [])
     out = [entry_obj]
     for o in bpy.data.objects:
         if o.parent == entry_obj and o.get("~TYPE") in ("EFX_ATTRIBUTE", "EFX_TIML"):
@@ -303,17 +312,33 @@ def _entry_subtree_objects(entry_obj: bpy.types.Object) -> list:
     return out
 
 
-def _move_entry_subtree(entry_obj: bpy.types.Object, src_cols, dst_col) -> None:
+def _build_children_by_parent() -> dict:
+    """一次性扫 bpy.data.objects，按 .parent 分组 EFX_ATTRIBUTE/EFX_TIML 子对象，
+    返回 {parent_obj: [children]}。供批量场景（如 init_eof_per_entry 遍历全部
+    entry）替代"每个 entry 各扫一遍全场景"的 O(n²) 写法，摊薄成一次 O(n) 扫描。"""
+    out = {}
+    for o in bpy.data.objects:
+        p = o.parent
+        if p is not None and o.get("~TYPE") in ("EFX_ATTRIBUTE", "EFX_TIML"):
+            out.setdefault(p, []).append(o)
+    return out
+
+
+def _move_entry_subtree(entry_obj: bpy.types.Object, src_cols, dst_col,
+                         children_by_parent: dict = None) -> None:
     """把 entry_obj 整棵子树（自身+attribute+TIML）从 src_cols 挪到 dst_col。
 
     src_cols 可传单个 Collection，也可传多个（list/tuple）——挪动前依次尝试从
     每一个里解链，不在其中的直接跳过。用于"不确定 entry 当前实际挂在哪"的场景
     （如 toggle 时它可能在 Direct Trigger / Not Direct Trigger / 异常孤儿状态
     三者之一，一次调用把三处都清干净）。
+
+    children_by_parent：批量调用（多个 entry）时传 _build_children_by_parent()
+    的结果，避免逐 entry 重复全场景扫描（见 _entry_subtree_objects）。
     """
     if isinstance(src_cols, bpy.types.Collection) or src_cols is None:
         src_cols = (src_cols,)
-    for member in _entry_subtree_objects(entry_obj):
+    for member in _entry_subtree_objects(entry_obj, children_by_parent):
         for sc in src_cols:
             if sc is not None and sc in member.users_collection:
                 sc.objects.unlink(member)
@@ -349,9 +374,12 @@ def init_eof_per_entry(
     if dt_col is None or ndt_col is None:
         return
 
+    # 批量场景：一次性建 {parent: [children]} 映射，避免每个 entry 各扫一遍
+    # 全场景 bpy.data.objects（entry 数多的文件导入曾因此明显变慢，已修）。
+    children_by_parent = _build_children_by_parent()
     for idx, obj in main_bodies_by_index.items():
         dst = dt_col if idx in active else ndt_col
-        _move_entry_subtree(obj, entry_col, dst)
+        _move_entry_subtree(obj, entry_col, dst, children_by_parent)
 
 
 def export_eof_per_entry(root_obj: bpy.types.Object, entry_index_map: dict) -> list:
