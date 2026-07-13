@@ -110,7 +110,16 @@ class EFX_OT_export_entry_timl(bpy.types.Operator, ExportHelper):
         if not _entry_has_timl(obj):
             self.report({"ERROR"}, "Current object is not an EFX_ENTRY containing TIML")
             return {"CANCELLED"}
-        data = _entry_timl_bytes(obj)
+        # 与主 .efx 导出同款新鲜度保证：若句柄有持久 fcurve，先把当前关键帧值同步回
+        # 字节再导出——否则会导出 timl_bytes 的旧快照（导入时/上次结构编辑提交时），
+        # 漏掉尚未触发 commit_fcurves_to_bytes 的实时关键帧编辑。
+        try:
+            from . import io_tree as _iot
+            from . import timl_edit as _te
+            h = _iot.find_timl_handle(obj)
+            data = bytes(_te.sync_fcurves_to_bytes(h, obj)) if h is not None else _entry_timl_bytes(obj)
+        except Exception:
+            data = _entry_timl_bytes(obj)
         try:
             with open(self.filepath, "wb") as f:
                 f.write(data)
