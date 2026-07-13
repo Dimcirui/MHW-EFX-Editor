@@ -329,6 +329,14 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             self.filepath = os.path.join(directory, base + self.filename_ext) if directory else base + self.filename_ext
 
         layout.prop(self, "recompute_double_buffer")
+        if not self.recompute_double_buffer and cur is not None and "hdr_double_buffer" in cur:
+            # 不自动重算：手填 filesize_double（doubleBuffer）原样使用的值。
+            # 挪到导出弹窗里紧跟勾选框下面，免去单独开 ROOT 面板找这一个字段。
+            box = layout.box()
+            box.prop(cur, '["hdr_double_buffer"]', text=T("entry.double_buffer"))
+            tip = box.row()
+            tip.enabled = False
+            tip.label(text=T("entry.double_buffer_tip"))
         layout.prop(self, "auto_sort_attributes")
         layout.prop(self, "recalc_timl_length")
 
@@ -965,12 +973,21 @@ class EFX_OT_new_efx(bpy.types.Operator):
         root_col["labels_dirty"] = 1
         root_col["eof_ints"]     = ""
         root_col["eof_tail"]     = ""
+        # 空 eof 列表天然"干净"（见 entry_action_ref.eof_is_clean）→ per_entry 模型，
+        # 使新增 entry 后可用 Direct Trigger 切换（efx.eof_toggle_entry）。
+        root_col["eof_model"]    = "per_entry"
 
         # ── 4 个空叶子子集合（与导入时命名一致，~TYPE + efx_root_ptr 反向指针）───────
         _rc.new_leaf_collection(stem + "_2 Entry",     root_col, "EFX_ENTRY")
         _rc.new_leaf_collection(stem + "_0 Action",    root_col, "EFX_ACTION")
         _rc.new_leaf_collection(stem + "_1 Extern",    root_col, "EFX_EXTERN")
         _rc.new_leaf_collection(stem + "_3 Subselect", root_col, "EFX_SUBSELECT")
+
+        # Entry 下预建两个对称子集合（Direct Trigger / Not Direct Trigger），跟导入
+        # 一致：即使还没有任何 entry，也先把结构摆出来，避免用户第一次加 entry 时
+        # 才第一次看到这套约定。
+        _rc.ensure_direct_trigger_collection(root_col)
+        _rc.ensure_not_direct_trigger_collection(root_col)
 
         # Active EFX 自动切换到新建集合
         context.scene.efx_active_efx = root_col

@@ -18,10 +18,14 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
     悬空指针不再 ERROR：导出端各 export_* 早已对 None 指针安全跳过/回退（subselect/action/eof
     直接 skip，extern/ptlife/ptcollision 原样保留旧字节）。降级为 WARN + 导出时报告即可，
     不应仅因引用悬空就阻断导出。
-(1b) EOF 越界 raw 值（category="eof_raw"）—— WARN，仅当 eof 列表被编辑过（root["eof_dirty"]）时报告：
-    eof 条目整数落在 [0, entry 数) 之外即存为 raw（is_ptr=False）。这些是原始文件里的
-    "空槽哨兵"（常见 33/99/==count_body），不指向真实 entry。编辑激活集/增删 entry 后它们成为
-    指向错误或不存在 entry 的陈旧索引 → 破坏直接触发集 → 特效不生效。导出端在 eof_dirty 时丢弃。
+(1b) EOF 异常归属（per_entry 模型，Entry 下 Direct Trigger / Not Direct Trigger 两个
+    对称子集合）—— WARN，两种情况：
+    - 双重挂载（category="eof_dual_membership"）：同一 entry 同时 link 在两个子集合里。
+      只有手动 Ctrl+drag 追加链接才会出现，正常切换/拖拽是互斥移动。导出以 Direct
+      Trigger 为准（entry 仍算作直接触发）。
+    - 孤儿（category="eof_orphan_entry"）：entry 不在任何一个子集合里，误留在 Entry
+      叶子集合直接子级（拖拽失误）。导出 fail-safe 视为直接触发（宁可多触发不漏触发）。
+    两者都只是提醒用户清理，不挡导出。
 (2) efx_index 重复（同级组内）—— ERROR
 (3) 死属性 EXTERNREFERENCE（count_extern==0 却仍 pointerized）—— WARN（合法历史模式）
 (5k) standard/extended entry 零属性 —— WARN（提示性；io_tree.py §4a0 已自动从导出剔除这类
@@ -311,34 +315,37 @@ def validate_efx_tree(root_obj) -> list:
                 except AttributeError:
                     pass
 
-    # eof_ints 列表：悬空 entry 指针不报（导出端跳过、count_eof 重算）。
-    # 但若 eof 列表被编辑过（eof_dirty），报告将被丢弃的越界 raw 值（空槽哨兵），
-    # 让用户知道哪些陈旧索引被清理 —— 见 (1b) 说明。
-    try:
-        eof_dirty = bool(int(root_obj.get("eof_dirty", 0)))
-    except (ValueError, TypeError):
-        eof_dirty = False
-    if eof_dirty:
-        n_bodies = len(bodies)
-        eof_props = getattr(root_obj, "efx_eof_list", None)
-        if eof_props is not None:
-            for i, item in enumerate(getattr(eof_props, "items", [])):
-                try:
-                    if not item.is_ptr:
-                        rv = int(item.raw_value)
-                        if rv < 0 or rv >= n_bodies:
-                            problems.append({
-                                "level": "WARN",
-                                "category": "eof_raw",
-                                "msg": (
-                                    f"EOF entry {i} raw={rv} is out of range "
-                                    f"[0,{n_bodies}) — inactive-slot sentinel, "
-                                    "dropped on export (the active set was edited)"
-                                ),
-                                "obj": root_obj.name,
-                            })
-                except (AttributeError, ValueError, TypeError):
-                    continue
+    # EOF 异常归属：per_entry 模型下 entry 应恰好属于 Direct Trigger / Not Direct
+    # Trigger 两个子集合之一。正常切换/拖拽是互斥移动，不会产生异常；只有手动
+    # Ctrl+drag 追加链接（双重挂载）或误把 entry 落在 Entry 叶子集合直接子级
+    # （孤儿）才会出现 —— 见 (1b) 说明。
+    if str(root_obj.get("eof_model", "")) == "per_entry":
+        dt_col = _rc.get_direct_trigger_collection(root_obj)
+        ndt_col = _rc.get_not_direct_trigger_collection(root_obj)
+        for b in bodies:
+            in_dt = dt_col is not None and dt_col in b.users_collection
+            in_ndt = ndt_col is not None and ndt_col in b.users_collection
+            if in_dt and in_ndt:
+                problems.append({
+                    "level": "WARN",
+                    "category": "eof_dual_membership",
+                    "msg": (
+                        f"Entry '{b.name}' is linked into both Direct Trigger and "
+                        "Not Direct Trigger — treated as triggered (Direct Trigger wins) on export"
+                    ),
+                    "obj": b.name,
+                })
+            elif not in_dt and not in_ndt:
+                problems.append({
+                    "level": "WARN",
+                    "category": "eof_orphan_entry",
+                    "msg": (
+                        f"Entry '{b.name}' is not in either Direct Trigger or Not Direct "
+                        "Trigger (left directly under the Entry collection) — treated as "
+                        "triggered (fail-safe) on export"
+                    ),
+                    "obj": b.name,
+                })
 
     # ── (2) efx_index 重复 ──────────────────────────────────────────────────
 

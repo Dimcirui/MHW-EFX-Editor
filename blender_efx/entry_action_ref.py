@@ -59,41 +59,43 @@ PTCOLLISION_SCHEMA：112 字节。
 导出覆写：struct.pack_into('<i', buf, 96, new_index)  （int32，偏移 96）
 
 ────────────────────────────────────────────────────────────────────────────
-§ 3  eof_ints（End 段，entry 索引列表）
+§ 3  eof_ints（End 段，entry 索引列表）—— hybrid：per_entry(对称嵌套集合) / opaque
 ────────────────────────────────────────────────────────────────────────────
-当前（L1.0）存储：root_obj["eof_ints"] = 逗号分隔十进制字符串（如 "0,1,2,9"）。
-L2 #1d 升级：改为 CollectionProperty（有序列表），每项：
-  body_ptr   : PointerProperty(poll=EFX_ENTRY) — 有效 entry 指针（is_ptr=True 时）
-  raw_value  : IntProperty                    — 无法映射的原始整数（is_ptr=False 时）
-  is_ptr     : BoolProperty                   — True=entry 指针；False=原始整数
+干净（升序+无重复+全 in-range）→ "per_entry"：直接触发的载体是**集合归属**——
+Entry 叶子集合下嵌两个对称子集合 "Direct Trigger" / "Not Direct Trigger"
+（root_collection.py ensure_direct_trigger_collection / ensure_not_direct_
+trigger_collection）。entry **100% 分流**进其中一个——Entry 叶子集合自身直接
+子级永远清空，避免"直接触发的单独有集合、不直接触发的却混在一起"的模糊状态
+（2026-07 二期用户反馈：光有 Direct Trigger 一个子集合分不清"不触发"和"忘了分类"）。
+悬空/越界从原理上不存在（entry 被删=从 bpy.data.objects 移除=自动从其所在
+集合消失）。
 
-导入：每个 eof 值 v：
-  0 <= v < count_body → entry 指针（is_ptr=True）
-  其他               → raw_value（is_ptr=False）
-保持顺序。
+fail-safe：若 entry 异常地既不在 Direct Trigger 也不在 Not Direct Trigger
+（手动拖拽失误，直接留在 Entry 叶子集合本身）→ 导出时**视为直接触发**（宁可
+多触发、不漏触发）。若同时在两处（另一种拖拽失误）→ Direct Trigger 优先。
+validate.py 对这两种异常状态都有 WARN。
 
-导出：按顺序，
-  is_ptr=True   → body_ptr 经 build_local_index_map 解析回 Entry 局部 index
-  is_ptr=False  → raw_value 原样
-结果为 uint32 列表，与 export_efx_tree §3 拼接 struct.pack('<I', v) 字节。
+不干净（evc 浮点结构等）→ "opaque"：整个 eof 段原样存 root_col["eof_ints"]
+字符串直通，不建任何集合，byte-perfect、只读。
 
-byte-perfect 保证：
-  - 有效 entry 指针未变 → efx_index == 局部 index == 原始值
-  - 无效原始值（99/33/20 等）is_ptr=False → raw_value 原样输出
-  - 顺序由 CollectionProperty 顺序决定（导入按 eof_ints 原序填入）
+导出：
+  per_entry → 遍历 entry_index_map，按上述 fail-safe 规则判定每个 entry 是否
+              触发，取其局部 index，升序返回。
+  opaque    → root_col["eof_ints"] 字符串原样解析回整数列表。
 
-后向兼容：
-  若 root_obj 无 efx_eof_list 属性（旧场景/升级），
-  导出时回退到 root_obj["eof_ints"] 字符串路径（维持旧行为）。
+2026-07 二期改动：早期版本载体是每个 entry 的 efx_direct_trigger 布尔
+（BoolProperty）+ 一套已废弃的 efx_eof_list CollectionProperty 遗留层
+（后者自 hybrid 模型上线后就从未被 io_tree.py 调用，纯死代码）。本次改为
+嵌套集合后，两者一并删除——ROOT 集合化已经让"旧 .blend 没有 eof_model"这个
+分支彻底不可达（旧 .blend 连 root_col 都没有），不需要再保留后向兼容分支。
+三期（本次）从单一 Direct Trigger 子集合升级为对称两个子集合 + fail-safe 规则。
 """
 
 import struct
 import bpy
 from bpy.props import (
     BoolProperty,
-    IntProperty,
     PointerProperty,
-    CollectionProperty,
 )
 from bpy.types import PropertyGroup
 
@@ -127,16 +129,6 @@ def _same_root_as_active(obj):
     if editing is None:
         return True
     return _rc.same_root(editing, obj)
-
-
-def _entry_object_poll(self, obj):
-    """PointerProperty poll：只允许选 ~TYPE == 'EFX_ENTRY'，且限定同一 EFX 文件
-    （多 EFX 集合并存时防串文件）。已从所有集合解链的孤儿对象（Purge 可清除）排除。"""
-    if obj.get("~TYPE") != "EFX_ENTRY":
-        return False
-    if not obj.users_collection:
-        return False
-    return _same_root_as_active(obj)
 
 
 def _action_object_poll(self, obj):
@@ -444,217 +436,43 @@ def overlay_ptcollision_ie_index(
 # §3  eof_ints（End 段）→ 有序 entry 指针列表
 # ─────────────────────────────────────────────────────────────────────────────
 
-class EFXEofItem(PropertyGroup):
-    """
-    eof_ints 列表中的单个条目。
-
-    is_ptr=True  → body_ptr 有效，导出时解析为 entry 局部 index
-    is_ptr=False → raw_value 有效，导出时原样输出（保留 99/33 等无法映射的值）
-    """
-
-    body_ptr: PointerProperty(
-        name="Entry Object",
-        description="The EFX_ENTRY object this eof entry references (valid when is_ptr=True)",
-        type=bpy.types.Object,
-        poll=_entry_object_poll,
-    )
-
-    raw_value: IntProperty(
-        name="Raw Value",
-        description="Raw integer value that cannot be mapped to a valid entry (valid when is_ptr=False, e.g. 99/33)",
-        default=0,
-    )
-
-    is_ptr: BoolProperty(
-        name="Is Entry Pointer",
-        description="True = entry pointer; False = raw integer (unmappable value)",
-        default=False,
-    )
-
-
-class EFXEofListProps(PropertyGroup):
-    """
-    挂在 EFX_ROOT 对象上（root_obj.efx_eof_list）。
-
-    字段
-    ----
-    items         : CollectionProperty[EFXEofItem]
-                    按 eof_ints 原序填入，每项为 entry 指针或原始整数
-    active_index  : IntProperty（供 UIList/面板使用，可选）
-    """
-
-    items: CollectionProperty(
-        name="EOF Items",
-        description="List of eof_ints entries in the End section (entry pointers or raw integers, order preserved)",
-        type=EFXEofItem,
-    )
-
-    active_index: IntProperty(
-        name="Active Entry Index",
-        description="The currently active eof entry (for UI use)",
-        default=0,
-        min=0,
-    )
-
-
-def init_eof_list_props(
-    root_obj: bpy.types.Object,
-    eof_ints: list,
-    main_bodies_by_index: dict,
-    count_body: int,
-) -> None:
-    """
-    把 eof_ints 整数列表写入 root_obj.efx_eof_list CollectionProperty。
-
-    参数
-    ----
-    root_obj : bpy.types.Object
-        EFX_ROOT Empty 对象。
-    eof_ints : list[int]
-        解析后的 eof_ints 整数列表（来自 EFXFile.eof_ints）。
-    main_bodies_by_index : dict[int, bpy.types.Object]
-        {efx_index → EFX_ENTRY 对象} 映射。
-    count_body : int
-        文件头的 count_body 字段值（hdr.count_body）。
-
-    副作用
-    ------
-    填写 root_obj.efx_eof_list.items（有序）。
-    每个值 v：
-      0 <= v < count_body → is_ptr=True，body_ptr=对应 entry 对象
-      其他               → is_ptr=False，raw_value=v
-    """
-    props = root_obj.efx_eof_list
-    props.items.clear()
-
-    for v in eof_ints:
-        item = props.items.add()
-        if count_body > 0 and 0 <= v < count_body:
-            entry_obj = main_bodies_by_index.get(v)
-            if entry_obj is not None:
-                item.body_ptr = entry_obj
-                item.is_ptr = True
-            else:
-                # 映射缺失（理论上不该发生），退为原始值
-                item.raw_value = v
-                item.is_ptr = False
-        else:
-            # 越界（99/33/20 等）→ 原始整数
-            item.raw_value = v
-            item.is_ptr = False
-
-
-def export_eof_ints(
-    root_obj: bpy.types.Object,
-    entry_index_map: dict,
-    sanitize: bool = False,
-) -> list:
-    """
-    从 root_obj.efx_eof_list 还原 eof_ints 整数列表。
-
-    参数
-    ----
-    root_obj : bpy.types.Object
-        EFX_ROOT Empty 对象。
-    entry_index_map : dict[bpy.types.Object, int]
-        {EFX_ENTRY Object → Main 段局部 0-based index}，
-        由 build_local_index_map(col_entry, 'EFX_ENTRY') 或 enumerate(entry_objs) 构建。
-    sanitize : bool
-        是否清理越界 raw 值（见下）。默认 False（保 byte-perfect）。
-        由 io_tree 在 root["eof_dirty"] 时传 True。
-
-    返回
-    ----
-    list[int]
-        eof_ints 整数列表。未编辑时顺序与导入一致（byte-perfect）。
-
-    回退策略
-    --------
-    若 root_obj 无 efx_eof_list 属性（旧场景），回退到 root_obj["eof_ints"] 字符串路径。
-
-    指针 / raw 处理
-    ---------------
-    is_ptr=True 但 body_ptr=None（悬空）或不在 entry_index_map → 始终跳过（不写入）。
-    is_ptr=False（raw 值）：
-      - sanitize=False（未编辑）：原样写回，保 byte-perfect。
-      - sanitize=True（eof 被编辑过）：**丢弃越界 raw 值**（< 0 或 >= entry 数）。
-        这些是原始文件的"空槽哨兵"（33/99/==count_body 等），不指向真实 entry；编辑激活集/
-        增删 entry 后它们成为陈旧的错误索引，会破坏游戏直接触发集 → 特效不生效。
-        in-range 的 raw 值（理论上不出现，因 init 时 in-range 必指针化）保守保留。
-    """
-    try:
-        props = root_obj.efx_eof_list
-    except AttributeError:
-        # 旧场景兼容回退
-        return _fallback_eof_ints(root_obj)
-
-    # 防御：若 items 为空且旧字符串存在，用旧路径（避免空列表覆盖）
-    if len(props.items) == 0:
-        # 尝试从旧字符串恢复（升级兼容）
-        fallback = _fallback_eof_ints(root_obj)
-        if fallback:
-            return fallback
-        return []
-
-    n_bodies = len(entry_index_map)
-    result = []
-    for item in props.items:
-        if item.is_ptr:
-            entry_obj = item.body_ptr
-            if entry_obj is None:
-                # 悬空：跳过
-                continue
-            local_idx = entry_index_map.get(entry_obj)
-            if local_idx is None:
-                # entry_obj 不在当前 Main 段
-                continue
-            result.append(local_idx)
-        else:
-            rv = item.raw_value
-            if sanitize and (rv < 0 or rv >= n_bodies):
-                # eof 被编辑过：丢弃越界空槽哨兵（陈旧错误索引）
-                continue
-            result.append(rv)
-
-    return result
-
-
-def _fallback_eof_ints(root_obj: bpy.types.Object) -> list:
-    """
-    从旧的逗号字符串自定义属性 eof_ints 还原列表（后向兼容）。
-    """
-    try:
-        s = str(root_obj["eof_ints"]).strip()
-        return [int(x) for x in s.split(",") if x] if s else []
-    except (KeyError, ValueError, TypeError):
-        return []
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# §3b  eof 载体下放到 entry（hybrid 闸门）—— 结构权威下放重构
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# eof 段（End 直接触发集）语义**不统一**（语料实证，见 memory
-# official-samples-authoritative）：99.8% 文件 = 干净的 entry 索引激活集；
-# ~0.2%（全是 evc 事件/过场特效）= 装浮点结构的数据，不是索引。故 hybrid：
-#
-#   干净 = (eof_ints == sorted(set(eof_ints)) 且全部 0<=v<count_body)
-#     → 模型 "per_entry"：载体下放到每个 entry 的 efx_direct_trigger 布尔。
-#       悬空指针从原理上消失（entry 在则 flag 在，删 entry flag 随之走）；
-#       raw 哨兵噪声自动清零。导出按 entry 局部 index **升序**重建。
-#   不干净（evc 浮点结构等）
-#     → 模型 "opaque"：整个 eof 段作为 root["eof_ints"] 字符串原样直通，
-#       不建 bool。这些文件保持 byte-perfect、完全不动。
-#
-# 后向兼容：旧 .blend 无 eof_model → export 回退到 §3 的 export_eof_ints（efx_eof_list）。
-
 def eof_is_clean(eof_ints: list, count_body: int) -> bool:
-    """判定 eof 是否"干净"（可下放 per-entry bool）：升序 + 无重复 + 全部 in-range。
+    """判定 eof 是否"干净"（可下放为集合归属）：升序 + 无重复 + 全部 in-range。
     空列表视为干净（sorted(set([]))==[] 且 all() 空真）。"""
     lst = list(eof_ints)
     if any(not (0 <= v < count_body) for v in lst):
         return False
     return lst == sorted(set(lst))
+
+
+def _entry_subtree_objects(entry_obj: bpy.types.Object) -> list:
+    """entry_obj 本身 + 其直属 EFX_ATTRIBUTE/EFX_TIML 子对象。root_collection.py 的
+    不变式是"entry 和它的 attribute/TIML 句柄都直接 link 在同一个叶子集合里"——
+    EOF 归属在 Entry 叶子集合 ↔ 嵌套 Direct Trigger 子集合之间挪动时，必须整棵子树
+    一起挪，只挪 entry 本身会让属性/TIML 句柄留在原集合，破坏该不变式。"""
+    out = [entry_obj]
+    for o in bpy.data.objects:
+        if o.parent == entry_obj and o.get("~TYPE") in ("EFX_ATTRIBUTE", "EFX_TIML"):
+            out.append(o)
+    return out
+
+
+def _move_entry_subtree(entry_obj: bpy.types.Object, src_cols, dst_col) -> None:
+    """把 entry_obj 整棵子树（自身+attribute+TIML）从 src_cols 挪到 dst_col。
+
+    src_cols 可传单个 Collection，也可传多个（list/tuple）——挪动前依次尝试从
+    每一个里解链，不在其中的直接跳过。用于"不确定 entry 当前实际挂在哪"的场景
+    （如 toggle 时它可能在 Direct Trigger / Not Direct Trigger / 异常孤儿状态
+    三者之一，一次调用把三处都清干净）。
+    """
+    if isinstance(src_cols, bpy.types.Collection) or src_cols is None:
+        src_cols = (src_cols,)
+    for member in _entry_subtree_objects(entry_obj):
+        for sc in src_cols:
+            if sc is not None and sc in member.users_collection:
+                sc.objects.unlink(member)
+        if dst_col is not None and dst_col not in member.users_collection:
+            dst_col.objects.link(member)
 
 
 def init_eof_per_entry(
@@ -664,48 +482,65 @@ def init_eof_per_entry(
     count_body: int,
 ) -> None:
     """
-    导入端 hybrid：干净 → 设 root["eof_model"]="per_entry" + 每个 entry 的
-    efx_direct_trigger；不干净 → "opaque"，保留 root["eof_ints"] 字符串直通。
+    导入端 hybrid：干净 → 设 root_obj["eof_model"]="per_entry"，把**每一个** entry
+    （及其 attribute/TIML 子对象）从 Entry 叶子集合分流进 "Direct Trigger" 或
+    "Not Direct Trigger" 子集合之一（100% 分流，Entry 叶子集合自身直接子级导入后
+    永远清空）；不干净 → "opaque"，保留 root_obj["eof_ints"] 字符串直通。
     """
-    if eof_is_clean(eof_ints, count_body):
-        root_obj["eof_model"] = "per_entry"
-        active = set(int(v) for v in eof_ints)
-        for idx, obj in main_bodies_by_index.items():
-            try:
-                obj.efx_direct_trigger = (idx in active)
-            except (AttributeError, TypeError):
-                pass
-    else:
+    if not eof_is_clean(eof_ints, count_body):
         root_obj["eof_model"] = "opaque"
-        # root["eof_ints"] 字符串已在 io_tree §3 写入，原样直通即可。
+        # root_obj["eof_ints"] 字符串已在 io_tree §3 写入，原样直通即可。
+        return
+
+    root_obj["eof_model"] = "per_entry"
+    active = set(int(v) for v in eof_ints)
+
+    entry_col = _rc.get_leaf_collection(root_obj, "EFX_ENTRY")
+    if entry_col is None:
+        return
+    dt_col = _rc.ensure_direct_trigger_collection(root_obj)
+    ndt_col = _rc.ensure_not_direct_trigger_collection(root_obj)
+    if dt_col is None or ndt_col is None:
+        return
+
+    for idx, obj in main_bodies_by_index.items():
+        dst = dt_col if idx in active else ndt_col
+        _move_entry_subtree(obj, entry_col, dst)
 
 
-def export_eof_per_entry(
-    root_obj: bpy.types.Object,
-    entry_index_map: dict,
-    sanitize: bool = False,
-) -> list:
+def export_eof_per_entry(root_obj: bpy.types.Object, entry_index_map: dict) -> list:
     """
     导出端 hybrid：
-      per_entry → 收集 efx_direct_trigger==True 的 entry，经 entry_index_map 映射到
-                  导出局部 index，**升序**返回（忠实重建）。
-      opaque    → root["eof_ints"] 字符串原样。
-      无 eof_model（旧 .blend）→ 回退 §3 的 export_eof_ints。
+      per_entry → 按 fail-safe 规则判定每个 entry 是否触发：link 在 Direct Trigger
+                  里 → 触发；不在 Not Direct Trigger 里（含误留在 Entry 叶子集合
+                  直接子级的异常孤儿）→ 也触发（宁可多触发不漏触发）；否则不触发。
+                  取局部 index，升序返回。
+      opaque    → root_obj["eof_ints"] 字符串原样。
+      无 eof_model（不该出现——ROOT 集合化后旧 .blend 早已不兼容）→ 空列表兜底。
     """
     model = str(root_obj.get("eof_model", ""))
     if model == "per_entry":
+        dt_col = _rc.get_direct_trigger_collection(root_obj)
+        ndt_col = _rc.get_not_direct_trigger_collection(root_obj)
         out = []
         for obj, idx in entry_index_map.items():
-            try:
-                if obj.efx_direct_trigger:
-                    out.append(idx)
-            except AttributeError:
-                pass
+            in_dt = dt_col is not None and dt_col in obj.users_collection
+            in_ndt = ndt_col is not None and ndt_col in obj.users_collection
+            if in_dt or not in_ndt:
+                out.append(idx)
         return sorted(out)
     if model == "opaque":
         return _fallback_eof_ints(root_obj)
-    # 旧 .blend：回退到 efx_eof_list / 字符串路径
-    return export_eof_ints(root_obj, entry_index_map, sanitize=sanitize)
+    return []
+
+
+def _fallback_eof_ints(root_obj: bpy.types.Object) -> list:
+    """从 eof_ints 逗号字符串自定义属性还原整数列表（opaque 模型 byte-perfect 直通用）。"""
+    try:
+        s = str(root_obj["eof_ints"]).strip()
+        return [int(x) for x in s.split(",") if x] if s else []
+    except (KeyError, ValueError, TypeError):
+        return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -917,128 +752,75 @@ class EFX_OT_eof_toggle_entry(bpy.types.Operator):
         entry_obj = context.active_object
         root = _rc.find_root_collection(entry_obj)
 
-        # per_entry 模型（新导入）：直接翻转 entry 的 efx_direct_trigger 布尔。
-        if str(root.get("eof_model", "")) == "per_entry":
-            cur = bool(getattr(entry_obj, "efx_direct_trigger", False))
-            entry_obj.efx_direct_trigger = not cur
-            self.report({"INFO"},
-                        f"{'Removed' if cur else 'Added'} {entry_obj.name} "
-                        f"{'from' if cur else 'to'} direct-trigger set")
-            return {"FINISHED"}
-
-        # opaque（evc 事件特效）：不可编辑 eof。
         if str(root.get("eof_model", "")) == "opaque":
             self.report({"WARNING"},
                         "This EFX's EOF section holds non-index (event) data and is read-only")
             return {"CANCELLED"}
 
-        # 旧 .blend（无 eof_model）：走原 efx_eof_list 路径。
-        try:
-            props = root.efx_eof_list
-        except AttributeError:
-            self.report({"ERROR"}, "Root object has no efx_eof_list property")
-            return {"CANCELLED"}
-        found_idx = None
-        for i, item in enumerate(props.items):
-            if item.is_ptr and item.body_ptr == entry_obj:
-                found_idx = i
-                break
-        if found_idx is not None:
-            props.items.remove(found_idx)
-            self.report({"INFO"}, f"Removed {entry_obj.name} from EOF list")
-        else:
-            item = props.items.add()
-            item.is_ptr = True
-            item.body_ptr = entry_obj
-            self.report({"INFO"}, f"Added {entry_obj.name} to EOF list")
-        root["eof_dirty"] = 1
+        # per_entry 模型：在 Direct Trigger ↔ Not Direct Trigger 两个嵌套子集合
+        # 之间挪动整棵子树（entry + attribute + TIML）。当前有效触发态按 fail-safe
+        # 规则判定（不在 Not Direct Trigger 里的孤儿也算触发），取反后目标集合
+        # 二选一；源集合传全部三处候选（Entry 叶子集合本身+两个子集合），不管
+        # entry 实际在哪个都能正确清干净——顺带把异常孤儿状态一起修复掉。
+        entry_col = _rc.get_leaf_collection(root, "EFX_ENTRY")
+        dt_col = _rc.ensure_direct_trigger_collection(root)
+        ndt_col = _rc.ensure_not_direct_trigger_collection(root)
+        in_dt = dt_col in entry_obj.users_collection
+        in_ndt = ndt_col in entry_obj.users_collection
+        currently_triggered = in_dt or not in_ndt
+
+        dst = ndt_col if currently_triggered else dt_col
+        _move_entry_subtree(entry_obj, (entry_col, dt_col, ndt_col), dst)
+
+        self.report({"INFO"},
+                    f"{'Removed' if currently_triggered else 'Added'} {entry_obj.name} "
+                    f"{'from' if currently_triggered else 'to'} direct-trigger set")
         return {"FINISHED"}
 
 
 def is_entry_in_eof(entry_obj: bpy.types.Object) -> bool:
-    """查询 entry_obj 是否在所属根文件的 eof 直接触发集中。供面板绘制使用。"""
+    """查询 entry_obj 是否在所属根文件的 eof 直接触发集中（与 export_eof_per_entry
+    同款 fail-safe 规则：不在 Not Direct Trigger 里的孤儿也算触发）。供面板绘制使用。"""
     root = _rc.find_root_collection(entry_obj) if entry_obj else None
     if root is None:
         return False
-    # per_entry 模型：直接读布尔。
-    if str(root.get("eof_model", "")) == "per_entry":
-        return bool(getattr(entry_obj, "efx_direct_trigger", False))
-    # opaque / 旧 .blend：走 efx_eof_list。
-    try:
-        props = root.efx_eof_list
-    except AttributeError:
-        return False
-    for item in props.items:
-        if item.is_ptr and item.body_ptr == entry_obj:
-            return True
-    return False
+    if str(root.get("eof_model", "")) != "per_entry":
+        return False  # opaque：非索引数据，"是否在 eof 里"这个问题本身不成立
+    dt_col = _rc.get_direct_trigger_collection(root)
+    ndt_col = _rc.get_not_direct_trigger_collection(root)
+    in_dt = dt_col is not None and dt_col in entry_obj.users_collection
+    in_ndt = ndt_col is not None and ndt_col in entry_obj.users_collection
+    return in_dt or not in_ndt
 
 
-class EFX_OT_eof_add_entry(bpy.types.Operator):
-    """Add an entry selected in the picker to the root file's EOF direct-trigger list"""
-
-    bl_idname      = "efx.eof_add_entry"
-    bl_label       = "Add Entry to Direct Trigger List"
-    bl_description = "Add the selected EFX_ENTRY to the direct-trigger (EOF) list"
-    bl_options     = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        if not _rc.is_root_collection(context.collection):
-            return False
-        wm = context.window_manager
-        return getattr(wm, "efx_eof_entry_to_add", None) is not None
-
-    def execute(self, context):
-        root = context.collection
-        wm = context.window_manager
-        entry_obj = wm.efx_eof_entry_to_add
-        if entry_obj is None:
-            return {"CANCELLED"}
-        try:
-            props = root.efx_eof_list
-        except AttributeError:
-            self.report({"ERROR"}, "Root object has no efx_eof_list property")
-            return {"CANCELLED"}
-        for item in props.items:
-            if item.is_ptr and item.body_ptr == entry_obj:
-                self.report({"WARNING"}, f"{entry_obj.name} is already in the list")
-                return {"CANCELLED"}
-        item = props.items.add()
-        item.is_ptr = True
-        item.body_ptr = entry_obj
-        root["eof_dirty"] = 1  # 激活集被编辑 → 导出端清理越界 raw 哨兵
-        self.report({"INFO"}, f"Added {entry_obj.name} to EOF list")
-        return {"FINISHED"}
-
-
-class EFX_OT_eof_remove_entry(bpy.types.Operator):
-    """Remove a specific entry from the root file's EOF list"""
-
-    bl_idname      = "efx.eof_remove_entry"
-    bl_label       = "Remove EOF Entry"
-    bl_options     = {"REGISTER", "UNDO"}
-
-    entry_index: bpy.props.IntProperty(default=0)
-
-    @classmethod
-    def poll(cls, context):
-        return _rc.is_root_collection(context.collection)
-
-    def execute(self, context):
-        root = context.collection
-        try:
-            props = root.efx_eof_list
-        except AttributeError:
-            return {"CANCELLED"}
-        if 0 <= self.entry_index < len(props.items):
-            props.items.remove(self.entry_index)
-            root["eof_dirty"] = 1  # 激活集被编辑 → 导出端清理越界 raw 哨兵
-        return {"FINISHED"}
+def place_new_entry(root_obj: bpy.types.Object, entry_obj: bpy.types.Object, in_eof: bool) -> None:
+    """新建/粘贴的 entry 刚建好时（仍原样挂在 Entry 叶子集合本身），按 eof_model 归位：
+      opaque    → 不动（该模型没有嵌套子集合概念，读者只读 eof_ints 字符串）。
+      per_entry → 挪进 Direct Trigger（in_eof=True）或 Not Direct Trigger（否则），
+                  确保"Entry 叶子集合直接子级永远清空"对新建 entry 同样成立。
+      无 eof_model（不该出现）→ 不动。
+    供 add_ops.py 新建 entry（预设/粘贴）时调用。
+    """
+    model = str(root_obj.get("eof_model", ""))
+    if model != "per_entry":
+        return
+    entry_col = _rc.get_leaf_collection(root_obj, "EFX_ENTRY")
+    dst = (_rc.ensure_direct_trigger_collection(root_obj) if in_eof
+           else _rc.ensure_not_direct_trigger_collection(root_obj))
+    if dst is None:
+        return
+    _move_entry_subtree(entry_obj, entry_col, dst)
 
 
 class EFX_PT_eof_list(bpy.types.Panel):
-    """EFX_ROOT 对象的 EOF 激活 entry 列表面板（可编辑）"""
+    """
+    Direct Trigger 只读总览（VIEW_3D N 面板，选中 ROOT 集合时显示）。
+
+    2026-07 二期：EOF 载体从 per-entry 布尔改为嵌套集合归属（Entry 叶子集合下的
+    "Direct Trigger" 子集合），大纲拖拽本身就是主编辑入口——本面板降级为只读汇总
+    （不展开集合树也能一眼看全部直接触发 entry），编辑走大纲拖拽或 Entry Status
+    → Activation 面板的切换按钮（efx.eof_toggle_entry）。
+    """
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
@@ -1052,83 +834,34 @@ class EFX_PT_eof_list(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        obj = context.collection
-        model = str(obj.get("eof_model", ""))
+        root = context.collection
+        model = str(root.get("eof_model", ""))
 
-        # ── per_entry 模型（新导入的干净文件）：每个 entry 一个直接触发勾选 ──────────
-        # 载体下放到 entry 的 efx_direct_trigger，悬空/raw 噪声从原理上不存在。
-        if model == "per_entry":
-            entries = _rc.collect_top_level(obj, "EFX_ENTRY")
-            n_active = sum(1 for e in entries if getattr(e, "efx_direct_trigger", False))
-            layout.label(text=T("ptref.game_activated_entries") + f"({n_active})", icon="SORTBYEXT")
-            col = layout.column(align=True)
-            for e in entries:
-                row = col.row(align=True)
-                row.scale_y = 0.85
-                row.prop(e, "efx_direct_trigger",
-                         text=f"[{e.get('efx_index', '?')}] {e.name}")
-            return
-
-        # ── opaque 模型（evc 事件特效，EOF 装非索引浮点结构）：只读 ───────────────
         if model == "opaque":
             box = layout.box()
             box.label(text="EOF holds non-index (event) data", icon="INFO")
             box.label(text="Read-only; preserved verbatim on export")
             return
 
-        # ── 旧 .blend（无 eof_model）：原 efx_eof_list 路径（后向兼容）────────────
-        try:
-            props = obj.efx_eof_list
-        except AttributeError:
-            layout.label(text=T("ptref.no_eof_data"), icon="ERROR")
-            return
+        entries = _rc.collect_top_level(root, "EFX_ENTRY")
+        triggered = [e for e in entries if is_entry_in_eof(e)]
+        layout.label(text=T("ptref.game_activated_entries") + f"({len(triggered)})", icon="SORTBYEXT")
 
-        # ── 选择器 + 添加按钮 ────────────────────────────────────────────────
-        add_row = layout.row(align=True)
-        add_row.prop(context.window_manager, "efx_eof_entry_to_add", text="", icon="OBJECT_DATA")
-        add_row.operator("efx.eof_add_entry", text="", icon="ADD")
-
-        layout.separator(factor=0.3)
-
-        n = len(props.items)
-        layout.label(text=T("ptref.game_activated_entries") + f"({n})", icon="SORTBYEXT")
-
-        if n == 0:
+        if not triggered:
             layout.label(text=T("ptref.eof_empty"), icon="INFO")
             return
 
-        # 当前 entry 数（有效 eof 索引上界）：判定 raw 值是否越界空槽哨兵
-        n_bodies = len(_rc.collect_top_level(obj, "EFX_ENTRY"))
-        has_oob_raw = False
-
         col = layout.column(align=True)
-        for i, item in enumerate(props.items):
+        for e in triggered:
             row = col.row(align=True)
             row.scale_y = 0.85
-            if item.is_ptr:
-                entry_obj = item.body_ptr
-                if entry_obj is not None:
-                    body_idx = entry_obj.get("efx_index", "?")
-                    row.label(
-                        text=f"[{body_idx}] {entry_obj.name}",
-                        icon="OBJECT_DATA",
-                    )
-                else:
-                    row.label(text=T("ptref.dangling_pointer"), icon="ERROR")
-            else:
-                rv = item.raw_value
-                if rv < 0 or rv >= n_bodies:
-                    # 越界空槽哨兵：不指向真实 entry，编辑激活集后导出会清理
-                    has_oob_raw = True
-                    row.label(text=T("ptref.eof_sentinel").format(v=rv), icon="UNLINKED")
-                else:
-                    row.label(text=f"raw={rv}", icon="DOT")
-            op = row.operator("efx.eof_remove_entry", text="", icon="X")
-            op.entry_index = i
+            row.label(text=f"[{e.get('efx_index', '?')}] {e.name}", icon="OBJECT_DATA")
+            op = row.operator("efx.select_object", text="", icon="VIEWZOOM")
+            op.target_name = e.name
 
-        if has_oob_raw:
-            note = layout.box()
-            note.label(text=T("ptref.eof_sentinel_hint"), icon="INFO")
+        hint = layout.row()
+        hint.enabled = False
+        hint.label(text=T("ptref.eof_edit_hint"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1139,15 +872,11 @@ class EFX_PT_eof_list(bpy.types.Panel):
 _CLASSES_CORE = (
     EFXPtLifeRefProps,
     EFXPtCollisionRefProps,
-    EFXEofItem,
-    EFXEofListProps,
 )
 
 # 算子类：由 panels.py 注册
 _OPERATOR_CLASSES = (
     EFX_OT_eof_toggle_entry,
-    EFX_OT_eof_remove_entry,
-    EFX_OT_eof_add_entry,
 )
 
 # 面板类：由 panels.py 在 EFX_PT_entry 之后注册（bl_parent_id='EFX_PT_entry'）
@@ -1178,47 +907,17 @@ def register():
         type=EFXPtCollisionRefProps,
     )
 
-    bpy.types.Object.efx_eof_list = PointerProperty(
-        name="EFX EOF Entry List",
-        description="Ordered eof_ints entry pointer list for the EFX_ROOT object (legacy / opaque fallback)",
-        type=EFXEofListProps,
-    )
-
-    # eof 载体下放到 entry（hybrid "per_entry" 模型）：每个 EFX_ENTRY 一个布尔，
-    # 表示是否在 EOF 直接触发集内。悬空指针从原理上消失（见 init_eof_per_entry）。
-    bpy.types.Object.efx_direct_trigger = BoolProperty(
-        name="Direct Trigger",
-        description=(
-            "Whether this entry is in the EOF direct-trigger set — direct-trigger entries "
-            "fire with the EFX unless gated by a subselect state; entries absent here can "
-            "still be summoned by Action calls. Per-entry EOF carrier (clean files)"
-        ),
-        default=False,
-    )
-
-    bpy.types.WindowManager.efx_eof_entry_to_add = PointerProperty(
-        name="Entry to Add",
-        description="Select an EFX_ENTRY to add to the direct-trigger (EOF) list",
-        type=bpy.types.Object,
-        poll=_entry_object_poll,
-    )
-
 
 def unregister():
     """
     注销 entry_action_ref 核心类并清理 PointerProperty。
     面板类由 panels.py 先注销。
     """
-    for attr in ("efx_ptlife_ref", "efx_ptcollision_ref", "efx_eof_list", "efx_direct_trigger"):
+    for attr in ("efx_ptlife_ref", "efx_ptcollision_ref"):
         try:
             delattr(bpy.types.Object, attr)
         except AttributeError:
             pass
-
-    try:
-        delattr(bpy.types.WindowManager, "efx_eof_entry_to_add")
-    except AttributeError:
-        pass
 
     for cls in reversed(_CLASSES_CORE):
         bpy.utils.unregister_class(cls)

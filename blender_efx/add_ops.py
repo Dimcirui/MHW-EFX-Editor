@@ -274,30 +274,6 @@ def _is_entry_in_eof(entry_obj: bpy.types.Object) -> bool:
         return False
 
 
-def _append_to_eof(root_obj: bpy.types.Object,
-                   entry_obj: bpy.types.Object) -> None:
-    """把 entry_obj 加入 eof 直接触发集（hybrid 模型感知）。
-    per_entry → 置 efx_direct_trigger=True；opaque → 跳过（事件特效 eof 只读）；
-    旧 .blend → 追加 efx_eof_list 指针条目。"""
-    model = str(root_obj.get("eof_model", ""))
-    if model == "per_entry":
-        try:
-            entry_obj.efx_direct_trigger = True
-        except (AttributeError, TypeError):
-            pass
-        return
-    if model == "opaque":
-        return  # evc 事件特效 eof 非索引结构，不可追加
-    # 旧 .blend：efx_eof_list 指针条目
-    try:
-        props = root_obj.efx_eof_list
-    except AttributeError:
-        return
-    item = props.items.add()
-    item.is_ptr = True
-    item.body_ptr = entry_obj
-
-
 def _normalize_legacy_entry_preset(preset: dict) -> dict:
     """
     兼容 3.0 重命名前的旧 entry 预设 schema（efx_preset_kind == "body"，来自
@@ -456,9 +432,10 @@ def add_entry_from_preset_dict(preset: dict,
     if entry_kind in ("standard", "extended"):
         _repointerize_refs(preset, entry_obj, root_obj)
 
-    # 若源 entry 在源文件 eof 中，将新 entry 追加到目标文件 eof 列表
-    if preset.get("in_eof"):
-        _append_to_eof(root_obj, entry_obj)
+    # 按源 entry 在源文件里的 eof 状态，把新 entry 分流进目标文件对应的子集合
+    # （per_entry 模型：Direct Trigger / Not Direct Trigger 二选一；opaque 不动）。
+    from . import entry_action_ref
+    entry_action_ref.place_new_entry(root_obj, entry_obj, bool(preset.get("in_eof")))
 
     # entry 数量变化 → 标签表变 → 触发导出端重算
     root_obj["labels_dirty"] = 1

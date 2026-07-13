@@ -422,14 +422,11 @@ STRINGS = {
     "ptref.no_target_sentinel":  {"EN": "No Target (-1 sentinel)", "ZH": "无目标（-1 哨兵）"},
     "ptref.action_object":         {"EN": "Action Object",    "ZH": "Action 对象"},
     "ptref.action_local_index":    {"EN": "Action local index:", "ZH": "Action 局部 index:"},
-    "ptref.no_eof_data":         {"EN": "(No efx_eof_list data)", "ZH": "（无 efx_eof_list 数据）"},
     "ptref.game_activated_entries":{"EN": "Entries triggered directly on EFX load", "ZH": "EFX 加载时直接触发的 Entry"},
     "ptref.eof_empty":           {"EN": "(Empty - effect will not be triggered directly on load)",
                                   "ZH": "（空——EFX 加载时不会直接触发任何 Entry）"},
-    "ptref.dangling_pointer":    {"EN": "[Dangling pointer]", "ZH": "[悬空指针]"},
-    "ptref.eof_sentinel":        {"EN": "raw={v} (out-of-range sentinel)", "ZH": "raw={v}（越界空槽）"},
-    "ptref.eof_sentinel_hint":   {"EN": "Out-of-range entries are inactive-slot sentinels (no such entry); dropped on export once the active set is edited",
-                                  "ZH": "越界条目是空槽哨兵（无对应 entry）；编辑激活集后导出时会被清理"},
+    "ptref.eof_edit_hint":       {"EN": "Edit via drag-and-drop in the Outliner (Entry collection <-> Direct Trigger), or the toggle button in Entry Status",
+                                  "ZH": "编辑：在大纲里拖拽（Entry 集合 ↔ Direct Trigger），或用 Entry Status 面板的切换按钮"},
 
     # ── 反向引用视图（backref.py）─────────────────────────────────────────────
     "backref.extern_object":          {"EN": "Extern object:", "ZH": "Extern 对象："},

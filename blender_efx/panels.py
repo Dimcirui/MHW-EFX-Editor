@@ -51,13 +51,11 @@ import bpy
 from .subselect import EFX_PT_subselect        # L2 #1a：Subselect 归属面板
 from .action_emitter import EFX_PT_action          # L2 #1b：Action 数据面板
 from .extern_ref import EFX_PT_extern_ref      # L2 #1c：ExternReference 指针面板
-from .entry_action_ref import (                   # L2 #1d：PtLife/PtCollision/eof_ints 指针面板
+from .entry_action_ref import (                   # L2 #1d：PtLife/PtCollision/EOF 归属面板
     EFX_PT_ptlife_ref,
     EFX_PT_ptcollision_ref,
     EFX_PT_eof_list,
     EFX_OT_eof_toggle_entry,
-    EFX_OT_eof_remove_entry,
-    EFX_OT_eof_add_entry,
     is_entry_in_eof,
 )
 from .backref import (                          # L2 反向引用视图（只读）
@@ -1175,43 +1173,8 @@ class EFX_PT_attribute_fields_object(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_root_props  —  VIEW_3D N 面板（选中 EFX_ROOT 顶层文件集合时显示）
-#   只在 ROOT 对象上暴露 filesize_double（doubleBuffer）编辑，避免主面板臃肿。
-# ─────────────────────────────────────────────────────────────────────────────
-
-class EFX_PT_root_props(bpy.types.Panel):
-    """EFX 根属性（VIEW_3D N 面板，选中 EFX_ROOT 顶层文件集合时显示）
-
-    2026-07 ROOT 集合化后不再是 Object Properties 面板——Properties 编辑器的
-    "object" 上下文只在有活动对象时显示，而 ROOT 现在是 Collection，没有对应的
-    活动对象。改为 VIEW_3D 侧栏，poll 读 context.collection（大纲当前选中的集合），
-    与 EFX_PT_eof_list 同一套触发机制。
-    """
-
-    bl_space_type  = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category    = "EFX"
-    bl_label       = "EFX Root"
-    bl_options     = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        return _rc.is_root_collection(context.collection)
-
-    def draw(self, context):
-        layout = self.layout
-        col = context.collection
-        # filesize_double（doubleBuffer）：运行时内存缓冲提示，过小会致特效消失。
-        # 导出对话框勾「自动重算」会按 2.75× 文件大小自动抬高（默认开）。
-        if col is not None and "hdr_double_buffer" in col:
-            box = layout.box()
-            box.label(text=T("entry.double_buffer"), icon="MODIFIER")
-            box.prop(col, '["hdr_double_buffer"]', text="")
-            tip = box.row()
-            tip.enabled = False
-            tip.label(text=T("entry.double_buffer_tip"))
-
-
+# filesize_double（doubleBuffer）编辑已挪到导出弹窗（operators.py::EFX_OT_export.draw，
+# 取消勾选"自动重算"时紧邻出现），不再单独占用 ROOT 集合的 N 面板一栏。
 # ─────────────────────────────────────────────────────────────────────────────
 # EFX_PT_add_section  —  从无到有新建 Action / Extern / Subselect 段条目
 #   poll = 已选 Active EFX；三个按钮各建一个带合法空白模板的容器对象。
@@ -1467,7 +1430,6 @@ _CLASSES = (
     EFX_PT_attribute_fields,
     EFX_PT_attribute_fields_props,
     EFX_PT_attribute_fields_object,
-    EFX_PT_root_props,
     EFX_PT_subselect,
     EFX_PT_action,
     EFX_PT_extern_props,
@@ -1477,8 +1439,6 @@ _CLASSES = (
     EFX_PT_eof_list,
     # EOF 算子
     EFX_OT_eof_toggle_entry,
-    EFX_OT_eof_remove_entry,
-    EFX_OT_eof_add_entry,
     # 反向引用视图（只读）
     EFX_PT_extern_backref,
     EFX_PT_entry_backref,

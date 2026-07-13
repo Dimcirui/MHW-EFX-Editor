@@ -12,7 +12,8 @@ blender_efx/delete_ops.py  —  L2 #3b：删除条目（entry / attribute / acti
   1. 删除职责只有三件：
        ① 干净移除对象（entry 连带 attribute）；
        ② 剩余同级重新连续编号（efx_index 0..n-1）+ 重建显示名；
-       ③ 置 dirty 标志（labels_dirty / eof_dirty / subselect_dirty），供导出端重算计数/标签/size。
+       ③ 置 dirty 标志（labels_dirty / subselect_dirty），供导出端重算计数/标签/size；
+          eof（Direct Trigger 归属）不需要 dirty 标志，entry 被删即自动从其所在集合消失。
   2. 引用是对象指针，删除后悬空指针（None）由导出端安全跳过、由 #4 校验报告。
      删除算子不主动清理引用（Extern 多对一，清理需用户决策）。
   3. 计数/size/eof 由 io_tree 导出端从实际内容重算，删除算子无需触碰头部数据。
@@ -168,9 +169,8 @@ class EFX_OT_delete_entry(bpy.types.Operator):
 
         # entry 计数变 → 标签表变；导出端按 labels_dirty 重建 label_bytes/label_size
         root["labels_dirty"] = 1
-        # entry 数变 → eof 里残留的越界 raw 哨兵成为陈旧错误索引，导出端 sanitize 清理
-        # （取代旧的 eof_ints[:len(entries)] 长度截断，能去掉列表中部的哨兵）
-        root["eof_dirty"] = 1
+        # eof 载体是集合归属（Direct Trigger 嵌套子集合），entry 对象被删除即自动
+        # 从其所在集合消失，不再需要额外 dirty 标志触发陈旧索引清理。
 
         self.report(
             {"INFO"},

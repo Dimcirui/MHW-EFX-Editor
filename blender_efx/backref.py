@@ -679,16 +679,11 @@ def _table_members(ss_obj):
 
 
 def _eof_direct_bodies(root_obj):
-    """返回 root 的 EOF（直接触发）列表里的有效 entry 对象（按顺序）。"""
-    out = []
-    try:
-        props = root_obj.efx_eof_list
-    except AttributeError:
-        return out
-    for item in props.items:
-        if item.is_ptr and item.body_ptr is not None:
-            out.append(item.body_ptr)
-    return out
+    """返回 root 的 EOF（直接触发）entry 对象列表（按 efx_index 顺序）。
+    委托 entry_action_ref.is_entry_in_eof——该函数已知道 per_entry（Direct Trigger
+    嵌套集合）/ opaque（非索引数据，恒空）两种模型，这里不需要关心内部载体。"""
+    from .entry_action_ref import is_entry_in_eof
+    return [b for b in _rc.collect_top_level(root_obj, "EFX_ENTRY") if is_entry_in_eof(b)]
 
 
 class EFX_PT_root_states(bpy.types.Panel):

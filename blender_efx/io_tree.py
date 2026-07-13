@@ -567,11 +567,12 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Collection:
             # 任何异常均安全回退：raw_b64 保证 byte-perfect
             pass
 
-    # ── 9. eof：载体下放到 entry（hybrid 闸门，结构权威下放重构）────────────────
+    # ── 9. eof：载体下放到 entry 归属的嵌套集合（hybrid 闸门，结构权威下放重构）───
     #
-    # 干净(升序+无重复+全 in-range) → per_entry：设每个 entry 的 efx_direct_trigger 布尔，
-    #   悬空指针从原理上消失、raw 噪声清零。不干净(evc 浮点结构) → opaque：root_col["eof_ints"]
-    #   字符串原样直通（§3 已写入）。main_bodies_by_index 已在 §8 构建完毕。
+    # 干净(升序+无重复+全 in-range) → per_entry：激活 entry 移入 Entry 叶子集合下嵌套的
+    #   Direct Trigger 子集合，悬空指针从原理上消失、raw 噪声清零。不干净(evc 浮点结构)
+    #   → opaque：root_col["eof_ints"] 字符串原样直通（§3 已写入）。
+    #   main_bodies_by_index 已在 §8 构建完毕。
     try:
         _entry_action_ref.init_eof_per_entry(
             root_col,
@@ -720,9 +721,8 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
     label_bytes = None  # 占位，§4a 之后重建
     label_size  = None  # 占位
 
-    # ── 3. 还原 eof_ints（L2 #1d：优先走 efx_eof_list 指针路径）────────────────
-    # L2 #1d 前：逗号分隔十进制字符串；空字符串表示空列表
-    # L2 #1d 后：由 export_eof_ints 从 CollectionProperty 还原（body 指针 + raw 值）。
+    # ── 3. 还原 eof_ints（hybrid：export_eof_per_entry 从 Direct Trigger 嵌套集合
+    #    归属还原 / opaque 字符串原样）────────────────────────────────────────
     # 注意：eof_ints 依赖 entry_index_map，该 map 在 §4 收集 body_objs 后才能构建。
     # 故此处先占位，§4b 补填；最终在 §6 拼接字节前使用。
     eof_ints = None  # 占位，§4b 补填
@@ -780,11 +780,12 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
     subselect_objs_prescan = _rc.collect_top_level(r, "EFX_SUBSELECT")
 
     # ── 4d. 结构变化自动兜底（原生 Blender 删除的安全网）──────────────────────
-    # labels_dirty/eof_dirty/subselect_dirty 只由本插件自己的删除/增删算子显式置位；
-    # 用户若改用 Blender 原生删除（选中对象按 X，或 Delete Hierarchy）删掉 body/
-    # play/extern/subselect，这几个自定义属性根本不会被触碰，但 §6 的 count_*
-    # 早已无条件按实际对象数重算——如果 label_bytes/eof_ints/subselect_size 仍
-    # 走 verbatim 分支，就会和已经变化的 count_* 对不上，产出结构错误的文件。
+    # labels_dirty/subselect_dirty 只由本插件自己的删除/增删算子显式置位（eof 不需要，
+    # 归属靠集合成员关系，entry 被删自动从其所在集合消失）；用户若改用 Blender 原生
+    # 删除（选中对象按 X，或 Delete Hierarchy）删掉 body/play/extern/subselect，这几个
+    # 自定义属性根本不会被触碰，但 §6 的 count_* 早已无条件按实际对象数重算——如果
+    # label_bytes/subselect_size 仍走 verbatim 分支，就会和已经变化的 count_* 对不上，
+    # 产出结构错误的文件。
     # hdr_count_body/play/extern/subselect 只在导入时写一次、之后再不更新，天然
     # 就是"最后一次已知结构"的快照，不需要额外状态：跟当前实际对象数一比对，
     # 不管是走自定义算子还是原生删除/增加触发的变化，都能查出来。
@@ -793,7 +794,6 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
     _extern_count_changed = len(extern_objs) != int(str(r.get("hdr_count_extern", len(extern_objs))))
     _subselect_count_changed = len(subselect_objs_prescan) != int(str(r.get("hdr_count_subselect", len(subselect_objs_prescan))))
     _labels_need_rebuild = _entry_count_changed or _play_count_changed or _extern_count_changed
-    _eof_need_sanitize = _entry_count_changed
     # subselect 表内部会跳过 body_ptr 悬空的成员（见 subselect.py），所以 body 数变化
     # 也可能让某张表的字节变短，即使没有直接增删 subselect 对象本身，同样要重算。
     _subselect_need_rebuild = _subselect_count_changed or _entry_count_changed
@@ -816,17 +816,11 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
         label_bytes = _b64dec(str(r["label_bytes"]))
     label_size = len(label_bytes)
 
-    # ── 4c. 还原 eof_ints（L2 #1d：body 指针 → 局部 index）────────────────────
-    # eof_dirty=1（用户编辑过激活集 / 删过 body）→ sanitize：丢弃越界 raw 哨兵（陈旧错误索引）。
-    # 未编辑（=0）→ 原样还原，保 byte-perfect。
+    # ── 4c. 还原 eof_ints（body 归属的 Direct Trigger 嵌套集合 → 局部 index）───────
+    # per_entry：collect Direct Trigger 子集合成员，升序重建（悬空/越界从原理上不存在，
+    # entry 被删即从其所在集合消失，无需额外 sanitize 逻辑）。opaque：字符串原样。
     try:
-        _eof_sanitize = bool(int(r.get("eof_dirty", 0))) or _eof_need_sanitize
-    except (ValueError, TypeError):
-        _eof_sanitize = _eof_need_sanitize
-    try:
-        # hybrid：per_entry 从 efx_direct_trigger 升序重建；opaque 原样；旧 .blend 回退 §3
-        eof_ints = _entry_action_ref.export_eof_per_entry(
-            r, body_index_map_export, sanitize=_eof_sanitize)
+        eof_ints = _entry_action_ref.export_eof_per_entry(r, body_index_map_export)
     except Exception:
         # 回退：旧字符串路径
         _eof_str = str(r["eof_ints"]).strip()

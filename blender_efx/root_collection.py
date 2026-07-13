@@ -10,12 +10,18 @@ blender_efx/root_collection.py  —  ROOT 集合化：文件归属改由 Collect
 标记约定
 --------
 - `root_col["~TYPE"] = "EFX_ROOT"`：顶层文件集合。
-- 四个（未来第五个 Direct Trigger）叶子子集合各自：
+- 四个叶子子集合各自：
     `col["~TYPE"] = "EFX_xxx_COLLECTION"`（见 _TYPE_TO_MARKER）
     `col.efx_root_ptr = root_col`（真正的 PointerProperty，指回 root_col）
   entry/action/extern/subselect/attribute/EFX_TIML 对象全部直接 link 进这些
   叶子集合（跟以前一样，这一层"对象在哪个集合里"从来没变过——变的只是不再
   额外维护一份 `.parent==root_obj` 的冗余关系）。
+- EOF 嵌套集合（2026-07 二期）：Entry 叶子集合下再嵌两个对称子集合 "Direct Trigger" /
+  "Not Direct Trigger"（`get_direct_trigger_collection`/`ensure_direct_trigger_collection`
+  及其 `not_direct_trigger` 对应版本），同样有 `efx_root_ptr` 反向指回 root_col。
+  entry（per_entry 模型）100% 分流进其中一个，Entry 叶子集合自身直接子级永远清空——
+  大纲拖拽即编辑。误留在 Entry 集合直接子级的（异常/拖拽失误）导出时 fail-safe 视为
+  直接触发（entry_action_ref.py::export_eof_per_entry / is_entry_in_eof 处理）。
 
 查找是 O(1)：`obj.users_collection` 通常只有 1 个叶子集合，读它的
 `efx_root_ptr` 直接拿到 root_col，不需要扫场景、不需要递归集合树。
@@ -42,6 +48,14 @@ _TYPE_TO_MARKER = {
 }
 
 # 反向：子集合标记 → 段类型（供人类可读场景用，正向表已够用，此表暂不需要）
+
+# EOF 嵌套集合：挂在 Entry 叶子集合下的两个对称子集合，entry 100% 分流进其中一个
+# （Entry 叶子集合自身直接子级永远清空）。误留在 Entry 集合直接子级的（异常/手动
+# 拖拽失误）按 fail-safe 规则在导出时视为直接触发（entry_action_ref.py 处理）。
+_DIRECT_TRIGGER_MARKER = "EFX_DIRECT_TRIGGER_COLLECTION"
+_DIRECT_TRIGGER_NAME = "Direct Trigger"
+_NOT_DIRECT_TRIGGER_MARKER = "EFX_NOT_DIRECT_TRIGGER_COLLECTION"
+_NOT_DIRECT_TRIGGER_NAME = "Not Direct Trigger"
 
 
 def new_root_collection(name: str, parent_col) -> bpy.types.Collection:
@@ -91,6 +105,54 @@ def ensure_leaf_collection(name: str, root_col: bpy.types.Collection, type_tag: 
     return new_leaf_collection(name, root_col, type_tag)
 
 
+def _get_nested_entry_collection(root_col: bpy.types.Collection, marker: str):
+    """只读查找 Entry 叶子集合下、标记为 marker 的嵌套子集合，没有返回 None。"""
+    entry_col = get_leaf_collection(root_col, "EFX_ENTRY")
+    if entry_col is None:
+        return None
+    for child in entry_col.children:
+        if child.get("~TYPE") == marker:
+            return child
+    return None
+
+
+def _ensure_nested_entry_collection(root_col: bpy.types.Collection, marker: str, name: str):
+    """find-or-create：嵌套在 Entry 叶子集合下（不是 root_col 的直接子集合），
+    同样设 efx_root_ptr 反向指回 root_col，使其内的 entry 仍能被 find_root_collection 找到。
+    Entry 叶子集合不存在时返回 None（不该发生，任何文件都有 Entry 段）。"""
+    existing = _get_nested_entry_collection(root_col, marker)
+    if existing is not None:
+        return existing
+    entry_col = get_leaf_collection(root_col, "EFX_ENTRY")
+    if entry_col is None:
+        return None
+    col = bpy.data.collections.new(name)
+    entry_col.children.link(col)
+    col["~TYPE"] = marker
+    col.efx_root_ptr = root_col
+    return col
+
+
+def get_direct_trigger_collection(root_col: bpy.types.Collection):
+    """只读查找 "Direct Trigger" 嵌套子集合；没有返回 None（opaque 模型文件没有）。"""
+    return _get_nested_entry_collection(root_col, _DIRECT_TRIGGER_MARKER)
+
+
+def ensure_direct_trigger_collection(root_col: bpy.types.Collection):
+    """find-or-create "Direct Trigger" 嵌套子集合。"""
+    return _ensure_nested_entry_collection(root_col, _DIRECT_TRIGGER_MARKER, _DIRECT_TRIGGER_NAME)
+
+
+def get_not_direct_trigger_collection(root_col: bpy.types.Collection):
+    """只读查找 "Not Direct Trigger" 嵌套子集合；没有返回 None（opaque 模型文件没有）。"""
+    return _get_nested_entry_collection(root_col, _NOT_DIRECT_TRIGGER_MARKER)
+
+
+def ensure_not_direct_trigger_collection(root_col: bpy.types.Collection):
+    """find-or-create "Not Direct Trigger" 嵌套子集合。"""
+    return _ensure_nested_entry_collection(root_col, _NOT_DIRECT_TRIGGER_MARKER, _NOT_DIRECT_TRIGGER_NAME)
+
+
 def is_root_collection(col) -> bool:
     return col is not None and col.get("~TYPE") == "EFX_ROOT"
 
@@ -122,18 +184,26 @@ def collect_top_level(root_col: bpy.types.Collection, type_tag: str) -> list:
     收集 root_col 下某类型的全部顶层对象（entry/action/extern/subselect），
     按 efx_index 升序排列。
 
-    递归子集合（不仅扫叶子集合的直接 .objects，也扫其子集合）——为将来
-    EOF 嵌套集合（"_2 Entry/Direct Trigger"）兼容，entry 无论挂在 Entry 叶子
-    集合本身还是嵌套的 Direct Trigger 子集合下，都能被收集到。
+    递归子集合（不仅扫叶子集合的直接 .objects，也扫其子集合）——Entry 类型下
+    还会扫到嵌套的 "Direct Trigger"/"Not Direct Trigger" 子集合，entry 无论挂在
+    哪一层（含误留在 Entry 叶子集合直接子级的异常/孤儿情况）都能被收集到。
+
+    去重（`seen`）：正常情况下一个对象只会出现在其中一层，但异常状态——entry
+    被手动 Ctrl+drag 同时链进 Direct Trigger 和 Not Direct Trigger 两个子集合
+    （validate.py 的 eof_dual_membership 警告专门检测这种情况）——会让递归遍历
+    在两层各命中一次。不去重会导致该 entry 在导出的 Main 段里重复写入两遍
+    （数据损坏，不只是列表里的视觉重复），故这里防御性去重。
     """
     col = get_leaf_collection(root_col, type_tag)
     if col is None:
         return []
     out = []
+    seen = set()
 
     def _walk(c):
         for o in c.objects:
-            if o.get("~TYPE") == type_tag:
+            if o.get("~TYPE") == type_tag and o.name not in seen:
+                seen.add(o.name)
                 out.append(o)
         for child in c.children:
             _walk(child)
