@@ -547,6 +547,47 @@ def validate_efx_tree(root_obj) -> list:
             except Exception:
                 pass  # 单个 entry 检查失败不影响整体
 
+    # ── (6) TIML 关键帧插值类型校验 ─────────────────────────────────────────────
+    # 游戏 TIML 只支持固定多项式缓动（Constant/Linear/Quadratic/Cubic）。Blender 新建
+    # 关键帧默认的 BEZIER 无游戏对应 → 导出近似为 Cubic（WARN，不阻拦）；其余花式缓动
+    # （Sine/Expo/Back/Bounce/Elastic…）无对应 → ERROR 阻止导出，避免像旧版那样静默
+    # 降级成线性（用户"设二次得线性"的坑之一）。见 timl_edit.check_timl_interpolations。
+    try:
+        from . import timl_edit as _te
+        from . import io_tree as _iot
+    except ImportError:
+        _te = None
+    if _te is not None:
+        for body in bodies:
+            try:
+                h = _iot.find_timl_handle(body)
+                if h is None:
+                    continue
+                for iss in _te.check_timl_interpolations(h):
+                    if iss["severity"] == "ERROR":
+                        problems.append({
+                            "level": "ERROR",
+                            "category": "timl_interp",
+                            "msg": (
+                                f"Entry '{body.name}' TIML keyframe uses unsupported "
+                                f"interpolation '{iss['interp']}' — only "
+                                f"{_te._SUPPORTED_INTERP_DESC} are supported by the game"
+                            ),
+                            "obj": body.name,
+                        })
+                    else:  # BEZIER → WARN（近似为 Cubic）
+                        problems.append({
+                            "level": "WARN",
+                            "category": "timl_interp",
+                            "msg": (
+                                f"Entry '{body.name}' TIML keyframe uses BEZIER — the game "
+                                "has no free bezier, so it is approximated as Cubic on export"
+                            ),
+                            "obj": body.name,
+                        })
+            except Exception:
+                pass  # 单个 entry 检查失败不影响整体
+
     return problems
 
 

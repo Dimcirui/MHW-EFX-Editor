@@ -67,8 +67,14 @@ _KEYFRAME_SIZE = 20
 
 # dataType → 友好名
 DATATYPE_NAMES = {0: "SInt", 1: "Int", 2: "Float", 3: "Color", 4: "Bool"}
-# transition（插值类型）→ 名称
-INTERP_NAMES = ["CONSTANT", "LINEAR", "QUAD", "CUBIC", "QUART", "EXPO", "SINE"]
+# transition（= easingMethod，插值方式）整数 → 友好名（仅显示用）。
+# 权威：refs/EFX_Crimson.bt 的 easingMethod 注释（0-Binary/Stuck, 1-Constant,
+# 2-Linear, 3-Quadratic, 4-Cubic）+ refs/EFX_TIML.bt 记录的合法值范围
+# （Float/Color dataType 合法值 [0,1,2,3,4]，与 Crimson 的 0-4 恰好吻合）。
+# 5/6 仅在 Int/Flag dataType 出现（合法值 [1,4,5,6]），语义未确认。
+# ⚠ 旧表 ["CONSTANT","LINEAR","QUAD","CUBIC","QUART","EXPO","SINE"] 整个错位一格，
+#   会把 Blender 的「二次(QUAD)」写成整数 2，而游戏里 2=Linear → 表现为「设二次得线性」。
+INTERP_NAMES = ["STUCK", "CONSTANT", "LINEAR", "QUAD", "CUBIC", "UNK5", "UNK6"]
 
 # datatypeHash ∈ BIG_FLAGS → 该 transform 是「标志位」通道，value/controlL/controlR
 # 各按低/高 16 位拆成 2 条子通道（标志位 hash 表）。
@@ -447,8 +453,8 @@ def _make_default_keyframes(data_type: int, dt_hash: int,
             subs = [{"value": 255, "back": 0.0, "period": 0.0} for _ in range(4)]
         else:               # Float/SInt/Int/Bool：scl 轴默认 1.0(缩放系数)，其余 0.0
             subs = [{"value": default_value, "back": 0.0, "period": 0.0}]
-        raw = encode_keyframe(data_type, dt_hash, fr, 1, data_type, subs)  # transition=1=LINEAR
-        kfs.append(TimlKeyframe(raw=raw, frame_timing=fr, transition=1, data_type=data_type))
+        raw = encode_keyframe(data_type, dt_hash, fr, 2, data_type, subs)  # transition=2=LINEAR
+        kfs.append(TimlKeyframe(raw=raw, frame_timing=fr, transition=2, data_type=data_type))
     return kfs
 
 

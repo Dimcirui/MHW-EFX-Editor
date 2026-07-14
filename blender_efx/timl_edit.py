@@ -116,15 +116,77 @@ def _channel_group_name(slot, tlp_hash, dt_hash, dtype, sub_label):
     return base
 
 
+# ── 插值类型映射（游戏 transition/easingMethod ↔ Blender fcurve interpolation）──────
+# 游戏枚举权威见 efx_format/timl.py::INTERP_NAMES（refs/EFX_Crimson.bt + EFX_TIML.bt）。
+# 游戏没有自由贝塞尔，只有一张固定多项式缓动枚举；且 Stuck(0)/Constant(1) 都得塌缩到
+# Blender 唯一的 CONSTANT（Blender 无法区分二者）。因映射非双射，正查/反查分两张表。
+_GAME_TO_BLENDER_INTERP = {
+    0: "CONSTANT",   # Stuck（步进，Blender 无独立档，并入 CONSTANT）
+    1: "CONSTANT",   # Constant（常量）
+    2: "LINEAR",     # Linear（线性）
+    3: "QUAD",       # Quadratic（二次）
+    4: "CUBIC",      # Cubic（三次）
+}
+# 导出：Blender interpolation → 游戏 transition。忽略 Stuck(0)，常量统一写 1。
+_BLENDER_TO_GAME_INTERP = {
+    "CONSTANT": 1,
+    "LINEAR":   2,
+    "QUAD":     3,
+    "CUBIC":    4,
+}
+# BEZIER = Blender 新建关键帧的默认插值，游戏无对应 → 导出近似为 Cubic + WARNING（不阻拦）。
+# 其余（SINE/EXPO/QUART/QUINT/CIRC/BACK/BOUNCE/ELASTIC）无游戏对应 → ERROR，validate 阻止导出。
+_SUPPORTED_INTERP_DESC = "Constant / Linear / Quadratic / Cubic (Bezier is approximated as Cubic)"
+
+
 def _interp_to_blender(transition):
-    return _timl.INTERP_NAMES[transition] if 0 <= transition < len(_timl.INTERP_NAMES) else "LINEAR"
+    """游戏 transition 整数 → Blender fcurve interpolation 枚举名（导入用）。
+    未知值（如 Int/Flag 才用的 5/6）安全退 LINEAR。"""
+    return _GAME_TO_BLENDER_INTERP.get(transition, "LINEAR")
 
 
 def _blender_to_transition(interp):
+    """Blender fcurve interpolation 枚举 → 游戏 transition 整数（导出用）。
+    BEZIER 近似为 Cubic；其余未知类型安全退 Linear（这类应已被 validate 拦成 ERROR，
+    不该走到这里，退 Linear 只是兜底不崩）。"""
+    m = _BLENDER_TO_GAME_INTERP.get(interp)
+    if m is not None:
+        return m
+    if interp == "BEZIER":
+        return _BLENDER_TO_GAME_INTERP["CUBIC"]
+    return _BLENDER_TO_GAME_INTERP["LINEAR"]
+
+
+def check_timl_interpolations(handle):
+    """扫描 handle 持久 Action 的所有 fcurve 关键帧插值，返回问题列表：
+        [{"severity": "ERROR"|"WARNING", "interp": <Blender枚举名>}, ...]（按类型去重）
+    - CONSTANT/LINEAR/QUAD/CUBIC → 无问题
+    - BEZIER → WARNING（导出会近似为 Cubic）
+    - 其余 → ERROR（游戏无对应，应阻止导出，避免静默降级）
+    供 validate_efx_tree 与独立 .timl 导出复用。"""
+    out = []
+    act = _get_timl_action(handle)
+    if act is None:
+        return out
     try:
-        return _timl.INTERP_NAMES.index(interp)
-    except ValueError:
-        return 1   # 非这 7 种（如 BEZIER）→ 退 LINEAR
+        fcs = _act_fcurves(act, handle)
+    except Exception:
+        return out
+    seen = set()
+    for fc in fcs:
+        try:
+            kps = fc.keyframe_points
+        except Exception:
+            continue
+        for kp in kps:
+            it = kp.interpolation
+            if it in seen or it in _BLENDER_TO_GAME_INTERP:
+                seen.add(it)
+                continue
+            seen.add(it)
+            out.append({"severity": "WARNING" if it == "BEZIER" else "ERROR",
+                        "interp": it})
+    return out
 
 
 def _set_kp(kp, transition, back, period):
@@ -348,7 +410,7 @@ def _rebuild_synthetic(act, timl_obj, syn, tf):
                 subs.append({"value": kp.co[1], "back": kp.back, "period": kp.period})
             else:
                 subs.append({"value": fc.evaluate(fr), "back": 0.0, "period": 0.0})
-        transition = 1
+        transition = 2   # 默认 Linear（无子通道命中该帧时的兜底；新表 2=Linear）
         for i, fc in enumerate(sub_fcurves):
             kp = kp_maps[i].get(fr)
             if kp is not None:

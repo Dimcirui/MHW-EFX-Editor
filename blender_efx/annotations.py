@@ -427,16 +427,16 @@ FIELD_ANNOTATIONS = {
     # ─── RGBFIRE ──────────────────────────────────────────────────────────────
     # ExternRgbFire (EFX_Subtypes.bt)
     ("RGBFIRE", "fireColor"): {
-        "EN": "Fire color — the outer glowing edge; also tints the inner smoke color.",
-        "ZH": "火焰色——外缘的荧光色；同时会给内部的烟雾色染色。",
+        "EN": "Uses the texture's RGB channel — usually the outer glowing edge; also tints the inner smoke color.",
+        "ZH": "使用贴图的RGB通道——一般是外缘的荧光色；同时会给内部的烟雾色染色。",
     },
     ("RGBFIRE", "brightness1"): {
         "EN": "Fire color brightness — colors will combine.",
         "ZH": "火焰色亮度——颜色会叠加混合。",
     },
     ("RGBFIRE", "smokeColor"): {
-        "EN": "Smoke color — the inner core color.",
-        "ZH": "烟雾色——内部的核心色。",
+        "EN": "Uses the texture's Alpha channel — usually the inner core color.",
+        "ZH": "使用贴图的Alpha通道——一般是内部的核心色。",
     },
     ("RGBFIRE", "brightness2"): {
         "EN": "Smoke color brightness rate.",
