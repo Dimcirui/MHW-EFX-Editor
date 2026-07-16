@@ -323,7 +323,10 @@ class EFX_PT_mesh_align(Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+        if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
+            return False
+        from . import root_collection as _rc
+        return not _rc.is_color_editor_mode(obj)
 
     def draw(self, context):
         layout = self.layout

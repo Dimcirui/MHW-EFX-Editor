@@ -581,7 +581,8 @@ class EFX_PT_entry_backref(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+        return (obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+                and not _rc.is_color_editor_mode(obj))
 
     def draw(self, context):
         layout = self.layout
@@ -699,7 +700,8 @@ class EFX_PT_root_states(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return _rc.is_root_collection(context.collection)
+        col = context.collection
+        return _rc.is_root_collection(col) and not _rc.root_is_color_editor_mode(col)
 
     def draw(self, context):
         layout = self.layout

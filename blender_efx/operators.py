@@ -105,6 +105,19 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         options={"SKIP_SAVE"},
     )
 
+    # EFX Color Editor 分支：勾选后整个工具切换成"只管颜色"的傻瓜调色模式——
+    # 完整解析+建树完全不变（数据 100% 保留，导出仍是完整合法 .efx），只是把
+    # 非颜色内容从 Outliner 隐藏（View Layer 排除，不删数据）。见 io_tree.py
+    # ::import_efx_tree 的 color_editor_mode 参数 + _apply_color_editor_view。
+    import_only_colors: BoolProperty(
+        name="Import Only Colors",
+        description="只暴露含颜色/亮度字段的 entry 与 attribute，其余内容（结构编辑/TIML/"
+                    "预设等）在此文件里隐藏——供只想改色、不想碰其他任何东西的场景使用。"
+                    "导出仍是完整合法的 .efx",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
+
     def invoke(self, context, event):
         # FileHandler 拖入：不再静默导入，弹一个属性对话框让用户确认 / 勾选是否一并导入 mesh。
         # （ImportHelper 默认 invoke 总是开浏览器，会让拖入"无反应"——故拖入走 props_dialog。）
@@ -114,8 +127,13 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         return ImportHelper.invoke(self, context, event)
 
     def draw(self, context):
-        # 文件浏览器侧栏 / 拖入对话框共用：mesh 导入开关 + chunk root。
+        # 文件浏览器侧栏 / 拖入对话框共用：仅颜色开关 + mesh 导入开关 + chunk root。
+        # 两者互斥（Color Editor 是傻瓜调色模式，不需要 mod3 相关控件）：勾了
+        # "仅导入颜色"就不再显示 mesh 导入选项。
         layout = self.layout
+        layout.prop(self, "import_only_colors")
+        if self.import_only_colors:
+            return
         from . import mod3_link
         if mod3_link.model_editor_available():
             layout.prop(self, "import_meshes")
@@ -154,7 +172,9 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         errors = []
         for filepath in paths:
             try:
-                root_obj = io_tree.import_efx_tree(filepath, context)
+                root_obj = io_tree.import_efx_tree(
+                    filepath, context, color_editor_mode=self.import_only_colors,
+                )
                 imported.append(root_obj.name)
                 imported_roots.append(root_obj)
                 imported_paths.append(filepath)
@@ -180,7 +200,7 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
 
         # ── 可勾选：一并导入 MESH 属性引用的 mod3（含 mrl3+材质）并绑定 ──────────────
         # 默认关；仅当用户勾选 + Model Editor 在场时执行。失败不影响 EFX 导入本身。
-        if imported_roots and self.import_meshes:
+        if imported_roots and self.import_meshes and not self.import_only_colors:
             from . import mod3_link
             if not mod3_link.model_editor_available():
                 self.report({"WARNING"}, "未检测到 MHW Model Editor，已跳过 mod3 导入")

@@ -153,6 +153,11 @@ FIELD_LABELS_ZH = {
     "enableIntensity2": "亮度增强2",
     "enableEmissiveIntensity": "自发光亮度增强",
     "disableAllColorRange": "禁用所有颜色范围",
+    # MESH 自发光饱和度/亮度（Mod3Properties 子结构）：与其 _j 抖动字段配对成固定/随机行
+    "emissive_saturation": "自发光饱和度",
+    "emissive_saturation_j": "自发光饱和度抖动",
+    "emissive_brightness": "自发光亮度",
+    "emissive_brightness_j": "自发光亮度抖动",
     # RGBFIRE 实机确认：fireColor=外缘荧光色（会给 smokeColor 染色），smokeColor=内部色
     "fireColor": "火焰色",
     "smokeColor": "烟雾色",

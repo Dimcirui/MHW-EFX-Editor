@@ -296,7 +296,10 @@ class EFX_PT_entry_timl(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         # TIML 统一入口：选中 EFX_TIML 句柄或能携带 TIML 的 entry 都显示（无 TIML 时提供"添加"）
-        return _entry_is_timl_capable(resolve_timl_entry(context.active_object))
+        # Color Editor 模式：TIML（关键帧动画）不属于"只管颜色"范围，隐藏。
+        obj = resolve_timl_entry(context.active_object)
+        from . import root_collection as _rc
+        return _entry_is_timl_capable(obj) and not _rc.is_color_editor_mode(obj)
 
     def draw(self, context):
         layout = self.layout

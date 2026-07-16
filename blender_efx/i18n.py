@@ -265,6 +265,7 @@ STRINGS = {
                               "ZH": "类型化稀疏覆盖：每条属性 = (key, 类型, 值)。可在下方增删覆盖项；未知属性名以哈希显示。"},
     "attribute.ptbehavior_add":  {"EN": "Add Override",          "ZH": "添加覆盖属性"},
     "attribute.no_fields":       {"EN": "(no fields)",         "ZH": "（无字段）"},
+    "attribute.no_color_fields": {"EN": "(no color/brightness fields on this attribute)", "ZH": "（该属性没有颜色/亮度字段）"},
     "attribute.select_hint":     {"EN": "Select an EFX_ATTRIBUTE object", "ZH": "请选中 EFX_ATTRIBUTE 对象"},
 
     # ── 导入/导出算子（operators.py）弹窗 ─────────────────────────────────────
@@ -487,8 +488,10 @@ STRINGS = {
     "validate.run_btn":      {"EN": "Pre-export Validation", "ZH": "导出前校验"},
 
     # ── 字段绘制 + 面板内通用提示（panels.py）────────────────────────────────
-    "field.value":           {"EN": "Value",                "ZH": "值"},
-    "field.jitter":          {"EN": "Jitter",               "ZH": "抖动"},
+    # 固定/随机 pair 统一措辞（2026-07）：Static/Random，取代旧的 Value/Jitter、
+    # Fixed/Random 混用；全仓库所有"固定值+随机抖动量"配对控件统一走这两个 key。
+    "field.static":          {"EN": "Static",               "ZH": "固定"},
+    "field.random":          {"EN": "Random",               "ZH": "随机"},
     "material.type":         {"EN": "Material type:", "ZH": "主材质类型："},
     "attribute.not_registered":  {"EN": "efx_block not registered (reload the extension)",
                               "ZH": "efx_block 未注册（请重载扩展）"},

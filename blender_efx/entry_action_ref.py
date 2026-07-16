@@ -564,7 +564,8 @@ class EFX_PT_eof_list(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return _rc.is_root_collection(context.collection)
+        col = context.collection
+        return _rc.is_root_collection(col) and not _rc.root_is_color_editor_mode(col)
 
     def draw(self, context):
         layout = self.layout

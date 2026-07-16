@@ -37,7 +37,7 @@ L1.4 预设 UI 重构：
 L1.5 属性字段显示重设计：
   - 友好字段名：下划线→空格、camelCase 拆词、首字母大写（仅显示，逻辑仍用 ori_name）。
   - FLOAT6（XYZ type 0，6个float，顺序=[fixed_x,random_x,fixed_y,random_y,fixed_z,random_z]）：
-    字段名一行 + 3 行（X Fixed/Random、Y Fixed/Random、Z Fixed/Random），
+    字段名一行 + 3 行（X Static/Random、Y Static/Random、Z Static/Random），
     用 index= 分量绘制，不开 property_split，保证布局不乱。
   - INT3（XYZ type 1，3个int=x,y,z）：字段名一行 + 1行 X/Y/Z 分量。
   - FLOAT3（XYZ type 3 或 float[3]，x,y,z）：字段名一行 + 1行 X/Y/Z 分量。
@@ -72,6 +72,8 @@ from .i18n import T
 from . import root_collection as _rc
 # Extern 字段展开面板
 from . import extern_props as _extern_props
+# EFX Color Editor：颜色字段判据（是否处于颜色模式的判定见 root_collection.is_color_editor_mode）
+from . import color_fields as _cf
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -164,24 +166,26 @@ _SCALAR_PROP_ATTR = {
 }
 
 
-# SPAWN 属性中不符合 Jitter 后缀约定、但语义上是抖动字段的名称
-_SPAWN_JITTER_NAMES = frozenset({
+# 不符合 Jitter 后缀约定、但语义上是抖动字段的名称（SPAWN 属性 + MESH 的 _j 后缀字段）
+_NONSTANDARD_JITTER_NAMES = frozenset({
     "randomizedSpawnsPerFrame",
     "randomizedDelay",
     "randomizedLifespan",
     "occur2",
+    "emissive_saturation_j",
+    "emissive_brightness_j",
 })
 
 
 def _is_jitter_name(name: str) -> bool:
-    """字段名是否为 jitter（camelCase 'XJitter' / snake 'x_jitter' / SPAWN 特例）。"""
-    return name.endswith("Jitter") or name.endswith("_jitter") or name in _SPAWN_JITTER_NAMES
+    """字段名是否为 jitter（camelCase 'XJitter' / snake 'x_jitter' / 非标准后缀特例）。"""
+    return name.endswith("Jitter") or name.endswith("_jitter") or name in _NONSTANDARD_JITTER_NAMES
 
 
 def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     """
-    把 value 字段与紧随其后的 jitter 字段合并成一行两列：友好名 | 值 | Jitter。
-    与 XYZ Fixed/Random 的分组风格一致（rotation X/Y/Z 等各成一行）。
+    把 value 字段与紧随其后的 jitter 字段合并成一行两列：友好名 | 固定 | 随机。
+    与 XYZ Static/Random 的分组风格一致（rotation X/Y/Z 等各成一行）。
     """
     fname = _friendly_name(vitem.ori_name, type_name)
     vattr = _SCALAR_PROP_ATTR[vitem.data_type]
@@ -193,8 +197,8 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     split = row.split(factor=0.45)
     split.label(text=fname)
     sub = split.row(align=True)
-    sub.prop(vitem, vattr, text=T("field.value"))
-    sub.prop(jitem, jattr, text=T("field.jitter"))
+    sub.prop(vitem, vattr, text=T("field.static"))
+    sub.prop(jitem, jattr, text=T("field.random"))
     _draw_info_icon(row, type_name, vitem.ori_name)
 
 
@@ -216,7 +220,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     按 item.data_type 在 layout 上绘制对应控件（L1.5 重设计版）。
 
     FLOAT6（XYZ type 0）：
-      字段名一行（友好名 + ⓘ）+ 3 行（X/Y/Z，每行 Fixed index 和 Random index）。
+      字段名一行（友好名 + ⓘ）+ 3 行（X/Y/Z，每行 Static index 和 Random index）。
       float6_value 顺序 = [fixed_x(0), random_x(1), fixed_y(2), random_y(3), fixed_z(4), random_z(5)]
 
     INT3（XYZ type 1）：
@@ -261,29 +265,29 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         except Exception:
             pass
 
-        # X 行：Fixed index=0  Random index=1
+        # X 行：Static index=0  Random index=1
         x_row = layout.row(align=True)
         x_row.scale_y = 1.1
         x_row.use_property_split = False
         x_row.label(text="X", icon="BLANK1")
-        x_row.prop(item, prop6, index=0, text="Fixed")
-        x_row.prop(item, prop6, index=1, text="Random")
+        x_row.prop(item, prop6, index=0, text=T("field.static"))
+        x_row.prop(item, prop6, index=1, text=T("field.random"))
 
-        # Y 行：Fixed index=2  Random index=3
+        # Y 行：Static index=2  Random index=3
         y_row = layout.row(align=True)
         y_row.scale_y = 1.1
         y_row.use_property_split = False
         y_row.label(text="Y", icon="BLANK1")
-        y_row.prop(item, prop6, index=2, text="Fixed")
-        y_row.prop(item, prop6, index=3, text="Random")
+        y_row.prop(item, prop6, index=2, text=T("field.static"))
+        y_row.prop(item, prop6, index=3, text=T("field.random"))
 
-        # Z 行：Fixed index=4  Random index=5
+        # Z 行：Static index=4  Random index=5
         z_row = layout.row(align=True)
         z_row.scale_y = 1.1
         z_row.use_property_split = False
         z_row.label(text="Z", icon="BLANK1")
-        z_row.prop(item, prop6, index=4, text="Fixed")
-        z_row.prop(item, prop6, index=5, text="Random")
+        z_row.prop(item, prop6, index=4, text=T("field.static"))
+        z_row.prop(item, prop6, index=5, text=T("field.random"))
         return
 
     # ── INT3（XYZ type 1）：x,y,z 三分量整数 ─────────────────────────────────
@@ -565,12 +569,16 @@ def _draw_attribute_fields_content(layout, context):
     # 通过 HASH_TO_NAME 查出名称（如 "EMITTERSHAPE3D"），再大写作为字典键。
     # 注释现在始终传给 _draw_field_item，由其内部按需显示 ⓘ 图标。
     type_name = ""
+    type_hash_int = 0
     try:
         from ..efx_format.hashes import HASH_TO_NAME
         type_hash_int = int(bp.type_hash_str)
         type_name = HASH_TO_NAME.get(type_hash_int, "").upper()
     except (ValueError, ImportError):
         type_name = ""
+
+    # ── EFX Color Editor 模式：只画颜色/亮度相关字段（is_color_field 判据）───────
+    _color_only = _rc.is_color_editor_mode(obj)
 
     # ── 检测是否为 EXTERNREFERENCE 属性（用于 referenceIndex 字段替换）──────────
     _is_extern_ref = False
@@ -648,6 +656,10 @@ def _draw_attribute_fields_content(layout, context):
     if bp.is_editable:
         if len(bp.field_items) == 0:
             layout.label(text=T("attribute.no_fields"), icon="INFO")
+        elif _color_only and not _cf.attribute_has_color(type_hash_int, bp.field_items):
+            # Color Editor 模式下这个 attribute 没有任何颜色/亮度字段——正常工作流不该
+            # 选到它（Outliner 只暴露含颜色内容），但防御性处理，避免渲染出空标题框。
+            layout.label(text=T("attribute.no_color_fields"), icon="INFO")
         else:
             # ctc 风格：字段列表包在 box 里，用 column 统一管理行高
             box = layout.box()
@@ -680,7 +692,7 @@ def _draw_attribute_fields_content(layout, context):
                 _ptb_hint_row.label(text=T("attribute.ptbehavior_hint"))
             col.separator(factor=0.5)
             # 逐字段绘制（带 value+jitter 位置配对：jitter 字段与紧邻前一个
-            # 同类型标量 value 合并一行，模拟 XYZ Fixed/Random 分组风格）
+            # 同类型标量 value 合并一行，模拟 XYZ Static/Random 分组风格）
             items = list(bp.field_items)
             n = len(items)
             i = 0
@@ -688,6 +700,12 @@ def _draw_attribute_fields_content(layout, context):
                 item = items[i]
                 # __opaque_hint__ 是内部 sentinel，不渲染为字段行
                 if item.ori_name.startswith("__") and item.ori_name.endswith("__"):
+                    i += 1
+                    continue
+                # Color Editor 模式：非颜色/亮度字段直接跳过，不进入任何特例渲染分支
+                # （TUBELIGHT headColor/tailColor、RIBBONBLADE head.*/tailEnd.* 等颜色
+                # 特例字段本身就会通过 is_color_field 判据，特例渲染分支正常生效）。
+                if _color_only and not _cf.is_color_field(type_hash_int, item.ori_name, item.data_type):
                     i += 1
                     continue
                 # L2 #1c：EXTERNREFERENCE 的 referenceIndex 字段替换为 extern 指针 UI
@@ -953,6 +971,11 @@ class EFX_PT_presets(bpy.types.Panel):
     bl_options      = {"DEFAULT_CLOSED"}
     bl_order        = -2  # 固定顺序：MHW EFX > Add Section > Presets > Edit > 其他
 
+    @classmethod
+    def poll(cls, context):
+        # Color Editor 模式：预设是结构/整属性工具，不属于"只管颜色"范围，隐藏。
+        return not _rc.is_color_editor_mode(context.active_object)
+
     def draw(self, context):
         layout = self.layout
         wm = context.window_manager
@@ -982,7 +1005,8 @@ class EFX_PT_entry_status(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+        return (obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+                and not _rc.is_color_editor_mode(obj))
 
     def draw(self, context):
         layout = self.layout
@@ -1015,7 +1039,8 @@ class EFX_PT_entry_activation(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+        return (obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+                and not _rc.is_color_editor_mode(obj))
 
     def draw(self, context):
         layout = self.layout
@@ -1112,7 +1137,8 @@ class EFX_PT_entry_properties(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+        return (obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+                and not _rc.is_color_editor_mode(obj))
 
     def draw(self, context):
         _draw_entry_properties_content(self.layout, context)
@@ -1130,7 +1156,8 @@ class EFX_PT_entry_properties_data(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+        return (obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+                and not _rc.is_color_editor_mode(obj))
 
     def draw(self, context):
         _draw_entry_properties_content(self.layout, context)
@@ -1148,7 +1175,8 @@ class EFX_PT_entry_properties_object(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+        return (obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+                and not _rc.is_color_editor_mode(obj))
 
     def draw(self, context):
         _draw_entry_properties_content(self.layout, context)
@@ -1167,7 +1195,8 @@ class EFX_PT_entry_unkn(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+        return (obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+                and not _rc.is_color_editor_mode(obj))
 
     def draw(self, context):
         layout = self.layout
@@ -1277,7 +1306,9 @@ class EFX_PT_add_section(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         from .add_ops import get_active_efx_root
-        return get_active_efx_root(context) is not None
+        root = get_active_efx_root(context)
+        # Color Editor 模式：新建段是结构编辑功能，不属于"只管颜色"范围，隐藏。
+        return root is not None and not _rc.root_is_color_editor_mode(root)
 
     def draw(self, context):
         layout = self.layout
@@ -1317,6 +1348,9 @@ class EFX_PT_delete(bpy.types.Panel):
     def poll(cls, context):
         obj = context.active_object
         if obj is None:
+            return False
+        # Color Editor 模式：重排/改名/删除是结构编辑功能，不属于"只管颜色"范围，隐藏。
+        if _rc.is_color_editor_mode(obj):
             return False
         return obj.get("~TYPE") in _DELETE_BY_TYPE
 

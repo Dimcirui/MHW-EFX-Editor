@@ -211,7 +211,7 @@ def split_labels_tail(label_bytes: bytes, n_max: int):
 # import_efx_tree
 # ─────────────────────────────────────────────────────────────────────────────
 
-def import_efx_tree(filepath: str, context=None) -> bpy.types.Collection:
+def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False) -> bpy.types.Collection:
     """
     解析 .efx 文件，在场景里建立对象树。
 
@@ -221,6 +221,12 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Collection:
         .efx 文件的绝对路径。
     context : bpy.types.Context, optional
         Blender 上下文。若为 None，用 bpy.context。
+    color_editor_mode : bool, optional
+        True＝"仅导入颜色"（EFX Color Editor）。完整解析/建树完全不变（数据
+        100% 保留、导出路径不动，byte-perfect 天然保住）；仅在建树完成后追加一步
+        UI 精简：含颜色字段的 entry/attribute 额外 link 进 root_col 本身（多重
+        归属，不从原叶子集合 unlink），其余四个正常叶子集合从当前场景全部 View
+        Layer 排除（仅隐藏 Outliner 显示）。见 `_apply_color_editor_view`。
 
     返回
     ----
@@ -241,7 +247,11 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Collection:
 
     # ── 2. 建顶层集合（紫色 COLOR_06，本身即"文件"，~TYPE=EFX_ROOT）────────────
     scene_col = ctx.scene.collection
-    root_col = _rc.new_root_collection(file_name, scene_col)
+    # Color Editor 模式：集合名加 "_color" 后缀区分（同样紫色 COLOR_06，用户
+    # 描述的"一个紫色的 XXX_color.efx 集合"——root_col 本身即是它）。
+    root_col_name = f"{file_stem}_color.efx" if color_editor_mode else file_name
+    root_col = _rc.new_root_collection(root_col_name, scene_col)
+    root_col["color_editor_mode"] = 1 if color_editor_mode else 0
 
     # ── 3. header 全部字段直接存 root_col 自定义属性（不再建 Empty）────────────
     # header 字段：signature/efxr 存 hex；
@@ -600,7 +610,84 @@ def import_efx_tree(filepath: str, context=None) -> bpy.types.Collection:
     except Exception:
         pass
 
+    # ── 12. Color Editor 模式收尾（见函数 docstring；失败安全，不影响数据完整性）──
+    if color_editor_mode:
+        _apply_color_editor_view(root_col, ctx)
+
     return root_col
+
+
+def _find_layer_collection(layer_coll: bpy.types.LayerCollection, target: bpy.types.Collection):
+    """在 layer_coll 为根的 LayerCollection 树里找 .collection is target 的节点。"""
+    if layer_coll.collection is target:
+        return layer_coll
+    for child in layer_coll.children:
+        found = _find_layer_collection(child, target)
+        if found is not None:
+            return found
+    return None
+
+
+def _apply_color_editor_view(root_col: bpy.types.Collection, ctx) -> None:
+    """
+    Color Editor 模式收尾（仅在 color_editor_mode=True 时调用）：
+
+    1. 含颜色字段的 entry/attribute 额外 link 进 root_col 本身（多重归属，不从
+       原叶子集合 unlink）。`collect_top_level(root_col, type_tag)` 从叶子集合
+       起 walk，从不扫 root_col.objects 直接子级，故本步骤对导出路径零影响，
+       byte-perfect 天然保住（同 opaque 兜底一个道理：没碰的东西必然没变）。
+    2. 四个正常叶子集合（Entry/Action/Extern/Subselect，含 Entry 下嵌套的
+       Direct/Not Direct Trigger）从当前场景全部 View Layer 排除——只影响
+       Outliner 显示（LayerCollection.exclude 是纯 View Layer 状态，不是集合
+       归属，find_root_collection/collect_top_level/export 都不看这个），
+       不删/不动任何数据。
+
+    entry→attribute 子对象查找避免 `obj.children`（全场景反查扫描，同
+    onchange-full-scene-scan-perf-bug 教训）：改一次性用 `col_entry.all_objects`
+    建 parent→children map。
+
+    失败安全：任何异常都不该让导入失败——本步骤只是 UI 精简，出错最坏情况是
+    退化成看起来像普通编辑器视图，不影响数据完整性。
+    """
+    from . import color_fields as _cf
+
+    try:
+        col_entry = _rc.get_leaf_collection(root_col, "EFX_ENTRY")
+        if col_entry is not None:
+            attrs_by_entry = {}
+            for obj in col_entry.all_objects:
+                if obj.get("~TYPE") == "EFX_ATTRIBUTE" and obj.parent is not None:
+                    attrs_by_entry.setdefault(obj.parent.name, []).append(obj)
+
+            for entry_obj in _rc.collect_top_level(root_col, "EFX_ENTRY"):
+                entry_has_color = False
+                for attr_obj in attrs_by_entry.get(entry_obj.name, []):
+                    try:
+                        type_hash = int(str(attr_obj.get("type_hash", "0")))
+                        field_items = attr_obj.efx_block.field_items
+                    except Exception:
+                        continue
+                    if _cf.attribute_has_color(type_hash, field_items):
+                        entry_has_color = True
+                        if attr_obj.name not in root_col.objects:
+                            root_col.objects.link(attr_obj)
+                if entry_has_color and entry_obj.name not in root_col.objects:
+                    root_col.objects.link(entry_obj)
+    except Exception:
+        pass
+
+    try:
+        leaf_types = ("EFX_ENTRY", "EFX_ACTION", "EFX_EXTERN", "EFX_SUBSELECT")
+        leaf_cols = [c for c in (_rc.get_leaf_collection(root_col, t) for t in leaf_types) if c is not None]
+        scene = getattr(ctx, "scene", None)
+        if scene is not None:
+            for vl in scene.view_layers:
+                for col in leaf_cols:
+                    lc = _find_layer_collection(vl.layer_collection, col)
+                    if lc is not None:
+                        lc.exclude = True
+    except Exception:
+        pass
 
 
 def _build_attr_attribute_children(

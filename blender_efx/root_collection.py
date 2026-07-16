@@ -228,6 +228,25 @@ def all_root_collections() -> list:
     return [c for c in bpy.data.collections if is_root_collection(c)]
 
 
+def is_color_editor_mode(obj: bpy.types.Object) -> bool:
+    """obj 所属 EFX 文件是否处于 Color Editor 模式（导入时勾选"仅导入颜色"，见
+    io_tree.py::import_efx_tree 的 color_editor_mode 参数）。找不到归属或未设置
+    该自定义属性 → False（普通编辑器模式，向后兼容旧导入）。
+
+    供各面板 poll() 判断是否该在颜色模式下隐藏——放在 root_collection.py（而非
+    panels.py）是为了让 backref.py / entry_action_ref.py 等已依赖本模块的文件
+    直接复用，不引入循环导入。"""
+    root = find_root_collection(obj)
+    return root is not None and int(root.get("color_editor_mode", 0)) == 1
+
+
+def root_is_color_editor_mode(root_col: bpy.types.Collection) -> bool:
+    """同 is_color_editor_mode，但直接接受 root_col 本身（供 poll 已拿到
+    root_col 而非 object 的场景，如 Add Section / Direct Trigger List /
+    Subselect States 这类按"当前活动集合"而非"当前活动对象"判断的面板）。"""
+    return root_col is not None and int(root_col.get("color_editor_mode", 0)) == 1
+
+
 def register():
     bpy.types.Collection.efx_root_ptr = PointerProperty(
         name="EFX Root Collection",
