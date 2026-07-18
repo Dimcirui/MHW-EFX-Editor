@@ -101,7 +101,7 @@ class EFXUVSGroupProp(PropertyGroup):
 
     display_name: StringProperty(
         name="Name",
-        description="显示名称（第一条路径的末段文件名）",
+        description="Display name (last path segment of the first path slot)",
     )
     frame_count: IntProperty(name="Frames", min=0)
     dynamic: IntProperty(name="Dynamic", min=0, default=4)
@@ -125,14 +125,15 @@ class EFXUVSGroupProp(PropertyGroup):
 
     # Phase 3：帧生成参数
     grid_h: IntProperty(name="H", min=1, default=1,
-                        description="精灵表水平格数",
+                        description="Sprite sheet horizontal cell count",
                         update=lambda self, ctx: setattr(self, "gen_frame_count", self.grid_h * self.grid_v))
     grid_v: IntProperty(name="V", min=1, default=1,
-                        description="精灵表垂直格数",
+                        description="Sprite sheet vertical cell count",
                         update=lambda self, ctx: setattr(self, "gen_frame_count", self.grid_h * self.grid_v))
     gen_frame_count: IntProperty(
         name="Count", min=0, default=1,
-        description="实际生成的帧数（裁剪掉网格末尾多余的格子，用于帧数不能被 H×V 整除的情况；0 或 ≥H×V 表示不裁剪）",
+        description="Actual frame count generated (trims trailing leftover grid cells when the frame "
+                    "count doesn't divide H×V evenly; 0 or >=H×V means no trimming)",
     )
     # 标签文字按用户实机复现结果对调过（0.2.102）：内部 scan 取值/_gen_frames_grid
     # 生成逻辑没变，只是把标签+说明文字换到了实际匹配的那个取值上。RL_*/*_RL
@@ -141,14 +142,14 @@ class EFXUVSGroupProp(PropertyGroup):
     grid_scan: bpy.props.EnumProperty(
         name="Scan",
         items=[
-            ('LR_TB', "LR↑", "左→右 下→上（UV 标准序）"),
-            ('LR_BT', "LR↓", "左→右 上→下（最常用）"),
-            ('RL_TB', "RL↑", "右→左 下→上"),
-            ('RL_BT', "RL↓", "右→左 上→下"),
-            ('TB_LR', "BT→", "下→上 左→右"),
-            ('BT_LR', "TB→", "上→下 左→右"),
-            ('TB_RL', "BT←", "下→上 右→左"),
-            ('BT_RL', "TB←", "上→下 右→左"),
+            ('LR_TB', "LR↑", "Left→Right, Bottom→Top (standard UV order)"),
+            ('LR_BT', "LR↓", "Left→Right, Top→Bottom (most common)"),
+            ('RL_TB', "RL↑", "Right→Left, Bottom→Top"),
+            ('RL_BT', "RL↓", "Right→Left, Top→Bottom"),
+            ('TB_LR', "BT→", "Bottom→Top, Left→Right"),
+            ('BT_LR', "TB→", "Top→Bottom, Left→Right"),
+            ('TB_RL', "BT←", "Bottom→Top, Right→Left"),
+            ('BT_RL', "TB←", "Top→Bottom, Right→Left"),
         ],
         default='LR_TB',
     )
@@ -166,7 +167,7 @@ class EFXUVSProps(PropertyGroup):
 
     filepath: StringProperty(
         name="UVS File",
-        description="磁盘上的 .uvs 文件路径",
+        description="Path to the .uvs file on disk",
         subtype="FILE_PATH",
     )
     is_loaded: BoolProperty(name="Loaded", default=False)
@@ -294,9 +295,9 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
                 data = f.read()
             _populate_props(props, data)
             props.filepath = path
-            self.report({"INFO"}, f"已导入：{os.path.basename(path)}（{len(props.groups)} groups）")
+            self.report({"INFO"}, T("uvs.imported").format(os.path.basename(path), len(props.groups)))
         except Exception as e:
-            self.report({"ERROR"}, f"导入失败：{e}")
+            self.report({"ERROR"}, T("uvs.import_failed").format(e))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -337,9 +338,9 @@ class EFX_OT_uvs_export(Operator, ExportHelper):
             with open(self.filepath, "wb") as f:
                 f.write(data)
             props.filepath = self.filepath
-            self.report({"INFO"}, f"已导出：{os.path.basename(self.filepath)}")
+            self.report({"INFO"}, T("uvs.exported").format(os.path.basename(self.filepath)))
         except Exception as e:
-            self.report({"ERROR"}, f"导出失败：{e}")
+            self.report({"ERROR"}, T("uvs.export_failed").format(e))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -369,9 +370,9 @@ class EFX_OT_uvs_reload(Operator):
             with open(props.filepath, "rb") as f:
                 data = f.read()
             _populate_props(props, data)
-            self.report({"INFO"}, "已重新加载")
+            self.report({"INFO"}, T("uvs.reloaded"))
         except Exception as e:
-            self.report({"ERROR"}, f"重载失败：{e}")
+            self.report({"ERROR"}, T("uvs.reload_failed").format(e))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -424,7 +425,7 @@ class EFX_PT_uvs_edition(Panel):
         if game_path:
             box = layout.box()
             row = box.row()
-            row.label(text="Game path:", icon="FILE")
+            row.label(text=T("uvs.game_path"), icon="FILE")
             row.label(text=game_path)
 
         # ── Import / Export / Reload ──────────────────────────────────────────
@@ -436,20 +437,20 @@ class EFX_PT_uvs_edition(Panel):
 
         # ── GIF → PNG 精灵表（Phase 4，独立于 UVS 是否已加载）──────────────────
         box = layout.box()
-        box.label(text="GIF → PNG 精灵表", icon="IMAGE_DATA")
+        box.label(text=T("uvs.gif_to_png_box"), icon="IMAGE_DATA")
         if _check_pillow():
             box.operator("efx.uvs_gif_to_png", icon="RENDER_ANIMATION")
         else:
-            box.label(text="需要 Pillow 库", icon="ERROR")
-            box.label(text="（Blender Python 里执行 pip install Pillow）")
+            box.label(text=T("uvs.need_pillow"), icon="ERROR")
+            box.label(text=T("uvs.pip_install_hint"))
 
         if not props.is_loaded:
-            layout.label(text="未加载 UVS 文件", icon="INFO")
+            layout.label(text=T("uvs.not_loaded"), icon="INFO")
             return
 
         # ── Group 列表 ────────────────────────────────────────────────────────
         row = layout.row()
-        row.label(text=f"Groups: {len(props.groups)}", icon="SEQUENCE")
+        row.label(text=T("uvs.groups_count").format(n=len(props.groups)), icon="SEQUENCE")
         sub = row.row(align=True)
         sub.operator("efx.uvs_group_add",    text="", icon="ADD")
         sub.operator("efx.uvs_group_remove", text="", icon="REMOVE")
@@ -469,15 +470,15 @@ class EFX_PT_uvs_edition(Panel):
             g = props.groups[idx]
             box = layout.box()
             row = box.row(align=True)
-            row.label(text=f"Group {idx}:", icon="LAYER_ACTIVE")
+            row.label(text=T("uvs.group_header").format(idx), icon="LAYER_ACTIVE")
             row.prop(g, "display_name", text="")
 
             row = box.row()
             row.prop(g, "dynamic")
-            row.label(text=f"{g.frame_count} frames")
+            row.label(text=T("uvs.frame_count_suffix").format(g.frame_count))
 
             box.separator(factor=0.5)
-            box.label(text="Path slots:", icon="IMAGE_DATA")
+            box.label(text=T("uvs.path_slots"), icon="IMAGE_DATA")
 
             for i in range(4):
                 path_attr = f"path{i}"
@@ -492,16 +493,16 @@ class EFX_PT_uvs_edition(Panel):
                     if i == g.map_count - 1:
                         row.operator("efx.uvs_slot_remove", text="", icon="REMOVE")
                 elif i == g.map_count:
-                    row.label(text="（空槽）", icon="BLANK1")
+                    row.label(text=T("uvs.empty_slot"), icon="BLANK1")
                     row.operator("efx.uvs_slot_add", text="", icon="ADD")
                 else:
-                    row.label(text="（空槽）", icon="BLANK1")
+                    row.label(text=T("uvs.empty_slot"), icon="BLANK1")
 
         layout.separator(factor=0.5)
 
         # ── Edit UVS 弹窗 ─────────────────────────────────────────────────────
         if _edit_state["window"] is not None:
-            layout.operator("efx.uvs_close_editor", text="关闭编辑器", icon="X")
+            layout.operator("efx.uvs_close_editor", text=T("uvs.close_editor_btn"), icon="X")
         else:
             layout.operator("efx.uvs_edit", text="Edit UVS", icon="WINDOW")
 
@@ -670,8 +671,12 @@ def _uvs_draw_handler():
     for i, frame in enumerate(frames):
         u0, v0 = frame.uv0
         u1, v1 = frame.uv1
-        # 实测确认游戏里 v 越大越靠近贴图顶部；但 GPU 叠加层直接画原始 (u,v)
-        # 时是反的（v 越大画得越靠下），这里翻转一次让预览和游戏实际表现一致。
+        # ⚠ 这个翻转是照"v 越大越靠近贴图顶部"的旧假设调的；0.4.3 实机测试已
+        # 证实那个假设是反的（真实 v 越大越靠近贴图底部，见 EFX_OT_uvs_frame_edit
+        # 的订正）。但这里翻转后配合 _gen_frames_pixel_grid（未做 1-v 翻转）已
+        # 实机截图确认选中帧正确显示在左上角——两个"错"抵消出了当前预览效果
+        # 正确的结果，暂不改动；如果之后改 _gen_frames_grid/这里任何一处，要
+        # 连带重新验证预览方向，不要只改一处。
         v0, v1 = 1.0 - v0, 1.0 - v1
         if i == selected:
             color = (1.0, 0.85, 0.0, 1.0)   # 黄色：选中帧
@@ -697,7 +702,11 @@ def _gen_frames_grid(H: int, V: int, scan: str, count: int = None):
     from ..efx_format.uvs import UVSFrame
     w, h = 1.0 / H, 1.0 / V
 
-    # 游戏里 v 越大越靠近贴图顶部（实测确认，见 EFX_OT_uvs_frame_edit 的 Top/Bottom 映射）。
+    # ⚠ 0.4.3：实机测试确认 EFX_OT_uvs_frame_edit 原先"v 越大越靠近贴图顶部"的
+    # 假设是反的（真实是 v 越大越靠近贴图底部），已订正该处 Top/Bottom 标签；
+    # 但这里的 ri↔"上/下"映射、以及下面 GPU 叠加层的翻转是否也要跟着改，尚未
+    # 用同样方式实机验证——LR_TB 等 scan 选项的实际游戏内播放方向可能因此和
+    # 标签描述不符，改动前先找具体数值复现，不要凭这条注释直接反转。
     # j 是"播放顺序批次"（0 起），下面把 j 映到 ri，让实际（游戏内）播放方向和 scan 标签一致。
     # RL_*/*_RL 四个是 LR_*/*_LR 的镜像：纵向 ri 公式原样照抄，只把横向 ci 换成 H-1-i。
     if scan == 'LR_TB':    # 左→右 上→下：先播最上面一行（ri=V-1，v 最大），逐行往下
@@ -750,7 +759,7 @@ class EFX_OT_uvs_edit(Operator):
         # 已有编辑器在跑 → 检测窗口是否仍存在
         if _edit_state["window"] is not None:
             if _edit_state["window"] in context.window_manager.windows[:]:
-                self.report({"INFO"}, "UVS 编辑器已打开")
+                self.report({"INFO"}, T("uvs.editor_open_already"))
                 return {"CANCELLED"}
             _cleanup_edit_state()
 
@@ -836,7 +845,7 @@ class EFX_OT_uvs_gen_frames(Operator):
         props = obj.efx_uvs
         idx = props.group_index
         if not (0 <= idx < len(props.groups)):
-            self.report({"ERROR"}, "无效的 Group 序号")
+            self.report({"ERROR"}, T("uvs.invalid_group_index"))
             return {"CANCELLED"}
 
         g_prop = props.groups[idx]
@@ -855,9 +864,9 @@ class EFX_OT_uvs_gen_frames(Operator):
             g_prop.frame_index = 0
             _frame_cache.clear()
             _tag_redraw_editor()
-            self.report({"INFO"}, f"已生成 {len(new_frames)} 帧（{H}×{V}，{scan}）")
+            self.report({"INFO"}, T("uvs.frames_generated").format(len(new_frames), H, V, scan))
         except Exception as e:
-            self.report({"ERROR"}, f"生成失败：{e}")
+            self.report({"ERROR"}, T("uvs.generate_failed").format(e))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -889,10 +898,12 @@ class EFX_OT_uvs_frame_edit(Operator):
     bl_label   = "Edit Frame"
     bl_options = {"REGISTER", "UNDO"}
 
-    # uv0=(Left,Bottom)、uv1=(Right,Top)：实测确认游戏里 v 越大越靠近贴图顶部，
-    # 网格生成的帧恒有 uv0.v < uv1.v，故 uv1.v 才是上边、uv0.v 是下边。直接一一
-    # 对应改名，不做 min/max 重排——避免把游戏里本来就镜像/翻转过的自定义帧的
-    # 边序改坏。
+    # uv0=(Left,Top)、uv1=(Right,Bottom)：0.4.3 实机测试订正——之前假设"v 越大
+    # 越靠近贴图顶部"（uv1.v 是上边）是反的，实机验证 flip=0 时按旧假设显示会
+    # 上下翻转；真实约定是 v 越大越靠近贴图底部，故 uv0.v 才是上边、uv1.v 是
+    # 下边。这里只改哪个字段叫"Top"/"Bottom"，数值不动——网格生成的帧恒有
+    # uv0.v < uv1.v，直接一一对应改名，不做 min/max 重排，避免把游戏里本来就
+    # 镜像/翻转过的自定义帧的边序改坏。
     left:   bpy.props.FloatProperty(name="Left")
     top:    bpy.props.FloatProperty(name="Top")
     right:  bpy.props.FloatProperty(name="Right")
@@ -910,8 +921,8 @@ class EFX_OT_uvs_frame_edit(Operator):
         fi = max(0, min(g_prop.frame_index, len(frames) - 1)) if frames else 0
         if frames:
             f = frames[fi]
-            self.left, self.bottom = f.uv0
-            self.right, self.top = f.uv1
+            self.left, self.top = f.uv0
+            self.right, self.bottom = f.uv1
         return context.window_manager.invoke_props_dialog(self)
 
     def draw(self, context):
@@ -932,13 +943,13 @@ class EFX_OT_uvs_frame_edit(Operator):
             data = base64.b64decode(props.raw_b64)
             uvs  = UVSFile.parse(data)
             frame = uvs.groups[idx].frames[fi]
-            frame.uv0 = (self.left, self.bottom)
-            frame.uv1 = (self.right, self.top)
+            frame.uv0 = (self.left, self.top)
+            frame.uv1 = (self.right, self.bottom)
             props.raw_b64 = base64.b64encode(uvs.serialize()).decode("ascii")
             _frame_cache.clear()
             _tag_redraw_editor()
         except Exception as e:
-            self.report({"ERROR"}, f"修改失败：{e}")
+            self.report({"ERROR"}, T("uvs.edit_failed").format(e))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -979,7 +990,7 @@ class EFX_OT_uvs_frame_insert(Operator):
             _frame_cache.clear()
             _tag_redraw_editor()
         except Exception as e:
-            self.report({"ERROR"}, f"插入失败：{e}")
+            self.report({"ERROR"}, T("uvs.insert_failed").format(e))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -1015,7 +1026,7 @@ class EFX_OT_uvs_frame_delete(Operator):
             _frame_cache.clear()
             _tag_redraw_editor()
         except Exception as e:
-            self.report({"ERROR"}, f"删除失败：{e}")
+            self.report({"ERROR"}, T("uvs.delete_failed").format(e))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -1050,7 +1061,7 @@ class EFX_OT_uvs_frame_move(Operator):
             fi   = max(0, min(g_prop.frame_index, n - 1))
             target = fi - 1 if self.direction == 'UP' else fi + 1
             if not (0 <= target < n):
-                self.report({"INFO"}, "已在边界")
+                self.report({"INFO"}, T("uvs.at_boundary"))
                 return {"CANCELLED"}
             g.frames[fi], g.frames[target] = g.frames[target], g.frames[fi]
             props.raw_b64 = base64.b64encode(uvs.serialize()).decode("ascii")
@@ -1058,7 +1069,7 @@ class EFX_OT_uvs_frame_move(Operator):
             _frame_cache.clear()
             _tag_redraw_editor()
         except Exception as e:
-            self.report({"ERROR"}, f"移动失败：{e}")
+            self.report({"ERROR"}, T("uvs.move_failed").format(e))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -1073,7 +1084,7 @@ class EFX_PT_uvs_editor(Panel):
     bl_space_type  = "IMAGE_EDITOR"
     bl_region_type = "UI"
     bl_category    = "UVS"
-    bl_label       = "UVS 编辑器"
+    bl_label       = "UVS Editor"
 
     @classmethod
     def poll(cls, context):
@@ -1088,7 +1099,7 @@ class EFX_PT_uvs_editor(Panel):
         obj_name = getattr(wm, "efx_uvs_edit_obj", "")
         obj      = bpy.data.objects.get(obj_name)
         if obj is None:
-            layout.label(text="找不到编辑目标", icon="ERROR")
+            layout.label(text=T("uvs.editor_target_missing"), icon="ERROR")
             layout.operator("efx.uvs_close_editor", icon="X")
             return
         props = obj.efx_uvs
@@ -1100,10 +1111,10 @@ class EFX_PT_uvs_editor(Panel):
 
         # ── 参考图 ────────────────────────────────────────────────────────────
         box = layout.box()
-        box.label(text="参考图", icon="IMAGE_DATA")
+        box.label(text=T("uvs.reference_image"), icon="IMAGE_DATA")
         box.prop_search(props, "ref_image_name", bpy.data, "images", text="")
         row = box.row(align=True)
-        row.operator("image.open", text="加载图片", icon="FILE_FOLDER")
+        row.operator("image.open", text=T("uvs.load_image_btn"), icon="FILE_FOLDER")
         # 把选中图片设到当前 Image Editor
         if props.ref_image_name:
             img = bpy.data.images.get(props.ref_image_name)
@@ -1115,7 +1126,7 @@ class EFX_PT_uvs_editor(Panel):
 
         # ── Group 列表 ────────────────────────────────────────────────────────
         row = layout.row()
-        row.label(text=f"Groups  ({len(props.groups)})", icon="SEQUENCE")
+        row.label(text=T("uvs.groups_count").format(n=len(props.groups)), icon="SEQUENCE")
         sub = row.row(align=True)
         sub.operator("efx.uvs_group_add",    text="", icon="ADD")
         sub.operator("efx.uvs_group_remove", text="", icon="REMOVE")
@@ -1137,14 +1148,14 @@ class EFX_PT_uvs_editor(Panel):
         # ── 路径槽 + Dynamic ─────────────────────────────────────────────────
         box = layout.box()
         row = box.row(align=True)
-        row.label(text=f"Group {idx}:", icon="LAYER_ACTIVE")
+        row.label(text=T("uvs.group_header").format(idx), icon="LAYER_ACTIVE")
         row.prop(g, "display_name", text="")
         row = box.row()
         row.prop(g, "dynamic")
-        row.label(text=f"{g.frame_count} frames")
+        row.label(text=T("uvs.frame_count_suffix").format(g.frame_count))
 
         box.separator(factor=0.3)
-        box.label(text="路径槽", icon="RENDERLAYERS")
+        box.label(text=T("uvs.path_slots"), icon="RENDERLAYERS")
         for i in range(4):
             path_attr = f"path{i}"
             type_ui_attr = f"type{i}_ui"
@@ -1156,21 +1167,21 @@ class EFX_PT_uvs_editor(Panel):
                 if i == g.map_count - 1:
                     row.operator("efx.uvs_slot_remove", text="", icon="REMOVE")
             elif i == g.map_count:
-                row.label(text="（空槽）")
+                row.label(text=T("uvs.empty_slot"))
                 row.operator("efx.uvs_slot_add", text="", icon="ADD")
             else:
-                row.label(text="（空槽）")
+                row.label(text=T("uvs.empty_slot"))
 
         layout.separator(factor=0.3)
 
         # ── 帧生成 ────────────────────────────────────────────────────────────
         box = layout.box()
-        box.label(text="帧生成", icon="RENDER_ANIMATION")
+        box.label(text=T("uvs.frame_gen_box"), icon="RENDER_ANIMATION")
         row = box.row(align=True)
         row.prop(g, "grid_h", text="H")
         row.prop(g, "grid_v", text="V")
-        box.prop(g, "grid_scan", text="扫描")
-        box.prop(g, "gen_frame_count", text="帧数（裁剪）")
+        box.prop(g, "grid_scan", text=T("uvs.scan_label"))
+        box.prop(g, "gen_frame_count", text=T("uvs.frame_count_trim_label"))
         sub = box.row()
         sub.scale_y = 1.2
         sub.operator("efx.uvs_gen_frames", icon="PLAY")
@@ -1179,9 +1190,9 @@ class EFX_PT_uvs_editor(Panel):
 
         # ── 帧导航（高亮选中帧）+ 自定义帧编辑（增删/重排/改矩形）────────────────
         box = layout.box()
-        box.label(text="帧预览", icon="KEYFRAME")
+        box.label(text=T("uvs.frame_preview_box"), icon="KEYFRAME")
         row = box.row(align=True)
-        row.prop(g, "frame_index", text="帧")
+        row.prop(g, "frame_index", text=T("uvs.frame_label"))
         row.label(text=f"/ {g.frame_count}")
 
         row = box.row(align=True)
@@ -1196,18 +1207,18 @@ class EFX_PT_uvs_editor(Panel):
         if frames:
             f = frames[fi]
             col = box.column(align=True)
-            col.label(text=f"Top={f.uv1[1]:.3f}   Left={f.uv0[0]:.3f}  Right={f.uv1[0]:.3f}")
-            col.label(text=f"Bottom={f.uv0[1]:.3f}")
-            box.operator("efx.uvs_frame_edit", text="编辑此帧边框", icon="GREASEPENCIL")
+            col.label(text=f"Top={f.uv0[1]:.3f}   Left={f.uv0[0]:.3f}  Right={f.uv1[0]:.3f}")
+            col.label(text=f"Bottom={f.uv1[1]:.3f}")
+            box.operator("efx.uvs_frame_edit", text=T("uvs.edit_frame_border_btn"), icon="GREASEPENCIL")
         else:
-            box.label(text="（无帧数据）", icon="INFO")
+            box.label(text=T("uvs.no_frame_data"), icon="INFO")
 
         layout.separator(factor=0.3)
 
         # ── 保存 ─────────────────────────────────────────────────────────────
         row = layout.row()
         row.scale_y = 1.3
-        row.operator("efx.uvs_export", text="保存 UVS", icon="FILE_TICK")
+        row.operator("efx.uvs_export", text=T("uvs.save_uvs_btn"), icon="FILE_TICK")
 
 
 # =============================================================================
@@ -1237,7 +1248,7 @@ class EFX_OT_uvs_group_add(Operator):
             data = base64.b64decode(props.raw_b64)
             uvs  = UVSFile.parse(data)
         except Exception as e:
-            self.report({"ERROR"}, f"解析失败：{e}")
+            self.report({"ERROR"}, T("uvs.parse_failed").format(e))
             return {"CANCELLED"}
 
         insert_at = props.group_index + 1
@@ -1272,7 +1283,7 @@ class EFX_OT_uvs_group_add(Operator):
             _sync_type_ui(item, i)
 
         props.group_index = insert_at
-        self.report({"INFO"}, f"已在位置 {insert_at} 新增 Group")
+        self.report({"INFO"}, T("uvs.group_added").format(insert_at))
         return {"FINISHED"}
 
 
@@ -1301,14 +1312,14 @@ class EFX_OT_uvs_group_remove(Operator):
         props = context.active_object.efx_uvs
         idx   = props.group_index
         if not (0 <= idx < len(props.groups)):
-            self.report({"ERROR"}, "无效的 Group 序号")
+            self.report({"ERROR"}, T("uvs.invalid_group_index"))
             return {"CANCELLED"}
 
         try:
             data = base64.b64decode(props.raw_b64)
             uvs  = UVSFile.parse(data)
         except Exception as e:
-            self.report({"ERROR"}, f"解析失败：{e}")
+            self.report({"ERROR"}, T("uvs.parse_failed").format(e))
             return {"CANCELLED"}
 
         uvs.groups.pop(idx)
@@ -1318,7 +1329,7 @@ class EFX_OT_uvs_group_remove(Operator):
 
         props.groups.remove(idx)
         props.group_index = max(0, idx - 1)
-        self.report({"INFO"}, f"已删除 Group {idx}")
+        self.report({"INFO"}, T("uvs.group_removed").format(idx))
         return {"FINISHED"}
 
 
@@ -1349,14 +1360,14 @@ class EFX_OT_uvs_group_move(Operator):
         idx = props.group_index
         target = idx - 1 if self.direction == 'UP' else idx + 1
         if not (0 <= target < len(props.groups)):
-            self.report({"INFO"}, "已在边界")
+            self.report({"INFO"}, T("uvs.at_boundary"))
             return {"CANCELLED"}
 
         try:
             data = base64.b64decode(props.raw_b64)
             uvs  = UVSFile.parse(data)
         except Exception as e:
-            self.report({"ERROR"}, f"解析失败：{e}")
+            self.report({"ERROR"}, T("uvs.parse_failed").format(e))
             return {"CANCELLED"}
 
         uvs.groups[idx], uvs.groups[target] = uvs.groups[target], uvs.groups[idx]
@@ -1366,7 +1377,7 @@ class EFX_OT_uvs_group_move(Operator):
 
         props.groups.move(idx, target)
         props.group_index = target
-        self.report({"INFO"}, f"已移动 Group 到位置 {target}")
+        self.report({"INFO"}, T("uvs.group_moved").format(target))
         return {"FINISHED"}
 
 
@@ -1402,7 +1413,7 @@ class EFX_OT_uvs_slot_add(Operator):
             return False
         if g.frame_count <= 0:
             try:
-                cls.poll_message_set("该 Group 无帧数据，需先生成/导入帧后才能添加 path slot")
+                cls.poll_message_set(T("uvs.slot_needs_frames"))
             except Exception:
                 pass
             return False
@@ -1416,7 +1427,7 @@ class EFX_OT_uvs_slot_add(Operator):
         setattr(g, f"type{i}", 1)
         _sync_type_ui(g, i)
         g.map_count = i + 1
-        self.report({"INFO"}, f"已添加 Path Slot {i}")
+        self.report({"INFO"}, T("uvs.slot_added").format(i))
         return {"FINISHED"}
 
 
@@ -1448,7 +1459,7 @@ class EFX_OT_uvs_slot_remove(Operator):
         setattr(g, f"type{i}", 1)
         _sync_type_ui(g, i)
         g.map_count = i
-        self.report({"INFO"}, f"已删除 Path Slot {i}")
+        self.report({"INFO"}, T("uvs.slot_removed").format(i))
         return {"FINISHED"}
 
 
@@ -1486,36 +1497,113 @@ def _check_pillow() -> bool:
         return False
 
 
+def _next_pow2(v: int) -> int:
+    """向上取整到 2 的幂（MHW 贴图要求边长为 2^n）。"""
+    p = 1
+    while p < v:
+        p *= 2
+    return p
+
+
+def _pick_pot_layout(n: int, fw: int, fh: int, cols: int = None, rows: int = None):
+    """计算精灵表行列数 + POT 画布尺寸。
+
+    帧不缩放，按原始像素尺寸 fw×fh 紧密左上对齐贴入格子（步长就是 fw/fh，
+    不强制 cols/rows 是 2 的幂）；网格末尾多余格子和画布补齐到 2 的幂产生的
+    边缘留白均为透明。
+
+    注意：这里算出的 cols/rows 不是"整张画布被均匀切成 cols×rows 份"的意思
+    （画布通常比 fw*cols/fh*rows 略大，多出来的留白只在最右/最下）。因此每帧
+    的 UV 矩形不能用 _gen_frames_grid 那种 w=1/cols 的均匀网格公式反推
+    ——必须用 _gen_frames_pixel_grid 按每帧真实像素位置直接换算，否则从第
+    二列/行起就会跟实际贴的像素错位（byte-perfect 这类问题测不出，只在游戏
+    里贴图错位才会发现）。
+
+    cols/rows 均给定时：沿用用户指定的行列，只把画布取整到 POT。
+    否则：遍历 cols=1..n（rows=ceil(n/cols)），取 POT 画布面积最小的一组；
+    面积打平时优先更接近正方形的（|log2(w)-log2(h)| 更小）。
+    """
+    import math
+
+    if cols and rows:
+        cols, rows = max(1, cols), max(1, rows)
+        canvas_w, canvas_h = _next_pow2(fw * cols), _next_pow2(fh * rows)
+        return cols, rows, canvas_w, canvas_h
+
+    best = None
+    for c in range(1, n + 1):
+        r = math.ceil(n / c)
+        w, h = _next_pow2(fw * c), _next_pow2(fh * r)
+        area = w * h
+        squareness = abs(math.log2(w) - math.log2(h))
+        key = (area, squareness)
+        if best is None or key < best[0]:
+            best = (key, c, r, w, h)
+
+    _, cols, rows, canvas_w, canvas_h = best
+    return cols, rows, canvas_w, canvas_h
+
+
+def _gen_frames_pixel_grid(n: int, cols: int, fw: int, fh: int, canvas_w: int, canvas_h: int):
+    """按每帧真实像素位置直接生成 UVSFrame 列表（左→右、上→下播放顺序）。
+
+    跟 _gen_frames_grid 的区别：那个假设整张画布被 cols×rows 均匀切分
+    （w=1/cols），只在"画布≈fw*cols 无需补齐"时才准；这里改成直接拿
+    帧在画布里的真实像素矩形换算 UV 分数，哪怕画布因取整到 2 的幂而带了
+    尾部留白也不会累积错位——因为 GIF→PNG 生成的精灵表本来就不是均匀
+    网格（每帧固定 fw×fh，只有画布最右/最下有一圈留白）。
+
+    v 轴方向：实机截图确认过——按"第 j 行（0 起，从顶往下数）对应 v 从
+    1-(j+1)*fh/canvas_h 到 1-j*fh/canvas_h"（沿用 _gen_frames_grid"v 越大越
+    靠近贴图顶部"的约定）算出来，UVS 编辑器预览里第 0 帧却显示在左下角，
+    和 PNG 里实际贴在左上角的内容对不上，所以这里改成反过来的直接映射
+    （j 越大 v 越大）。⚠ 这只是照编辑器预览校准的，游戏里贴图 v 轴到底是
+    以左上还是左下为原点还没有实机验证过；如果之后验证结果相反，把这里
+    的 v0/v1 换回上面那版即可。
+    """
+    from ..efx_format.uvs import UVSFrame
+    frames = []
+    for k in range(n):
+        ci, j = k % cols, k // cols
+        u0, u1 = ci * fw / canvas_w, (ci + 1) * fw / canvas_w
+        v0, v1 = j * fh / canvas_h, (j + 1) * fh / canvas_h
+        frames.append(UVSFrame(uv0=(u0, v0), uv1=(u1, v1)))
+    return frames
+
+
 class EFX_OT_uvs_gif_to_png(Operator, ImportHelper):
     """将 GIF 动图拆帧并拼合为 PNG 精灵表，可选自动更新当前 Group 帧数据"""
 
     bl_idname  = "efx.uvs_gif_to_png"
-    bl_label   = "GIF → PNG 精灵表"
+    bl_label   = "GIF to PNG Sprite Sheet"
     bl_options = {"REGISTER"}
 
     filter_glob: StringProperty(default="*.gif", options={"HIDDEN"})
 
     auto_layout: bpy.props.BoolProperty(
-        name="自动布局",
-        description="根据帧数自动计算行列数（√N 向上取整）",
+        name="Auto Layout",
+        description="Automatically search for a row/column layout that minimizes the power-of-2 padded canvas area",
         default=True,
     )
-    cols: IntProperty(name="列数 (H)", min=1, default=1,
-                      description="精灵表水平格数（auto_layout=False 时生效）")
-    rows: IntProperty(name="行数 (V)", min=1, default=1,
-                      description="精灵表垂直格数（auto_layout=False 时生效）")
-    apply_to_group: bpy.props.BoolProperty(
-        name="应用到当前 Group",
-        description="生成后自动更新 UV 帧序列，并将 PNG 路径写入 path0",
-        default=False,
-        options={"HIDDEN"},
+    cols: IntProperty(name="Columns (H)", min=1, default=1,
+                      description="Sprite sheet column count (used when Auto Layout is off; "
+                                  "final canvas is rounded up to a power of 2)")
+    rows: IntProperty(name="Rows (V)", min=1, default=1,
+                      description="Sprite sheet row count (used when Auto Layout is off; "
+                                  "final canvas is rounded up to a power of 2)")
+    create_new_group: bpy.props.BoolProperty(
+        name="Create Matching Group",
+        description="After generating, insert a new group into the current UVS whose grid/frame count/path "
+                    "exactly match the generated PNG (the PNG has power-of-2 padding; a dedicated grid avoids "
+                    "mismatching the UVS editor's own Generate Frames parameters)",
+        default=True,
     )
 
     @classmethod
     def poll(cls, context):
         if not _check_pillow():
             try:
-                cls.poll_message_set("需要安装 Pillow：在 Blender Python 里执行 pip install Pillow")
+                cls.poll_message_set(T("uvs.need_pillow_msg"))
             except Exception:
                 pass
             return False
@@ -1545,17 +1633,43 @@ class EFX_OT_uvs_gif_to_png(Operator, ImportHelper):
         row.prop(self, "cols")
         row.prop(self, "rows")
 
+        info = self._preview_layout()
+        if info:
+            cols, rows, n, canvas_w, canvas_h = info
+            layout.label(text=T("uvs.gif_preview_line").format(n, cols, rows, canvas_w, canvas_h), icon="INFO")
+
+        layout.separator()
+        layout.prop(self, "create_new_group")
+
+    def _preview_layout(self):
+        """在文件浏览侧栏里预览最终行列/画布尺寸；文件未选定或读取失败时返回 None。"""
+        path = self.filepath
+        if not path or not os.path.isfile(path) or not path.lower().endswith(".gif"):
+            return None
+        try:
+            from PIL import Image
+            gif = Image.open(path)
+            fw, fh = gif.size
+            n = getattr(gif, "n_frames", 1)
+        except Exception:
+            return None
+
+        if self.auto_layout:
+            cols, rows, canvas_w, canvas_h = _pick_pot_layout(n, fw, fh)
+        else:
+            cols, rows, canvas_w, canvas_h = _pick_pot_layout(n, fw, fh, self.cols, self.rows)
+        return cols, rows, n, canvas_w, canvas_h
+
     def execute(self, context):
-        import math
         try:
             from PIL import Image
         except ImportError:
-            self.report({"ERROR"}, "Pillow 未安装，无法处理 GIF")
+            self.report({"ERROR"}, T("uvs.pillow_not_installed"))
             return {"CANCELLED"}
 
         gif_path = self.filepath
         if not os.path.isfile(gif_path):
-            self.report({"ERROR"}, f"文件不存在：{gif_path}")
+            self.report({"ERROR"}, T("uvs.file_not_found").format(gif_path))
             return {"CANCELLED"}
 
         # ── 读取所有 GIF 帧 ──────────────────────────────────────────────────
@@ -1568,25 +1682,26 @@ class EFX_OT_uvs_gif_to_png(Operator, ImportHelper):
         except EOFError:
             pass
         except Exception as e:
-            self.report({"ERROR"}, f"读取 GIF 失败：{e}")
+            self.report({"ERROR"}, T("uvs.gif_read_failed").format(e))
             return {"CANCELLED"}
 
         if not raw_frames:
-            self.report({"ERROR"}, "GIF 中没有找到帧")
+            self.report({"ERROR"}, T("uvs.gif_no_frames"))
             return {"CANCELLED"}
 
         n = len(raw_frames)
-
-        # ── 计算行列数 ───────────────────────────────────────────────────────
-        if self.auto_layout:
-            cols = math.ceil(math.sqrt(n))
-            rows = math.ceil(n / cols)
-        else:
-            cols, rows = max(1, self.cols), max(1, self.rows)
-
-        # ── 拼接精灵表 ───────────────────────────────────────────────────────
         fw, fh = raw_frames[0].size
-        sprite = Image.new("RGBA", (fw * cols, fh * rows), (0, 0, 0, 0))
+
+        # ── 计算行列数 + POT 画布尺寸 ───────────────────────────────────────
+        if self.auto_layout:
+            cols, rows, canvas_w, canvas_h = _pick_pot_layout(n, fw, fh)
+        else:
+            cols, rows, canvas_w, canvas_h = _pick_pot_layout(n, fw, fh, self.cols, self.rows)
+
+        # ── 拼接精灵表（帧不缩放，按原始尺寸左上对齐；网格末尾与 POT 补齐的
+        #    留白透明）。帧的 UV 矩形不在这里算，见下面 _insert_group 用
+        #    _gen_frames_pixel_grid 按真实像素位置直接生成 ───────────────────
+        sprite = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
         for i, frame in enumerate(raw_frames):
             if i >= cols * rows:
                 break
@@ -1597,44 +1712,83 @@ class EFX_OT_uvs_gif_to_png(Operator, ImportHelper):
         try:
             sprite.save(out_path)
         except Exception as e:
-            self.report({"ERROR"}, f"保存 PNG 失败：{e}")
+            self.report({"ERROR"}, T("uvs.png_save_failed").format(e))
             return {"CANCELLED"}
 
-        self.report({"INFO"}, f"已保存：{out_path}（{n} 帧，{cols}×{rows}）")
+        msg = T("uvs.gif_saved").format(out_path, n, cols, rows, canvas_w, canvas_h)
 
-        # ── 应用到当前 Group ─────────────────────────────────────────────────
-        if self.apply_to_group:
+        # ── 新增对应 Group ───────────────────────────────────────────────────
+        if self.create_new_group:
             obj = context.active_object
             props = obj.efx_uvs
-            idx = props.group_index
-            if 0 <= idx < len(props.groups):
-                g = props.groups[idx]
-                g.grid_h   = cols
-                g.grid_v   = rows
-                g.grid_scan = 'LR_TB'
-                g.gen_frame_count = n   # 裁剪掉网格末尾多余格子（GIF 帧数不能被 cols×rows 整除时）
-                # path0：填入文件系统路径供参考，用户需改为游戏相对路径
-                if g.map_count == 0:
-                    g.map_count = 1
-                g.path0 = out_path
-                # 直接重用生成逻辑（不走 operator，避免 wm.efx_uvs_edit_obj 依赖）
-                new_frames = _gen_frames_grid(cols, rows, 'LR_TB', n)
-                try:
-                    from ..efx_format.uvs import UVSFile
-                    data = base64.b64decode(props.raw_b64)
-                    uvs  = UVSFile.parse(data)
-                    ug   = uvs.groups[idx]
-                    ug.frames         = new_frames
-                    ug._frame_indices = list(range(len(new_frames)))
-                    props.raw_b64     = base64.b64encode(uvs.serialize()).decode("ascii")
-                    g.frame_count     = len(new_frames)
-                    g.frame_index     = 0
-                    _frame_cache.clear()
-                    _tag_redraw_editor()
-                except Exception as e:
-                    self.report({"WARNING"}, f"帧数据更新失败：{e}")
+            insert_at, err = self._insert_group(props, out_path, cols, rows, n, fw, fh, canvas_w, canvas_h)
+            if err:
+                self.report({"WARNING"}, msg + T("uvs.new_group_failed").format(err))
+                return {"FINISHED"}
+            msg += T("uvs.new_group_created").format(insert_at)
 
+        self.report({"INFO"}, msg)
         return {"FINISHED"}
+
+    def _insert_group(self, props, out_path: str, cols: int, rows: int, n: int,
+                       fw: int, fh: int, canvas_w: int, canvas_h: int):
+        """在当前 Group 之后插入一个新 Group，网格/帧数/路径与生成的精灵表完全对应。
+
+        插入手法同 EFX_OT_uvs_group_add：raw UVSFile 和 CollectionProperty 必须
+        同步插入到相同位置——导出时 _rebuild_uvs 按下标 zip 两者，位置对不上会错位/丢组。
+        返回 (insert_at, error_message)，成功时 error_message 为 None。
+        """
+        from ..efx_format.uvs import UVSFile, UVSGroup
+
+        try:
+            data = base64.b64decode(props.raw_b64)
+            uvs  = UVSFile.parse(data)
+        except Exception as e:
+            return None, str(e)
+
+        insert_at = props.group_index + 1
+        # 按真实像素位置生成 UV 矩形（不能用 _gen_frames_grid 的均匀网格公式，
+        # 见 _gen_frames_pixel_grid 文档串——画布右/下常带 POT 补齐留白，不是
+        # 均匀 cols×rows 切分）。
+        new_frames = _gen_frames_pixel_grid(n, cols, fw, fh, canvas_w, canvas_h)
+        # map_count=0：真正的路径槽（path_indices）要到 Export 时才由 _rebuild_uvs
+        # 依据 props.groups 的 path0/type0 重建字符串表并回填，这里先留空同
+        # EFX_OT_uvs_group_add 的约定，避免 raw 里出现指向不存在字符串的假索引。
+        new_g = UVSGroup(
+            frames=new_frames,
+            path_indices=[],
+            map_count=0,
+            dynamic=4,
+        )
+        new_g._frame_indices = list(range(len(new_frames)))
+        uvs.groups.insert(insert_at, new_g)
+        props.raw_b64 = base64.b64encode(uvs.serialize()).decode("ascii")
+
+        # CollectionProperty 同位置插入（同 EFX_OT_uvs_group_add：无 insert，只能追加后逐格前移）
+        props.groups.add()
+        for i in range(len(props.groups) - 1, insert_at, -1):
+            props.groups.move(i - 1, i)
+        item = props.groups[insert_at]
+        item.display_name = os.path.splitext(os.path.basename(out_path))[0]
+        item.dynamic       = 4
+        item.map_count     = 1
+        item.path0         = out_path  # 文件系统路径供参考，用户需改为游戏相对路径
+        for attr in ("path1", "path2", "path3"):
+            setattr(item, attr, "")
+        for i, attr in enumerate(("type0", "type1", "type2", "type3")):
+            setattr(item, attr, 1)
+            _sync_type_ui(item, i)
+        item.grid_h          = cols
+        item.grid_v          = rows
+        item.grid_scan       = 'LR_TB'
+        item.gen_frame_count = n
+        item.frame_count     = len(new_frames)
+        item.frame_index     = 0
+
+        props.group_index = insert_at
+        _frame_cache.clear()
+        _tag_redraw_editor()
+        return insert_at, None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
