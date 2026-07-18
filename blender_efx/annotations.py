@@ -567,7 +567,7 @@ FIELD_ANNOTATIONS = {
     # FadeByAngle — no inline comments in BT
 
     # ─── FADEBYEMITTERANGLE ───────────────────────────────────────────────────
-    # FadeByEmitterAngle — marked "#UNKNOWN STRUCT" in BT
+    # FadeByEmitterAngle — cone angle, alpha rate, fade-in range
 
     # ─── NOISE ────────────────────────────────────────────────────────────────
     # Noise — no inline comments in BT
@@ -2081,29 +2081,45 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [5, 30, 44].",
         "ZH": "常见取值为 [5, 30, 44]。",
     },
-    ("BLINK", "unkn1_1"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("BLINK", "minAlpha"): {
+        "EN": "Lower bound of the flicker range — the blink always spans the full minAlpha~maxAlpha range, not just the edges of it.",
+        "ZH": "闪烁摆动范围的下限——闪烁始终会撑满 minAlpha~maxAlpha 之间的整个区间，不只是碰到边缘。",
     },
-    ("BLINK", "unkn1_10"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("BLINK", "maxAlpha"): {
+        "EN": "Upper bound of the flicker range (pairs with minAlpha).",
+        "ZH": "闪烁摆动范围的上限（与 minAlpha 配对使用）。",
     },
-    ("BLINK", "unkn1_2"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("BLINK", "lowFreq"): {
+        "EN": "Blink speed of the low-frequency channel; adds together with the high-frequency channel. Setting this to 0 does NOT turn the channel off — it freezes it at half of lowFreqAmplitude. Set lowFreqAmplitude to 0 to actually disable it.",
+        "ZH": "低频通道的闪烁速度，与高频通道叠加生效。把这里设为 0 并不会关闭该通道——只会让它固定停在 lowFreqAmplitude 一半的位置。要真正关闭该通道，请把 lowFreqAmplitude 设为 0。",
     },
-    ("BLINK", "unkn1_4"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("BLINK", "lowFreqAmplitude"): {
+        "EN": "Blink depth of the low-frequency channel — the higher, the more pronounced. Set to 0 to fully disable this channel.",
+        "ZH": "低频通道的闪烁深度，越大摆动越明显。设为 0 即可彻底关闭这一通道。",
     },
-    ("BLINK", "unkn1_6"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("BLINK", "highFreq"): {
+        "EN": "Blink speed of the high-frequency channel; adds together with the low-frequency channel. Setting this to 0 does NOT turn the channel off — it freezes it at half of highFreqAmplitude. Set highFreqAmplitude to 0 to actually disable it.",
+        "ZH": "高频通道的闪烁速度，与低频通道叠加生效。把这里设为 0 并不会关闭该通道——只会让它固定停在 highFreqAmplitude 一半的位置。要真正关闭该通道，请把 highFreqAmplitude 设为 0。",
     },
-    ("BLINK", "unkn1_8"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("BLINK", "highFreqAmplitude"): {
+        "EN": "Blink depth of the high-frequency channel — the higher, the more pronounced. Set to 0 to fully disable this channel.",
+        "ZH": "高频通道的闪烁深度，越大摆动越明显。设为 0 即可彻底关闭这一通道。",
+    },
+    ("BLINK", "lowFreqJitter"): {
+        "EN": "Per-particle random offset applied to lowFreq, so particles don't blink in sync. Common range: 0~100.",
+        "ZH": "对 lowFreq 施加的逐粒子随机偏移，避免多个粒子同步闪烁。常见取值在 0~100 之间。",
+    },
+    ("BLINK", "lowFreqAmplitudeJitter"): {
+        "EN": "Per-particle random offset applied to lowFreqAmplitude. Common range: 0~100.",
+        "ZH": "对 lowFreqAmplitude 施加的逐粒子随机偏移。常见取值在 0~100 之间。",
+    },
+    ("BLINK", "highFreqJitter"): {
+        "EN": "Per-particle random offset applied to highFreq, so particles don't blink in sync. Common range: 0~100.",
+        "ZH": "对 highFreq 施加的逐粒子随机偏移，避免多个粒子同步闪烁。常见取值在 0~100 之间。",
+    },
+    ("BLINK", "highFreqAmplitudeJitter"): {
+        "EN": "Per-particle random offset applied to highFreqAmplitude. Common range: 0~100.",
+        "ZH": "对 highFreqAmplitude 施加的逐粒子随机偏移。常见取值在 0~100 之间。",
     },
     ("EMITTERSHAPE2D", "offsetX"): {
         "EN": "Common range: 0~100.",

@@ -1356,17 +1356,17 @@ assert _schema_size(MASTERONLY_SCHEMA) == 4, \
 BLINK_SCHEMA = [
     ('unkn0_0', 'i'),
     ('unkn0_1', 'i'),
-    ('unkn1_0', 'f'),
-    ('unkn1_1', 'f'),
-    ('unkn1_2', 'f'),
-    ('unkn1_3', 'f'),
-    ('unkn1_4', 'f'),
-    ('unkn1_5', 'f'),
-    ('unkn1_6', 'f'),
-    ('unkn1_7', 'f'),
-    ('unkn1_8', 'f'),
-    ('unkn1_9', 'f'),
-    ('unkn1_10', 'f'),
+    ('unkn1_0', 'f'),              # bool (byte 0) + 0xCD×3 padding
+    ('minAlpha', 'f'),
+    ('maxAlpha', 'f'),
+    ('lowFreq', 'f'),
+    ('lowFreqJitter', 'f'),
+    ('lowFreqAmplitude', 'f'),
+    ('lowFreqAmplitudeJitter', 'f'),
+    ('highFreq', 'f'),
+    ('highFreqJitter', 'f'),
+    ('highFreqAmplitude', 'f'),
+    ('highFreqAmplitudeJitter', 'f'),
 ]
 assert _schema_size(BLINK_SCHEMA) == 52, \
     f"BLINK_SCHEMA size mismatch: {_schema_size(BLINK_SCHEMA)}"
@@ -1382,11 +1382,11 @@ assert _schema_size(BLINK_SCHEMA) == 52, \
 FADEBYEMITTERANGLE_SCHEMA = [
     ('unkn0_0', 'i'),
     ('unkn0_1', 'i'),
-    ('unkn',  'i'),
-    ('unkn2_0', 'f'),
-    ('unkn2_1', 'f'),
-    ('unkn2_2', 'f'),
-    ('unkn2_3', 'f'),
+    ('unkn',  'i'),                # bool (byte 0) + 0xCD×3 padding
+    ('cone', 'f'),
+    ('alphaRate', 'f'),
+    ('fadeInStart', 'f'),
+    ('fadeInEnd', 'f'),
 ]
 assert _schema_size(FADEBYEMITTERANGLE_SCHEMA) == 28, \
     f"FADEBYEMITTERANGLE_SCHEMA size mismatch: {_schema_size(FADEBYEMITTERANGLE_SCHEMA)}"
