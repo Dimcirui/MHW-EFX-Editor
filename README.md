@@ -66,7 +66,7 @@ Universal section operations: **Add** (from preset) / **Delete** / **Reorder** (
 |---|---|---|---|---|
 | **Action** | ✓ | ✓ | ✓ | |
 | **Extern** | **Partial** | ✓ | **Partial** | EXTERN-SPAWN/RGBFIRE/VELOCITY3D/SCALEANIM/TRANSFORM3D add&edit |
-| **Entry** | ✓ | ✓ | ✓ | TIML editable via .timl file import/export |
+| **Entry** | ✓ | ✓ | ✓ | EFX TIML fully editable |
 
 ### 2. Subselection Table
 
@@ -208,7 +208,6 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 | FAKEDOF | ✓ |
 | REPEATAREA | ✓ |
 | LAYOUT | ✗ |
-| TIML | via .timl file import/export |
 
 ## Credits
 
