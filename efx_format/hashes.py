@@ -248,6 +248,90 @@ ATTR_HASHES: frozenset = frozenset([
 ])
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 大纲视图显示名——把原始 ALLCAPS 类型名转成正常大小写，仅供 Blender 对象名显示用。
+# 不影响 efx_type_name 自定义属性 / HASH_TO_NAME 本身：那些是内部标识（预设文件名、
+# schema/注释表查找键），必须原样保留大写字符串，不能被这张表污染。
+# 覆盖 README「Entry Attributes」列出的全部受支持类型；未收录的原样返回（如未知/
+# opaque 类型），不会报错。
+# ─────────────────────────────────────────────────────────────────────────────
+ATTR_TYPE_DISPLAY_NAMES: dict = {
+    "TRANSFORM3D": "Transform3D",
+    "PARENTOPTIONS": "ParentOptions",
+    "SPAWN": "Spawn",
+    "LIFE": "Life",
+    "BILLBOARD3D": "Billboard3D",
+    "PLANE": "Plane",
+    "RIBBON": "Ribbon",
+    "RIBBONBLADE": "RibbonBlade",
+    "STRAINRIBBON": "StrainRibbon",
+    "MESH": "Mesh",
+    "LIGHTNING": "Lightning",
+    "TUBELIGHT": "TubeLight",
+    "FAKEPLANE": "FakePlane",
+    "DUMMY": "Dummy",
+    "SHADERSETTINGS": "ShaderSettings",
+    "UVSEQUENCE": "UVSequence",
+    "RGBFIRE": "RGBFire",
+    "RGBWATER": "RGBWater",
+    "ALPHACORRECTION": "AlphaCorrection",
+    "REFRACTION": "Refraction",
+    "BLINK": "Blink",
+    "LUMINANCEBLEED": "LuminanceBleed",
+    "UVCONTROL": "UVControl",
+    "MATERIAL": "Material",
+    "EMITTERSHAPE3D": "EmitterShape3D",
+    "EMITTERSHAPEMESH": "EmitterShapeMesh",
+    "EMITTERBOUNDARY": "EmitterBoundary",
+    "SPAWNBYANGLE": "SpawnByAngle",
+    "SPAWNBYOCCLUSION": "SpawnByOcclusion",
+    "VELOCITY3D": "Velocity3D",
+    "SCALEANIM": "ScaleAnim",
+    "ROTATEANIM": "RotateAnim",
+    "NOISE": "Noise",
+    "TURBULENCE": "Turbulence",
+    "HOMING": "Homing",
+    "GUIDE": "Guide",
+    "PATHCHAIN": "PathChain",
+    "SCREENSPACECOLLISION": "ScreenSpaceCollision",
+    "FADEBYDEPTH": "FadeByDepth",
+    "FADEBYANGLE": "FadeByAngle",
+    "FADEBYEMITTERANGLE": "FadeByEmitterAngle",
+    "FADEBYOCCLUSION": "FadeByOcclusion",
+    "MASTERONLY": "MasterOnly",
+    "RAYCAST": "RayCast",
+    "LINKPARTSVISIBLE": "LinkPartsVisible",
+    "PTCOLLISION": "PtCollision",
+    "PTLIFE": "PtLife",
+    "PTTRIGGER": "PtTrigger",
+    "SHOVEL": "Shovel",
+    "EXTERNREFERENCE": "ExternReference",
+    "PLEMISSIVE": "PlEmissive",
+    "PARENTEMISSIVE": "ParentEmissive",
+    "PLSNOW": "PlSnow",
+    "PARENTSNOW": "ParentSnow",
+    "OTOMOSNOW": "OtomoSnow",
+    "PARENTMATERIAL": "ParentMaterial",
+    "PTBEHAVIOR": "PtBehavior",
+    "TRANSFORM2D": "Transform2D",
+    "EMITTERSHAPE2D": "EmitterShape2D",
+    "VELOCITY2D": "Velocity2D",
+    "BILLBOARD2D": "Billboard2D",
+    "RANDOMFIX": "RandomFix",
+    "CHECKPUREATTRIBUTE": "CheckPureAttribute",
+    "TONEMAPFILTER": "ToneMapFilter",
+    "COLORCORRECTFILTER": "ColorCorrectFilter",
+    "FAKEDOF": "FakeDOF",
+    "REPEATAREA": "RepeatArea",
+    "LAYOUT": "Layout",
+}
+
+
+def pretty_type_name(raw_name: str) -> str:
+    """把原始 ALLCAPS 属性类型名转成正常大小写显示形式；未收录的原样返回。"""
+    return ATTR_TYPE_DISPLAY_NAMES.get(raw_name, raw_name)
+
+
 # ── JamCRC（MT Framework 名字哈希）─────────────────────────────────────────────
 import zlib as _zlib
 

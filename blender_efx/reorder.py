@@ -70,12 +70,18 @@ def _attribute_display_name(efx_index: int, parent_label: str, type_name: str) -
     按 io_tree.py 规则生成属性的显示名：
       有父标签：  "[{parent_label}] {nn} {type_name}"
       无父标签：  "{nn} {type_name}"
+
+    type_name 在此转成正常大小写显示形式（如 "TRANSFORM2D" → "Transform2D"）——
+    仅影响这里拼出的显示字符串，不影响调用方传入的原始值（efx_type_name 等内部
+    标识仍保持大写，见 efx_format.hashes.pretty_type_name）。
     """
+    from ..efx_format.hashes import pretty_type_name
     nn = str(efx_index).zfill(2) if efx_index < 100 else str(efx_index)
+    display_name = pretty_type_name(type_name)
     if parent_label:
-        return f"[{parent_label}] {nn} {type_name}"
+        return f"[{parent_label}] {nn} {display_name}"
     else:
-        return f"{nn} {type_name}"
+        return f"{nn} {display_name}"
 
 
 def _get_entry_raw_label(entry_obj: bpy.types.Object) -> str:

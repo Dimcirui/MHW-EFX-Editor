@@ -285,10 +285,13 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
     new_idx = max_idx + 1
 
     # ── 构建显示名 ────────────────────────────────────────────────────────────
+    from ..efx_format.hashes import pretty_type_name
     type_name = HASH_TO_NAME.get(type_hash, f"0x{type_hash:08X}")
+    display_type_name = pretty_type_name(type_name)  # 大纲显示用，非内部标识
     parent_label = str(entry_obj.get("efx_raw_label", ""))
     nn = str(new_idx).zfill(2) if new_idx < 100 else str(new_idx)
-    blk_name = f"[{parent_label}] {nn} {type_name}" if parent_label else f"{nn} {type_name}"
+    blk_name = (f"[{parent_label}] {nn} {display_type_name}" if parent_label
+                else f"{nn} {display_type_name}")
 
     # ── 建 EFX_ATTRIBUTE 对象 ─────────────────────────────────────────────────────
     blk_obj = io_tree._new_empty(blk_name, collection)
@@ -296,7 +299,7 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
     blk_obj["efx_index"]     = new_idx
     blk_obj["type_hash"]     = str(type_hash)
     blk_obj["data_bytes"]    = base64.b64encode(data_bytes).decode("ascii")
-    blk_obj["efx_type_name"] = type_name
+    blk_obj["efx_type_name"] = type_name  # 原始大写，内部标识/重排重建显示名用
     blk_obj.parent           = entry_obj
 
     # ── 初始化 efx_block PropertyGroup ────────────────────────────────────────

@@ -47,6 +47,7 @@ from ..efx_format.efxfile import (
     SubselectTable,
 )
 from ..efx_format.hashes import HASH_TO_NAME
+from ..efx_format.hashes import pretty_type_name as _pretty_type_name
 
 # 导入字段模型模块（延迟导入，避免注册顺序问题）
 # init_attribute_props 和 get_attribute_data_bytes 在实际调用时才被解析
@@ -721,19 +722,20 @@ def _build_attr_attribute_children(
 
     for blk_idx, blk in enumerate(attr_blocks):
         type_name = _hash_display_name(blk.type_hash)
+        display_type_name = _pretty_type_name(type_name)  # 大纲显示用，非内部标识
         # 序号前缀（同 body 命名规则）
         nn = str(blk_idx).zfill(2) if blk_idx < 100 else str(blk_idx)
         # 父标签前缀（方括号包裹，用于大纲分组识别）
         if parent_label:
-            blk_name = f"[{parent_label}] {nn} {type_name}"
+            blk_name = f"[{parent_label}] {nn} {display_type_name}"
         else:
-            blk_name = f"{nn} {type_name}"
+            blk_name = f"{nn} {display_type_name}"
         blk_obj  = _new_empty(blk_name, collection)
         blk_obj["~TYPE"]          = "EFX_ATTRIBUTE"
         blk_obj["efx_index"]      = blk_idx
         blk_obj["type_hash"]      = str(blk.type_hash)   # uint32：存十进制字符串防溢出
         blk_obj["data_bytes"]     = _b64enc(blk.data_bytes)
-        blk_obj["efx_type_name"]  = type_name  # L2 #3a：类型名，重排重建显示名用
+        blk_obj["efx_type_name"]  = type_name  # 原始大写，L2 #3a：内部标识/重排重建显示名用
         blk_obj.parent            = parent_obj
 
         # ── L1.1a + L2 #1c：初始化 efx_block PropertyGroup ──────────────────
