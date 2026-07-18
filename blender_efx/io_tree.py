@@ -311,6 +311,8 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     extern_label_count = hdr.count_extern
     main_label_offset  = play_label_count + extern_label_count
 
+    from ..efx_format import categories as _cat
+
     for body_idx, body in enumerate(efx.main):
         # 全局位置 = [Play|Extern|Main] 顺序的偏移；前 _n_labels 个条目才有标签
         label_idx = main_label_offset + body_idx
@@ -324,7 +326,10 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         # 仅影响 Blender 显示名，不影响 efx_index（导出排序依据）
         nn = str(body_idx).zfill(2) if body_idx < 100 else str(body_idx)
         raw_label = label_name or f"body_{body_idx}"
-        display_name = f"{nn} {raw_label}"
+        # 渲染主体后缀（如 " (Mesh)"）：不展开子对象即可看出 entry 的表现风格
+        _attr_blocks = getattr(body, "attr_blocks", None) or []
+        renderer_suffix = _cat.renderer_suffix(blk.type_hash for blk in _attr_blocks)
+        display_name = f"{nn} {raw_label}{renderer_suffix}"
 
         # Blender 会自动给重名对象加 .001 后缀，这里不做额外处理
         entry_obj = _new_empty(display_name, col_entry)

@@ -78,9 +78,14 @@ def _display_name(obj, type_tag: str, idx: int) -> str:
                               _get_attribute_type_name)
         return _attribute_display_name(idx, _get_attribute_parent_label(obj),
                                        _get_attribute_type_name(obj))
-    # entry / action / extern：{nn} {raw_label}
+    # entry / action / extern：{nn} {raw_label}{renderer_suffix}
     raw_label = str(obj.get("efx_raw_label", "") or "")
-    return "%s %s" % (_nn(idx), raw_label) if raw_label else "%s %s" % (_nn(idx), type_tag.lower())
+    base = raw_label if raw_label else type_tag.lower()
+    if type_tag == "EFX_ENTRY":
+        # 渲染主体后缀（如 " (Mesh)"）：entry 独有，action/extern 无渲染主体概念
+        from .reorder import _entry_renderer_suffix
+        base += _entry_renderer_suffix(obj)
+    return "%s %s" % (_nn(idx), base)
 
 
 def renumber_group(root, type_tag: str) -> bool:

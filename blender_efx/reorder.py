@@ -56,13 +56,34 @@ def _hash_display_name(type_hash: int) -> str:
         return f"0x{type_hash:08X}"
 
 
-def _entry_display_name(efx_index: int, raw_label: str) -> str:
+def _entry_renderer_suffix(entry_obj) -> str:
+    """扫描 entry_obj 现有 EFX_ATTRIBUTE 子对象（按 efx_index 序），返回渲染主体
+    后缀（如 " (Mesh)"），见 efx_format.categories.renderer_suffix。entry_obj 为
+    None 时返回空串（供导入期还没有子对象的路径复用同一签名）。"""
+    if entry_obj is None:
+        return ""
+    from ..efx_format import categories as _cat
+    children = [o for o in bpy.data.objects
+                if o.parent == entry_obj and o.get("~TYPE") == "EFX_ATTRIBUTE"]
+    children.sort(key=lambda o: int(o.get("efx_index", 0)))
+    type_hashes = []
+    for o in children:
+        try:
+            type_hashes.append(int(str(o.get("type_hash", "0"))))
+        except (ValueError, TypeError):
+            pass
+    return _cat.renderer_suffix(type_hashes)
+
+
+def _entry_display_name(efx_index: int, raw_label: str, entry_obj=None) -> str:
     """
-    按 io_tree.py 规则生成 entry 的显示名："{nn} {raw_label}"。
-    nn 是零填充 2 位序号（>99 时自动扩展）。
+    按 io_tree.py 规则生成 entry 的显示名："{nn} {raw_label}{renderer_suffix}"。
+    nn 是零填充 2 位序号（>99 时自动扩展）。entry_obj 给出时附加渲染主体后缀
+    （见 _entry_renderer_suffix），不给出时省略（如未建子对象前的场景）。
     """
     nn = str(efx_index).zfill(2) if efx_index < 100 else str(efx_index)
-    return f"{nn} {raw_label}"
+    suffix = _entry_renderer_suffix(entry_obj)
+    return f"{nn} {raw_label}{suffix}"
 
 
 def _attribute_display_name(efx_index: int, parent_label: str, type_name: str) -> str:
@@ -176,8 +197,8 @@ def _swap_objects(obj_a: bpy.types.Object, obj_b: bpy.types.Object,
     if is_entry:
         label_a = _get_entry_raw_label(obj_a)
         label_b = _get_entry_raw_label(obj_b)
-        obj_a.name = _entry_display_name(idx_b, label_a)
-        obj_b.name = _entry_display_name(idx_a, label_b)
+        obj_a.name = _entry_display_name(idx_b, label_a, entry_obj=obj_a)
+        obj_b.name = _entry_display_name(idx_a, label_b, entry_obj=obj_b)
     else:
         parent_label_a = _get_attribute_parent_label(obj_a)
         parent_label_b = _get_attribute_parent_label(obj_b)
@@ -493,7 +514,7 @@ class EFX_OT_rename_entry(bpy.types.Operator):
         idx = int(obj.get("efx_index", 0))
         obj["efx_raw_label"] = new_name
         obj["efx_has_label"] = 1   # 边界 entry 提升为有标签
-        obj.name = _entry_display_name(idx, new_name)
+        obj.name = _entry_display_name(idx, new_name, entry_obj=obj)
         root["labels_dirty"] = 1
 
         # body_type = jamcrc(entry 名)（standard entry，实测 99.7%+ 命中，见

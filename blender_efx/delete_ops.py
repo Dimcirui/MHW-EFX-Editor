@@ -88,7 +88,7 @@ def _reindex_siblings(parent_obj, type_tag: str, rebuild_name_fn) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _rebuild_entry_name(o, new_idx):
-    return _entry_display_name(new_idx, _get_entry_raw_label(o))
+    return _entry_display_name(new_idx, _get_entry_raw_label(o), entry_obj=o)
 
 
 def _rebuild_attribute_name(o, new_idx):
@@ -220,9 +220,10 @@ class EFX_OT_delete_attribute(bpy.types.Operator):
         for obj in targets:
             bpy.data.objects.remove(obj, do_unlink=True)
 
-        # 对每个受影响的 entry 统一重排
+        # 对每个受影响的 entry 统一重排 + 重建 entry 自身显示名（渲染主体后缀可能变化）
         for body in affected_bodies:
             _reindex_siblings(body, "EFX_ATTRIBUTE", _rebuild_attribute_name)
+            body.name = _rebuild_entry_name(body, int(body.get("efx_index", 0)))
 
         self.report(
             {"INFO"},

@@ -348,6 +348,15 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
             pass
 
     # attr_count 由导出端自动重算，无需设 labels_dirty（属性不在标签表）
+
+    # entry 自身显示名可能要变（新属性若是渲染主体，需在 entry 名后补/改后缀）
+    from . import reorder as _reorder
+    entry_obj.name = _reorder._entry_display_name(
+        int(entry_obj.get("efx_index", 0)),
+        str(entry_obj.get("efx_raw_label", "")),
+        entry_obj=entry_obj,
+    )
+
     return blk_obj
 
 

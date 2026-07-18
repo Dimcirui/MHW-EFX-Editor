@@ -195,3 +195,28 @@ def category_label(slug: str, lang: str = "ZH") -> str:
     if entry is None:
         return slug
     return entry.get(lang) or entry.get("EN") or slug
+
+
+def renderer_suffix(type_hashes) -> str:
+    """给定一个 entry 内属性的 type_hash 序列（原始顺序），返回渲染主体后缀，
+    形如 " (Mesh)" / " (Ribbon, Dummy)"；不含渲染主体属性时返回空串。
+
+    供 Entry 显示名拼接用（不落盘，导入/重排/改名/增删属性时各自现算）。
+    渲染主体在全量语料里基本互斥选一（BILLBOARD3D/RIBBON/MESH/PLANE/LIGHTNING 等
+    0 例外），唯一会共存的是 DUMMY 搭配真实渲染体（全量仅 9 例，见
+    docs/ATTRIBUTE_TYPES.md「渲染主体（互斥选一）」一节），故多个时直接逗号拼接即可，
+    不需要更复杂的展示规则。
+
+    PTBEHAVIOR 单独并入此后缀（不改其 category_of 归类，仍是独立的 "behavior" 分类，
+    预设下拉分组不受影响）：它与常规渲染/物理流程完全互斥、接管整个 entry 的表现方式，
+    效果上等同于换了一种"渲染主体"，只是不在 ATTRIBUTE_CATEGORY_OF 的 renderer 组里。
+    """
+    from .hashes import HASH_TO_NAME, pretty_type_name, PTBEHAVIOR
+    names = []
+    for type_hash in type_hashes:
+        if category_of(type_hash) != "renderer" and type_hash != PTBEHAVIOR:
+            continue
+        raw_name = HASH_TO_NAME.get(type_hash)
+        if raw_name:
+            names.append(pretty_type_name(raw_name))
+    return " (%s)" % ", ".join(names) if names else ""
