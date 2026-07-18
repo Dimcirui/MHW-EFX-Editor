@@ -603,12 +603,19 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
 
 @dataclass
 class EFXHeader:
-    """72-byte file header (fully parsed)."""
+    """72-byte file header (fully parsed)。
+
+    is_3d：文件级 2D/3D 特效类型标志（原 unkn0，2026-07 实机验证并改名，见
+    memory header-is-3d-flag-discovery）。0=2D、1=3D，语料库 10162 样本零例外：
+    unkn0=0 的文件里全部 entry 都用 2D 类型块（TRANSFORM2D 等），从不含任何 3D
+    类型块，反之亦然。混用 2D/3D 属性块（尤其是加了 SHADERSETTINGS/
+    ALPHACORRECTION 之类修饰属性后）且与本标志不匹配会导致游戏闪退（实机确认）。
+    """
     signature: bytes        # b"EFX\x00"
     version: int
     constant: tuple         # 5 ints
     efxr: bytes             # b"efxr"
-    unkn0: int
+    is_3d: int
     unkn1: int
     count_body: int
     label_size: int
@@ -627,7 +634,7 @@ class EFXHeader:
             self.signature, self.version,
             *self.constant,
             self.efxr,
-            self.unkn0, self.unkn1,
+            self.is_3d, self.unkn1,
             self.count_body, self.label_size,
             self.count_play, self.count_extern,
             self.count_subselect, self.subselect_size,
@@ -970,7 +977,7 @@ class EFXFile:
             signature=sig, version=ver,
             constant=(c0, c1, c2, c3, c4),
             efxr=efxr,
-            unkn0=u0, unkn1=u1,
+            is_3d=u0, unkn1=u1,
             count_body=cb, label_size=ls,
             count_play=cp, count_extern=ce,
             count_subselect=cs, subselect_size=ss,

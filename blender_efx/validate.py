@@ -153,6 +153,40 @@ def _find_cycles(adj):
     return [list(c) for c in cycles]
 
 
+def detect_dimension_entries(root_obj) -> tuple:
+    """
+    扫描 root_obj 下所有 EFX_ENTRY，返回 (dim_2d_entries, dim_3d_entries)：分别是
+    含 TRANSFORM2D / TRANSFORM3D 属性块的 entry 名字列表。
+
+    供两处复用：(5l) 一致性 WARN（本文件）+ 导出端 is_3d 自动校正
+    （operators.py EFX_OT_export_efx，仅内容单一时自动改，混用时不动、留给 WARN）。
+    见 memory header-is-3d-flag-discovery：语料库 10162 样本零例外，
+    TRANSFORM2D/TRANSFORM3D 是文件级 2D/3D 类型的可靠判据。
+    """
+    try:
+        from ..efx_format.hashes import TRANSFORM2D as _T2D, TRANSFORM3D as _T3D
+    except ImportError:
+        return [], []
+    dim_2d, dim_3d = [], []
+    for body in _children_by_type(root_obj, "EFX_ENTRY"):
+        try:
+            hash_set = set()
+            for blk in _children_by_type(body, "EFX_ATTRIBUTE"):
+                raw = blk.get("type_hash")
+                if raw is not None:
+                    try:
+                        hash_set.add(int(str(raw)))
+                    except (ValueError, TypeError):
+                        pass
+            if _T2D in hash_set:
+                dim_2d.append(body.name)
+            if _T3D in hash_set:
+                dim_3d.append(body.name)
+        except Exception:
+            pass
+    return dim_2d, dim_3d
+
+
 def _is_extern_ref_attribute(obj) -> bool:
     """判断属性对象是否是已指针化的 EXTERNREFERENCE（有 efx_extern_ref 且 pointerized）。"""
     props = getattr(obj, "efx_extern_ref", None)
@@ -546,6 +580,57 @@ def validate_efx_tree(root_obj) -> list:
 
             except Exception:
                 pass  # 单个 entry 检查失败不影响整体
+
+        # ── (5l) header.is_3d 与 2D/3D 类型块一致性 — WARN ─────────────────────
+        # 语料库统计（efx_samples 全量 10162 样本）：580 个含 TRANSFORM2D 的 entry
+        # 100% 落在 is_3d=0 的文件里，0 个例外含任何 3D 类型块（TRANSFORM3D 等）；
+        # is_3d=1 的文件里则从未出现 TRANSFORM2D。实机验证：同一文件内 2D/3D 类型
+        # 混用、或类型与 is_3d 不匹配，在加上 SHADERSETTINGS/ALPHACORRECTION 等
+        # 修饰属性后会直接导致游戏闪退（2026-07 实机确认）。
+        _dim_2d_entries, _dim_3d_entries = detect_dimension_entries(root_obj)
+        if _dim_2d_entries or _dim_3d_entries:
+            is_3d_raw = root_obj.get("hdr_is_3d")
+            is_3d = None
+            if is_3d_raw is not None:
+                try:
+                    is_3d = int(str(is_3d_raw))
+                except (ValueError, TypeError):
+                    is_3d = None
+
+            if _dim_2d_entries and _dim_3d_entries:
+                problems.append({
+                    "level": "WARN",
+                    "msg": (
+                        f"File mixes 2D-type ({len(_dim_2d_entries)} entries, TRANSFORM2D) "
+                        f"and 3D-type ({len(_dim_3d_entries)} entries, TRANSFORM3D) content — "
+                        "the game appears to use a separate rendering pipeline per file "
+                        "(gated by header.is_3d), so mixing both in one file is likely to "
+                        "crash. Keep only one type per file (2D → is_3d=0, 3D → is_3d=1)."
+                    ),
+                    "obj": (_dim_2d_entries + _dim_3d_entries)[0],
+                })
+            elif is_3d == 0 and _dim_3d_entries:
+                problems.append({
+                    "level": "WARN",
+                    "msg": (
+                        "header.is_3d=0 (2D file) but "
+                        f"{len(_dim_3d_entries)} entry(ies) use TRANSFORM3D "
+                        f"({', '.join(_dim_3d_entries)}) — a mismatched 2D/3D pipeline "
+                        "flag is likely to crash the game. Set is_3d=1."
+                    ),
+                    "obj": _dim_3d_entries[0],
+                })
+            elif is_3d == 1 and _dim_2d_entries:
+                problems.append({
+                    "level": "WARN",
+                    "msg": (
+                        "header.is_3d=1 (3D file) but "
+                        f"{len(_dim_2d_entries)} entry(ies) use TRANSFORM2D "
+                        f"({', '.join(_dim_2d_entries)}) — a mismatched 2D/3D pipeline "
+                        "flag is likely to crash the game. Set is_3d=0."
+                    ),
+                    "obj": _dim_2d_entries[0],
+                })
 
     # ── (6) TIML 关键帧插值类型校验 ─────────────────────────────────────────────
     # 游戏 TIML 只支持固定多项式缓动（Constant/Linear/Quadratic/Cubic）。Blender 新建

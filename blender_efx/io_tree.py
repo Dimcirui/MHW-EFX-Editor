@@ -262,7 +262,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     root_col["hdr_version"]         = str(hdr.version)
     root_col["hdr_constant"]        = ",".join(str(x) for x in hdr.constant)
     root_col["hdr_efxr"]            = hdr.efxr.hex()               # "65667872"
-    root_col["hdr_unkn0"]           = str(hdr.unkn0)
+    root_col["hdr_is_3d"]           = str(hdr.is_3d)
     root_col["hdr_unkn1"]           = str(hdr.unkn1)
     root_col["hdr_count_body"]      = str(hdr.count_body)
     root_col["hdr_label_size"]      = str(hdr.label_size)
@@ -792,7 +792,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
         version         = int(str(r["hdr_version"])),
         constant        = tuple(int(x) for x in str(r["hdr_constant"]).split(",")),
         efxr            = bytes.fromhex(str(r["hdr_efxr"])),
-        unkn0           = int(str(r["hdr_unkn0"])),
+        is_3d           = int(str(r["hdr_is_3d"])),
         unkn1           = int(str(r["hdr_unkn1"])),
         count_body      = int(str(r["hdr_count_body"])),
         label_size      = int(str(r["hdr_label_size"])),

@@ -231,6 +231,15 @@ STRINGS = {
                                         "short in-game; +1 covers just past the last frame.",
                                   "ZH": "导出时把每条 TIML 动画的长度设为其末关键帧+1（逐轴 A0/A1）。"
                                         "帧长 <= 实际结束帧会导致游戏内动画播不完，+1 刚好覆盖到末帧之后。"},
+    "export.auto_fix_is3d":  {"EN": "Auto-fix is_3d (2D/3D flag)",
+                              "ZH": "自动校正 is_3d（2D/3D 标志）"},
+    "export.auto_fix_is3d_tip":{"EN": "On export, if the file's entries are unambiguously all-2D or all-3D "
+                                       "(TRANSFORM2D vs TRANSFORM3D), set header.is_3d to match (0/1). "
+                                       "Mixed 2D+3D content is left untouched (see validation warning). "
+                                       "Uncheck to keep testing a deliberate mismatch.",
+                               "ZH": "导出时，如果文件里的 entry 全是 2D 或全是 3D（按 TRANSFORM2D/TRANSFORM3D 判断），"
+                                     "自动把 header.is_3d 设为匹配的值（0/1）。2D/3D 混用的情况不会自动改"
+                                     "（见校验警告）。如果你是故意测试类型不匹配，取消勾选。"},
     "export.target_efx":     {"EN": "EFX Collection",
                               "ZH": "EFX 集合"},
     "export.target_efx_tip": {"EN": "Which loaded EFX file to export. Defaults to the 'Active EFX' selector in "

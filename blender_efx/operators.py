@@ -316,6 +316,16 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         default=True,
     )
 
+    # 自动校正 header.is_3d（2D/3D 特效类型标志，header 偏移 32）。
+    # 勾选：文件内容只有 2D 或只有 3D 类型时，自动把 is_3d 设为匹配值（0/1）；
+    # 内容混用 2D+3D 时不动，交给导出校验的 WARN 提示手动处理。
+    # 不勾：原样使用 Root 里 hdr_is_3d 的值——刻意测试 mismatch 场景时应关闭。
+    auto_fix_is_3d: BoolProperty(
+        name=T("export.auto_fix_is3d"),
+        description=T("export.auto_fix_is3d_tip"),
+        default=True,
+    )
+
     # 导出前按游戏惯用顺序静默重排每个 entry 内的属性（见 reorder.py::auto_sort_entry_attributes）。
     # 不勾：保留用户自己排的属性顺序，不做任何调整。
     auto_sort_attributes: BoolProperty(
@@ -359,6 +369,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             tip.label(text=T("entry.double_buffer_tip"))
         layout.prop(self, "auto_sort_attributes")
         layout.prop(self, "recalc_timl_length")
+        layout.prop(self, "auto_fix_is_3d")
 
     def invoke(self, context, event):
         global _last_export_target_seen
@@ -393,7 +404,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         # ── 1.5 导出前校验（#4）：仅真正的 ERROR（重复 index / 互斥块等）取消导出 ──
         # 悬空指针 / EOF 越界 raw 哨兵已降级为 WARN：导出端安全跳过/清理，不挡导出，
         # 仅在导出后弹窗报告（让用户知道哪些引用被跳过/清理）。
-        from .validate import validate_efx_tree
+        from .validate import validate_efx_tree, detect_dimension_entries
         problems = validate_efx_tree(root)
         errors = [p for p in problems if p["level"] == "ERROR"]
         if errors:
@@ -421,6 +432,27 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
                 root["labels_dirty"] = 1  # 满命名/重编号可能改标签表 → 导出重建
         except Exception:
             pass  # 规范化失败不阻断导出
+
+        # ── 1.66 导出前自动校正 header.is_3d（可通过 auto_fix_is_3d 关闭）───────────
+        # is_3d 是文件级 2D/3D 特效类型标志（见 memory header-is-3d-flag-discovery）：
+        # 语料库 10162 样本零例外——含 TRANSFORM2D 的 entry 只出现在 is_3d=0 文件，
+        # 含 TRANSFORM3D 的只出现在 is_3d=1 文件；实机确认 mismatch（尤其叠加
+        # SHADERSETTINGS/ALPHACORRECTION 等修饰属性后）会导致游戏闪退。
+        # 只在文件内容单一（只有 2D 或只有 3D）时才自动改；两者都有（混用）不动，
+        # 留给 validate 的 (5l) WARN 提示用户手动决定——这种情况没有"正确"的自动值。
+        if self.auto_fix_is_3d:
+            try:
+                dim_2d, dim_3d = detect_dimension_entries(root)
+                if dim_2d and not dim_3d:
+                    correct_is_3d = "0"
+                elif dim_3d and not dim_2d:
+                    correct_is_3d = "1"
+                else:
+                    correct_is_3d = None
+                if correct_is_3d is not None and str(root.get("hdr_is_3d", "")) != correct_is_3d:
+                    root["hdr_is_3d"] = correct_is_3d
+            except Exception:
+                pass  # 校正失败不阻断导出
 
         # ── 1.7 导出前静默规范化属性顺序（可通过 auto_sort_attributes 关闭）────────────
         if self.auto_sort_attributes:
@@ -976,7 +1008,7 @@ class EFX_OT_new_efx(bpy.types.Operator):
         root_col["hdr_version"]         = "711800"
         root_col["hdr_constant"]        = "402786304,0,1254190883,402786304,402786304"
         root_col["hdr_efxr"]            = "65667872"      # "efxr"
-        root_col["hdr_unkn0"]           = "1"
+        root_col["hdr_is_3d"]           = "1"
         root_col["hdr_unkn1"]           = "4294967295"    # 0xFFFFFFFF
         root_col["hdr_count_body"]      = "0"
         root_col["hdr_label_size"]      = "1"
