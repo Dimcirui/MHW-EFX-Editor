@@ -84,6 +84,63 @@ def known_slots(block: dict):
     return mm.material_slot_schema(block['mat_shader'])
 
 
+def set_block_shader(block: dict, new_shader_hash: int) -> None:
+    """把材质槽的材质类型换成 new_shader_hash，贴图槽位跟着换成新类型的 schema。
+
+    实测 5792 个官方 MATERIAL 属性里 shader_hash 和贴图槽位集合 100% 对应、零反例
+    （见 material_meta.MATERIAL_SHADER_SLOTS 的生成依据）——只改 shader_hash 不联动
+    槽位会产出真实语料里从未出现过的组合，故换类型必须同时重建槽位列表：
+      - 新旧 schema 都有的槽位（同一 t）：路径迁移过去，不用用户重填。
+      - 只有旧 schema 有的槽位：丢弃（对新类型没有意义，保留才是错的）。
+      - 只有新 schema 有的槽位：从空白建（head=0）。
+    非路径 set（0x06/0x03/0x0A/0x0C/0x15，黑盒）不受影响，原样保留。
+
+    新类型没有已知 schema（未实测过的材质类型）时**不触碰**现有 sets——没有目标
+    schema 依据就不能猜测性地丢弃用户已有数据（跟 add_block 新建空槽不同：那边是
+    全新数据没什么可保留的，这里是编辑已有数据，能不丢就不丢）。
+    """
+    from . import material_meta as mm
+
+    new_shader_hash &= 0xFFFFFFFF
+    schema = mm.material_slot_schema(new_shader_hash)
+    if schema is None:
+        block['mat_shader'] = _to_signed32(new_shader_hash)
+        return
+
+    old_paths = {}
+    for s in block['sets']:
+        if s['type'] == 0x80:
+            p = slot_path_str(s)
+            if p:
+                old_paths[s['t'] & 0xFFFFFFFF] = p
+
+    new_path_sets = []
+    for t in schema:
+        entry = {
+            'set': mm.texture_slot_set_tag(t),
+            'unkn0': 0,
+            't': _to_signed32(t),
+            'type': 0x80,
+            'head': HEAD_EMPTY,
+            'null': 0,
+            'path_len': 0,
+            'path': b'',
+        }
+        old_path = old_paths.get(t)
+        if old_path:
+            path_b = old_path.encode('utf-8')
+            if not path_b.endswith(b'\x00'):
+                path_b += b'\x00'
+            entry['path'] = path_b
+            entry['path_len'] = len(path_b)
+            entry['head'] = HEAD_FILLED
+        new_path_sets.append(entry)
+
+    opaque_sets = [s for s in block['sets'] if s['type'] != 0x80]
+    block['mat_shader'] = _to_signed32(new_shader_hash)
+    block['sets'] = new_path_sets + opaque_sets
+
+
 def find_path_set(block: dict, t: int):
     """在 block['sets'] 里找 type=0x80 且 t 匹配的 Tex_Set；找不到返回 None。"""
     t &= 0xFFFFFFFF

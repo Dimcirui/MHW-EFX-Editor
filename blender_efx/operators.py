@@ -895,11 +895,14 @@ class EFX_OT_material_add_block(bpy.types.Operator):
 
 
 class EFX_OT_material_set_shader(bpy.types.Operator):
-    """修改指定材质槽的材质类型（shader_id_hash 标量覆盖，不影响该槽已有的贴图路径数据）"""
+    """修改指定材质槽的材质类型，贴图槽位联动换成新类型的 schema（重合槽位路径保留）"""
 
     bl_idname      = "efx.material_set_shader"
     bl_label       = "Set Material Type"
-    bl_description = "Change this material slot's shader type (does not touch its existing texture slot data)"
+    bl_description = (
+        "Change this material slot's shader type. Its texture slots switch to the new "
+        "type's known schema (paths for slots present in both types are kept; others are dropped)"
+    )
     bl_options     = {"REGISTER", "UNDO"}
 
     block_index: IntProperty(name="Block Index", default=-1, options={'HIDDEN'})
@@ -922,21 +925,28 @@ class EFX_OT_material_set_shader(bpy.types.Operator):
         self.layout.prop(self, "shader_choice")
 
     def execute(self, context):
-        bp = context.active_object.efx_block
-        item = None
-        for it in bp.field_items:
-            if it.ori_name == f"matshader_{self.block_index}":
-                item = it
-                break
-        if item is None:
-            self.report({"ERROR"}, "Block index out of range")
-            return {"CANCELLED"}
+        from . import fields as _fields
+        from ..efx_format.structs import unpack_material, pack_material
+        from ..efx_format import material_edit as _me
+
         try:
             shader_hash = int(self.shader_choice)
         except ValueError:
             self.report({"ERROR"}, "Invalid material type")
             return {"CANCELLED"}
-        item.uint_str = str(shader_hash)
+
+        bp = context.active_object.efx_block
+        cur = _fields.material_current_bytes(bp)   # 烘焙待编辑值
+        d, _ = unpack_material(cur)
+        if not (0 <= self.block_index < len(d["blocks"])):
+            self.report({"ERROR"}, "Block index out of range")
+            return {"CANCELLED"}
+        _me.set_block_shader(d["blocks"][self.block_index], shader_hash)
+        new_bytes = pack_material(d)
+        if not _fields.reinit_material_from_bytes(bp, new_bytes):
+            self.report({"ERROR"}, "Re-init failed after changing material type")
+            return {"CANCELLED"}
+        bp.efx_dirty = True
         self.report({"INFO"}, "Material type changed")
         return {"FINISHED"}
 
