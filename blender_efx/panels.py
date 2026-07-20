@@ -443,6 +443,72 @@ def _draw_tubelight_int_as_color(layout, item, type_name, label):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# MATERIAL（Phase C）：结构化材质槽编辑器
+#
+# _material_groups: {block_index: {'shader_item': EFXFieldItem,
+#                                    'slots': [(t_hash, EFXFieldItem), ...]}}
+# 见 fields._init_material_attribute 的 item 命名约定（matshader_{j} / slotpath_{j}_{t}）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _draw_material_editor(layout, context, material_groups: dict) -> None:
+    """绘制材质槽列表：每槽一个可折叠框（类型 + 更改类型 + 删除），槽内逐条贴图路径；
+    末尾 mrl3 独立过滤器行（导入/清除，跟 mesh/Model Editor 完全解耦）。"""
+    from ..efx_format import material_meta as _mm
+
+    if not material_groups:
+        row = layout.row(align=True)
+        row.enabled = False
+        row.label(text=T("material.no_slots"), icon="INFO")
+    else:
+        for j in sorted(material_groups):
+            info = material_groups[j]
+            sh_item = info.get("shader_item")
+            shader_hash = int(sh_item.uint_str) if sh_item and sh_item.uint_str else 0
+            type_name_disp = _mm.material_type_name(shader_hash)
+            label = type_name_disp if type_name_disp else f"Hash {shader_hash}"
+
+            slot_box = layout.box()
+            slot_col = slot_box.column(align=True)
+
+            header_row = slot_col.row(align=True)
+            header_row.scale_y = 1.1
+            header_row.label(text=f"{T('material.slot')} {j}: {label}", icon="MATERIAL")
+            op_change = header_row.operator(
+                "efx.material_set_shader", text="", icon="TRIA_DOWN_BAR",
+            )
+            op_change.block_index = j
+            op_remove = header_row.operator("efx.material_remove_block", text="", icon="X")
+            op_remove.block_index = j
+
+            if type_name_disp is None:
+                hint_row = slot_col.row(align=True)
+                hint_row.enabled = False
+                hint_row.label(text=T("material.unknown_schema"))
+
+            for t, sit in info.get("slots", []):
+                slot_name = _mm.texture_slot_name(t)
+                slot_label = slot_name if slot_name else f"Hash 0x{t:08X}"
+                _draw_field_item(slot_col, sit, type_name="MATERIAL", label_override=slot_label)
+
+    add_row = layout.row(align=True)
+    add_row.operator_menu_enum(
+        "efx.material_add_block", "shader_choice",
+        text=T("material.add_slot"), icon="ADD",
+    )
+
+    # mrl3 独立过滤器：narrows 上面 add/change 用到的材质类型下拉，跟本 EFX 文件、
+    # mesh/Model Editor 完全无关（见 efx_format/mrl3_reader.py）。
+    scene = getattr(context, "scene", None)
+    filter_row = layout.row(align=True)
+    filter_row.operator("efx.material_import_mrl3_filter", text=T("material.filter_mrl3"), icon="FILTER")
+    if scene is not None and getattr(scene, "efx_material_filter_enabled", False):
+        n = len([x for x in scene.efx_material_filter_hashes.split(",") if x])
+        src = scene.efx_material_filter_source or "?"
+        filter_row.label(text=T("material.filter_active").format(n=n, src=src))
+        filter_row.operator("efx.material_clear_mrl3_filter", text="", icon="X")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # L1.4 预设面板 — 动态 EnumProperty items 回调
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -602,26 +668,28 @@ def _draw_attribute_fields_content(layout, context):
     except (ValueError, ImportError):
         pass
 
-    # ── MATERIAL：解析槽位（mrl3 同源），把每条 path_N 标注为其贴图槽名 ─────────
-    # _material_slots[i] = 第 i 条路径的槽名（tAlbedoMap/... 或 None）；_material_type = 主材质类型。
-    _material_slots = None
-    _material_type = None
+    # ── MATERIAL（Phase C）：按 __material__ 哨兵识别结构化材质槽编辑布局 ────────
+    # _material_groups: {block_index: {'shader_item': item, 'slots': [(t, item), ...]}}
+    # 非 None 时面板绘制专用材质槽编辑器（_draw_material_editor），并让通用逐字段
+    # 循环跳过 matshader_*/slotpath_*/__material__ 这几个 item（避免重复渲染）。
+    _material_groups = None
     try:
         from ..efx_format.hashes import MATERIAL as _MATERIAL_HASH
-        if int(bp.type_hash_str) == _MATERIAL_HASH:
-            import base64 as _b64
-            from ..efx_format import material_meta as _mm
-            _summary = _mm.parse_material(_b64.b64decode(str(bp.raw_b64)))
-            if _summary is not None:
-                _material_slots = []
-                for _blk in _summary["blocks"]:
-                    if _material_type is None:
-                        _material_type = _blk["type_name"]
-                    for _s in _blk["sets"]:
-                        if _s["path"] is not None:
-                            _material_slots.append(_s["slot"])
+        if (int(bp.type_hash_str) == _MATERIAL_HASH
+                and any(it.ori_name == "__material__" for it in bp.field_items)):
+            _material_groups = {}
+            for it in bp.field_items:
+                if it.ori_name.startswith("matshader_"):
+                    j = int(it.ori_name.split("_", 1)[1])
+                    _material_groups.setdefault(j, {})["shader_item"] = it
+                elif it.ori_name.startswith("slotpath_"):
+                    _, j_str, t_str = it.ori_name.split("_", 2)
+                    j = int(j_str)
+                    _material_groups.setdefault(j, {}).setdefault("slots", []).append(
+                        (int(t_str), it)
+                    )
     except Exception:
-        _material_slots = None
+        _material_groups = None
 
     # ── PTBEHAVIOR 检测（用于灰字提示 + param 标签）────────────────────────────
     _is_ptbehavior = False
@@ -672,11 +740,9 @@ def _draw_attribute_fields_content(layout, context):
                 title_row.label(text=f"{block_title}  ● 已修改", icon="MODIFIER")
             else:
                 title_row.label(text=block_title, icon="MODIFIER")
-            # MATERIAL：在标题下显示主材质类型（mrl3 同源，shader_id_hash 反查）
-            if _material_type:
-                mt_row = col.row(align=True)
-                mt_row.scale_y = 1.0
-                mt_row.label(text=T("material.type") + " " + _material_type, icon="MATERIAL")
+            # MATERIAL（Phase C）：材质槽编辑器（增删材质槽 + 类型下拉 + 贴图路径填/清）
+            if _material_groups is not None:
+                _draw_material_editor(col, context, _material_groups)
             # 部分可编辑（含 __opaque_hint__）：属性名下一行灰字提示
             _has_partial = any(
                 it.ori_name == "__opaque_hint__" for it in bp.field_items
@@ -698,6 +764,11 @@ def _draw_attribute_fields_content(layout, context):
             i = 0
             while i < n:
                 item = items[i]
+                # MATERIAL（Phase C）：全部 item 已由 _draw_material_editor 统一绘制，
+                # 通用逐字段循环全部跳过（matshader_*/slotpath_*/__material__）。
+                if _material_groups is not None:
+                    i += 1
+                    continue
                 # __opaque_hint__ 是内部 sentinel，不渲染为字段行
                 if item.ori_name.startswith("__") and item.ori_name.endswith("__"):
                     i += 1
@@ -781,16 +852,6 @@ def _draw_attribute_fields_content(layout, context):
                     }
                     _sub_lbl_rb = _sub_overrides_rb.get(_sub_key) or _friendly_name(_sub_key, type_name)
                     _draw_field_item(col, item, type_name=type_name, label_override=f"{_prefix_rb} {_sub_lbl_rb}")
-                    i += 1
-                    continue
-                # MATERIAL：path_N 用其贴图槽名（tAlbedoMap…）当标签，取代独立只读面板
-                if _material_slots is not None and item.ori_name.startswith("path_"):
-                    try:
-                        _pidx = int(item.ori_name.split("_", 1)[1])
-                        _slot = _material_slots[_pidx] if _pidx < len(_material_slots) else None
-                    except (ValueError, IndexError):
-                        _slot = None
-                    _draw_field_item(col, item, type_name=type_name, label_override=_slot)
                     i += 1
                     continue
                 # value + jitter 配对（位置性：下一个是同类型 jitter 标量）

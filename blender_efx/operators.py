@@ -800,6 +800,240 @@ class EFX_OT_ptb_remove_override(bpy.types.Operator):
         return {"FINISHED"}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# MATERIAL 材质槽增删（Phase C，核心逻辑 fields.material_current_bytes /
+# reinit_material_from_bytes + efx_format/material_edit.py，对称于 PTBEHAVIOR
+# 覆盖项增删）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _is_material_attribute(obj) -> bool:
+    """obj 是否为可编辑的 MATERIAL EFX_ATTRIBUTE。"""
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+        return False
+    try:
+        from ..efx_format.hashes import MATERIAL
+        bp = obj.efx_block
+        return bp.is_editable and int(bp.type_hash_str) == MATERIAL
+    except (AttributeError, ValueError, ImportError):
+        return False
+
+
+# 动态 EnumProperty items 引用保活（防 GC：见 memory enum-callback-gc-trap）。
+_MATERIAL_SHADER_ENUM_CACHE = []
+
+
+def _material_shader_enum_items(self, context):
+    """材质类型下拉：112 种已知类型（identifier=十进制 hash 串，规避中文乱码；
+    Blender 长列表原生自带搜索过滤框，不需要额外实现）。
+
+    若 Scene.efx_material_filter_enabled=True（用户导入过 .mrl3 独立过滤器，
+    见 EFX_OT_material_import_mrl3_filter），列表收窄到该 mrl3 实际用到的类型；
+    收窄后为空（mrl3 只用了未知类型）则安全退回全样，不留用户对着空下拉卡住。
+    """
+    global _MATERIAL_SHADER_ENUM_CACHE
+    from ..efx_format import material_meta as _mm
+
+    entries = sorted(_mm.MATERIAL_TYPE_NAMES.items(), key=lambda kv: kv[1])
+
+    scene = getattr(context, "scene", None)
+    if scene is not None and getattr(scene, "efx_material_filter_enabled", False):
+        raw = getattr(scene, "efx_material_filter_hashes", "")
+        try:
+            allowed = {int(x) for x in raw.split(",") if x}
+        except ValueError:
+            allowed = set()
+        if allowed:
+            filtered = [(h, name) for h, name in entries if h in allowed]
+            if filtered:
+                entries = filtered
+
+    items = [(str(h), name, "0x{:08X}".format(h)) for h, name in entries]
+    _MATERIAL_SHADER_ENUM_CACHE = items  # 保活
+    return _MATERIAL_SHADER_ENUM_CACHE
+
+
+class EFX_OT_material_add_block(bpy.types.Operator):
+    """向 MATERIAL 属性添加一个材质槽（按所选材质类型的已知贴图槽 schema 铺满，初始为空）"""
+
+    bl_idname      = "efx.material_add_block"
+    bl_label       = "Add Material Slot"
+    bl_description = "Add a material slot (Tex_Block) to this MATERIAL attribute, pre-filled with the chosen shader type's known texture slots (empty)"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    shader_choice: EnumProperty(
+        name="Material Type",
+        description="Shader type for the new material slot",
+        items=_material_shader_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _is_material_attribute(context.active_object)
+
+    def execute(self, context):
+        from . import fields as _fields
+        from ..efx_format.structs import unpack_material, pack_material
+        from ..efx_format import material_edit as _me
+
+        try:
+            shader_hash = int(self.shader_choice)
+        except ValueError:
+            self.report({"ERROR"}, "Invalid material type")
+            return {"CANCELLED"}
+
+        bp = context.active_object.efx_block
+        cur = _fields.material_current_bytes(bp)   # 烘焙待编辑值
+        d, _ = unpack_material(cur)
+        _me.add_block(d, shader_hash)
+        new_bytes = pack_material(d)
+        if not _fields.reinit_material_from_bytes(bp, new_bytes):
+            self.report({"ERROR"}, "Re-init failed after add")
+            return {"CANCELLED"}
+        bp.efx_dirty = True
+        self.report({"INFO"}, "Material slot added")
+        return {"FINISHED"}
+
+
+class EFX_OT_material_set_shader(bpy.types.Operator):
+    """修改指定材质槽的材质类型（shader_id_hash 标量覆盖，不影响该槽已有的贴图路径数据）"""
+
+    bl_idname      = "efx.material_set_shader"
+    bl_label       = "Set Material Type"
+    bl_description = "Change this material slot's shader type (does not touch its existing texture slot data)"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    block_index: IntProperty(name="Block Index", default=-1, options={'HIDDEN'})
+    shader_choice: EnumProperty(
+        name="Material Type",
+        description="New shader type for this material slot",
+        items=_material_shader_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _is_material_attribute(context.active_object)
+
+    def invoke(self, context, event):
+        # block_index 由调用方（面板按钮）在弹窗前预设好，invoke_props_dialog
+        # 只弹 shader_choice 的选择框（原生长列表自带搜索）。
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(self, "shader_choice")
+
+    def execute(self, context):
+        bp = context.active_object.efx_block
+        item = None
+        for it in bp.field_items:
+            if it.ori_name == f"matshader_{self.block_index}":
+                item = it
+                break
+        if item is None:
+            self.report({"ERROR"}, "Block index out of range")
+            return {"CANCELLED"}
+        try:
+            shader_hash = int(self.shader_choice)
+        except ValueError:
+            self.report({"ERROR"}, "Invalid material type")
+            return {"CANCELLED"}
+        item.uint_str = str(shader_hash)
+        self.report({"INFO"}, "Material type changed")
+        return {"FINISHED"}
+
+
+class EFX_OT_material_remove_block(bpy.types.Operator):
+    """从 MATERIAL 属性移除指定下标的材质槽"""
+
+    bl_idname      = "efx.material_remove_block"
+    bl_label       = "Remove Material Slot"
+    bl_description = "Remove this material slot (Tex_Block) from the MATERIAL attribute"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    block_index: IntProperty(name="Block Index", default=-1)
+
+    @classmethod
+    def poll(cls, context):
+        return _is_material_attribute(context.active_object)
+
+    def execute(self, context):
+        from . import fields as _fields
+        from ..efx_format.structs import unpack_material, pack_material
+        from ..efx_format import material_edit as _me
+
+        bp = context.active_object.efx_block
+        cur = _fields.material_current_bytes(bp)   # 烘焙待编辑值
+        d, _ = unpack_material(cur)
+        if not _me.remove_block(d, self.block_index):
+            self.report({"ERROR"}, "Block index out of range")
+            return {"CANCELLED"}
+        new_bytes = pack_material(d)
+        if not _fields.reinit_material_from_bytes(bp, new_bytes):
+            self.report({"ERROR"}, "Re-init failed after remove")
+            return {"CANCELLED"}
+        bp.efx_dirty = True
+        self.report({"INFO"}, "Material slot removed")
+        return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MATERIAL 独立 mrl3 过滤器（2026-07，与用户确认：mrl3 只当独立过滤器用，
+# 跟 mod3/mesh 完全解耦——不联动 efx_mesh_target，不需要 Model Editor 插件。
+# 核心解析见 efx_format/mrl3_reader.py）
+# ─────────────────────────────────────────────────────────────────────────────
+
+class EFX_OT_material_import_mrl3_filter(bpy.types.Operator, ImportHelper):
+    """选一个 .mrl3 文件，把材质类型下拉收窄到这个文件实际用到的类型"""
+
+    bl_idname      = "efx.material_import_mrl3_filter"
+    bl_label       = "Filter by .mrl3"
+    bl_description = "Pick a .mrl3 file; narrow the material type dropdown to only the types it actually uses"
+    bl_options     = {"REGISTER"}
+
+    filename_ext = ".mrl3"
+    filter_glob: StringProperty(default="*.mrl3", options={'HIDDEN'})
+
+    def execute(self, context):
+        from ..efx_format.mrl3_reader import read_material_type_hashes, Mrl3ParseError
+
+        try:
+            with open(self.filepath, "rb") as f:
+                data = f.read()
+            hashes = read_material_type_hashes(data)
+        except (Mrl3ParseError, OSError) as e:
+            self.report({"ERROR"}, f"Failed to parse .mrl3: {e}")
+            return {"CANCELLED"}
+
+        if not hashes:
+            self.report({"WARNING"}, "No known material types found in this .mrl3")
+            return {"CANCELLED"}
+
+        context.scene.efx_material_filter_hashes = ",".join(str(h) for h in sorted(hashes))
+        context.scene.efx_material_filter_enabled = True
+        context.scene.efx_material_filter_source = os.path.basename(self.filepath)
+        self.report(
+            {"INFO"},
+            f"Material type dropdown filtered to {len(hashes)} type(s) from {os.path.basename(self.filepath)}",
+        )
+        return {"FINISHED"}
+
+
+class EFX_OT_material_clear_mrl3_filter(bpy.types.Operator):
+    """取消 mrl3 过滤，材质类型下拉恢复全部 112 种"""
+
+    bl_idname      = "efx.material_clear_mrl3_filter"
+    bl_label       = "Clear mrl3 Filter"
+    bl_description = "Clear the .mrl3 filter; the material type dropdown shows all known types again"
+    bl_options     = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        return getattr(context.scene, "efx_material_filter_enabled", False)
+
+    def execute(self, context):
+        context.scene.efx_material_filter_enabled = False
+        return {"FINISHED"}
+
+
 class EFX_OT_field_help(bpy.types.Operator):
     """
     纯提示算子：执行无副作用，description 动态返回字段注释。
@@ -1058,6 +1292,11 @@ _CLASSES = (
     EFX_OT_paste_attribute_fields,
     EFX_OT_ptb_add_override,
     EFX_OT_ptb_remove_override,
+    EFX_OT_material_add_block,
+    EFX_OT_material_set_shader,
+    EFX_OT_material_remove_block,
+    EFX_OT_material_import_mrl3_filter,
+    EFX_OT_material_clear_mrl3_filter,
     EFX_OT_field_help,
     EFX_OT_randomize_seed,
     EFX_OT_randomfix_set_table_group,
@@ -1082,8 +1321,32 @@ def register():
         options={"SKIP_SAVE"},
     )
 
+    # MATERIAL 独立 mrl3 过滤器状态（会话级，非 EFX 数据的一部分，挂 Scene）
+    bpy.types.Scene.efx_material_filter_enabled = BoolProperty(
+        name="mrl3 Filter Enabled",
+        description="Narrow the material type dropdown to types used by an imported .mrl3",
+        default=False,
+    )
+    bpy.types.Scene.efx_material_filter_hashes = StringProperty(
+        name="mrl3 Filter Hashes",
+        description="Comma-separated material type hashes from the last imported .mrl3",
+        default="",
+    )
+    bpy.types.Scene.efx_material_filter_source = StringProperty(
+        name="mrl3 Filter Source",
+        description="Filename of the .mrl3 the current filter was loaded from",
+        default="",
+    )
+
 
 def unregister():
+    if hasattr(bpy.types.Scene, "efx_material_filter_source"):
+        del bpy.types.Scene.efx_material_filter_source
+    if hasattr(bpy.types.Scene, "efx_material_filter_hashes"):
+        del bpy.types.Scene.efx_material_filter_hashes
+    if hasattr(bpy.types.Scene, "efx_material_filter_enabled"):
+        del bpy.types.Scene.efx_material_filter_enabled
+
     if hasattr(bpy.types.WindowManager, "efx_export_target"):
         del bpy.types.WindowManager.efx_export_target
 

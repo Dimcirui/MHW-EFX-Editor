@@ -1558,6 +1558,12 @@ def _init_path_attribute_props(blk, bp) -> None:
             return
         # Phase B 失败 → 继续路径兜底
 
+    # ── Phase C：MATERIAL 结构化展开（材质槽 + 贴图路径，2026-07）───────────
+    if type_hash == _MATERIAL_HASH():
+        if _init_material_attribute(blk, bp):
+            return
+        # Phase C 失败 → 继续路径兜底
+
     # ── 建路径字段项（纯路径模式：MATERIAL/PTBEHAVIOR 及 Phase A 退回的属性）────
     bp.field_items.clear()
 
@@ -1905,6 +1911,149 @@ def ptbehavior_addable_items(bp):
     return out
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase C：MATERIAL 结构化展开（材质槽 + 贴图路径，核心逻辑在
+# efx_format/material_edit.py，见其模块文档串了解设计依据）
+#
+# Items 布局（扁平，仿 PTBEHAVIOR 用 f-string 编码结构，无需嵌套 PropertyGroup）：
+#   '__material__'        OPAQUE 哨兵 — 标记本属性已用 Phase C 布局
+#   'matshader_{j}'       UINT   — 第 j 个材质槽（Tex_Block）的 shader_id_hash
+#   'slotpath_{j}_{t}'    STRING — 第 j 个材质槽里 t 对应贴图槽（Tex_Set type=0x80）
+#                                   的当前路径（按 block 内出现顺序枚举）
+# 非路径 set（0x06/0x03/0x0A/0x0C/0x15）不建 item，黑盒交给 pack_material 原样带出。
+#
+# 材质槽（block）增删是结构性操作，走 material_current_bytes → unpack_material →
+# material_edit.add_block/remove_block → pack_material → reinit_material_from_bytes
+# 这条与 PTBEHAVIOR 覆盖项增删完全对称的路径（见 operators.py 的
+# EFX_OT_material_add_block/EFX_OT_material_remove_block）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _init_material_attribute(blk, bp) -> bool:
+    """
+    Phase C：展开 MATERIAL 为可编辑 field_items（结构化材质槽 + 贴图路径）。
+    末尾运行 rebuild_material_attribute 闸门，验证字节精度。
+    返回 True=成功（bp.is_editable 由本函数设置）；False=失败（已清理 items）。
+    """
+    from ..efx_format.structs import unpack_material
+    from ..efx_format import material_edit as _me
+
+    try:
+        d, _ = unpack_material(blk.data_bytes)
+    except Exception:
+        return False
+
+    bp.field_items.clear()
+
+    marker = bp.field_items.add()
+    marker.ori_name = '__material__'
+    marker.data_type = 'OPAQUE'
+    marker.edited = False
+    marker.read_only = True
+    marker.orig_b64 = ''
+    marker.opaque_str = ''
+
+    for j, blk_d in enumerate(d['blocks']):
+        it = bp.field_items.add()
+        it.ori_name = f'matshader_{j}'
+        it.data_type = 'UINT'
+        it.edited = False
+        it.read_only = False
+        it.orig_b64 = ''
+        it.uint_str = str(blk_d['mat_shader'] & 0xFFFFFFFF)
+
+        for s in blk_d['sets']:
+            if s['type'] != 0x80:
+                continue
+            t = s['t'] & 0xFFFFFFFF
+            sit = bp.field_items.add()
+            sit.ori_name = f'slotpath_{j}_{t}'
+            sit.data_type = 'STRING'
+            sit.edited = False
+            sit.read_only = False
+            sit.orig_b64 = ''
+            sit.string_value = _me.slot_path_str(s)
+
+    # 闸门：rebuild 必须 == 原始字节
+    try:
+        rebuilt = rebuild_material_attribute(bp, blk.data_bytes)
+        if rebuilt == blk.data_bytes:
+            bp.is_editable = True
+            return True
+    except Exception:
+        pass
+
+    bp.field_items.clear()
+    bp.is_editable = False
+    return False
+
+
+def rebuild_material_attribute(bp, original_data: bytes = None) -> bytes:
+    """
+    Phase C 重建：unpack 原始字节 → 对 edited=True 的 item 覆盖值 → pack_material。
+
+    参数
+    ----
+    bp            : EFXAttributeProps
+    original_data : bytes | None — 若 None 则从 bp.raw_b64 解码
+    """
+    from ..efx_format.structs import unpack_material, pack_material
+    from ..efx_format import material_edit as _me
+
+    orig = original_data if original_data is not None else base64.b64decode(bp.raw_b64)
+    d, _ = unpack_material(orig)
+
+    imap = {}
+    for item in bp.field_items:
+        if not item.ori_name.startswith('__'):
+            imap[item.ori_name] = item
+
+    for j, blk_d in enumerate(d['blocks']):
+        sh_item = imap.get(f'matshader_{j}')
+        if sh_item and sh_item.edited and not sh_item.read_only:
+            blk_d['mat_shader'] = _me._to_signed32(int(sh_item.uint_str))
+
+        for s in blk_d['sets']:
+            if s['type'] != 0x80:
+                continue
+            t = s['t'] & 0xFFFFFFFF
+            sit = imap.get(f'slotpath_{j}_{t}')
+            if not (sit and sit.edited and not sit.read_only):
+                continue
+            if sit.string_value:
+                _me.fill_slot_path(blk_d, t, sit.string_value)
+            else:
+                _me.clear_slot_path(blk_d, t)
+
+    return pack_material(d)
+
+
+def material_current_bytes(bp) -> bytes:
+    """烘焙待编辑值：返回当前 MATERIAL 的 data_bytes（含已编辑 item 的覆盖）。"""
+    return rebuild_material_attribute(bp)
+
+
+def reinit_material_from_bytes(bp, new_bytes: bytes) -> bool:
+    """
+    用 new_bytes 重置 MATERIAL 属性：写 raw_b64 + 重建 field_items。
+    供材质槽增删算子调用。期间置 _LOADING 抑制脏标记误触发，由调用方显式置脏。
+    返回 _init_material_attribute 的成功与否。
+    """
+    global _LOADING
+
+    class _Blk:
+        pass
+    blk = _Blk()
+    blk.data_bytes = new_bytes
+
+    prev = _LOADING
+    _LOADING = True
+    try:
+        bp.raw_b64 = base64.b64encode(new_bytes).decode("ascii")
+        return _init_material_attribute(blk, bp)
+    finally:
+        _LOADING = prev
+
+
 def rebuild_path_attribute_data_bytes(bp, type_hash: int) -> bytes:
     """
     对含路径 custom 类型，从 block_props 的 path 字段项重建 data_bytes。
@@ -2195,10 +2344,14 @@ def get_attribute_data_bytes(obj: bpy.types.Object,
                 elif type_hash in PATH_EDITABLE_CUSTOM_HASHES:
                     # Phase B：PTBEHAVIOR 全参数重建（b_type item 存在即为 Phase B）
                     _is_ptb = (type_hash == _PTBEHAVIOR_HASH_RB())
+                    _is_mat = (type_hash == _MATERIAL_HASH())
                     if _is_ptb and any(it.ori_name == 'b_type' for it in bp.field_items):
                         data = rebuild_ptbehavior_attribute(bp)
+                    elif _is_mat and any(it.ori_name == '__material__' for it in bp.field_items):
+                        # Phase C：MATERIAL 结构化重建（__material__ 哨兵存在即为 Phase C）
+                        data = rebuild_material_attribute(bp)
                     else:
-                        # L1.1b/c：MATERIAL 等 → 仅路径感知重建
+                        # L1.1b/c：其余含路径 custom 类型 / Phase C 退回 → 仅路径感知重建
                         data = rebuild_path_attribute_data_bytes(bp, type_hash)
                 else:
                     # 不支持编辑的 custom 类型（TIML 等）→ 退回 raw_b64
