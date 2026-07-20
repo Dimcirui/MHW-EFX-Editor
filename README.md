@@ -218,7 +218,8 @@ This plugin was developed based on community documentation and format research, 
 - [REE Lib](https://github.com/kagenocookie/RE-Engine-Lib) — Provides a wealth of valuable information for cross-validation of attributes.
 - Crimson — Provided insights into Attribute categorization and inspiration for many attributes.
 - 冰室菖蒲 — Provides guides on the Attributes for numerous Entries, as well as the structure of efx TIML.
-- 003 — Provides detailed guides on the Attributes for Lightning, StrainRibbon, and Homing
+- 003 — Provides detailed guides on the Attributes for Lightning, StrainRibbon, and Homing.
+- Fexty — Provides detailed guides on the Attributes for Blink and FadeByEmitterAngle.
 
 Bone placement is designed to pair with the
 [MHW Model Editor](https://github.com/chikichikibangbang/MHW_Model_Editor).
