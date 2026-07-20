@@ -96,6 +96,17 @@ class EFXExternItemProps(PropertyGroup):
         default="0",
     )
 
+    orig_attr_count: IntProperty(
+        name="Original Attr Count",
+        description=(
+            "ExternDataItem.attr_count 原始值（权威，导出直接用这个，不用 len(instances)）。"
+            "未落 schema 的类型（如 EXTERNMESH）不管 attr_count 多大都只建 1 个 opaque "
+            "instance（整块 data_bytes 存一起），len(instances) 恒为 1，跟真实元素数无关——"
+            "这个字段是唯一记住真实数量的地方，不存会导致导出把 attr_count 错写成 1。"
+        ),
+        default=0,
+    )
+
     active_instance: IntProperty(
         name="Active Instance",
         description="当前编辑的实例索引",
@@ -233,6 +244,7 @@ def init_extern_props(obj: bpy.types.Object, ea) -> None:
             it = ep.items.add()
             it.type_hash_str = str(item_data.type_hash)
             it.unkn_str = str(item_data.unkn)
+            it.orig_attr_count = int(item_data.attr_count)
             it.active_instance = 0
             it.raw_b64 = base64.b64encode(item_data.data_bytes).decode("ascii")
             it.instances.clear()
@@ -323,7 +335,11 @@ def export_extern_data(obj: bpy.types.Object) -> bytes:
         for it in ep.items:
             type_hash = int(it.type_hash_str)
             unkn = int(it.unkn_str)
-            attr_count = len(it.instances)
+            # ⚠ 用 orig_attr_count（导入时记的原始值），不能用 len(it.instances)——
+            # 未落 schema 的类型（EXTERNMESH 等）不管真实 attr_count 多大都只建 1 个
+            # opaque instance，len(instances) 恒为 1，会把 attr_count 错写成 1
+            # （2026-07 修，见 GitHub issue #1：EXTERNMESH attr_count 2→1 导致 MHW 崩溃）。
+            attr_count = it.orig_attr_count
 
             if it.is_editable and type_hash in schema_map:
                 schema, _elem_size = schema_map[type_hash]
