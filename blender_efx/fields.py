@@ -2181,6 +2181,30 @@ def rebuild_custom_field_attribute(bp, type_hash: int) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# rebuild_extern_instance_bytes  —  供 extern_props.py 调用：重建单个 Extern 实例字节
+#
+# EXTERNMESH / EXTERNPTBEHAVIOR 是"attr_count 个变长元素"的 Extern 类型，每个元素
+# 与同名主属性（MESH / PTBEHAVIOR）共用完全相同的编码——EFXExternInstanceProps 和
+# EFXAttributeProps 都有 field_items/raw_b64/is_editable，接口一致，可以直接把
+# get_attribute_data_bytes 里 MESH/PTBEHAVIOR 的重建分支原样搬来对 inst 用。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def rebuild_extern_instance_bytes(inst, type_hash: int) -> bytes:
+    """重建一个 Extern 实例（单个元素）的 data_bytes；镜像 get_attribute_data_bytes 的
+    MESH/PTBEHAVIOR 分支，逻辑完全一致（是否 Phase A/B 成功都统一走同一条重建路径，
+    与主属性行为一致——未编辑字段本就 verbatim 保留，不依赖 Phase 是否展开成功）。"""
+    from ..efx_format.structs import CUSTOM_FIELD_SCHEMA_MAP
+
+    if type_hash in CUSTOM_FIELD_SCHEMA_MAP:
+        return rebuild_custom_field_attribute(inst, type_hash)
+    if type_hash == _PTBEHAVIOR_HASH_RB():
+        if any(it.ori_name == 'b_type' for it in inst.field_items):
+            return rebuild_ptbehavior_attribute(inst)
+        return rebuild_path_attribute_data_bytes(inst, type_hash)
+    return rebuild_path_attribute_data_bytes(inst, type_hash)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # init_attribute_props  —  供 io_tree 调用：初始化单个 EFX_ATTRIBUTE 的 efx_block
 # ─────────────────────────────────────────────────────────────────────────────
 

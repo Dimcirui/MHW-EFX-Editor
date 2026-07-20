@@ -1933,6 +1933,16 @@ _UVSEQUENCE_FIXED_SCHEMA = [
 
 _UVSEQUENCE_FIXED_SIZE = _schema_size(_UVSEQUENCE_FIXED_SCHEMA)  # = 40
 
+# EXTERNUVSEQUENCE（Extern 覆盖版，2026-07）：与主属性 _UVSEQUENCE_FIXED_SCHEMA
+# 前 40B 完全同构，语料实测（127/127 元素）额外多出固定 5B 尾巴 int32(0/1，
+# 全语料恒为1)+byte(恒0)，语义未知，先按 unkn 处理。45B/元素，无 path。
+EXTERN_UVSEQUENCE_SCHEMA = _UVSEQUENCE_FIXED_SCHEMA + [
+    ('unkn_tail0', 'i'),
+    ('unkn_tail1', 'B'),
+]
+assert _schema_size(EXTERN_UVSEQUENCE_SCHEMA) == 45, \
+    f"EXTERN_UVSEQUENCE_SCHEMA size mismatch: {_schema_size(EXTERN_UVSEQUENCE_SCHEMA)}"
+
 # UI 侧可编辑字段 schema：跟 _UVSEQUENCE_FIXED_SCHEMA 一致，只是把裸字节 loopingMode
 # 换成三个可分别编辑的具名子字段（unpack/pack_uvsequence 负责跟裸字节互转，
 # 位运算见下方两个函数）。
@@ -2053,6 +2063,18 @@ _BILLBOARD3D_EXTRAS_SCHEMA = [
     ('unkn8', 'i'),
     ('unkn9', 'i'),
 ]  # = 4+8+4+4+4 = 24 B
+
+# EXTERNBILLBOARD3D（Extern 覆盖版，2026-07）：与主属性 _BILLBOARD3D_FIXED_SCHEMA
+# (104B) + _BILLBOARD3D_EXTRAS_SCHEMA (24B) 完全同构，无 path；语料实测（874/874
+# 元素）额外多出固定 5B 尾巴 int32(0/1 都有，非恒定)+byte(恒0)，语义未知。133B/元素。
+EXTERN_BILLBOARD3D_SCHEMA = (
+    _BILLBOARD3D_FIXED_SCHEMA + _BILLBOARD3D_EXTRAS_SCHEMA + [
+        ('unkn_tail0', 'i'),
+        ('unkn_tail1', 'B'),
+    ]
+)
+assert _schema_size(EXTERN_BILLBOARD3D_SCHEMA) == 133, \
+    f"EXTERN_BILLBOARD3D_SCHEMA size mismatch: {_schema_size(EXTERN_BILLBOARD3D_SCHEMA)}"
 
 
 def unpack_billboard3d(data: bytes, off: int = 0):
@@ -2991,6 +3013,25 @@ _RGBWATER_FIXED_SCHEMA = [
 ]  # = 4+8+28+12+104 = 156 B
 assert _schema_size(_RGBWATER_FIXED_SCHEMA) == 156, \
     f"_RGBWATER_FIXED_SCHEMA size mismatch: {_schema_size(_RGBWATER_FIXED_SCHEMA)}"
+
+# EXTERNRGBWATER（Extern 覆盖版，2026-07）：与主属性 _RGBWATER_FIXED_SCHEMA (156B)
+# 完全同构，无 path；语料实测（48/48 元素）额外多出固定 5B 尾巴 int32(恒为1)+
+# byte(恒0)，语义未知。161B/元素（156+5）。
+# 'color' 原 spec 是 ('XYZ[]', 2, 2)（嵌套数组，_check_schema_all_flat 判定不可
+# 平铺展开）——按字节序原样拆成两个独立 ('XYZ', 2) 字段（unpack/pack 内部本就是
+# 逐个循环 _unpack_xyz/_pack_xyz，拆开纯属重命名，字节布局不变），使整个 schema
+# 可平铺表示，从而复用跟其它 6 个已支持 EXTERN 类型一样的通用 flat schema 编辑路径。
+EXTERN_RGBWATER_SCHEMA = []
+for _name, _spec in _RGBWATER_FIXED_SCHEMA:
+    if _name == 'color':
+        EXTERN_RGBWATER_SCHEMA.append(('color_0', ('XYZ', 2)))
+        EXTERN_RGBWATER_SCHEMA.append(('color_1', ('XYZ', 2)))
+    else:
+        EXTERN_RGBWATER_SCHEMA.append((_name, _spec))
+EXTERN_RGBWATER_SCHEMA.append(('unkn_tail0', 'i'))
+EXTERN_RGBWATER_SCHEMA.append(('unkn_tail1', 'B'))
+assert _schema_size(EXTERN_RGBWATER_SCHEMA) == 161, \
+    f"EXTERN_RGBWATER_SCHEMA size mismatch: {_schema_size(EXTERN_RGBWATER_SCHEMA)}"
 
 
 def unpack_rgbwater(data: bytes, off: int = 0):
