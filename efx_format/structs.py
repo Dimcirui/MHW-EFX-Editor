@@ -637,6 +637,53 @@ VELOCITY3D_SCHEMA = EXTERN_VELOCITY3D_SCHEMA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# EXTERNVELOCITY3D0 / EXTERNVELOCITY3D1 / EXTERNVELOCITY3D6（2026-07，纯统计推断）
+#
+# 这三个编号变体在主属性里没有同名对象可抄（跟 EXTERN_VELOCITY3D_SCHEMA 不是
+# 同一类型），原先在 efxfile.py 里只标了字节数、字段全是占位 long unkn[N]。
+# 下面的逐字段 int/float 类型判定纯粹来自对官方语料的统计推断（无主属性、无
+# 社区 .bt、无实机验证），方法：对每个 4 字节列，取该列在全部真实样本里的
+# 原始值集合，按下列规则分类：
+#   全部恒为 0                              → 判 'i'（保留位/未使用，按 int 编辑无害）
+#   八字节 CD 掩码占多数（0xCD 填充特征）    → 判 'i'（保留填充，同 reserved-fill 惯例）
+#   重新按 float32 解释后全部落在"正常浮点"区间
+#     （排除 subnormal——小整数按 float 位模式重解释总落在 1e-38 以下的极小
+#      denormal 区，那其实是"小整数误判成浮点"的假阳性，必须排除）           → 判 'f'
+#   其余（大数值/看似哈希或位掩码）          → 判 'i'
+# 字段名一律 unkn{i}，不做语义命名——这批字段的具体含义未知，只是把"一坨
+# opaque 字节"换成"可编辑的、类型大概率正确的独立字段"，比继续 opaque 更有用，
+# 但语义置信度明显低于本文件其它有主属性/社区 .bt 支持的类型，需要实机验证。
+# 语料样本量：V0=567 元素/51 文件（较可靠）、V1=73 元素/25 文件（尚可）、
+# V6=15 元素/5 文件（偏少，谨慎对待）。V2(4元素)/V5(2元素)/V7(6元素) 样本
+# 过少，类型判定不可靠，暂不落 schema，继续 opaque（见 extern_props.py 注释）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+# EXTERNVELOCITY3D0：48B = 12 × int32（全部按 int 处理；语料里没有一列表现出
+# 正常浮点特征——12 列里 6 列恒为 0，其余 6 列是小范围变化的整数，像是延迟/计数
+# 类参数，同 EXTERN_VELOCITY3D_SCHEMA 的 expansionDelay 等字段）。
+EXTERN_VELOCITY3D0_SCHEMA = [(f'unkn{_i}', 'i') for _i in range(12)]
+assert _schema_size(EXTERN_VELOCITY3D0_SCHEMA) == 48, \
+    f"EXTERN_VELOCITY3D0_SCHEMA size mismatch: {_schema_size(EXTERN_VELOCITY3D0_SCHEMA)}"
+
+# EXTERNVELOCITY3D1：361B = 90 × int32/float32（按上述统计规则逐列判定）+
+# 末尾 1B（语料里恒为 0）。
+_V1_TYPES = (
+    'iiiiiiiffiffffffififiifiifiiiiiiiififffififiiiiiifiiiifififffiiiiiffffiffiiiiiiiiiiiiiiiii'
+)
+EXTERN_VELOCITY3D1_SCHEMA = [
+    (f'unkn{_i}', _t) for _i, _t in enumerate(_V1_TYPES)
+] + [('unkn_tail', 'B')]
+assert _schema_size(EXTERN_VELOCITY3D1_SCHEMA) == 361, \
+    f"EXTERN_VELOCITY3D1_SCHEMA size mismatch: {_schema_size(EXTERN_VELOCITY3D1_SCHEMA)}"
+
+# EXTERNVELOCITY3D6：80B = 20 × int32/float32。
+_V6_TYPES = 'iiffiiiiiifffififiii'
+EXTERN_VELOCITY3D6_SCHEMA = [(f'unkn{_i}', _t) for _i, _t in enumerate(_V6_TYPES)]
+assert _schema_size(EXTERN_VELOCITY3D6_SCHEMA) == 80, \
+    f"EXTERN_VELOCITY3D6_SCHEMA size mismatch: {_schema_size(EXTERN_VELOCITY3D6_SCHEMA)}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ExternEmitterShape3D schema  (88 B; full block = 92 B)
 #
 # BT (EFX_Subtypes.bt，原模板部分类型标注有误，已按实测修正)：

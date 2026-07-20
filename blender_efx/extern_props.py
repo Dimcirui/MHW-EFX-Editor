@@ -6,15 +6,20 @@ EFX_EXTERN 对象上挂 efx_extern (EFXExternProps)：
     instances: CollectionProperty(EFXExternInstanceProps) ← 对应每个元素实例
       field_items: CollectionProperty(EFXFieldItem)    ← 复用体块字段基础设施
 
-已有完整 schema 的 10 个定长 EXTERN 类型支持字段展开（flat schema，一次性按
+已有完整 schema 的 13 个定长 EXTERN 类型支持字段展开（flat schema，一次性按
 elem_size 等分）：
   EXTERNSPAWN / EXTERNVELOCITY3D / EXTERNSCALEANIM /
   EXTERNEMITTERSHAPE3D / EXTERNRGBFIRE / EXTERNTRANSFORM3D / EXTERNPLEMISSIVE /
-  EXTERNUVSEQUENCE / EXTERNBILLBOARD3D / EXTERNRGBWATER
+  EXTERNUVSEQUENCE / EXTERNBILLBOARD3D / EXTERNRGBWATER /
+  EXTERNVELOCITY3D0 / EXTERNVELOCITY3D1 / EXTERNVELOCITY3D6
 （EXTERNPLEMISSIVE 与主属性 PLEMISSIVE 尺寸/布局完全相同，76B 语料验证零反例；
  EXTERNUVSEQUENCE / EXTERNBILLBOARD3D / EXTERNRGBWATER 与各自主属性的定长前缀
  同构，多出固定 5B 尾巴（int32+byte，语义未知），语料验证零反例，见
- structs.py 对应 SCHEMA 上方注释与 memory extern-tier1-plus5-byte-tail。）
+ structs.py 对应 SCHEMA 上方注释与 memory extern-tier1-plus5-byte-tail。
+ EXTERNVELOCITY3D0/1/6 无主属性对应物，逐字段 int/float 类型纯统计推断（无
+ 社区 .bt/无实机验证），字段名一律 unkn，置信度明显更低，见 structs.py 对应
+ SCHEMA 上方大段注释。同类的 EXTERNVELOCITY3D2/5/7 因语料样本过少（4/2/6 元素）
+ 未落 schema，仍 opaque。）
 
 另外 2 个变长 EXTERN 类型（每元素尺寸不定，不能等分）复用同名主属性的现成
 编解码 + Blender 侧字段展开函数（EFXExternInstanceProps 与 EFXAttributeProps
@@ -64,12 +69,14 @@ def _get_extern_schema_map() -> dict:
             EXTERNSPAWN, EXTERNVELOCITY3D, EXTERNSCALEANIM,
             EXTERNEMITTERSHAPE3D, EXTERNRGBFIRE, EXTERNTRANSFORM3D,
             EXTERNPLEMISSIVE, EXTERNUVSEQUENCE, EXTERNBILLBOARD3D, EXTERNRGBWATER,
+            EXTERNVELOCITY3D0, EXTERNVELOCITY3D1, EXTERNVELOCITY3D6,
         )
         from ..efx_format.structs import (
             EXTERN_SPAWN_SCHEMA, EXTERN_VELOCITY3D_SCHEMA, EXTERN_SCALEANIM_SCHEMA,
             EXTERN_EMITTERSHAPE3D_SCHEMA, EXTERN_RGBFIRE_SCHEMA, EXTERN_TRANSFORM3D_SCHEMA,
             PLEMISSIVE_SCHEMA, EXTERN_UVSEQUENCE_SCHEMA, EXTERN_BILLBOARD3D_SCHEMA,
-            EXTERN_RGBWATER_SCHEMA,
+            EXTERN_RGBWATER_SCHEMA, EXTERN_VELOCITY3D0_SCHEMA, EXTERN_VELOCITY3D1_SCHEMA,
+            EXTERN_VELOCITY3D6_SCHEMA,
         )
         _EXTERN_SCHEMA_MAP_CACHE = {
             EXTERNSPAWN:           (EXTERN_SPAWN_SCHEMA,           72),
@@ -85,6 +92,12 @@ def _get_extern_schema_map() -> dict:
             EXTERNUVSEQUENCE:      (EXTERN_UVSEQUENCE_SCHEMA,       45),
             EXTERNBILLBOARD3D:     (EXTERN_BILLBOARD3D_SCHEMA,      133),
             EXTERNRGBWATER:        (EXTERN_RGBWATER_SCHEMA,         161),
+            # 无主属性对应物，纯统计推断逐字段 int/float 类型（无社区 .bt、无实机验证），
+            # 字段名一律 unkn，语义置信度明显低于以上各类型，见 structs.py 对应 SCHEMA
+            # 上方大段注释。V2/V5/V7 因语料样本过少（4/2/6 元素）未落 schema，仍 opaque。
+            EXTERNVELOCITY3D0:     (EXTERN_VELOCITY3D0_SCHEMA,      48),
+            EXTERNVELOCITY3D1:     (EXTERN_VELOCITY3D1_SCHEMA,      361),
+            EXTERNVELOCITY3D6:     (EXTERN_VELOCITY3D6_SCHEMA,      80),
         }
     except Exception:
         _EXTERN_SCHEMA_MAP_CACHE = {}
