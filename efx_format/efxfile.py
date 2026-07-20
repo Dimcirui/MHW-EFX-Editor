@@ -508,17 +508,40 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == SHOVEL:
         return 4 + 8 + 4 + 24 + 4 + 4 + 4 + 12 + 4 + 4 + 2  # = 74
 
-    # Layout: 4(type) + int*2(8) + long*4(16) + LayoutBank_Block (variable!)
+    # Layout（EFX_Crimson.bt 确认）: 4(type) + int*2(8) + long*4(16) + LayoutBank_Block(变长)。
+    # ⚠ 2026-07 曾误判"LayoutBank_Block 结束后偶尔多出的 20B 是具名引用尾巴"——
+    # 实为 bug：那 20B 其实是*下一个 Main Entry 自己的 20B 头*（type+unkn0+
+    # attr_count+null+timl_length，jamcrc 反查出的"名字"只是下一个 entry 的
+    # body_type，纯属巧合像具名引用）。触发条件已核实：8/8 误判样本里 LAYOUT
+    # 都恰好是所在 entry 的最后一个属性——原判定用"落点是否为已知 ATTR_HASHES/
+    # ROOT_MARKER"探测边界，但下一个 Entry 的 body_type 是任意 jamcrc 值，
+    # 根本不在 ATTR_HASHES 集合里，导致误判"这里不像边界"从而多吞 20B，
+    # 造成下一个 entry 的头部错位（"孤儿空属性 entry"就是这么来的，见用户
+    # 010 模板实测反证：真实该 entry 有 14 个属性，不是 0 个）。结论：LAYOUT
+    # 没有可选尾巴，恒为 24B 前缀 + LayoutBank_Block，不需要、也不能做落点猜测。
     if h == LAYOUT:
-        return None  # variable: LayoutBank_Block
+        from .structs import _walk_layoutbank_block
+        try:
+            p = pos + 4 + 8 + 16  # skip type + int unkn0[2] + long unkn1[4]
+            end = _walk_layoutbank_block(data, p)
+        except (struct.error, ValueError, IndexError):
+            return None
+        return end - pos
 
     # RepeatArea: 实测全 135 实例恒 52B → 4(type) + 52 = 56B 定长
     if h == REPEATAREA:
         return 4 + 52  # = 56
 
-    # FakeDoF: variable (32B / 52B 两种，含 length 字段)
+    # FakeDoF: 4(type) + 32B 固定，恒定长（原以为有 32B/52B 两种、靠 forward-scan
+    # 兜底定界，2026-07 查实那"多出的 20B"其实是下一个 Main Entry 自己的 20B
+    # 头——forward-scan 在 FAKEDOF 是所在 entry 最后一个属性时，找不到已知
+    # ATTR_HASHES 就一路扫过整个下一 entry 头部，直到撞上其*第一个属性*的
+    # type_hash 才停手，误吞 20B。语料实证：全部 3 个"32B 无尾"实例均非
+    # entry 末位属性（forward-scan 原本就该在这碰到真正的下一属性正确停下），
+    # 13 个"疑似 52B 有尾"实例 100% 是 entry 末位属性（触发条件与 LAYOUT 的
+    # bug 完全同源）。FAKEDOF 恒 32B，无需 forward-scan。
     if h == FAKEDOF:
-        return None  # variable
+        return 4 + 32  # = 36
 
     # LinkPartsVisible: 4(type) + int*3(12) = 16B
     if h == LINKPARTSVISIBLE:
@@ -1312,39 +1335,14 @@ class EFXFile:
 
     @staticmethod
     def _parse_layout_bank(data: bytes, pos: int) -> int:
-        """Parse a LayoutBank struct and return the new position."""
-        lb_type = struct.unpack_from('<i', data, pos)[0]      # long type
-        unkn0 = struct.unpack_from('<i', data, pos + 4)[0]    # int unkn0
+        """Parse a LayoutBank struct (long type + int unkn0 + int block_count +
+        block_count*LayoutBank_Block) and return the new position."""
+        from .structs import _walk_layoutbank_block
         block_count = struct.unpack_from('<i', data, pos + 8)[0]  # int block_count
         pos += 12
 
         for _ in range(block_count):
-            # LayoutBank_Block: int count(4); if count>0: while ReadInt()!=-1: LayoutBank_B; long end
-            count = struct.unpack_from('<i', data, pos)[0]
-            pos += 4
-            if count > 0:
-                while True:
-                    sentinel = struct.unpack_from('<i', data, pos)[0]
-                    if sentinel == -1:
-                        pos += 4  # consume the -1 sentinel (long end = 8B? or 4B?)
-                        # BT says 'long end' = 4B
-                        break
-                    # LayoutBank_B: int block_type(4) + data
-                    block_type = sentinel
-                    pos += 4  # consume block_type
-                    if 0 < block_type < 6:
-                        # UN p[count*2]
-                        pos += count * 2 * 4
-                    elif block_type == 0 or block_type == 6:
-                        # UN p[count*3]
-                        pos += count * 3 * 4
-                    elif block_type == 7:
-                        # int unkn0; UN p[count*2*unkn0]
-                        sub_unkn0 = struct.unpack_from('<i', data, pos)[0]
-                        pos += 4
-                        pos += count * 2 * sub_unkn0 * 4
-                    else:
-                        raise ValueError(f'LayoutBank_B: unknown block_type={block_type} at pos {pos-4}')
+            pos = _walk_layoutbank_block(data, pos)
         return pos
 
     @staticmethod

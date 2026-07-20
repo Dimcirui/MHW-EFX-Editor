@@ -3479,13 +3479,17 @@ def pack_emittershapemesh(values: dict) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FakeDoF (变长：32B fixed + 可选 20B tail，两种实测尺寸 32B / 52B)
+# FakeDoF (恒 32B fixed，无尾巴)
 #
-# 无内部长度字段控制 tail 有无——off24 等都不是判别符（off24=2 在 32B 与 52B 均出现）；
-# 尾段的有无由 forward_scan 定界（块 36B/56B 皆 4 对齐，扫描可靠）。codec 据
-# data_bytes 剩余长度自适应：满 20B 则解出 tail，否则止于 32B。无路径。
-# 字段类型按全 16 实例（尾段 13 实例）逐列分析：off8 为 0xcd → int；off32 为
-# hash/seed（大幅波动）→ int 防 float 异常；其余清晰浮点用 float。
+# ⚠ 2026-07 曾误判"32B 后偶尔多出的 20B 是可选 tail"——实为 bug，跟 LAYOUT 同源：
+# 那 20B 其实是*下一个 Main Entry 自己的 20B 头*（type+unkn0+attr_count+null+
+# timl_length）。语料实证：全部 3 个"32B 无尾"实例均非所在 entry 末位属性
+# （原本靠 forward-scan 就该在这正确碰到真正的下一属性 hash 停下）；13 个
+# "疑似 52B 有尾"实例 100% 是 entry 末位属性——forward-scan 找不到已知
+# ATTR_HASHES 就一路扫过整个下一 entry 头部，直到撞上其*第一个属性*的
+# type_hash 才停手，误吞 20B（见 efxfile.py::_known_attr_size 的 FAKEDOF 分支
+# 改回固定 32B，不再靠 forward-scan 兜底）。FAKEDOF 恒 32B，无路径。
+# 字段类型按全 16 实例逐列分析：off8 为 0xcd → int；其余清晰浮点用 float。
 #
 # EFX.bt(新，refs/EFX_Subtypes.bt)对同一 off4 字段的描述跟 RepeatArea 共用同一 struct
 # （int unkn0; int length; long unkn1[length/4-5]; float unkn2[3]; int unkn3[2];），
@@ -3509,33 +3513,97 @@ _FAKEDOF_FIXED_SCHEMA = [
 assert _schema_size(_FAKEDOF_FIXED_SCHEMA) == 32, \
     f"_FAKEDOF_FIXED_SCHEMA size mismatch: {_schema_size(_FAKEDOF_FIXED_SCHEMA)}"
 
-_FAKEDOF_TAIL_SCHEMA = [
-    ('tail_hash', 'i'),    # 4B  off32 (hash/seed)
-    ('tail1',     'i'),    # 4B  off36
-    ('tail2',     'i'),    # 4B  off40
-    ('tail3',     ('i', 2)),  # 8B off44-51
-]
-assert _schema_size(_FAKEDOF_TAIL_SCHEMA) == 20, \
-    f"_FAKEDOF_TAIL_SCHEMA size mismatch: {_schema_size(_FAKEDOF_TAIL_SCHEMA)}"
-
 
 def unpack_fakedof(data: bytes, off: int = 0):
-    """Unpack FakeDoF（32B fixed + 可选 20B tail，按剩余长度自适应）。"""
-    values, off = unpack(_FAKEDOF_FIXED_SCHEMA, data, off)
-    if len(data) - off >= 20:
-        tail, off = unpack(_FAKEDOF_TAIL_SCHEMA, data, off)
-        values.update(tail)
-        values['_has_tail'] = True
-    else:
-        values['_has_tail'] = False
-    return values, off
+    """Unpack FakeDoF（恒 32B fixed，无尾巴）。"""
+    return unpack(_FAKEDOF_FIXED_SCHEMA, data, off)
 
 
 def pack_fakedof(values: dict) -> bytes:
-    """Pack FakeDoF values dict back to bytes（按 _has_tail 决定是否拼尾段）。"""
-    out = pack(_FAKEDOF_FIXED_SCHEMA, values)
-    if values.get('_has_tail'):
-        out += pack(_FAKEDOF_TAIL_SCHEMA, values)
+    """Pack FakeDoF values dict back to bytes。"""
+    return pack(_FAKEDOF_FIXED_SCHEMA, values)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Layout (变长: 24B fixed prefix + LayoutBank_Block(嵌套变长，opaque)，恒无尾巴)
+#
+# EFX_Crimson.bt（MHW-EFX-Template-master）：
+#   long type + int unkn0[2] + long unkn1[4] + LayoutBank_Block spb。
+# LayoutBank_Block 是 Root 的 LayoutBank 子条目共用的同一个 nested
+# repeat-until-sentinel 编码（见 _walk_layoutbank_block），本身不可平铺展开成
+# 标量字段，原样 opaque 存取——只有前面固定的 24B 前缀是真正的标量。
+#
+# ⚠ 2026-07 曾误判"LayoutBank_Block 结束后偶尔多出的 20B 是具名引用尾巴"——
+# 实为 bug：那 20B 其实是*下一个 Main Entry 自己的 20B 头*（type+unkn0+
+# attr_count+null+timl_length）。触发条件：LAYOUT 恰好是所在 entry 的最后一个
+# 属性时，边界判定误把"下一个 entry 的任意 body_type 哈希"当成"不像边界"，
+# 从而多吞 20B，错位了下一个 entry 的头部（用户拿官方 010 模板实测反证：被
+# 误判"孤儿空属性"的 entry 实际有 14 个属性）。结论：LAYOUT 没有可选尾巴，
+# 恒为 24B 前缀 + LayoutBank_Block，见 efxfile.py::_known_attr_size 的 LAYOUT
+# 分支（已改回直接返回，不做落点猜测）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _walk_layoutbank_block(data: bytes, pos: int) -> int:
+    """
+    Walk one LayoutBank_Block starting at *pos*, return the position right after it.
+    供 Root 的 LayoutBank 子条目解析（efxfile.py::_parse_layout_bank）与 Layout
+    主属性（unpack_layout/_known_attr_size 的 LAYOUT 分支）共用。
+
+    LayoutBank_Block = int count(4);
+        if count>0: repeated LayoutBank_B until ReadInt()==-1, then long end(4).
+    LayoutBank_B = int block_type(4) + type-dependent UN 数组:
+        0<block_type<6 → UN p[count*2]
+        block_type==0 or ==6 → UN p[count*3]
+        block_type==7 → int unkn0 + UN p[count*2*unkn0]
+    """
+    count = struct.unpack_from('<i', data, pos)[0]
+    pos += 4
+    if count > 0:
+        while True:
+            sentinel = struct.unpack_from('<i', data, pos)[0]
+            if sentinel == -1:
+                pos += 4  # consume the -1 sentinel (long end)
+                break
+            block_type = sentinel
+            pos += 4
+            if 0 < block_type < 6:
+                pos += count * 2 * 4
+            elif block_type == 0 or block_type == 6:
+                pos += count * 3 * 4
+            elif block_type == 7:
+                sub_unkn0 = struct.unpack_from('<i', data, pos)[0]
+                pos += 4
+                pos += count * 2 * sub_unkn0 * 4
+            else:
+                raise ValueError(f'LayoutBank_B: unknown block_type={block_type} at pos {pos-4}')
+    return pos
+
+
+_LAYOUT_PREFIX_SCHEMA = [
+    ('unkn0_0', 'i'),
+    ('unkn0_1', 'i'),
+    ('unkn1_0', 'i'),
+    ('unkn1_1', 'i'),
+    ('unkn1_2', 'i'),
+    ('unkn1_3', 'i'),
+]
+assert _schema_size(_LAYOUT_PREFIX_SCHEMA) == 24, \
+    f"_LAYOUT_PREFIX_SCHEMA size mismatch: {_schema_size(_LAYOUT_PREFIX_SCHEMA)}"
+
+def unpack_layout(data: bytes, off: int = 0):
+    """Unpack Layout（24B fixed + LayoutBank_Block(opaque)，恒无尾巴）。"""
+    values, off = unpack(_LAYOUT_PREFIX_SCHEMA, data, off)
+    bank_start = off
+    bank_end = _walk_layoutbank_block(data, bank_start)
+    values['layoutbank_bytes'] = data[bank_start:bank_end]
+    off = bank_end
+    return values, off
+
+
+def pack_layout(values: dict) -> bytes:
+    """Pack Layout values dict back to bytes。"""
+    out = pack(_LAYOUT_PREFIX_SCHEMA, values)
+    out += values['layoutbank_bytes']
     return out
 
 
@@ -3629,6 +3697,7 @@ from .hashes import (
     TUBELIGHT,
     EMITTERSHAPEMESH,
     FAKEDOF,
+    LAYOUT,
 )
 
 ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
@@ -3704,6 +3773,7 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     EMITTERSHAPEMESH: ('_custom', None),
     FAKEDOF:          ('_custom', None),
     BILLBOARD2D:      ('_custom', None),
+    LAYOUT:           ('_custom', None),
 }
 
 # Populate custom codec registry after the hash imports above
@@ -3725,6 +3795,7 @@ ATTR_CUSTOM_CODEC = {
     EMITTERSHAPEMESH: (unpack_emittershapemesh, pack_emittershapemesh),
     FAKEDOF:          (unpack_fakedof,          pack_fakedof),
     BILLBOARD2D:      (unpack_billboard2d,      pack_billboard2d),
+    LAYOUT:           (unpack_layout,           pack_layout),
 }
 
 
@@ -3971,6 +4042,12 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
     # FAKEDOF：无嵌入路径（32B fixed + 可选 20B tail，全部标量），返回空列表即可
     # 复用路径闸门机制，让 CUSTOM_FIELD_SCHEMA_MAP 里的固定字段展开生效。
     if type_hash == FAKEDOF:
+        return []
+
+    # Layout：无嵌入路径（24B fixed + LayoutBank_Block(opaque) + 可选 20B tail），
+    # 同 FAKEDOF 一样返回空列表，只为了让 CUSTOM_FIELD_SCHEMA_MAP 里的 24B 固定
+    # 前缀字段展开生效。
+    if type_hash == LAYOUT:
         return []
 
     raise ValueError(f"extract_paths: 不支持的类型 hash 0x{type_hash:08X}")
@@ -4226,6 +4303,11 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
     if type_hash == FAKEDOF:
         return data_bytes
 
+    # Layout：同 FAKEDOF，无嵌入路径，new_paths 恒为空，原样返回（24B 前缀字段
+    # 改动走 Phase A 的 rebuild_custom_field_attribute 覆盖，不经过这里）
+    if type_hash == LAYOUT:
+        return data_bytes
+
     raise ValueError(f"rebuild_with_paths: 不支持的类型 hash 0x{type_hash:08X}")
 
 
@@ -4251,6 +4333,7 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     TONEMAPFILTER,
     # 无嵌入路径但需要 Phase A 固定字段展开：extract_paths/rebuild_with_paths 均按 0 路径处理
     FAKEDOF,
+    LAYOUT,
 })
 
 
@@ -4294,6 +4377,10 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     # TonemapFilter：3 个 fixed 标量字段（unkn0[2]/unkn1/unkn2[3]）；path/path_len
     # 由 codec 处理、不入 schema，path 走通用 STRING-item↔bytes-key 路径回写。
     TONEMAPFILTER:    _TONEMAPFILTER_FIXED_SCHEMA,
+    # Layout：暴露恒在的 24B fixed 前缀；LayoutBank_Block(嵌套变长) 与尾段
+    # （20B，present-conditional，见 unpack_layout 顶部注释）都不在此表，但
+    # unpack_layout/pack_layout 会原样保留（未编辑字段精确回填）。
+    LAYOUT:           _LAYOUT_PREFIX_SCHEMA,
 }
 
 
