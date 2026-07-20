@@ -239,21 +239,18 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if h == PTCOLLISION:
         return 4 + 32 + 12 + 8 + 32 + 4 + 8 + 4 + 12  # = 116
 
-    # PlSnow: 4(type) + various fixed fields
-    # From BT: long type(4) + int*2(8) + long spacer(4) + ...
-    # int unkn0[2](8)+long spacer(4)+int body_p(4)+int weapon_id(4)+colour(4)+int epvcolorslot(4)+
-    # int alpha_effect(4)+float[4](16)+long unkn5(4)+float[8](32)+
-    # Actually: unkn0[2](8)+long spacer(4)+body_part_id(4)+weapon_id(4)+colour(4)+epvcolorslot(4)+alpha_effect(4)+
-    # normal_map_strength(4)+alpha_threshold(4)+unkn4_0(4)+unkn4_1(4)+long unkn5(4)+
-    # roughness(4)+metallicness(4)+subsurface(4)+unkn6_0(4)+craquelure_effect(4)+craquelure_threshold(4)+
-    # unkn6_1(4)+craquelure_smoothing(4)
-    # = 8+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 4+19*4 = 80B after type? let me count:
-    # type(4) + unkn0[2](8) + long spacer(4) + body_part_id(4) + weapon_id(4) + colour(4) + epvcolorslot(4) +
-    # alpha_effect(4) + normal_map_strength(4) + alpha_threshold(4) + unkn4_0(4) + unkn4_1(4) + long unkn5(4) +
-    # roughness(4) + metallicness(4) + subsurface(4) + unkn6_0(4) + craquelure_effect(4) + craquelure_threshold(4) +
-    # unkn6_1(4) + craquelure_smoothing(4) = 4 + 20*4 = 84B
+    # PlSnow: 4(type) + 21 × 4B 字段 = 88B。
+    # ⚠ 2026-07 修：原来这里跟 PLSNOW_SCHEMA 一样漏了 BT 最后一个字段
+    # craquelure_smoothing_threshold，少算 4B（84 写成了 80+4=84 总长，实为
+    # 84+4=88）。凡是某 entry 里 PLSNOW 后面还跟着别的属性/entry 的文件，
+    # 从这里起就整体错位 4 字节，最终触发 main_opaque 兜底（DEGRADED）。
+    # unkn0[2](8)+spacer(4)+body_part_id(4)+weapon_id(4)+colour(4)+epvcolorslot(4)+
+    # alpha_effect(4)+normal_map_strength(4)+alpha_threshold(4)+unkn4_0(4)+unkn4_1(4)+
+    # unkn5(4)+roughness(4)+metallicness(4)+subsurface(4)+unkn6_0(4)+craquelure_effect(4)+
+    # craquelure_threshold(4)+unkn6_1(4)+craquelure_smoothing_threshold(4)
+    # = 21 × 4B = 84B data_bytes，+4(type) = 88B
     if h == PLSNOW:
-        return 4 + 20*4  # = 84
+        return 4 + 21*4  # = 88
 
     # PtBehavior: long type(4) + EFX_Behavior
     # EFX_Behavior: int unkn0(4) + int behav_type_len(4) + int para_count(4) + char b_type[behav_type_len]

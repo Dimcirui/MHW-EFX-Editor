@@ -1145,9 +1145,16 @@ assert _schema_size(PARENTEMISSIVE_SCHEMA) == 72, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PlSnow schema  (data_bytes = 80 B; full block = 84 B)
+# PlSnow schema  (data_bytes = 84 B; full block = 88 B)
 #
-# BT (EFX_Subtypes.bt):
+# ⚠ 2026-07 修：原 schema 漏掉 BT 描述的最后一个字段 craquelure_smoothing_threshold
+# （20 项写成了 19 项，注释自己都写出了"84"却在结尾错算成"80"）——导致 PLSNOW
+# 恒少算 4B，凡是 entry 里 PLSNOW 后面紧跟别的属性/entry 的文件，从这里起
+# 全部错位 4 字节，最终整个 main 段解析失败退化到 main_opaque（语料实测：
+# 6 个 DEGRADED 文件里至少这一个根因已确认，修复后 roundtrip.py --all 的
+# DEGRADED 计数下降）。
+#
+# BT (EFX_Subtypes.bt)：
 #   int unkn0[2](8) + long spacer(4) + int body_part_id(4) + int weapon_id(4) +
 #   colour color(4) + int epvcolorslot(4) + int alpha_effect(4) +
 #   float normal_map_strength(4) + float alpha_threshold(4) +
@@ -1156,19 +1163,10 @@ assert _schema_size(PARENTEMISSIVE_SCHEMA) == 72, \
 #   float subsurface_multipler(4) + float unkn6_0(4) +
 #   float craquelure_effect_diffumination(4) + float craquelure_threshold(4) +
 #   float unkn6_1(4) + float craquelure_smoothing_threshold(4)
-# = 8+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 8+4+19*4 = 84 → minus 4 = 80 ✓
-# Wait: 8+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 8 + 19*4 = 8+76 = 84? No:
-# unkn0[2]=8, spacer=4, body_part_id=4, weapon_id=4, colour=4, epv=4, alpha=4,
-# normal_map=4, alpha_thresh=4, unkn4_0=4, unkn4_1=4, unkn5=4,
-# roughness=4, metallic=4, subsurface=4, unkn6_0=4, craquelure=4, craq_thresh=4,
-# unkn6_1=4, craq_smooth=4
-# = 8+4*19 = 8+76 = 84 full... but that means data_bytes = 80.
-# Count: 2+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1 ints = 20 ints = 80B ✓
+# = unkn0[2](8) + 19×4B(76) = 84 B data_bytes ✓（20 个 4B 字段，非 19 个）
 # ─────────────────────────────────────────────────────────────────────────────
 
 PLSNOW_SCHEMA = [
-    # BT has int unkn0[2](8B) + long spacer(4B) + 17 × 4B fields = 20 × 4B = 80 B data_bytes
-    # Note: efxfile.py returns 4(type) + 20*4 = 84B full; data_bytes = 80B = 20 ints
     ('unkn0_0', 'i'),
     ('unkn0_1', 'i'),   # int unkn0[2] = 8 B
     ('spacer',                         'i'),
@@ -1189,8 +1187,9 @@ PLSNOW_SCHEMA = [
     ('craquelure_effect_diffumination','f'),
     ('craquelure_threshold',           'f'),
     ('unkn6_1',                        'f'),
-]  # 8+4*18 = 8+72 = 80 B ✓
-assert _schema_size(PLSNOW_SCHEMA) == 80, \
+    ('craquelure_smoothing_threshold', 'f'),
+]  # 8+4*19 = 8+76 = 84 B ✓
+assert _schema_size(PLSNOW_SCHEMA) == 84, \
     f"PLSNOW_SCHEMA size mismatch: {_schema_size(PLSNOW_SCHEMA)}"
 
 
@@ -3721,7 +3720,7 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     GUIDE:              (GUIDE_SCHEMA,              112),
     PLEMISSIVE:         (PLEMISSIVE_SCHEMA,           76),
     PARENTEMISSIVE:     (PARENTEMISSIVE_SCHEMA,       72),
-    PLSNOW:             (PLSNOW_SCHEMA,               80),
+    PLSNOW:             (PLSNOW_SCHEMA,               84),
     PTCOLLISION:        (PTCOLLISION_SCHEMA,         112),
     RANDOMFIX:          (RANDOMFIX_SCHEMA,            40),
     DUMMY:              (DUMMY_SCHEMA,                 9),
