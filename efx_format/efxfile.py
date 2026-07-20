@@ -1207,7 +1207,12 @@ class EFXFile:
             283026906: 84,    # EXTERNVELOCITY3D2 (long unkn[21] = 84B)
             705591903: 72,    # EXTERNVELOCITY3D5 (long unkn[18] = 72B)
             1879331968: 80,   # EXTERNVELOCITY3D6 (long unkn[20] = 80B)
-            0x3002E4CE: 288,  # EXTERNVELOCITY3D7 (long unkn[72] = 288B, brute-force verified)
+            # ⚠ 2026-07 修：原 288B（"long unkn[72]，brute-force verified"）错——用户对照
+            # MHW-EFX-Template-master 的 EFX_Extern.bt 反证：ExternVelocity3D7 真实定义是
+            # long unkn[39] + byte unkn1 = 39*4+1 = 157B，不是 288B。全语料仅 3 个文件含
+            # 这个类型，此前从未在含它的文件上验证过完整 byte-perfect（这 3 个文件此前
+            # 全部靠 main_opaque 兜底逃过检测）。
+            0x3002E4CE: 157,  # EXTERNVELOCITY3D7 (long unkn[39] + byte unkn1 = 39*4+1 = 157B)
             0x295D488A: 133,  # EXTERNBILLBOARD3D (133B/elem, confirmed via structural analysis)
             0x320E3177: 361,  # EXTERNVELOCITY3D1 (361B/elem, confirmed via structural analysis)
             0x1CC2BE3A: 161,  # EXTERNRGBWATER (161B/elem, roundtrip verified)
