@@ -18,7 +18,7 @@ effect files (`.efx`).
 2. **Import** an `.efx` file (or drag it into the viewport). It appears as a collection you can expand to
    browse its parts.
 3. Click a part to see and edit its values in the **EFX** sidebar and the **Object Data** properties tab.
-4. Use the sidebar buttons to add, remove, reorder, and reuse parts.
+4. Add, remove, reorder, or reuse parts.
 5. Click `Pre-export Validation` to check potential errors & warnings before export.
 6. **Export** when you're finished.
 
@@ -30,43 +30,39 @@ For reference only. This interpretation does not reflect the actual structure of
   - **EFX Sections**
     1. **Entry**: The core EFX unit.
        
-       Composed of typed Components (**Attributes**) that together define particle behaviors (transforms, emission, rendering, color and more).
-    2. **Action**: An action trigger.
+       Composed of typed Components (**Attributes**) that together define particle behaviors.
+       There are two sub-collections `Direct Trigger` and `Not Direct Trigger`. Entries that are in `Direct Trigger` will be triggered directly once calling.
+    3. **Action**: Efx trigger.
        
        Called by an Entry's PTLIFE or PTCOLLISION attribute; activates one or more target Entries (**PLAYEMITTER**) or external EFX files (**PLAYEFX**).
-    3. **Extern**: EFX Entry replacer(?)
+    4. **Extern**: Attribute fields' replacer.
        
-       There are two types, replacement parameters and external EFX references.
-       The former replaces the corresponding parameter in the attribute within the entry when some conditions are met;
-       the specific mechanism of the latter is not yet clear.
+       An Extern replaces the corresponding parameter in the attribute within the entry when some conditions are met.
   - **EFX Subselect Table**: A subset of Entries. Determines which EFX attributes from which subsets to call under some conditions.
  
 
 ## Features
+- **Entry/Attribute Presets** — Save any Entries or Attributes as preset for future use.
+- **EPV Edit** — Basic .epv edition.
+- **UVS Edit** — Import/export and edit .uvs file at any UVSEQUENCE attribute. Gif to sequence png is also supported.
+- **File Validation** — Check for errors & warnings that could cause the game to crash, such as Action loop, 2d/3d type mismatching, etc.
+  This feature does not guarantee that errors will never occur.
+- **Activation & Reference Status Check** — Display the calls to and from the selected Entry, as well as its activation status.
 - **TRANSFORM3D Visualization** — Reflects the actual trigger position of the EFX Entry.
   After you snap it to any armature, efx entries can also snap to the bone binded (decided by PARENTOPTIONS).
   This feature uses the same coordinate system as the MHW Model Editor.
-- **Pre-export Validation** — Check for errors & warnings that could cause the game to crash, such as null pointers, Action loop, attribute order, etc.
-  This feature does not guarantee that errors will never occur.
-- **Activation & Reference Status Check** — Display the calls to and from the selected Entry, as well as its activation status.
-- **Hex View** — You can copy the entire hex value of a specific attribute, edit it, and then paste it back (ensuring that the bytes remain exactly the same).
-- **UVS Edit** — You can import/export and edit .uvs file at any UVSEQUENCE attribute. Gif to sequence png is also supported.
 
 ## Supported Operations
 
-> **Note:** All add, remove, reorder, and paste operations must be done through the **EFX sidebar panel**
-> (`N` key). Do not rename, move, or delete the generated objects directly in the outliner — the add-on
-> manages the structure internally.
-
 ### 1. Sections
 
-Universal section operations: **Add** (from preset) / **Delete** / **Reorder** (move up/down within entry) / **Copy whole Entry** / **Paste whole Entry** / **Rename** / **Save** (to preset).
+Universal section operations: **Add** / **Delete** / **Reorder** / **Copy & Paste** / **Rename**.
 
 | Section | Add | Delete | Edit | Note |
 |---|---|---|---|---|
 | **Action** | ✓ | ✓ | ✓ | |
-| **Extern** | **Partial** | ✓ | **Partial** | EXTERN-SPAWN/RGBFIRE/VELOCITY3D/SCALEANIM/TRANSFORM3D add&edit |
-| **Entry** | ✓ | ✓ | ✓ | EFX TIML fully editable |
+| **Extern** | **Partial** | ✓ | **Partial** | all editable except `EXTERNVELOCITY3D2`/`5`/`7` |
+| **Entry** | ✓ | ✓ | ✓ | TIML fully editable through blender's animation tools |
 
 ### 2. Subselection Table
 
@@ -74,7 +70,7 @@ Fully Supported
 
 ### 3. Entry Attributes
 
-Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder** (move up/down within entry) / **Copy whole attribute** / **Paste whole attribute** / **Copy field values** / **Paste field values** / **Save** (to preset).
+Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder** / **Copy & Paste** / **Save as preset**.
 
 #### I. Entry Skeleton (required in every EFX Entry)
 
@@ -113,7 +109,7 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 | BLINK | ✓ |
 | LUMINANCEBLEED | ✓ |
 
-#### IV. Mesh Overrides (probably require MESH)
+#### IV. Mesh Overrides (require MESH)
 
 | Attribute Type | Field Editing |
 |---|---|
@@ -207,7 +203,7 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 | COLORCORRECTFILTER | ✓ |
 | FAKEDOF | ✓ |
 | REPEATAREA | ✓ |
-| LAYOUT | ✗ |
+| LAYOUT | ✓ |
 
 ## Credits
 
