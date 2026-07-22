@@ -78,12 +78,6 @@ def remove_block(values: dict, index: int) -> bool:
     return True
 
 
-def known_slots(block: dict):
-    """该材质槽已知 schema 的贴图槽 t 列表（顺序=schema 顺序）；无依据返回 None。"""
-    from . import material_meta as mm
-    return mm.material_slot_schema(block['mat_shader'])
-
-
 def set_block_shader(block: dict, new_shader_hash: int) -> None:
     """把材质槽的材质类型换成 new_shader_hash，贴图槽位跟着换成新类型的 schema。
 

@@ -191,13 +191,6 @@ def _parse_strings(data: bytes, str_off: int, str_cnt: int) -> List[UVSString]:
 # Serialization
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _pad_to(data: bytes, alignment: int) -> bytes:
-    rem = len(data) % alignment
-    if rem:
-        data += b'\x00' * (alignment - rem)
-    return data
-
-
 def _serialize(uvs: UVSFile) -> bytes:
     groups  = uvs.groups
     strings = uvs.strings

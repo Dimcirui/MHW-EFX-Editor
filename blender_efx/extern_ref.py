@@ -247,28 +247,6 @@ def overlay_extern_ref_index(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §5  辅助：找 Extern 段集合 + 构建 extern_index_map
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_extern_index_map(extern_objs: list) -> dict:
-    """
-    构建 Extern 段局部索引映射：{EFX_EXTERN Object → 0-based local index}。
-
-    参数
-    ----
-    extern_objs : list[bpy.types.Object]
-        已按 efx_index 排序的 EFX_EXTERN 对象列表（与导出时 extern_raw 顺序一致）。
-
-    返回
-    ----
-    dict[bpy.types.Object, int]
-
-    注意：调用方传入的 extern_objs 应已按 efx_index 排序（int sort）。
-    """
-    return {obj: idx for idx, obj in enumerate(extern_objs)}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # §6  算子：强制解锁死块（pointerized=False → pointerized=True + ptr=None）
 # ─────────────────────────────────────────────────────────────────────────────
 

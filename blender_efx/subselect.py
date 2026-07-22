@@ -23,7 +23,8 @@ Subselect 结构（efx_format/efxfile.py SubselectTable）：
 byte-perfect 保证：
   - table_type / unkn0 原样存储（字符串，避免 uint32 溢出）。
   - entries 顺序由 members CollectionProperty 顺序决定，导入时按 entries 原序填入。
-  - 悬空 member（body_ptr=None）导出时跳过（TODO: 后续校验阶段改为报错）。
+  - 悬空 member（body_ptr=None）导出时跳过；validate.py 统一扫描全部悬空指针报
+    WARN（不阻断导出，导出后弹窗报告）——这是既定设计，不是待补的校验缺口。
   - entries 未变时：entries[i] == 该对象的 efx_index == Main 段局部序号，精确往返。
 """
 
@@ -243,7 +244,7 @@ def init_subselect_props(ss_obj: bpy.types.Object,
         if entry_obj is not None:
             item.body_ptr = entry_obj
         # 若找不到对应 entry（异常情况），body_ptr 留 None
-        # 导出时悬空成员会被跳过（见 export_subselect_table 的 TODO 注释）
+        # 导出时悬空成员会被跳过；validate.py 统一扫描报 WARN（不阻断导出）
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -272,10 +273,11 @@ def export_subselect_table(ss_obj: bpy.types.Object,
     若 ss_obj 不存在 efx_subselect 属性（旧场景/兼容），
     则从自定义属性 raw_b64 还原原始字节（byte-perfect 回退）。
 
-    悬空 member 处理（TODO）
-    -----------------------
-    body_ptr 为 None（指针悬空）的成员当前跳过（不写入 entries），
-    以保证导出不崩溃。后续校验阶段应改为报错（BLUEPRINT §13 引用完整性检查）。
+    悬空 member 处理
+    -----------------
+    body_ptr 为 None（指针悬空）的成员跳过（不写入 entries），以保证导出不崩溃。
+    validate.py 的 validate_efx_tree 统一扫描全部悬空指针报 WARN（导出后弹窗报告，
+    不阻断导出）——这是 0.2.57 定型的既定设计，不是待补的校验缺口。
     """
     from ..efx_format.efxfile import SubselectTable
 
@@ -306,12 +308,11 @@ def export_subselect_table(ss_obj: bpy.types.Object,
     for item in props.members:
         entry_obj = item.body_ptr
         if entry_obj is None:
-            # TODO: 后续校验阶段改为 raise ValueError 或 report ERROR，当前静默跳过
+            # 悬空指针：静默跳过，validate.py 统一扫描报 WARN（既定设计，非待办）
             continue
         local_idx = entry_index_map.get(entry_obj)
         if local_idx is None:
-            # entry_obj 不在当前文件的 Main 段里（极端情况：跨文件拖拽等）
-            # TODO: 同上，后续改报错
+            # entry_obj 不在当前文件的 Main 段里（极端情况：跨文件拖拽等），同样跳过
             continue
         entries.append(local_idx)
 

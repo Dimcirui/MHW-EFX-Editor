@@ -73,25 +73,12 @@ def _b64dec(s: str) -> bytes:
     return base64.b64decode(s)
 
 
-def _new_collection(name: str, parent_col) -> bpy.types.Collection:
-    """建新集合并链接到父集合，返回新集合。"""
-    col = bpy.data.collections.new(name)
-    parent_col.children.link(col)
-    return col
-
-
 def _new_empty(name: str, collection: bpy.types.Collection) -> bpy.types.Object:
     """在指定集合里建 Empty 对象，返回对象。"""
     obj = bpy.data.objects.new(name, None)
     obj.empty_display_size = 0.1
     collection.objects.link(obj)
     return obj
-
-
-def _set_parent(child: bpy.types.Object, parent: bpy.types.Object) -> None:
-    """设置父子关系（不移动位置）。"""
-    child.parent = parent
-    child.matrix_parent_inverse = parent.matrix_world.inverted()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

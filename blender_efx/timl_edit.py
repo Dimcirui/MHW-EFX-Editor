@@ -364,11 +364,6 @@ def _clear_timl_fcurves(handle):
         pass
 
 
-def rebuild_fcurves(handle, body):
-    """结构编辑后：从当前 timl_bytes 重建 fcurve（= 清空 + build）。build 已幂等，直接转发。"""
-    return build_persistent_fcurves(handle, body)
-
-
 def _rebuild_xform(act, timl_obj, ch, tf):
     fc = _ch_fcurve(act, timl_obj, ch)
     if fc is None:
@@ -481,16 +476,6 @@ def _delete_timl_handle(handle):
         bpy.data.objects.remove(handle, do_unlink=True)
     except Exception:
         pass
-
-
-def has_timl_fcurves(body):
-    """body 句柄上是否有持久 TIML fcurve（供消费者判断 live 编辑面是否存在）。"""
-    from . import io_tree as _iot
-    h = _iot.find_timl_handle(body)
-    if h is None:
-        return False
-    act = _get_timl_action(h)
-    return act is not None and len(_act_fcurves(act, h)) > 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────

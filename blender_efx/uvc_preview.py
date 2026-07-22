@@ -727,11 +727,6 @@ def _stop_preview():
     _state["start_frame"] = 0
 
 
-def _root_of(obj):
-    """从任意 EFX 对象找它所属的顶层文件集合（O(1)，见 root_collection）。"""
-    return _rc.find_root_collection(obj)
-
-
 def _resolve_root(obj):
     """从任意 EFX 对象（属性/entry/…）找所属 EFX_ROOT 顶层文件集合；找不到返回 None。"""
     return _rc.find_root_collection(obj)

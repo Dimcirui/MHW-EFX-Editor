@@ -72,8 +72,6 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     """
     def rd_i(offset: int) -> int:
         return struct.unpack_from('<i', data, pos + offset)[0]
-    def rd_I(offset: int) -> int:
-        return struct.unpack_from('<I', data, pos + offset)[0]
 
     h = type_hash
 

@@ -41,16 +41,6 @@ def _is_zh() -> bool:
         return False
 
 
-def _parse_active_timl():
-    """返回 (entry, Timl) 或 (None, None)。"""
-    body = _active_entry()
-    if body is None:
-        return None, None
-    tb = _entry_timl_bytes(body)
-    timl = _timl.parse_timl(tb)
-    return (body, timl) if timl is not None else (None, None)
-
-
 def _resolve_for_edit():
     """持久化模型：解析"要编辑哪个 Timl 模型"。**先提交进行中的关键帧编辑**（commit
     fcurves→字节），再从字节解析——否则随后 set_entry_timl 重建会用旧字节冲掉正在改的关键帧。

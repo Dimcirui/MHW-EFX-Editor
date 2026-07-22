@@ -37,9 +37,9 @@ byte-perfect 保证：
     非 targets 字节（含 target_count 字节原值）只要数量不变就逐字复现。
   - entries 未变时：target 指针 → efx_index == 导出的局部 index → byte-perfect。
 
-悬空 target 处理（TODO）：
-  body_ptr 为 None 的 target 当前导出时跳过（不写入），
-  与 subselect.py 保持一致。后续校验阶段应改为报错。
+悬空 target 处理：
+  body_ptr 为 None 的 target 导出时跳过（不写入），与 subselect.py 保持一致。
+  validate.py 统一扫描报 WARN（导出后弹窗报告，不阻断导出）——0.2.57 定型的既定设计。
 """
 
 import struct
@@ -296,10 +296,11 @@ def export_action_data(play_obj: bpy.types.Object,
     若 play_obj 不存在 efx_play 属性（旧场景/兼容），
     则从自定义属性 raw_b64 还原原始字节（byte-perfect 回退）。
 
-    悬空 target 处理（TODO）
-    -----------------------
-    body_ptr 为 None（指针悬空）的 target 当前跳过（不写入 targets），
-    以保证导出不崩溃。后续校验阶段应改为报错。
+    悬空 target 处理
+    -----------------
+    body_ptr 为 None（指针悬空）的 target 跳过（不写入 targets），以保证导出不崩溃。
+    validate.py 统一扫描报 WARN（导出后弹窗报告，不阻断导出）——0.2.57 定型的既定设计，
+    不是待补的校验缺口。
     """
     from ..efx_format.efxfile import ActionData, ActionEntry
 

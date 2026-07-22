@@ -116,8 +116,10 @@ def remove_collection_named(name):
 # ─────────────────────────────────────────────────────────────────────────────
 # 生命周期缓存复位分发器（load_post；只复位缓存 dict，绝不碰对象/数据块）
 # ─────────────────────────────────────────────────────────────────────────────
-# 各模块注册一个"清缓存"回调；换文件时统一触发。故意不注册 undo/redo_post 做对象清理——
-# handler 里删数据块有风险，孤儿清理交给 enter 先清场 / exit 清场（算子上下文，安全）。
+# 设计为"各模块注册一个'清缓存'回调，换文件时统一触发"，但目前没有任何模块接入
+# 这个钩子（mesh_align/es3d_preview/uvc_preview 等改无状态化后走的是标记扫描/
+# reconcile，不经过这里）——_on_load 目前是空列表上的空转。留着骨架，真要接回来
+# 再补 register_cache_reset/unregister_cache_reset 接口。
 
 _cache_resets = []
 
@@ -129,16 +131,6 @@ def _on_load(*_args):
             fn()
         except Exception:
             pass
-
-
-def register_cache_reset(fn):
-    if fn not in _cache_resets:
-        _cache_resets.append(fn)
-
-
-def unregister_cache_reset(fn):
-    if fn in _cache_resets:
-        _cache_resets.remove(fn)
 
 
 def register():

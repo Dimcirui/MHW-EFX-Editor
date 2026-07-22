@@ -307,33 +307,6 @@ def _schema_size(schema: list) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ColorParam (from EFX_Subtypes.bt – used in ExternRgbFire)
-# 10 ints = 40 B
-# ─────────────────────────────────────────────────────────────────────────────
-
-_COLOR_PARAM_SCHEMA = [
-    ('enable', 'i'),
-    ('fadeIn', 'i'),
-    ('fadeInJitter', 'i'),
-    ('duration', 'i'),
-    ('durationJitter', 'i'),
-    ('fadeOut', 'i'),
-    ('fadeOutJitter', 'i'),
-    ('unkn7', 'i'),
-    ('unkn8', 'i'),
-    ('unkn9', 'i'),
-]  # 40 B
-
-
-def _unpack_color_param(data: bytes, off: int) -> Tuple[dict, int]:
-    return unpack(_COLOR_PARAM_SCHEMA, data, off)
-
-
-def _pack_color_param(vals: dict) -> bytes:
-    return pack(_COLOR_PARAM_SCHEMA, vals)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # ExternTransform3D schema  (228 B)
 #
 # BT (EFX_Subtypes.bt):

@@ -175,10 +175,6 @@ class TimlKeyframe:
     transition: int = 0        # 插值类型（见 INTERP_NAMES）
     data_type: int = 0         # 与所属 transform.dataType 一致
 
-    @property
-    def interp_name(self) -> str:
-        return INTERP_NAMES[self.transition] if 0 <= self.transition < len(INTERP_NAMES) else "?"
-
     def serialize(self) -> bytes:
         return self.raw
 
@@ -564,15 +560,3 @@ def copy_transform(timl: "Timl", src_slot: int, dst_slot: int,
     dst_t.transforms.append(_copy.deepcopy(src_tf))
     timl.dirty = True
     return True
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 自检（供 tools / 测试调用）
-# ─────────────────────────────────────────────────────────────────────────────
-
-def verify_roundtrip(data: bytes) -> bool:
-    """clean 路径 byte-perfect 自检：parse → serialize（未编辑）== 原字节。"""
-    t = parse_timl(data)
-    if t is None:
-        return False
-    return t.serialize() == data

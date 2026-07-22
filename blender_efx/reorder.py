@@ -178,36 +178,6 @@ def _get_attribute_parent_label(block_obj: bpy.types.Object) -> str:
     return ""
 
 
-def _swap_objects(obj_a: bpy.types.Object, obj_b: bpy.types.Object,
-                  is_entry: bool) -> None:
-    """
-    交换 obj_a 和 obj_b 的 efx_index，并重建两者的显示名。
-
-    is_entry=True  → entry 规则；
-    is_entry=False → attribute 规则。
-    """
-    idx_a = int(obj_a.get("efx_index", 0))
-    idx_b = int(obj_b.get("efx_index", 0))
-
-    # 交换 efx_index
-    obj_a["efx_index"] = idx_b
-    obj_b["efx_index"] = idx_a
-
-    # 重建显示名
-    if is_entry:
-        label_a = _get_entry_raw_label(obj_a)
-        label_b = _get_entry_raw_label(obj_b)
-        obj_a.name = _entry_display_name(idx_b, label_a, entry_obj=obj_a)
-        obj_b.name = _entry_display_name(idx_a, label_b, entry_obj=obj_b)
-    else:
-        parent_label_a = _get_attribute_parent_label(obj_a)
-        parent_label_b = _get_attribute_parent_label(obj_b)
-        type_name_a = _get_attribute_type_name(obj_a)
-        type_name_b = _get_attribute_type_name(obj_b)
-        obj_a.name = _attribute_display_name(idx_b, parent_label_a, type_name_a)
-        obj_b.name = _attribute_display_name(idx_a, parent_label_b, type_name_b)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 顶层带标签条目（entry / action / extern）通用重排核心
 #

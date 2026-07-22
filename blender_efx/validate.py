@@ -187,17 +187,6 @@ def detect_dimension_entries(root_obj) -> tuple:
     return dim_2d, dim_3d
 
 
-def _is_extern_ref_attribute(obj) -> bool:
-    """判断属性对象是否是已指针化的 EXTERNREFERENCE（有 efx_extern_ref 且 pointerized）。"""
-    props = getattr(obj, "efx_extern_ref", None)
-    if props is None:
-        return False
-    try:
-        return bool(props.extern_ref_pointerized)
-    except AttributeError:
-        return False
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 核心校验函数
 # ─────────────────────────────────────────────────────────────────────────────

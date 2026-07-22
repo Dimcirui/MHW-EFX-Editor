@@ -140,11 +140,6 @@ def save_attribute_preset(blk_obj: bpy.types.Object, name: str) -> str:
 # 分类与预设列举（两级下拉）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _category_of_dir(dirname: str) -> str:
-    """子目录名即 slug；扁平根目录下的旧预设视为 'misc'。"""
-    return dirname
-
-
 def list_attribute_categories() -> list:
     """
     扫 __attributes__/ 的子目录，返回有预设的分类 EnumProperty items：
