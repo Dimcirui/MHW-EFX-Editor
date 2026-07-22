@@ -72,6 +72,14 @@ Fully Supported
 
 Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder** / **Copy & Paste** / **Save as preset**.
 
+Attribute categories were reworked in 0.4.6, based on actual usage patterns and
+relationships between attributes across the sample corpus (position statistics +
+co-occurrence data) rather than a rough guess — a few attributes that were
+previously miscategorized (e.g. FAKEPLANE listed as an exclusive-choice renderer,
+when it actually stacks on top of a real one 99.8% of the time) now sit where
+they make sense. 2D variants (TRANSFORM2D/BILLBOARD2D/EMITTERSHAPE2D/VELOCITY2D)
+are folded directly into their 3D-equivalent section instead of a separate bucket.
+
 #### I. Entry Skeleton (required in every EFX Entry)
 
 | Attribute Type | Field Editing |
@@ -80,27 +88,52 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 | PARENTOPTIONS | ✓ |
 | SPAWN | ✓ |
 | LIFE | ✓ |
+| TRANSFORM2D (2D equivalent) | ✓ |
 
-#### II. Renderer (can be mutually exclusive)
+#### II. Extern Declaration (almost certainly first in entry)
+
+| Attribute Type | Field Editing |
+|---|---|
+| EXTERNREFERENCE | ✓ |
+
+#### III. Renderer Body (mutually exclusive)
+
+**UVS System**
 
 | Attribute Type | Field Editing |
 |---|---|
 | BILLBOARD3D | ✓ |
-| PLANE | ✓ |
 | RIBBON | ✓ |
+| PLANE | ✓ |
+| LIGHTNING | ✓ |
 | RIBBONBLADE | ✓ |
 | STRAINRIBBON | ✓ |
-| MESH | ✓ |
-| LIGHTNING | ✓ |
-| TUBELIGHT | ✓ |
-| FAKEPLANE | ✓ |
-| DUMMY | ✓ |
+| BILLBOARD2D (2D equivalent) | ✓ |
 
-#### III. Sprite Modifiers (face-rendered only, can conflict with MESH)
+**Mesh System**
 
 | Attribute Type | Field Editing |
 |---|---|
-| SHADERSETTINGS | ✓ |
+| MESH | ✓ |
+
+**Dummy System**
+
+| Attribute Type | Field Editing |
+|---|---|
+| DUMMY | ✓ |
+
+**Special**
+
+| Attribute Type | Field Editing |
+|---|---|
+| TUBELIGHT | ✓ |
+
+#### IV. Renderer Modifier (attaches to a Renderer Body, can stack)
+
+**UVS System**
+
+| Attribute Type | Field Editing |
+|---|---|
 | UVSEQUENCE | ✓ |
 | RGBFIRE | ✓ |
 | RGBWATER | ✓ |
@@ -109,24 +142,45 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 | BLINK | ✓ |
 | LUMINANCEBLEED | ✓ |
 
-#### IV. Mesh Overrides (require MESH)
+**Mesh System**
 
 | Attribute Type | Field Editing |
 |---|---|
-| UVCONTROL | ✓ |
 | MATERIAL | **Partial** |
+| UVCONTROL | ✓ |
 
-#### V. Emitter / Space
+**Dummy System**
+
+| Attribute Type | Field Editing |
+|---|---|
+| PLEMISSIVE | ✓ |
+| PARENTEMISSIVE | ✓ |
+| PLSNOW | ✓ |
+| PARENTSNOW | ✓ |
+| OTOMOSNOW | ✓ |
+| PARENTMATERIAL | ✓ |
+
+**Generic (cross-host)**
+
+| Attribute Type | Field Editing |
+|---|---|
+| FAKEPLANE | ✓ |
+| SHADERSETTINGS | ✓ |
+
+#### V. Generation Method (spawn-time setup)
 
 | Attribute Type | Field Editing |
 |---|---|
 | EMITTERSHAPE3D | ✓ |
 | EMITTERSHAPEMESH | ✓ |
-| EMITTERBOUNDARY | ✓ |
 | SPAWNBYANGLE | ✓ |
 | SPAWNBYOCCLUSION | ✓ |
+| RAYCAST | ✓ |
+| EMITTERSHAPE2D (2D equivalent) | ✓ |
 
-#### VI. Motion / Velocity
+#### VI. Motion & Visibility (per-frame behavior)
+
+**Motion**
 
 | Attribute Type | Field Editing |
 |---|---|
@@ -138,9 +192,10 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 | HOMING | ✓ |
 | GUIDE | ✓ |
 | PATHCHAIN | ✓ |
-| SCREENSPACECOLLISION | ✓ |
+| VELOCITY2D (2D equivalent) | ✓ |
+| REPEATAREA | ✓ |
 
-#### VII. Visibility / Fade
+**Visibility**
 
 | Attribute Type | Field Editing |
 |---|---|
@@ -149,61 +204,42 @@ Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder**
 | FADEBYEMITTERANGLE | ✓ |
 | FADEBYOCCLUSION | ✓ |
 | MASTERONLY | ✓ |
-| RAYCAST | ✓ |
+| EMITTERBOUNDARY | ✓ |
+| SCREENSPACECOLLISION | ✓ |
 | LINKPARTSVISIBLE | ✓ |
 
-#### VIII. Lifecycle Triggers (almost certainly last in entry)
+#### VII. Action Trigger (fires another Action segment; almost certainly last in entry)
 
 | Attribute Type | Field Editing |
 |---|---|
 | PTCOLLISION | ✓ |
 | PTLIFE | ✓ |
-| PTTRIGGER | ✓ |
-| SHOVEL | ✓ |
 
-#### IX. Extern Declaration (almost certainly first in entry)
-
-| Attribute Type | Field Editing |
-|---|---|
-| EXTERNREFERENCE | ✓ |
-
-#### X. Char Effects
-
-| Attribute Type | Field Editing |
-|---|---|
-| PLEMISSIVE | ✓ |
-| PARENTEMISSIVE | ✓ |
-| PLSNOW | ✓ |
-| PARENTSNOW | ✓ |
-| OTOMOSNOW | ✓ |
-| PARENTMATERIAL | ✓ |
-
-#### XI. Behavior System (standalone, mutually exclusive with normal flow)
+#### VIII. PtBehavior (standalone, mutually exclusive with normal flow)
 
 | Attribute Type | Field Editing |
 |---|---|
 | PTBEHAVIOR | ✓ |
 
-#### XII. 2D / UI Variants (for 2D effects — functional 2D equivalents of their 3D counterparts; many 3D attributes do not apply when these are present)
+#### IX. Misc
 
-| Attribute Type | Field Editing | 3D Equivalent Section |
-|---|---|---|
-| TRANSFORM2D | ✓ | I. Entry Skeleton |
-| EMITTERSHAPE2D | ✓ | V. Emitter / Space |
-| VELOCITY2D | ✓ | VI. Motion / Velocity |
-| BILLBOARD2D | ✓ | II. Renderer |
+**Post-process Filters**
 
-#### XIII. Misc / Control
+| Attribute Type | Field Editing |
+|---|---|
+| TONEMAPFILTER | ✓ |
+| COLORCORRECTFILTER | ✓ |
+| FAKEDOF | ✓ |
+
+**Others**
 
 | Attribute Type | Field Editing |
 |---|---|
 | RANDOMFIX | ✓ |
 | CHECKPUREATTRIBUTE | ✓ |
-| TONEMAPFILTER | ✓ |
-| COLORCORRECTFILTER | ✓ |
-| FAKEDOF | ✓ |
-| REPEATAREA | ✓ |
 | LAYOUT | ✓ |
+| PTTRIGGER | ✓ |
+| SHOVEL | ✓ |
 
 ## Credits
 
