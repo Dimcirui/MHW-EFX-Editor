@@ -126,13 +126,20 @@ FIELD_LABELS_ZH = {
     "fadeInDurationJitter": "淡入时长抖动",
     "fadeOutDuration": "淡出时长",
     "fadeOutDurationJitter": "淡出时长抖动",
-    "fadeStart": "淡出起点",
+    # FADEBYEMITTERANGLE 实测确认（2026-07-23）：是距离不是角度，见 annotations tooltip。
+    "fadeInStart": "淡入起点",
+    "fadeInEnd": "淡入终点",
+    # FADEBYEMITTERANGLE 原 cone/alphaRate 改名（2026-07-23，全语料统计推断，
+    # 待实机验证——见 structs.py schema 注释）。
+    "outerConeAngle": "外锥角",
+    "innerConeAngle": "内锥角",
     "status": "状态",
 
     # ── 引用 / 索引 ─────────────────────────────────────────────────────────
     "ieIndex": "碰撞触发 Play",
     "relationIndex": "关联 Play",
     "referenceIndex": "Extern 引用",
+    "trigger_condition": "触发条件",
     "body_p": "关联 Body",
     "wp_p": "关联武器",
     "body_part_id": "身体部位 ID",
@@ -282,15 +289,18 @@ FIELD_LABELS_ZH = {
     "controlBitflag": "控制位标志",
     "enableVelocityBitflag": "启用速度位标志",
     "forceFieldMode": "力场模式",
-    "viewAngleLimit": "视角限制",
     "visibleOnPreview": "预览中可见",
     # RIBBON 实测：原观测名 visiblePreview，实为"可见性修正"。非 0 会破坏 TIML 正常
     # 读取（条带读不到 animation1 颜色）并导致条带莫名缺失；安全值 0。
     "visiblePreview": "可见性修正",
-    "clipMax": "裁剪上限",
-    "clipMin": "裁剪下限",
     "zDepthModifierStart": "Z 深度修正（起始）",
     "zDepthModifierEnd": "Z 深度修正（结束）",
+    # FADEBYDEPTH 实测确认（2026-07-23，原名 viewAngleLimit/clipMin/fadeStart/
+    # clipMax，跟摄像机距离有关、跟角度/硬裁剪无关）：两段独立的距离渐隐区间。
+    "nearFadeInStart": "近处淡入起点",
+    "nearFadeInEnd": "近处淡入终点",
+    "farFadeOutStart": "远处淡出起点",
+    "farFadeOutEnd": "远处淡出终点",
 
     # ── UV ──────────────────────────────────────────────────────────────────
     "uv1_initialPosition": "UV1 初始位置",
@@ -532,6 +542,8 @@ RESERVED_FILL_FIELDS = frozenset({
     ('RIBBON', 'spacer8'),
     ('RIBBON', 'spacer9'),
     ('RIBBON', 'unkn24'),
+    # 原 ib_junk[32] 拆分出的 13 字节纯 0xCD 填充段（2026-07-21，全语料 15015 块核对）。
+    ('RIBBON', 'ribbon_flow_reserved'),
     ('RIBBONBLADE', 'spacer0'),
     ('RIBBONBLADE', 'spacer1'),
     ('RIBBONBLADE', 'spacer2'),

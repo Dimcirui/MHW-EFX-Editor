@@ -787,22 +787,33 @@ SCALEANIM_SCHEMA = EXTERN_SCALEANIM_SCHEMA
 # ─────────────────────────────────────────────────────────────────────────────
 # FadeByDepth schema  (data_bytes = 20 B; full block = 24 B)
 #
-# BT (EFX_Subtypes.bt):
+# 用户实机确认（2026-07-23）：跟摄像机距离相关，与"角度"/"裁剪"这两个原 BT
+# 命名的字面含义都对不上，是两段独立的距离渐隐区间：
+#   - 近端：低于 nearFadeInStart 硬消失；nearFadeInStart~nearFadeInEnd 之间
+#     软过渡淡入；高于 nearFadeInEnd 全程可见。两者同置 0 时近端渐隐整体关闭
+#     （不管多近都不消失），实机验证。
+#   - 远端：低于 farFadeOutStart 全程可见；farFadeOutStart~farFadeOutEnd 之间
+#     软过渡淡出；高于 farFadeOutEnd 硬消失。farFadeOutStart=0/farFadeOutEnd=500
+#     实机验证：约 400 距离处已接近不可见，拉近变清晰，与该模型吻合。
+#   两段区间彼此独立（近端清零不影响远端），全语料 44321 块统计 fadeOutStart/
+#   fadeOutEnd 会成对打到 ~1e10 当"关闭远端渐隐"的哨兵值用，近端两个字段则
+#   从未见到同等量级的哨兵值。
+# 原 BT (EFX_Subtypes.bt) 命名（已被推翻，仅留存查）：
 #   long  type                               4 B  ← in type_hash
 #   int   unkn0                              4 B
-#   float viewAngleLimit                     4 B
-#   float clipMin                            4 B
-#   float fadeStart                          4 B
-#   float clipMax                            4 B
+#   float viewAngleLimit（原名，实为近端硬消失阈值，与角度无关）      4 B
+#   float clipMin（原名，实为近端淡入终点）                          4 B
+#   float fadeStart（原名，实为远端淡出起点，命名恰好蒙对）           4 B
+#   float clipMax（原名，实为远端硬消失阈值，命名恰好蒙对）          4 B
 # data_bytes: 4+4×4 = 20 B ✓
 # ─────────────────────────────────────────────────────────────────────────────
 
 FADEBYDEPTH_SCHEMA = [
     ('unkn0', 'i'),
-    ('viewAngleLimit', 'f'),
-    ('clipMin', 'f'),
-    ('fadeStart', 'f'),
-    ('clipMax', 'f'),
+    ('nearFadeInStart', 'f'),
+    ('nearFadeInEnd', 'f'),
+    ('farFadeOutStart', 'f'),
+    ('farFadeOutEnd', 'f'),
 ]
 assert _schema_size(FADEBYDEPTH_SCHEMA) == 20, \
     f"FADEBYDEPTH_SCHEMA size mismatch: {_schema_size(FADEBYDEPTH_SCHEMA)}"
@@ -1296,7 +1307,7 @@ assert _schema_size(DUMMY_SCHEMA) == 9, \
 EXTERNREFERENCE_SCHEMA = [
     ('unkn0',           'i'),
     ('referenceIndex',  'i'),
-    ('unkn1_0', 'i'),
+    ('trigger_condition', 'i'),
     ('unkn1_1', 'i'),
     ('unkn1_2', 'i'),
     ('unkn1_3', 'f'),
@@ -1359,18 +1370,34 @@ assert _schema_size(EMITTERBOUNDARY_SCHEMA) == 40, \
 #
 # BT (EFX_Subtypes.bt):
 #   int unkn0[2](8) + float unkn1[4](16) + int64 NULL(8) + int unkn2[2](8) = 40 B
+#
+# 疑似角度值字段普查（2026-07-23，全语料 4697 块统计，待实机验证——参照
+# FADEBYDEPTH/FADEBYEMITTERANGLE 两个已用实机测试确认的同类"渐隐"块，回头
+# 用同样方法核对本块）：unkn_angle0~4 高频取值扎堆在 15/30/45/60/90/180 这类
+# 经典角度预设、且 unkn_angle2/3/4 呈现正负对称分布，与角度参数形态吻合，
+# 先统一改名挂起，实际语义（阈值/范围/偏移等）待逐个测出后再定具体名字：
+#   unkn_angle0 (原 unkn1_0)：[0,160]，98.4% 非零，几乎每块都用
+#   unkn_angle1 (原 unkn1_1)：[0,100]，99.4% 非零，几乎每块都用
+#   unkn_angle2 (原 unkn1_3)：[-120,119]，11.7% 非零，正负对称
+#   unkn_angle3 (原 NULL_0，拆自原 int64 NULL 低 32 位)：[-120,180]，3.6% 非零，正负对称
+#   unkn_angle4 (原 NULL_1，拆自原 int64 NULL 高 32 位)：曾被误判"恒 0 占位"，
+#     语料扩大到 4697 块后发现 23 个反例——按 float32 解出来是干净的整数度数
+#     （±7/±20/±24/±25/±30/±35），已订正类型 i→f，与 unkn_angle3 大概率是一对
+#     （原 int64 拆出的高低 32 位）
+# 不像角度、原样保留 unkn 命名的：unkn0_0([1,33] 100% 非零，像索引/枚举)、
+# unkn0_1([0,7] 80.1% 非零，像位标志)、unkn1_2([0,1] 仅 0.4% 非零，罕见)、
+# unkn2_0([0,5] 95.4% 非零)、unkn2_1([0,5] 99.9% 非零、几乎恒为 4)。
 # ─────────────────────────────────────────────────────────────────────────────
 
 FADEBYANGLE_SCHEMA = [
     ('unkn0_0', 'i'),
     ('unkn0_1', 'i'),
-    ('unkn1_0', 'f'),
-    ('unkn1_1', 'f'),
+    ('unkn_angle0', 'f'),
+    ('unkn_angle1', 'f'),
     ('unkn1_2', 'f'),
-    ('unkn1_3', 'f'),
-    # 拆分自原 int64 NULL：低32位=float(角度类值)，高32位=恒0 占位（实测 4629 个块核对）
-    ('NULL_0', 'f'),
-    ('NULL_1', 'i'),
+    ('unkn_angle2', 'f'),
+    ('unkn_angle3', 'f'),
+    ('unkn_angle4', 'f'),
     ('unkn2_0', 'i'),
     ('unkn2_1', 'i'),
 ]
@@ -1423,14 +1450,21 @@ assert _schema_size(BLINK_SCHEMA) == 52, \
 #
 # BT (EFX_Subtypes.bt):
 #   int unkn0[2](8) + long unkn(4) + float unkn2[4](16) = 28 B
+#
+# 原 cone/alphaRate 改名 outerConeAngle/innerConeAngle（2026-07-23，全语料
+# 10131 块统计：innerConeAngle ≤ outerConeAngle 占 10116/10131=99.85%，二者
+# 同为 0~360 量级，最高频组合 (180,20) 占比 73%——形态是一对锥角，"alphaRate"
+# 这个原名容易让人误以为是透明度变化速率，故直接改名）。
+# ⚠ 待验证：只有统计证据，未像 fadeInStart/fadeInEnd 那样经过实机操作确认——
+# 还没人转到发射器侧后方实测过角度跨过这两个值时透明度是否真的在变。
 # ─────────────────────────────────────────────────────────────────────────────
 
 FADEBYEMITTERANGLE_SCHEMA = [
     ('unkn0_0', 'i'),
     ('unkn0_1', 'i'),
     ('unkn',  'i'),                # bool (byte 0) + 0xCD×3 padding
-    ('cone', 'f'),
-    ('alphaRate', 'f'),
+    ('outerConeAngle', 'f'),
+    ('innerConeAngle', 'f'),
     ('fadeInStart', 'f'),
     ('fadeInEnd', 'f'),
 ]
@@ -2374,7 +2408,8 @@ def pack_mesh(values: dict) -> bytes:
 #   base_width_mult(4) + base_opacity(4) + tip_width_mult(4) + tip_opacity(4) +
 #   spacer8(4) + unkn27[2](8) + short visiblePreview(2) + short spacer9(2) +
 #   base_flap_freq(8) + base_flap_amount(8) + tip_flap_freq(8) + tip_flap_amount(8) +
-#   ib_junk[32](32)
+#   byte unkn0(1) + byte flow_enable_a/b(2) + byte reserved[13](13) +
+#   float flow_param0..3(16)   [原 ib_junk[32]，2026-07-21 拆分，见下方 schema 内注释]
 # Total fixed: verify = 360 B
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2468,7 +2503,26 @@ _RIBBON_FIXED_SCHEMA = [
     ('tip_flap_frequency_jitter','f'),
     ('tip_flap_amount',          'f'),
     ('tip_flap_amount_jitter',   'f'),
-    ('ib_junk',                  ('B', 32)),
+    # 原 ib_junk[32] 拆分（2026-07-21 全语料 15015 块统计）：
+    # byte[0] 恒为 0（15015/15015 无一例外）——未见变化，保留 unkn 命名。
+    # byte[1]/byte[2] 是两个独立 bool 标志：只要任一为 1，下面 4 个 float 里非零
+    # 的比例从基线 0.15%（两者都 0 时）跳到 80%~99%——近乎完美的 enable 门控关系。
+    # byte[3:16] 13 字节恒为 0xCD（未初始化占位，同 reserved-fill-fields 判据）。
+    # 后 4 个 float：前 3 个有真实变化（含负值，如 -120~100），第 4 个恒为 0.0
+    # （15015/15015 无一例外）。已排除“其实是 base_flap~tip_flap 8 件套的重复/错位”
+    # 假说：那 8 个字段本身统计自洽（全部非负、频率<幅值量级、jitter 远比 value 少
+    # 非零，典型 value+jitter 形态），而这里前 16B 是纯 0xCD 填充零信息、后 16B
+    # 含负值（频率/幅值不该为负）——形态更接近 flowmap 速度/强度类可正可负的参数，
+    # 而非 flap 频率/幅值的重复。语义未确认，待实机测试 byte[1]/byte[2] 开关 +
+    # 后 3 个 float 对条带贴图流动效果的影响。
+    ('ribbon_flow_unkn0',       'B'),
+    ('ribbon_flow_enable_a',    'B'),
+    ('ribbon_flow_enable_b',    'B'),
+    ('ribbon_flow_reserved',    ('B', 13)),
+    ('ribbon_flow_param0',      'f'),
+    ('ribbon_flow_param1',      'f'),
+    ('ribbon_flow_param2',      'f'),
+    ('ribbon_flow_param3',      'f'),
 ]
 assert _schema_size(_RIBBON_FIXED_SCHEMA) == 360, \
     f"_RIBBON_FIXED_SCHEMA size mismatch: {_schema_size(_RIBBON_FIXED_SCHEMA)}"

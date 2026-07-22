@@ -307,10 +307,22 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── FADEBYDEPTH ──────────────────────────────────────────────────────────
-    # FadeByDepth (EFX_Subtypes.bt)
-    ("FADEBYDEPTH", "viewAngleLimit"): {
-        "EN": "360 = visible from every angle",
-        "ZH": "360 = 从每个角度都可见",
+    # FadeByDepth（实机确认，见 structs.py 注释）
+    ("FADEBYDEPTH", "nearFadeInStart"): {
+        "EN": "Near fade-in start. Below this distance, fully invisible.",
+        "ZH": "近处淡入起点，小于此距离完全不可见。",
+    },
+    ("FADEBYDEPTH", "nearFadeInEnd"): {
+        "EN": "Near fade-in end. Above this distance, fully visible.",
+        "ZH": "近处淡入终点，大于此距离完全可见。",
+    },
+    ("FADEBYDEPTH", "farFadeOutStart"): {
+        "EN": "Far fade-out start. Below this distance, fully visible.",
+        "ZH": "远处淡出起点，小于此距离完全可见。",
+    },
+    ("FADEBYDEPTH", "farFadeOutEnd"): {
+        "EN": "Far fade-out end. Above this distance, fully invisible.",
+        "ZH": "远处淡出终点，大于此距离完全不可见。",
     },
 
     # ─── SCALEANIM ────────────────────────────────────────────────────────────
@@ -568,6 +580,18 @@ FIELD_ANNOTATIONS = {
 
     # ─── FADEBYEMITTERANGLE ───────────────────────────────────────────────────
     # FadeByEmitterAngle — cone angle, alpha rate, fade-in range
+    # 用户实机确认（2026-07-23）：fadeInStart/fadeInEnd 其实是距离而非角度
+    # （量级跟 cone 的 0~360 完全不同，跟 FADEBYDEPTH 同尺度），机制是
+    # fadeInStart(远/大值)~fadeInEnd(近/小值) 单段淡入区间——跟 FADEBYDEPTH
+    # 不同，这里只有一对值，不是两段近/远分开的区间，故不需要 near/far 前缀。
+    ("FADEBYEMITTERANGLE", "fadeInStart"): {
+        "EN": "Fade-in start (distance, not angle). Below this distance, gradually appears.",
+        "ZH": "淡入起点（是距离不是角度），小于此距离逐渐显现。",
+    },
+    ("FADEBYEMITTERANGLE", "fadeInEnd"): {
+        "EN": "Fade-in end (distance, not angle). Below this distance, fully visible.",
+        "ZH": "淡入终点（是距离不是角度），小于此距离完全可见。",
+    },
 
     # ─── NOISE ────────────────────────────────────────────────────────────────
     # Noise — no inline comments in BT
@@ -2216,7 +2240,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("EXTERNREFERENCE", "unkn1_0"): {
+    ("EXTERNREFERENCE", "trigger_condition"): {
         "EN": "Common values: [0, 1, 3, 4146].",
         "ZH": "常见取值为 [0, 1, 3, 4146]。",
     },
@@ -2236,7 +2260,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("FADEBYANGLE", "unkn1_1"): {
+    ("FADEBYANGLE", "unkn_angle1"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
