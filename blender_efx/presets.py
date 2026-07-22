@@ -156,10 +156,159 @@ def _is_stock_duplicate(old_path: str, new_path: str) -> bool:
             and old.get("data_bytes") == new.get("data_bytes"))
 
 
+# 2026-07 分类重构：这些 slug 在新分类树里彻底不存在（改名/拆分/合并/取消，见
+# efx_format/categories.py 顶部注释）。用户目录里只要还有任意一个，就说明还没跑过
+# 新版迁移（_migrate_to_new_category_tree）。不含 skeleton/misc——这两个新旧同名，
+# 光看文件夹名判断不了迁移状态，但一旦触发迁移，仍会连它们一起处理（可能有旧扁平
+# 残留，如老版本的 misc/RANDOMFIX.json 需要挪到 misc/others/RANDOMFIX.json）。
+_OLD_ONLY_ATTRIBUTE_CATEGORY_SLUGS = frozenset({
+    "renderer", "sprite_mod", "mesh_over", "emitter", "motion",
+    "visibility", "lifecycle", "extern_decl", "char_effect", "behavior", "ui_2d",
+})
+
+
+def _is_autogen_preset_name(display_name: str, type_name: str) -> bool:
+    """display_name 是否为自动生成式（空 / 等于 type_name / 「TYPE（中文）」），而非用户自定义。
+    跟 attribute_ops.py::_is_autogen_name 同一判据，这里独立复制一份小函数，避免
+    presets.py（被 attribute_ops.py 依赖）反向 import attribute_ops.py 造成循环依赖。"""
+    if display_name in ("", type_name):
+        return True
+    return display_name.startswith(type_name + "（") and display_name.endswith("）")
+
+
+def _build_official_preset_fingerprints(package_attrs_dir: str) -> tuple:
+    """扫描包内 presets/__attributes__/ 全部文件，返回 (exact_fingerprints, known_type_names)：
+    - exact_fingerprints：(type_hash, data_bytes) -> display_name，内容做 key（不管文件在哪个
+      文件夹——这次分类重构几乎所有类型的文件夹路径都变了，按路径比对会完全失效，只能按内容）
+    - known_type_names：type_hash -> type_name，只要该类型当前有官方预设就登记，不要求内容
+      精确匹配（配合 _is_autogen_preset_name 识别"用户没改名、只是内容比当前官方版本旧"的情况——
+      插件这段时间对默认值做了大量修订，老用户装的版本内容早就跟最新官方版本不一致，但那不是
+      用户自定义，只是版本旧，不该被误判成自定义内容塞进 custom/）
+    """
+    exact_fingerprints = {}
+    known_type_names = {}
+    if not os.path.isdir(package_attrs_dir):
+        return exact_fingerprints, known_type_names
+    for dirpath, _dirs, files in os.walk(package_attrs_dir):
+        for fname in files:
+            if not fname.lower().endswith(".json"):
+                continue
+            try:
+                with open(os.path.join(dirpath, fname), "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                exact_fingerprints[(d.get("type_hash"), d.get("data_bytes"))] = d.get("display_name", "")
+                if d.get("type_hash") is not None:
+                    known_type_names[d.get("type_hash")] = d.get("type_name", "")
+            except Exception:
+                continue
+    return exact_fingerprints, known_type_names
+
+
+def _migrate_to_new_category_tree(new_root: str, package_attrs_dir: str):
+    """
+    2026-07 属性预设分类重构的一次性迁移：旧 13 类扁平/浅层目录 → 新 10 类
+    （部分再分子组）目录结构，同时把用户已有的自定义预设隔离进 custom/。
+
+    触发条件：用户 __attributes__/ 下存在任意一个 _OLD_ONLY_ATTRIBUTE_CATEGORY_SLUGS
+    里的文件夹。全新安装或已迁移过（旧文件夹已清空/不存在）则什么都不做——天然一次性，
+    不需要额外持久化"是否已迁移"标记。
+
+    步骤：
+    1. 备份整个用户 __attributes__/ 到 __attributes__.backup_<时间戳>/（唯一安全网，
+       不做用户可见报告/二次确认弹窗——本函数任何异常都静默吞掉、不中断注册流程，
+       出问题时用户自己有备份可以手动核对/恢复）
+    2. 建官方内容指纹表（见 _build_official_preset_fingerprints）
+    3. 遍历用户 __attributes__/ 下现有全部 .json（custom/ 本身不碰，其内容已经是用户
+       数据），逐条判定：
+       a. 内容 + display_name 都跟某条官方指纹完全一致 → 官方预设原样拷贝 → 删除
+       b. 内容不完全匹配，但 type_hash 是已知官方类型 **且** display_name 是自动生成式
+          （用户没有改名）→ 判定"内容是旧版本官方默认值，不是用户自定义"（插件近期对
+          大量类型的默认值做过修订，装过旧版本的用户手上的内容早就跟当前官方版本不一致，
+          这不代表用户编辑过）→ 同样删除
+       c. 其余（全新类型 / 改过字段值又改过名字 / 未知类型）→ 判定用户内容 → 挪进
+          custom/（保守：宁可 custom 里多一份无害重复，不冒险丢真正的自定义内容）
+       a/b 两种"删除"情况都由下面的强制同步阶段在正确新路径放回当前最新的等价文件。
+    4. 清理迁移后搬空的旧目录（自底向上，非空则 rmdir 失败静默跳过，不递归强删）
+    """
+    if not os.path.isdir(new_root):
+        return
+    attrs_dir = os.path.join(new_root, "__attributes__")
+    if not os.path.isdir(attrs_dir):
+        return
+    if not any(os.path.isdir(os.path.join(attrs_dir, slug))
+               for slug in _OLD_ONLY_ATTRIBUTE_CATEGORY_SLUGS):
+        return  # 已迁移过或全新安装
+
+    import shutil
+    import time as _time
+
+    try:
+        custom_dir = os.path.join(attrs_dir, "custom")
+
+        stamp = _time.strftime("%Y%m%d_%H%M%S")
+        backup_dir = os.path.join(new_root, f"__attributes__.backup_{stamp}")
+        if not os.path.isdir(backup_dir):
+            shutil.copytree(attrs_dir, backup_dir)
+
+        exact_fingerprints, known_type_names = _build_official_preset_fingerprints(package_attrs_dir)
+
+        for dirpath, _dirs, files in os.walk(attrs_dir):
+            if dirpath == custom_dir or dirpath.startswith(custom_dir + os.sep):
+                continue
+            for fname in files:
+                if not fname.lower().endswith(".json"):
+                    continue
+                path = os.path.join(dirpath, fname)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                    type_hash = d.get("type_hash")
+                    type_name = d.get("type_name", "")
+                    key = (type_hash, d.get("data_bytes"))
+                    display_name = d.get("display_name", "")
+                except Exception:
+                    type_hash, type_name, key, display_name = None, "", None, ""
+
+                exact_match = key is not None and exact_fingerprints.get(key) == display_name
+                stale_official = (
+                    not exact_match
+                    and type_hash is not None
+                    and type_hash in known_type_names
+                    and _is_autogen_preset_name(display_name, type_name)
+                )
+                if exact_match or stale_official:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                else:
+                    os.makedirs(custom_dir, exist_ok=True)
+                    base_hint = display_name or os.path.splitext(fname)[0]
+                    new_name = _unique_ascii_filename(custom_dir, base_hint, os.path.splitext(fname)[0])
+                    try:
+                        shutil.move(path, os.path.join(custom_dir, new_name + ".json"))
+                    except OSError:
+                        pass
+
+        for dirpath, _dirs, _files in os.walk(attrs_dir, topdown=False):
+            if dirpath == attrs_dir or dirpath == custom_dir:
+                continue
+            try:
+                os.rmdir(dirpath)
+            except OSError:
+                pass
+    except Exception:
+        pass  # 备份已经在最前面做了；任何异常都不中断注册流程
+
+
 def _migrate_presets_once(new_root: str):
     """
     把包内 presets/ 目录的 JSON 文件同步到用户目录：
-    - 跳过已存在的同名文件（用户自定义预设不覆盖）
+    - __attributes__/ 下除 custom/ 外，一律以包内版本为准强制覆盖（官方内容，随插件
+      更新随时可能改默认值，2026-07 起不再"已存在就跳过"——那样会导致老用户永远收不到
+      内置预设的后续更新）；custom/ 完全跳过不碰，那是用户专属数据
+    - __attributes__/ 之外的其它预设种类（__entries__ 等，非本次重构范围）维持旧策略：
+      跳过已存在的同名文件
     - 精准清理 3.0 重命名前遗留的 __blocks__ 旧目录：只删除与 __attributes__ 里
       同分类/同文件名的现行文件内容完全一致的条目（即确认是随插件下发、现已有
       __attributes__ 等价替代的内置预设），不区分就整个目录删掉的做法删过一次
@@ -177,21 +326,34 @@ def _migrate_presets_once(new_root: str):
     if not os.path.isdir(old_root):
         return
 
-    # 从包内预设目录复制新文件（跳过已有同名，保留用户自定义）
+    user_attrs_dir = os.path.join(new_root, "__attributes__")
+    package_attrs_dir = os.path.join(old_root, "__attributes__")
+    custom_root = os.path.join(user_attrs_dir, "custom")
+
+    # 分类重构迁移必须先于下面的同步执行——同步的"非 custom 强制覆盖"策略依赖迁移已经
+    # 把用户自定义内容清出非 custom 目录这个前提，否则会直接覆盖掉用户数据。
+    _migrate_to_new_category_tree(new_root, package_attrs_dir)
+
+    # 从包内预设目录复制文件：__attributes__/ 下除 custom/ 外强制覆盖，其余维持
+    # "已存在就跳过"
     for dirpath, _dirs, files in os.walk(old_root):
         rel = os.path.relpath(dirpath, old_root)
         dest_dir = os.path.join(new_root, rel) if rel != "." else new_root
+        under_attrs = dest_dir == user_attrs_dir or dest_dir.startswith(user_attrs_dir + os.sep)
+        under_custom = dest_dir == custom_root or dest_dir.startswith(custom_root + os.sep)
+        force_sync = under_attrs and not under_custom
         for fname in files:
             if not fname.endswith(".json"):
                 continue
             dst = os.path.join(dest_dir, fname)
-            if not os.path.exists(dst):
+            if force_sync or not os.path.exists(dst):
                 os.makedirs(dest_dir, exist_ok=True)
                 shutil.copy2(os.path.join(dirpath, fname), dst)
 
     # 精准清理旧 __blocks__：仅删掉确认与 __attributes__ 里现行文件内容一致的条目
+    # （3.0 改名遗留的历史迁移，跟本次分类重构无关，路径比对法在这里仍然适用——
+    # __blocks__ 的相对路径结构从没变过）
     blocks_dir = os.path.join(new_root, "__blocks__")
-    attrs_dir = os.path.join(new_root, "__attributes__")
     if os.path.isdir(blocks_dir):
         for dirpath, _dirs, files in os.walk(blocks_dir):
             for fname in files:
@@ -199,7 +361,7 @@ def _migrate_presets_once(new_root: str):
                     continue
                 old_path = os.path.join(dirpath, fname)
                 rel = os.path.relpath(old_path, blocks_dir)
-                new_path = os.path.join(attrs_dir, rel)
+                new_path = os.path.join(user_attrs_dir, rel)
                 if _is_stock_duplicate(old_path, new_path):
                     try:
                         os.remove(old_path)

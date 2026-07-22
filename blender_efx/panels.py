@@ -1005,16 +1005,9 @@ def _draw_attribute_presets_content(layout, context):
         row_lbl.enabled = False
         row_lbl.label(text=T("attribute.add_to_prefix") + T("attribute.add_to_no_entry"), icon="PLUS")
     layout.prop(wm, "efx_block_category_enum", text=T("attribute.category"))
-    row = layout.row(align=True)
-    row.prop(wm, "efx_block_whole_preset_enum", text="")
-    selected = wm.efx_block_whole_preset_enum
-    if selected:
-        op = row.operator("efx.add_attribute_from_preset", text=T("attribute.add"), icon="PLAY")
-        op.preset_path = selected
-    else:
-        sub = row.row()
-        sub.enabled = False
-        sub.operator("efx.add_attribute_from_preset", text=T("attribute.add"), icon="PLAY")
+    # 第二级"具体预设"用 Menu（按子组分组、灰字标题），点击预设行直接新增，
+    # 不再需要单独的下拉选中 + Add 确认两步。
+    layout.menu("EFX_MT_attribute_preset_picker", text=T("attribute.add"), icon="PLAY")
 
     layout.separator()
 

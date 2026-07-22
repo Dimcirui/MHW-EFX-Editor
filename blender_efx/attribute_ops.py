@@ -5,7 +5,9 @@ blender_efx/attribute_ops.py  —  属性级组装：单属性的复制/粘贴�
   - build_attribute_preset_dict(blk_obj)：把单个 EFX_ATTRIBUTE 构建为预设 dict（供保存/复制共用）
   - save_attribute_preset(blk_obj, name)：落盘到 presets/__attributes__/
   - add_attribute_to_entry(entry_obj, preset_dict)：按预设在 entry 末尾追加单个属性
-  - list_attribute_categories() / list_attribute_presets(slug)：两级下拉的 items（分类 / 类内属性）
+  - 两级选择：list_attribute_categories()（第一级分类 EnumProperty items）+
+    EFX_MT_attribute_preset_picker（第二级具体预设，Menu，按子组分组显示灰字标题，
+    点击预设行直接新增，不需要额外的"Add"确认按钮）
   - 算子：efx.save_attribute_preset / efx.add_attribute_from_preset /
           efx.open_attribute_preset_folder / efx.copy_attribute / efx.paste_attribute
 
@@ -22,13 +24,17 @@ blender_efx/attribute_ops.py  —  属性级组装：单属性的复制/粘贴�
     "type_hash": "<十进制str>",
     "type_name": "<TRANSFORM3D / 0x... 等>",
     "display_name": "<用户命名（utf-8）>",
-    "category": "<分类 slug，如 transform/render；见 efx_format/categories.py>",
+    "category": "<该属性类型的官方分类 slug；见 efx_format/categories.py>",
+    "subgroup": "<该分类内的子组 slug，无子组则空串>",
     "data_bytes": "<base64>"
 }
+"category"/"subgroup" 只是该属性类型本身的官方分类元数据（供人读/供迁移脚本用），
+2026-07 分类重构后不再决定存盘位置——所有 save_attribute_preset 新建的预设统一存 custom/，
+跟官方分类目录彻底隔离。
 
-存盘布局：presets/__attributes__/<category>/<NAME>.json
-  按属性类型的功能分类自动归入子目录，配合面板两级下拉（先选分类，再选属性）。
-  根目录下的旧扁平 *.json 仍被 list_attribute_presets('misc') 兜底读取（向后兼容）。
+存盘布局：presets/__attributes__/<category>[/<subgroup>]/<NAME>.json（官方分类，部分分类下
+再按子组分子目录）；presets/__attributes__/custom/<NAME>.json（用户新建预设，扁平不分子组）。
+根目录下的旧扁平 *.json 仍被 EFX_MT_attribute_preset_picker 在 misc 分类下兜底读取（向后兼容）。
 """
 
 import base64
@@ -40,7 +46,9 @@ import bpy
 from bpy.props import EnumProperty, StringProperty
 
 from .presets import _presets_root, _unique_ascii_filename, _read_display_name, _encode_path_ident, _decode_path_ident
-from ..efx_format.categories import category_of, category_label, ATTRIBUTE_CATEGORY_LABELS
+from ..efx_format.categories import (
+    category_of, subgroup_of, category_label, ATTRIBUTE_CATEGORY_LABELS, ATTRIBUTE_SUBGROUP_LABELS,
+)
 from . import i18n
 from .i18n import T
 from . import root_collection as _rc
@@ -50,6 +58,10 @@ from . import root_collection as _rc
 # 路径工具
 # ─────────────────────────────────────────────────────────────────────────────
 
+# 子组排序基准（按 ATTRIBUTE_SUBGROUP_LABELS 插入顺序），供 _iter_preset_files 分组排序用。
+_SUBGROUP_ORDER = list(ATTRIBUTE_SUBGROUP_LABELS)
+
+
 def _attribute_preset_dir() -> str:
     """返回属性预设根目录 presets/__attributes__/ 的绝对路径。"""
     return os.path.join(_presets_root(), "__attributes__")
@@ -58,6 +70,53 @@ def _attribute_preset_dir() -> str:
 def _attribute_category_dir(slug: str) -> str:
     """返回某分类的属性预设子目录 presets/__attributes__/<slug>/。"""
     return os.path.join(_attribute_preset_dir(), slug)
+
+
+def _iter_preset_files(category_dir: str) -> list:
+    """递归扫描 category_dir 下所有 .json 预设文件，按 (子组顺序, 文件名) 排好序返回
+    [(文件绝对路径, 子组slug), ...]；子组 slug 取自相对 category_dir 的一级子目录名，
+    直接落在 category_dir 根下（分类本身不分子组）则子组 slug 为空串，排最前。
+    子组间顺序按 ATTRIBUTE_SUBGROUP_LABELS 插入顺序，不在表里的未知子组排最后。"""
+    items = []
+    if not os.path.isdir(category_dir):
+        return items
+    for dirpath, _dirs, files in os.walk(category_dir):
+        rel = os.path.relpath(dirpath, category_dir)
+        subgroup = "" if rel == "." else rel.split(os.sep)[0]
+        for fname in files:
+            if fname.lower().endswith(".json"):
+                items.append((os.path.join(dirpath, fname), subgroup))
+
+    def _rank(item):
+        path, subgroup = item
+        if not subgroup:
+            order = -1
+        elif subgroup in _SUBGROUP_ORDER:
+            order = _SUBGROUP_ORDER.index(subgroup)
+        else:
+            order = len(_SUBGROUP_ORDER)
+        return (order, os.path.basename(path).lower())
+
+    items.sort(key=_rank)
+    return items
+
+
+def _preset_display_item(path: str) -> tuple:
+    """读取单个预设 JSON，返回 EnumProperty item 元组 (_encode_path_ident(path), label, type_name)。"""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            d = json.load(f)
+        type_name = d.get("type_name", "")
+        stored_display = d.get("display_name", "")
+    except Exception:
+        type_name, stored_display = "", ""
+    # 自动生成的预设（display_name 为空 / 等于 type_name / 「TYPE（…）」式）→
+    # 按当前语言用 type_label 显示；用户自定义名则原样保留。
+    if type_name and _is_autogen_name(stored_display, type_name):
+        label = i18n.type_label(type_name)
+    else:
+        label = stored_display or _read_display_name(path)
+    return (_encode_path_ident(path), label, type_name)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -106,16 +165,21 @@ def build_attribute_preset_dict(blk_obj: bpy.types.Object) -> dict:
         "type_hash": str(type_hash),
         "type_name": type_name,
         "display_name": type_name,  # 可被 save_attribute_preset 用用户输入覆盖
-        "category": category_of(type_hash),
+        "category": category_of(type_hash),      # 元数据：该类型的官方分类，不决定存盘位置
+        "subgroup": subgroup_of(type_hash),       # 元数据：该分类内的子组，无子组则空串
         "data_bytes": base64.b64encode(data).decode("ascii"),
     }
 
 
 def save_attribute_preset(blk_obj: bpy.types.Object, name: str) -> str:
     """
-    把 blk_obj 存为属性预设 JSON 文件。
+    把 blk_obj 存为属性预设 JSON 文件，统一存进 presets/__attributes__/custom/。
 
     返回保存的路径；name 用于显示名（可含中文），文件名 ASCII 化。
+
+    2026-07 分类重构起：用户新建预设不再按 category_of(type_hash) 落进官方分类目录
+    （那些目录只放插件内置预设，未来版本更新时会被强制覆盖同步）——统一存 custom/，
+    跟官方内容彻底隔离，保证不会被更新覆盖，也让"custom 分类=用户内容"的边界清晰可判。
     """
     if not name or not name.strip():
         raise ValueError("save_attribute_preset：预设名称不能为空")
@@ -123,9 +187,7 @@ def save_attribute_preset(blk_obj: bpy.types.Object, name: str) -> str:
     preset = build_attribute_preset_dict(blk_obj)
     preset["display_name"] = name
 
-    # 按属性类型的分类存入对应子目录（presets/__attributes__/<slug>/）。
-    slug = preset.get("category") or "misc"
-    save_dir = _attribute_category_dir(slug)
+    save_dir = _attribute_category_dir("custom")
     os.makedirs(save_dir, exist_ok=True)
 
     fallback = str(preset.get("type_name", "attribute"))
@@ -145,17 +207,22 @@ def list_attribute_categories() -> list:
     扫 __attributes__/ 的子目录，返回有预设的分类 EnumProperty items：
       [(slug, 中文名, ""), ...]，按 ATTRIBUTE_CATEGORY_LABELS 顺序排列。
     无任何预设时返回 [("", "（无属性预设）", "")]。
+
+    递归检查每个分类目录下是否有 .json（部分分类的预设落在子组子目录下，不是直接
+    在分类根目录里），custom 分类初始为空目录，天然不会出现在结果里。
     """
     root = _attribute_preset_dir()
     have = set()
     if os.path.isdir(root):
         for entry in os.scandir(root):
             if entry.is_dir():
-                # 该子目录下是否有 .json
-                for sub in os.scandir(entry.path):
-                    if sub.is_file() and sub.name.lower().endswith(".json"):
-                        have.add(entry.name)
+                has_json = False
+                for dirpath, _dirs, files in os.walk(entry.path):
+                    if any(f.lower().endswith(".json") for f in files):
+                        has_json = True
                         break
+                if has_json:
+                    have.add(entry.name)
             elif entry.is_file() and entry.name.lower().endswith(".json"):
                 have.add("misc")  # 兼容旧扁平预设
 
@@ -171,50 +238,6 @@ def list_attribute_categories() -> list:
 
     if not result:
         return [("", T("attribute.no_preset"), "")]
-    return result
-
-
-def list_attribute_presets(category_slug: str) -> list:
-    """
-    列举某分类子目录下的属性预设 EnumProperty items：
-      [(_encode_path_ident(path), display_name, type_name), ...]
-    misc 额外包含 __attributes__/ 根下的旧扁平预设（向后兼容）。
-    """
-    if not category_slug:
-        return [("", T("attribute.pick_category"), "")]
-
-    dirs = [_attribute_category_dir(category_slug)]
-    if category_slug == "misc":
-        dirs.append(_attribute_preset_dir())  # 旧扁平预设兜底
-
-    result = []
-    seen = set()
-    for d in dirs:
-        if not os.path.isdir(d):
-            continue
-        for entry in sorted(os.scandir(d), key=lambda e: e.name):
-            if not (entry.is_file() and entry.name.lower().endswith(".json")):
-                continue
-            if entry.path in seen:
-                continue
-            seen.add(entry.path)
-            try:
-                with open(entry.path, "r", encoding="utf-8") as f:
-                    d2 = json.load(f)
-                type_name = d2.get("type_name", "")
-                stored_display = d2.get("display_name", "")
-            except Exception:
-                type_name, stored_display = "", ""
-            # 自动生成的预设（display_name 为空 / 等于 type_name / 「TYPE（…）」式）→
-            # 按当前语言用 type_label 显示；用户自定义名则原样保留。
-            if type_name and _is_autogen_name(stored_display, type_name):
-                label = i18n.type_label(type_name)
-            else:
-                label = stored_display or _read_display_name(entry.path)
-            result.append((_encode_path_ident(entry.path), label, type_name))
-
-    if not result:
-        return [("", T("attribute.cat_empty"), "")]
     return result
 
 
@@ -573,30 +596,20 @@ class EFX_OT_paste_attribute(bpy.types.Operator):
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
-_CLASSES = (
-    EFX_OT_save_attribute_preset,
-    EFX_OT_add_attribute_from_preset,
-    EFX_OT_open_attribute_preset_folder,
-    EFX_OT_copy_attribute,
-    EFX_OT_paste_attribute,
-)
-
 # EnumProperty 动态回调缓存（GC 陷阱说明见 panels.py 顶部）。
 # 脏标志 + 2 秒 TTL：保存后立即失效；手动改文件夹 2 秒内刷新。
+# 第二级"具体预设"选择改用 EFX_MT_attribute_preset_picker（Menu，见下方）现场扫描，
+# 不再需要 EnumProperty 缓存（Menu.draw 只在用户点开菜单时才调用，不像动态 EnumProperty
+# items 那样每次界面重绘都触发，没有同等的缓存必要）。
 _attribute_category_items_cache = [("", "(no attribute presets)", "")]
-_attribute_whole_preset_items_cache = [("", "(pick a category)", "")]
 _attribute_category_dirty = True
-_attribute_preset_dirty = True
 _attribute_category_cache_time = 0.0
-_attribute_preset_cache_time = 0.0
-_last_preset_slug = None          # 上次构建 preset list 时用的 category slug
 _ATTRIBUTE_CACHE_TTL = 2.0            # 秒
 
 
 def _invalidate_attribute_preset_cache():
-    global _attribute_category_dirty, _attribute_preset_dirty
+    global _attribute_category_dirty
     _attribute_category_dirty = True
-    _attribute_preset_dirty = True
 
 
 def _get_attribute_category_items(self, context):
@@ -613,24 +626,61 @@ def _get_attribute_category_items(self, context):
     return _attribute_category_items_cache
 
 
-def _get_attribute_whole_preset_items(self, context):
+class EFX_MT_attribute_preset_picker(bpy.types.Menu):
+    """第二级"具体预设"选择菜单：按子组分组，灰字标题（layout.label，不可点）+
+    具体预设行（点击直接触发 efx.add_attribute_from_preset，无需再单独点 Add）。
+
+    子组分组顺序/标签见 efx_format.categories.ATTRIBUTE_SUBGROUP_LABELS；分类本身不分
+    子组（如 skeleton/spawn_method）则不出现任何标题，所有预设平铺一列。
     """
-    WindowManager.efx_block_whole_preset_enum 的动态 items 回调（带缓存）。
-    分类切换或脏标志时重扫。
-    """
-    global _attribute_whole_preset_items_cache, _attribute_preset_dirty, _attribute_preset_cache_time, _last_preset_slug
-    wm = context.window_manager if context else None
-    slug = getattr(wm, "efx_block_category_enum", "") if wm else ""
-    now = time.monotonic()
-    if _attribute_preset_dirty or slug != _last_preset_slug or (now - _attribute_preset_cache_time) > _ATTRIBUTE_CACHE_TTL:
-        try:
-            _attribute_whole_preset_items_cache = list_attribute_presets(slug)
-        except Exception:
-            _attribute_whole_preset_items_cache = [("", "(preset load error)", "")]
-        _attribute_preset_dirty = False
-        _attribute_preset_cache_time = now
-        _last_preset_slug = slug
-    return _attribute_whole_preset_items_cache
+
+    bl_idname = "EFX_MT_attribute_preset_picker"
+    bl_label  = "Attribute Preset"
+
+    def draw(self, context):
+        layout = self.layout
+        wm = context.window_manager
+        slug = getattr(wm, "efx_block_category_enum", "") if wm else ""
+        if not slug:
+            layout.label(text=T("attribute.pick_category"))
+            return
+
+        from ..efx_format.categories import subgroup_label
+
+        items = _iter_preset_files(_attribute_category_dir(slug))
+        if slug == "misc":
+            # 旧扁平预设兜底：__attributes__/ 根目录下早于分类系统的遗留文件
+            root = _attribute_preset_dir()
+            if os.path.isdir(root):
+                for entry in sorted(os.scandir(root), key=lambda e: e.name):
+                    if entry.is_file() and entry.name.lower().endswith(".json"):
+                        items.append((entry.path, ""))
+
+        if not items:
+            layout.label(text=T("attribute.cat_empty"))
+            return
+
+        lang = i18n.get_lang()
+        _sentinel = object()
+        last_sub = _sentinel
+        for path, sub in items:
+            if sub != last_sub:
+                if sub:
+                    layout.label(text=subgroup_label(sub, lang))
+                last_sub = sub
+            ident, label, _type_name = _preset_display_item(path)
+            op = layout.operator("efx.add_attribute_from_preset", text=label)
+            op.preset_path = ident
+
+
+_CLASSES = (
+    EFX_OT_save_attribute_preset,
+    EFX_OT_add_attribute_from_preset,
+    EFX_OT_open_attribute_preset_folder,
+    EFX_OT_copy_attribute,
+    EFX_OT_paste_attribute,
+    EFX_MT_attribute_preset_picker,
+)
 
 
 def register():
@@ -652,17 +702,9 @@ def register():
         items=_get_attribute_category_items,
         options={"SKIP_SAVE"},
     )
-    bpy.types.WindowManager.efx_block_whole_preset_enum = EnumProperty(
-        name="Attribute Preset",
-        description="Pick the whole-attribute preset to add within the selected category",
-        items=_get_attribute_whole_preset_items,
-        options={"SKIP_SAVE"},
-    )
 
 
 def unregister():
-    if hasattr(bpy.types.WindowManager, "efx_block_whole_preset_enum"):
-        del bpy.types.WindowManager.efx_block_whole_preset_enum
     if hasattr(bpy.types.WindowManager, "efx_block_category_enum"):
         del bpy.types.WindowManager.efx_block_category_enum
     if hasattr(bpy.types.WindowManager, "efx_preset_mode"):

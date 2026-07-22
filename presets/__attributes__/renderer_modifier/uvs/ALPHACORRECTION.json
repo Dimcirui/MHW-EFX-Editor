@@ -1,0 +1,9 @@
+{
+    "efx_preset_kind": "attribute",
+    "type_hash": "61219887",
+    "type_name": "ALPHACORRECTION",
+    "display_name": "ALPHACORRECTION（透明度修正）",
+    "category": "renderer_modifier",
+    "data_bytes": "AQAAAAAAAAAAAIA/AAAAAAEAAAA=",
+    "subgroup": "uvs"
+}
