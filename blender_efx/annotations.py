@@ -161,7 +161,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Bone Limitation. The index/serial number of the bone this is bound to.",
         "ZH": "骨骼限制。绑定到的骨骼的序号。",
     },
-    ("PARENTOPTIONS", "unkn1"): {
+    ("PARENTOPTIONS", "unknFlag1"): {
         "EN": "Unknown. Observed: {0:20433, 1:9199}",
         "ZH": "未知。观测：{0:20433, 1:9199}",
     },
@@ -295,7 +295,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Bitflag — controls preview visibility",
         "ZH": "位标志 —— 控制预览可见性",
     },
-    ("SHADERSETTINGS", "unkn3_1"): {
+    ("SHADERSETTINGS", "unknEnum3_1"): {
         "EN": "Render layer / billboard mode. "
               "0=3D billboard (default); 2=Plane; "
               "3=certain render subjects (e.g. BILLBOARD2D) bypass TONEMAPFILTER color grading; "
@@ -333,11 +333,11 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── ROTATEANIM ───────────────────────────────────────────────────────────
-    ("ROTATEANIM", "unkn0_0"): {
+    ("ROTATEANIM", "spinAxisMask"): {
         "EN": "Axis mask (bitmask): bit0=X, bit1=Y, bit2=Z. Controls which axes receive spin.",
         "ZH": "轴掩码（bitmask）：bit0=X，bit1=Y，bit2=Z。控制哪些轴参与自旋。",
     },
-    ("ROTATEANIM", "unkn0_1"): {
+    ("ROTATEANIM", "unknBitmask0_1"): {
         "EN": "Rotation mode: 0/1=billboard plane rotation only; 2 or 3=spin velocity enabled.",
         "ZH": "旋转模式：0/1=仅 billboard 平面旋转；取 2 或 3 时 spin_velocity 生效。",
     },
@@ -419,7 +419,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Possibly related to the brightness/glow halo of the emission — not confirmed.",
         "ZH": "可能跟发光的明暗光圈相关，尚未确认。",
     },
-    ("TUBELIGHT", "unkn5_0"): {
+    ("TUBELIGHT", "unknFixed5_0"): {
         "EN": "Always 24 in the sample data — likely just a common default value.",
         "ZH": "语料里恒为 24，可能只是常见的默认值。",
     },
@@ -620,11 +620,11 @@ FIELD_ANNOTATIONS = {
         "EN": "0=Left, 1=Down, 2=Forward, 3=Right, 4=Up, 5=Backward",
         "ZH": "0=左, 1=下, 2=前, 3=右, 4=上, 5=后",
     },
-    ("RAYCAST", "unknown1"): {
+    ("RAYCAST", "unknownEnum1"): {
         "EN": "Usually -1; occasionally 0",
         "ZH": "通常为 -1；偶尔为 0",
     },
-    ("RAYCAST", "unknown2"): {
+    ("RAYCAST", "unknownBitmask2"): {
         "EN": "Observed value 256 — may be flag or enum",
         "ZH": "观测值 256 —— 可能是标志或枚举",
     },
@@ -633,14 +633,15 @@ FIELD_ANNOTATIONS = {
     # 字段语义来自全语料 212 个官方块统计 + 系统性实测逆向（2026-07 重新解释，
     # 推翻此前 2026-06 的"轨道力学"假说：不是角速度/轨道半径，而是一个指向
     # 目标点实时位置的力，restoringForce 是回复力强度，speed/speedMultiplier 是
-    # 字面上的速度/加速度）。unknown/unknown0/spacer 是大部分 attribute 都有的头部
-    # 字段，疑似 flag/分类用，不追求具体数值语义。
-    ("HOMING", "unknown"): {
-        "EN": "Header field shared by most attribute types, likely a flag/category "
-              "marker rather than a meaningful value. Not worth chasing specific numbers.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似 flag/分类标记，不必追求具体数值。",
+    # 字面上的速度/加速度）。typeFlag/section_length/spacer 是大部分 attribute 都有的
+    # 头部字段，见下方通用说明。
+    ("HOMING", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Exact value semantics unconfirmed.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数，具体数值"
+              "语义未确认。",
     },
-    ("HOMING", "unknown0"): {
+    ("HOMING", "section_length"): {
         "EN": "Always 44 across the whole corpus — do not modify",
         "ZH": "全语料恒为 44，请勿修改",
     },
@@ -961,15 +962,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Range 0 to 6; default is usually 0.5.",
         "ZH": "取值范围 0~6；默认通常为 0.5。",
     },
-    ("SHOVEL", "unkn12"): {
+    ("SHOVEL", "unknFixed12"): {
         "EN": "Usually 0.",
         "ZH": "通常为 0。",
     },
-    ("SHOVEL", "unkn13"): {
+    ("SHOVEL", "unknEnum13"): {
         "EN": "Range 0 to 100; usually 0.",
         "ZH": "取值范围 0~100；通常为 0。",
     },
-    ("SHOVEL", "unkn14"): {
+    ("SHOVEL", "unknEnum14"): {
         "EN": "Range 0 to 30; usually 0.",
         "ZH": "取值范围 0~30；通常为 0。",
     },
@@ -977,11 +978,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Enum, range -1 to 7.",
         "ZH": "枚举值，范围 -1~7。",
     },
-    ("SHOVEL", "unkn16"): {
+    ("SHOVEL", "unknBitmask16"): {
         "EN": "Packed as 4 independent on/off byte flags.",
         "ZH": "由 4 个独立的开/关字节标志打包而成。",
     },
-    ("SHOVEL", "unkn17"): {
+    ("SHOVEL", "unknEnum17"): {
         "EN": "Packed as 2 independent on/off byte flags; usually 0.",
         "ZH": "由 2 个独立的开/关字节标志打包而成；通常为 0。",
     },
@@ -1157,7 +1158,7 @@ FIELD_ANNOTATIONS = {
         "EN": "0=Left, 1=Up, 2=Forward, 3=Right, 4=Down, 5=Backwards, 6=None",
         "ZH": "0=左, 1=上, 2=前, 3=右, 4=下, 5=后, 6=无",
     },
-    ("RIBBON", "unkn16_2"): {
+    ("RIBBON", "unknBitmask16_2"): {
         "EN": "0=Align to World,  Anything else=Align to Source",
         "ZH": "0=对齐到世界,  其他任何值=对齐到源",
     },
@@ -1170,7 +1171,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "浮点标量（由旧 unkn4[0] 拆出）。全语料取值 0.0–30.0、零 NaN，常见 0.0 / -0.0。"
               "用途尚未确定。之前以 int 看到的 -2147483648 实际是 float 的 -0.0。",
     },
-    ("RIBBON", "unkn4_1"): {
+    ("RIBBON", "unknEnum4_1"): {
         # 实测：原 unkn4 第二个值 = 形态/速度对齐开关（int 枚举，语料含 0/1/2）。
         "EN": "Shape / velocity alignment (split from the old unkn4[1]): 0 = normal "
               "bendable ribbon strip; 1 = flag form (rigid, no bend) — auto-aligns to "
@@ -1754,11 +1755,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Self-emission color (RGB) + overall emissive alpha coefficient (A).",
         "ZH": "自发光颜色（RGB）+ 整体自发光透明度系数（A）。",
     },
-    ("LIGHTNING", "unkn04"): {
+    ("LIGHTNING", "unknEnum04"): {
         "EN": "≈4.0 as float; guessed emissive intensity multiplier (unconfirmed).",
         "ZH": "转为浮点约等于 4.0；推测是发光强度倍率（未确认）。",
     },
-    ("LIGHTNING", "unkn05_01"): {
+    ("LIGHTNING", "unknEnum05_01"): {
         "EN": "Instance mode flag (lightningInstanceModeFlag). 1=standard single instance; "
               "2=high-complexity triple instance; any other value=high-complexity double "
               "instance. Controls instance count AND waveform complexity together.",
@@ -1814,21 +1815,21 @@ FIELD_ANNOTATIONS = {
         "ZH": "闪电不透明度。0=消失，10=正常；有效区间 0~10。"
               "⚠ 负数触发 int16 溢出（不稳定，如 -42000 回绕变消失）——勿用负数。",
     },
-    ("LIGHTNING", "unkn05_11"): {
+    ("LIGHTNING", "unknEnum05_11"): {
         "EN": "Transparency level B (lightningTransparencyLevel). 1=most opaque, 3=default, "
               "higher=more transparent; effective 1~300+. Negative=fully transparent "
               "(stable). Integer only. Low precision (vs unkn05_10).",
         "ZH": "闪电透明度等级B。1最不透明，3默认，越大越透明；有效 1~300+。"
               "负数=完全透明（稳定无溢出）。仅整数。精度低于 unkn05_10。",
     },
-    ("LIGHTNING", "unkn05_12"): {
+    ("LIGHTNING", "unknFlag05_12"): {
         "EN": "Flow & fade mode (lightningFlowAndFadeMode). 0=faster flow + keep fade-out; "
               "1=default (standard flow + fade); any other value=no flow change + fade-out "
               "cancelled (hard cut at end of life). Integer only.",
         "ZH": "流光与淡出模式。0=流光加速+保留淡出；1=默认（标准流光+淡出渐隐）；"
               "非0非1=流光无变化+淡出取消（生命周期结束直接硬切消失）。仅整数。",
     },
-    ("LIGHTNING", "unkn05_13"): {
+    ("LIGHTNING", "unknEnum05_13"): {
         "EN": "Reserved. No visible change at 0/1/10/negative.",
         "ZH": "保留字段。测 0/1/10/负数均无明显变化。",
     },
@@ -1836,11 +1837,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Target bone ID (default 200). Lightning extends from origin to this bone.",
         "ZH": "靶骨 ID（默认 200）。闪电从起点延伸到此骨骼位置。",
     },
-    ("LIGHTNING", "unkn05_16"): {
+    ("LIGHTNING", "unknEnum05_16"): {
         "EN": "Reserved. No visible change across many values.",
         "ZH": "保留字段。测多个数值均无明显变化。",
     },
-    ("LIGHTNING", "unkn05_17"): {
+    ("LIGHTNING", "unknFlag05_17"): {
         "EN": "Reserved. No visible change at 1/2/3/5/10/100/1000/negative.",
         "ZH": "保留字段。测 1/2/3/5/10/100/1000/负数均无明显变化。",
     },
@@ -1852,7 +1853,7 @@ FIELD_ANNOTATIONS = {
         "EN": "EPV color variable slot 2. 0=don't use EPV color.",
         "ZH": "EPV 特效颜色变量插槽2。0=不使用 EPV 颜色。",
     },
-    ("LIGHTNING", "unkn05_20"): {
+    ("LIGHTNING", "unknFixed05_20"): {
         "EN": "⚠ Caution: do NOT set to 0 (possible crash). Guessed memory layout / render "
               "batch related. Default 96.",
         "ZH": "⚠ 谨慎：不要归0（可能崩溃）。推测与内存布局/渲染批次相关。默认 96。",
@@ -1862,17 +1863,17 @@ FIELD_ANNOTATIONS = {
               "internal pointer. Modifying crashes the game.",
         "ZH": "⚠ 禁止修改。0xCCCCCD00 = 未初始化内存填充值/引擎内部指针，修改导致崩溃。",
     },
-    ("LIGHTNING", "unkn05_22"): {
+    ("LIGHTNING", "unknFixed05_22"): {
         "EN": "⚠ DO NOT MODIFY. Setting to 0 crashes the game; engine-internal key system "
               "parameter (likely pointer/struct-ref table with unkn05_23/24).",
         "ZH": "⚠ 禁止修改。归0直接崩溃；引擎内部关键系统参数（疑与 unkn05_23/24 同属指针/结构体表）。",
     },
-    ("LIGHTNING", "unkn05_23"): {
+    ("LIGHTNING", "unknFixed05_23"): {
         "EN": "⚠ DO NOT MODIFY. Modifying crashes the game; engine-internal pointer / "
               "struct reference.",
         "ZH": "⚠ 禁止修改。修改导致崩溃；引擎内部指针/结构体引用。",
     },
-    ("LIGHTNING", "unkn05_24"): {
+    ("LIGHTNING", "unknFixed05_24"): {
         "EN": "⚠ DO NOT MODIFY. Modifying crashes the game; engine-internal pointer / "
               "struct reference.",
         "ZH": "⚠ 禁止修改。修改导致崩溃；引擎内部指针/结构体引用。",
@@ -1984,7 +1985,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "UV 重复结束（默认 0）。非0=闪电变成数段线段（线段分割感，区别于 uvRepetitionStart"
               "的绳结感）。不影响几何形态。正负相近。",
     },
-    ("LIGHTNING", "unkn05_45"): {
+    ("LIGHTNING", "unknFixed05_45"): {
         "EN": "⚠ Caution: do NOT set to 0 (possible crash). No visible change at 95/97/100/50. "
               "Default 96.",
         "ZH": "⚠ 谨慎：不要归0（可能崩溃）。测 95/97/100/50 无明显变化。默认 96。",
@@ -1994,14 +1995,14 @@ FIELD_ANNOTATIONS = {
               "pointer. Modifying crashes the game.",
         "ZH": "⚠ 禁止修改。0xCCCCCC00 = 未初始化内存填充值/引擎内部指针，修改导致崩溃。",
     },
-    ("LIGHTNING", "unkn05_47"): {
+    ("LIGHTNING", "unknBitmask05_47"): {
         "EN": "Branch lightning count A (branchLightningCount, default 1). 0=sharply fewer "
               "(not gone); 10/100=more; ≥500=invisible + GLOBAL render crash (all scene FX "
               "flicker). ⚠ Negative crashes. Safe range 0~100.",
         "ZH": "支路闪电数量A（默认 1）。0=锐减但不消失；10/100=增多；≥500=不可见+触发全局渲染崩溃"
               "（场景所有特效闪烁）。⚠ 负数崩溃。安全范围 0~100。",
     },
-    ("LIGHTNING", "unkn05_48"): {
+    ("LIGHTNING", "unknFlag05_48"): {
         "EN": "Branch lightning count B (branchLightningCountB, default 1). Affects main+branch "
               "render layer; too high=local render glitch (distance-limited, FX flicker when "
               "near, occasionally visible per viewing angle).",
@@ -2035,11 +2036,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "支线弯曲角极限（默认 0.8）。大=支线复杂度降为约 1 个拐点+扩散增大。仅影响支线"
               "（= vInflectionAngleLimit 的支线版）。正负相近。",
     },
-    ("LIGHTNING", "unkn07_03"): {
+    ("LIGHTNING", "unknFixed07_03"): {
         "EN": "Random jitter on unkn07_02 (branch-only, default 0). Positive ~ negative.",
         "ZH": "支线弯曲角极限抖动（仅影响支线，默认 0）。正负相近，可与 unkn07_02 叠加。",
     },
-    ("LIGHTNING", "unkn07_04"): {
+    ("LIGHTNING", "unknBitmask07_04"): {
         "EN": "Branch complexity/flow mode B switch (branchComplexityFlowModeB, default 0). "
               "0=off (unkn07_05 inert); 1~150=on (recommended); >150 affects GLOBAL FX "
               "flicker. ⚠ Negative crashes. Also feeds complexity calc; pair high 07_04 + "
@@ -2062,7 +2063,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Reserved. No visible change at positive/negative values.",
         "ZH": "保留字段。测正负数值均无明显变化。",
     },
-    ("LIGHTNING", "unkn07_08"): {
+    ("LIGHTNING", "unknFixed07_08"): {
         "EN": "Reserved. No visible change across many values.",
         "ZH": "保留字段。测多个数值均无明显变化。",
     },
@@ -2117,7 +2118,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Branch end width jitter (default 1). Branch-only (no main counterpart).",
         "ZH": "支线结束宽度抖动（默认 1）。支线独有，主线无对应。",
     },
-    ("LIGHTNING", "unkn07_19"): {
+    ("LIGHTNING", "unknFixed07_19"): {
         "EN": "⚠ DO NOT MODIFY. Extreme float (~1.3e-43); guessed engine pointer/special flag.",
         "ZH": "⚠ 禁止修改。极端浮点（约 1.3e-43）；推测引擎内部指针/特殊标志。",
     },
@@ -2125,20 +2126,20 @@ FIELD_ANNOTATIONS = {
         "EN": "⚠ DO NOT MODIFY. Extreme float (~-1.35e+08); guessed engine pointer/flag.",
         "ZH": "⚠ 禁止修改。极端浮点（约 -1.35e+08）；推测引擎内部指针/标志。",
     },
-    ("LIGHTNING", "unkn07_21"): {
+    ("LIGHTNING", "unknEnum07_21"): {
         "EN": "⚠ DO NOT MODIFY. Setting non-0 crashes (alone or with 22/23/26); pointer/"
               "struct-ref region.",
         "ZH": "⚠ 禁止修改。改非0崩溃（单独或与 22/23/26 同改）；指针/结构体引用区。",
     },
-    ("LIGHTNING", "unkn07_22"): {
+    ("LIGHTNING", "unknFlag07_22"): {
         "EN": "⚠ DO NOT MODIFY. Crashes when set non-0; pointer/struct-ref region.",
         "ZH": "⚠ 禁止修改。改非0崩溃；指针/结构体引用区。",
     },
-    ("LIGHTNING", "unkn07_23"): {
+    ("LIGHTNING", "unknEnum07_23"): {
         "EN": "⚠ DO NOT MODIFY. Crashes when set non-0; pointer/struct-ref region.",
         "ZH": "⚠ 禁止修改。改非0崩溃；指针/结构体引用区。",
     },
-    ("LIGHTNING", "unkn07_24"): {
+    ("LIGHTNING", "unknBitmask07_24"): {
         "EN": "⚠ DO NOT MODIFY. Extreme float (~4.2e-45); guessed engine pointer.",
         "ZH": "⚠ 禁止修改。极端浮点（约 4.2e-45）；推测引擎内部指针。",
     },
@@ -2190,7 +2191,7 @@ FIELD_ANNOTATIONS = {
               "MODIFY. Rest of array is reserved/padding (no effect).",
         "ZH": "⚠ [0]=-4.3e+08（0xCD 调试堆未初始化内存填充值）——禁止修改。数组其余为保留/填充（无效果）。",
     },
-    ("LIGHTNING", "unkn16"): {
+    ("LIGHTNING", "unknEnum16"): {
         "EN": "Reserved. No change at 1/100/-1.",
         "ZH": "保留字段。测 1/100/-1 无变化。",
     },
@@ -2200,11 +2201,13 @@ FIELD_ANNOTATIONS = {
     # 来源：stats/field_classification.json（confidence>=0.6），仅提示"通常取值"，
     # 不代表字段被锁定为该范围/取值——语料未覆盖到的其他取值同样合法。
     # -----------------------------------------------------------------------
-    ("ALPHACORRECTION", "unkn0"): {
-        "EN": "Common range: 1~11 (rare outliers up to 45).",
-        "ZH": "常见范围 1~11（个别情况可达 45）。",
+    ("ALPHACORRECTION", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common range: 1~11 (rare outliers up to 45).",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见范围 "
+              "1~11（个别情况可达 45）。",
     },
-    ("ALPHACORRECTION", "unkn2"): {
+    ("ALPHACORRECTION", "unknFlag2"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2212,9 +2215,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("BILLBOARD2D", "unkn0_0"): {
-        "EN": "Common values: [1, 5, 6, 7, 8, 10].",
-        "ZH": "常见取值为 [1, 5, 6, 7, 8, 10]。",
+    ("BILLBOARD2D", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: [1, 5, 6, 7, 8, 10].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 5, 6, 7, 8, 10]。",
     },
     ("BILLBOARD2D", "applicationRule"): {
         "EN": "Enum. Common values: [0, 4, 12, 32]. 4=Flowmap animates continuously "
@@ -2250,7 +2255,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("BILLBOARD2D", "unkn5_1"): {
+    ("BILLBOARD2D", "unknEnum5_1"): {
         "EN": "Common values: [0, 1, 3].",
         "ZH": "常见取值为 [0, 1, 3]。",
     },
@@ -2286,11 +2291,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("BILLBOARD3D", "unkn5"): {
+    ("BILLBOARD3D", "unknEnum5"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 10].",
         "ZH": "常见取值为 [0, 1, 2, 3, 4, 10]。",
     },
-    ("BILLBOARD3D", "unkn6_0"): {
+    ("BILLBOARD3D", "unknFlag6_0"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2302,13 +2307,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("BILLBOARD3D", "unkn9"): {
+    ("BILLBOARD3D", "unknFlag9"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("BLINK", "unkn0_1"): {
-        "EN": "Common values: [5, 30, 44].",
-        "ZH": "常见取值为 [5, 30, 44]。",
+    ("BLINK", "section_length"): {
+        "EN": "Structural remaining-length marker (== total block size - 8), computed "
+              "by the engine; not a tunable parameter. Common values: [5, 30, 44].",
+        "ZH": "结构性剩余长度标记（=块总字节数-8），由引擎计算，非可调参数。常见取值为 "
+              "[5, 30, 44]。",
     },
     ("BLINK", "minAlpha"): {
         "EN": "Lower bound of the flicker range — the blink always spans the full minAlpha~maxAlpha range, not just the edges of it.",
@@ -2370,11 +2377,13 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 3, 5, 6, 8, 10, 16, 18].",
         "ZH": "常见取值为 [0, 3, 5, 6, 8, 10, 16, 18]。",
     },
-    ("EMITTERSHAPE2D", "unkn0"): {
-        "EN": "Common values: [1, 2, 3, 7, 8, 9, 13].",
-        "ZH": "常见取值为 [1, 2, 3, 7, 8, 9, 13]。",
+    ("EMITTERSHAPE2D", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: [1, 2, 3, 7, 8, 9, 13].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 2, 3, 7, 8, 9, 13]。",
     },
-    ("EMITTERSHAPE2D", "unkn20"): {
+    ("EMITTERSHAPE2D", "unknFlag20"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2385,15 +2394,18 @@ FIELD_ANNOTATIONS = {
         "ZH": "原名 unkn3_i0。恰好观测到 6 种取值（0~5）——与三轴旋转顺序的排列数吻合，故据此"
               "命名。取值 4 占绝大多数（约 71%）。各取值具体含义尚未确认。",
     },
-    ("EMITTERSHAPE3D", "unkn0"): {
-        "EN": "Common values: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].",
-        "ZH": "常见取值为 [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]。",
+    ("EMITTERSHAPE3D", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: "
+              "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]。",
     },
-    ("EMITTERSHAPE3D", "unkn2"): {
+    ("EMITTERSHAPE3D", "unknEnum2"): {
         "EN": "Enum: observed values [0, 1, 2]; roughly 52%/39%/9%.",
         "ZH": "枚举：观测取值为 [0, 1, 2]；分布约为 52%/39%/9%。",
     },
-    ("EMITTERSHAPE3D", "unkn3_0"): {
+    ("EMITTERSHAPE3D", "unknEnum3_0"): {
         "EN": "Common values: [0, 1, 3, 5, 7] (BT template mislabeled this a float; "
               "confirmed integer).",
         "ZH": "常见取值为 [0, 1, 3, 5, 7]（BT 模板误标为 float，实为整数）。",
@@ -2402,22 +2414,24 @@ FIELD_ANNOTATIONS = {
         "EN": "Usually 0; other common values: [60, 100, 120, 135, 140, 150, 160, 180, 200].",
         "ZH": "通常为 0；其余常见取值为 [60, 100, 120, 135, 140, 150, 160, 180, 200]。",
     },
-    ("EMITTERSHAPE3D", "unkn4"): {
+    ("EMITTERSHAPE3D", "unknFlag4"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("EMITTERSHAPE3D", "unknRadiusRelated"): {
+    ("EMITTERSHAPE3D", "unknBitmaskRadiusRelated"): {
         "EN": "Despite the name, BT template mislabeled this a float — confirmed integer "
               "(only 6 values 0~5, overwhelmingly 0). Not actually radius-shaped data; "
               "the original name is likely a positional guess.",
         "ZH": "尽管名字如此，BT 模板误标为 float——实为整数（仅 0~5 共 6 种取值，绝大多数为 0）。"
               "分布并不像半径类数据，原名很可能只是按位置猜测的。",
     },
-    ("EMITTERSHAPEMESH", "unkn0_0"): {
-        "EN": "Common values: [1, 2, 3, 4, 5, 6, 7, 9].",
-        "ZH": "常见取值为 [1, 2, 3, 4, 5, 6, 7, 9]。",
+    ("EMITTERSHAPEMESH", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: [1, 2, 3, 4, 5, 6, 7, 9].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 2, 3, 4, 5, 6, 7, 9]。",
     },
-    ("EMITTERSHAPEMESH", "unkn2_0"): {
+    ("EMITTERSHAPEMESH", "unknFlag2_0"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2425,7 +2439,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("EMITTERSHAPEMESH", "unkn2_2"): {
+    ("EMITTERSHAPEMESH", "unknFlag2_2"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2433,15 +2447,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("EMITTERSHAPEMESH", "unkn2_5"): {
+    ("EMITTERSHAPEMESH", "unknEnum2_5"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("EMITTERSHAPEMESH", "unkn2_6"): {
+    ("EMITTERSHAPEMESH", "unknEnum2_6"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("EMITTERSHAPEMESH", "unkn2_7"): {
+    ("EMITTERSHAPEMESH", "unknEnum2_7"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2449,11 +2463,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 3, 4146].",
         "ZH": "常见取值为 [0, 1, 3, 4146]。",
     },
-    ("EXTERNREFERENCE", "unkn1_1"): {
+    ("EXTERNREFERENCE", "unknEnum1_1"): {
         "EN": "Common values: [0, 1, 2, 4].",
         "ZH": "常见取值为 [0, 1, 2, 4]。",
     },
-    ("EXTERNREFERENCE", "unkn1_2"): {
+    ("EXTERNREFERENCE", "unknEnum1_2"): {
         "EN": "Common values: [0, 1, 2, 3, 5].",
         "ZH": "常见取值为 [0, 1, 2, 3, 5]。",
     },
@@ -2461,7 +2475,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("EXTERNREFERENCE", "unkn1_6"): {
+    ("EXTERNREFERENCE", "unknFlag1_6"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2473,15 +2487,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("FADEBYANGLE", "unkn2_1"): {
+    ("FADEBYANGLE", "unknEnum2_1"): {
         "EN": "Common values: [0, 4, 5].",
         "ZH": "常见取值为 [0, 4, 5]。",
     },
-    ("FADEBYOCCLUSION", "unkn2_1"): {
+    ("FADEBYOCCLUSION", "unknFlag2_1"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("FADEBYOCCLUSION", "unkn2_2"): {
+    ("FADEBYOCCLUSION", "unknFlag2_2"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2489,19 +2503,19 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("FAKEPLANE", "unkn1_1"): {
+    ("FAKEPLANE", "unknFlag1_1"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("FAKEPLANE", "unkn1_2"): {
+    ("FAKEPLANE", "unknFlag1_2"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("FAKEPLANE", "unkn1_3"): {
+    ("FAKEPLANE", "unknFlag1_3"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("FAKEPLANE", "unkn3"): {
+    ("FAKEPLANE", "unknEnum3"): {
         "EN": "Common values: [1, 2, 4].",
         "ZH": "常见取值为 [1, 2, 4]。",
     },
@@ -2565,27 +2579,32 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("LIFE", "unkn0"): {
-        "EN": "Common values: [1, 2, 5, 6, 7, 8, 9, 10, 12].",
-        "ZH": "常见取值为 [1, 2, 5, 6, 7, 8, 9, 10, 12]。",
+    ("LIFE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: "
+              "[1, 2, 5, 6, 7, 8, 9, 10, 12].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 2, 5, 6, 7, 8, 9, 10, 12]。",
     },
     ("LIFE", "unkn2_0"): {
         "EN": "Usually 0; other common values: [2, 5, 10, 20, 30, 35, 40, 50, 100].",
         "ZH": "通常为 0；其余常见取值为 [2, 5, 10, 20, 30, 35, 40, 50, 100]。",
     },
-    ("LIFE", "unkn2_1"): {
+    ("LIFE", "unknEnum2_1"): {
         "EN": "Usually 0; other common values: [5, 6, 10, 15, 20, 30, 40, 50, 60].",
         "ZH": "通常为 0；其余常见取值为 [5, 6, 10, 15, 20, 30, 40, 50, 60]。",
     },
-    ("LIGHTNING", "unkn00_0"): {
-        "EN": "Common values: [1, 2, 3, 4, 7].",
-        "ZH": "常见取值为 [1, 2, 3, 4, 7]。",
+    ("LIGHTNING", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: [1, 2, 3, 4, 7].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 2, 3, 4, 7]。",
     },
-    ("LIGHTNING", "unkn08_1"): {
+    ("LIGHTNING", "unknEnum08_1"): {
         "EN": "Common values: [0, 1, 2, 3, 5].",
         "ZH": "常见取值为 [0, 1, 2, 3, 5]。",
     },
-    ("LIGHTNING", "unkn10_2"): {
+    ("LIGHTNING", "unknFlag10_2"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2593,19 +2612,19 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("LIGHTNING", "unkn12_1"): {
+    ("LIGHTNING", "unknEnum12_1"): {
         "EN": "Common values: [0, 4].",
         "ZH": "常见取值为 [0, 4]。",
     },
-    ("LIGHTNING", "unkn14_0"): {
+    ("LIGHTNING", "unknEnum14_0"): {
         "EN": "Common values: [0, 5].",
         "ZH": "常见取值为 [0, 5]。",
     },
-    ("LIGHTNING", "unkn14_1"): {
+    ("LIGHTNING", "unknFlag14_1"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("LINKPARTSVISIBLE", "unkn0_2"): {
+    ("LINKPARTSVISIBLE", "unknEnum0_2"): {
         "EN": "Common values: [2, 13, 15].",
         "ZH": "常见取值为 [2, 13, 15]。",
     },
@@ -2660,32 +2679,35 @@ FIELD_ANNOTATIONS = {
               "rotationOrder 分布形态相同（同样以 4 为主流值），推测两者可能共用引擎内同一套"
               "旋转顺序枚举。各取值具体含义尚未确认。",
     },
-    ("MESH", "unkn0_0"): {
-        "EN": "Common values: [1, 2, 3, 4, 5, 6, 7, 8, 9].",
-        "ZH": "常见取值为 [1, 2, 3, 4, 5, 6, 7, 8, 9]。",
+    ("MESH", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: "
+              "[1, 2, 3, 4, 5, 6, 7, 8, 9].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 2, 3, 4, 5, 6, 7, 8, 9]。",
     },
-    ("MESH", "unkn0_1"): {
+    ("MESH", "unknFixed0_1"): {
         "EN": "Always 167 across all observed samples — likely a fixed format/version "
               "marker rather than a tunable parameter.",
         "ZH": "观测样本中恒为 167——很可能是固定的格式/版本标记，而非可调参数。",
     },
-    ("MESH", "unkn40"): {
+    ("MESH", "unknBitmask40"): {
         "EN": "Observed values: [0, 1, 2, 3, 4, 5]; overwhelmingly 2 (~92%).",
         "ZH": "观测取值为 [0, 1, 2, 3, 4, 5]；绝大多数为 2（约 92%）。",
     },
-    ("MESH", "unkn5"): {
+    ("MESH", "unknEnum5"): {
         "EN": "Common values: [0, 2, 6, 7].",
         "ZH": "常见取值为 [0, 2, 6, 7]。",
     },
-    ("MESH", "unkn6_1"): {
+    ("MESH", "unknFixed6_1"): {
         "EN": "Always 0 across all observed samples. Likely reserved/unused.",
         "ZH": "观测样本中恒为 0。可能是保留/未使用字段。",
     },
-    ("MESH", "unkn7_0"): {
+    ("MESH", "unknEnum7_0"): {
         "EN": "Common values: [0, 1, 2, 3, 180, 4112].",
         "ZH": "常见取值为 [0, 1, 2, 3, 180, 4112]。",
     },
-    ("MESH", "unkn7_1"): {
+    ("MESH", "unknFlag7_1"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2729,11 +2751,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("PARENTEMISSIVE", "unkn3"): {
+    ("PARENTEMISSIVE", "unknEnum3"): {
         "EN": "Common values: [0, 1, 2, 9].",
         "ZH": "常见取值为 [0, 1, 2, 9]。",
     },
-    ("PARENTEMISSIVE", "unkn4"): {
+    ("PARENTEMISSIVE", "unknEnum4"): {
         "EN": "Common values: [0, 1, 4, 9, 13, 15].",
         "ZH": "常见取值为 [0, 1, 4, 9, 13, 15]。",
     },
@@ -2765,7 +2787,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("PARENTSNOW", "unkn4_6"): {
+    ("PARENTSNOW", "unknFlag4_6"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2781,9 +2803,12 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("PATHCHAIN", "unkn0_0"): {
-        "EN": "Common values: [0, 1, 2, 3, 4, 5, 7, 17].",
-        "ZH": "常见取值为 [0, 1, 2, 3, 4, 5, 7, 17]。",
+    ("PATHCHAIN", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: "
+              "[0, 1, 2, 3, 4, 5, 7, 17].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[0, 1, 2, 3, 4, 5, 7, 17]。",
     },
     ("PATHCHAIN", "unkn4_0"): {
         "EN": "Common range: 0~100.",
@@ -2801,11 +2826,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("PATHCHAIN", "unkn5_7"): {
+    ("PATHCHAIN", "unknEnum5_7"): {
         "EN": "Common values: [2, 4].",
         "ZH": "常见取值为 [2, 4]。",
     },
-    ("PATHCHAIN", "unkn6"): {
+    ("PATHCHAIN", "unknFlag6"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2813,9 +2838,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 2, 3, 9].",
         "ZH": "常见取值为 [0, 1, 2, 3, 9]。",
     },
-    ("PLANE", "unkn0"): {
-        "EN": "Common range: 1~13 (rare outliers up to 41).",
-        "ZH": "常见范围 1~13（个别情况可达 41）。",
+    ("PLANE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common range: 1~13 (rare outliers up to 41).",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见范围 "
+              "1~13（个别情况可达 41）。",
     },
     ("PLANE", "rotation2"): {
         "EN": "Plane's rotation around its own perpendicular axis (spin), independent from "
@@ -2861,30 +2888,30 @@ FIELD_ANNOTATIONS = {
         "ZH": "与 BILLBOARD3D 的 randomBrightnessMult 字段位置相同。在 PLANE 上的具体行为尚未"
               "确认。常见取值在 0~100 之间。（RE Engine 里对应字段叫 'Intensity'。）",
     },
-    ("PLANE", "unkn5_0"): {
+    ("PLANE", "unknBitmask5_0"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 6].",
         "ZH": "常见取值为 [0, 1, 2, 3, 4, 6]。",
     },
-    ("PLANE", "unkn5_1"): {
+    ("PLANE", "unknEnum5_1"): {
         "EN": "Common values: [0, 1, 3, 5, 7].",
         "ZH": "常见取值为 [0, 1, 3, 5, 7]。",
     },
-    ("PLANE", "unkn5_2"): {
+    ("PLANE", "unknBitmask5_2"): {
         "EN": "Observed values: [0, 1, 2, 3, 4, 5]; most commonly 1 or 0.",
         "ZH": "观测取值为 [0, 1, 2, 3, 4, 5]；最常见为 1 或 0。",
     },
-    ("PLANE", "unkn5_3"): {
+    ("PLANE", "unknEnum5_3"): {
         "EN": "Common values: [0, 2, 3, 4, 5].",
         "ZH": "常见取值为 [0, 2, 3, 4, 5]。",
     },
-    ("PLANE", "unkn7_0"): {
+    ("PLANE", "unknBitmask7_0"): {
         "EN": "Observed values [0, 1, 2, 3, 4, 8, 32, 33, 36] look like a bitmask "
               "(1/2/4/8/32 present, plus combinations 33=32+1, 36=32+4). "
               "Per-bit meaning unconfirmed.",
         "ZH": "观测取值 [0, 1, 2, 3, 4, 8, 32, 33, 36] 呈现位掩码特征"
               "（含 1/2/4/8/32 及其组合 33=32+1、36=32+4）。各 bit 含义尚未确认。",
     },
-    ("PLANE", "unkn7_1"): {
+    ("PLANE", "unknFlag7_1"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -2916,7 +2943,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("PTCOLLISION", "unkn04"): {
+    ("PTCOLLISION", "unknEnum04"): {
         "EN": "Common values: [0, 1, 10, 15].",
         "ZH": "常见取值为 [0, 1, 10, 15]。",
     },
@@ -2928,7 +2955,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("PTCOLLISION", "unkn2_1"): {
+    ("PTCOLLISION", "unknEnum2_1"): {
         "EN": "Common values: [0, 1, 2, 3, 10].",
         "ZH": "常见取值为 [0, 1, 2, 3, 10]。",
     },
@@ -2948,35 +2975,35 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("PTCOLLISION", "unkn4_1"): {
+    ("PTCOLLISION", "unknFlag4_1"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("PTCOLLISION", "unkn6_0"): {
+    ("PTCOLLISION", "unknEnum6_0"): {
         "EN": "Common values: [0, 2, 3, 4, 5].",
         "ZH": "常见取值为 [0, 2, 3, 4, 5]。",
     },
-    ("PTCOLLISION", "unkn6_1"): {
+    ("PTCOLLISION", "unknEnum6_1"): {
         "EN": "Common values: [0, 1, 2, 7, 40, 50, 1000].",
         "ZH": "常见取值为 [0, 1, 2, 7, 40, 50, 1000]。",
     },
-    ("PTLIFE", "unkn3"): {
+    ("PTLIFE", "unknEnum3"): {
         "EN": "Common values: [0, 2, 3, 4, 5].",
         "ZH": "常见取值为 [0, 2, 3, 4, 5]。",
     },
-    ("PTLIFE", "unkn5"): {
+    ("PTLIFE", "unknEnum5"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("PTLIFE", "unkn6"): {
+    ("PTLIFE", "unknEnum6"): {
         "EN": "Common values: [0, 10, 30, 60, 70, 90, 240, 490].",
         "ZH": "常见取值为 [0, 10, 30, 60, 70, 90, 240, 490]。",
     },
-    ("PTLIFE", "unkn8"): {
+    ("PTLIFE", "unknEnum8"): {
         "EN": "Common values: [0, 20].",
         "ZH": "常见取值为 [0, 20]。",
     },
-    ("PTTRIGGER", "unkn2"): {
+    ("PTTRIGGER", "unknEnum2"): {
         "EN": "Common values: [1, 2, 4, 8].",
         "ZH": "常见取值为 [1, 2, 4, 8]。",
     },
@@ -2988,11 +3015,13 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("REPEATAREA", "unkn0"): {
-        "EN": "Common values: [0, 1, 2, 3, 4, 7, 10].",
-        "ZH": "常见取值为 [0, 1, 2, 3, 4, 7, 10]。",
+    ("REPEATAREA", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: [0, 1, 2, 3, 4, 7, 10].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[0, 1, 2, 3, 4, 7, 10]。",
     },
-    ("REPEATAREA", "unkn4"): {
+    ("REPEATAREA", "unknEnum4"): {
         "EN": "Common values: [1, 2, 5, 7].",
         "ZH": "常见取值为 [1, 2, 5, 7]。",
     },
@@ -3032,55 +3061,55 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("RGBWATER", "unkn2_1"): {
+    ("RGBWATER", "unknEnum2_1"): {
         "EN": "Common values: [0, 5, 10, 14, 30, 40, 62].",
         "ZH": "常见取值为 [0, 5, 10, 14, 30, 40, 62]。",
     },
-    ("RGBWATER", "unkn2_14"): {
+    ("RGBWATER", "unknFlag2_14"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unkn2_16"): {
+    ("RGBWATER", "unknEnum2_16"): {
         "EN": "Common values: [0, 1, 2, 6, 7, 8].",
         "ZH": "常见取值为 [0, 1, 2, 6, 7, 8]。",
     },
-    ("RGBWATER", "unkn2_17"): {
+    ("RGBWATER", "unknFlag2_17"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unkn2_19"): {
+    ("RGBWATER", "unknEnum2_19"): {
         "EN": "Common values: [0, 5].",
         "ZH": "常见取值为 [0, 5]。",
     },
-    ("RGBWATER", "unkn2_24"): {
+    ("RGBWATER", "unknFlag2_24"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unkn2_3"): {
+    ("RGBWATER", "unknEnum2_3"): {
         "EN": "Common values: [0, 5, 10, 14, 20, 24, 25, 30].",
         "ZH": "常见取值为 [0, 5, 10, 14, 20, 24, 25, 30]。",
     },
-    ("RGBWATER", "unkn2_4"): {
+    ("RGBWATER", "unknFlag2_4"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unkn2_5"): {
+    ("RGBWATER", "unknFlag2_5"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unkn2_6"): {
+    ("RGBWATER", "unknEnum2_6"): {
         "EN": "Common values: [0, 2].",
         "ZH": "常见取值为 [0, 2]。",
     },
-    ("RGBWATER", "unkn2_7"): {
+    ("RGBWATER", "unknFlag2_7"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unkn2_8"): {
+    ("RGBWATER", "unknEnum2_8"): {
         "EN": "Common values: [0, 5, 10, 15, 25, 40, 50, 60].",
         "ZH": "常见取值为 [0, 5, 10, 15, 25, 40, 50, 60]。",
     },
-    ("RGBWATER", "unkn2_9"): {
+    ("RGBWATER", "unknEnum2_9"): {
         "EN": "Common values: [0, 25].",
         "ZH": "常见取值为 [0, 25]。",
     },
@@ -3088,15 +3117,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("RGBWATER", "unknownInt_0"): {
+    ("RGBWATER", "unknownFlagInt_0"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unknownInt_1"): {
+    ("RGBWATER", "unknownEnumInt_1"): {
         "EN": "Common values: [0, 10, 16, 20, 25, 30, 60].",
         "ZH": "常见取值为 [0, 10, 16, 20, 25, 30, 60]。",
     },
-    ("RGBWATER", "unknownInt_2"): {
+    ("RGBWATER", "unknownEnumInt_2"): {
         "EN": "Common values: [0, 16].",
         "ZH": "常见取值为 [0, 16]。",
     },
@@ -3176,15 +3205,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("RIBBON", "unkn16_0_1"): {
+    ("RIBBON", "unknFlag16_0_1"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RIBBON", "unkn16_1"): {
+    ("RIBBON", "unknEnum16_1"): {
         "EN": "Common values: [1, 257].",
         "ZH": "常见取值为 [1, 257]。",
     },
-    ("RIBBON", "unkn16arr_0"): {
+    ("RIBBON", "unknEnum16arr_0"): {
         "EN": "Common values: [0, 2, 4, 5].",
         "ZH": "常见取值为 [0, 2, 4, 5]。",
     },
@@ -3196,7 +3225,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("RIBBON", "unkn22_2"): {
+    ("RIBBON", "unknFlag22_2"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -3262,11 +3291,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "拖尾长度，仅当 lengthMode=0 时生效（此时收缩速度固定内置）。近似成正比："
               "值越高拖尾越长。原名 unkn05_0。",
     },
-    ("RIBBONBLADE", "unkn05_1"): {
+    ("RIBBONBLADE", "unknEnum05_1"): {
         "EN": "Common values: [0, 2, 3, 4, 6, 20].",
         "ZH": "常见取值为 [0, 2, 3, 4, 6, 20]。",
     },
-    ("RIBBONBLADE", "unkn07_0"): {
+    ("RIBBONBLADE", "unknFlag07_0"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -3279,19 +3308,21 @@ FIELD_ANNOTATIONS = {
               "maxLengthLimit + contractionSpeed 共同决定（contractionSpeed=0 时不主动收缩，"
               "除非到达 maxLengthLimit 上限）。原名 unkn07_1。",
     },
-    ("RIBBONBLADE", "unkn08"): {
+    ("RIBBONBLADE", "unknFlag08"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RIBBONBLADE", "unkn0_0"): {
-        "EN": "Common values: [1, 2, 4].",
-        "ZH": "常见取值为 [1, 2, 4]。",
+    ("RIBBONBLADE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: [1, 2, 4].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 2, 4]。",
     },
-    ("RIBBONBLADE", "unkn12_0"): {
+    ("RIBBONBLADE", "unknFlag12_0"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RIBBONBLADE", "unkn12_1"): {
+    ("RIBBONBLADE", "unknFlag12_1"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -3345,7 +3376,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("ROTATEANIM", "unkn1_2"): {
+    ("ROTATEANIM", "unknEnum1_2"): {
         "EN": "Usually 0; other common values: [1, 2, 5, 10, 15, 20, 30, 60, 128].",
         "ZH": "通常为 0；其余常见取值为 [1, 2, 5, 10, 15, 20, 30, 60, 128]。",
     },
@@ -3385,19 +3416,22 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("SHADERSETTINGS", "unkn0"): {
-        "EN": "Common values: [1, 2, 3, 4, 5, 6, 7, 10, 11, 12].",
-        "ZH": "常见取值为 [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]。",
+    ("SHADERSETTINGS", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: "
+              "[1, 2, 3, 4, 5, 6, 7, 10, 11, 12].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 2, 3, 4, 5, 6, 7, 10, 11, 12]。",
     },
-    ("SHADERSETTINGS", "unkn1"): {
+    ("SHADERSETTINGS", "unknEnum1"): {
         "EN": "Common values: [80, 104].",
         "ZH": "常见取值为 [80, 104]。",
     },
-    ("SHADERSETTINGS", "unkn2"): {
+    ("SHADERSETTINGS", "unknFlag2"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("SHADERSETTINGS", "unkn3_0"): {
+    ("SHADERSETTINGS", "unknBitmask3_0"): {
         "EN": "Observed values: [0, 1, 2, 3]; most commonly 0 or 1.",
         "ZH": "观测取值为 [0, 1, 2, 3]；最常见为 0 或 1。",
     },
@@ -3433,7 +3467,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200].",
         "ZH": "常见取值为 [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200]。",
     },
-    ("SHADERSETTINGS", "unkn4_8"): {
+    ("SHADERSETTINGS", "unknEnum4_8"): {
         "EN": "Unnamed integer parameter (BT template mislabels it float — reinterpreted values "
               "showed no clean float range, and -1 alone covers 63% of samples, a classic "
               "unset/sentinel pattern; the rest are large ID/hash-like integers). "
@@ -3454,7 +3488,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Usually 0; other common values: [-200, -100, -50, -20, 50, 80, 100, 150, 200].",
         "ZH": "通常为 0；其余常见取值为 [-200, -100, -50, -20, 50, 80, 100, 150, 200]。",
     },
-    ("SHADERSETTINGS", "unkn4_12"): {
+    ("SHADERSETTINGS", "unknFixed4_12"): {
         "EN": "Always 0.0 in observed data. Purpose unconfirmed.",
         "ZH": "观测样本中恒为 0.0。具体作用尚未确认。",
     },
@@ -3462,7 +3496,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Usually 0; other common values: [15, 17, 20, 25, 50, 100, 150, 200, 300].",
         "ZH": "通常为 0；其余常见取值为 [15, 17, 20, 25, 50, 100, 150, 200, 300]。",
     },
-    ("SHADERSETTINGS", "unkn4_14"): {
+    ("SHADERSETTINGS", "unknBitmask4_14"): {
         "EN": "Observed values: [0, 1, 2, 3]; almost always 0.",
         "ZH": "观测取值为 [0, 1, 2, 3]；绝大多数为 0。",
     },
@@ -3471,23 +3505,26 @@ FIELD_ANNOTATIONS = {
               "[1, 100, 500, 1000, 2500, 5000, 8000, 10000, -10000].",
         "ZH": "通常为 0；其余常见取值为较大的整数：[1, 100, 500, 1000, 2500, 5000, 8000, 10000, -10000]。",
     },
-    ("SHADERSETTINGS", "unkn5_0"): {
+    ("SHADERSETTINGS", "unknEnum5_0"): {
         "EN": "Common values: [0, 1, 65536, 16777216].",
         "ZH": "常见取值为 [0, 1, 65536, 16777216]。",
     },
-    ("SHADERSETTINGS", "unkn5_1"): {
+    ("SHADERSETTINGS", "unknBitmask5_1"): {
         "EN": "Observed values: [0, 1, 2, 3, 4, 5, 7, 8, 9] (6 never observed); most commonly 0 or 1.",
         "ZH": "观测取值为 [0, 1, 2, 3, 4, 5, 7, 8, 9]（从未出现 6）；最常见为 0 或 1。",
     },
-    ("SPAWN", "unkn0"): {
-        "EN": "Common values: [2, 3, 4, 5, 6, 7, 8, 9, 10]; overwhelmingly 2.",
-        "ZH": "常见取值为 [2, 3, 4, 5, 6, 7, 8, 9, 10]；绝大多数为 2。",
+    ("SPAWN", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: "
+              "[2, 3, 4, 5, 6, 7, 8, 9, 10]; overwhelmingly 2.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[2, 3, 4, 5, 6, 7, 8, 9, 10]；绝大多数为 2。",
     },
     ("SPAWN", "unkn10"): {
         "EN": "Usually 0; other common values: [1, 2, 5, 10, 15, 20, 30, 40, 60].",
         "ZH": "通常为 0；其余常见取值为 [1, 2, 5, 10, 15, 20, 30, 40, 60]。",
     },
-    ("SPAWN", "unkn11"): {
+    ("SPAWN", "unknEnum11"): {
         "EN": "Common values: [0, 2, 4, 5, 10, 50].",
         "ZH": "常见取值为 [0, 2, 4, 5, 10, 50]。",
     },
@@ -3499,13 +3536,13 @@ FIELD_ANNOTATIONS = {
         "EN": "Usually 0; other common values: [20, 22, 25, 30, 40, 50, 100, 200].",
         "ZH": "通常为 0；其余常见取值为 [20, 22, 25, 30, 40, 50, 100, 200]。",
     },
-    ("SPAWN", "unkn31"): {
+    ("SPAWN", "unknBitmask31"): {
         "EN": "Usually 0. Non-zero values look like a bitmask (1/2/4/8/16/32 present, "
               "plus combinations 33=32+1, 34=32+2, 36=32+4). Per-bit meaning unconfirmed.",
         "ZH": "通常为 0。非零取值呈现位掩码特征（含 1/2/4/8/16/32 及其组合 33=32+1、"
               "34=32+2、36=32+4）。各 bit 含义尚未确认。",
     },
-    ("SPAWNBYANGLE", "unkn3"): {
+    ("SPAWNBYANGLE", "unknEnum3"): {
         "EN": "Common values: [1, 4].",
         "ZH": "常见取值为 [1, 4]。",
     },
@@ -3605,7 +3642,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Usually 1.0 (no scaling); occasionally 0.5 or 2.0.",
         "ZH": "通常为 1.0（不缩放）；偶见 0.5 或 2.0。",
     },
-    ("TUBELIGHT", "unkn0_2"): {
+    ("TUBELIGHT", "unknEnum0_2"): {
         "EN": "Common values: [13434880, 13435136].",
         "ZH": "常见取值为 [13434880, 13435136]。",
     },
@@ -3617,11 +3654,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("TURBULENCE", "unkn1_1"): {
+    ("TURBULENCE", "unknEnum1_1"): {
         "EN": "Common values: [0, 4].",
         "ZH": "常见取值为 [0, 4]。",
     },
-    ("TURBULENCE", "unkn3_4"): {
+    ("TURBULENCE", "unknFlag3_4"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -3637,7 +3674,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("UVCONTROL", "unkn2"): {
+    ("UVCONTROL", "unknFlag2"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -3663,9 +3700,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "填充字节，观测样本中恒为 0（属于 loopingEnum 的字节布局，参见 "
               "playbackMode/flipCode/direction/loopingOrientation）。",
     },
-    ("UVSEQUENCE", "unkn0"): {
-        "EN": "Common values: [1, 2, 5, 6, 7, 8, 9, 11, 13, 14].",
-        "ZH": "常见取值为 [1, 2, 5, 6, 7, 8, 9, 11, 13, 14]。",
+    ("UVSEQUENCE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: "
+              "[1, 2, 5, 6, 7, 8, 9, 11, 13, 14].",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+              "[1, 2, 5, 6, 7, 8, 9, 11, 13, 14]。",
     },
     ("UVSEQUENCE", "uvsIndexJitter"): {
         "EN": "Jitter added to uvs_index at spawn (BT template mislabels the raw byte "

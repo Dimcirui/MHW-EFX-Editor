@@ -326,7 +326,7 @@ def _schema_size(schema: list) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_TRANSFORM3D_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
     ('translate', ('XYZ', 0)),
     ('rotate', ('XYZ', 0)),
     ('resize', ('XYZ', 0)),
@@ -365,12 +365,12 @@ TRANSFORM3D_SCHEMA = EXTERN_TRANSFORM3D_SCHEMA
 # ─────────────────────────────────────────────────────────────────────────────
 
 PARENTOPTIONS_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
     ('translation_tracking', ('XYZ', 1)),
     ('angle_tracking', ('XYZ', 1)),
     ('scale_tracking', ('XYZ', 1)),
     ('spawnTrack', 'i'),
-    ('unkn1', 'i'),
+    ('unknFlag1', 'i'),
     # 原 spawnLock/bleedPos：实为一对 fixed+jitter，作用是"跨生成追踪启用后，达到该帧数即
     # 停止追踪"（0=始终追踪），并非各自独立的"锁定位置/渗出位置"。
     ('lockToPositionFrame', 'i'),
@@ -410,7 +410,7 @@ assert _schema_size(PARENTOPTIONS_SCHEMA) == 60, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_SPAWN_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
     ('instancesSpawnedTotal', 'i'),
     ('instancesSpawnedPerFrame', 'i'),
     ('randomizedSpawnsPerFrame', 'i'),
@@ -424,11 +424,11 @@ EXTERN_SPAWN_SCHEMA = [
     ('occur2', 'i'),
     # BT 原标 uint32；实测全语料从未接近 2^31，改签名 int 换取原生数值控件（原字符串输入框）
     ('unkn10', 'i'),
-    ('unkn11', 'i'),
+    ('unknEnum11', 'i'),
     ('repeatAtribute', 'i'),
     ('unkn21', 'i'),
     ('unkn30', 'i'),
-    ('unkn31', 'i'),
+    ('unknBitmask31', 'i'),
 ]
 assert _schema_size(EXTERN_SPAWN_SCHEMA) == 72, \
     f"EXTERN_SPAWN_SCHEMA size mismatch: {_schema_size(EXTERN_SPAWN_SCHEMA)}"
@@ -457,13 +457,13 @@ SPAWN_SCHEMA = EXTERN_SPAWN_SCHEMA
 # ─────────────────────────────────────────────────────────────────────────────
 
 LIFE_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
     ('fadeInDuration', 'i'),
     ('fadeInDurationJitter', 'i'),
     ('duration', 'i'),
     ('durationJitter', 'i'),
     ('unkn2_0', 'i'),
-    ('unkn2_1', 'i'),
+    ('unknEnum2_1', 'i'),
     ('fadeOutDuration', 'i'),
     ('fadeOutDurationJitter', 'i'),
     ('timeToDeath', 'i'),
@@ -499,14 +499,14 @@ assert _schema_size(LIFE_SCHEMA) == 48, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 SHADERSETTINGS_SCHEMA = [
-    ('unkn0', 'i'),
-    ('unkn1', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
+    ('unknEnum1', 'i'),   # 不满足 section_length 公式(99.9%恒104,应为108)，未改名
     ('spacer', 'i'),
-    ('unkn2', 'i'),
+    ('unknFlag2', 'i'),
     ('zDepthModifierStart', 'f'),
     ('zDepthModifierEnd', 'f'),
-    ('unkn3_0', 'i'),
-    ('unkn3_1', 'i'),
+    ('unknBitmask3_0', 'i'),
+    ('unknEnum3_1', 'i'),
     ('controlBitflag', 'i'),
     ('unkn4_0', 'f'),
     ('unkn4_1', 'f'),
@@ -516,22 +516,22 @@ SHADERSETTINGS_SCHEMA = [
     ('unkn4_5', 'f'),
     ('unkn4_6', 'f'),
     ('unkn4_7', 'f'),
-    ('unkn4_8', 'i'),  # 实测：BT 模板标为 float，但仅 10 种取值，63.6% 恒为 -1（sentinel），
+    ('unknEnum4_8', 'i'),  # 实测：BT 模板标为 float，但仅 10 种取值，63.6% 恒为 -1（sentinel），
                         # 其余为看似随机的大整数（疑似哈希/ID），无一落在正常浮点参数范围，改回 int
     ('unkn4_9', 'f'),
     ('unkn4_10', 'f'),
     ('unkn4_11', 'f'),
-    ('unkn4_12', 'f'),
+    ('unknFixed4_12', 'f'),
     ('unkn4_13', 'f'),
-    ('unkn4_14', 'i'),
+    ('unknBitmask4_14', 'i'),
     ('unkn4_15', 'i'),
     ('objectInteractionFlag0', 'B'),
     ('objectInteractionFlag1', 'B'),
     ('objectInteractionFlag2', 'B'),
     ('objectInteractionFlag3', 'B'),
     ('visibleOnPreview', 'i'),
-    ('unkn5_0', 'i'),
-    ('unkn5_1', 'i'),
+    ('unknEnum5_0', 'i'),
+    ('unknBitmask5_1', 'i'),
 ]
 assert _schema_size(SHADERSETTINGS_SCHEMA) == 116, \
     f"SHADERSETTINGS_SCHEMA size mismatch: {_schema_size(SHADERSETTINGS_SCHEMA)}"
@@ -574,9 +574,9 @@ assert _schema_size(SHADERSETTINGS_SCHEMA) == 116, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_VELOCITY3D_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
-    ('unkn0_2', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknBitmask0_1', 'i'),
+    ('unknBitmask0_2', 'i'),
     ('rotationX', 'f'),
     ('rotationXJitter', 'f'),
     ('rotationY', 'f'),
@@ -684,11 +684,11 @@ assert _schema_size(EXTERN_VELOCITY3D6_SCHEMA) == 80, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_EMITTERSHAPE3D_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
     ('transform', ('XYZ', 0)),
     ('patternControl', 'i'),
-    ('unkn2', 'i'),
-    ('unkn3_0', 'i'),
+    ('unknEnum2', 'i'),
+    ('unknEnum3_0', 'i'),
     ('trayectoryRotationX', 'f'),
     ('trayectoryRotationY', 'f'),
     ('trayectoryRotationZ', 'f'),
@@ -699,8 +699,8 @@ EXTERN_EMITTERSHAPE3D_SCHEMA = [
     ('spawnTotal', 'i'),
     ('radiusEnd', 'f'),
     ('radiusOrigin', 'f'),
-    ('unknRadiusRelated', 'i'),
-    ('unkn4', 'i'),
+    ('unknBitmaskRadiusRelated', 'i'),
+    ('unknFlag4', 'i'),
 ]
 assert _schema_size(EXTERN_EMITTERSHAPE3D_SCHEMA) == 88, \
     f"EXTERN_EMITTERSHAPE3D_SCHEMA size mismatch: {_schema_size(EXTERN_EMITTERSHAPE3D_SCHEMA)}"
@@ -731,7 +731,7 @@ EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_SCHEMA
 # 两阶段缩放：初始整体扩散（速度+加速度）+ 播放过程中的逐轴缩放（X/Y/Z 各 速度/加速度 + 偏差）。
 # 字段宽度与原版完全一致（仅拆分 unkn1=('f',2)→X、unkn2=('f',8)→Y/Z，重命名，不改类型/字节）。
 EXTERN_SCALEANIM_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
     ('initialScaleSpeed', 'f'),        # 初始扩散速度（原 animationSpeed）TIML DT 0xC24DF97C("SizeScalarAdd") 已确认
     ('NULL', 'i'),
     ('initialScaleAccel', 'f'),        # 初始扩散加速度（原 scaleSpeed）
@@ -782,7 +782,7 @@ SCALEANIM_SCHEMA = EXTERN_SCALEANIM_SCHEMA
 # ─────────────────────────────────────────────────────────────────────────────
 
 FADEBYDEPTH_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
     ('nearFadeInStart', 'f'),
     ('nearFadeInEnd', 'f'),
     ('farFadeOutStart', 'f'),
@@ -812,7 +812,7 @@ assert _schema_size(FADEBYDEPTH_SCHEMA) == 20, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_RGBFIRE_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
     # 实机确认：color1=外缘荧光色（会给内部的 smokeColor 染色），color2=内部色。
     ('fireColor', ('XYZ', 2)),   # 原 color1；TIML DT 0x39A1E557("FireColor") 已确认
     ('brightness1', 'f'),
@@ -868,8 +868,8 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 # ─────────────────────────────────────────────────────────────────────────────
 
 ROTATEANIM_SCHEMA = [
-    ('unkn0_0', 'i'),  # 轴掩码：bit0=X, bit1=Y, bit2=Z
-    ('unkn0_1', 'i'),  # 旋转模式：取 2 或 3 时 spin_velocity 生效；取 0/1 时仅 billboard 平面旋转
+    ('spinAxisMask', 'i'),  # 原 unkn0_0；轴掩码 bitmask：bit0=X, bit1=Y, bit2=Z（已确认，非 typeFlag 候选）
+    ('unknBitmask0_1', 'i'),  # 旋转模式：取 2 或 3 时 spin_velocity 生效；取 0/1 时仅 billboard 平面旋转
     # 社区实测：这两个专门控制 BILLBOARD3D 平面类的旋转，模板原标为 int，实为 float。
     ('billboardRotation', 'f'),
     ('billboardRotationSpeed', 'f'),
@@ -878,7 +878,7 @@ ROTATEANIM_SCHEMA = [
     ('unkn1_1', 'f'),
     ('momentum_retention', 'f'),
     ('spin_acceleration', ('XYZ', 0)),
-    ('unkn1_2', 'i'),
+    ('unknEnum1_2', 'i'),
 ]
 assert _schema_size(ROTATEANIM_SCHEMA) == 80, \
     f"ROTATEANIM_SCHEMA size mismatch: {_schema_size(ROTATEANIM_SCHEMA)}"
@@ -902,7 +902,7 @@ ALPHACORRECTION_SCHEMA = [
     ('lowPass', 'f'),  # 原 unkn1 / alpha_clip_threshold；硬阈值裁切(类 PS Threshold)：<此值的 alpha 直接归 0，0=不裁
     ('contrast_gamma', 'f'),  # 原 transparentness；对比度/伽马修正，无上限：越大边缘(低/中alpha)越快变透明、核心保留
     ('unkn3', 'f'),  # 原 NULL（int）；BT 模板误标，实为 float，语义未确认
-    ('unkn2', 'i'),
+    ('unknFlag2', 'i'),
 ]
 assert _schema_size(ALPHACORRECTION_SCHEMA) == 20, \
     f"ALPHACORRECTION_SCHEMA size mismatch: {_schema_size(ALPHACORRECTION_SCHEMA)}"
@@ -942,7 +942,7 @@ assert _schema_size(LUMINANCEBLEED_SCHEMA) == 16, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 REFRACTION_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
     ('pixelNormalOffset', 'i'),
     ('unkn2', 'f'),
 ]
@@ -973,7 +973,7 @@ assert _schema_size(REFRACTION_SCHEMA) == 12, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 NOISE_SCHEMA = [
-    ('NULL', 'i'),
+    ('typeFlag', 'i'),      # 原 NULL（名字错，语料 35 种取值，非空）
     ('section_length', 'i'),
     ('spacer', 'i'),
     ('main_axis_speed', 'f'),
@@ -1047,7 +1047,7 @@ GUIDE_SCHEMA = [
     ('unkn18',                    'f'),
     ('unkn19',                    'f'),
     # unkn20/21/22 共 3 floats (12B)
-    ('unkn20',                    'f'),
+    ('unknFixed20',                    'f'),
     ('unkn21',                    'f'),
     ('unkn22',                    'f'),
     # 2 ints (8B)
@@ -1073,8 +1073,8 @@ assert _schema_size(GUIDE_SCHEMA) == 112, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 PLEMISSIVE_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknEnum0_1', 'i'),
     ('unkn1',            'f'),
     ('body_p',           'B'),
     ('wp_p',             'B'),
@@ -1088,11 +1088,11 @@ PLEMISSIVE_SCHEMA = [
     ('radii_effect_unkn0', 'f'),
     ('radii_effect_unkn1', 'f'),
     ('radii_effect_unkn2', 'f'),
-    ('unkn5_0', 'f'),
+    ('unknFixed5_0', 'f'),
     ('unkn5_1', 'f'),
     ('unkn5_2', 'f'),
-    ('unkn5_3', 'f'),
-    ('unkn5_4', 'f'),
+    ('unknFixed5_3', 'f'),
+    ('unknFixed5_4', 'f'),
 ]
 assert _schema_size(PLEMISSIVE_SCHEMA) == 76, \
     f"PLEMISSIVE_SCHEMA size mismatch: {_schema_size(PLEMISSIVE_SCHEMA)}"
@@ -1109,20 +1109,20 @@ assert _schema_size(PLEMISSIVE_SCHEMA) == 76, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 PARENTEMISSIVE_SCHEMA = [
-    ('unkn0',       'i'),
-    ('unkn1',       'i'),
+    ('typeFlag',    'i'),   # 原 unkn0
+    ('unknEnum1',       'i'),
     ('unkn2',       'f'),
-    ('unkn3',       'i'),
+    ('unknEnum3',       'i'),
     ('color',       ('XYZ', 2)),
     ('brightness',  'f'),
     ('rimParam',    ('f', 3)),
-    ('unkn4',       'i'),
+    ('unknEnum4',       'i'),
     ('blendParam',  ('f', 3)),
-    ('unkn8_0', 'f'),
+    ('unknFixed8_0', 'f'),
     ('unkn8_1', 'f'),
     ('unkn8_2', 'f'),
-    ('unkn8_3', 'f'),
-    ('unkn8_4', 'f'),
+    ('unknFixed8_3', 'f'),
+    ('unknFixed8_4', 'f'),
 ]
 assert _schema_size(PARENTEMISSIVE_SCHEMA) == 72, \
     f"PARENTEMISSIVE_SCHEMA size mismatch: {_schema_size(PARENTEMISSIVE_SCHEMA)}"
@@ -1151,8 +1151,8 @@ assert _schema_size(PARENTEMISSIVE_SCHEMA) == 72, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 PLSNOW_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # int unkn0[2] = 8 B
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknFixed0_1', 'i'),   # int unkn0[2] = 8 B
     ('spacer',                         'i'),
     ('body_part_id',                   'i'),
     ('weapon_id',                      'i'),
@@ -1188,19 +1188,19 @@ assert _schema_size(PLSNOW_SCHEMA) == 84, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 PTCOLLISION_SCHEMA = [
-    ('unkn00',                    'i'),
+    ('typeFlag',                  'i'),   # 原 unkn00
     ('physicsEnum',               'i'),
     ('unkn02',                    'i'),
     ('unkn03',                    'i'),
-    ('unkn04',                    'i'),
-    ('unkn05',                    'i'),
+    ('unknEnum04',                    'i'),
+    ('unknFixed05',                    'i'),
     ('unkn06',                    'f'),
     ('unkn07',                    'f'),
     ('unkn1_0', 'f'),
     ('unkn1_1', 'f'),
     ('unkn1_2', 'f'),
-    ('unkn2_0', 'i'),
-    ('unkn2_1', 'i'),
+    ('unknEnum2_0', 'i'),
+    ('unknEnum2_1', 'i'),
     ('bounceElasticity',          'f'),
     ('bounceElasticityJitter',    'f'),
     ('bounceElasticityMultiplier','f'),
@@ -1209,13 +1209,13 @@ PTCOLLISION_SCHEMA = [
     ('unkn35',                    'f'),
     ('unkn36',                    'f'),
     ('unkn37',                    'f'),
-    ('unkn38',                    'i'),
-    ('unkn4_0', 'i'),
-    ('unkn4_1', 'i'),
+    ('unknEnum38',                    'i'),
+    ('unknBitmask4_0', 'i'),
+    ('unknFlag4_1', 'i'),
     ('ieIndex',                   'i'),
-    ('unkn6_0', 'i'),
-    ('unkn6_1', 'i'),
-    ('unkn6_2', 'i'),
+    ('unknEnum6_0', 'i'),
+    ('unknEnum6_1', 'i'),
+    ('unknFixed6_2', 'i'),
 ]
 assert _schema_size(PTCOLLISION_SCHEMA) == 112, \
     f"PTCOLLISION_SCHEMA size mismatch: {_schema_size(PTCOLLISION_SCHEMA)}"
@@ -1262,9 +1262,9 @@ assert _schema_size(RANDOMFIX_SCHEMA) == 40, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 DUMMY_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
-    ('unkn1', 'B'),
+    ('typeFlag', 'i'),      # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1
+    ('unknFixed1', 'B'),
 ]
 assert _schema_size(DUMMY_SCHEMA) == 9, \
     f"DUMMY_SCHEMA size mismatch: {_schema_size(DUMMY_SCHEMA)}"
@@ -1278,15 +1278,15 @@ assert _schema_size(DUMMY_SCHEMA) == 9, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERNREFERENCE_SCHEMA = [
-    ('unkn0',           'i'),
+    ('typeFlag',        'i'),   # 原 unkn0，语料恒为 0（该类型场景下无变体）
     ('referenceIndex',  'i'),
     ('trigger_condition', 'i'),
-    ('unkn1_1', 'i'),
-    ('unkn1_2', 'i'),
+    ('unknEnum1_1', 'i'),
+    ('unknEnum1_2', 'i'),
     ('unkn1_3', 'f'),
     ('unkn1_4', 'i'),
     ('unkn1_5', 'i'),
-    ('unkn1_6', 'i'),
+    ('unknFlag1_6', 'i'),
 ]
 assert _schema_size(EXTERNREFERENCE_SCHEMA) == 36, \
     f"EXTERNREFERENCE_SCHEMA size mismatch: {_schema_size(EXTERNREFERENCE_SCHEMA)}"
@@ -1300,16 +1300,16 @@ assert _schema_size(EXTERNREFERENCE_SCHEMA) == 36, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 PTLIFE_SCHEMA = [
-    ('unkn0',        'h'),
-    ('unkn1',        'h'),
+    ('typeFlag',     'h'),   # 原 unkn0
+    ('unknFixed1',        'h'),
     ('status',       'h'),
-    ('unkn3',        'h'),
+    ('unknEnum3',        'h'),
     ('relationIndex','h'),
-    ('unkn5',        'h'),
-    ('unkn6',        'h'),
-    ('unkn7',        'h'),
-    ('unkn8',        'h'),
-    ('unkn9',        'h'),
+    ('unknEnum5',        'h'),
+    ('unknEnum6',        'h'),
+    ('unknFixed7',        'h'),
+    ('unknEnum8',        'h'),
+    ('unknFixed9',        'h'),
 ]
 assert _schema_size(PTLIFE_SCHEMA) == 20, \
     f"PTLIFE_SCHEMA size mismatch: {_schema_size(PTLIFE_SCHEMA)}"
@@ -1323,8 +1323,8 @@ assert _schema_size(PTLIFE_SCHEMA) == 20, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 EMITTERBOUNDARY_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknEnum0_1', 'i'),
     ('unkn1_0', 'f'),
     ('unkn1_1', 'f'),
     ('unkn1_2', 'f'),
@@ -1363,16 +1363,16 @@ assert _schema_size(EMITTERBOUNDARY_SCHEMA) == 40, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 FADEBYANGLE_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknBitmask0_1', 'i'),
     ('unkn_angle0', 'f'),
     ('unkn_angle1', 'f'),
     ('unkn1_2', 'f'),
     ('unkn_angle2', 'f'),
     ('unkn_angle3', 'f'),
     ('unkn_angle4', 'f'),
-    ('unkn2_0', 'i'),
-    ('unkn2_1', 'i'),
+    ('unknBitmask2_0', 'i'),
+    ('unknEnum2_1', 'i'),
 ]
 assert _schema_size(FADEBYANGLE_SCHEMA) == 40, \
     f"FADEBYANGLE_SCHEMA size mismatch: {_schema_size(FADEBYANGLE_SCHEMA)}"
@@ -1386,7 +1386,7 @@ assert _schema_size(FADEBYANGLE_SCHEMA) == 40, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 MASTERONLY_SCHEMA = [
-    ('unkn0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0
 ]
 assert _schema_size(MASTERONLY_SCHEMA) == 4, \
     f"MASTERONLY_SCHEMA size mismatch: {_schema_size(MASTERONLY_SCHEMA)}"
@@ -1400,8 +1400,8 @@ assert _schema_size(MASTERONLY_SCHEMA) == 4, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 BLINK_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
+    ('typeFlag', 'i'),      # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1
     ('unkn1_0', 'f'),              # bool (byte 0) + 0xCD×3 padding
     ('minAlpha', 'f'),
     ('maxAlpha', 'f'),
@@ -1433,8 +1433,8 @@ assert _schema_size(BLINK_SCHEMA) == 52, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 FADEBYEMITTERANGLE_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
+    ('typeFlag', 'i'),      # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1
     ('unkn',  'i'),                # bool (byte 0) + 0xCD×3 padding
     ('outerConeAngle', 'f'),
     ('innerConeAngle', 'f'),
@@ -1458,8 +1458,8 @@ assert _schema_size(FADEBYEMITTERANGLE_SCHEMA) == 28, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 RAYCAST_SCHEMA = [
-    ('unknown0',        'i'),
-    ('fixed70',         'i'),
+    ('typeFlag',        'i'),  # 原 unknown0
+    ('section_length',  'i'),  # 原 fixed70
     ('spacer0',         'i'),
     ('distanceMod0',    'f'),
     ('distanceMod0Jitter','f'),
@@ -1474,8 +1474,8 @@ RAYCAST_SCHEMA = [
     ('distanceMod1',    'f'),
     ('distanceMod1Jitter','f'),
     ('spacer',          'i'),
-    ('unknown1',        'i'),
-    ('unknown2',        'h'),
+    ('unknownEnum1',        'i'),
+    ('unknownBitmask2',        'h'),
 ]
 assert _schema_size(RAYCAST_SCHEMA) == 78, \
     f"RAYCAST_SCHEMA size mismatch: {_schema_size(RAYCAST_SCHEMA)}"
@@ -1501,8 +1501,8 @@ assert _schema_size(RAYCAST_SCHEMA) == 78, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 HOMING_SCHEMA = [
-    ('unknown',              'i'),
-    ('unknown0',             'i'),
+    ('typeFlag',             'i'),  # 原 unknown
+    ('section_length',       'i'),  # 原 unknown0
     ('spacer',               'i'),
     ('restoringForce',       'f'),  # 原 f0
     ('speed',                'f'),
@@ -1513,7 +1513,7 @@ HOMING_SCHEMA = [
     ('homingTarget',         'i'),  # 原 i0
     ('vanishMode',           'i'),  # 原 i1
     ('forceFieldMode',       'i'),  # 原 enableRadialVanish
-    ('unknown1',             'i'),
+    ('unknownEnum1',             'i'),
 ]
 assert _schema_size(HOMING_SCHEMA) == 52, \
     f"HOMING_SCHEMA size mismatch: {_schema_size(HOMING_SCHEMA)}"
@@ -1529,10 +1529,10 @@ assert _schema_size(HOMING_SCHEMA) == 52, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 SCREENSPACECOLLISION_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
+    ('typeFlag', 'i'),      # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1
     ('spacer',            'i'),
-    ('unkn1',             'i'),
+    ('unknEnum1',             'i'),
     ('bounce',            'f'),
     ('bounceJitter',      'f'),
     ('lifespan',          'i'),
@@ -1557,8 +1557,8 @@ assert _schema_size(SCREENSPACECOLLISION_SCHEMA) == 36, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 SHOVEL_SCHEMA = [
-    ('unkn00',  'i'),
-    ('unkn01',  'i'),
+    ('typeFlag',  'i'),  # 原 unkn00
+    ('section_length',  'i'),  # 原 unkn01
     ('spacer',  'i'),
     ('width',   'f'),
     ('widthJitter', 'f'),
@@ -1569,12 +1569,12 @@ SHOVEL_SCHEMA = [
     ('unkn09',  'f'),
     ('unkn10',  'f'),
     ('unkn11',  'f'),
-    ('unkn12',  'i'),
-    ('unkn13',  'i'),
-    ('unkn14',  'i'),
+    ('unknFixed12',  'i'),
+    ('unknEnum13',  'i'),
+    ('unknEnum14',  'i'),
     ('pattern', 'i'),
-    ('unkn16',  'i'),
-    ('unkn17',  'h'),
+    ('unknBitmask16',  'i'),
+    ('unknEnum17',  'h'),
 ]
 assert _schema_size(SHOVEL_SCHEMA) == 70, \
     f"SHOVEL_SCHEMA size mismatch: {_schema_size(SHOVEL_SCHEMA)}"
@@ -1594,7 +1594,7 @@ assert _schema_size(SHOVEL_SCHEMA) == 70, \
 
 UVCONTROL_SCHEMA = [
     # uv1 Material_Animation_Data
-    ('uv1_unkn0',               'i'),
+    ('uv1_unkn0',               'i'),   # uv1/uv2 并列子结构首字段，非块级 typeFlag，不套用该命名
     ('uv1_initialPosition',     ('f', 4)),
     ('uv1_speed',               ('f', 4)),
     ('uv1_acceleration',        ('f', 4)),
@@ -1610,7 +1610,7 @@ UVCONTROL_SCHEMA = [
     ('uv2_scaleSpeed',          ('f', 4)),
     ('uv2_scaleAcceleration',   ('f', 4)),
     # extra fields
-    ('unkn2',                          'i'),
+    ('unknFlag2',                          'i'),
     ('extraMaterialInitialPosition',   'f'),
     ('extraMaterialInitialPositionJ',  'f'),
     ('extraMaterialSpeed',             'f'),
@@ -1634,15 +1634,15 @@ assert _schema_size(UVCONTROL_SCHEMA) == 236, \
 # 本 schema 一直就是按修正后的 9 字段/36B 写的，没有跟着错——这段仅更新旧注释）。
 # ─────────────────────────────────────────────────────────────────────────────
 EMITTERSHAPE2D_SCHEMA = [
-    ('unkn0',       'i'),
+    ('typeFlag',    'i'),   # 原 unkn0
     ('offsetX',     'f'),
     ('offsetXJitter','f'),
     ('offsetY',     'f'),
     ('offsetYJitter','f'),
-    ('unkn20',      'i'),
+    ('unknFlag20',      'i'),
     ('spawnCount',  'i'),
-    ('unkn22_0',    'i'),
-    ('unkn22_1',    'i'),
+    ('unknEnum22_0',    'i'),
+    ('unknFixed22_1',    'i'),
 ]
 assert _schema_size(EMITTERSHAPE2D_SCHEMA) == 36, \
     f"EMITTERSHAPE2D_SCHEMA size mismatch: {_schema_size(EMITTERSHAPE2D_SCHEMA)}"
@@ -1651,7 +1651,7 @@ assert _schema_size(EMITTERSHAPE2D_SCHEMA) == 36, \
 #   int unkn0[2](8)+9 floats(36)+int expansionType(4)+float gravity,gravityJitter(8)+
 #   int expansionDelay,expDelayJ,gravityDelay,gravDelayJ(16)
 VELOCITY2D_SCHEMA = [
-    ('unkn0_0', 'i'),
+    ('typeFlag', 'i'),  # 原 unkn0_0
     ('unkn0_1', 'f'),  # 8
     ('unkn10',                         'f'),
     ('expansionRadius',                'f'),
@@ -1682,105 +1682,105 @@ assert _schema_size(VELOCITY2D_SCHEMA) == 72, \
 
 # PathChain (81B total, 77B data)
 PATHCHAIN_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
+    ('typeFlag', 'i'),     # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1，8B
     ('unkn1', 'i'),        # 4B
     ('unkn2', 'f'),        # 4B
-    ('unkn3', 'i'),        # 4B
+    ('unknEnum3', 'i'),        # 4B
     ('unkn4_0', 'f'),
-    ('unkn4_1', 'f'),
+    ('unknFixed4_1', 'f'),
     ('unkn4_2', 'f'),
-    ('unkn4_3', 'f'),
+    ('unknFixed4_3', 'f'),
     ('unkn4_4', 'f'),
-    ('unkn4_5', 'f'),   # 24B
-    ('unkn5_0', 'i'),
+    ('unknFixed4_5', 'f'),   # 24B
+    ('unknBitmask5_0', 'i'),
     ('unkn5_1', 'f'),
     ('unkn5_2', 'f'),
     ('unkn5_3', 'f'),
-    ('unkn5_4', 'i'),
+    ('unknFixed5_4', 'i'),
     ('unkn5_5', 'f'),
-    ('unkn5_6', 'i'),
-    ('unkn5_7', 'i'),   # 32B
-    ('unkn6', 'b'),        # 1B
+    ('unknFixed5_6', 'i'),
+    ('unknEnum5_7', 'i'),   # 32B
+    ('unknFlag6', 'b'),        # 1B
 ]
 assert _schema_size(PATHCHAIN_SCHEMA) == 77, \
     f"PATHCHAIN_SCHEMA size mismatch: {_schema_size(PATHCHAIN_SCHEMA)}"
 
 # PtTrigger (20B total, 16B data)
 PTTRIGGER_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
+    ('typeFlag', 'i'),     # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1，8B
     ('unkn1', 'i'),        # 4B
-    ('unkn2', 'i'),        # 4B
+    ('unknEnum2', 'i'),        # 4B
 ]
 assert _schema_size(PTTRIGGER_SCHEMA) == 16, \
     f"PTTRIGGER_SCHEMA size mismatch: {_schema_size(PTTRIGGER_SCHEMA)}"
 
 # LinkPartsVisible (16B total, 12B data)
 LINKPARTSVISIBLE_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
-    ('unkn0_2', 'i'),   # 12B
+    ('typeFlag', 'i'),   # 原 unkn0_0，语料恒为 1（样本少，仅 87 例）
+    ('unknFixed0_1', 'i'),
+    ('unknEnum0_2', 'i'),   # 12B
 ]
 assert _schema_size(LINKPARTSVISIBLE_SCHEMA) == 12, \
     f"LINKPARTSVISIBLE_SCHEMA size mismatch: {_schema_size(LINKPARTSVISIBLE_SCHEMA)}"
 
 # SpawnByAngle (26B total, 22B data)
 SPAWNBYANGLE_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
+    ('typeFlag', 'i'),     # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1，8B
     ('unkn1', 'i'),        # 4B
     ('unkn2', 'f'),        # 4B
-    ('unkn3', 'i'),        # 4B
-    ('unkn4', 'h'),        # 2B
+    ('unknEnum3', 'i'),        # 4B
+    ('unknFixed4', 'h'),        # 2B
 ]
 assert _schema_size(SPAWNBYANGLE_SCHEMA) == 22, \
     f"SPAWNBYANGLE_SCHEMA size mismatch: {_schema_size(SPAWNBYANGLE_SCHEMA)}"
 
 # CheckPureAttribute (44B total, 40B data)
 CHECKPUREATTRIBUTE_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
+    ('typeFlag', 'i'),     # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1，8B
     ('unkn1', 'i'),        # 4B
-    ('unkn2_0', 'i'),
-    ('unkn2_1', 'i'),
-    ('unkn2_2', 'i'),
-    ('unkn2_3', 'i'),
-    ('unkn2_4', 'i'),
-    ('unkn2_5', 'i'),
-    ('unkn2_6', 'i'),   # 28B
+    ('unknEnum2_0', 'i'),
+    ('unknEnum2_1', 'i'),
+    ('unknEnum2_2', 'i'),
+    ('unknEnum2_3', 'i'),
+    ('unknEnum2_4', 'i'),
+    ('unknEnum2_5', 'i'),
+    ('unknFixed2_6', 'i'),   # 28B
 ]
 assert _schema_size(CHECKPUREATTRIBUTE_SCHEMA) == 40, \
     f"CHECKPUREATTRIBUTE_SCHEMA size mismatch: {_schema_size(CHECKPUREATTRIBUTE_SCHEMA)}"
 
 # SpawnByOcclusion (24B total, 20B data)
 SPAWNBYOCCLUSION_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
+    ('typeFlag', 'i'),     # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1，8B
     ('unkn1', 'i'),        # 4B
-    ('unkn2', 'f'),        # 4B
-    ('unkn3', 'i'),        # 4B
+    ('unknFixed2', 'f'),        # 4B
+    ('unknFixed3', 'i'),        # 4B
 ]
 assert _schema_size(SPAWNBYOCCLUSION_SCHEMA) == 20, \
     f"SPAWNBYOCCLUSION_SCHEMA size mismatch: {_schema_size(SPAWNBYOCCLUSION_SCHEMA)}"
 
 # FadeByOcclusion (28B total, 24B data)
 FADEBYOCCLUSION_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknFixed0_1', 'i'),   # 8B
     ('unkn1', 'i'),        # 4B
     ('unkn2_0', 'f'),
-    ('unkn2_1', 'f'),
-    ('unkn2_2', 'f'),   # 12B
+    ('unknFlag2_1', 'f'),
+    ('unknFlag2_2', 'f'),   # 12B
 ]
 assert _schema_size(FADEBYOCCLUSION_SCHEMA) == 24, \
     f"FADEBYOCCLUSION_SCHEMA size mismatch: {_schema_size(FADEBYOCCLUSION_SCHEMA)}"
 
 # ParentMaterial (16B total, 12B data)
 PARENTMATERIAL_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
-    ('unkn1', 'f'),        # 4B
+    ('typeFlag', 'i'),   # 原 unkn0_0，语料仅 1 例
+    ('unknFixed0_1', 'i'),   # 8B
+    ('unknFixed1', 'f'),        # 4B
 ]
 assert _schema_size(PARENTMATERIAL_SCHEMA) == 12, \
     f"PARENTMATERIAL_SCHEMA size mismatch: {_schema_size(PARENTMATERIAL_SCHEMA)}"
@@ -1794,7 +1794,7 @@ assert _schema_size(PARENTMATERIAL_SCHEMA) == 12, \
 # 具体含义、仍标"unknown"，故未强行杜撰名字）；offsetXY/scaleXY 按本仓库惯例拆成 X/Y
 # 后缀（同 BILLBOARD2D 的 scaleX/scaleY）。
 TRANSFORM2D_SCHEMA = [
-    ('unknown', 'i'),
+    ('typeFlag', 'i'),   # 原 unknown
     ('offsetX', 'f'),
     ('offsetY', 'f'),
     ('rotation', 'f'),   # 16B
@@ -1806,10 +1806,10 @@ assert _schema_size(TRANSFORM2D_SCHEMA) == 24, \
 
 # ColorCorrectFilter (692B total, 688B data)
 COLORCORRECTFILTER_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
-    ('unkn0_2', 'i'),
-    ('unkn0_3', 'i'),     # 16B
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknEnum0_1', 'i'),
+    ('unknFixed0_2', 'i'),
+    ('unknFixed0_3', 'i'),     # 16B
     ('unkn1', ('f', 168)),   # 672B
 ]
 assert _schema_size(COLORCORRECTFILTER_SCHEMA) == 688, \
@@ -1817,12 +1817,12 @@ assert _schema_size(COLORCORRECTFILTER_SCHEMA) == 688, \
 
 # ParentSnow (84B total, 80B data)
 PARENTSNOW_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),    # 8B
+    ('typeFlag', 'i'),      # 原 unkn0_0
+    ('section_length', 'i'),   # 原 unkn0_1，8B
     ('unkn1', 'i'),         # 4B
-    ('unkn2', 'i'),         # 4B
+    ('unknFixed2', 'i'),         # 4B
     ('color', ('XYZ', 2)),  # 4B
-    ('unkn3_0', 'i'),
+    ('unknEnum3_0', 'i'),
     ('unkn3_1', 'i'),    # 8B
     ('unkn4_0', 'f'),
     ('unkn4_1', 'f'),
@@ -1830,12 +1830,12 @@ PARENTSNOW_SCHEMA = [
     ('unkn4_3', 'f'),
     ('unkn4_4', 'f'),
     ('unkn4_5', 'f'),
-    ('unkn4_6', 'f'),
+    ('unknFlag4_6', 'f'),
     ('unkn4_7', 'f'),
     ('unkn4_8', 'f'),
     ('unkn4_9', 'f'),
     ('unkn4_10', 'f'),
-    ('unkn4_11', 'f'),
+    ('unknFixed4_11', 'f'),
     ('unkn4_12', 'f'),   # 52B
 ]
 assert _schema_size(PARENTSNOW_SCHEMA) == 80, \
@@ -1844,26 +1844,26 @@ assert _schema_size(PARENTSNOW_SCHEMA) == 80, \
 # OtomoSnow (88B total, 84B data)
 # 注：Crimson BT 记载 84B，实测往返 88B（多一个 XYZ color 字段），以实测为准。
 OTOMOSNOW_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),    # 8B
+    ('typeFlag', 'i'),      # 原 unkn0_0
+    ('section_length', 'i'),   # 原 unkn0_1，8B
     ('unkn1', 'i'),         # 4B
-    ('unkn2_0', 'i'),
-    ('unkn2_1', 'i'),    # 8B
+    ('unknFixed2_0', 'i'),
+    ('unknFixed2_1', 'i'),    # 8B
     ('color', ('XYZ', 2)),  # 4B
-    ('unkn3', 'i'),         # 4B
+    ('unknEnum3', 'i'),         # 4B
     ('unkn4', 'i'),         # 4B
-    ('unkn5_0', 'f'),
-    ('unkn5_1', 'f'),
-    ('unkn5_2', 'f'),
-    ('unkn5_3', 'f'),    # 16B
+    ('unknFixed5_0', 'f'),
+    ('unknFixed5_1', 'f'),
+    ('unknFixed5_2', 'f'),
+    ('unknFixed5_3', 'f'),    # 16B
     ('unkn6', 'i'),         # 4B
-    ('unkn7_0', 'f'),
+    ('unknFixed7_0', 'f'),
     ('unkn7_1', 'f'),
-    ('unkn7_2', 'f'),
+    ('unknFixed7_2', 'f'),
     ('unkn7_3', 'f'),
     ('unkn7_4', 'f'),
-    ('unkn7_5', 'f'),
-    ('unkn7_6', 'f'),
+    ('unknFixed7_5', 'f'),
+    ('unknFixed7_6', 'f'),
     ('unkn7_7', 'f'),    # 32B
 ]
 assert _schema_size(OTOMOSNOW_SCHEMA) == 84, \
@@ -1873,24 +1873,24 @@ assert _schema_size(OTOMOSNOW_SCHEMA) == 84, \
 # BT (EFX_Crimson.bt): int unkn0[2](8) + byte unkn1[4](4) + float unkn2(4) +
 #   int unkn3(4) + long unkn4(4) + float unkn5[9](36)
 FAKEPLANE_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
-    ('unkn1_0', 'b'),
-    ('unkn1_1', 'b'),
-    ('unkn1_2', 'b'),
-    ('unkn1_3', 'b'),   # 4B
+    ('typeFlag', 'i'),     # 原 unkn0_0
+    ('section_length', 'i'),  # 原 unkn0_1，8B
+    ('unknFixed1_0', 'b'),
+    ('unknFlag1_1', 'b'),
+    ('unknFlag1_2', 'b'),
+    ('unknFlag1_3', 'b'),   # 4B
     ('unkn2', 'f'),        # 4B
-    ('unkn3', 'i'),        # 4B
+    ('unknEnum3', 'i'),        # 4B
     ('unkn4', 'i'),        # 4B  (long=4B)
     ('unkn5_0', 'f'),
     ('unkn5_1', 'f'),
     ('unkn5_2', 'f'),
-    ('unkn5_3', 'f'),
+    ('unknFixed5_3', 'f'),
     ('unkn5_4', 'f'),
     ('unkn5_5', 'f'),
     ('unkn5_6', 'f'),
-    ('unkn5_7', 'f'),
-    ('unkn5_8', 'i'),   # 36B
+    ('unknFixed5_7', 'f'),
+    ('unknEnum5_8', 'i'),   # 36B
 ]
 assert _schema_size(FAKEPLANE_SCHEMA) == 60, \
     f"FAKEPLANE_SCHEMA size mismatch: {_schema_size(FAKEPLANE_SCHEMA)}"
@@ -1906,16 +1906,16 @@ assert _schema_size(FAKEPLANE_SCHEMA) == 60, \
 # 每份样本都是固定的 `00 CD CD ... CD`（首字节 0x00 + 其余 0xCD），是保留未用容量，
 # 不是有效数据，故沿用 unkn2 原名（已在 RESERVED_FILL_FIELDS 标注只读）。
 REPEATAREA_SCHEMA = [
-    ('unkn0', 'i'),        # 4B  索引/计数
+    ('typeFlag', 'i'),     # 4B  原 unkn0，索引/计数
     ('section_length', 'i'),  # 4B  原 unkn1；恒 44，剩余字节数自描述标记（非可调参数）
     ('unkn2', ('b', 16)),  # 16B 0xcd 未初始化区（首字节固定 0x00，其余固定 0xCD）
     ('unkn3_0', 'f'),
     ('unkn3_1', 'f'),
-    ('unkn3_2', 'f'),
-    ('unkn3_3', 'f'),
+    ('unknFixed3_2', 'f'),
+    ('unknFixed3_3', 'f'),
     ('unkn3_4', 'f'),
     ('unkn3_5', 'f'),   # 24B
-    ('unkn4', 'i'),        # 4B
+    ('unknEnum4', 'i'),        # 4B
 ]
 assert _schema_size(REPEATAREA_SCHEMA) == 52, \
     f"REPEATAREA_SCHEMA size mismatch: {_schema_size(REPEATAREA_SCHEMA)}"
@@ -1946,7 +1946,7 @@ assert _schema_size(REPEATAREA_SCHEMA) == 52, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 _UVSEQUENCE_FIXED_SCHEMA = [
-    ('unkn0',                   'i'),
+    ('typeFlag',                'i'),   # 原 unkn0
     ('uvs_index',               'i'),
     ('uvsIndexJitter',          'i'),  # 原 unkn2/NULL；实测为 uvs_index 的抖动量：99.3% 为
                                         # 0，其余为 1~8 的小整数（并非恒定值），与 startingFrame/
@@ -2064,7 +2064,7 @@ def pack_uvsequence(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _BILLBOARD3D_FIXED_SCHEMA = [
-    ('unkn0',                      'i'),
+    ('typeFlag',                   'i'),   # 原 unkn0
     ('applicationRule',            'i'),
     # 实机确认（2026-07-06，多组 color/colorRange/useColorRange/blendMode 组合排除测试）：
     # useColorRange=0 时恒为 color（colorRange 完全不参与，含 alpha 通道）；
@@ -2108,13 +2108,13 @@ _BILLBOARD3D_FIXED_SCHEMA = [
 ]  # = 4+4+4+4+4+12+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
 
 _BILLBOARD3D_EXTRAS_SCHEMA = [
-    ('unkn5', 'i'),
+    ('unknEnum5', 'i'),
     # 拆分自原 uint64 unkn6：低32位=int/flag，高32位=float（实测 60842 个 BILLBOARD3D 块核对）
-    ('unkn6_0', 'i'),
+    ('unknFlag6_0', 'i'),
     ('unkn6_1', 'f'),
     ('unkn7', 'f'),
     ('unkn8', 'i'),
-    ('unkn9', 'i'),
+    ('unknFlag9', 'i'),
 ]  # = 4+8+4+4+4 = 24 B
 
 # EXTERNBILLBOARD3D（Extern 覆盖版，2026-07）：与主属性 _BILLBOARD3D_FIXED_SCHEMA
@@ -2165,7 +2165,7 @@ def pack_billboard3d(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _BILLBOARD2D_FIXED_SCHEMA = [
-    ('unkn0_0', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0_0
     # 用户直接投喂（2026-07-10，未测）：位置/取值集合都跟 BILLBOARD3D.applicationRule
     # 对应（BILLBOARD2D 只出现 [0,4,12,32]，是 BILLBOARD3D 枚举集合 [0,4,8,12,16,32,36,40…]
     # 的子集）。
@@ -2216,8 +2216,8 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     # 测试（2026-07-10）证伪：flowmap 效果不需要 unkn5_1=1 就能生效，applicationRule
     # 本身的 4/12 区别才是关键（4=持续循环流动，12=只播一次到终点停）。unkn5_1 跟
     # applicationRule 的相关性仍然存在，但具体作用未知，不再套用 unkn6_0 的"开关"解读。
-    ('unkn5_0', 'i'),
-    ('unkn5_1', 'i'),   # 8
+    ('unknFixed5_0', 'i'),
+    ('unknEnum5_1', 'i'),   # 8
 ]
 assert _schema_size(_BILLBOARD2D_FIXED_SCHEMA) == 116, \
     f"_BILLBOARD2D_FIXED_SCHEMA size mismatch: {_schema_size(_BILLBOARD2D_FIXED_SCHEMA)}"
@@ -2289,8 +2289,8 @@ def pack_billboard2d(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _MOD3_PROPERTIES_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknFixed0_1', 'i'),   # 恒 167，接近但不满足 section_length 公式(174-8=166,差1)，未改名
     ('CD1',                     'i'),
     ('emissive_saturation',     'f'),
     ('emissive_saturation_j',   'f'),
@@ -2308,17 +2308,17 @@ _MOD3_PROPERTIES_SCHEMA = [
     ('colorRange',              'colour'),
     ('emissiveColor',           'colour'),
     ('emissiveColorRange',      'colour'),
-    ('unkn7_0', 'i'),
-    ('unkn7_1', 'i'),
+    ('unknEnum7_0', 'i'),
+    ('unknFlag7_1', 'i'),
     ('rotationOrder', 'i'),
     ('tracking_flags',          'i'),
-    ('unkn40',                  'i'),
+    ('unknBitmask40',                  'i'),
     ('affectedByLight',         'i'),
     ('shadowCastBitflag',       'i'),
     ('epv_color_slot1',         'i'),
-    ('unkn5',                   'i'),
+    ('unknEnum5',                   'i'),
     ('epv_color_slot2',         'i'),
-    ('unkn6_1',                 'i'),
+    ('unknFixed6_1',                 'i'),
     ('enableIntensity1',        'B'),  # 原 colorize_material1[0]
     ('useColorRange',           'B'),  # 原 colorize_material1[1]
     ('enableIntensity2',        'B'),  # 原 colorize_material1[2]
@@ -2328,7 +2328,7 @@ _MOD3_PROPERTIES_SCHEMA = [
     ('disableAllColorRange',    'B'),  # 原 colorize_material2[2]：实机确认(2026-07-06)，非零时同时
                                         # 强制 color 和 emissiveColor 都变成静态值，忽略
                                         # useColorRange/useEmissiveColorRange，无视两者各自的开关状态
-    ('unkn_cm2_3',              'B'),  # 原 colorize_material2[3]：未确认（曾疑似color4，被场景雾误导后撤回）
+    ('unknFlag_cm2_3',              'B'),  # 原 colorize_material2[3]：未确认（曾疑似color4，被场景雾误导后撤回）
     ('randommizeViscon',        'i'),
     ('NULL1',                   'h'),
 ]
@@ -2387,7 +2387,7 @@ def pack_mesh(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _RIBBON_FIXED_SCHEMA = [
-    ('unkn0',                    'i'),
+    ('typeFlag',                 'i'),   # 原 unkn0
     ('section_length',           'i'),
     ('spacer0',                  'i'),
     ('color',                    ('XYZ', 2)),
@@ -2398,7 +2398,7 @@ _RIBBON_FIXED_SCHEMA = [
     # 原 unkn4(int[2]) 拆为两个独立字段（实测：[0] 是 float 标量，全语料 0.0–30.0、
     # 零 NaN，常见 ±0.0；[1] 是 int 枚举 0/1/2 = 形态/速度对齐开关）。
     ('unkn4_0',                  'f'),
-    ('unkn4_1',                  'i'),
+    ('unknEnum4_1',                  'i'),
     ('scale',                    'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
     ('scale_jitter',             'f'),
     ('width',                    'f'),  # TIML DT 0xF0DF339B("WidthSize") 已确认
@@ -2413,18 +2413,18 @@ _RIBBON_FIXED_SCHEMA = [
     ('vertical_physics_subdivision_count',   'i'),
     ('unkn15',                   'f'),
     ('restitution_direction',    'i'),
-    ('unkn16arr_0', 'i'),
+    ('unknEnum16arr_0', 'i'),
     ('unkn16arr_1', 'f'),
     ('unkn16arr_2', 'f'),
     ('unkn16arr_3', 'f'),
     ('startingAngle',            'f'),
     ('startingAngleJitter',      'f'),
     ('unkn16_0_0', 'f'),
-    ('unkn16_0_1', 'i'),
-    ('unkn16_1',                 'h'),
-    ('unkn16_2',                 'h'),
+    ('unknFlag16_0_1', 'i'),
+    ('unknEnum16_1',                 'h'),
+    ('unknBitmask16_2',                 'h'),
     ('spacer3',                  'i'),
-    ('unkn17',                   'f'),
+    ('unknFixed17',                   'f'),
     ('spacer4',                  'i'),
     ('lengthwise_offset_relative_to_camera', 'f'),
     ('unknown19_0',              'f'),
@@ -2441,8 +2441,8 @@ _RIBBON_FIXED_SCHEMA = [
     ('unkn20_3', 'f'),
     ('unkn21',                   'f'),
     ('unkn22_0', 'f'),
-    ('unkn22_1', 'i'),
-    ('unkn22_2', 'i'),
+    ('unknEnum22_1', 'i'),
+    ('unknFlag22_2', 'i'),
     # 原 4B int 恒为 0xCDCDCD00/0xCDCDCD01（未初始化填充）；实测只有最低字节（文件里的
     # 第 1 个字节）在 0/1 之间变化，真正承载语义，其余 3 字节恒为 0xCD 纯占位（2026-07-10）。
     ('tailTiedToBone',           'B'),
@@ -2450,11 +2450,11 @@ _RIBBON_FIXED_SCHEMA = [
     ('unkn23_0', 'f'),
     ('unkn23_1', 'f'),
     ('unkn23_2', 'f'),
-    ('unkn23_3', 'f'),
+    ('unknFixed23_3', 'f'),
     ('unkn23_4', 'f'),
     ('unkn23_5', 'f'),
     ('unkn23_6', 'f'),
-    ('unkn23_7', 'f'),
+    ('unknFixed23_7', 'f'),
     ('unkn24',                   'i'),
     ('epvcolor_0',               'i'),
     ('epvcolor_1',               'i'),
@@ -2532,7 +2532,7 @@ def pack_ribbon(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _PLANE_DDS_SCHEMA = [
-    ('unkn0',              'i'),
+    ('typeFlag',           'i'),   # 原 unkn0
     ('applicationRule',    'i'),
     # 实机确认（同 BILLBOARD3D 的 color/colorRange/useColorRange 机制，见该注释）：
     # 原 EPVColorBlend 实为 useColorRange，原 unkn22 实为 blendMode。
@@ -2569,14 +2569,14 @@ _PLANE_DDS_SCHEMA = [
 ]  # = 4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
 
 _PLANE_EXTRAS_SCHEMA = [
-    ('unkn5_0', 'i'),
-    ('unkn5_1', 'i'),
-    ('unkn5_2', 'i'),
-    ('unkn5_3', 'i'),
+    ('unknBitmask5_0', 'i'),
+    ('unknEnum5_1', 'i'),
+    ('unknBitmask5_2', 'i'),
+    ('unknEnum5_3', 'i'),
     ('rotation',('XYZ', 0)),
     # 拆分自原 uint64 unkn7：低32位=小整数/位掩码，高32位=0/1 标志（实测 4328 个 PLANE 块核对）
-    ('unkn7_0', 'i'),
-    ('unkn7_1', 'i'),
+    ('unknBitmask7_0', 'i'),
+    ('unknFlag7_1', 'i'),
 ]  # = 16+24+8 = 48 B
 
 
@@ -2617,8 +2617,8 @@ def pack_plane(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _RIBBONBLADE_FIXED_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0_0，样本少(62例)且几乎恒为1，弱证据但同机制
+    ('unknFixed0_1', 'i'),
     ('spacer0',     'i'),
     # widthDirection：Width 延伸朝向 enum。实测确认（2026-07-11）：
     #   0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON.restitution_direction 同款枚举，
@@ -2628,9 +2628,9 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     # length：拖尾长度（仅当 lengthMode=0 时生效，此时收缩速度固定内置，与
     # contractionSpeed 字段无关）。实测确认（2026-07-11）：与拖尾长度近似成正比，值越高越长。
     ('length', 'i'),  # 原 unkn05_0
-    ('unkn05_1', 'i'),
+    ('unknEnum05_1', 'i'),
     ('spacer1',     'i'),
-    ('unkn07_0', 'i'),
+    ('unknFlag07_0', 'i'),
     # lengthMode：拖尾长度控制模式。实测确认（2026-07-11）：
     #   0=由 length 字段近似正比决定，收缩速度固定内置；
     #   1=由 maxLengthLimit + contractionSpeed 共同决定（contractionSpeed=0 时不主动收缩，除非达到 maxLengthLimit 上限）。
@@ -2640,13 +2640,13 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     ('contractionSpeed',        'f'),
     ('colourTransitionPoint',   'f'),
     ('emissiveStrength',        'f'),
-    ('unkn08',                  'f'),
+    ('unknFlag08',                  'f'),
     ('spacer2',     'i'),
-    ('unkn10',      'i'),
+    ('unknEnum10',      'i'),
     ('uvRepetition','f'),
-    ('unkn12_0', 'f'),
-    ('unkn12_1', 'i'),
-    ('unkn12_2', 'i'),
+    ('unknFlag12_0', 'f'),
+    ('unknFlag12_1', 'i'),
+    ('unknFixed12_2', 'i'),
     # 恒为 0xcdcdcd00（62/62）。曾拆出最低字节暴露实机测试（unkn13，2026-07-11），
     # 用户测试无效果，已改回纯占位（2026-07-11）。
     ('spacer3',     'i'),
@@ -2827,7 +2827,7 @@ def pack_strainribbon(values: dict) -> bytes:
 _TURBULENCE_AFTER_PATH_SCHEMA = [
     ('forceMultiplier', 'f'),
     ('unkn1_0', 'f'),
-    ('unkn1_1', 'i'),
+    ('unknEnum1_1', 'i'),
     ('offsetPos',       ('XYZ', 0)),
     ('offsetPosVel',    ('XYZ', 0)),
     ('offsetAngle',     ('XYZ', 0)),
@@ -2836,20 +2836,20 @@ _TURBULENCE_AFTER_PATH_SCHEMA = [
     ('unkn3_0', 'f'),
     ('unkn3_1', 'f'),
     ('unkn3_2', 'i'),
-    ('unkn3_3', 'i'),
-    ('unkn3_4', 'i'),
+    ('unknEnum3_3', 'i'),
+    ('unknFlag3_4', 'i'),
 ]  # = 4+8+24*5+20 = 4+8+120+20 = 152 B
 
 
 def unpack_turbulence(data: bytes, off: int = 0):
     """Unpack Turbulence data_bytes (variable-length). Returns (dict, new_off)."""
-    (unkn0,) = struct.unpack_from('<i', data, off)
+    (typeFlag,) = struct.unpack_from('<i', data, off)   # 原 unkn0
     off += 4
     (path_len,) = struct.unpack_from('<i', data, off)
     off += 4
     path = data[off:off + path_len]
     off += path_len
-    values = {'unkn0': unkn0, 'path_len': path_len, 'path': path}
+    values = {'typeFlag': typeFlag, 'path_len': path_len, 'path': path}
     rest, off = unpack(_TURBULENCE_AFTER_PATH_SCHEMA, data, off)
     values.update(rest)
     return values, off
@@ -2857,7 +2857,7 @@ def unpack_turbulence(data: bytes, off: int = 0):
 
 def pack_turbulence(values: dict) -> bytes:
     """Pack Turbulence values dict back to bytes."""
-    out = struct.pack('<i', values['unkn0'])
+    out = struct.pack('<i', values['typeFlag'])
     path = values['path']
     out += struct.pack('<i', len(path))
     out += path
@@ -2887,8 +2887,8 @@ def pack_turbulence(values: dict) -> bytes:
 
 _LIGHTNING_FIXED_SCHEMA = [
     # header: unkn00[2](8) + spacer0(4)
-    ('unkn00_0', 'i'),
-    ('unkn00_1', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn00_0
+    ('unknFixed00_1', 'i'),
     ('spacer0',             'i'),
     # XYZ color1/2/emissive as (2) type = 4B each: 3*4=12B, then unkn02-04 = 3*4=12B
     ('color1',              ('XYZ', 2)),
@@ -2896,12 +2896,12 @@ _LIGHTNING_FIXED_SCHEMA = [
     ('color2',              ('XYZ', 2)),
     ('unkn03',              'i'),
     ('emissive',            ('XYZ', 2)),
-    ('unkn04',              'i'),
+    ('unknEnum04',              'i'),
     # group05 block: spacer05_00+unkn05_01+sineFreq/j+alphaThreshold+05_05-07+
     #   outExp/j+05_10+05_11-13+spacer05_14+targetBone+05_16+05_17+EPV1/2+05_20-24
     # = 4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 25*4=100B
     ('spacer05_00',         'i'),
-    ('unkn05_01',           'i'),
+    ('unknEnum05_01',           'i'),
     ('sineWaveFreq',        'f'),
     ('sineWaveFreqJitter',  'f'),
     ('alphaThreshold',      'f'),
@@ -2911,20 +2911,20 @@ _LIGHTNING_FIXED_SCHEMA = [
     ('outwardsExpansionSpeed',      'f'),
     ('outwardsExpansionSpeedJitter','f'),
     ('unkn05_10',           'f'),
-    ('unkn05_11',           'i'),
-    ('unkn05_12',           'i'),
-    ('unkn05_13',           'i'),
+    ('unknEnum05_11',           'i'),
+    ('unknFlag05_12',           'i'),
+    ('unknEnum05_13',           'i'),
     ('spacer05_14',         'i'),
     ('targetBoneID',        'i'),
-    ('unkn05_16',           'i'),
-    ('unkn05_17',           'i'),
+    ('unknEnum05_16',           'i'),
+    ('unknFlag05_17',           'i'),
     ('EPVColorSlot1',       'i'),
     ('EPVColorSlot2',       'i'),
-    ('unkn05_20',           'i'),
+    ('unknFixed05_20',           'i'),
     ('unkn05_21',           'i'),
-    ('unkn05_22',           'i'),
-    ('unkn05_23',           'f'),
-    ('unkn05_24',           'f'),
+    ('unknFixed05_22',           'i'),
+    ('unknFixed05_23',           'f'),
+    ('unknFixed05_24',           'f'),
     # inflection1 group: inflectionPointCount+uInfl/j+vInfl/j = 5*4=20B
     ('inflectionPointCount',          'i'),
     ('uInflectionAngleLimit',         'f'),
@@ -2951,23 +2951,23 @@ _LIGHTNING_FIXED_SCHEMA = [
     ('endWidth',                'f'),
     ('uvRepetitionEnd',         'f'),
     # unkn05_45-48: 4*4=16B
-    ('unkn05_45',   'i'),
+    ('unknFixed05_45',   'i'),
     ('unkn05_46',   'i'),
-    ('unkn05_47',   'i'),
-    ('unkn05_48',   'i'),
+    ('unknBitmask05_47',   'i'),
+    ('unknFlag05_48',   'i'),
     # unkn06[2]: 2*4=8B
-    ('unkn06_0', 'i'),
-    ('unkn06_1', 'i'),
+    ('unknBitmask06_0', 'i'),
+    ('unknBitmask06_1', 'i'),
     # unkn07_00-09: 10*4=40B
     ('radiusLimit',         'f'),
     ('radiusLimitJitter',   'f'),
     ('unkn07_02',           'f'),
-    ('unkn07_03',           'f'),
-    ('unkn07_04',           'i'),
+    ('unknFixed07_03',           'f'),
+    ('unknBitmask07_04',           'i'),
     ('unkn07_05',           'f'),
     ('unkn07_06',           'f'),
     ('unkn07_07',           'f'),
-    ('unkn07_08',           'f'),
+    ('unknFixed07_08',           'f'),
     ('unkn07_09',           'f'),
     # unkn07_10-27: 18*4=72B
     ('unkn07_10',   'f'),
@@ -2979,41 +2979,41 @@ _LIGHTNING_FIXED_SCHEMA = [
     ('unkn07_16',   'f'),
     ('unkn07_17',   'f'),
     ('unkn07_18',   'f'),
-    ('unkn07_19',   'f'),
+    ('unknFixed07_19',   'f'),
     ('unkn07_20',   'f'),
-    ('unkn07_21',   'i'),
-    ('unkn07_22',   'i'),
-    ('unkn07_23',   'i'),
-    ('unkn07_24',   'i'),
+    ('unknEnum07_21',   'i'),
+    ('unknFlag07_22',   'i'),
+    ('unknEnum07_23',   'i'),
+    ('unknBitmask07_24',   'i'),
     ('unkn07_25',   'f'),
     ('unkn07_26',   'f'),
     ('unkn07_27',   'f'),
     # unkn08[2]: 2*4=8B
-    ('unkn08_0', 'i'),
-    ('unkn08_1', 'i'),
+    ('unknFixed08_0', 'i'),
+    ('unknEnum08_1', 'i'),
     # unkn09[20]: 20*4=80B
     ('unkn09',      ('f', 20)),
     # unkn10[4]: 4*4=16B
     ('unkn10_0', 'f'),
-    ('unkn10_1', 'i'),
-    ('unkn10_2', 'i'),
-    ('unkn10_3', 'i'),
+    ('unknEnum10_1', 'i'),
+    ('unknFlag10_2', 'i'),
+    ('unknFixed10_3', 'i'),
     # unkn11[2]: 2*4=8B
     ('unkn11_0', 'f'),
     ('unkn11_1', 'f'),
     # unkn12[2]: 2*4=8B
-    ('unkn12_0', 'i'),
-    ('unkn12_1', 'i'),
+    ('unknFixed12_0', 'i'),
+    ('unknEnum12_1', 'i'),
     # unkn13[6]: 6*4=24B
     ('unkn13',      ('f', 6)),
     # unkn14[3]: 3*4=12B
-    ('unkn14_0', 'i'),
-    ('unkn14_1', 'i'),
-    ('unkn14_2', 'i'),
+    ('unknEnum14_0', 'i'),
+    ('unknFlag14_1', 'i'),
+    ('unknFixed14_2', 'i'),
     # unkn15[9]: 9*4=36B
     ('unkn15',      ('f', 9)),
     # short unkn16: 2B
-    ('unkn16',      'h'),
+    ('unknEnum16',      'h'),
 ]
 assert _schema_size(_LIGHTNING_FIXED_SCHEMA) == 546, \
     f"_LIGHTNING_FIXED_SCHEMA size mismatch: {_schema_size(_LIGHTNING_FIXED_SCHEMA)}"
@@ -3052,7 +3052,7 @@ def pack_lightning(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _RGBWATER_FIXED_SCHEMA = [
-    ('unkn0',                    'i'),
+    ('typeFlag',                 'i'),   # 原 unkn0
     ('color',                    ('XYZ[]', 2, 2)),
     ('brightnessSlot1',          'f'),
     ('emissiveMultiplier',       'f'),
@@ -3061,35 +3061,35 @@ _RGBWATER_FIXED_SCHEMA = [
     ('brightnessSlotMultiplier2','f'),
     ('opacity',                  'f'),
     ('unknownFloat',             'f'),
-    ('unknownInt_0', 'i'),
-    ('unknownInt_1', 'i'),
-    ('unknownInt_2', 'i'),
-    ('unkn2_0', 'i'),
-    ('unkn2_1', 'i'),
-    ('unkn2_2', 'i'),
-    ('unkn2_3', 'i'),
-    ('unkn2_4', 'i'),
-    ('unkn2_5', 'i'),
-    ('unkn2_6', 'i'),
-    ('unkn2_7', 'i'),
-    ('unkn2_8', 'i'),
-    ('unkn2_9', 'i'),
+    ('unknownFlagInt_0', 'i'),
+    ('unknownEnumInt_1', 'i'),
+    ('unknownEnumInt_2', 'i'),
+    ('unknEnum2_0', 'i'),
+    ('unknEnum2_1', 'i'),
+    ('unknEnum2_2', 'i'),
+    ('unknEnum2_3', 'i'),
+    ('unknFlag2_4', 'i'),
+    ('unknFlag2_5', 'i'),
+    ('unknEnum2_6', 'i'),
+    ('unknFlag2_7', 'i'),
+    ('unknEnum2_8', 'i'),
+    ('unknEnum2_9', 'i'),
     ('unkn2_10', 'i'),
-    ('unkn2_11', 'i'),
+    ('unknEnum2_11', 'i'),
     ('unkn2_12', 'i'),
-    ('unkn2_13', 'i'),
-    ('unkn2_14', 'i'),
-    ('unkn2_15', 'i'),
-    ('unkn2_16', 'i'),
-    ('unkn2_17', 'i'),
-    ('unkn2_18', 'i'),
-    ('unkn2_19', 'i'),
+    ('unknEnum2_13', 'i'),
+    ('unknFlag2_14', 'i'),
+    ('unknEnum2_15', 'i'),
+    ('unknEnum2_16', 'i'),
+    ('unknFlag2_17', 'i'),
+    ('unknEnum2_18', 'i'),
+    ('unknEnum2_19', 'i'),
     ('unkn2_20', 'i'),
-    ('unkn2_21', 'i'),
+    ('unknEnum2_21', 'i'),
     ('unkn2_22', 'i'),
-    ('unkn2_23', 'i'),
-    ('unkn2_24', 'i'),
-    ('unkn2_25', 'i'),
+    ('unknEnum2_23', 'i'),
+    ('unknFlag2_24', 'i'),
+    ('unknEnum2_25', 'i'),
 ]  # = 4+8+28+12+104 = 156 B
 assert _schema_size(_RGBWATER_FIXED_SCHEMA) == 156, \
     f"_RGBWATER_FIXED_SCHEMA size mismatch: {_schema_size(_RGBWATER_FIXED_SCHEMA)}"
@@ -3151,7 +3151,7 @@ def pack_rgbwater(values: dict) -> bytes:
 
 def unpack_ptbehavior(data: bytes, off: int = 0):
     """Unpack PtBehavior data_bytes. Returns (dict, new_off)."""
-    (unkn0,) = struct.unpack_from('<i', data, off); off += 4
+    (typeFlag,) = struct.unpack_from('<i', data, off); off += 4   # 原 unkn0（块级头字段，跟下面每个参数各自的 unkn0 无关）
     (behav_type_len,) = struct.unpack_from('<i', data, off); off += 4
     (para_count,) = struct.unpack_from('<i', data, off); off += 4
     b_type = data[off:off + behav_type_len]
@@ -3213,13 +3213,13 @@ def unpack_ptbehavior(data: bytes, off: int = 0):
             (v,) = struct.unpack_from('<i', data, off); off += 4
             param['unkn_type'] = v
         params.append(param)
-    return {'unkn0': unkn0, 'behav_type_len': behav_type_len,
+    return {'typeFlag': typeFlag, 'behav_type_len': behav_type_len,
             'para_count': para_count, 'b_type': b_type, 'params': params}, off
 
 
 def pack_ptbehavior(values: dict) -> bytes:
     """Pack PtBehavior values dict back to bytes."""
-    out = struct.pack('<i', values['unkn0'])
+    out = struct.pack('<i', values['typeFlag'])
     b_type = values['b_type']
     out += struct.pack('<i', len(b_type))
     params = values['params']
@@ -3282,7 +3282,7 @@ def pack_ptbehavior(values: dict) -> bytes:
 
 def unpack_material(data: bytes, off: int = 0):
     """Unpack Material data_bytes. Returns (dict, new_off)."""
-    (unkn00,) = struct.unpack_from('<q', data, off); off += 8
+    (typeFlag,) = struct.unpack_from('<q', data, off); off += 8   # 原 unkn00（8B/int64，语料仍呈小基数分布）
     (block_count,) = struct.unpack_from('<i', data, off); off += 4
     blocks = []
     for _ in range(block_count):
@@ -3323,12 +3323,12 @@ def unpack_material(data: bytes, off: int = 0):
             sets.append(tex)
         blocks.append({'mat_name_hash': mat_name_hash, 'mat_shader': mat_shader,
                         'unkn03': unkn03, 'set_count': set_count, 'sets': sets})
-    return {'unkn00': unkn00, 'block_count': block_count, 'blocks': blocks}, off
+    return {'typeFlag': typeFlag, 'block_count': block_count, 'blocks': blocks}, off
 
 
 def pack_material(values: dict) -> bytes:
     """Pack Material values dict back to bytes."""
-    out = struct.pack('<q', values['unkn00'])
+    out = struct.pack('<q', values['typeFlag'])
     blocks = values['blocks']
     out += struct.pack('<i', len(blocks))
     for blk in blocks:
@@ -3367,12 +3367,12 @@ def pack_material(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _TONEMAPFILTER_FIXED_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
+    ('typeFlag', 'i'),   # 原 unkn0_0，语料仅 1 例
+    ('unknFixed0_1', 'i'),   # 8B
     ('unkn1', 'i'),        # 4B
-    ('unkn2_0', 'f'),
-    ('unkn2_1', 'f'),
-    ('unkn2_2', 'f'),   # 12B
+    ('unknFixed2_0', 'f'),
+    ('unknFixed2_1', 'f'),
+    ('unknFixed2_2', 'f'),   # 12B
 ]  # 24B
 
 
@@ -3409,11 +3409,11 @@ def pack_tonemapfilter(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _TUBELIGHT_FIXED_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
-    ('unkn0_2', 'i'),   # 12B  off0-11，含义不明
+    ('typeFlag', 'i'),   # 原 unkn0_0，语料恒为 0（样本少，仅 22 例）
+    ('unknFixed0_1', 'i'),
+    ('unknEnum0_2', 'i'),   # 12B  off0-11，含义不明
     ('unkn1_0',  'f'),   # off12 — 可能为纹理滚动速度
-    ('unkn1_1',  'f'),   # off16 — 含义不明（22 实例恒 0.0）
+    ('unknFixed1_1',  'f'),   # off16 — 含义不明（22 实例恒 0.0）
     ('lightIntensity', 'f'),       # off20 光照强度
     ('lightIntensityJitter', 'f'), # off24 光照强度抖动
     ('columnLengthModifier', 'f'), # off28 也与光柱长度相关，具体跟 columnLength 的关系待定
@@ -3421,12 +3421,12 @@ _TUBELIGHT_FIXED_SCHEMA = [
     ('columnRadiusJitter', 'f'),   # off36 光柱半径抖动
     ('columnEdgeSoftness', 'f'),   # off40 与光柱边缘柔化相关
     ('unkn1_8',  'f'),   # off44 — 可能为核心亮度
-    ('unkn1_9',  'f'),   # off48 — 含义不明（22 实例恒 0.0）
+    ('unknFixed1_9',  'f'),   # off48 — 含义不明（22 实例恒 0.0）
     ('unkn1_10', 'f'),   # off52 — 可能与光柱长度有关，跟 columnLength/columnLengthModifier 的关系待定
     ('unkn2_0', 'f'),
     ('unkn2_1', 'f'),   # 8B   off56-63，含义不明
-    ('unkn3_0', 'i'),          # off64 含义不明
-    ('unkn3_1', 'i'),          # off68 含义不明
+    ('unknFixed3_0', 'i'),          # off64 含义不明
+    ('unknFixed3_1', 'i'),          # off68 含义不明
     ('unkn3_2', 'i'),          # off72 含义不明
     ('headColorEpvSlot', 'i'), # off76 headColor 对应的 EPV 颜色槽
     ('headColor', 'i'),        # 4B  off80  光柱起点颜色（打包 RGBA int）
@@ -3434,9 +3434,9 @@ _TUBELIGHT_FIXED_SCHEMA = [
     ('tailGlowSpread', 'f'),   # off88 尾光变长 + 边缘虚化（一个参数两种视觉效果）
     ('backFaceTintMode', 'f'), # off92 发射面反向区域是否受 headColor 染色
                                #        （与 frontFaceTintMode 镜像机制，反过来）
-    ('unkn5_0',  'i'),         # off96  — 含义不明（22 实例恒 24，非锁定占位，仅提示"通常为 24"）
+    ('unknFixed5_0',  'i'),         # off96  — 含义不明（22 实例恒 24，非锁定占位，仅提示"通常为 24"）
     ('unkn5_1',  'i'),         # off100 — 恒 0xCDCDCDCD 未初始化标记，UI 锁定只读
-    ('unkn6a_0', 'i'),         # off104 — 含义不明（22 实例恒 0）
+    ('unknFixed6a_0', 'i'),         # off104 — 含义不明（22 实例恒 0）
     ('tailColor', 'i'),        # off108 光柱终点颜色（打包 RGBA int）
     ('tailPlaneOffset', 'f'),  # off112 tailColor 发光平面的前后位置
     ('unkn6b_1', 'f'),         # off116 — 可能跟发光明暗光圈相关，未确认
@@ -3476,20 +3476,20 @@ def pack_tubelight(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _EMITTERSHAPEMESH_FIXED_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),   # 8B
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknFixed0_1', 'i'),   # 8B
     ('unkn1_0', 'i'),
     ('unkn1_1', 'i'),
     ('unkn1_2', 'i'),   # 12B (long=4B)
-    ('unkn2_0', 'b'),
+    ('unknFlag2_0', 'b'),
     ('ddsUsageType', 'b'),  # 原 unkn2_1；EFX.bt(新，refs/EFX_Subtypes.bt)具名，语义未实机验证
-    ('unkn2_2', 'b'),
+    ('unknFlag2_2', 'b'),
     ('visconIndex', 'b'),   # 原 unkn2_3；EFX.bt(新)具名，语义未实机验证
-    ('unkn2_4', 'b'),
-    ('unkn2_5', 'b'),
-    ('unkn2_6', 'b'),
-    ('unkn2_7', 'b'),   # 8B
-    ('unkn3', 'i'),        # 4B
+    ('unknEnum2_4', 'b'),
+    ('unknEnum2_5', 'b'),
+    ('unknEnum2_6', 'b'),
+    ('unknEnum2_7', 'b'),   # 8B
+    ('unknBitmask3', 'i'),        # 4B
 ]
 assert _schema_size(_EMITTERSHAPEMESH_FIXED_SCHEMA) == 32, \
     f"_EMITTERSHAPEMESH_FIXED_SCHEMA size mismatch: {_schema_size(_EMITTERSHAPEMESH_FIXED_SCHEMA)}"
@@ -3534,14 +3534,14 @@ def pack_emittershapemesh(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _FAKEDOF_FIXED_SCHEMA = [
-    ('unkn0', 'i'),        # 4B  off0  (索引/计数 1~5)
+    ('typeFlag', 'i'),     # 4B  off0  原 unkn0，索引/计数 1~5
     ('section_length', 'i'),  # 4B  原 unkn1；off4，恒 24，剩余字节数自描述标记（非可调参数）
     ('unkn2', 'i'),        # 4B  off8  (0xcd 未初始化)
     ('unkn3_0', 'f'),
     ('unkn3_1', 'f'),   # 8B  off12-19
     ('unkn4', 'f'),        # 4B  off20
-    ('unkn5', 'i'),        # 4B  off24
-    ('unkn6', 'i'),        # 4B  off28
+    ('unknBitmask5', 'i'),        # 4B  off24
+    ('unknFixed6', 'i'),        # 4B  off28
 ]
 assert _schema_size(_FAKEDOF_FIXED_SCHEMA) == 32, \
     f"_FAKEDOF_FIXED_SCHEMA size mismatch: {_schema_size(_FAKEDOF_FIXED_SCHEMA)}"
@@ -3613,12 +3613,12 @@ def _walk_layoutbank_block(data: bytes, pos: int) -> int:
 
 
 _LAYOUT_PREFIX_SCHEMA = [
-    ('unkn0_0', 'i'),
-    ('unkn0_1', 'i'),
-    ('unkn1_0', 'i'),
-    ('unkn1_1', 'i'),
-    ('unkn1_2', 'i'),
-    ('unkn1_3', 'i'),
+    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('unknFixed0_1', 'i'),
+    ('unknEnum1_0', 'i'),
+    ('unknEnum1_1', 'i'),
+    ('unknFixed1_2', 'i'),
+    ('unknFixed1_3', 'i'),
 ]
 assert _schema_size(_LAYOUT_PREFIX_SCHEMA) == 24, \
     f"_LAYOUT_PREFIX_SCHEMA size mismatch: {_schema_size(_LAYOUT_PREFIX_SCHEMA)}"

@@ -156,6 +156,7 @@ FIELD_LABELS_ZH = {
     "emissiveColorRange": "自发光颜色范围",
     "useEmissiveColor": "启用自发光颜色",
     "useEmissiveColorRange": "启用自发光颜色范围",
+    "useEmission": "启用自发光",
     "enableIntensity1": "亮度增强1",
     "enableIntensity2": "亮度增强2",
     "enableEmissiveIntensity": "自发光亮度增强",
@@ -574,23 +575,26 @@ RESERVED_FILL_FIELDS = frozenset({
     # 可调参数，改动会破坏解析。判据/复现见 2026-07-11 对 44 个候选类型的系统扫描。
     # ⚠ SHADERSETTINGS.unkn1（99.9% 恒 104，但按同公式应为 108，差 4）未确认属于同一机制，
     # 结构相同的 RAYCAST/HOMING/SCREENSPACECOLLISION/SHOVEL 均按标准公式吻合，故未列入。
+    # 2026-07-23：本批全部 19 个类型的字段 0（原 unkn0_0/unknown/unkn00/unkn0/NULL 等）也
+    # 统一核实为"类型标记"形态（小基数离散分布，见 docs/ATTRIBUTE_BEHAVIOR_NOTES.md），
+    # 改名 typeFlag；字段 1（本节）改名 section_length（下面 key 已同步）。
     ('NOISE', 'section_length'),
     ('RIBBON', 'section_length'),  # 2026-07-11：变长块(custom codec)里恒 352=固定核心 360-8，只管固定部分不含尾部变长路径
-    ('DUMMY', 'unkn0_1'),
-    ('BLINK', 'unkn0_1'),
-    ('FADEBYEMITTERANGLE', 'unkn0_1'),
-    ('RAYCAST', 'fixed70'),
-    ('HOMING', 'unknown0'),
-    ('SCREENSPACECOLLISION', 'unkn0_1'),
-    ('SHOVEL', 'unkn01'),
-    ('PATHCHAIN', 'unkn0_1'),
-    ('PTTRIGGER', 'unkn0_1'),
-    ('SPAWNBYANGLE', 'unkn0_1'),
-    ('CHECKPUREATTRIBUTE', 'unkn0_1'),
-    ('SPAWNBYOCCLUSION', 'unkn0_1'),
-    ('PARENTSNOW', 'unkn0_1'),
-    ('OTOMOSNOW', 'unkn0_1'),
-    ('FAKEPLANE', 'unkn0_1'),
+    ('DUMMY', 'section_length'),
+    ('BLINK', 'section_length'),
+    ('FADEBYEMITTERANGLE', 'section_length'),
+    ('RAYCAST', 'section_length'),
+    ('HOMING', 'section_length'),
+    ('SCREENSPACECOLLISION', 'section_length'),
+    ('SHOVEL', 'section_length'),
+    ('PATHCHAIN', 'section_length'),
+    ('PTTRIGGER', 'section_length'),
+    ('SPAWNBYANGLE', 'section_length'),
+    ('CHECKPUREATTRIBUTE', 'section_length'),
+    ('SPAWNBYOCCLUSION', 'section_length'),
+    ('PARENTSNOW', 'section_length'),
+    ('OTOMOSNOW', 'section_length'),
+    ('FAKEPLANE', 'section_length'),
     ('REPEATAREA', 'section_length'),
     ('FAKEDOF', 'section_length'),  # 原 unkn1，跟 RepeatArea 同一机制，之前漏归类，2026-07 补上
 })
