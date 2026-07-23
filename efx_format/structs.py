@@ -2692,28 +2692,35 @@ def pack_ribbonblade(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 # StrainRibbon（拔刀链条，0x3F4DA1D6）—— 固定 340B（type 之后）+ 末尾 path
 # 字段布局对照 EFX_Crimson.bt 的 StrainRibbon struct（社区注释验证）。
-# color1/color2 是字节 RGBA 色（XYZ type 2）；color3 实为 endPointScatter /
-# originReleaseFlag 两个开关 + 2 保留字节（模板误标成颜色），故拆成 4 个 byte。
+# color/colorRange 是字节 RGBA 色（XYZ type 2），与其他渲染主体（BILLBOARD3D/MESH 等）
+# 同款 color+colorRange+useColorRange 三件套（用户实机确认，2026-07-23）；color3 实为
+# endPointScatter/originReleaseFlag 两个开关 + color3_z（真实 0/1 标志，语料 69.6%/30.4%，
+# 模板误标成保留字节）+ color3_w（真保留，恒为 0xCD），共拆成 4 个 byte。
 # 含一片 MT Framework 物理参数（tension/gravity/inertia/displacement 等）——
 # MHW 即 MT Framework 引擎，这些在 MHW 内有效；unkn/spacer 为保留/对齐字段。
+# ⚠ spacer00/01/02 同源 bug：原按 4B int 读取恒为 0xCDCDCD00 系列，但 MSB==0xCD 判据
+# 只看最高字节，藏住了最低字节的真实数据——仿 RIBBON.tailTiedToBone 先例拆出最低字节。
+# spacer01→useColorRange、spacer02→useEmission 均已用户实机确认（2026-07-23）；spacer00
+# 拆出的 unkn00_2 语料中恒为 0（暂无变化样本），语义仍待确认。
 # ─────────────────────────────────────────────────────────────────────────────
 _STRAINRIBBON_FIXED_SCHEMA = [
-    ('unkn00_0', 'i'),
-    ('unkn00_1', 'i'),   # 8
-    ('spacer00',               'i'),
-    ('color1',                 ('XYZ', 2)), # 链条起始段颜色 RGBA
-    ('spacer01',               'i'),
-    ('color2',                 ('XYZ', 2)), # 链条中间段颜色 RGBA
-    ('spacer02',               'i'),
+    ('typeFlag', 'i'),   # 原 unkn00_0，语料 1~13 小基数分布，符合类型标记形态
+    ('unknFixed00_1', 'i'),   # 8，语料恒 244，不满足"总字节-8"公式，不套 section_length
+    ('unknFixed00_2',               'B'),        # spacer00 最低字节，语料恒 0，语义待确认
+    ('spacer00',               ('B', 3)),   # 高 3 字节，纯 0xCD 占位
+    ('color',                  ('XYZ', 2)), # 固定色 RGBA（原 color1，用户实机确认）
+    ('useColorRange',          'B'),        # 原 unkn01_0/spacer01 最低字节；启用 color↔colorRange
+    ('spacer01',               ('B', 3)),   # 高 3 字节，纯 0xCD 占位
+    ('colorRange',             ('XYZ', 2)), # 随机颜色范围 RGBA（原 color2，与 color 配对，用户实机确认）
+    ('useEmission',            'B'),        # 原 unkn02_0/spacer02 最低字节；启用自发光
+    ('spacer02',               ('B', 3)),   # 高 3 字节，纯 0xCD 占位
     ('emissionStrength',       'f'),
     ('emissionStrengthJitter', 'f'),        # unkn03_01
     ('spacer03',               'i'),
-    ('startDirectionX',        'f'),        # unkn03_03
-    ('startDirectionY',        'f'),        # unkn03_04
-    ('startDirectionZ',        'f'),        # unkn03_05
-    ('unkn03_06',              'f'),
+    ('startPosition',          ('XYZ', 3)), # 起点（绑定骨骼/生成位置）XYZ 偏移，原 startDirectionX/Y/Z（用户实机确认为真实偏移量，非开关）
+    ('unknFixed03_06',              'f'),
     ('endPosition',            ('XYZ', 3)), # 末端骨骼 XYZ 偏移
-    ('unkn03_10',              'f'),
+    ('unknFixed03_10',              'f'),
     ('width',                  'f'),  # TIML DT 0xF0DF339B("WidthSize") 已确认
     ('widthJitter',            'f'),
     ('length',                 'f'),  # TIML DT 0xF92E647B("Length") 已确认
@@ -2723,25 +2730,25 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('endWidth',               'f'),
     ('endOpacity',             'f'),
     ('subdivisionCount',       'i'),
-    ('unkn04_01',              'i'),
+    ('unknFixed04_01',              'i'),
     ('uvRepetition',           'i'),
     ('widthwiseUVScalingAlpha','f'),
     ('spacer04',               'f'),  # 名字像占位，但实测非零值干净重解读为 5.0，可能并非纯占位
     ('widthwiseUVScalingBML',  'f'),
     ('endPointScatter',        'B'),        # color3.x（终点扩散开关）
     ('originReleaseFlag',      'B'),        # color3.y（起点解锁标志）
-    ('color3_z',               'B'),        # 保留（模板误标颜色）
-    ('color3_w',               'B'),        # 保留
+    ('color3_z',               'B'),        # 真实 0/1 标志（语料 69.6%/30.4%，非保留，模板误标成颜色）
+    ('color3_w',               'B'),        # 真保留，恒为 0xCD
     ('unkn06_0', 'f'),
     ('unkn06_1', 'f'),
     ('unkn06_2', 'f'),
-    ('unkn06_3', 'f'),
+    ('unknFixed06_3', 'f'),
     ('unkn06_4', 'f'),
-    ('unkn06_5', 'f'),
+    ('unknFlag06_5', 'f'),
     ('unkn06_6', 'f'),
     ('unkn06_7', 'f'),   # unkn06_00..07，32B
-    ('unkn06_08_00',           'h'),
-    ('unkn06_08_01',           'h'),
+    ('unknEnum06_08_00',           'h'),
+    ('unknEnum06_08_01',           'h'),
     ('lengthBreakpoint',       'f'),        # 以下一片为 MT Framework 物理参数（MHW 引擎）
     ('lengthBreakpointJitter', 'f'),
     ('breakpointLocation',     'f'),
@@ -2766,20 +2773,20 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('positionalAberration_05','i'),
     ('displacement',           ('XYZ', 0)), # MT 遗留，24B
     ('displacementToggle',     'i'),
-    ('unkn09_0', 'i'),
-    ('unkn09_1', 'f'),
+    ('unknEnum09_0', 'i'),
+    ('unknFixed09_1', 'f'),
     ('unkn09_2', 'f'),
     ('unkn09_3', 'f'),
     ('unkn09_4', 'f'),   # 20B
-    ('unkn10_00',              'i'),
-    ('unkn10_01',              'f'),
-    ('unkn10_02',              'f'),
-    ('unkn11',                 'i'),
-    ('unkn12_00',              'i'),
-    ('unkn12_01',              'f'),
-    ('unkn12_02',              'f'),
-    ('unkn12_03',              'f'),
-    ('unkn13',                 'i'),
+    ('unknEnum10_00',              'i'),
+    ('angleRelated',           'f'),        # 原 unkn10_01，bt 注释+语料恒 360.0 双证实
+    ('angleRelatedJitter',     'f'),        # 原 unkn10_02，bt 注释+语料恒 0.0 双证实
+    ('unknEnum11',                 'i'),
+    ('unknEnum12_00',              'i'),
+    ('unknFixed12_01',              'f'),
+    ('unknFixed12_02',              'f'),
+    ('unknFixed12_03',              'f'),
+    ('unknFixed13',                 'i'),
 ]
 assert _schema_size(_STRAINRIBBON_FIXED_SCHEMA) == 340, \
     f"_STRAINRIBBON_FIXED_SCHEMA size mismatch: {_schema_size(_STRAINRIBBON_FIXED_SCHEMA)}"
@@ -4389,7 +4396,7 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     STRAINRIBBON:_STRAINRIBBON_FIXED_SCHEMA,
     LIGHTNING:   _LIGHTNING_FIXED_SCHEMA,
     RGBWATER:    _RGBWATER_FIXED_SCHEMA,
-    TURBULENCE:  [('unkn0', 'i')] + _TURBULENCE_AFTER_PATH_SCHEMA,
+    TURBULENCE:  [('typeFlag', 'i')] + _TURBULENCE_AFTER_PATH_SCHEMA,
     BILLBOARD3D: [e for e in (_BILLBOARD3D_FIXED_SCHEMA + _BILLBOARD3D_EXTRAS_SCHEMA)
                   if e[0] not in ('path', 'path_len')],
     PLANE:       [e for e in (_PLANE_DDS_SCHEMA + _PLANE_EXTRAS_SCHEMA)

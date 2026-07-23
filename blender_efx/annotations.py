@@ -751,9 +751,192 @@ FIELD_ANNOTATIONS = {
               " 边界才被拉回）；"
               "4=加速场。官方：0=73%，3=10%，2=8%，1=7%，4=2%。原名 enableRadialVanish。",
     },
-    ("HOMING", "unknown1"): {
+    ("HOMING", "unknownEnum1"): {
         "EN": "Almost always 0 (97% of official attributes)",
         "ZH": "几乎恒为 0（官方 97%）",
+    },
+
+    # ─── typeFlag/section_length 通用头字段（2026-07-23，19 个类型统一改名）───────
+    # 绝大多数 attribute 类型开头都是这两个 4B 字段：field[0]（typeFlag）语料呈小基数
+    # 离散分布，疑似类型/分类标记；field[1]（section_length）100% 恒等于「该 attribute
+    # 总字节数 - 8」，是引擎自描述的剩余长度标记，不是可调参数（判据见 field_labels.py
+    # RESERVED_FILL_FIELDS 注释）。这里补上尚无独立注释的类型。
+    ("NOISE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("RIBBON", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("DUMMY", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Always 1 across official data.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。官方语料恒为 1。",
+    },
+    ("DUMMY", "section_length"): {
+        "EN": "Structural remaining-length marker; computed by the engine, not a "
+              "tunable parameter — do not modify",
+        "ZH": "结构性剩余长度标记，由引擎计算，非可调参数——请勿修改",
+    },
+    ("FADEBYEMITTERANGLE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Always 0 across official data.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。官方语料恒为 0。",
+    },
+    ("FADEBYEMITTERANGLE", "section_length"): {
+        "EN": "Always 20 across the whole corpus — do not modify",
+        "ZH": "全语料恒为 20，请勿修改",
+    },
+    ("RAYCAST", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("RAYCAST", "section_length"): {
+        "EN": "Always 70 across the whole corpus — do not modify",
+        "ZH": "全语料恒为 70，请勿修改",
+    },
+    ("SCREENSPACECOLLISION", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("SCREENSPACECOLLISION", "section_length"): {
+        "EN": "Always 28 across the whole corpus — do not modify",
+        "ZH": "全语料恒为 28，请勿修改",
+    },
+    ("SHOVEL", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("SHOVEL", "section_length"): {
+        "EN": "Always 62 across the whole corpus — do not modify",
+        "ZH": "全语料恒为 62，请勿修改",
+    },
+    ("PTTRIGGER", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("PTTRIGGER", "section_length"): {
+        "EN": "Always 8 across the whole corpus — do not modify",
+        "ZH": "全语料恒为 8，请勿修改",
+    },
+    ("SPAWNBYANGLE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("SPAWNBYANGLE", "section_length"): {
+        "EN": "Always 14 across the whole corpus — do not modify",
+        "ZH": "全语料恒为 14，请勿修改",
+    },
+    ("CHECKPUREATTRIBUTE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("CHECKPUREATTRIBUTE", "section_length"): {
+        "EN": "Always 32 across the whole corpus — do not modify",
+        "ZH": "全语料恒为 32，请勿修改",
+    },
+    ("SPAWNBYOCCLUSION", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("SPAWNBYOCCLUSION", "section_length"): {
+        "EN": "Always 12 in the single official sample observed — do not modify",
+        "ZH": "已观测的唯一官方样本中恒为 12——请勿修改",
+    },
+    ("PARENTSNOW", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("PARENTSNOW", "section_length"): {
+        "EN": "Always 72 in the official samples observed — do not modify",
+        "ZH": "已观测的官方样本中恒为 72——请勿修改",
+    },
+    ("OTOMOSNOW", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("OTOMOSNOW", "section_length"): {
+        "EN": "Always 76 in the official samples observed — do not modify",
+        "ZH": "已观测的官方样本中恒为 76——请勿修改",
+    },
+    ("FAKEPLANE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("FAKEPLANE", "section_length"): {
+        "EN": "Always 52 across the whole corpus — do not modify",
+        "ZH": "全语料恒为 52，请勿修改",
+    },
+    ("FAKEDOF", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: 1~5.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值 1~5。",
+    },
+    ("STRAINRIBBON", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Common values: 1~13.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值 1~13。",
+    },
+    # 2026-07-23 第三轮：变长(_custom codec)类型的固定前缀部分同样核实
+    ("RGBWATER", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("TURBULENCE", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("BILLBOARD3D", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("TUBELIGHT", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Always 0 in the small sample "
+              "observed (22 instances).",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。已观测的少量"
+              "样本（22 例）中恒为 0。",
+    },
+    ("TONEMAPFILTER", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Only 1 official sample observed.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。官方语料仅 1 例。",
+    },
+    ("LAYOUT", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+    },
+    ("MATERIAL", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Unusually stored as a 64-bit value "
+              "(most other typeFlag fields are 32-bit) but still shows the same "
+              "small-cardinality distribution.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。此字段较特殊，"
+              "以 64 位存储（其余大多数 typeFlag 字段为 32 位），但取值分布形态相同（小基数离散）。",
+    },
+    ("PTBEHAVIOR", "typeFlag"): {
+        "EN": "Header field present in most attribute types, likely a type/category "
+              "marker rather than a tunable value. Not the same field as the "
+              "per-parameter unkn0 seen elsewhere in this block.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。跟本块内每个"
+              "参数各自的 unkn0 是不同字段，不要混淆。",
     },
 
     # ─── SCREENSPACECOLLISION ─────────────────────────────────────────────────
@@ -1176,13 +1359,29 @@ FIELD_ANNOTATIONS = {
     # Lightning — no significant inline comments in BT for fixed fields
 
     # ─── STRAINRIBBON（拔刀链条，社区注释 EFX_Crimson.bt）─────────────────────
-    ("STRAINRIBBON", "color1"): {
-        "EN": "Chain start-segment color RGBA (0~255)",
-        "ZH": "链条起始段颜色 RGBA（0~255）",
+    ("STRAINRIBBON", "unknFixed00_2"): {
+        "EN": "Flag byte extracted from what was treated as padding; always 0 in "
+              "official data so far (to be confirmed)",
+        "ZH": "从原视为占位的字节中拆出的标志位；官方语料中恒为 0（待确认）",
     },
-    ("STRAINRIBBON", "color2"): {
-        "EN": "Chain middle-segment color RGBA (0~255)",
-        "ZH": "链条中间段颜色 RGBA（0~255）",
+    ("STRAINRIBBON", "color"): {
+        "EN": "Fixed chain color RGBA (0~255); pairs with Color Range the same way "
+              "as other renderer bodies (e.g. Billboard3D/Mesh)",
+        "ZH": "链条固定颜色 RGBA（0~255）；与颜色范围配对，同其他渲染主体（如 "
+              "Billboard3D/Mesh）的用法一致",
+    },
+    ("STRAINRIBBON", "colorRange"): {
+        "EN": "Random color range paired with the fixed color; only takes effect "
+              "when Use Color Range is on",
+        "ZH": "与固定颜色配对的随机颜色范围；只有启用颜色范围开关时才生效",
+    },
+    ("STRAINRIBBON", "useColorRange"): {
+        "EN": "Enables random interpolation between Color and Color Range",
+        "ZH": "启用固定颜色与颜色范围之间的随机插值",
+    },
+    ("STRAINRIBBON", "useEmission"): {
+        "EN": "Enables self-illumination (emission)",
+        "ZH": "启用自发光",
     },
     ("STRAINRIBBON", "emissionStrength"): {
         "EN": "Chain emission strength; also controls base visibility. 0=completely "
@@ -1198,20 +1397,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "发光强度随机偏差。正数=部分帧更亮产生辉光；负数（如 -100）=部分帧变黑，"
               "蓝黑交替闪烁，适合不稳定电弧感",
     },
-    ("STRAINRIBBON", "startDirectionX"): {
-        "EN": "Switch to extend the start end along the X axis (blade up/down); any "
-              "non-zero triggers it (magnitude has no effect)",
-        "ZH": "起始端朝 X 轴（刀身上下）延伸开关，非 0 即触发（数值大小无影响）",
-    },
-    ("STRAINRIBBON", "startDirectionY"): {
-        "EN": "Switch to extend the start end along the Y axis (blade left/right); any "
-              "non-zero triggers it; can stack with X/Z to compose a direction",
-        "ZH": "起始端朝 Y 轴（刀身左右）延伸开关，非 0 即触发；可与 X/Z 叠加合成方向",
-    },
-    ("STRAINRIBBON", "startDirectionZ"): {
-        "EN": "Switch to extend the start end along the Z axis (blade front/back); any "
-              "non-zero triggers it; enabling all three axes composes a 3D direction",
-        "ZH": "起始端朝 Z 轴（刀身前后）延伸开关，非 0 即触发；三轴同开产生立体合成方向",
+    ("STRAINRIBBON", "startPosition"): {
+        "EN": "Start-point XYZ offset (relative to the bound bone/spawn position); "
+              "pairs with End Position — larger offset = larger curve arc at the "
+              "start end",
+        "ZH": "起点（相对绑定骨骼/生成位置）XYZ 偏移量，与末端偏移互为对应；偏移越大"
+              "起始端弯曲弧度越大",
     },
     ("STRAINRIBBON", "endPosition"): {
         "EN": "End-bone XYZ offset. Important: when non-zero the chain curves normally "
@@ -1259,21 +1450,25 @@ FIELD_ANNOTATIONS = {
         "ZH": "末端透明度，同起始不透明度",
     },
     ("STRAINRIBBON", "subdivisionCount"): {
-        "EN": "Controls both physics-node count and visual smoothness. 1=degenerates to "
-              "a straight line (physics bending disabled); 4=default; 16+=extremely "
-              "smooth (energy ribbon). Lightning: 2~4 to keep edges; energy whip: 8~16",
-        "ZH": "同时控制物理节点数与视觉平滑度。1=退化为直线（物理弯曲失效）；4=默认；"
-              "16+=极圆滑（能量光带）。闪电建议 2~4 保留棱角，能量鞭建议 8~16",
+        "EN": "Number of segments the drooping curve (start→end) is divided into, "
+              "also the physics node count. Higher = smoother droop; 1 = straight "
+              "line with no droop",
+        "ZH": "链条起点到终点的下垂曲线被分成的段数，同时也是物理节点数。数值越大下垂"
+              "曲线越平滑；1=直线无下垂",
     },
     ("STRAINRIBBON", "uvRepetition"): {
-        "EN": "Number of texture repeats along the chain's length. 1=texture covers the "
-              "whole chain once; larger=denser tiling that becomes a smooth line",
-        "ZH": "贴图沿链条长度方向重复次数。1=贴图完整覆盖整条；越大锯齿越密变光滑线条",
+        "EN": "Number of texture repeats along the chain's length. 0=default (most "
+              "common value in official data); 1=texture covers the whole chain once; "
+              "larger=denser tiling that becomes a smooth line",
+        "ZH": "贴图沿链条长度方向重复次数。0=默认（官方语料最常见取值）；1=贴图完整覆盖"
+              "整条；越大锯齿越密变光滑线条",
     },
     ("STRAINRIBBON", "widthwiseUVScalingAlpha"): {
         "EN": "Texture widthwise alpha-channel scaling. 0.1=ultra-thin laser line; "
-              "0.8=default; 5=extreme expansion, dense texture",
-        "ZH": "贴图宽度方向透明通道缩放。0.1=极细激光线状；0.8=默认；5=极度扩张纹理密集",
+              "1=default (most common value in official data); 5=extreme expansion, "
+              "dense texture",
+        "ZH": "贴图宽度方向透明通道缩放。0.1=极细激光线状；1=默认（官方语料最常见取值）；"
+              "5=极度扩张纹理密集",
     },
     ("STRAINRIBBON", "widthwiseUVScalingBML"): {
         "EN": "Texture widthwise lighting-channel scaling. 0.1=ultra-thin line; "
@@ -1304,6 +1499,16 @@ FIELD_ANNOTATIONS = {
     ("STRAINRIBBON", "colorModeFlag"): {
         "EN": "Color-mode flag (positionalAberration_03). 2=cyan shift, 10+=disappears",
         "ZH": "颜色模式标志（positionalAberration_03）。2=青色偏移，10+=消失",
+    },
+    ("STRAINRIBBON", "angleRelated"): {
+        "EN": "Angle-related parameter (per BT); always 360.0 across official data "
+              "(full circle), suggesting an unused default rather than an authored value",
+        "ZH": "角度相关参数（据 BT）；官方语料中恒为 360.0（整圆），疑为未被使用的默认值",
+    },
+    ("STRAINRIBBON", "angleRelatedJitter"): {
+        "EN": "Jitter for the angle-related parameter (per BT); always 0.0 across "
+              "official data",
+        "ZH": "角度相关参数的随机偏差（据 BT）；官方语料中恒为 0.0",
     },
     # 链条物理参数（MT Framework，即 MHW 引擎）
     ("STRAINRIBBON", "lengthBreakpoint"): {
@@ -3348,11 +3553,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("STRAINRIBBON", "unkn06_08_00"): {
+    ("STRAINRIBBON", "unknEnum06_08_00"): {
         "EN": "Common values: [0, 256].",
         "ZH": "常见取值为 [0, 256]。",
     },
-    ("STRAINRIBBON", "unkn06_08_01"): {
+    ("STRAINRIBBON", "unknEnum06_08_01"): {
         "EN": "Common values: [0, 1, 257].",
         "ZH": "常见取值为 [0, 1, 257]。",
     },
@@ -3368,7 +3573,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("STRAINRIBBON", "unkn06_5"): {
+    ("STRAINRIBBON", "unknFlag06_5"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -3384,11 +3589,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("STRAINRIBBON", "unkn11"): {
+    ("STRAINRIBBON", "unknEnum11"): {
         "EN": "Common values: [0, 2, 3, 6].",
         "ZH": "常见取值为 [0, 2, 3, 6]。",
     },
-    ("STRAINRIBBON", "unkn12_00"): {
+    ("STRAINRIBBON", "unknEnum12_00"): {
         "EN": "Common values: [0, 2, 3, 4, 5, 8, 10, 50].",
         "ZH": "常见取值为 [0, 2, 3, 4, 5, 8, 10, 50]。",
     },
