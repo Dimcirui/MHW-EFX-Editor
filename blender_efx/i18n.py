@@ -215,9 +215,9 @@ STRINGS = {
                               "ZH": "运行时内存缓冲提示。过小→特效消失。约为文件大小的 2~3.5 倍。"},
     "export.recompute_db":   {"EN": "Auto-recompute filesize_double",
                               "ZH": "自动重算 filesize_double"},
-    "export.recompute_db_tip":{"EN": "On export, set filesize_double = max(Root value, ceil16(2.75 x filesize)). "
+    "export.recompute_db_tip":{"EN": "On export, set filesize_double = max(Root value, ceil16(2.0 x filesize)). "
                                      "Unchecked: use the value stored in Root.",
-                               "ZH": "导出时将 filesize_double 设为 max(Root 值, 向上取整到16(2.75 × 文件大小))。"
+                               "ZH": "导出时将 filesize_double 设为 max(Root 值, 向上取整到16(2.0 × 文件大小))。"
                                      "不勾：用 Root 里写的值。"},
     "export.auto_sort":      {"EN": "Auto-sort attributes",
                               "ZH": "自动排序"},

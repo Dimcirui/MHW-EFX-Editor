@@ -307,8 +307,8 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
     )
 
     # 自动重算 filesize_double（doubleBuffer，header 偏移 68）。
-    # 勾选：导出后将其设为 max(Root 值, ceil16(2.75 × 文件大小))，防止增量编辑后缓冲偏小
-    # 导致特效消失（公式实测覆盖 99.9% 官方样本；超额分配无害、欠额才消失，故取较大者）。
+    # 勾选：导出后将其设为 max(Root 值, ceil16(2.0 × 文件大小))，防止增量编辑后缓冲偏小
+    # 导致特效消失。⚠ 系数曾用 2.75，实测 buffer 过大也会 CTD（wp09_050），已下调到 2.0。
     # 不勾：原样使用 Root 里 hdr_double_buffer 的值（byte-perfect 往返）。
     recompute_double_buffer: BoolProperty(
         name=T("export.recompute_db"),
@@ -474,13 +474,15 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             return {"CANCELLED"}
 
         # ── 2.5 自动重算 filesize_double（doubleBuffer @ header 偏移 68，uint LE）──
-        # 公式：max(原值, ceil16(2.75 × 文件大小))。原地覆写 4 字节（不改文件长度，
+        # 公式：max(原值, ceil16(2.0 × 文件大小))。原地覆写 4 字节（不改文件长度，
         # 故 len(data) 即最终文件大小）。只增不减：未变大的文件仍保留原值。
+        # ⚠ 系数从 2.75 下调到 2.0：实测 buffer 过大同样会 CTD（wp09_050 原值 1.55×
+        #   工作正常，2.75×→21040 崩），2.75 并非安全上界；2.0 折中降低超额风险。
         _db_note = ""
         if self.recompute_double_buffer:
             import math
             old_db = struct.unpack_from("<I", data, 68)[0]
-            new_db = max(old_db, (math.ceil(2.75 * len(data)) + 15) // 16 * 16)
+            new_db = max(old_db, (math.ceil(2.0 * len(data)) + 15) // 16 * 16)
             if new_db != old_db:
                 data = data[:68] + struct.pack("<I", new_db) + data[72:]
                 # 同步回写 Root，保持 UI 显示与文件一致
