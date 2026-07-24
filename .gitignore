@@ -32,3 +32,6 @@ tools/
 
 # addon_updater 运行时暂存/备份目录（下载更新用，非源码）
 efx_editor_updater/
+
+# 运行期保存的语言偏好（i18n.save_lang 写出，非源码；正常应落在用户配置目录）
+efx_editor_lang.txt
