@@ -27,6 +27,8 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
       叶子集合直接子级（拖拽失误）。导出 fail-safe 视为直接触发（宁可多触发不漏触发）。
     两者都只是提醒用户清理，不挡导出。
 (3) 死属性 EXTERNREFERENCE（count_extern==0 却仍 pointerized）—— WARN（合法历史模式）
+(5f) 2D/3D 骨架与渲染主体不匹配（TRANSFORM2D+3D渲染主体 / TRANSFORM3D+BILLBOARD2D）
+     —— **ERROR**（挡导出；前者实机确认崩溃，后者按对称性预防性拦截，见该检查项内联注释）
 (5k) standard/extended entry 零属性 —— WARN（提示性；io_tree.py §4a0 已自动从导出剔除这类
      残留空壳，这里只是提醒用户手动清理场景里的对象；见该检查项内联注释）
 
@@ -376,6 +378,7 @@ def validate_efx_tree(root_obj) -> list:
             DUMMY as _DUMMY,           RIBBONBLADE as _RIBBONBLADE,
             STRAINRIBBON as _SRBN,     TUBELIGHT as _TUBE,
             BILLBOARD2D as _BB2D,
+            TRANSFORM2D as _T2D,       TRANSFORM3D as _T3D,
             UVCONTROL as _UVCTL,
             MATERIAL as _MATERIAL,
             ALPHACORRECTION as _ALPHACORR,
@@ -385,6 +388,12 @@ def validate_efx_tree(root_obj) -> list:
         _RENDERERS = frozenset({
             _BB3D, _RIBBON, _MESH, _PLANE, _FAKEPLANE,
             _LIGHTNING, _DUMMY, _RIBBONBLADE, _SRBN, _TUBE, _BB2D,
+        })
+        # 3D 系渲染主体（不含 FAKEPLANE——它已归渲染修饰，跟真正的 body 共存不互斥）。
+        # 用于 (5f) 2D/3D 骨架与渲染主体不匹配检查。
+        _RENDERER_BODY_3D = frozenset({
+            _BB3D, _RIBBON, _MESH, _PLANE,
+            _LIGHTNING, _DUMMY, _RIBBONBLADE, _SRBN, _TUBE,
         })
         _attribute_rules_ok = True
     except ImportError:
@@ -472,6 +481,36 @@ def validate_efx_tree(root_obj) -> list:
                         "msg": (
                             f"Entry '{body.name}' has multiple renderers ({names}) — "
                             "only one renderer per entry is expected"
+                        ),
+                        "obj": body.name,
+                    })
+
+                # (5f) 2D/3D 骨架与渲染主体不匹配 — ERROR
+                # 官方语料（efx_samples/official 10084 文件）121 个 2D 文件、580 个
+                # 带属性的 2D entry，渲染主体 100% 是 BILLBOARD2D，从无例外。实机确认：
+                # TRANSFORM2D + RIBBON（2D 骨架配 3D 渲染主体）直接导致游戏崩溃。
+                # 按 entry 内骨架属性（TRANSFORM2D/TRANSFORM3D）判定，独立于文件级
+                # header.is_3d（该字段的一致性由 (5l) 另行检查），两个方向都挡导出。
+                if _T2D in hash_set:
+                    bad = hash_set & _RENDERER_BODY_3D
+                    if bad:
+                        names = "/".join(_H2N.get(h, f"0x{h:08X}") for h in bad)
+                        problems.append({
+                            "level": "ERROR",
+                            "msg": (
+                                f"Entry '{body.name}' has TRANSFORM2D (2D skeleton) together "
+                                f"with 3D renderer body ({names}) — confirmed to crash the game "
+                                "in-machine. 2D entries must use BILLBOARD2D as the renderer body."
+                            ),
+                            "obj": body.name,
+                        })
+                if _T3D in hash_set and _BB2D in hash_set:
+                    problems.append({
+                        "level": "ERROR",
+                        "msg": (
+                            f"Entry '{body.name}' has TRANSFORM3D (3D skeleton) together "
+                            "with BILLBOARD2D (2D renderer body) — the mirror of a "
+                            "confirmed in-machine crash case, blocked as a precaution."
                         ),
                         "obj": body.name,
                     })
