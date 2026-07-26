@@ -2,8 +2,8 @@
     "efx_preset_kind": "attribute",
     "type_hash": "1535857470",
     "type_name": "HOMING",
-    "display_name": "HOMING（追踪目标）",
+    "display_name": "HOMING\uff08\u8ffd\u8e2a\u76ee\u6807\uff09",
     "category": "motion_visibility",
-    "data_bytes": "DAAAACwAAAAAzc3NAAC0QwAAyEIAAHBBAACAPwAASEIAAHpEAAAAAAAAAAAAAAAAAAAAAA==",
+    "data_bytes": "DAAAACwAAAAAzc3NAABIQgAAgD8AAIA/AACAPwAASEIAAHpEAAAAAAAAAAAAAAAAAAAAAA==",
     "subgroup": "motion"
 }

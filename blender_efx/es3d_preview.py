@@ -3,11 +3,13 @@ blender_efx/es3d_preview.py  —  EMITTERSHAPE3D 发射器形状预览（透明�
 
 设计（与用户确认）
 ------------------
-- **预览式会话**（进入/退出，同 uvc/mesh_align），场景零残留：进入时按 patternControl/
-  transform/spawnAngleLimits 生成一个绑在该 ES3D 属性下的透明预览网格子对象；退出即删除。
-- **形状 = patternControl**（0=Cube,1=Sphere,2=Ring,3=Spot；见 annotations.py 实测注释），
-  **尺寸 = transform.xyz**（FLOAT6 取 idx 0/2/4，与 ES3D 变换共用同一批数据——"变换就是
-  几何体的 XYZ"），**弧形裁剪 = spawnAngleLimits**（角度制，360=完整、调小挖去一段弧）。
+- **预览式会话**（进入/退出，同 uvc/mesh_align），场景零残留：进入时按 shapeType/
+  rangeXYZ/scaleHorizontal 生成一个绑在该 ES3D 属性下的透明预览网格子对象；退出即删除。
+- **形状 = shapeType**（0=Box,1=Sphere,2=Cylinder,≥3=Point；见 annotations.py 实测注释），
+  **尺寸 = rangeXYZ.xyz**（FLOAT6 取 idx 0/2/4，与 ES3D 变换共用同一批数据——"变换就是
+  几何体的 XYZ"），**弧形裁剪 = scaleHorizontal**（角度制，360=完整、调小挖去一段弧）。
+  ⚠ 2026-07 字段改名（patternControl→shapeType/transform→rangeXYZ/spawnAngleLimits→
+  scaleHorizontal），本文件与 fields.py 已同步更新引用。
 - **几何生成用 Geometry Nodes 修饰器**（单个共享 node group，多实例复用）：
     Cube/UV Sphere 直接用图元节点；Ring 用 Curve Circle(major) + Curve Circle(minor)
     → Curve to Mesh 组出圆环（GN 无内置 Torus 图元），再转 90°X 摆进局部 XZ 平面
@@ -97,11 +99,11 @@ def _read_float(block, name, default=0.0):
     return default
 
 
-def _read_transform_xyz(block, default=(1.0, 1.0, 1.0)):
-    """读 transform（FLOAT6）的基础三元组（idx 0/2/4），与 mesh_align 的约定一致。"""
+def _read_range_xyz(block, default=(1.0, 1.0, 1.0)):
+    """读 rangeXYZ（FLOAT6）的基础三元组（idx 0/2/4），与 mesh_align 的约定一致。"""
     try:
         for it in block.efx_block.field_items:
-            if it.ori_name == "transform" and it.data_type == "FLOAT6":
+            if it.ori_name == "rangeXYZ" and it.data_type == "FLOAT6":
                 v = it.float6_value
                 return (float(v[0]), float(v[2]), float(v[4]))
     except Exception:
@@ -111,9 +113,9 @@ def _read_transform_xyz(block, default=(1.0, 1.0, 1.0)):
 
 def _read_es3d_params(es3d_obj):
     return {
-        "shape": _read_int(es3d_obj, "patternControl", 0),
-        "size": _read_transform_xyz(es3d_obj),
-        "angle": _read_float(es3d_obj, "spawnAngleLimits", 360.0),
+        "shape": _read_int(es3d_obj, "shapeType", 0),
+        "size": _read_range_xyz(es3d_obj),
+        "angle": _read_float(es3d_obj, "scaleHorizontal", 360.0),
     }
 
 

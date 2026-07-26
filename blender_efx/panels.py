@@ -166,12 +166,10 @@ _SCALAR_PROP_ATTR = {
 }
 
 
-# 不符合 Jitter 后缀约定、但语义上是抖动字段的名称（SPAWN 属性 + MESH 的 _j 后缀字段）
+# 不符合 Jitter 后缀约定、但语义上是抖动字段的名称（MESH 的 _j 后缀字段）
+# SPAWN 原 randomizedSpawnsPerFrame/randomizedDelay/randomizedLifespan/occur2 已改名为标准
+# XJitter 后缀（2026-07-26 实机测试后重命名），不再需要在此特例登记。
 _NONSTANDARD_JITTER_NAMES = frozenset({
-    "randomizedSpawnsPerFrame",
-    "randomizedDelay",
-    "randomizedLifespan",
-    "occur2",
     "emissive_saturation_j",
     "emissive_brightness_j",
 })

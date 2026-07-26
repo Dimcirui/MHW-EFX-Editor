@@ -65,12 +65,12 @@ FIELD_OFFICIAL_NAMES = {
     ("MESH", "emissiveColorRange"):  ("EmissiveColorRange",  "0x7F2CEB57", "确认"),
     # VELOCITY3D：gravity 名称精确吻合
     ("VELOCITY3D", "gravity"):    ("Gravity", "0x6A5FE3C4", "高"),
-    # EMITTERSHAPE3D：transform ↔ Range 盒（注释确认定尺寸/范围，升高）；
-    # trayectoryRotation 注释强调"轨迹"旋转，与泛指 LocalRotation 有微妙差异，降中
-    ("EMITTERSHAPE3D", "trayectoryRotationX"): ("LocalRotationX", "0x701FE225", "中"),
-    ("EMITTERSHAPE3D", "trayectoryRotationY"): ("LocalRotationY", "0x0718D2B3", "中"),
-    ("EMITTERSHAPE3D", "trayectoryRotationZ"): ("LocalRotationZ", "0x9E118309", "中"),
-    ("EMITTERSHAPE3D", "transform"):           ("RangeMin/Max[XYZ]", "0x760F3D43", "高"),
+    # EMITTERSHAPE3D：rangeXYZ ↔ Range 盒（注释确认定尺寸/范围，升高；2026-07 改名
+    # localRotationX/Y/Z 后与 DTI 名 LocalRotationX/Y/Z 直接一致，独立佐证改名）
+    ("EMITTERSHAPE3D", "localRotationX"): ("LocalRotationX", "0x701FE225", "中"),
+    ("EMITTERSHAPE3D", "localRotationY"): ("LocalRotationY", "0x0718D2B3", "中"),
+    ("EMITTERSHAPE3D", "localRotationZ"): ("LocalRotationZ", "0x9E118309", "中"),
+    ("EMITTERSHAPE3D", "rangeXYZ"):       ("RangeMin/Max[XYZ]", "0x760F3D43", "高"),
     # SCALEANIM：Size*Add 动画增量 ↔ 缩放速度（注释佐证整体/按轴，且 dump 无 Accel 参数）
     ("SCALEANIM", "initialScaleSpeed"): ("SizeScalarAdd", "0xC24DF97C", "高"),
     ("SCALEANIM", "scaleSpeedX"):       ("SizeXAdd", "0x909EC047", "高"),
@@ -167,22 +167,27 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── SPAWN ────────────────────────────────────────────────────────────────
-    # ExternSpawn (EFX_Subtypes.bt)
-    ("SPAWN", "occur"): {
-        "EN": "Frames to wait before the effect first appears. occur2 adds random jitter.",
-        "ZH": "指定帧数后才会出现。occur2 为随机抖动范围。",
+    # ExternSpawn (EFX_Subtypes.bt)；2026-07-26 用户实机测试确认完整 emitter/particle
+    # 三层模型（SPAWN属性本身 → emitter实例/轮次 → particle个体），字段名与下方 tooltip
+    # 已按测试结果更新，详见 structs.py EXTERN_SPAWN_SCHEMA 行内注释总览。
+    ("SPAWN", "emitterStartDelay"): {
+        "EN": "Frames to wait before the spawner's very first burst ever fires. "
+              "One-time delay applied once at activation — unrelated to burstInterval "
+              "or altBurstInterval.",
+        "ZH": "发射器有史以来第一次生成前的等待帧数。只在激活时生效一次，跟 burstInterval "
+              "/ altBurstInterval 无关。",
     },
-    ("SPAWN", "occur2"): {
-        "EN": "Frames to wait before the effect first appears. occur2 adds random jitter.",
-        "ZH": "指定帧数后才会出现。occur2 为随机抖动范围。",
+    ("SPAWN", "emitterStartDelayJitter"): {
+        "EN": "Random jitter added to emitterStartDelay.",
+        "ZH": "叠加到 emitterStartDelay 上的随机抖动。",
     },
-    ("SPAWN", "repeatAtribute"): {
-        "EN": "0=Repeat indefinitely; higher value=number of repetitions. "
-              "unkn21 must be ≥1 to allow other attributes to cycle. "
-              "Combined with durationOfSpawnerLifespan for finite cycles.",
-        "ZH": "0=无限重复；数值越大=重复次数越多。"
-              "unkn21 必须 ≥1 才能让其他属性循环。"
-              "与 durationOfSpawnerLifespan 配合实现有限循环。",
+    ("SPAWN", "emitterRepeatCount"): {
+        "EN": "0 = spawner never relocates, bursts continue forever regardless of "
+              "burstsPerCycle. Non-zero = added to burstsPerCycle to set total bursts "
+              "per cycle before relocating (see burstsPerCycle). Has no jitter of its own.",
+        "ZH": "0=发射器永不换位置，无论 burstsPerCycle 是什么都持续生成；非0时与 "
+              "burstsPerCycle 相加，决定每轮换位置前的总批次数（见 burstsPerCycle）。"
+              "没有自己的随机抖动。",
     },
 
     # ─── LIFE ─────────────────────────────────────────────────────────────────
@@ -198,73 +203,55 @@ FIELD_ANNOTATIONS = {
 
     # ─── EMITTERSHAPE3D ───────────────────────────────────────────────────────
     # ExternEmitterShape3D (EFX_Subtypes.bt)
-    ("EMITTERSHAPE3D", "patternControl"): {
-        "EN": "Emitter shape: 0=Cube, 1=Sphere, 2=Ring, 3=Spot",
-        "ZH": "发射器形状：0=立方体, 1=球, 2=环, 3=点",
+    ("EMITTERSHAPE3D", "shapeType"): {
+        "EN": "0=Box(cube wireframe), 1=Sphere, 2=Cylinder(ring), >=3=Point",
+        "ZH": "0=Box(立方体边框)/1=Sphere（球面）/2=Cylinder(圆环面)/≥3=Point（点）",
     },
-    ("EMITTERSHAPE3D", "trayectoryRotationX"): {
-        "EN": "Rotates the trajectory over which spawned entries are copied. "
-              "Does NOT reorient the normal or tangent vector of the spawn object.",
-        "ZH": "旋转生成条目被复制所沿的轨迹。"
-              "不会重新定向生成对象的法线或切线向量。",
+    ("EMITTERSHAPE3D", "localRotationX"): {
+        "EN": "Overall rotation of the emitter shape.",
+        "ZH": "生成形状的总体旋转。",
     },
-    ("EMITTERSHAPE3D", "trayectoryRotationY"): {
-        "EN": "Rotates trajectory Y. Does not reorient spawn object normal/tangent.",
-        "ZH": "旋转轨迹 Y。不会重新定向生成对象的法线/切线。",
+    ("EMITTERSHAPE3D", "localRotationY"): {
+        "EN": "Overall rotation of the emitter shape.",
+        "ZH": "生成形状的总体旋转。",
     },
-    ("EMITTERSHAPE3D", "trayectoryRotationZ"): {
-        "EN": "Rotates trajectory Z. Does not reorient spawn object normal/tangent.",
-        "ZH": "旋转轨迹 Z。不会重新定向生成对象的法线/切线。",
+    ("EMITTERSHAPE3D", "localRotationZ"): {
+        "EN": "Overall rotation of the emitter shape.",
+        "ZH": "生成形状的总体旋转。",
     },
-    ("EMITTERSHAPE3D", "spawnPerCycle"): {
-        "EN": "Entries spawned per cycle; next cycle offsets by one position",
-        "ZH": "每周期生成的条目数；下一周期偏移一个位置",
+    ("EMITTERSHAPE3D", "rangeDivideHorizontalNum"): {
+        "EN": "Number of divisions along the horizontal dimension.",
+        "ZH": "沿横向维度等分数量。",
     },
 
     # ─── VELOCITY3D ───────────────────────────────────────────────────────────
     # ExternVelocity3D (EFX_Subtypes.bt)
-    ("VELOCITY3D", "unkn0"): {
-        "EN": "Neutral direction is (0, 1, 0)",
-        "ZH": "中性方向为 (0, 1, 0)",
+    ("VELOCITY3D", "initialVelocityAxis"): {
+        "EN": "Base axis for initialVelocity (one of six cardinal axes, not a free direction "
+              "vector), combined with rotationX/Y/Z to give the final direction. "
+              "0=left,1=up,2=front,3=right,4=down,5=back. Only meaningful when velocityType=0.",
+        "ZH": "initialVelocity 的基准轴（六个基准轴之一，不是自由方向向量），与 rotationX/Y/Z "
+              "复合得到最终方向。0=左,1=上,2=前,3=右,4=下,5=后。仅在 velocityType=0 时有意义。",
     },
-    ("VELOCITY3D", "expansion_radius_elasticity"): {
-        "EN": "1/−1 are the peak values. Above 1 or below −1: velocity surges and ignores "
-              "expansion_radius_limit. Below 1: decelerates, consuming initial velocity until 0. "
-              "0=Completely dampened (instantly at position); 1=No dampening (uniform motion).",
-        "ZH": "1/−1 为顶值。高于1/低于−1：速度急剧加快并无视扩散范围限制。低于1：减速，"
-              "消耗初速度直到0。0=完全阻尼（瞬间到位）；1=无阻尼（匀速运动）。",
+    ("VELOCITY3D", "acceleration"): {
+        "EN": "Acceleration coefficient. 1=uniform, >1=accelerate, <1=decelerate until 0.",
+        "ZH": "加速度系数，1为匀速，>1为加速，<1为减速直至0。",
     },
-    ("VELOCITY3D", "velocityX"): {
-        "EN": "Subtracts from system net energy; higher values restrict radial motion",
-        "ZH": "从系统净能量中扣除；数值越大越限制径向运动",
+    ("VELOCITY3D", "velocityType"): {
+        "EN": "Decides how the particle's movement DIRECTION is determined (speed always comes "
+              "from initialVelocity/acceleration; gravity is independent and always applies). "
+              "0=Direction (direction from initialVelocityAxis + rotation), 1=Normal (regular; "
+              "direction decided solely by offset and size), 2=Radial (always moves outward), "
+              "3=Spread (direction matches the emitter's velocity direction at spawn), "
+              "4=ScreenSpace, 5=Unkn.",
+        "ZH": "决定粒子运动方向如何确定（速度始终由 initialVelocity/acceleration 决定，重力独立"
+              "于此始终生效）。0=Direction(由 initialVelocityAxis + rotation 决定粒子运动方向)，"
+              "1=Normal(常规，仅由 offset 和 size 共同决定粒子运动方向)，2=Radial(始终向外运动)，"
+              "3=Spread(运动方向和生成时 Emitter 的速度方向一致)，4=ScreenSpace，5=Unkn。",
     },
-    ("VELOCITY3D", "energyOnAxisX"): {
-        "EN": "(1-x): above 1 = traditional emission radially, "
-              "below 1 = implosion, 1 = no energy. Higher = faster.",
-        "ZH": "(1-x)：大于 1=传统径向发射，"
-              "小于 1=向内坍缩，1=无能量。越大越快。",
-    },
-    ("VELOCITY3D", "energyOnAxisY"): {
-        "EN": "(1-y): above 1 = traditional emission radially, "
-              "below 1 = implosion, 1 = no energy.",
-        "ZH": "(1-y)：大于 1=传统径向发射，"
-              "小于 1=向内坍缩，1=无能量。",
-    },
-    ("VELOCITY3D", "energyOnAxisZ"): {
-        "EN": "(1-z): above 1 = traditional emission radially, "
-              "below 1 = implosion, 1 = no energy.",
-        "ZH": "(1-z)：大于 1=传统径向发射，"
-              "小于 1=向内坍缩，1=无能量。",
-    },
-    ("VELOCITY3D", "expansionType"): {
-        "EN": "0=No initial velocity (all axis speed lost); "
-              "1=Linear radial: gains axis energy + initial velocity, moves toward high-energy axis; "
-              "2=Omnidirectional sphere: gains axis energy but no initial velocity, expands outward as sphere/ring; "
-              "higher values cycle — odd=same as 1, even=same as 2.",
-        "ZH": "0=丢失所有初速度，无论上面数值是多少；"
-              "1=线性径向：获得轴能量+初速度，向能量高处线性运动；"
-              "2=球状扩散：获得轴能量但无初速度，向四周运动、粒子呈球状/环状；"
-              "更高值循环——奇数效果同1，偶数效果同2。",
+    ("VELOCITY3D", "gravity"): {
+        "EN": "Gravity. Always applies regardless of velocityType.",
+        "ZH": "重力，不论 Velocity Type 如何，始终生效。",
     },
 
     # ─── SHADERSETTINGS ───────────────────────────────────────────────────────
@@ -543,6 +530,11 @@ FIELD_ANNOTATIONS = {
               "2=Bounce and Fall Through,  3=For Remaining after Bouncing (set multiplier to 0)",
         "ZH": "0=穿透坠落,  1=反弹并渐隐,  "
               "2=反弹后穿透坠落,  3=用于反弹后的残留（将乘数设为 0）",
+    },
+    ("PTCOLLISION", "bounceCountLimit"): {
+        "EN": "Max bounce count. E.g. 2 = only 2 bounces allowed; the 3rd ground "
+              "contact forces the particle to stay.",
+        "ZH": "反弹次数上限。例如=2 时仅允许弹跳 2 次，第 3 次触地强行停留。",
     },
     ("PTCOLLISION", "bounceElasticity"): {
         "EN": "Bounce Elasticity On Collision",
@@ -1155,8 +1147,8 @@ FIELD_ANNOTATIONS = {
               "5000 时出现迪士尼级魔法效果。",
     },
     ("RIBBON", "restitution_direction"): {
-        "EN": "0=Left, 1=Up, 2=Forward, 3=Right, 4=Down, 5=Backwards, 6=None",
-        "ZH": "0=左, 1=上, 2=前, 3=右, 4=下, 5=后, 6=无",
+        "EN": "AxisDirection6 (+ none): 0=Left, 1=Up, 2=Forward, 3=Right, 4=Down, 5=Backwards, 6=None",
+        "ZH": "AxisDirection6（+无）：0=左, 1=上, 2=前, 3=右, 4=下, 5=后, 6=无",
     },
     ("RIBBON", "unknBitmask16_2"): {
         "EN": "0=Align to World,  Anything else=Align to Source",
@@ -1231,11 +1223,26 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── BILLBOARD3D (fixed part fields) ──────────────────────────────────────
-    ("BILLBOARD3D", "applicationRule"): {
-        "EN": "Enum — determines how long and how many times it applies. "
-              "4=Enables flowmap effect (requires unkn6=1 to take effect).",
-        "ZH": "枚举 —— 决定它应用的时长与次数。"
-              "4=启用流动贴图效果（还需 unkn6=1 才生效）。",
+    # applicationRule 是一个 int32 位域，UI 拆成三段裸填子字段（见 structs.py
+    # _split_application_rule）。三段掩码不相交，合起来即原值。
+    ("BILLBOARD3D", "applicationRuleFlowmap"): {
+        "EN": "Flowmap group (bits 0x0C of applicationRule). Values: 0=off, 4=enabled "
+              "& looping continuously, 12=enabled but plays once then freezes on the "
+              "last frame. (8=bit 0x08 alone, flowmap stays off.)",
+        "ZH": "流动贴图组（applicationRule 的 0x0C 位）。可取：0=关闭，4=启用并持续循环，"
+              "12=启用但只播一次后定格末帧。（8=仅 0x08 位，flowmap 仍关闭。）",
+    },
+    ("BILLBOARD3D", "applicationRuleMode"): {
+        "EN": "Application mode selector (bits 0x30 of applicationRule), 3 mutually "
+              "exclusive states. Values: 0=default, 16=mode C, 32=mode D. Exact meaning "
+              "not yet confirmed in-game.",
+        "ZH": "应用模式选择（applicationRule 的 0x30 位），3 态互斥。可取：0=默认，"
+              "16=模式 C，32=模式 D。具体含义尚未实机确认。",
+    },
+    ("BILLBOARD3D", "applicationRuleReserved"): {
+        "EN": "Reserved bits of applicationRule (0x01/0x02 and bit 6+). Always 0 in "
+              "official data — keep 0.",
+        "ZH": "applicationRule 的保留位（0x01/0x02 及第 6 位以上）。官方数据恒为 0，请保持 0。",
     },
     ("BILLBOARD3D", "brightness"): {
         "EN": "Brightness",
@@ -1255,11 +1262,24 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── PLANE (fixed part fields — same layout as BILLBOARD3D dds_data) ──────
-    ("PLANE", "applicationRule"): {
-        "EN": "Enum — determines how long and how many times it applies. "
-              "4=Enables flowmap effect (requires unkn6=1 to take effect).",
-        "ZH": "枚举 —— 决定它应用的时长与次数。"
-              "4=启用流动贴图效果（还需 unkn6=1 才生效）。",
+    ("PLANE", "applicationRuleFlowmap"): {
+        "EN": "Flowmap group (bits 0x0C of applicationRule). Values: 0=off, 4=enabled "
+              "& looping continuously, 12=enabled but plays once then freezes on the "
+              "last frame. (8=bit 0x08 alone, flowmap stays off.)",
+        "ZH": "流动贴图组（applicationRule 的 0x0C 位）。可取：0=关闭，4=启用并持续循环，"
+              "12=启用但只播一次后定格末帧。（8=仅 0x08 位，flowmap 仍关闭。）",
+    },
+    ("PLANE", "applicationRuleMode"): {
+        "EN": "Application mode selector (bits 0x30 of applicationRule), 3 mutually "
+              "exclusive states. Values: 0=default, 16=mode C, 32=mode D. Exact meaning "
+              "not yet confirmed in-game.",
+        "ZH": "应用模式选择（applicationRule 的 0x30 位），3 态互斥。可取：0=默认，"
+              "16=模式 C，32=模式 D。具体含义尚未实机确认。",
+    },
+    ("PLANE", "applicationRuleReserved"): {
+        "EN": "Reserved bits of applicationRule (0x01/0x02 and bit 6+). Always 0 in "
+              "official data — keep 0.",
+        "ZH": "applicationRule 的保留位（0x01/0x02 及第 6 位以上）。官方数据恒为 0，请保持 0。",
     },
     ("PLANE", "brightness"): {
         "EN": "Brightness",
@@ -1543,28 +1563,48 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── 行为逆向补充（社区实测，世界特效注释解析）────────────────────────────
-    # SPAWN
-    ("SPAWN", "durationOfSpawnerLifespan"): {
-        "EN": "0 + repeatAtribute=1 + LIFE.indefinite=0 → continuous emission. Non-0 → "
-              "burst mode: the value = number of bursts (interval via frameDelayBetweenSpawns).",
-        "ZH": "为 0 且 repeatAtribute=1、LIFE 无限寿命=0 → 持续发射；非 0 → 爆发模式，"
-              "其值=爆发次数（间隔由 frameDelayBetweenSpawns 控制）。",
+    # SPAWN（2026-07-26 实机测试重新定型，取代旧的"burst次数"猜测）
+    ("SPAWN", "burstsPerCycle"): {
+        "EN": "Re-rolled each time the spawner starts a new cycle (new position). "
+              "0 = never relocates, bursts continue forever at burstInterval pacing. "
+              "1 = bursts use altBurstInterval pacing instead; total bursts this cycle "
+              "= emitterRepeatCount. ≥2 = normal burstInterval pacing; total bursts this "
+              "cycle = this value + emitterRepeatCount − 1. All bursts in a finite cycle "
+              "(including the last) fire at the same pacing selected above — the last "
+              "burst's own trigger timing is not special. What IS special is what "
+              "happens after the last burst fires: instead of another burst, the "
+              "spawner waits for that burst's particles to die (LIFE duration+"
+              "fadeOutDuration) and then immediately relocates.",
+        "ZH": "发射器每次开始新一轮（换新位置）时重新抽取。0=永不换位置，按 burstInterval "
+              "节奏无限生成；1=改用 altBurstInterval 节奏，本轮总批次数=emitterRepeatCount；"
+              "≥2=仍用 burstInterval 节奏，本轮总批次数=该值+emitterRepeatCount−1。有限轮次里"
+              "包括最后一批在内，全部批次都按上面选中的同一套节奏触发——最后一批本身的触发时机"
+              "并无特殊；特殊的是最后一批触发之后：不是再等一次间隔去触发下一批，而是等这批粒子"
+              "死亡(按LIFE的duration+fadeOutDuration)后立即换位置。",
     },
-    ("SPAWN", "randomizedLifespan"): {
-        "EN": "0 + repeatAtribute=1 + LIFE.indefinite=0 → continuous emission. Non-0 → "
-              "burst mode: the value = number of bursts (interval via frameDelayBetweenSpawns).",
-        "ZH": "为 0 且 repeatAtribute=1、LIFE 无限寿命=0 → 持续发射；非 0 → 爆发模式，"
-              "其值=爆发次数（间隔由 frameDelayBetweenSpawns 控制）。",
+    ("SPAWN", "burstsPerCycleJitter"): {
+        "EN": "Random jitter added to burstsPerCycle, re-rolled together with it each cycle.",
+        "ZH": "叠加到 burstsPerCycle 上的随机抖动，随每轮一起重新抽取。",
     },
-    ("SPAWN", "frameDelayBetweenSpawns"): {
-        "EN": "Frames between each spawn/burst. Together with durationOfSpawnerLifespan "
-              "shapes the emission rhythm.",
-        "ZH": "每次生成/爆发之间的帧间隔；与 durationOfSpawnerLifespan 共同决定发射节奏。",
+    ("SPAWN", "burstInterval"): {
+        "EN": "Frames between consecutive bursts within one spawner cycle. Only applies "
+              "when burstsPerCycle rolls to 0 or ≥2 — when it rolls to 1, altBurstInterval "
+              "is used instead.",
+        "ZH": "同一轮发射周期内，连续两次生成批次之间的帧数间隔。仅在 burstsPerCycle 抽到 "
+              "0 或 ≥2 时生效；抽到1时改用 altBurstInterval。",
     },
-    ("SPAWN", "randomizedDelay"): {
-        "EN": "Frames between each spawn/burst. Together with durationOfSpawnerLifespan "
-              "shapes the emission rhythm.",
-        "ZH": "每次生成/爆发之间的帧间隔；与 durationOfSpawnerLifespan 共同决定发射节奏。",
+    ("SPAWN", "burstIntervalJitter"): {
+        "EN": "Random jitter added to burstInterval.",
+        "ZH": "叠加到 burstInterval 上的随机抖动。",
+    },
+    ("SPAWN", "altBurstInterval"): {
+        "EN": "Frames between bursts, used instead of burstInterval specifically when "
+              "burstsPerCycle rolls to 1.",
+        "ZH": "当 burstsPerCycle 抽到1时，用来代替 burstInterval 的批次间隔帧数。",
+    },
+    ("SPAWN", "altBurstIntervalJitter"): {
+        "EN": "Random jitter added to altBurstInterval.",
+        "ZH": "叠加到 altBurstInterval 上的随机抖动。",
     },
     # LIFE
     ("LIFE", "indefiniteLifespan"): {
@@ -1575,71 +1615,92 @@ FIELD_ANNOTATIONS = {
               "（消失仍遵循淡出时间）。⚠ 与高 SPAWN 数量组合会累积。",
     },
     # EMITTERSHAPE3D
-    ("EMITTERSHAPE3D", "transform"): {
-        "EN": "Coupling depends on patternControl: Sphere/Cube → transform sets size/radius; "
-              "Ring → y = ring world height, x/z = ring shape; Point → transform acts as a "
-              "plain position offset.",
-        "ZH": "与 patternControl 联动：球/立方体→transform 定尺寸/半径；圆环→y 是圆环世界高度、"
-              "x/z 是圆环形状；point 点状→transform 直接当位移用。",
+    ("EMITTERSHAPE3D", "rangeXYZ"): {
+        "EN": "Bounding size of the emitter shape.",
+        "ZH": "生成形状的边界大小。",
     },
-    ("EMITTERSHAPE3D", "spawnAngleLimits"): {
-        "EN": "Spawn angle limit in degrees. 360 = full ring; reducing it removes particles "
-              "over part of the arc, packing the rest more densely.",
-        "ZH": "粒子生成角度限制（角度制）。360=生成一圈；调小可删除某段弧的粒子，让排列更紧密。",
+    ("EMITTERSHAPE3D", "scaleHorizontal"): {
+        "EN": "Only affects Sphere/Cylinder. Horizontal sweep angle range. 180 = half "
+              "sphere/half ring.",
+        "ZH": "仅对球/环生效，横向扫描角度范围。180对应半球面/半圆环。",
     },
-    ("EMITTERSHAPE3D", "spawnTotal"): {
-        "EN": "Total particles, split into equal groups; group count via spawnTotal, "
-              "particles-per-group via spawnPerCycle (even distribution).",
-        "ZH": "粒子总份数：与 spawnPerCycle 配合做平均分配——total 分几份、每份粒子数由 perCycle 控制。",
+    ("EMITTERSHAPE3D", "rangeDivideVerticalNum"): {
+        "EN": "Number of divisions along the vertical dimension.",
+        "ZH": "沿纵向维度等分数量。",
     },
     ("EMITTERSHAPE3D", "radiusEnd"): {
-        "EN": "With radiusOrigin, controls spawn position in the shape. end=1,origin=1 → on "
-              "the surface; end=1,origin=0 → filled solid interior.",
-        "ZH": "与 radiusOrigin 一起控制在形状中的生成位置。都=1→生成在表面；end=1 origin=0→实心填满内部。",
-    },
-    ("EMITTERSHAPE3D", "radiusOrigin"): {
-        "EN": "See radiusEnd. Inner bound of the spawn radius band.",
-        "ZH": "见 radiusEnd。生成半径范围的内边界。",
+        "EN": "Only affects Cylinder. With radiusOrigin, forms the ring's inner/outer radius.",
+        "ZH": "仅对环生效，与 radiusOrigin 构成环面的内外半径。",
     },
     # VELOCITY3D
     ("VELOCITY3D", "rotationX"): {
-        "EN": "Rotates the particle RELEASE direction. If particles move along y, adjusting "
-              "x/z biases them toward those axes.",
-        "ZH": "旋转粒子的释放方向。粒子沿 y 走时，调 x/z 会让它向这两轴偏。",
+        "EN": "Rotates initialVelocity's direction, around the X axis. Only meaningful when "
+              "velocityType=0.",
+        "ZH": "旋转 initialVelocity 的朝向，绕 X 轴旋转。仅在 velocityType=0 时有意义。",
     },
-    ("VELOCITY3D", "expansion_radius_limit"): {
-        "EN": "Caps the farthest spread distance during particle motion.",
-        "ZH": "扩散范围：限制粒子运动时的最远扩散距离。",
+    ("VELOCITY3D", "rotationY"): {
+        "EN": "Rotates initialVelocity's direction, around the Y axis. Only meaningful when "
+              "velocityType=0.",
+        "ZH": "旋转 initialVelocity 的朝向，绕 Y 轴旋转。仅在 velocityType=0 时有意义。",
     },
-    ("VELOCITY3D", "expansion_radius_jitter"): {
-        "EN": "Random addend on expansion_radius_limit.",
-        "ZH": "扩散范围偏差（expansion_radius_limit 的随机加数）。",
+    ("VELOCITY3D", "rotationZ"): {
+        "EN": "Rotates initialVelocity's direction, around the Z axis. Only meaningful when "
+              "velocityType=0.",
+        "ZH": "旋转 initialVelocity 的朝向，绕 Z 轴旋转。仅在 velocityType=0 时有意义。",
     },
-    ("VELOCITY3D", "expansion_radius_elasticity_jitter"): {
-        "EN": "Random jitter on expansion_radius_elasticity (same nature as the radius jitter).",
-        "ZH": "扩散弹性偏差（性质同扩散范围偏差）。",
+    ("VELOCITY3D", "initialVelocity"): {
+        "EN": "Grants particles their initial velocity.",
+        "ZH": "赋予粒子初速度。",
     },
-    ("VELOCITY3D", "gravity"): {
-        "EN": "Adds a straight-down force to particles.",
-        "ZH": "重力：给粒子一个向正下的力。",
+    ("VELOCITY3D", "initialVelocityJitter"): {
+        "EN": "Random addend on initialVelocity.",
+        "ZH": "初速度偏差（initialVelocity 的随机加数）。",
+    },
+    ("VELOCITY3D", "accelerationJitter"): {
+        "EN": "Random jitter on acceleration (same nature as the velocity jitter).",
+        "ZH": "加速度偏差（性质同初速度偏差）。",
     },
     ("VELOCITY3D", "gravityDelay"): {
-        "EN": "Frames after spawn before gravity takes effect.",
-        "ZH": "重力延迟：粒子生成后一段时间再受重力。",
+        "EN": "Frames before gravity takes effect.",
+        "ZH": "gravity 生效前的延迟帧数。",
     },
-    ("VELOCITY3D", "expansionDelay"): {
-        "EN": "Frames after spawn before initial velocity takes effect.",
-        "ZH": "扩散延迟：粒子生成后一段时间再受初速度。",
+    ("VELOCITY3D", "initialVelocityDelay"): {
+        "EN": "Frames before initialVelocity takes effect.",
+        "ZH": "initialVelocity 生效前的延迟帧数。",
     },
-    # 运动模型：轴速率×各轴能量=初速度 → 经弹性(1匀速/>1加速/<1减速) → 受扩散范围限制最远位置。
-    ("VELOCITY3D", "velocityY"): {
-        "EN": "Per-axis speed multiplier (Y). Higher=faster; negative=opposite direction. "
-              "Model: velocity × energyOnAxis = initial speed → elasticity → radius limit.",
-        "ZH": "Y 轴速率（总计算乘数）。越高越快、负值反向。运动模型：轴速率×轴能量=初速度→弹性→扩散限制。",
+    ("VELOCITY3D", "offsetX"): {
+        "EN": "Only takes effect paired with a generation-method attribute (e.g. "
+              "EMITTERSHAPE3D/EMITTERSHAPEMESH) and velocityType=1(Normal). Together with "
+              "sizeX, determines this axis's reference point.",
+        "ZH": "仅在搭配生成方式类属性（如 EMITTERSHAPE3D/EMITTERSHAPEMESH）且 "
+              "velocityType=1(Normal) 时生效。与 sizeX 共同决定该轴的基准点位置。",
     },
-    ("VELOCITY3D", "velocityZ"): {
-        "EN": "Per-axis speed multiplier (Z). See velocityY.",
-        "ZH": "Z 轴速率。见 velocityY。",
+    ("VELOCITY3D", "offsetY"): {
+        "EN": "See offsetX.",
+        "ZH": "见 offsetX。",
+    },
+    ("VELOCITY3D", "offsetZ"): {
+        "EN": "See offsetX.",
+        "ZH": "见 offsetX。",
+    },
+    ("VELOCITY3D", "sizeX"): {
+        "EN": "Only takes effect paired with a generation-method attribute (e.g. "
+              "EMITTERSHAPE3D/EMITTERSHAPEMESH) and velocityType=1(Normal). Together with "
+              "offsetX, determines this axis's reference point. 1=no effect; <1=moves toward "
+              "the reference point (passes through to the other side); >1=moves away from it. "
+              "Speed is constant, independent of the value's magnitude.",
+        "ZH": "仅在搭配生成方式类属性（如 EMITTERSHAPE3D/EMITTERSHAPEMESH）且 "
+              "velocityType=1(Normal) 时生效。与 offsetX 共同决定该轴基准点：1=该轴无效果；"
+              "<1 时朝基准点运动（会穿过继续到对面）；>1 时背离基准点运动。速度恒定，"
+              "与数值大小无关，仅决定方向。",
+    },
+    ("VELOCITY3D", "sizeY"): {
+        "EN": "See sizeX.",
+        "ZH": "见 sizeX。",
+    },
+    ("VELOCITY3D", "sizeZ"): {
+        "EN": "See sizeX.",
+        "ZH": "见 sizeX。",
     },
     # BILLBOARD3D（含本版新拆分字段）
     ("BILLBOARD3D", "color"): {
@@ -1697,15 +1758,14 @@ FIELD_ANNOTATIONS = {
     },
     # ROTATEANIM（含本版新拆分字段）
     ("ROTATEANIM", "billboardRotation"): {
-        "EN": "Controls BILLBOARD3D plane rotation. (Was mistyped as int in the template; "
-              "corrected to float.)",
-        "ZH": "控制 BILLBOARD3D 平面类的旋转。（原模板误标为 int，已改为 float。）",
+        "EN": "BILLBOARD3D plane rotation (static value; pairs with billboardRotationJitter as "
+              "the random). (Was mistyped as int in the template; corrected to float.)",
+        "ZH": "BILLBOARD3D 平面旋转（固定值；与 billboardRotationJitter 组成 static/random 一组）。"
+              "（原模板误标为 int，已改为 float。）",
     },
-    ("ROTATEANIM", "billboardRotationSpeed"): {
-        "EN": "Second BILLBOARD3D plane-rotation parameter (rotation speed). (Corrected to "
-              "float; exact role vs billboardRotation not fully confirmed.)",
-        "ZH": "BILLBOARD3D 平面旋转的第二个参数（旋转速度）。（已改为 float；与 billboardRotation "
-              "的具体分工待确认。）",
+    ("ROTATEANIM", "billboardRotationJitter"): {
+        "EN": "Random component of billboardRotation.",
+        "ZH": "billboardRotation 的随机分量。",
     },
     ("ROTATEANIM", "spin_velocity"): {
         "EN": "Model/plane rotation along three axes (with spin_acceleration below for each).",
@@ -2388,11 +2448,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("EMITTERSHAPE3D", "rotationOrder"): {
-        "EN": "Formerly unkn3_i0. Exactly 6 observed values (0~5) — matches the number of "
-              "3-axis rotation-order permutations, hence the guessed name. Value 4 dominates "
-              "(~71%). Exact meaning per value unconfirmed.",
-        "ZH": "原名 unkn3_i0。恰好观测到 6 种取值（0~5）——与三轴旋转顺序的排列数吻合，故据此"
-              "命名。取值 4 占绝大多数（约 71%）。各取值具体含义尚未确认。",
+        "EN": "Enum 0~5, 4 is the most common.",
+        "ZH": "枚举值0~5，其中4最常见。",
     },
     ("EMITTERSHAPE3D", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -2401,29 +2458,27 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
               "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]。",
     },
-    ("EMITTERSHAPE3D", "unknEnum2"): {
-        "EN": "Enum: observed values [0, 1, 2]; roughly 52%/39%/9%.",
-        "ZH": "枚举：观测取值为 [0, 1, 2]；分布约为 52%/39%/9%。",
+    ("EMITTERSHAPE3D", "rangeDivideAxis"): {
+        "EN": "Enum 0/1/2. For Box, determines which edges (with subdivision) get particles. "
+              "Effect on other shapes unclear.",
+        "ZH": "枚举值0、1、2。对于立方体，在有细分的情况下决定哪些边参与生成。对于其他形状的"
+              "作用暂不明确。",
     },
-    ("EMITTERSHAPE3D", "unknEnum3_0"): {
-        "EN": "Common values: [0, 1, 3, 5, 7] (BT template mislabeled this a float; "
-              "confirmed integer).",
-        "ZH": "常见取值为 [0, 1, 3, 5, 7]（BT 模板误标为 float，实为整数）。",
+    ("EMITTERSHAPE3D", "unknOrientation"): {
+        "EN": "Affects orientation; exact mechanism unclear.",
+        "ZH": "影响朝向，但具体机制不明。",
     },
-    ("EMITTERSHAPE3D", "unkn3_f1"): {
-        "EN": "Usually 0; other common values: [60, 100, 120, 135, 140, 150, 160, 180, 200].",
-        "ZH": "通常为 0；其余常见取值为 [60, 100, 120, 135, 140, 150, 160, 180, 200]。",
+    ("EMITTERSHAPE3D", "scaleVertical"): {
+        "EN": "Only affects Sphere. Vertical sweep angle. 180 = upper half sphere.",
+        "ZH": "仅对球生效，纵向扫描角度。180对应上半球面。",
     },
     ("EMITTERSHAPE3D", "unknFlag4"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "0/1, exact mechanism unclear. Mostly 1.",
+        "ZH": "0/1，具体机制不明，大部分情况下取1。",
     },
     ("EMITTERSHAPE3D", "unknBitmaskRadiusRelated"): {
-        "EN": "Despite the name, BT template mislabeled this a float — confirmed integer "
-              "(only 6 values 0~5, overwhelmingly 0). Not actually radius-shaped data; "
-              "the original name is likely a positional guess.",
-        "ZH": "尽管名字如此，BT 模板误标为 float——实为整数（仅 0~5 共 6 种取值，绝大多数为 0）。"
-              "分布并不像半径类数据，原名很可能只是按位置猜测的。",
+        "EN": "Enum 0~5, exact mechanism unclear.",
+        "ZH": "枚举值0~5，具体机制不明。",
     },
     ("EMITTERSHAPEMESH", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -3279,11 +3334,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 1, 256]。",
     },
     ("RIBBONBLADE", "widthDirection"): {
-        "EN": "Direction the streak's width extends toward. 0=Left, 1=Up, 2=Forward, "
-              "3=Right, 4=Down, 5=Backwards. Same enum as RIBBON.restitution_direction. "
-              "Formerly unkn03.",
-        "ZH": "刀光宽度延伸的朝向。0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON."
-              "restitution_direction 是同一套枚举。原名 unkn03。",
+        "EN": "Direction the streak's width extends toward. AxisDirection6: 0=Left, 1=Up, "
+              "2=Forward, 3=Right, 4=Down, 5=Backwards. Same enum as RIBBON.restitution_direction "
+              "and VELOCITY3D.initialVelocityAxis. Formerly unkn03.",
+        "ZH": "刀光宽度延伸的朝向。AxisDirection6：0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON."
+              "restitution_direction、VELOCITY3D.initialVelocityAxis 是同一套枚举。原名 unkn03。",
     },
     ("RIBBONBLADE", "length"): {
         "EN": "Tail length, only effective when lengthMode=0 (contraction speed is then "
@@ -3368,13 +3423,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("ROTATEANIM", "unkn1_0"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("ROTATEANIM", "billboardRotationAccel"): {
+        "EN": "Acceleration of billboardRotation (static value; pairs with "
+              "billboardRotationAccelJitter as the random).",
+        "ZH": "billboardRotation 的加速度（固定值；与 billboardRotationAccelJitter 组成 "
+              "static/random 一组）。",
     },
-    ("ROTATEANIM", "unkn1_1"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("ROTATEANIM", "billboardRotationAccelJitter"): {
+        "EN": "Random component of billboardRotationAccel.",
+        "ZH": "billboardRotationAccel 的随机分量。",
     },
     ("ROTATEANIM", "unknEnum1_2"): {
         "EN": "Usually 0; other common values: [1, 2, 5, 10, 15, 20, 30, 60, 128].",
@@ -3520,21 +3577,28 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
               "[2, 3, 4, 5, 6, 7, 8, 9, 10]；绝大多数为 2。",
     },
-    ("SPAWN", "unkn10"): {
-        "EN": "Usually 0; other common values: [1, 2, 5, 10, 15, 20, 30, 40, 60].",
-        "ZH": "通常为 0；其余常见取值为 [1, 2, 5, 10, 15, 20, 30, 40, 60]。",
+    ("SPAWN", "particleSpawnDelay"): {
+        "EN": "Extra delay applied independently to each individual particle after its "
+              "burst fires, staggering when particles from the same burst actually "
+              "become visible. Independent of all emitter-level timing (burstInterval, "
+              "burstsPerCycle, altBurstInterval, emitterStartDelay).",
+        "ZH": "每个粒子个体独立叠加的额外生成延迟，让同一批次里的粒子实际出现的时间彼此"
+              "错开。跟所有 emitter 层面的节奏（burstInterval、burstsPerCycle、"
+              "altBurstInterval、emitterStartDelay）无关。",
     },
-    ("SPAWN", "unknEnum11"): {
-        "EN": "Common values: [0, 2, 4, 5, 10, 50].",
-        "ZH": "常见取值为 [0, 2, 4, 5, 10, 50]。",
+    ("SPAWN", "particleSpawnDelayJitter"): {
+        "EN": "Random jitter added to particleSpawnDelay, rolled independently per particle.",
+        "ZH": "叠加到 particleSpawnDelay 上的随机抖动，每个粒子独立抽取。",
     },
-    ("SPAWN", "unkn21"): {
-        "EN": "Usually 0; other common values: [5, 10, 20, 30, 40, 80, 100, 128, 200].",
-        "ZH": "通常为 0；其余常见取值为 [5, 10, 20, 30, 40, 80, 100, 128, 200]。",
-    },
-    ("SPAWN", "unkn30"): {
-        "EN": "Usually 0; other common values: [20, 22, 25, 30, 40, 50, 100, 200].",
-        "ZH": "通常为 0；其余常见取值为 [20, 22, 25, 30, 40, 50, 100, 200]。",
+    ("SPAWN", "maxParticles"): {
+        "EN": "Soft cap on particles allowed alive at once for this spawner (confirmed "
+              "via testing: concurrent count = burst rate × particle lifespan, i.e. "
+              "duration+fadeOutDuration). Not a lifetime total — bursts are throttled "
+              "once this cap would be exceeded, and resume in full once earlier "
+              "particles die off.",
+        "ZH": "该发射器同时存活粒子数的软上限（实机验证符合：同存数=生成速率×粒子寿命，"
+              "即 duration+fadeOutDuration）。不是终身生成总量——超出上限时本批会被削减，"
+              "等早前粒子死亡腾出空间后又能满额生成。",
     },
     ("SPAWN", "unknBitmask31"): {
         "EN": "Usually 0. Non-zero values look like a bitmask (1/2/4/8/16/32 present, "
@@ -3714,23 +3778,23 @@ FIELD_ANNOTATIONS = {
         "ZH": "生成时叠加到 uvs_index 上的抖动量（BT 模板误标为 NULL，实际并非恒定值）。"
               "通常为 0；其余取值为 1~8 的小整数。",
     },
-    ("VELOCITY2D", "expansionDelay"): {
+    ("VELOCITY2D", "initialVelocityDelay"): {
         "EN": "Common values: [0, 1, 2, 5, 16, 20].",
         "ZH": "常见取值为 [0, 1, 2, 5, 16, 20]。",
     },
-    ("VELOCITY2D", "expansionDelayJitter"): {
+    ("VELOCITY2D", "initialVelocityDelayJitter"): {
         "EN": "Common values: [0, 1, 3, 4, 5, 10, 20].",
         "ZH": "常见取值为 [0, 1, 3, 4, 5, 10, 20]。",
     },
-    ("VELOCITY2D", "expansionRadiusElasticity"): {
+    ("VELOCITY2D", "acceleration"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("VELOCITY2D", "expansionRadiusElasticityJitter"): {
+    ("VELOCITY2D", "accelerationJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("VELOCITY2D", "expansionRadiusJitter"): {
+    ("VELOCITY2D", "initialVelocityJitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
@@ -3738,9 +3802,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("VELOCITY3D", "NULL2"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("VELOCITY3D", "unknFloat"): {
+        "EN": "Mostly 0 (~98%); range 0~40 when non-zero.",
+        "ZH": "多数为 0（约98%）；非零时取值范围 0~40。",
     },
     ("VELOCITY3D", "gravity_jitter"): {
         "EN": "Common range: 0~100.",

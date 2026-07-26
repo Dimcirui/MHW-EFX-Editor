@@ -384,50 +384,47 @@ assert _schema_size(PARENTOPTIONS_SCHEMA) == 60, \
 # ─────────────────────────────────────────────────────────────────────────────
 # ExternSpawn schema  (72 B)
 #
-# BT (EFX_Subtypes.bt):
-#   int  unkn0                               4 B
-#   int  instancesSpawnedTotal               4 B
-#   int  instancesSpawnedPerFrame            4 B
-#   int  randomizedSpawnsPerFrame            4 B
-#   int  frameDelayBetweenSpawns             4 B
-#   int  randomizedDelay                     4 B
-#   int  durationOfSpawnerLifespan           4 B
-#   int  randomizedLifespan                  4 B
-#   int  instanceCountUnknLimit              4 B
-#   int  instanceCountUnknLimitJitter        4 B
-#   int  occur                               4 B
-#   int  occur2                              4 B
-#   uint unkn10                              4 B
-#   uint unkn11                              4 B
-#   uint repeatAtribute                      4 B
-#   uint unkn21                              4 B
-#   uint unkn30                              4 B
-#   uint unkn31                              4 B
-# Total: 18 × 4 = 72 B
+# BT 原字段名（EFX_Subtypes.bt）见各字段行内注释；下面是 2026-07-26 用户实机测试
+# （详见 docs/ATTRIBUTE_BEHAVIOR_NOTES.md「SPAWN」一节）后按 emitter/particle 三层模型
+# （SPAWN属性本身 → emitter实例/轮次 → particle个体）重新命名的结果：
 #
-# Note: efxfile.py computes Spawn block = 4(type) + 4*18 = 76 B.
-# data_bytes = 72 B ✓
+#   maxParticles/burstInterval/burstsPerCycle/emitterRepeatCount/emitterStartDelay
+#   均为 emitter 实例层字段；particleSpawnDelay 是唯一的 particle 层字段。
+#
+# 核心机制（完整模型见 docs）：
+#   - maxParticles：同时存活粒子数软上限（非终身总量，Little's Law 验证：
+#     稳态同存数=生成速率×粒子寿命）
+#   - burstsPerCycle(+Jitter)：每轮（每次换新位置）重新抽取，三态：
+#     0=永不换位置+burstInterval节奏无限生成；1=改用altBurstInterval节奏；
+#     ≥2=仍用burstInterval节奏。非0时总批次数=该值+emitterRepeatCount-1，
+#     最后一批固定按粒子寿命(LIFE duration+fadeOutDuration)节奏，随后立即换位置
+#   - emitterRepeatCount：0=无论burstsPerCycle是什么都永不换位置；
+#     非0时与burstsPerCycle相加决定总批次数。没有Jitter搭档
+#   - altBurstInterval(+Jitter)：仅当burstsPerCycle抽到1时，取代burstInterval
+#     作为批次间隔（原名ringBufferInterval，2026-07-26根据精确模型改名——它就是
+#     burstInterval的替代取值，跟"环形缓冲"式的容量回收逻辑无关，那是maxParticles的职责）
+#   - instanceCountUnknLimit(+Jitter)/unknBitmask31：仍未测试，保留原名
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_SPAWN_SCHEMA = [
     ('typeFlag', 'i'),   # 原 unkn0
-    ('instancesSpawnedTotal', 'i'),
-    ('instancesSpawnedPerFrame', 'i'),
-    ('randomizedSpawnsPerFrame', 'i'),
-    ('frameDelayBetweenSpawns', 'i'),
-    ('randomizedDelay', 'i'),
-    ('durationOfSpawnerLifespan', 'i'),
-    ('randomizedLifespan', 'i'),
+    ('maxParticles', 'i'),  # 原 instancesSpawnedTotal，实机测试确认为同时存活软上限
+    ('particlesPerBurst', 'i'),  # 原 instancesSpawnedPerFrame
+    ('particlesPerBurstJitter', 'i'),  # 原 randomizedSpawnsPerFrame
+    ('burstInterval', 'i'),  # 原 frameDelayBetweenSpawns
+    ('burstIntervalJitter', 'i'),  # 原 randomizedDelay
+    ('burstsPerCycle', 'i'),  # 原 durationOfSpawnerLifespan，实机测试确认为三态模式选择+计数基准
+    ('burstsPerCycleJitter', 'i'),  # 原 randomizedLifespan
     ('instanceCountUnknLimit', 'i'),
     ('instanceCountUnknLimitJitter', 'i'),
-    ('occur', 'i'),
-    ('occur2', 'i'),
+    ('emitterStartDelay', 'i'),  # 原 occur，实机测试确认为发射器首次生成前的一次性延迟
+    ('emitterStartDelayJitter', 'i'),  # 原 occur2
     # BT 原标 uint32；实测全语料从未接近 2^31，改签名 int 换取原生数值控件（原字符串输入框）
-    ('unkn10', 'i'),
-    ('unknEnum11', 'i'),
-    ('repeatAtribute', 'i'),
-    ('unkn21', 'i'),
-    ('unkn30', 'i'),
+    ('particleSpawnDelay', 'i'),  # 原 unkn10，实机测试确认为粒子个体独立生成延迟
+    ('particleSpawnDelayJitter', 'i'),  # 原 unknEnum11
+    ('emitterRepeatCount', 'i'),  # 原 repeatAtribute，实机测试确认为批次数加成+换位置总开关
+    ('altBurstInterval', 'i'),  # 原 unkn21（一度改名 ringBufferInterval，已订正），burstsPerCycle=1时的专属批次间隔
+    ('altBurstIntervalJitter', 'i'),  # 原 unkn30
     ('unknBitmask31', 'i'),
 ]
 assert _schema_size(EXTERN_SPAWN_SCHEMA) == 72, \
@@ -540,67 +537,104 @@ assert _schema_size(SHADERSETTINGS_SCHEMA) == 116, \
 # ─────────────────────────────────────────────────────────────────────────────
 # ExternVelocity3D schema  (108 B)
 #
-# BT (EFX_Subtypes.bt):
-#   int   unkn0[3]                          12 B
-#   float rotationX                          4 B
-#   float rotationXJitter                    4 B
-#   float rotationY                          4 B
-#   float rotationYJitter                    4 B
-#   float rotationZ                          4 B
-#   float rotationZJitter                    4 B
-#   float expansion_radius_limit             4 B
-#   float expansion_radius_jitter            4 B
-#   float expansion_radius_elasticity        4 B
-#   float expansion_radius_elasticity_jitter 4 B
-#   float velocityX                          4 B
-#   float velocityY                          4 B
-#   float velocityZ                          4 B
-#   float energyOnAxisX                      4 B
-#   float energyOnAxisY                      4 B
-#   float energyOnAxisZ                      4 B
-#   int   expansionType                      4 B
-#   float gravity                            4 B
+# 2026-07 定稿依据：用户多轮实机测试 + RE Engine 续作 schema（EFXAttributeVelocity3D，
+# kagenocookie/RE-Engine-Lib 社区反查）三方交叉印证，字段名尽量直接采用续作命名：
+#   Speed→initialVelocity, SpeedCoef→acceleration, SpeedDelayFrame→initialVelocityDelay,
+#   GravityRate/GravityDelayFrame→gravity/gravityDelay, VelocityType→velocityType
+#   （TIML DTI 名"Speed"也独立佐证了 initialVelocity）。
+#
+#   int   typeFlag                           4 B
+#   int   initialVelocityAxis（原 unknBitmask0_1）：initialVelocity 的基准轴，
+#         与 rotationX/Y/Z 复合决定最终朝向，仅在 velocityType=0(Direction) 时有意义。
+#         AxisDirection6 枚举（0=左,1=上,2=前,3=右,4=下,5=后），与 RIBBONBLADE.
+#         widthDirection / RIBBON.restitution_direction 同款；仅confirmed 3/4 两点。
+#         用"Axis"而非"Direction"命名以区分它是"选六个基准轴之一"而非自由方向向量 4 B
+#   int   unknAxis（原 unknBitmask0_2）：疑似旋转顺序（结构上跟 EMITTERSHAPE3D.
+#         rotationOrder 一样 6 值以 4 为主流），但实机测试（固定 rotationX=rotationY=90，
+#         逐个切换该字段 0~5）结果对不上 TRANSFORM3D 已知的 0~5→XYZ/YZX/ZXY/ZYX/YXZ/XZY
+#         顺序表（无论正读反读都只对上部分），暂缓深究，先按未知处理                4 B
+#   float rotationX                          4 B  ─┐ 实机排除"向量"假说，确认是旋转角度
+#   float rotationXJitter                    4 B   │（360°/720°抖动上限即是证据）；且实测
+#   float rotationY                          4 B   │出局部坐标系：X轴=左右旋转轴，Y轴=上下
+#   float rotationYJitter                    4 B   │旋转轴（旋转"上"不变），Z轴=前后旋转轴，
+#   float rotationZ                          4 B   │与 AxisDirection6 三对方向一一对应。
+#   float rotationZJitter                    4 B  ─┘同样仅在 velocityType=0(Direction) 有意义
+#   float initialVelocity（原 expansion_radius_limit）                    4 B
+#   float initialVelocityJitter（原 expansion_radius_jitter）             4 B
+#   float acceleration（原 expansion_radius_elasticity）：1=匀速，>1=加速并突破
+#         initialVelocity 原值持续增长，<1=减速直至0                     4 B
+#   float accelerationJitter（原 expansion_radius_elasticity_jitter）    4 B
+#   float offsetX                            4 B  ─┐ 仅在搭配生成方式类属性（如
+#   float offsetY                            4 B   │ EMITTERSHAPE3D/EMITTERSHAPEMESH等，
+#   float offsetZ                            4 B  ─┘ 理论上不限于ES3D）且 velocityType=1
+#         (Normal) 时生效；确认对应续作 Offset（原 velocityX/Y/Z）
+#   float sizeX                              4 B  ─┐ 同上条件下生效；确认对应续作
+#   float sizeY                              4 B   │ Size（原 energyOnAxisX/Y/Z）。
+#   float sizeZ                              4 B  ─┘ 与 offsetX/Y/Z 共同决定每个粒子
+#         的运动方向：先按公式 Vi=(sizeI−1)×该粒子在i轴的生成坐标+offsetI（i=X/Y/Z）
+#         算出一个三维向量，再归一化——方向=normalize(Vx,Vy,Vz)，速度恒定（与
+#         Vx/Vy/Vz 的具体大小无关，只看方向）。三轴 size 相等时退化为真正的径向
+#         收拢/发散（<1收拢穿心而过继续到对面，>1发散，=1该轴无效果）；三轴不等时
+#         方向连续过渡（不是离散分区）。offsetI=0 时该轴的"零点"精确落在真正几何
+#         中心；offsetI≠0 会把零点挪开，实机数值验证：临界 offsetI = (sizeI−1)×该轴
+#         实际坐标范围（如 ES3D 的 rangeXYZ，含 radiusEnd 等相对倍数换算后的实际值）
+#   int   velocityType（原 expansionType）：RE Engine 续作 VelocityType 枚举。本质是
+#         "决定粒子运动方向如何确定"（速度始终由 initialVelocity/acceleration 决定，
+#         重力独立于此始终生效）——0=Direction(由 initialVelocityAxis+rotation 决定方向),
+#         1=Normal(常规，仅由 offset+size 共同决定方向；实测更可能是"常规/标准"而非字面
+#         "表面法线"——offset/size 全中性时完全静止), 2=Radial(始终向外运动，无视
+#         offset/size/方向字段), 3=Spread(运动方向=生成瞬间发射器的速度方向),
+#         4=ScreenSpace, 5=Max(C# 数组哨兵值，从不出现——全语料 82756 条零个=5，与此吻合)
+#         【velocityType 其实更贴切叫 velocityDirectionType，但保留续作原名 VelocityType
+#          以维持可追溯性，方向语义写进 tooltip】                              4 B
+#   float gravity                            4 B  # 重力，不论 velocityType 如何始终生效；TIML DT 0x6A5FE3C4("Gravity") 已确认
 #   float gravity_jitter                     4 B
-#   int   expansionDelay                     4 B
-#   int   expansionDelayJitter               4 B
-#   int   gravityDelay                       4 B
+#   int   initialVelocityDelay（原 expansionDelay）：initialVelocity 生效前的延迟帧数  4 B
+#   int   initialVelocityDelayJitter（原 expansionDelayJitter）           4 B
+#   int   gravityDelay：gravity 生效前的延迟帧数                          4 B
 #   int   gravityDelayJitter                 4 B
-#   long  NULL2                              4 B
+#   float unknFloat（原 NULL2）：名字像占位，但实测非零值干净重解读为 40.0，语义未确认  4 B
 # Total: 12 + 6×4 + 4×4 + 3×4 + 3×4 + 4 + 2×4 + 4×4 + 4 = 108 B
-# Count: 3i + 18f + 1i + 2f + 4i + 1i = 12+72+4+8+16+4 = 116? Let me count carefully:
-#   unkn0[3]=12, rot*6=24, exp_rad*4=16, vel*3=12, energy*3=12,
-#   expansionType=4, grav+j=8, delays*4=16, NULL2=4
-#   = 12+24+16+12+12+4+8+16+4 = 108 B ✓
+#
+# 续作 schema 里还有 InheritRate/InheritDistance/Spread 等字段没能对应到我们这 108B
+# 里，可能是 MHW 这代（MT Framework）压根没有的后加功能。RE Engine 的 uint Flags
+# 字段是否对应 typeFlag/initialVelocityAxis/unknAxis 这三个头部字段的合并，
+# 风险较大，未采信。
+#
+# 待补充测试：unknAxis 的完整规律、velocityType=2/3/4 与生成方式类属性共现时的
+# 细节、offset/size 三轴同时生效时总速度是否会跟单轴时不同（目前只验证过方向公式，
+# 未验证多轴同时生效的合速度大小）。见 docs/ATTRIBUTE_BEHAVIOR_NOTES.md「与生成方式
+# 共现」一节；交互式演示见 docs/interactive/velocity3d_offset_size_model.html。
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_VELOCITY3D_SCHEMA = [
     ('typeFlag', 'i'),   # 原 unkn0_0
-    ('unknBitmask0_1', 'i'),
-    ('unknBitmask0_2', 'i'),
+    ('initialVelocityAxis', 'i'),  # 原 unknBitmask0_1/initialVelocityDirection，2026-07 用户实机测试确认为方向基准轴枚举
+    ('unknAxis', 'i'),  # 原 unknBitmask0_2，疑似旋转顺序但实机结果对不上 TRANSFORM3D 惯例，暂缓深究
     ('rotationX', 'f'),
     ('rotationXJitter', 'f'),
     ('rotationY', 'f'),
     ('rotationYJitter', 'f'),
     ('rotationZ', 'f'),
     ('rotationZJitter', 'f'),
-    ('expansion_radius_limit', 'f'),
-    ('expansion_radius_jitter', 'f'),
-    ('expansion_radius_elasticity', 'f'),
-    ('expansion_radius_elasticity_jitter', 'f'),
-    ('velocityX', 'f'),
-    ('velocityY', 'f'),
-    ('velocityZ', 'f'),
-    ('energyOnAxisX', 'f'),
-    ('energyOnAxisY', 'f'),
-    ('energyOnAxisZ', 'f'),
-    ('expansionType', 'i'),
+    ('initialVelocity', 'f'),  # 原 expansion_radius_limit，2026-07 用户实机测试确认为初速度
+    ('initialVelocityJitter', 'f'),  # 原 expansion_radius_jitter
+    ('acceleration', 'f'),  # 原 expansion_radius_elasticity，2026-07 用户实机测试确认为加速度
+    ('accelerationJitter', 'f'),  # 原 expansion_radius_elasticity_jitter
+    ('offsetX', 'f'),  # 原 velocityX，2026-07 用户实机测试+RE Engine续作schema确认为Offset
+    ('offsetY', 'f'),  # 原 velocityY
+    ('offsetZ', 'f'),  # 原 velocityZ
+    ('sizeX', 'f'),  # 原 energyOnAxisX，2026-07 用户实机测试+RE Engine续作schema确认为Size
+    ('sizeY', 'f'),  # 原 energyOnAxisY
+    ('sizeZ', 'f'),  # 原 energyOnAxisZ
+    ('velocityType', 'i'),  # 原 expansionType，2026-07 依 RE Engine 续作 schema 的 VelocityType 枚举改名
     ('gravity', 'f'),  # TIML DT 0x6A5FE3C4("Gravity") 已确认
     ('gravity_jitter', 'f'),
-    ('expansionDelay', 'i'),
-    ('expansionDelayJitter', 'i'),
+    ('initialVelocityDelay', 'i'),  # 原 expansionDelay，2026-07 用户实机测试确认为初速度生效延迟帧
+    ('initialVelocityDelayJitter', 'i'),  # 原 expansionDelayJitter
     ('gravityDelay', 'i'),
     ('gravityDelayJitter', 'i'),
-    ('NULL2', 'f'),  # 名字像占位，但实测非零值干净重解读为 40.0，改回 int 前需再确认
+    ('unknFloat', 'f'),  # 原 NULL2，名字像占位，但实测非零值干净重解读为 40.0，语义未确认
 ]
 assert _schema_size(EXTERN_VELOCITY3D_SCHEMA) == 108, \
     f"EXTERN_VELOCITY3D_SCHEMA size mismatch: {_schema_size(EXTERN_VELOCITY3D_SCHEMA)}"
@@ -659,44 +693,66 @@ assert _schema_size(EXTERN_VELOCITY3D6_SCHEMA) == 80, \
 # ─────────────────────────────────────────────────────────────────────────────
 # ExternEmitterShape3D schema  (88 B; full block = 92 B)
 #
-# BT (EFX_Subtypes.bt，原模板部分类型标注有误，已按实测修正)：
-#   int   unkn0                              4 B
-#   XYZ   transform(0)   6 floats           24 B
-#   int   patternControl                     4 B
-#   int   unkn2                              4 B
-#   int   unkn3_0（原 BT/字段名标为 float unkn3_f0；实测仅 [0,1,3,5,7] 5 种取值，
-#                  float 重解读全是次正规数噪声，确认应为 int）              4 B
-#   float trayectoryRotationX               4 B
-#   float trayectoryRotationY               4 B
-#   float trayectoryRotationZ               4 B
-#   int   rotationOrder（原 unkn3_i0；恰好 6 种取值 0~5，与 3 轴旋转顺序排列数吻合，
-#                        猜测为坐标轴旋转顺序，语义未confirmed）              4 B
-#   float spawnAngleLimits                  4 B
-#   float unkn3_f1                          4 B
-#   int   spawnPerCycle                      4 B
-#   int   spawnTotal                         4 B
-#   float radiusEnd                         4 B
-#   float radiusOrigin                      4 B
-#   int   unknRadiusRelated（原 BT 注释误标 float；实测仅 [0,1,2,3,4,5] 6 种取值，
-#                            float 重解读全是次正规数噪声，代码类型 int 一直是对的）  4 B
-#   int   unkn4                              4 B
+# 2026-07 定稿依据：用户多轮实机测试 + RE Engine 续作 schema（同名 Emitter Shape 3D 类型，
+# kagenocookie/RE-Engine-Lib 社区反查）交叉印证，字段名尽量采用续作命名：
+#   RangeX/Y/Z→rangeXYZ, ShapeType→shapeType, RangeDivideAxis→rangeDivideAxis,
+#   LocalRotation→localRotationX/Y/Z, RotationOrder→rotationOrder(名称沿用，语义未confirmed),
+#   ScaleHorizontal/ScaleVertical→scaleHorizontal/scaleVertical,
+#   RangeDivideHorizontalNum/VerticalNum→rangeDivideHorizontalNum/VerticalNum。
+# 续作里 RangeDivideHorizontalNum 是 >RE3 才加的字段——MHW(MT Framework) 反而在续作早期
+# 版本还没有的时候就已经有横纵双轴独立细分的能力，续作大概率是先做了单轴版
+# （RangeDivideNum+RangeDivideAxis 只能选一个轴），RE3+ 才把 MT Framework 早就有的双轴
+# 能力重新加回去。
+#
+#   int   typeFlag                           4 B
+#   XYZ   rangeXYZ(0)   6 floats            24 B  # 生成形状的边界大小（RangeX/Y/Z）
+#   int   shapeType：0=Box(立方体边框),1=Sphere(球面),2=Cylinder(圆环面),≥3=Point(点，
+#         非严格枚举，实测 3/4/5 均表现为点)                                  4 B
+#   int   rangeDivideAxis（原 unknEnum2）：枚举 0/1/2。立方体下确认：决定 12 条边里
+#         哪一组（4条一组，共3组，对应X/Y/Z轴向）参与生成；对球/环的具体作用未确认
+#         （官方语料里三种形状都会设各种取值，无形状排他性）                    4 B
+#   int   unknOrientation（原 unknEnum3_0）：影响朝向，具体机制不明。取值仅
+#         [0,1,3,5,7]（除0外必含最低位，疑似位掩码）；官方语料里非0值 67~93%
+#         集中在"环"形状上，与用户实测用立方体验证不完全对应，效果本身应形状无关
+#                                                                          4 B
+#   float localRotationX                    4 B  ─┐ 生成形状的总体旋转
+#   float localRotationY                    4 B   │（RE Engine LocalRotation，Vector3）；
+#   float localRotationZ                    4 B  ─┘ 不影响生成对象自身法线/切线
+#   int   rotationOrder：枚举 0~5，4 最常见（71%）。结构上紧跟 localRotationXYZ，
+#         与续作 RotationOrder 字段位置一致，疑似复用 TRANSFORM3D 的
+#         XYZ/YZX/ZXY/ZYX/YXZ/XZY 顺序表，但未实机验证具体对应关系（VELOCITY3D 的
+#         unknAxis 曾用类似逻辑测试过，结果对不上 TRANSFORM3D 的编号，这里未测，
+#         别直接当作已confirmed）                                              4 B
+#   float scaleHorizontal（原 spawnAngleLimits）：仅对球/环生效，横向扫描角度范围。
+#         180 对应半球面/半圆环，360/0(等效)为整圆                              4 B
+#   float scaleVertical（原 unkn3_f1）：仅对球生效，纵向扫描角度。180 对应上半球面   4 B
+#   int   rangeDivideHorizontalNum（原 spawnPerCycle）：沿横向维度等分数量；
+#         立方体下完全不生效                                                  4 B
+#   int   rangeDivideVerticalNum（原 spawnTotal）：沿纵向维度等分数量，0=连续铺满；
+#         立方体下小值(1~3)表现为位掩码（1=边中点族/2=角族/3=两者并集），
+#         大值(如16)另有细分方式待研究                                        4 B
+#   float radiusEnd                         4 B  ─┐ 仅对"环"生效，与 radiusOrigin
+#   float radiusOrigin                      4 B  ─┘ 构成内外半径band，两者顺序互换
+#         结果一致（引擎内部按 min/max 取用，不看谁存在哪个字段）
+#   int   unknBitmaskRadiusRelated：枚举 0~5，具体机制不明                      4 B
+#   int   unknFlag4：0/1，具体机制不明，大部分情况下取 1                       4 B
 # Total: 4+24+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 4+24+15×4 = 88 B ✓
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_EMITTERSHAPE3D_SCHEMA = [
     ('typeFlag', 'i'),   # 原 unkn0
-    ('transform', ('XYZ', 0)),
-    ('patternControl', 'i'),
-    ('unknEnum2', 'i'),
-    ('unknEnum3_0', 'i'),
-    ('trayectoryRotationX', 'f'),
-    ('trayectoryRotationY', 'f'),
-    ('trayectoryRotationZ', 'f'),
+    ('rangeXYZ', ('XYZ', 0)),  # 原 transform
+    ('shapeType', 'i'),  # 原 patternControl
+    ('rangeDivideAxis', 'i'),  # 原 unknEnum2
+    ('unknOrientation', 'i'),  # 原 unknEnum3_0
+    ('localRotationX', 'f'),  # 原 trayectoryRotationX
+    ('localRotationY', 'f'),  # 原 trayectoryRotationY
+    ('localRotationZ', 'f'),  # 原 trayectoryRotationZ
     ('rotationOrder', 'i'),
-    ('spawnAngleLimits', 'f'),
-    ('unkn3_f1', 'f'),
-    ('spawnPerCycle', 'i'),
-    ('spawnTotal', 'i'),
+    ('scaleHorizontal', 'f'),  # 原 spawnAngleLimits
+    ('scaleVertical', 'f'),  # 原 unkn3_f1
+    ('rangeDivideHorizontalNum', 'i'),  # 原 spawnPerCycle
+    ('rangeDivideVerticalNum', 'i'),  # 原 spawnTotal
     ('radiusEnd', 'f'),
     ('radiusOrigin', 'f'),
     ('unknBitmaskRadiusRelated', 'i'),
@@ -870,12 +926,14 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 ROTATEANIM_SCHEMA = [
     ('spinAxisMask', 'i'),  # 原 unkn0_0；轴掩码 bitmask：bit0=X, bit1=Y, bit2=Z（已确认，非 typeFlag 候选）
     ('unknBitmask0_1', 'i'),  # 旋转模式：取 2 或 3 时 spin_velocity 生效；取 0/1 时仅 billboard 平面旋转
-    # 社区实测：这两个专门控制 BILLBOARD3D 平面类的旋转，模板原标为 int，实为 float。
+    # 社区实测+用户实机(2026-07)：这两个专门控制 BILLBOARD3D 平面类的旋转，模板原标为 int，实为 float。
+    # billboardRotation + billboardRotationJitter(原 billboardRotationSpeed) 是一组 static/random。
     ('billboardRotation', 'f'),
-    ('billboardRotationSpeed', 'f'),
+    ('billboardRotationJitter', 'f'),  # 原 billboardRotationSpeed，实为 billboardRotation 的 random 分量
     ('spin_velocity', ('XYZ', 0)),
-    ('unkn1_0', 'f'),
-    ('unkn1_1', 'f'),
+    # billboardRotationAccel + Jitter(原 unkn1_0/unkn1_1)：billboardRotation 的加速度 static/random，用户实机确认
+    ('billboardRotationAccel', 'f'),  # 原 unkn1_0
+    ('billboardRotationAccelJitter', 'f'),  # 原 unkn1_1
     ('momentum_retention', 'f'),
     ('spin_acceleration', ('XYZ', 0)),
     ('unknEnum1_2', 'i'),
@@ -1185,6 +1243,10 @@ assert _schema_size(PLSNOW_SCHEMA) == 84, \
 #   float bounceElasticity(4)+j(4)+Mult(4)+horizontal(4)+unkn34-37(16) +
 #   int unkn38(4) + int unkn4[2](8) + int ieIndex(4) + int unkn6[3](12)
 # = 32+12+8+32+4+8+4+12 = 112 B ✓
+#
+# unkn2[2] 的第一个 int（原 unknEnum2_0）2026-07 用户实机测试确认为 bounceCountLimit：
+# 反弹次数上限，如=2则仅允许弹跳2次，第3次触地强行停留（不再是纯粹未知枚举）。
+# 语料分布 0~5 集中(98.8%)，个别到 20/25，与"反弹次数"语义吻合。
 # ─────────────────────────────────────────────────────────────────────────────
 
 PTCOLLISION_SCHEMA = [
@@ -1199,7 +1261,7 @@ PTCOLLISION_SCHEMA = [
     ('unkn1_0', 'f'),
     ('unkn1_1', 'f'),
     ('unkn1_2', 'f'),
-    ('unknEnum2_0', 'i'),
+    ('bounceCountLimit', 'i'),  # 原 unknEnum2_0，2026-07 用户实机测试确认为反弹次数上限（如=2则仅允许弹跳2次，第3次触地强行停留）
     ('unknEnum2_1', 'i'),
     ('bounceElasticity',          'f'),
     ('bounceElasticityJitter',    'f'),
@@ -1650,23 +1712,30 @@ assert _schema_size(EMITTERSHAPE2D_SCHEMA) == 36, \
 # Velocity2D (EFX_Subtypes.bt): 块全长 76B → data_bytes = 72B。
 #   int unkn0[2](8)+9 floats(36)+int expansionType(4)+float gravity,gravityJitter(8)+
 #   int expansionDelay,expDelayJ,gravityDelay,gravDelayJ(16)
+# 2026-07 用户实机测试参照 VELOCITY3D 重命名（同一批 offsetX/Y、sizeX/Y、
+# initialVelocity/acceleration/initialVelocityDelay 概念，2D 版本）：
+#   expansionRadius→initialVelocity / expansionRadiusElasticity→acceleration /
+#   unkn15/16→offsetX/Y / energyOnAxisX/Y→sizeX/Y / expansionDelay→initialVelocityDelay /
+#   expansionType→velocityType（同 V3D）。
+# unkn0_1/unkn10 2026-07-26 用户确认为旋转角度 static/random，改名 rotation/rotationJitter
+# （全语料 unkn0_1∈[-90,320]含90/180/270整数、unkn10∈[0,360]含大量0和360，与该假设吻合）。
 VELOCITY2D_SCHEMA = [
     ('typeFlag', 'i'),  # 原 unkn0_0
-    ('unkn0_1', 'f'),  # 8
-    ('unkn10',                         'f'),
-    ('expansionRadius',                'f'),
-    ('expansionRadiusJitter',          'f'),
-    ('expansionRadiusElasticity',      'f'),
-    ('expansionRadiusElasticityJitter','f'),
-    ('unkn15',                         'f'),
-    ('unkn16',                         'f'),
-    ('energyOnAxisX',                  'f'),
-    ('energyOnAxisY',                  'f'),       # 9 floats = 36
-    ('expansionType',                  'i'),       # 0-1 Linear, 2-3 No Movement
+    ('rotation', 'f'),  # 原 unkn0_1，2026-07-26 用户确认为旋转角度
+    ('rotationJitter',                 'f'),  # 原 unkn10
+    ('initialVelocity',                'f'),  # 原 expansionRadius
+    ('initialVelocityJitter',          'f'),  # 原 expansionRadiusJitter
+    ('acceleration',                   'f'),  # 原 expansionRadiusElasticity
+    ('accelerationJitter',             'f'),  # 原 expansionRadiusElasticityJitter
+    ('offsetX',                        'f'),  # 原 unkn15
+    ('offsetY',                        'f'),  # 原 unkn16
+    ('sizeX',                          'f'),  # 原 energyOnAxisX
+    ('sizeY',                          'f'),  # 原 energyOnAxisY，9 floats = 36
+    ('velocityType',                   'i'),  # 原 expansionType，2026-07-26 用户确认同 V3D 改名
     ('gravity',                        'f'),
     ('gravityJitter',                  'f'),       # 8
-    ('expansionDelay',                 'i'),
-    ('expansionDelayJitter',           'i'),
+    ('initialVelocityDelay',           'i'),  # 原 expansionDelay
+    ('initialVelocityDelayJitter',     'i'),  # 原 expansionDelayJitter
     ('gravityDelay',                   'i'),
     ('gravityDelayJitter',             'i'),       # 16
 ]
@@ -2130,9 +2199,58 @@ assert _schema_size(EXTERN_BILLBOARD3D_SCHEMA) == 133, \
     f"EXTERN_BILLBOARD3D_SCHEMA size mismatch: {_schema_size(EXTERN_BILLBOARD3D_SCHEMA)}"
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# applicationRule 位域拆解（BILLBOARD3D / PLANE 共用同一 int32 布局）
+# 参照 UVSEQUENCE loopingMode 的拆法：存储仍是单个 int32（byte 布局不变），
+# UI 侧暴露三个可分别裸填的子字段，unpack/pack 负责与裸值位运算互转。
+# 位布局（official 全语料 10084 文件 62787 处 + 用户实机确认，2026-07-25）：
+#   flowmap 组   = v & 0x0C   取值 {0,4,8,12}：0x04=启用 flowmap，0x08=播一次冻结修饰
+#   独立子字段   = v & 0x30   取值 {0,16,32}：3 态互斥选择器（默认/C/D，语义未定）
+#   保留位       = v & ~0x3C  取值 {0}：低两位(0x01/0x02，实测 don't-care)+bit6 以上，官方恒 0
+# 三掩码不相交且覆盖全 32 位，故 split→recombine 对任意值无损（byte-perfect）。
+_APPRULE_FLOWMAP_MASK  = 0x0C
+_APPRULE_MODE_MASK     = 0x30
+_APPRULE_RESERVED_MASK = ~(_APPRULE_FLOWMAP_MASK | _APPRULE_MODE_MASK)  # 清掉 bit2-5，其余保留
+
+
+def _split_application_rule(values: dict) -> None:
+    """把 values['applicationRule'] 原地拆成三个子字段键。"""
+    v = values.pop('applicationRule')
+    values['applicationRuleFlowmap']  = v & _APPRULE_FLOWMAP_MASK
+    values['applicationRuleMode']     = v & _APPRULE_MODE_MASK
+    values['applicationRuleReserved'] = v & _APPRULE_RESERVED_MASK
+
+
+def _merge_application_rule(values: dict) -> dict:
+    """三个子字段键合回 applicationRule（返回浅拷贝，不改入参）；各段按自己的掩码收敛。"""
+    values = dict(values)
+    values['applicationRule'] = (
+        (values.pop('applicationRuleFlowmap')  & _APPRULE_FLOWMAP_MASK)
+        | (values.pop('applicationRuleMode')     & _APPRULE_MODE_MASK)
+        | (values.pop('applicationRuleReserved') & _APPRULE_RESERVED_MASK)
+    )
+    return values
+
+
+def _split_apprule_schema(schema):
+    """UI schema 用：把 ('applicationRule','i') 换成三个子字段条目。"""
+    out = []
+    for name, spec in schema:
+        if name == 'applicationRule':
+            out.extend([
+                ('applicationRuleFlowmap',  'i'),
+                ('applicationRuleMode',     'i'),
+                ('applicationRuleReserved', 'i'),
+            ])
+        else:
+            out.append((name, spec))
+    return out
+
+
 def unpack_billboard3d(data: bytes, off: int = 0):
     """Unpack Billboard3D data_bytes (variable-length). Returns (dict, new_off)."""
     values, off = unpack(_BILLBOARD3D_FIXED_SCHEMA, data, off)
+    _split_application_rule(values)
     (path_len,) = struct.unpack_from('<i', data, off)
     off += 4
     values['path_len'] = path_len
@@ -2145,6 +2263,7 @@ def unpack_billboard3d(data: bytes, off: int = 0):
 
 def pack_billboard3d(values: dict) -> bytes:
     """Pack Billboard3D values dict back to bytes."""
+    values = _merge_application_rule(values)
     out = pack(_BILLBOARD3D_FIXED_SCHEMA, values)
     path = values['path']
     out += struct.pack('<i', len(path))
@@ -2583,6 +2702,7 @@ _PLANE_EXTRAS_SCHEMA = [
 def unpack_plane(data: bytes, off: int = 0):
     """Unpack Plane data_bytes (variable-length). Returns (dict, new_off)."""
     values, off = unpack(_PLANE_DDS_SCHEMA, data, off)
+    _split_application_rule(values)
     (path_len,) = struct.unpack_from('<i', data, off)
     off += 4
     values['path_len'] = path_len
@@ -2595,6 +2715,7 @@ def unpack_plane(data: bytes, off: int = 0):
 
 def pack_plane(values: dict) -> bytes:
     """Pack Plane values dict back to bytes."""
+    values = _merge_application_rule(values)
     out = pack(_PLANE_DDS_SCHEMA, values)
     path = values['path']
     out += struct.pack('<i', len(path))
@@ -3181,10 +3302,13 @@ def unpack_ptbehavior(data: bytes, off: int = 0):
             vals = list(struct.unpack_from('<3f', data, off)); off += 12
             param['unkn1'] = vals
         elif t == 0x15:
+            # 实机+全语料确认（2026-07-26）：[1]/[3] 原标 int32 有误，重解读为 float32
+            # 后落在干净数值（跟 [0]/[2] 同量级/近似同值），影响 mUVRange/mColor/mCenter
+            # 等所有走这个 t 分支的命名参数
             v0, = struct.unpack_from('<f', data, off); off += 4
-            v1, = struct.unpack_from('<i', data, off); off += 4
+            v1, = struct.unpack_from('<f', data, off); off += 4
             v2, = struct.unpack_from('<f', data, off); off += 4
-            v3, = struct.unpack_from('<i', data, off); off += 4
+            v3, = struct.unpack_from('<f', data, off); off += 4
             param['unkn0'] = v0
             param['unkn1'] = v1
             param['unkn2'] = v2
@@ -3244,9 +3368,9 @@ def pack_ptbehavior(values: dict) -> bytes:
             out += struct.pack('<3f', *param['unkn1'])
         elif t == 0x15:
             out += struct.pack('<f', param['unkn0'])
-            out += struct.pack('<i', param['unkn1'])
+            out += struct.pack('<f', param['unkn1'])
             out += struct.pack('<f', param['unkn2'])
-            out += struct.pack('<i', param['unkn3'])
+            out += struct.pack('<f', param['unkn3'])
         elif t == 0x36:
             out += struct.pack('<2i', *param['unkn1'])
         elif t == 0x37:
@@ -4397,10 +4521,12 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     LIGHTNING:   _LIGHTNING_FIXED_SCHEMA,
     RGBWATER:    _RGBWATER_FIXED_SCHEMA,
     TURBULENCE:  [('typeFlag', 'i')] + _TURBULENCE_AFTER_PATH_SCHEMA,
-    BILLBOARD3D: [e for e in (_BILLBOARD3D_FIXED_SCHEMA + _BILLBOARD3D_EXTRAS_SCHEMA)
-                  if e[0] not in ('path', 'path_len')],
-    PLANE:       [e for e in (_PLANE_DDS_SCHEMA + _PLANE_EXTRAS_SCHEMA)
-                  if e[0] not in ('path', 'path_len')],
+    BILLBOARD3D: _split_apprule_schema(
+                  [e for e in (_BILLBOARD3D_FIXED_SCHEMA + _BILLBOARD3D_EXTRAS_SCHEMA)
+                   if e[0] not in ('path', 'path_len')]),
+    PLANE:       _split_apprule_schema(
+                  [e for e in (_PLANE_DDS_SCHEMA + _PLANE_EXTRAS_SCHEMA)
+                   if e[0] not in ('path', 'path_len')]),
     TUBELIGHT:        _TUBELIGHT_FIXED_SCHEMA,
     EMITTERSHAPEMESH: _EMITTERSHAPEMESH_FIXED_SCHEMA,
     # FAKEDOF：暴露恒在的 32B fixed 字段；尾段（20B，present-conditional）不在此表，

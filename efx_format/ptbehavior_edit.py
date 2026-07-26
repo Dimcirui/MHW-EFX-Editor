@@ -69,7 +69,7 @@ def _default_param_fields(t: int) -> dict:
     if t == 0x14:
         return {'unkn1': [0.0, 0.0, 0.0]}
     if t == 0x15:
-        return {'unkn0': 0.0, 'unkn1': 0, 'unkn2': 0.0, 'unkn3': 0}
+        return {'unkn0': 0.0, 'unkn1': 0.0, 'unkn2': 0.0, 'unkn3': 0.0}
     if t == 0x36:
         return {'unkn1': [0, 0]}
     if t == 0x37:

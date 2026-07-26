@@ -133,7 +133,7 @@ def _mark_attribute_dirty(self, context):
                         mesh_align.realign_entry_if_active(body)
                 # EMITTERSHAPE3D 的形状/尺寸/弧形裁剪字段编辑 → 形状预览会话进行中则重同步
                 elif blk_hash == EMITTERSHAPE3D and self.ori_name in (
-                        "patternControl", "transform", "spawnAngleLimits"):
+                        "shapeType", "rangeXYZ", "scaleHorizontal"):
                     from . import es3d_preview
                     es3d_preview.resync_if_active(obj)
             except Exception:
@@ -199,7 +199,7 @@ _XYZ_UNIT = {
     # LENGTH（位置/位移/长度速度）
     ("TRANSFORM3D",    "translate"):            "LENGTH",
     ("TRANSFORM3D",    "translation_velocity"): "LENGTH",
-    ("EMITTERSHAPE3D", "transform"):            "LENGTH",
+    ("EMITTERSHAPE3D", "rangeXYZ"):             "LENGTH",
     ("STRAINRIBBON",   "displacement"):         "LENGTH",
     ("STRAINRIBBON",   "endPosition"):          "LENGTH",
     ("TURBULENCE",     "offsetPos"):            "LENGTH",
@@ -1637,7 +1637,8 @@ def _PTBEHAVIOR_HASH_RB() -> int:
 # Items 布局：
 #   'b_type'       STRING — 行为类名（无尾 \0）
 #   'p{i}'         dtype  — 第 i 个 param 的值（t != 0x15 时单 item）
-#   'p{i}_v0..v3'  4 items— t==0x15 时四个子值（FLOAT,INT,FLOAT,INT）
+#   'p{i}_v0..v3'  4 items— t==0x15 时四个子值（全部 FLOAT，2026-07-26 订正 [1]/[3]
+#                            原int32解读有误，实机+全语料确认应为float32）
 #
 # 导出重建：unpack 原字节 → 对 edited=True 的 item 覆盖值 → pack_ptbehavior
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1722,25 +1723,21 @@ def _init_ptbehavior_attribute(blk, bp) -> bool:
         # 属性 key 标签：已知名 / 0x%08X（key=jamcrc(属性名)，存于 param['unkn']）
         key_label = _ptb_name_for(param['unkn'])
         if t == 0x15:
-            # 四个子 item：unkn0(f), unkn1(i), unkn2(f), unkn3(i)
-            for suffix, vk, dtype_str in [
-                ('_v0', 'unkn0', 'FLOAT'),
-                ('_v1', 'unkn1', 'INT'),
-                ('_v2', 'unkn2', 'FLOAT'),
-                ('_v3', 'unkn3', 'INT'),
+            # 四个子 item：全部 float32（unkn0/unkn1/unkn2/unkn3）
+            for suffix, vk in [
+                ('_v0', 'unkn0'),
+                ('_v1', 'unkn1'),
+                ('_v2', 'unkn2'),
+                ('_v3', 'unkn3'),
             ]:
                 it = bp.field_items.add()
                 it.ori_name = f'p{i}{suffix}'
                 it.hint_name = key_label
-                it.data_type = dtype_str
+                it.data_type = 'FLOAT'
                 it.edited = False
                 it.read_only = False
                 it.orig_b64 = ''
-                val = param.get(vk, 0)
-                if dtype_str == 'FLOAT':
-                    it.float_value = float(val)
-                else:
-                    it.int_value = int(val)
+                it.float_value = float(param.get(vk, 0.0))
         else:
             it = bp.field_items.add()
             it.ori_name = f'p{i}'
@@ -1798,15 +1795,15 @@ def rebuild_ptbehavior_attribute(bp, original_data: bytes = None) -> bytes:
         t = param['t']
 
         if t == 0x15:
-            for suffix, vk, is_float in [
-                ('_v0', 'unkn0', True),
-                ('_v1', 'unkn1', False),
-                ('_v2', 'unkn2', True),
-                ('_v3', 'unkn3', False),
+            for suffix, vk in [
+                ('_v0', 'unkn0'),
+                ('_v1', 'unkn1'),
+                ('_v2', 'unkn2'),
+                ('_v3', 'unkn3'),
             ]:
                 sub = imap.get(f'p{i}{suffix}')
                 if sub and sub.edited and not sub.read_only:
-                    param[vk] = float(sub.float_value) if is_float else int(sub.int_value)
+                    param[vk] = float(sub.float_value)
             continue
 
         item = imap.get(f'p{i}')

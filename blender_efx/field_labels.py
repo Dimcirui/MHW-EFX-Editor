@@ -21,9 +21,6 @@ FIELD_LABELS_ZH = {
     "speed": "速度",
     "speedJitter": "速度抖动",
     "speedMultiplier": "速度倍率",
-    "velocityX": "X 速率",
-    "velocityY": "Y 速率",
-    "velocityZ": "Z 速率",
     "translation_velocity": "平移速度",
     "translation_velocity_modifier": "平移速度修正",
     "rotation_velocity": "旋转速度",
@@ -37,13 +34,13 @@ FIELD_LABELS_ZH = {
     # 原 secondary_axis_speed/2，实测确认（2026-07-11）是 main_axis_speed/2 的 jitter
     "main_axis_speed_jitter": "主轴速度抖动",
     "main_axis_speed2_jitter": "主轴速度2抖动",
-    "energyOnAxisX": "X 轴能量",
-    "energyOnAxisY": "Y 轴能量",
-    "energyOnAxisZ": "Z 轴能量",
+    "sizeX": "X 基准点伸缩",
+    "sizeY": "Y 基准点伸缩",
+    "sizeZ": "Z 基准点伸缩",
     "momentum_retention": "动量保留率",
 
     # ── 变换 ───────────────────────────────────────────────────────────────
-    "transform": "变换",
+    "rangeXYZ": "生成范围",
     "translate": "平移",
     "rotate": "旋转",
     "resize": "缩放",
@@ -57,9 +54,9 @@ FIELD_LABELS_ZH = {
     "rotationYJitter": "Y 旋转抖动",
     "rotationZ": "Z 旋转",
     "rotationZJitter": "Z 旋转抖动",
-    "trayectoryRotationX": "轨迹旋转 X",
-    "trayectoryRotationY": "轨迹旋转 Y",
-    "trayectoryRotationZ": "轨迹旋转 Z",
+    "localRotationX": "局部旋转 X",
+    "localRotationY": "局部旋转 Y",
+    "localRotationZ": "局部旋转 Z",
     "offsetX": "X 偏移",
     "offsetXJitter": "X 偏移抖动",
     "offsetY": "Y 偏移",
@@ -96,23 +93,30 @@ FIELD_LABELS_ZH = {
     "spawnTrack": "跨生成追踪",
 
     # ── 生成 / 寿命 ─────────────────────────────────────────────────────────
-    "instancesSpawnedTotal": "生成总数",
-    "instancesSpawnedPerFrame": "单次生成数",
-    "frameDelayBetweenSpawns": "生成间隔（帧）",
-    "durationOfSpawnerLifespan": "发射次数",
-    "randomizedDelay": "生成间隔抖动（帧）",
-    "randomizedLifespan": "发射次数抖动",
-    "randomizedSpawnsPerFrame": "单次随机生成数",
+    # SPAWN 2026-07-26 实机测试后按 emitter/particle 三层模型重命名（原名见 structs.py 行内注释）
+    "maxParticles": "同时存活上限",
+    "particlesPerBurst": "单批生成数",
+    "particlesPerBurstJitter": "单批生成数抖动",
+    "burstInterval": "批次间隔（帧）",
+    "burstIntervalJitter": "批次间隔抖动（帧）",
+    "altBurstInterval": "替代批次间隔（帧）",
+    "altBurstIntervalJitter": "替代批次间隔抖动（帧）",
+    "burstsPerCycle": "每轮批次数",
+    "burstsPerCycleJitter": "每轮批次数抖动",
     "instanceCountUnknLimit": "实例数上限",
     "instanceCountUnknLimitJitter": "实例数上限抖动",
-    "repeatAtribute": "重复属性",
-    "occur": "生成延迟（帧）",
-    "occur2": "生成延迟抖动（帧）",
-    "spawnAngleLimits": "生成角度限制",
+    "emitterRepeatCount": "重复次数",
+    "emitterStartDelay": "发射器启动延迟（帧）",
+    "emitterStartDelayJitter": "发射器启动延迟抖动（帧）",
+    "particleSpawnDelay": "粒子生成延迟（帧）",
+    "particleSpawnDelayJitter": "粒子生成延迟抖动（帧）",
+    "scaleHorizontal": "横向扫描角度",
+    "scaleVertical": "纵向扫描角度",
     "spawnCount": "生成数量",
     "lockToPositionFrame": "停止追踪帧数",
-    "spawnPerCycle": "每周期生成数",
-    "spawnTotal": "生成总数",
+    "rangeDivideHorizontalNum": "横向等分数量",
+    "rangeDivideVerticalNum": "纵向等分数量",
+    "rangeDivideAxis": "细分参考轴",
     "lifespan": "寿命",
     "lifespanJitter": "寿命抖动",
     "duration": "持续时间",
@@ -252,15 +256,16 @@ FIELD_LABELS_ZH = {
     # 原 smooth_radius_randomized/2，实测确认（2026-07-11）是 teleport_radius/2 的 jitter
     "teleport_radius_jitter": "传送半径抖动",
     "teleport_radius2_jitter": "传送半径2抖动",
-    "expansion_radius_limit": "扩散范围",
-    "expansion_radius_jitter": "扩散范围偏差",
-    "expansion_radius_elasticity": "扩散弹性",
-    "expansion_radius_elasticity_jitter": "扩散弹性偏差",
-    "expansionDelay": "扩散延迟",
-    "expansionDelayJitter": "扩散延迟抖动",
-    "expansionType": "扩散类型",
+    "initialVelocity": "初速度",
+    "initialVelocityJitter": "初速度偏差",
+    "initialVelocityAxis": "初速度基准轴",
+    "acceleration": "加速度",
+    "accelerationJitter": "加速度偏差",
+    "initialVelocityDelay": "初速度延迟",
+    "initialVelocityDelayJitter": "初速度延迟抖动",
+    "velocityType": "速度类型",
     "pattern": "图案",
-    "patternControl": "图案控制",
+    "shapeType": "形状类型",
 
     # ── 物理 / 碰撞 / 弹跳 ─────────────────────────────────────────────────
     "physicsEnum": "物理类型",
@@ -274,6 +279,7 @@ FIELD_LABELS_ZH = {
     "bounceElasticity": "弹跳弹性",
     "bounceElasticityJitter": "弹跳弹性抖动",
     "bounceElasticityMultiplier": "弹跳弹性倍率",
+    "bounceCountLimit": "反弹次数上限",
     "horizontalBounce": "水平弹跳",
     "restitutionDelay": "回弹延迟",
     "restitutionDelayJitter": "回弹延迟抖动",
@@ -330,7 +336,9 @@ FIELD_LABELS_ZH = {
     "randomBrightnessMult": "随机亮度乘数",
     "blendMode": "混合模式",
     "billboardRotation": "平面旋转",
-    "billboardRotationSpeed": "平面旋转速度",
+    "billboardRotationJitter": "平面旋转抖动",
+    "billboardRotationAccel": "平面旋转加速度",
+    "billboardRotationAccelJitter": "平面旋转加速度抖动",
     "prop1": "属性1",
     "prop1Jitter": "属性1抖动",
     "prop2": "属性2",
@@ -339,6 +347,10 @@ FIELD_LABELS_ZH = {
     # playbackMode/flipCode 是 UVSEQUENCE 专属概念，用类型专属表；direction 用上面的全局"方向"。
     "loopingOrientation": "贴图朝向",
     "loopingPad": "保留",
+    # ── BILLBOARD3D / PLANE applicationRule 位域拆分字段（共用） ─────────────
+    "applicationRuleFlowmap":  "流动贴图组",
+    "applicationRuleMode":     "应用模式",
+    "applicationRuleReserved": "保留位",
 }
 
 
@@ -350,6 +362,10 @@ FIELD_LABELS_ZH = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 FIELD_LABELS_ZH_BY_TYPE = {
+    # ── VELOCITY3D offsetX/Y/Z（跟其他类型泛用的"X 偏移"语义不同，单独作用域） ──
+    ("VELOCITY3D", "offsetX"): "X 基准点偏置",
+    ("VELOCITY3D", "offsetY"): "Y 基准点偏置",
+    ("VELOCITY3D", "offsetZ"): "Z 基准点偏置",
     # ── UVSEQUENCE loopingMode 拆分字段 ──────────────────────────────────────
     ("UVSEQUENCE", "playbackMode"): "播放模式",
     ("UVSEQUENCE", "flipCode"): "翻转码",
@@ -414,18 +430,13 @@ FIELD_LABELS_ZH_BY_TYPE = {
     ("HOMING", "vanishMode"):      "消失模式",
 
     # ── VELOCITY2D（2D 速度，来源 EFX_Subtypes.bt）────────────────────────────
-    ("VELOCITY2D", "unkn10"):                          "未知10",
-    ("VELOCITY2D", "expansionRadius"):                 "扩张半径",
-    ("VELOCITY2D", "expansionRadiusJitter"):           "扩张半径抖动",
-    ("VELOCITY2D", "expansionRadiusElasticity"):       "扩张半径弹性",
-    ("VELOCITY2D", "expansionRadiusElasticityJitter"): "扩张半径弹性抖动",
-    ("VELOCITY2D", "energyOnAxisX"):                   "X 轴能量",
-    ("VELOCITY2D", "energyOnAxisY"):                   "Y 轴能量",
-    ("VELOCITY2D", "expansionType"):                   "扩张类型(0-1线性 2-3静止)",
+    # initialVelocity/initialVelocityJitter/acceleration/accelerationJitter/
+    # offsetX/offsetY/sizeX/sizeY/initialVelocityDelay/initialVelocityDelayJitter/
+    # rotation/rotationJitter 2026-07 改名，走全局通用标签（同 VELOCITY3D）。
+    # velocityType 枚举含义与 VELOCITY3D 不同（0-1线性 2-3静止），保留专属标签。
+    ("VELOCITY2D", "velocityType"):                    "速度类型(0-1线性 2-3静止)",
     ("VELOCITY2D", "gravity"):                         "重力",
     ("VELOCITY2D", "gravityJitter"):                   "重力抖动",
-    ("VELOCITY2D", "expansionDelay"):                  "扩张延迟",
-    ("VELOCITY2D", "expansionDelayJitter"):            "扩张延迟抖动",
     ("VELOCITY2D", "gravityDelay"):                    "重力延迟",
     ("VELOCITY2D", "gravityDelayJitter"):              "重力延迟抖动",
 

@@ -97,10 +97,11 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
         return 4 + 4*12  # = 52
 
     # EmitterShape3D: 4(type) + ExternEmitterShape3D
-    # ExternEmitterShape3D: int unkn0(4) + XYZ transform(0)(24B) +
-    #   patternControl(4) + unkn2(4) + unkn3_0(4) +
-    #   trayX(4)+trayY(4)+trayZ(4) + rotationOrder(4) + spawnAngleLimits(4) + unkn3_f1(4) +
-    #   spawnPerCycle(4) + spawnTotal(4) + radiusEnd(4) + radiusOrigin(4) + unknRadiusRelated(4) + unkn4(4)
+    # ExternEmitterShape3D: int typeFlag(4) + XYZ rangeXYZ(0)(24B) +
+    #   shapeType(4) + rangeDivideAxis(4) + unknOrientation(4) +
+    #   localRotationX(4)+Y(4)+Z(4) + rotationOrder(4) + scaleHorizontal(4) + scaleVertical(4) +
+    #   rangeDivideHorizontalNum(4) + rangeDivideVerticalNum(4) + radiusEnd(4) + radiusOrigin(4) +
+    #   unknBitmaskRadiusRelated(4) + unknFlag4(4)
     # = 4 + 24 + 15*4 = 88B; total with type = 92B
     if h == EMITTERSHAPE3D:
         return 4 + 4 + 24 + 15*4  # = 92
@@ -473,9 +474,9 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
         return 4 + 4 + 16 + 16  # = 40
 
     # Velocity2D (EFX_Subtypes.bt): type(4)+int unkn0[2](8)+
-    #   float unkn10,expansionRadius,expRJ,expRElast,expRElastJ,unkn15,unkn16,energyX,energyY(9 floats=36)+
-    #   int expansionType(4)+float gravity,gravityJitter(8)+
-    #   int expDelay,expDelayJ,gravDelay,gravDelayJ(16) = 4+8+36+4+8+16 = 76B
+    #   float rotationJitter,initialVelocity,ivJ,accel,accelJ,offsetX,offsetY,sizeX,sizeY(9 floats=36)+
+    #   int velocityType(4)+float gravity,gravityJitter(8)+
+    #   int ivDelay,ivDelayJ,gravDelay,gravDelayJ(16) = 4+8+36+4+8+16 = 76B
     # ⚠ 旧值 72B 少 4B（少数 1 个 float）；实测全语料 277 实例恒 76B。
     if h == VELOCITY2D:
         return 4 + 8 + 36 + 4 + 8 + 16  # = 76
