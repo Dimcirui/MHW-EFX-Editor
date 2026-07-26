@@ -65,6 +65,34 @@ _PACKED_INT_COLOR_FIELDS = frozenset({
 })
 
 
+# 可整体乘算的"亮度/强度"浮点字段（_COLOR_ADJACENT_NAMES 的严格子集）：
+# 只收真正表示亮度/发光强度、乘一个系数语义成立的**浮点标量**。刻意排除——
+#   · 开关/布尔：enable*/use*/disableAllColorRange
+#   · 枚举/模式：colorModeFlag / backFaceTintMode / frontFaceTintMode
+#   · 位置/占比：colourTransitionPoint（0-1 过渡点，乘会越界）
+#   · 槽位索引：epv*Slot / brightnessSlot1/2（是槽编号不是强度值，含义不明保守排除）
+#   · 饱和度：emissive_saturation*（是饱和不是亮度）
+# 乘算时另有 data_type=="FLOAT" 的硬门控，双保险：即便名字命中、非浮点也跳过。
+_BRIGHTNESS_NAMES = frozenset({
+    "brightness", "brightness1", "brightness2", "brightness3", "brightness4",
+    "brightnessSlotMultiplier1", "brightnessSlotMultiplier2",
+    "randomBrightnessMult", "bright",
+    "lightIntensity", "lightIntensityJitter",
+    "emissiveMultiplier", "emissiveStrength",
+    "emissionStrength", "emissionStrengthJitter",
+    "emissive_brightness", "emissive_brightness_j",
+    "colorScaler",
+})
+
+
+def is_brightness_field(type_hash, ori_name: str, data_type: str) -> bool:
+    """字段是否为可整体乘算的亮度/强度浮点（供 Color Tool 的亮度乘数使用）。"""
+    if data_type != "FLOAT":
+        return False
+    suffix = ori_name.rsplit(".", 1)[-1] if ori_name else ori_name
+    return suffix in _BRIGHTNESS_NAMES
+
+
 def is_color_field(type_hash, ori_name: str, data_type: str) -> bool:
     """字段是否该在 EFX Color Editor 里露出。"""
     if data_type == "COLOR_RGBA":

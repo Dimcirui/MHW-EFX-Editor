@@ -25,7 +25,7 @@ import colorsys
 import math
 
 import bpy
-from bpy.props import FloatVectorProperty
+from bpy.props import FloatProperty, FloatVectorProperty
 
 from . import color_fields as _cf
 from . import root_collection as _rc
@@ -128,6 +128,30 @@ def _iter_color_items(root_col):
                 yield it, "rgba"
             elif (type_hash, it.ori_name) in _cf._PACKED_INT_COLOR_FIELDS:
                 yield it, "packed"
+
+
+def _iter_brightness_items(root_col):
+    """遍历 root_col 下全部 attribute，产出可乘算的亮度/强度浮点 field_item。
+
+    判据用 color_fields.is_brightness_field（含 FLOAT 硬门控）；read_only 跳过。
+    遍历方式同 _iter_color_items。
+    """
+    col_entry = _rc.get_leaf_collection(root_col, "EFX_ENTRY")
+    if col_entry is None:
+        return
+    for obj in col_entry.all_objects:
+        if obj.get("~TYPE") != "EFX_ATTRIBUTE":
+            continue
+        try:
+            type_hash = int(str(obj.get("type_hash", "0")))
+            items = obj.efx_block.field_items
+        except Exception:
+            continue
+        for it in items:
+            if getattr(it, "read_only", False):
+                continue
+            if _cf.is_brightness_field(type_hash, it.ori_name, it.data_type):
+                yield it
 
 
 def _read_rgb(item, kind):
@@ -282,6 +306,37 @@ class EFX_OT_recolor_replace(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class EFX_OT_recolor_brightness(bpy.types.Operator):
+    """亮度乘数：把所有亮度/强度字段乘以指定系数（可累积，1.0 不变）"""
+
+    bl_idname      = "efx.recolor_brightness"
+    bl_label       = "Apply Brightness"
+    bl_description = ("Multiply every brightness / intensity field by the factor (cumulative on "
+                      "repeat; 1.0 = no change). Colors themselves are untouched")
+    bl_options     = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return _resolve_root(context) is not None
+
+    def execute(self, context):
+        root = _resolve_root(context)
+        if root is None:
+            self.report({"ERROR"}, T("colortool.no_root"))
+            return {"CANCELLED"}
+
+        mult = float(context.scene.efx_brightness_mult)
+        n = 0
+        for it in _iter_brightness_items(root):
+            it.float_value = it.float_value * mult
+            n += 1
+        if n == 0:
+            self.report({"WARNING"}, T("colortool.no_brightness"))
+            return {"CANCELLED"}
+        self.report({"INFO"}, T("colortool.brightness_done").format(n=n, m=mult))
+        return {"FINISHED"}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 面板（VIEW_3D N 面板 → EFX 标签，仅 Color Editor 模式）
 # ─────────────────────────────────────────────────────────────────────────────
@@ -308,11 +363,18 @@ class EFX_PT_color_tool(bpy.types.Panel):
         layout.operator("efx.recolor_align",   text=T("colortool.align"),   icon="MOD_HUE_SATURATION")
         layout.operator("efx.recolor_replace", text=T("colortool.replace"), icon="BRUSH_DATA")
 
+        # ── 亮度/强度乘数（独立于颜色，乘所有亮度字段）─────────────────────────
+        layout.separator()
+        layout.label(text=T("colortool.brightness_header"))
+        layout.prop(context.scene, "efx_brightness_mult", text=T("colortool.brightness_mult"))
+        layout.operator("efx.recolor_brightness", text=T("colortool.brightness_apply"), icon="LIGHT_SUN")
+
 
 _CLASSES = (
     EFX_OT_recolor_shift,
     EFX_OT_recolor_align,
     EFX_OT_recolor_replace,
+    EFX_OT_recolor_brightness,
     EFX_PT_color_tool,
 )
 
@@ -326,6 +388,13 @@ def register():
         min=0.0, max=1.0,
         default=(1.0, 0.0, 0.0, 1.0),
     )
+    bpy.types.Scene.efx_brightness_mult = FloatProperty(
+        name="Brightness x",
+        description="Multiplier applied to every brightness / intensity field (cumulative; 1.0 = no change)",
+        default=1.0,
+        min=0.0, soft_max=10.0,
+        precision=3,
+    )
     for c in _CLASSES:
         bpy.utils.register_class(c)
 
@@ -333,7 +402,8 @@ def register():
 def unregister():
     for c in reversed(_CLASSES):
         bpy.utils.unregister_class(c)
-    try:
-        del bpy.types.Scene.efx_recolor_target
-    except Exception:
-        pass
+    for prop in ("efx_recolor_target", "efx_brightness_mult"):
+        try:
+            delattr(bpy.types.Scene, prop)
+        except Exception:
+            pass
