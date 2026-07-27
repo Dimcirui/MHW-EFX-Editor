@@ -2,7 +2,7 @@
 """
 efx_format/schema/enums.py — 共享枚举 / 位定义
 """
-from .fields_model import EnumDef, BitDef
+from .fields_model import EnumDef, BitDef, BitEnum
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 共享枚举 / 位定义——选项据 annotations.py / 实机记忆 / 行内考据。
@@ -100,6 +100,39 @@ BITS_ENABLE_VELOCITY = [(0x1, "Enable Velocity", "启用速度"), (0x2, "Enable 
 BITS_SPIN_AXIS = [(0x1, "X", "X"), (0x2, "Y", "Y"), (0x4, "Z", "Z")]
 BITS_RANDOMFIX_TABLE = [(1 << _i, "Table %d" % _i, "表 %d" % _i) for _i in range(8)]
 
+# BILLBOARD3D / PLANE 的 applicationRule（打包 int32）。official 10084 文件实测干净：
+# bit2/bit3 两个独立可混合开关（{0,4,8,12} 全组合出现）；bit4-5 三值互斥（{0,16,32}，never 48）；
+# 其余位官方恒 0（残留可编辑保留）。混合/互斥判据据语义注释 + 全语料数据双证。
+BITS_APPLICATION_RULE = [
+    BitDef(0x04, "Enable Flowmap", "启用流动贴图"),
+    BitDef(0x08, "Freeze After One Play", "播放一次后冻结"),
+    BitEnum(0x30, [
+        (0, "Default", "默认"),
+        (1, "Mode 1", "模式1"),
+        (2, "Mode 2", "模式2"),
+    ], "Application Mode", "应用模式"),
+]
+
+# UVSEQUENCE 的 loopingMode（打包单字节）。四个互斥 2 位组（用户实机 + 全语料实测）：
+# playbackMode(bit0-1) / flipHorizontal(bit2-3) / flipVertical(bit4-5) / direction(bit6-7)。
+# 翻转两轴各 0=不翻/1=固定翻/2=随机翻（3 非法）。此建模顺带把原 flipCode 拆成两轴独立下拉。
+_FLIP_OPTS = [(0, "No Flip", "不翻转"), (1, "Flip", "固定翻转"), (2, "Random Flip", "随机翻转")]
+BITS_LOOPING_MODE = [
+    BitEnum(0x03, [
+        (0, "Start Frame Only", "只显示起始帧"),
+        (1, "Loop", "循环"),
+        (2, "Play Once Then Vanish", "播放一次后消亡"),
+        (3, "Play Once Then Hold", "播放一次后定格"),
+    ], "Playback Mode", "播放模式"),
+    BitEnum(0x0C, _FLIP_OPTS, "Flip Horizontal", "水平翻转"),
+    BitEnum(0x30, _FLIP_OPTS, "Flip Vertical", "垂直翻转"),
+    BitEnum(0xC0, [
+        (0, "Forward", "正向"),
+        (1, "Reverse", "倒放"),
+        (2, "Random Direction", "随机正倒"),
+    ], "Direction", "播放方向"),
+]
+
 _AXIS_DIRECTION6 = EnumDef("AxisDirection6", [
     (0, "Left", "左"),  # +X
     (1, "Up", "上"),    # +Y
@@ -123,4 +156,18 @@ _VELOCITY_TYPE = EnumDef("VelocityType", [
     (1, "DirectionalSpread", "定向扩散"),
     (2, "Radial", "径向"),
     (3, "EmitterMotion", "发射器运动"),
+])
+
+# BILLBOARD3D / PLANE / BILLBOARD2D 的 blendMode（着色器混合模式；RE Engine 对应 'AlphaRate'）。
+ENUM_BLEND_MODE = EnumDef("BlendMode", [
+    (0, "Alpha Blend", "Alpha 混合"),
+    (1, "Additive", "Add 叠加"),
+])
+
+# UVSEQUENCE 的 loopingOrientation（贴图朝向；与水平/垂直翻转独立）。
+ENUM_LOOPING_ORIENTATION = EnumDef("LoopingOrientation", [
+    (0, "Normal", "正常"),
+    (1, "Rotate 90° CW", "顺时针90°"),
+    (2, "Rotate 90° CCW", "逆时针90°"),
+    (3, "Random", "随机"),
 ])

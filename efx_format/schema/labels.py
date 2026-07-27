@@ -44,20 +44,7 @@ _LABELS_GLOBAL = {
     'emissive_brightness_j': '自发光亮度抖动',
     'brightness': '亮度',
     'opacity': '不透明度',
-    'headColor': '光柱起点颜色',
-    'tailColor': '光柱终点颜色',
-    'headColorEpvSlot': '起点颜色 EPV 颜色槽',
-    'columnLength': '光柱长度',
-    'columnLengthModifier': '光柱长度修正',
-    'columnRadius': '光柱半径',
-    'columnRadiusJitter': '光柱半径抖动',
-    'columnEdgeSoftness': '光柱边缘柔化',
-    'lightIntensity': '光照强度',
-    'lightIntensityJitter': '光照强度抖动',
-    'tailGlowSpread': '尾光扩散(变长+边缘虚化)',
-    'backFaceTintMode': '反向区域受起点色染色',
-    'frontFaceTintMode': '朝向区域受终点色染色',
-    'tailPlaneOffset': '终点发光面前后位置',
+    # TUBELIGHT 全字段标签已折入 TUBELIGHT_ATTR 的 Field.label_zh，此处退休。
     'animationSpeed': '动画速度',
     'width': '宽度',
     'widthJitter': '宽度抖动',
@@ -71,17 +58,12 @@ _LABELS_GLOBAL = {
     'blendMode': '混合模式',
     'loopingOrientation': '贴图朝向',
     'loopingPad': '保留',
-    'applicationRuleFlowmap': '流动贴图组',
-    'applicationRuleMode': '应用模式',
-    'applicationRuleReserved': '保留位',
+    # applicationRule/loopingMode 现为 Bitmask 字段（label 在 Field.label_zh），拆分子字段已退休。
 }
 
 # 类型专属中文名（键 =(TYPE_NAME, field_name)），优先于 _LABELS_GLOBAL。
 # 仅 custom-codec 类型（定长块的 BY_TYPE 已折入各自 Field.label_zh）。
 _LABELS_BY_TYPE = {
-    # ── UVSEQUENCE ──
-    ('UVSEQUENCE', 'playbackMode'): '播放模式',
-    ('UVSEQUENCE', 'flipCode'): '翻转码',
     # ── LIGHTNING ──
     ('LIGHTNING', 'unkn05_01'): '实例模式标志',
     ('LIGHTNING', 'sineWaveFreq'): '正弦波频率',

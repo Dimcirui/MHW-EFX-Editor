@@ -12,6 +12,12 @@ from .codec import (
     _EPVCSLOT_FIELDS, _EPVCSLOT_SIZE, _unpack_epvcolorslot, _pack_epvcolorslot,
     _SCALAR_SIZE, _XYZ_FMT,
 )
+from .fields_model import Attribute, Int, Float, Enum, Bool, Bitmask, attr_from_legacy
+from .enums import (
+    BITS_APPLICATION_RULE, BITS_LOOPING_MODE,
+    ENUM_BLEND_MODE, ENUM_LOOPING_ORIENTATION,
+    _AXIS_DIRECTION6, _TRANSFORM_ROT_ORDER,
+)
 from ..hashes import *  # noqa: F401,F403  —— 各 custom 类型 hash 常量
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -74,31 +80,23 @@ EXTERN_UVSEQUENCE_SCHEMA = _UVSEQUENCE_FIXED_SCHEMA + [
 assert _schema_size(EXTERN_UVSEQUENCE_SCHEMA) == 45, \
     f"EXTERN_UVSEQUENCE_SCHEMA size mismatch: {_schema_size(EXTERN_UVSEQUENCE_SCHEMA)}"
 
-# UI 侧可编辑字段 schema：跟 _UVSEQUENCE_FIXED_SCHEMA 一致，只是把裸字节 loopingMode
-# 换成三个可分别编辑的具名子字段（unpack/pack_uvsequence 负责跟裸字节互转，
-# 位运算见下方两个函数）。
-_UVSEQUENCE_FIELD_SCHEMA = []
-for _name, _spec in _UVSEQUENCE_FIXED_SCHEMA:
-    if _name == 'loopingMode':
-        _UVSEQUENCE_FIELD_SCHEMA.extend([
-            ('playbackMode', 'B'),
-            ('flipCode',     'B'),
-            ('direction',    'B'),
-        ])
-    else:
-        _UVSEQUENCE_FIELD_SCHEMA.append((_name, _spec))
-del _name, _spec
+# loopingMode 是打包字节位域，用 Bitmask + 4 个 BitEnum 段建模
+# （playbackMode/flipHorizontal/flipVertical/direction），UI 经位掩码弹窗按段渲染下拉。
+# codec 只读/写裸字节（1:1 恒等，byte-perfect 由构造保证）。
+UVSEQUENCE_ATTR = attr_from_legacy(
+    _schema_size(_UVSEQUENCE_FIXED_SCHEMA), _UVSEQUENCE_FIXED_SCHEMA,
+    overrides={
+        'loopingMode': Bitmask('loopingMode', BITS_LOOPING_MODE, backing='B', label_zh="循环模式"),
+        'loopingOrientation': Enum('loopingOrientation', ENUM_LOOPING_ORIENTATION,
+                                   backing='B', label_zh="贴图朝向"),
+    },
+)
 
 
 def unpack_uvsequence(data: bytes, off: int = 0):
-    """Unpack UVSequence data_bytes (variable-length). Returns (dict, new_off)."""
+    """Unpack UVSequence data_bytes (variable-length). Returns (dict, new_off)。
+    loopingMode 保持裸字节（位分解移到 UI 弹窗）。"""
     values, off = unpack(_UVSEQUENCE_FIXED_SCHEMA, data, off)
-    # loopingMode（裸字节）拆成 playbackMode(bit0-1)/flipCode(bit2-5)/direction(bit6-7)。
-    lm = values.pop('loopingMode')
-    values['playbackMode'] = lm & 0x03
-    values['flipCode']     = (lm >> 2) & 0x0F
-    values['direction']    = (lm >> 6) & 0x03
-    # path_len field (int) + path bytes
     (path_len,) = struct.unpack_from('<i', data, off)
     off += 4
     values['path_len'] = path_len
@@ -108,14 +106,7 @@ def unpack_uvsequence(data: bytes, off: int = 0):
 
 
 def pack_uvsequence(values: dict) -> bytes:
-    """Pack UVSequence values dict back to bytes."""
-    values = dict(values)
-    # playbackMode/flipCode/direction → loopingMode（裸字节），跟 unpack_uvsequence 对称。
-    values['loopingMode'] = (
-        (values['direction'] & 0x03) << 6
-        | (values['flipCode'] & 0x0F) << 2
-        | (values['playbackMode'] & 0x03)
-    )
+    """Pack UVSequence values dict back to bytes。"""
     out = pack(_UVSEQUENCE_FIXED_SCHEMA, values)
     path = values['path']
     out += struct.pack('<i', len(path))
@@ -192,58 +183,16 @@ assert _schema_size(EXTERN_BILLBOARD3D_SCHEMA) == 133, \
     f"EXTERN_BILLBOARD3D_SCHEMA size mismatch: {_schema_size(EXTERN_BILLBOARD3D_SCHEMA)}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# applicationRule 位域拆解（BILLBOARD3D / PLANE 共用同一 int32 布局）
-# 参照 UVSEQUENCE loopingMode 的拆法：存储仍是单个 int32（byte 布局不变），
-# UI 侧暴露三个可分别裸填的子字段，unpack/pack 负责与裸值位运算互转。
-# 位布局（official 全语料 10084 文件 62787 处 + 用户实机确认，2026-07-25）：
-#   flowmap 组   = v & 0x0C   取值 {0,4,8,12}：0x04=启用 flowmap，0x08=播一次冻结修饰
-#   独立子字段   = v & 0x30   取值 {0,16,32}：3 态互斥选择器（默认/C/D，语义未定）
-#   保留位       = v & ~0x3C  取值 {0}：低两位(0x01/0x02，实测 don't-care)+bit6 以上，官方恒 0
-# 三掩码不相交且覆盖全 32 位，故 split→recombine 对任意值无损（byte-perfect）。
-_APPRULE_FLOWMAP_MASK  = 0x0C
-_APPRULE_MODE_MASK     = 0x30
-_APPRULE_RESERVED_MASK = ~(_APPRULE_FLOWMAP_MASK | _APPRULE_MODE_MASK)  # 清掉 bit2-5，其余保留
-
-
-def _split_application_rule(values: dict) -> None:
-    """把 values['applicationRule'] 原地拆成三个子字段键。"""
-    v = values.pop('applicationRule')
-    values['applicationRuleFlowmap']  = v & _APPRULE_FLOWMAP_MASK
-    values['applicationRuleMode']     = v & _APPRULE_MODE_MASK
-    values['applicationRuleReserved'] = v & _APPRULE_RESERVED_MASK
-
-
-def _merge_application_rule(values: dict) -> dict:
-    """三个子字段键合回 applicationRule（返回浅拷贝，不改入参）；各段按自己的掩码收敛。"""
-    values = dict(values)
-    values['applicationRule'] = (
-        (values.pop('applicationRuleFlowmap')  & _APPRULE_FLOWMAP_MASK)
-        | (values.pop('applicationRuleMode')     & _APPRULE_MODE_MASK)
-        | (values.pop('applicationRuleReserved') & _APPRULE_RESERVED_MASK)
-    )
-    return values
-
-
-def _split_apprule_schema(schema):
-    """UI schema 用：把 ('applicationRule','i') 换成三个子字段条目。"""
-    out = []
-    for name, spec in schema:
-        if name == 'applicationRule':
-            out.extend([
-                ('applicationRuleFlowmap',  'i'),
-                ('applicationRuleMode',     'i'),
-                ('applicationRuleReserved', 'i'),
-            ])
-        else:
-            out.append((name, spec))
-    return out
+# applicationRule（BILLBOARD3D / PLANE 共用 int32 位域）现由 typed Bitmask + BitEnum 段建模
+# （见 enums.BITS_APPLICATION_RULE），UI 经位掩码弹窗按段渲染；codec 只读/写裸 int（1:1 恒等）。
+# 原先的手写拆分/合并（_split_application_rule / _merge_application_rule / _split_apprule_schema）
+# 已随之退休——声明式段模型取代之。
 
 
 def unpack_billboard3d(data: bytes, off: int = 0):
-    """Unpack Billboard3D data_bytes (variable-length). Returns (dict, new_off)."""
+    """Unpack Billboard3D data_bytes (variable-length). Returns (dict, new_off)。
+    applicationRule 保持裸 int（位分解移到 UI 弹窗）。"""
     values, off = unpack(_BILLBOARD3D_FIXED_SCHEMA, data, off)
-    _split_application_rule(values)
     (path_len,) = struct.unpack_from('<i', data, off)
     off += 4
     values['path_len'] = path_len
@@ -255,14 +204,29 @@ def unpack_billboard3d(data: bytes, off: int = 0):
 
 
 def pack_billboard3d(values: dict) -> bytes:
-    """Pack Billboard3D values dict back to bytes."""
-    values = _merge_application_rule(values)
+    """Pack Billboard3D values dict back to bytes。"""
     out = pack(_BILLBOARD3D_FIXED_SCHEMA, values)
     path = values['path']
     out += struct.pack('<i', len(path))
     out += pack(_BILLBOARD3D_EXTRAS_SCHEMA, values)
     out += path
     return out
+
+
+# BILLBOARD3D 固定段+extras（去 path/path_len）；applicationRule 用 Bitmask +
+# BitDef×2（flowmap 混合位）+ BitEnum（mode 互斥）建模。UI 编辑段 == 此 schema。
+_BILLBOARD3D_EDIT_SCHEMA = [
+    e for e in (_BILLBOARD3D_FIXED_SCHEMA + _BILLBOARD3D_EXTRAS_SCHEMA)
+    if e[0] not in ('path', 'path_len')
+]
+BILLBOARD3D_ATTR = attr_from_legacy(
+    _schema_size(_BILLBOARD3D_EDIT_SCHEMA), _BILLBOARD3D_EDIT_SCHEMA,
+    overrides={
+        'applicationRule': Bitmask('applicationRule', BITS_APPLICATION_RULE, label_zh="应用规则"),
+        'useColorRange':   Bool('useColorRange', label_zh="启用颜色范围"),
+        'blendMode':       Enum('blendMode', ENUM_BLEND_MODE, label_zh="混合模式"),
+    },
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -325,6 +289,16 @@ _BILLBOARD2D_FIXED_SCHEMA = [
 ]
 assert _schema_size(_BILLBOARD2D_FIXED_SCHEMA) == 116, \
     f"_BILLBOARD2D_FIXED_SCHEMA size mismatch: {_schema_size(_BILLBOARD2D_FIXED_SCHEMA)}"
+# 编辑段（去 path_len，同 CUSTOM_FIELD_SCHEMA_MAP[BILLBOARD2D]）；useColorRange/blendMode 同
+# BILLBOARD3D/PLANE 语义（bool / 混合模式枚举）。
+_BILLBOARD2D_EDIT_SCHEMA = [e for e in _BILLBOARD2D_FIXED_SCHEMA if e[0] != 'path_len']
+BILLBOARD2D_ATTR = attr_from_legacy(
+    _schema_size(_BILLBOARD2D_EDIT_SCHEMA), _BILLBOARD2D_EDIT_SCHEMA,
+    overrides={
+        'useColorRange': Bool('useColorRange', label_zh="启用颜色范围"),
+        'blendMode':     Enum('blendMode', ENUM_BLEND_MODE, label_zh="混合模式"),
+    },
+)
 
 
 def unpack_billboard2d(data: bytes, off: int = 0):
@@ -438,6 +412,20 @@ _MOD3_PROPERTIES_SCHEMA = [
 ]
 assert _schema_size(_MOD3_PROPERTIES_SCHEMA) == 174, \
     f"_MOD3_PROPERTIES_SCHEMA size mismatch: {_schema_size(_MOD3_PROPERTIES_SCHEMA)}"
+# MESH 固定段 = Mod3Properties(174B) + BeginMod3(1B)（同 CUSTOM_FIELD_SCHEMA_MAP[MESH]）；
+# path1/path2 由 codec 的 \0 扫描处理，不入 registry。
+# rotationOrder 6 值枚举（同 EMITTERSHAPE3D）；8 个 colorize 标志位为 bool。
+_MESH_BOOL_FIELDS = (
+    'enableIntensity1', 'useColorRange', 'enableIntensity2', 'useEmissiveColor',
+    'useEmissiveColorRange', 'enableEmissiveIntensity', 'disableAllColorRange', 'unknFlag_cm2_3',
+)
+_mesh_ovr = {n: Bool(n, backing='B') for n in _MESH_BOOL_FIELDS}
+_mesh_ovr['rotationOrder'] = Enum('rotationOrder', _TRANSFORM_ROT_ORDER, label_zh="旋转顺序")
+MESH_ATTR = attr_from_legacy(
+    _schema_size(_MOD3_PROPERTIES_SCHEMA) + 1,
+    _MOD3_PROPERTIES_SCHEMA + [('BeginMod3', 'B')],
+    overrides=_mesh_ovr,
+)
 
 
 def unpack_mesh(data: bytes, off: int = 0):
@@ -603,6 +591,14 @@ _RIBBON_FIXED_SCHEMA = [
 ]
 assert _schema_size(_RIBBON_FIXED_SCHEMA) == 360, \
     f"_RIBBON_FIXED_SCHEMA size mismatch: {_schema_size(_RIBBON_FIXED_SCHEMA)}"
+RIBBON_ATTR = attr_from_legacy(
+    _schema_size(_RIBBON_FIXED_SCHEMA), _RIBBON_FIXED_SCHEMA,
+    overrides={
+        # 反弹方向：全语料 {0..5}，同 VELOCITY3D/RIBBONBLADE 共享的 6 向枚举。
+        'restitution_direction': Enum('restitution_direction', _AXIS_DIRECTION6, label_zh="反弹方向"),
+        'tailTiedToBone':        Bool('tailTiedToBone', backing='B', label_zh="尾端绑定骨骼"),
+    },
+)
 
 
 def unpack_ribbon(data: bytes, off: int = 0):
@@ -685,9 +681,9 @@ _PLANE_EXTRAS_SCHEMA = [
 
 
 def unpack_plane(data: bytes, off: int = 0):
-    """Unpack Plane data_bytes (variable-length). Returns (dict, new_off)."""
+    """Unpack Plane data_bytes (variable-length). Returns (dict, new_off)。
+    applicationRule 保持裸 int（位分解移到 UI 弹窗）。"""
     values, off = unpack(_PLANE_DDS_SCHEMA, data, off)
-    _split_application_rule(values)
     (path_len,) = struct.unpack_from('<i', data, off)
     off += 4
     values['path_len'] = path_len
@@ -699,14 +695,28 @@ def unpack_plane(data: bytes, off: int = 0):
 
 
 def pack_plane(values: dict) -> bytes:
-    """Pack Plane values dict back to bytes."""
-    values = _merge_application_rule(values)
+    """Pack Plane values dict back to bytes。"""
     out = pack(_PLANE_DDS_SCHEMA, values)
     path = values['path']
     out += struct.pack('<i', len(path))
     out += pack(_PLANE_EXTRAS_SCHEMA, values)
     out += path
     return out
+
+
+# PLANE 同 BILLBOARD3D，applicationRule 共用 BITS_APPLICATION_RULE。
+_PLANE_EDIT_SCHEMA = [
+    e for e in (_PLANE_DDS_SCHEMA + _PLANE_EXTRAS_SCHEMA)
+    if e[0] not in ('path', 'path_len')
+]
+PLANE_ATTR = attr_from_legacy(
+    _schema_size(_PLANE_EDIT_SCHEMA), _PLANE_EDIT_SCHEMA,
+    overrides={
+        'applicationRule': Bitmask('applicationRule', BITS_APPLICATION_RULE, label_zh="应用规则"),
+        'useColorRange':   Bool('useColorRange', label_zh="启用颜色范围"),
+        'blendMode':       Enum('blendMode', ENUM_BLEND_MODE, label_zh="混合模式"),
+    },
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -765,6 +775,12 @@ _RIBBONBLADE_FIXED_SCHEMA = [
 ]
 assert _schema_size(_RIBBONBLADE_FIXED_SCHEMA) == 194, \
     f"_RIBBONBLADE_FIXED_SCHEMA size mismatch: {_schema_size(_RIBBONBLADE_FIXED_SCHEMA)}"
+# widthDirection：全语料 {1,2,4,5} ⊂ 0-5，同 6 向枚举。length（拖尾长度）语料 {2..35} 为
+# 连续幅值、非离散选择器，保持 int。
+RIBBONBLADE_ATTR = attr_from_legacy(
+    _schema_size(_RIBBONBLADE_FIXED_SCHEMA), _RIBBONBLADE_FIXED_SCHEMA,
+    overrides={'widthDirection': Enum('widthDirection', _AXIS_DIRECTION6, label_zh="宽度延伸方向")},
+)
 
 
 def unpack_ribbonblade(data: bytes, off: int = 0):
@@ -888,6 +904,7 @@ _STRAINRIBBON_FIXED_SCHEMA = [
 ]
 assert _schema_size(_STRAINRIBBON_FIXED_SCHEMA) == 340, \
     f"_STRAINRIBBON_FIXED_SCHEMA size mismatch: {_schema_size(_STRAINRIBBON_FIXED_SCHEMA)}"
+STRAINRIBBON_ATTR = attr_from_legacy(_schema_size(_STRAINRIBBON_FIXED_SCHEMA), _STRAINRIBBON_FIXED_SCHEMA)
 
 
 def unpack_strainribbon(data: bytes, off: int = 0):
@@ -963,6 +980,12 @@ def pack_turbulence(values: dict) -> bytes:
     return out
 
 
+# TURBULENCE 固定字段（typeFlag + path 之后的固定段，同 CUSTOM_FIELD_SCHEMA_MAP[TURBULENCE]）；
+# path 由 codec 单独处理。unknEnum*/unknFlag* 值集未确认，暂按 int。
+_TURBULENCE_EDIT_SCHEMA = [('typeFlag', 'i')] + _TURBULENCE_AFTER_PATH_SCHEMA
+TURBULENCE_ATTR = attr_from_legacy(_schema_size(_TURBULENCE_EDIT_SCHEMA), _TURBULENCE_EDIT_SCHEMA)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Lightning (variable: fixed 550 B in data_bytes + path_len(4) + path)
 #
@@ -994,7 +1017,7 @@ _LIGHTNING_FIXED_SCHEMA = [
     ('color2',              ('XYZ', 2)),
     ('unkn03',              'i'),
     ('emissive',            ('XYZ', 2)),
-    ('unknEnum04',              'i'),
+    ('unkn04',              'f'),   # 原 unknEnum04：实为 float（全语料位模式=0.0/0.4/1.0…100.0 干净浮点）
     # group05 block: spacer05_00+unkn05_01+sineFreq/j+alphaThreshold+05_05-07+  
     #   outExp/j+05_10+05_11-13+spacer05_14+targetBone+05_16+05_17+EPV1/2+05_20-24  
     # = 4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 25*4=100B
@@ -1115,6 +1138,7 @@ _LIGHTNING_FIXED_SCHEMA = [
 ]
 assert _schema_size(_LIGHTNING_FIXED_SCHEMA) == 546, \
     f"_LIGHTNING_FIXED_SCHEMA size mismatch: {_schema_size(_LIGHTNING_FIXED_SCHEMA)}"
+LIGHTNING_ATTR = attr_from_legacy(_schema_size(_LIGHTNING_FIXED_SCHEMA), _LIGHTNING_FIXED_SCHEMA)
 
 
 def unpack_lightning(data: bytes, off: int = 0):
@@ -1191,6 +1215,7 @@ _RGBWATER_FIXED_SCHEMA = [
 ]  # = 4+8+28+12+104 = 156 B
 assert _schema_size(_RGBWATER_FIXED_SCHEMA) == 156, \
     f"_RGBWATER_FIXED_SCHEMA size mismatch: {_schema_size(_RGBWATER_FIXED_SCHEMA)}"
+RGBWATER_ATTR = attr_from_legacy(_schema_size(_RGBWATER_FIXED_SCHEMA), _RGBWATER_FIXED_SCHEMA)
 
 # EXTERNRGBWATER（Extern 覆盖版，2026-07）：与主属性 _RGBWATER_FIXED_SCHEMA (156B)
 # 完全同构，无 path；语料实测（48/48 元素）额外多出固定 5B 尾巴 int32(恒为1)+
@@ -1468,6 +1493,7 @@ _TONEMAPFILTER_FIXED_SCHEMA = [
     ('unknFixed2_1', 'f'),
     ('unknFixed2_2', 'f'),   # 12B
 ]  # 24B
+TONEMAPFILTER_ATTR = attr_from_legacy(_schema_size(_TONEMAPFILTER_FIXED_SCHEMA), _TONEMAPFILTER_FIXED_SCHEMA)
 
 
 def unpack_tonemapfilter(data: bytes, off: int = 0):
@@ -1488,41 +1514,42 @@ def pack_tonemapfilter(values: dict) -> bytes:
     return out
 
 
-_TUBELIGHT_FIXED_SCHEMA = [
-    ('typeFlag', 'i'),   # 原 unkn0_0，语料恒为 0（样本少，仅 22 例）  
-    ('unknFixed0_1', 'i'),
-    ('unknEnum0_2', 'i'),   # 12B  off0-11，含义不明
-    ('unkn1_0',  'f'),   # off12 — 可能为纹理滚动速度
-    ('unknFixed1_1',  'f'),   # off16 — 含义不明（22 实例恒 0.0）
-    ('lightIntensity', 'f'),       # off20 光照强度
-    ('lightIntensityJitter', 'f'), # off24 光照强度抖动
-    ('columnLengthModifier', 'f'), # off28 也与光柱长度相关，具体跟 columnLength 的关系待定
-    ('columnRadius', 'f'),         # off32 光柱半径
-    ('columnRadiusJitter', 'f'),   # off36 光柱半径抖动
-    ('columnEdgeSoftness', 'f'),   # off40 与光柱边缘柔化相关
-    ('unkn1_8',  'f'),   # off44 — 可能为核心亮度
-    ('unknFixed1_9',  'f'),   # off48 — 含义不明（22 实例恒 0.0）
-    ('unkn1_10', 'f'),   # off52 — 可能与光柱长度有关，跟 columnLength/columnLengthModifier 的关系待定
-    ('unkn2_0', 'f'),
-    ('unkn2_1', 'f'),   # 8B   off56-63，含义不明
-    ('unknFixed3_0', 'i'),          # off64 含义不明
-    ('unknFixed3_1', 'i'),          # off68 含义不明
-    ('unkn3_2', 'i'),          # off72 含义不明
-    ('headColorEpvSlot', 'i'), # off76 headColor 对应的 EPV 颜色槽
-    ('headColor', 'i'),        # 4B  off80  光柱起点颜色（打包 RGBA int）
-    ('columnLength', 'f'),     # off84 光柱长度（起点 headColor，终点 tailColor）
-    ('tailGlowSpread', 'f'),   # off88 尾光变长 + 边缘虚化（一个参数两种视觉效果）
-    ('backFaceTintMode', 'f'), # off92 发射面反向区域是否受 headColor 染色
-                               #        （与 frontFaceTintMode 镜像机制，反过来）
-    ('unknFixed5_0',  'i'),         # off96  — 含义不明（22 实例恒 24，非锁定占位，仅提示"通常为 24"）  
-    ('unkn5_1',  'i'),         # off100 — 恒 0xCDCDCDCD 未初始化标记，UI 锁定只读  
-    ('unknFixed6a_0', 'i'),         # off104 — 含义不明（22 实例恒 0）
-    ('tailColor', 'i'),        # off108 光柱终点颜色（打包 RGBA int）
-    ('tailPlaneOffset', 'f'),  # off112 tailColor 发光平面的前后位置
-    ('unkn6b_1', 'f'),         # off116 — 可能跟发光明暗光圈相关，未确认
-    ('frontFaceTintMode', 'f'),# off120 发射面朝向方向是否受 tailColor 染色
-                               #        （0=不受影响；1=受影响，且此时发光区域四周会变亮）
-]
+# TUBELIGHT 固定段的 typed Attribute（字段进 FIELD_REGISTRY → label/控件/过滤）。
+# .schema 降级与原裸 tuple 逐字节等价（Int→'i'/Float→'f'），codec 与 on-disk 尺寸不变。
+TUBELIGHT_ATTR = Attribute(size=124, fields=[
+    Int("typeFlag"),                                   # off0  原 unkn0_0
+    Int("unknFixed0_1"),                               # off4
+    Int("unknEnum0_2"),                                # off8  含义不明
+    Float("unkn1_0"),                                  # off12 可能为纹理滚动速度
+    Float("unknFixed1_1"),                             # off16 含义不明
+    Float("lightIntensity", label_zh="光照强度"),      # off20
+    Float("lightIntensityJitter", label_zh="光照强度抖动"),  # off24
+    Float("columnLengthModifier", label_zh="光柱长度修正"),  # off28
+    Float("columnRadius", label_zh="光柱半径"),        # off32
+    Float("columnRadiusJitter", label_zh="光柱半径抖动"),    # off36
+    Float("columnEdgeSoftness", label_zh="光柱边缘柔化"),    # off40
+    Float("unkn1_8"),                                  # off44 可能为核心亮度
+    Float("unknFixed1_9"),                             # off48 含义不明
+    Float("unkn1_10"),                                 # off52 可能与光柱长度有关
+    Float("unkn2_0"),                                  # off56
+    Float("unkn2_1"),                                  # off60 含义不明
+    Int("unknFixed3_0"),                               # off64
+    Int("unknFixed3_1"),                               # off68
+    Int("unkn3_2"),                                    # off72
+    Int("headColorEpvSlot", label_zh="起点颜色 EPV 颜色槽"),  # off76
+    Int("headColor", label_zh="光柱起点颜色"),          # off80 打包 RGBA int
+    Float("columnLength", label_zh="光柱长度"),         # off84 起点 headColor→终点 tailColor
+    Float("tailGlowSpread", label_zh="尾光扩散(变长+边缘虚化)"),  # off88 一参两效
+    Float("backFaceTintMode", label_zh="反向区域受起点色染色"),   # off92 与 front 镜像
+    Int("unknFixed5_0"),                               # off96  通常为 24
+    Int("unkn5_1"),                                    # off100 恒 0xCDCDCDCD 未初始化标记
+    Int("unknFixed6a_0"),                              # off104
+    Int("tailColor", label_zh="光柱终点颜色"),          # off108 打包 RGBA int
+    Float("tailPlaneOffset", label_zh="终点发光面前后位置"),  # off112
+    Float("unkn6b_1"),                                 # off116 可能与发光光圈相关
+    Float("frontFaceTintMode", label_zh="朝向区域受终点色染色"),  # off120 0=不受影响 1=受影响
+])
+_TUBELIGHT_FIXED_SCHEMA = TUBELIGHT_ATTR.schema
 assert _schema_size(_TUBELIGHT_FIXED_SCHEMA) == 124, \
     f"_TUBELIGHT_FIXED_SCHEMA size mismatch: {_schema_size(_TUBELIGHT_FIXED_SCHEMA)}"
 
@@ -1573,6 +1600,7 @@ _EMITTERSHAPEMESH_FIXED_SCHEMA = [
 ]
 assert _schema_size(_EMITTERSHAPEMESH_FIXED_SCHEMA) == 32, \
     f"_EMITTERSHAPEMESH_FIXED_SCHEMA size mismatch: {_schema_size(_EMITTERSHAPEMESH_FIXED_SCHEMA)}"
+EMITTERSHAPEMESH_ATTR = attr_from_legacy(_schema_size(_EMITTERSHAPEMESH_FIXED_SCHEMA), _EMITTERSHAPEMESH_FIXED_SCHEMA)
 
 
 def unpack_emittershapemesh(data: bytes, off: int = 0):
@@ -1656,6 +1684,8 @@ _LAYOUT_PREFIX_SCHEMA = [
 ]
 assert _schema_size(_LAYOUT_PREFIX_SCHEMA) == 24, \
     f"_LAYOUT_PREFIX_SCHEMA size mismatch: {_schema_size(_LAYOUT_PREFIX_SCHEMA)}"
+# LAYOUT 恒在的 24B 固定前缀（可编辑）；嵌套 LayoutBank_Block + 条件尾巴仍 opaque。
+LAYOUT_ATTR = attr_from_legacy(_schema_size(_LAYOUT_PREFIX_SCHEMA), _LAYOUT_PREFIX_SCHEMA)
 
 def unpack_layout(data: bytes, off: int = 0):
     """Unpack Layout（24B fixed + LayoutBank_Block(opaque)，恒无尾巴）。"""
@@ -2212,7 +2242,8 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
 
 CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     RIBBON:      _RIBBON_FIXED_SCHEMA,
-    UVSEQUENCE:  _UVSEQUENCE_FIELD_SCHEMA,
+    # loopingMode 现为单字节 Bitmask（4 个 BitEnum 段），UI 经弹窗渲染；不再拆成 3 个子字节。
+    UVSEQUENCE:  _UVSEQUENCE_FIXED_SCHEMA,
     # MESH：174B Mod3Properties + 1B BeginMod3（unpack_mesh 单独读 BeginMod3，
     # 故拼上 ('BeginMod3','B') 使其也可编辑）；path1/path2 由 codec 处理，不在 schema。
     MESH:        _MOD3_PROPERTIES_SCHEMA + [('BeginMod3', 'B')],
@@ -2221,12 +2252,10 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     LIGHTNING:   _LIGHTNING_FIXED_SCHEMA,
     RGBWATER:    _RGBWATER_FIXED_SCHEMA,
     TURBULENCE:  [('typeFlag', 'i')] + _TURBULENCE_AFTER_PATH_SCHEMA,
-    BILLBOARD3D: _split_apprule_schema(
-                  [e for e in (_BILLBOARD3D_FIXED_SCHEMA + _BILLBOARD3D_EXTRAS_SCHEMA)
-                   if e[0] not in ('path', 'path_len')]),
-    PLANE:       _split_apprule_schema(
-                  [e for e in (_PLANE_DDS_SCHEMA + _PLANE_EXTRAS_SCHEMA)
-                   if e[0] not in ('path', 'path_len')]),
+    # applicationRule 现为 int Bitmask（BitDef×2 混合位 + BitEnum 互斥组），UI 经弹窗渲染；
+    # 不再拆成 3 个子 int 字段。编辑段 == 各自的 _*_EDIT_SCHEMA（与 ATTR/codec 同字段序）。
+    BILLBOARD3D: _BILLBOARD3D_EDIT_SCHEMA,
+    PLANE:       _PLANE_EDIT_SCHEMA,
     TUBELIGHT:        _TUBELIGHT_FIXED_SCHEMA,
     EMITTERSHAPEMESH: _EMITTERSHAPEMESH_FIXED_SCHEMA,
     BILLBOARD2D:      [e for e in _BILLBOARD2D_FIXED_SCHEMA if e[0] != 'path_len'],

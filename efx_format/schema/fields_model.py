@@ -251,3 +251,45 @@ def register(attr):
     for f in attr.fields:
         FIELD_REGISTRY[(attr.hash, f.name)] = f
     return attr
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# legacy tuple schema → typed Attribute 的机械降级
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SPEC_TO_FIELD = {
+    'i': Int, 'I': UInt, 'h': Short, 'H': UShort,
+    'B': Byte, 'b': SByte, 'f': Float, 'q': Int64, 'Q': UInt64,
+}
+
+
+def attr_from_legacy(size, schema, *, labels=None, overrides=None, hash=None):
+    """把 legacy `(name, spec)` tuple schema **机械**降级成 typed Attribute：
+    标量单字符 spec 映射到对应 Field 子类，其余（('XYZ',n) / 'EPVColorSlot' / ('f',N)
+    / 嵌套数组…）包 Raw，spec 一律原样保留 → `.schema` 与输入逐字节等价。
+
+    用途：尚未逐字段手写语义的 custom 变长块——只需把固定段字段注册进 FIELD_REGISTRY
+    即可解锁标签/控件/过滤，无需一次性把上百个 unkn 字段手写成显式 Field。已确认语义的
+    字段可后续逐一改成显式 Enum/Bool 等（tuple 仍是该块 on-disk 权威，ATTR 是派生视图）。
+    labels: 可选 {name: 中文标签}。
+    overrides: 可选 {name: Field}，对指定字段用显式 Field 取代自动降级（如 Enum/Bitmask）。
+      override Field 的 spec 必须与 tuple spec 一致，否则报错——保证字节等价不被破坏。"""
+    labels = labels or {}
+    overrides = overrides or {}
+    fields = []
+    for name, spec in schema:
+        ov = overrides.get(name)
+        if ov is not None:
+            if ov.spec != spec:
+                raise ValueError(
+                    "attr_from_legacy: override %r spec %r != schema spec %r"
+                    % (name, ov.spec, spec))
+            fields.append(ov)
+            continue
+        lz = labels.get(name)
+        cls = _SPEC_TO_FIELD.get(spec) if isinstance(spec, str) else None
+        if cls is not None:
+            fields.append(cls(name, label_zh=lz))
+        else:
+            fields.append(Raw(name, spec, label_zh=lz))
+    return Attribute(size=size, fields=fields, hash=hash)

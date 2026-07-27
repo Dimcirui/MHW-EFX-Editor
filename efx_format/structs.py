@@ -145,6 +145,30 @@ from .hashes import (
 VELOCITY3D_ATTR.hash = VELOCITY3D
 register(VELOCITY3D_ATTR)
 
+# custom-codec 变长块的固定段也注册进 FIELD_REGISTRY，解锁 label/控件/过滤（块本身仍走
+# ATTR_CUSTOM_CODEC，在 ATTR_SCHEMA_MAP 里保持 '_custom' 哨兵；这里只登记固定字段的 typed
+# 元数据）。TUBELIGHT 手写显式 Field，其余经 attr_from_legacy 降级；applicationRule/
+# loopingMode 用 Bitmask+BitEnum 段建模。MATERIAL/PTBEHAVIOR 有专属编辑器，不并入。
+for _catt, _chash in (
+    (TUBELIGHT_ATTR,        TUBELIGHT),
+    (RGBWATER_ATTR,         RGBWATER),
+    (STRAINRIBBON_ATTR,     STRAINRIBBON),
+    (TONEMAPFILTER_ATTR,    TONEMAPFILTER),
+    (LIGHTNING_ATTR,        LIGHTNING),
+    (RIBBONBLADE_ATTR,      RIBBONBLADE),
+    (MESH_ATTR,             MESH),
+    (RIBBON_ATTR,           RIBBON),
+    (EMITTERSHAPEMESH_ATTR, EMITTERSHAPEMESH),
+    (BILLBOARD3D_ATTR,      BILLBOARD3D),
+    (PLANE_ATTR,            PLANE),
+    (UVSEQUENCE_ATTR,       UVSEQUENCE),
+    (BILLBOARD2D_ATTR,      BILLBOARD2D),
+    (TURBULENCE_ATTR,       TURBULENCE),
+    (LAYOUT_ATTR,           LAYOUT),
+):
+    _catt.hash = _chash
+    register(_catt)
+
 ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     # ── Previously schema-ised (15 types) ─────────────────────────────────────
     TRANSFORM3D:    (TRANSFORM3D_SCHEMA,    228),
