@@ -72,13 +72,7 @@ Fully Supported
 
 Universal attribute operations: **Add** (from preset) / **Delete** / **Reorder** / **Copy & Paste** / **Save as preset**.
 
-Attribute categories were reworked in 0.4.6, based on actual usage patterns and
-relationships between attributes across the sample corpus (position statistics +
-co-occurrence data) rather than a rough guess — a few attributes that were
-previously miscategorized (e.g. FAKEPLANE listed as an exclusive-choice renderer,
-when it actually stacks on top of a real one 99.8% of the time) now sit where
-they make sense. 2D variants (TRANSFORM2D/BILLBOARD2D/EMITTERSHAPE2D/VELOCITY2D)
-are folded directly into their 3D-equivalent section instead of a separate bucket.
+Attribute categories were reworked in 0.4.6, based on UE Niagara System and actual usage patterns.
 
 #### I. Entry Skeleton (required in every EFX Entry)
 
@@ -251,7 +245,7 @@ This plugin was developed based on community documentation and format research, 
 - Crimson — Provided insights into Attribute categorization and inspiration for many attributes.
 - 冰室菖蒲 — Provides guides on the Attributes for numerous Entries, as well as the structure of efx TIML.
 - 003 — Provides detailed guides on the Attributes for Lightning, StrainRibbon, and Homing.
-- Fexty — Provides detailed guides on the Attributes for Blink and FadeByEmitterAngle.
+- Fexty — Provides detailed guides on the Attributes for Blink, Velocity3D/2D and FadeByEmitterAngle.
 
 Bone placement is designed to pair with the
 [MHW Model Editor](https://github.com/chikichikibangbang/MHW_Model_Editor).
