@@ -48,6 +48,7 @@ from . import add_ops       # L2 #3c：从整 body 预设新增 body + Active EF
 from . import add_section_ops  # 从无到有新建 Play / Extern / Subselect 段条目
 from . import attribute_ops     # 块级组装：单块复制/粘贴/预设保存/新增
 from . import part_mask_ops # PLEMISSIVE body_p/wp_p 位掩码勾选编辑器
+from . import bitmask_ops    # 通用位掩码弹窗编辑器（typed Field bitmask 字段）
 from . import color_ops      # Color Editor 全局改色工具（色系偏移 / 直接替换）
 from . import validate      # L2 #4：导出前校验
 from . import session_core  # 会话/预览类公共基础设施：标记式孤儿清理 + 生命周期缓存复位
@@ -170,6 +171,7 @@ def register():
 
     # ── PLEMISSIVE 位掩码勾选编辑器（算子，须在 panels.register() 前）─────────────
     part_mask_ops.register()
+    bitmask_ops.register()
 
     # ── Color Editor 全局改色工具（算子 + 顶层面板 + Scene.efx_recolor_target）────
     color_ops.register()
@@ -243,6 +245,7 @@ def unregister():
     color_ops.unregister()
 
     # ── 块级组装算子 ──────────────────────────────────────────────────────────
+    bitmask_ops.unregister()
     part_mask_ops.unregister()
     attribute_ops.unregister()
 

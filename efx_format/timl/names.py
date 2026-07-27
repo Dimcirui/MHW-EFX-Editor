@@ -8,16 +8,16 @@ TIML 通道名由两段 hash 组成：
         jamcrc("nEffect::nTimelineParam::<DTI短名>") & 0x7FFFFFFF
     未知 hash（15 条，语料出现但 DTI dump 缺项）保留十六进制，部分有共现推断注释。
   - datatypeHash：动画的**哪个属性**（pos:X / rot:Z / 颜色…）。wiki 未列；transform 九条来自
-    社区逆向 hash（jamcrc）。未知 hash 回退十六进制。
+    hash（jamcrc）。未知 hash 回退十六进制。
 
 供 timl 通道编辑/预览的友好命名与（后续）transform3d → 真实属性映射使用。
 """
 
 # ── timelineParameterHash → 名称 ──────────────────────────────────────────────
 # hash 公式：jamcrc("nEffect::nTimelineParam::<DTI短名>") & 0x7FFFFFFF
-# 已验证（DTI dump 28 条全覆盖）：
+# 已验证：
 TLP_NAMES = {
-    # ── 已确认（wiki + DTI dump 双重验证，语料实测出现）──
+    # ── 已确认 ──
     0x65004e2a: "MhEffectDecalBehavior",
     0x6da6e5d1: "MhPointLightBehavior",
     0x75963575: "MhSpotLightBehavior",
@@ -43,7 +43,7 @@ TLP_NAMES = {
     0x42e48dde: "PointLightBehavior",
     0x582ba062: "RadialBlurFilterBehavior",
     0x2ed89bcc: "ParentMaterial",
-    # ── 已确认（DTI dump 验证，语料未见）──
+    # ── 已确认（但实际未见）──
     0x4cdb308a: "Item",
     0x3f2b8294: "EffectEvent",
     0x06e8d4c3: "DecalBehavior",
@@ -52,7 +52,7 @@ TLP_NAMES = {
     0x2c154dca: "FilterBehavior",
     0x13a0f54f: "TonemapFilter",
     0x096cabc4: "ColorCorrectFilter",
-    # ── 未知（语料出现，DTI dump 缺项，保留 hex；括号为共现推断，低置信度）──
+    # ── 未知（语料出现，但不清楚名称；括号为共现推断，低置信度）──
     0x399db6a9: "0x399DB6A9",        # 384次，无强信号
     0x598272e1: "0x598272E1",        # 278次，PARENTEMISSIVE/PLEMISSIVE 共现(3.5x)
     0x66c62149: "0x66C62149",        # 76次，无强信号
@@ -157,7 +157,7 @@ DT_NAMES = {
     0xAE7CD3C0: "RangeZ",              # cnt=1    Float            TLP:MhEffectDecalBehavior
 }
 
-# transform 九条 hash（社区逆向，jamcrc）。MHW Y-up → Blender Z-up：游戏 Y↔Z 轴**置换**
+# transform 九条 hash（jamcrc）。MHW Y-up → Blender Z-up：游戏 Y↔Z 轴**置换**
 # （game Y→blender Z[index2]、game Z→blender Y[index1]），位置/旋转适用、缩放不置换。
 # 这里直接存**置换后的 blender array_index** + kind（loc/rot/scl，决定单位/符号换算）。
 # 元组：(label, bl_prop, bl_index, kind)
@@ -302,12 +302,11 @@ FIELD_TO_DT = {
 
 # ── BLOCK_NATIVE_AXIS：块类型名(大写) → 该块 TIML 动画在真实语料里锁定的轴 slot ──────
 # 绝大多数块类型的动画几乎只出现在单一轴上（A0=发射轴/系统时间线，A1=寿命轴/每粒子）。
-# 锁定率 >90% 的
-# 视为"母轴"。强烈线索：游戏似乎只在母轴上应用对应块的动画——把轨道加到另一条轴会
-# 静默无效。实测佐证：用户测 TubeLight/Transform3D/RgbFire（均 A0 锁定）加到 A1 全不
-# 生效，而 Billboard3D（两轴都常见，350:1657）加哪条都生效。
+# 强烈线索：游戏似乎只在母轴上应用对应块的动画——把轨道加到另一条轴会静默无效。
+# 实测佐证：TubeLight/Transform3D/RgbFire（均 A0 锁定）加到 A1 全不生效，
+# 而 Billboard3D 加哪条都生效。
 #   0 = A0 母轴 / 1 = A1 母轴 / None = 两轴都常见（不限制，如 Billboard3D）
-# 数值来自统计而非游戏源码，属强推断；用户可实机复核。锁定率：
+# 锁定率（>90% 的视为"母轴"）：
 #   A0: Transform3D 98% / RgbFire 100% / RgbWater 98% / TubeLight 100% /
 #       EmitterShape3D 93% / Transform2D 100% / Velocity2D 100%
 #   A1: Mesh 98% / Ribbon 96% / Plane 91% / StrainRibbon 100% / UVSequence 99% /

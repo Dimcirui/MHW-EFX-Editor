@@ -393,7 +393,7 @@ def classify_entry_activation(entry_obj: bpy.types.Object) -> dict:
       'in_eof'    : bool — 是否在直接触发列表（EOF）
       'in_action' : bool — 是否被任意 Action target 召唤
 
-    注意：这是基于语料逆向的**模型推断**，不是字节铁律——运行时由哪个状态选中哪张
+    注意：这是基于语料的**模型推断**，不是字节铁律——运行时由哪个状态选中哪张
     subselect 表，取决于 EFX 之外的游戏逻辑（动画事件/战斗状态）。UI 文案据此用
     "推测"口吻。
     """

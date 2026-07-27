@@ -14,7 +14,7 @@ from .enums import (
     ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE,
     BITS_ENABLE_VELOCITY, BITS_SPIN_AXIS, BITS_RANDOMFIX_TABLE,
-    _AXIS_DIRECTION6, _ROT_ORDER6, _VELOCITY_TYPE,
+    _AXIS_DIRECTION6, _ROT_ORDER6, _VELOCITY_TYPE, _TRANSFORM_ROT_ORDER,
 )
 from .codec import _schema_size
 
@@ -42,7 +42,7 @@ EXTERN_TRANSFORM3D_ATTR = Attribute(size=228, fields=[
     Raw("translate", ('XYZ', 0), label_zh="平移"),
     Raw("rotate", ('XYZ', 0), label_zh="旋转"),
     Raw("resize", ('XYZ', 0), label_zh="缩放"),
-    Int("rotationOrder", label_zh="旋转顺序"),
+    Enum("rotationOrder", _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
     Raw("translation_velocity", ('XYZ', 0), label_zh="平移速度"),
     Raw("translation_velocity_modifier", ('XYZ', 0), label_zh="平移速度修正"),
     Raw("rotation_velocity", ('XYZ', 0), label_zh="旋转速度"),
@@ -82,8 +82,8 @@ PARENTOPTIONS_ATTR = Attribute(size=60, fields=[
     EnumVec3("translation_tracking", ENUM_TRACKING_POS, label_zh="平移跟踪"),
     EnumVec3("angle_tracking", ENUM_TRACKING_ANGLE, label_zh="角度跟踪"),
     EnumVec3("scale_tracking", ENUM_TRACKING_POS, label_zh="缩放跟踪"),
-    Int("spawnTrack", label_zh="跨生成追踪"),
-    Int("unknFlag1"),
+    Bool("spawnTrack", label_zh="跨生成追踪"),
+    Bool("unknFlag1"),
     # 原 spawnLock/bleedPos：实为一对 fixed+jitter，作用是"跨生成追踪启用后，达到该帧数即
     # 停止追踪"（0=始终追踪），并非各自独立的"锁定位置/渗出位置"。
     Int("lockToPositionFrame", label_zh="停止追踪帧数"),
@@ -180,7 +180,7 @@ LIFE_ATTR = Attribute(size=48, fields=[
     Int("fadeOutDurationJitter", label_zh="淡出时长抖动"),
     Int("timeToDeath", label_zh="死亡时间"),
     Int("timeToDeathJitter", label_zh="死亡时间抖动"),
-    Int("indefiniteLifespan", label_zh="无限寿命"),
+    Bool("indefiniteLifespan", label_zh="无限寿命"),
 ])
 LIFE_SCHEMA = LIFE_ATTR.schema
 assert _schema_size(LIFE_SCHEMA) == 48, \
@@ -215,12 +215,14 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Int("typeFlag"),  # 原 unkn0
     Int("unknEnum1"),  # 不满足 section_length 公式(99.9%恒104,应为108)，未改名
     Int("spacer"),
-    Int("unknFlag2"),
+    Bool("unknFlag2"),
     Float("zDepthModifierStart", label_zh="Z 深度修正（起始）"),
     Float("zDepthModifierEnd", label_zh="Z 深度修正（结束）"),
     Int("unknBitmask3_0"),
-    Enum("unknEnum3_1", ENUM_RENDER_LAYER, label_zh="渲染层 / Billboard 模式"),
-    Enum("controlBitflag", ENUM_SHADER_CONTROL, label_zh="控制位标志"),
+    # 暂不作 enum：RenderLayerMode 标签尚存疑；controlBitflag 官方语料见 5/7/8/9 等组合值
+    # （5=1+4、9=1+8…），实为位掩码而非枚举，待 bitmask 编辑器再定。保持原始整数编辑。
+    Int("unknEnum3_1", label_zh="渲染层 / Billboard 模式"),
+    Int("controlBitflag", label_zh="控制位标志"),
     Float("unkn4_0"),
     Float("unkn4_1"),
     Float("unkn4_2"),
@@ -490,7 +492,7 @@ EXTERN_EMITTERSHAPE3D_ATTR = Attribute(size=88, fields=[
     Float("localRotationX", label_zh="局部旋转 X"),  # 原 trayectoryRotationX
     Float("localRotationY", label_zh="局部旋转 Y"),  # 原 trayectoryRotationY
     Float("localRotationZ", label_zh="局部旋转 Z"),  # 原 trayectoryRotationZ
-    Int("rotationOrder", label_zh="旋转顺序"),
+    Enum("rotationOrder", _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
     Float("scaleHorizontal", label_zh="横向扫描角度"),  # 原 spawnAngleLimits
     Float("scaleVertical", label_zh="纵向扫描角度"),  # 原 unkn3_f1
     Int("rangeDivideHorizontalNum", label_zh="横向等分数量"),  # 原 spawnPerCycle
@@ -498,7 +500,7 @@ EXTERN_EMITTERSHAPE3D_ATTR = Attribute(size=88, fields=[
     Float("radiusEnd", label_zh="结束半径"),
     Float("radiusOrigin", label_zh="起始半径"),
     Int("unknBitmaskRadiusRelated"),
-    Int("unknFlag4"),
+    Bool("unknFlag4"),
 ])
 EXTERN_EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_ATTR.schema
 assert _schema_size(EXTERN_EMITTERSHAPE3D_SCHEMA) == 88, \
@@ -623,7 +625,7 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Float("brightness3", label_zh="亮度3"),
     Float("brightness4", label_zh="亮度4"),
     # ColorParam fireColorParam (10 ints)：fireColor 的淡入/持续/淡出时序
-    Int("fireColorParam_enable", label_zh="火焰色 启用"),
+    Bool("fireColorParam_enable", label_zh="火焰色 启用"),
     Int("fireColorParam_fadeIn", label_zh="火焰色 淡入"),
     Int("fireColorParam_fadeInJitter", label_zh="火焰色 淡入抖动"),
     Int("fireColorParam_duration", label_zh="火焰色 持续时间"),
@@ -634,7 +636,7 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Int("fireColorParam_unkn8"),
     Int("fireColorParam_unkn9"),
     # ColorParam smokeColorParam (10 ints)：smokeColor 的淡入/持续/淡出时序
-    Int("smokeColorParam_enable", label_zh="烟雾色 启用"),
+    Bool("smokeColorParam_enable", label_zh="烟雾色 启用"),
     Int("smokeColorParam_fadeIn", label_zh="烟雾色 淡入"),
     Int("smokeColorParam_fadeInJitter", label_zh="烟雾色 淡入抖动"),
     Int("smokeColorParam_duration", label_zh="烟雾色 持续时间"),
@@ -720,7 +722,7 @@ ALPHACORRECTION_ATTR = Attribute(size=20, fields=[
     Float("lowPass", label_zh="低通阈值"),  # 原 unkn1 / alpha_clip_threshold；硬阈值裁切(类 PS Threshold)：<此值的 alpha 直接归 0，0=不裁
     Float("contrast_gamma", label_zh="对比度/伽马修正"),  # 原 transparentness；对比度/伽马修正，无上限：越大边缘(低/中alpha)越快变透明、核心保留
     Float("unkn3"),  # 原 NULL（int）；BT 模板误标，实为 float，语义未确认  
-    Int("unknFlag2"),
+    Bool("unknFlag2"),
 ])
 ALPHACORRECTION_SCHEMA = ALPHACORRECTION_ATTR.schema
 assert _schema_size(ALPHACORRECTION_SCHEMA) == 20, \
@@ -1029,7 +1031,7 @@ PTCOLLISION_ATTR = Attribute(size=112, fields=[
     Float("unkn37"),
     Int("unknEnum38"),
     Int("unknBitmask4_0"),
-    Int("unknFlag4_1"),
+    Bool("unknFlag4_1"),
     Int("ieIndex", label_zh="碰撞触发 Play"),
     Int("unknEnum6_0"),
     Int("unknEnum6_1"),
@@ -1107,7 +1109,7 @@ EXTERNREFERENCE_ATTR = Attribute(size=36, fields=[
     Float("unkn1_3"),
     Int("unkn1_4"),
     Int("unkn1_5"),
-    Int("unknFlag1_6"),
+    Bool("unknFlag1_6"),
 ])
 EXTERNREFERENCE_SCHEMA = EXTERNREFERENCE_ATTR.schema
 assert _schema_size(EXTERNREFERENCE_SCHEMA) == 36, \
@@ -1434,7 +1436,7 @@ UVCONTROL_ATTR = Attribute(size=236, fields=[
     Raw("uv1_scaleSpeed", ('f', 4), label_zh="UV1 缩放速度"),
     Raw("uv1_scaleAcceleration", ('f', 4), label_zh="UV1 缩放加速度"),
     # uv2 Material_Animation_Data
-    Int("uv2_enable"),  # 原 uv2_unkn0，实测 1860 例仅 0/1 两种取值，干净二元
+    Bool("uv2_enable"),  # 原 uv2_unkn0，实测 1860 例仅 0/1 两种取值，干净二元
     Raw("uv2_initialPosition", ('f', 4), label_zh="UV2 初始位置"),
     Raw("uv2_speed", ('f', 4), label_zh="UV2 速度"),
     Raw("uv2_acceleration", ('f', 4), label_zh="UV2 加速度"),
@@ -1442,7 +1444,7 @@ UVCONTROL_ATTR = Attribute(size=236, fields=[
     Raw("uv2_scaleSpeed", ('f', 4), label_zh="UV2 缩放速度"),
     Raw("uv2_scaleAcceleration", ('f', 4), label_zh="UV2 缩放加速度"),
     # extra fields
-    Int("unknFlag2"),
+    Bool("unknFlag2"),
     Float("extraMaterialInitialPosition", label_zh="附加材质初始位置"),
     Float("extraMaterialInitialPositionJitter", label_zh="附加材质初始位置抖动"),  # 原 extraMaterialInitialPositionJ（后缀不规范，未被通用 Jitter 配对识别）
     Float("extraMaterialSpeed", label_zh="附加材质速度"),
@@ -1489,7 +1491,7 @@ VELOCITY2D_ATTR = Attribute(size=72, fields=[
     Float("velocityY", label_zh="Y 基准点偏置"),  # 原 offsetY/unkn16
     Float("divergenceX", label_zh="X 基准点伸缩"),  # 原 sizeX/energyOnAxisX，2026-07-26 依续作 schema 改名
     Float("divergenceY", label_zh="Y 基准点伸缩"),  # 原 sizeY/energyOnAxisY，9 floats = 36
-    Int("velocityType", label_zh="速度类型"),  # 原 expansionType，同 V3D 改名（枚举语义见 V3D 注释）
+    Enum("velocityType", _VELOCITY_TYPE, label_zh="速度类型"),  # 原 expansionType，同 V3D 改名（枚举语义见 V3D 注释）
     Float("gravity", label_zh="重力"),
     Float("gravityJitter", label_zh="重力抖动"),  # 8
     Int("movementDelay", label_zh="运动延迟"),  # 原 initialVelocityDelay/expansionDelay，2026-07-26 依续作 schema 改名
@@ -1505,7 +1507,7 @@ assert _schema_size(VELOCITY2D_SCHEMA) == 72, \
 # ─────────────────────────────────────────────────────────────────────────────
 # 原 opaque 定长类型 schema（新增）
 # 字段布局来源：EFX_Crimson.bt；字节数由 _known_attr_size 实测往返验证。
-# 字段命名以 unknN 为主，语义待后续逆向补全。
+# 字段命名以 unknN 为主，语义待后续补全。
 # ─────────────────────────────────────────────────────────────────────────────
 
 # PathChain (81B total, 77B data)
@@ -1529,7 +1531,7 @@ PATHCHAIN_ATTR = Attribute(size=77, fields=[
     Float("unkn5_5"),
     Int("unknFixed5_6"),
     Int("unknEnum5_7"),  # 32B
-    SByte("unknFlag6"),  # 1B
+    Bool("unknFlag6", backing='b'),  # 1B
 ])
 PATHCHAIN_SCHEMA = PATHCHAIN_ATTR.schema
 assert _schema_size(PATHCHAIN_SCHEMA) == 77, \
@@ -1714,9 +1716,9 @@ FAKEPLANE_ATTR = Attribute(size=60, fields=[
     Int("typeFlag"),  # 原 unkn0_0
     Int("section_length", label_zh="段长度"),  # 原 unkn0_1，8B
     SByte("unknFixed1_0"),
-    SByte("unknFlag1_1"),
-    SByte("unknFlag1_2"),
-    SByte("unknFlag1_3"),  # 4B
+    Bool("unknFlag1_1", backing='b'),
+    Bool("unknFlag1_2", backing='b'),
+    Bool("unknFlag1_3", backing='b'),  # 4B
     Float("unkn2"),  # 4B
     Int("unknEnum3"),  # 4B
     Int("unkn4"),  # 4B  (long=4B)

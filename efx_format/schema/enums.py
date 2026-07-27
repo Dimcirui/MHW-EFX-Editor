@@ -112,6 +112,12 @@ _ROT_ORDER6 = EnumDef("RotOrder", [
     (0, "XYZ", "XYZ"), (1, "XZY", "XZY"), (2, "YXZ", "YXZ"),
     (3, "YZX", "YZX"), (4, "ZXY", "ZXY"), (5, "ZYX", "ZYX"),
 ])
+# TRANSFORM3D/EMITTERSHAPE3D 的 rotationOrder 用另一套取值→顺序映射（据 TRANSFORM3D 注释；
+# 与 VELOCITY3D 的 _ROT_ORDER6 不同，两者实测不一致，见记忆 velocity3d-unknaxis-rotation-order-test）。
+_TRANSFORM_ROT_ORDER = EnumDef("TransformRotOrder", [
+    (0, "XYZ", "XYZ"), (1, "YZX", "YZX"), (2, "ZXY", "ZXY"),
+    (3, "ZYX", "ZYX"), (4, "YXZ", "YXZ"), (5, "XZY", "XZY"),
+])
 _VELOCITY_TYPE = EnumDef("VelocityType", [
     (0, "Directional", "定向"),
     (1, "DirectionalSpread", "定向扩散"),

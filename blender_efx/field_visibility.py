@@ -1,0 +1,114 @@
+# -*- coding: utf-8 -*-
+"""
+blender_efx/field_visibility.py — 按 mode 字段过滤生效字段（Route 2，纯 UI 层）
+
+某些块由一个"模式"字段决定其余字段是否生效（游戏忽略非生效字段）。这里按模式值过滤显示：
+选定模式只暴露对应生效字段，其余隐藏。**纯视觉、非破坏**——隐藏字段的字节原样保留，
+导出不受影响；面板有"显示全部字段"开关兜底。
+
+表结构：type_name -> { conditional_field: (mode_field, predicate) }
+  predicate(mode_value:int) -> True 显示 / False 隐藏。
+未列出的字段恒显示；mode 字段本身恒显示；读不到模式值时保守显示。
+
+⚠ 置信度：VELOCITY3D/2D 的 velocityType 门控有 schema 注释/实测支撑（velocityType=0 方向类
+字段、=1 offset/size 类字段）。UVCONTROL（uv2_enable 直接开关 uv2 组）、TRANSFORM3D
+（enableVelocityBitflag 位名即"启用速度/加速度"）为强语义推断。HOMING/ROTATEANIM/RANDOMFIX
+因 mode→字段关系尚不明确，**暂不门控**（默认全显示），待实机/RE 补充。
+"""
+
+# ── 谓词（模块级具名，便于复用/可读）───────────────────────────────────────────
+def _eq0(v): return v == 0          # 枚举取 0
+def _eq1(v): return v == 1          # 枚举取 1
+def _eq3(v): return v == 3          # 枚举取 3
+def _in01(v): return v in (0, 1)    # 枚举取 0 或 1
+def _in23(v): return v in (2, 3)    # 枚举取 2 或 3
+def _truthy(v): return v != 0       # 布尔/开关（≠0 生效）
+def _bit0(v): return bool(v & 0x1)  # 位 0
+def _bit1(v): return bool(v & 0x2)  # 位 1
+
+
+FIELD_VISIBILITY = {
+    # VELOCITY3D：velocityType=0(Direction) 用 axis+rotation 定方向；=1(Normal) 用 offset+size。
+    "VELOCITY3D": {
+        "baseAxis":        ("velocityType", _eq0),
+        "rotOrder":        ("velocityType", _eq0),
+        "rotationX":       ("velocityType", _eq0),
+        "rotationXJitter": ("velocityType", _eq0),
+        "rotationY":       ("velocityType", _eq0),
+        "rotationYJitter": ("velocityType", _eq0),
+        "rotationZ":       ("velocityType", _eq0),
+        "rotationZJitter": ("velocityType", _eq0),
+        "velocityX":       ("velocityType", _eq1),
+        "velocityY":       ("velocityType", _eq1),
+        "velocityZ":       ("velocityType", _eq1),
+        "divergenceX":     ("velocityType", _eq1),
+        "divergenceY":     ("velocityType", _eq1),
+        "divergenceZ":     ("velocityType", _eq1),
+        # minMovementThreshold 属 velocityType=3(EmitterMotion/发射器运动)
+        "minMovementThreshold": ("velocityType", _eq3),
+    },
+    # VELOCITY2D：offset/size 同 V3D 门控（velocityType=1）；rotation 未确认，默认显示。
+    "VELOCITY2D": {
+        "velocityX":   ("velocityType", _eq1),
+        "velocityY":   ("velocityType", _eq1),
+        "divergenceX": ("velocityType", _eq1),
+        "divergenceY": ("velocityType", _eq1),
+    },
+    # UVCONTROL：uv2_enable 关时 uv2 子组不生效（强语义推断）。
+    "UVCONTROL": {
+        "uv2_initialPosition":  ("uv2_enable", _truthy),
+        "uv2_speed":            ("uv2_enable", _truthy),
+        "uv2_acceleration":     ("uv2_enable", _truthy),
+        "uv2_scale":            ("uv2_enable", _truthy),
+        "uv2_scaleSpeed":       ("uv2_enable", _truthy),
+        "uv2_scaleAcceleration":("uv2_enable", _truthy),
+    },
+    # TRANSFORM3D：enableVelocityBitflag bit0=启用速度、bit1=启用加速度（强语义推断）。
+    "TRANSFORM3D": {
+        "translation_velocity":          ("enableVelocityBitflag", _bit0),
+        "rotation_velocity":             ("enableVelocityBitflag", _bit0),
+        "scale_velocity":                ("enableVelocityBitflag", _bit0),
+        "translation_velocity_modifier": ("enableVelocityBitflag", _bit1),
+        "rotation_velocity_modifier":    ("enableVelocityBitflag", _bit1),
+        "scale_velocity_modifier":       ("enableVelocityBitflag", _bit1),
+    },
+    # HOMING：消失模式=0(不触发)时隐藏消失距离；力场模式=0(普通)时隐藏力场距离。
+    "HOMING": {
+        "vanishDistance":     ("vanishMode", _truthy),
+        "forceFieldDistance": ("forceFieldMode", _truthy),
+    },
+    # ROTATEANIM：rotationModeMask 0/1=平面旋转系 → billboardRotation(+加速度)；
+    # 2/3=自旋速度系 → spinAcceleration X/Y/Z；rotateDelayStart 全局生效（不门控）。
+    "ROTATEANIM": {
+        "billboardRotation":            ("rotationModeMask", _in01),
+        "billboardRotationJitter":      ("rotationModeMask", _in01),
+        "billboardRotationAccel":       ("rotationModeMask", _in01),
+        "billboardRotationAccelJitter": ("rotationModeMask", _in01),
+        "spinAccelerationX":            ("rotationModeMask", _in23),
+        "spinAccelerationXJitter":      ("rotationModeMask", _in23),
+        "spinAccelerationY":            ("rotationModeMask", _in23),
+        "spinAccelerationYJitter":      ("rotationModeMask", _in23),
+        "spinAccelerationZ":            ("rotationModeMask", _in23),
+        "spinAccelerationZJitter":      ("rotationModeMask", _in23),
+    },
+    # RANDOMFIX：randomSeedTable 由 tableSelectionGroup 还是 useRandomSeedTableCount 决定
+    # 尚不明确，暂不门控（默认全显示）。
+}
+
+
+def field_hidden(type_name, ori_name, get_value) -> bool:
+    """该字段当前是否应隐藏（据其模式字段的当前值）。get_value(field_name)->int|None。"""
+    rules = FIELD_VISIBILITY.get(type_name)
+    if not rules:
+        return False
+    r = rules.get(ori_name)
+    if r is None:
+        return False
+    mode_field, pred = r
+    cur = get_value(mode_field)
+    if cur is None:
+        return False   # 读不到模式值 → 保守显示
+    try:
+        return not pred(int(cur))
+    except Exception:
+        return False

@@ -1,7 +1,7 @@
 """
 blender_efx/part_mask_ops.py  —  PLEMISSIVE body_p / wp_p 位掩码勾选编辑器
 
-PLEMISSIVE 的关联部位字段是二进制掩码（byte），文档（社区逆向）：
+PLEMISSIVE 的关联部位字段是二进制掩码（byte），文档：
   body_p（关联 body 部位）：低 5 位 = 部位掩码，每 32 进一个 cycle
     bit0 head(0x01) / bit1 body(0x02) / bit2 arms(0x04) / bit3 waist(0x08) / bit4 legs(0x10)
     value = cycle*32 + partmask（cycle = value>>5）

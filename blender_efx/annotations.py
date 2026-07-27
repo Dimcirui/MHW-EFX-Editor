@@ -654,7 +654,7 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── HOMING ───────────────────────────────────────────────────────────────
-    # 字段语义来自全语料 212 个官方块统计 + 系统性实测逆向（2026-07 重新解释，
+    # 字段语义来自全语料 212 个官方块统计 + 系统性实测（2026-07 重新解释，
     # 推翻此前 2026-06 的"轨道力学"假说：不是角速度/轨道半径，而是一个指向
     # 目标点实时位置的力，restoringForce 是回复力强度，speed/speedMultiplier 是
     # 字面上的速度/加速度）。typeFlag/section_length/spacer 是大部分 attribute 都有的
@@ -1594,7 +1594,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "位移开关。据 BT：0=一切正常；1/2=消除前一个位移；3=消除位移",
     },
 
-    # ─── 行为逆向补充（社区实测，世界特效注释解析）────────────────────────────
+    # ─── 行为补充（社区实测，世界特效注释解析）────────────────────────────
     # SPAWN（2026-07-26 实机测试重新定型，取代旧的"burst次数"猜测）
     ("SPAWN", "burstsPerCycle"): {
         "EN": "Re-rolled each time the spawner starts a new cycle (new position). "
@@ -1828,7 +1828,7 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── LIGHTNING ────────────────────────────────────────────────────────────
-    # 社区逆向实测（010 Editor + 进游戏观察，MHW:Iceborne）。⚠ = 危险/崩溃字段。
+    # ⚠ = 危险/崩溃字段。
     ("LIGHTNING", "spacer0"): {
         "EN": "Memory-alignment padding (-842150656). Do not edit.",
         "ZH": "内存对齐占位符（-842150656）。请勿编辑。",

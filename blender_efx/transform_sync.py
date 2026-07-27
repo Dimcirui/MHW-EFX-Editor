@@ -441,6 +441,12 @@ def register():
                     "角度交换取负、缩放仅交换。仅作用于已知单位的字段；不改存储原值。默认关",
         default=False,
     )
+    bpy.types.Scene.efx_show_all_fields = bpy.props.BoolProperty(
+        name="Show all fields",
+        description="显示全部字段（关闭按模式过滤）。默认关：由模式字段（如 velocityType）"
+                    "决定只显示当前生效的字段，其余隐藏（值仍保留，纯视觉）。",
+        default=False,
+    )
 
 
 def unregister():
@@ -454,6 +460,10 @@ def unregister():
         pass
     try:
         del bpy.types.Scene.efx_blender_coords
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.efx_show_all_fields
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

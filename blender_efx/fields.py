@@ -338,6 +338,172 @@ def _int_as_color_set(self, val):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 枚举字段控件（P2）：把 int 背板的枚举字段在 UI 渲成下拉。**纯显示层**——值仍存在原 int
+# 值槽（int_value/byte1_value/short1_value/uint_str），序列化/往返只认 int 槽，enum 控件读写
+# 的也是同一个槽，故此控件即便有 bug 也不影响 byte-perfect。枚举定义取自 typed Field 模型
+# （efx_format schema/ 的 FIELD_REGISTRY，按 (type_hash, ori_name) 反查）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+# EnumProperty 动态 items 缓存（GC 陷阱：items 回调返回的字符串对象必须保持被引用，否则被
+# 回收致乱码/崩溃）——用模块级 dict 持有引用。键 =(type_hash_str, ori_name, cur, zh)。
+_ENUM_ITEMS_CACHE = {}
+
+
+def _field_enum_def(item):
+    """返回该 item 对应字段的 EnumDef；非枚举字段（或查不到）返回 None。"""
+    if not item.type_hash_str:
+        return None
+    try:
+        h = int(item.type_hash_str)
+    except ValueError:
+        return None
+    try:
+        from ..efx_format.schema.fields_model import FIELD_REGISTRY
+    except Exception:
+        return None
+    f = FIELD_REGISTRY.get((h, item.ori_name))
+    if f is None or getattr(f, "widget", None) != "enum":
+        return None
+    return getattr(f, "enum", None)
+
+
+def _enum_backing_read(item):
+    """从 item 的 int 背板槽读当前整数值（按 data_type 选槽）。"""
+    dt = item.data_type
+    if dt == "BYTE1":
+        return int(item.byte1_value)
+    if dt == "SHORT1":
+        return int(item.short1_value)
+    if dt == "UINT":
+        try:
+            return int(item.uint_str or "0")
+        except ValueError:
+            return 0
+    return int(item.int_value)
+
+
+def _enum_backing_write(item, v):
+    """把整数写回 int 背板槽（触发原槽 update=_mark_attribute_dirty，复用脏标记/同步逻辑）。"""
+    dt = item.data_type
+    if dt == "BYTE1":
+        item.byte1_value = v
+    elif dt == "SHORT1":
+        item.short1_value = v
+    elif dt == "UINT":
+        item.uint_str = str(v)
+    else:
+        item.int_value = v
+
+
+def _enum_proxy_items(self, context):
+    """EnumProperty items 回调：据字段 EnumDef 生成 (id, name, desc, number)；number=底层整数值。
+    当前值越界（不在枚举集合内）时注入一条以原值命名的条目，保证下拉能显示、不丢值。"""
+    ed = _field_enum_def(self)
+    if ed is None:
+        fallback = [("0", "—", "", 0)]
+        _ENUM_ITEMS_CACHE[("__none__",)] = fallback
+        return fallback
+    from .i18n import get_lang
+    zh = (get_lang() == "ZH")
+    cur = _enum_backing_read(self)
+    key = (self.type_hash_str, self.ori_name, cur, zh)
+    cached = _ENUM_ITEMS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    items = []
+    values = set()
+    for o in ed.options:
+        lbl = (o.zh if zh else o.en) or o.en
+        items.append((str(o.value), "%d — %s" % (o.value, lbl), lbl, o.value))
+        values.add(o.value)
+    if cur not in values:
+        items.insert(0, (str(cur), "%d" % cur, "out-of-range raw value", cur))
+    _ENUM_ITEMS_CACHE[key] = items
+    return items
+
+
+def _enum_proxy_get(self):
+    return _enum_backing_read(self)
+
+
+def _enum_proxy_set(self, value):
+    _enum_backing_write(self, int(value))
+
+
+# ── Bool（勾选框）：底层 int 槽 0/1，UI 渲成勾选。纯显示层，同 enum 一样不影响字节 ──────
+def _bool_proxy_get(self):
+    return _enum_backing_read(self) != 0
+
+
+def _bool_proxy_set(self, value):
+    _enum_backing_write(self, 1 if value else 0)
+
+
+# ── EnumVec3（逐轴枚举）：底层 ('XYZ',1)=3×int，存 int3_value；每轴一个下拉代理 ──────────
+def _field_enumvec_def(item):
+    """返回该 item 的 enum_vec3 字段 EnumDef；非 enum_vec3 返回 None。"""
+    if not item.type_hash_str:
+        return None
+    try:
+        h = int(item.type_hash_str)
+    except ValueError:
+        return None
+    try:
+        from ..efx_format.schema.fields_model import FIELD_REGISTRY
+    except Exception:
+        return None
+    f = FIELD_REGISTRY.get((h, item.ori_name))
+    if f is None or getattr(f, "widget", None) != "enum_vec3":
+        return None
+    return getattr(f, "enum", None)
+
+
+def _enumvec_items(item, comp):
+    ed = _field_enumvec_def(item)
+    if ed is None:
+        fb = [("0", "—", "", 0)]
+        _ENUM_ITEMS_CACHE[("__nonev__",)] = fb
+        return fb
+    from .i18n import get_lang
+    zh = (get_lang() == "ZH")
+    try:
+        cur = int(item.int3_value[comp])
+    except Exception:
+        cur = 0
+    key = ("v3", item.type_hash_str, item.ori_name, comp, cur, zh)
+    cached = _ENUM_ITEMS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    items = []
+    values = set()
+    for o in ed.options:
+        lbl = (o.zh if zh else o.en) or o.en
+        items.append((str(o.value), "%d — %s" % (o.value, lbl), lbl, o.value))
+        values.add(o.value)
+    if cur not in values:
+        items.insert(0, (str(cur), "%d" % cur, "out-of-range raw value", cur))
+    _ENUM_ITEMS_CACHE[key] = items
+    return items
+
+
+def _enumvec_set(item, comp, value):
+    a = list(item.int3_value)
+    a[comp] = int(value)
+    item.int3_value = a   # 触发 int3_value 的 update=_mark_attribute_dirty
+
+
+def _ev_items_x(self, context): return _enumvec_items(self, 0)
+def _ev_items_y(self, context): return _enumvec_items(self, 1)
+def _ev_items_z(self, context): return _enumvec_items(self, 2)
+def _ev_get_x(self): return int(self.int3_value[0])
+def _ev_get_y(self): return int(self.int3_value[1])
+def _ev_get_z(self): return int(self.int3_value[2])
+def _ev_set_x(self, v): _enumvec_set(self, 0, v)
+def _ev_set_y(self, v): _enumvec_set(self, 1, v)
+def _ev_set_z(self, v): _enumvec_set(self, 2, v)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # EFXFieldItem  —  通用字段项 PropertyGroup
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -366,6 +532,27 @@ class EFXFieldItem(PropertyGroup):
         name="Data Type",
         items=_DATA_TYPE_ITEMS,
     )
+
+    # 所属 attribute 块的类型哈希（十进制字符串）——供 enum_proxy 回调反查 FIELD_REGISTRY。
+    # dict_to_items 从 block_props.type_hash_str 拷入；非定长块/未知则留空。
+    type_hash_str: StringProperty(default="")
+
+    # 枚举字段下拉代理（P2，纯显示层）：items/get/set 都转发到 int 背板槽，见上方回调注释。
+    enum_proxy: EnumProperty(
+        name="",
+        description="Enum value (backed by the underlying integer slot)",
+        items=_enum_proxy_items,
+        get=_enum_proxy_get,
+        set=_enum_proxy_set,
+    )
+
+    # EnumVec3 逐轴下拉代理（3 轴各一，转发到 int3_value[0/1/2]）。
+    enum_vec3_x: EnumProperty(name="", items=_ev_items_x, get=_ev_get_x, set=_ev_set_x)
+    enum_vec3_y: EnumProperty(name="", items=_ev_items_y, get=_ev_get_y, set=_ev_set_y)
+    enum_vec3_z: EnumProperty(name="", items=_ev_items_z, get=_ev_get_z, set=_ev_set_z)
+
+    # Bool 勾选代理（转发到 int 背板槽 0/1）。
+    bool_proxy: BoolProperty(name="", get=_bool_proxy_get, set=_bool_proxy_set)
 
     # ── L1.1b：逐字段无损性元数据 ────────────────────────────────────────────
 
@@ -958,6 +1145,7 @@ def dict_to_items(
         item = block_props.field_items.add()
         item.ori_name = name
         item.data_type = dtype
+        item.type_hash_str = getattr(block_props, "type_hash_str", "") or ""
         item.edited = False
 
         # ── L1.1b：记录原始字节切片 + 判定 read_only ────────────────────────

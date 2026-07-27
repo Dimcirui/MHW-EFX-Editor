@@ -66,13 +66,31 @@ class EnumDef(object):
 
 
 class BitDef(object):
-    """单个位定义：bit=位掩码整数，en/zh=显示标签。"""
+    """单个位定义（**可混合** toggle 位）：bit=位掩码整数，en/zh=显示标签。UI 渲成勾选框。"""
     __slots__ = ("bit", "en", "zh")
 
     def __init__(self, bit, en, zh=""):
         self.bit = int(bit)
         self.en = en
         self.zh = zh or en
+
+
+class BitEnum(object):
+    """**互斥**位组：mask 覆盖的（通常连续）几位编码一个 one-of-N 值，UI 渲成下拉（同 enum）。
+    options 元素接受 (subval, en[, zh]) 或 EnumOption；subval 是 (value & mask) >> shift 后的值。
+    en/zh 是这一组的显示名（组标签）。"""
+    __slots__ = ("mask", "shift", "en", "zh", "options")
+
+    def __init__(self, mask, options, en="", zh=""):
+        self.mask = int(mask)
+        # shift = mask 最低置位的位号
+        self.shift = (self.mask & -self.mask).bit_length() - 1 if self.mask else 0
+        self.en = en
+        self.zh = zh or en
+        self.options = [
+            o if isinstance(o, EnumOption) else EnumOption(*o)
+            for o in options
+        ]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -154,11 +172,12 @@ class Bool(Field):
 
 
 class Bitmask(Field):
-    """位掩码字段：底层整数，UI 渲成弹窗勾选（泛化 part_mask_ops）。"""
+    """位掩码字段：底层整数，UI 渲成弹窗（勾选框 = 可混合 BitDef，下拉 = 互斥 BitEnum；
+    段外残留位保留并可编辑）。bits 是有序列表，元素可为 BitDef / BitEnum / (bit,en[,zh]) 元组。"""
     def __init__(self, name, bits, *, backing='i', **kw):
         super().__init__(name, backing, widget="bitmask", **kw)
         self.bits = [
-            b if isinstance(b, BitDef) else BitDef(*b)
+            b if isinstance(b, (BitDef, BitEnum)) else BitDef(*b)
             for b in bits
         ]
 

@@ -9,7 +9,7 @@ __pycache__/
 # 构建产物（发布用 GitHub Release 挂 zip，不进仓库）
 dist/
 
-# 提取的 MHW 游戏资产（版权，不上传；测试在本地跑）
+# 测试用文件
 efx_samples/
 
 # 预设：__attributes__/ 是随扩展下发的默认属性预设（curated，入库保证构建可复现）；
@@ -17,14 +17,14 @@ efx_samples/
 presets/*
 !presets/__attributes__/
 
-# 开发/参考文档与逆向笔记（插件运行不需要，私人维护，不上传）。
+# 开发/参考文档与测试笔记。
 # 本地保留供开发与 Claude 读取；仅不进远程。
 *.md
 !README.md
 docs/
 refs/
 
-# 统计分析结果（本地记录，不上传）
+# 统计分析结果
 stats/
 
 # 开发/构建/测试脚本：非插件本体内容，本地保留，不入库

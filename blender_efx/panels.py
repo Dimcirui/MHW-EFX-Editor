@@ -313,6 +313,72 @@ def _xyz_prop_name(item, base_prop):
     return base_prop, False
 
 
+def _field_is_enum(type_name: str, ori_name: str) -> bool:
+    """该字段是否被 typed Field 模型标为 enum widget（据 FIELD_REGISTRY 反查）。"""
+    if not type_name:
+        return False
+    try:
+        from ..efx_format.hashes import NAME_TO_HASH
+        from ..efx_format.schema.fields_model import FIELD_REGISTRY
+        h = NAME_TO_HASH.get(type_name)
+        if h is None:
+            return False
+        f = FIELD_REGISTRY.get((h, ori_name))
+        return f is not None and getattr(f, "widget", None) == "enum"
+    except Exception:
+        return False
+
+
+def _field_is_enum_vec3(type_name: str, ori_name: str) -> bool:
+    """该字段是否被 typed Field 模型标为 enum_vec3（逐轴枚举）。"""
+    if not type_name:
+        return False
+    try:
+        from ..efx_format.hashes import NAME_TO_HASH
+        from ..efx_format.schema.fields_model import FIELD_REGISTRY
+        h = NAME_TO_HASH.get(type_name)
+        if h is None:
+            return False
+        f = FIELD_REGISTRY.get((h, ori_name))
+        return f is not None and getattr(f, "widget", None) == "enum_vec3"
+    except Exception:
+        return False
+
+
+def _field_is_bool(type_name: str, ori_name: str) -> bool:
+    """该字段是否被 typed Field 模型标为 bool（勾选框）。"""
+    if not type_name:
+        return False
+    try:
+        from ..efx_format.hashes import NAME_TO_HASH
+        from ..efx_format.schema.fields_model import FIELD_REGISTRY
+        h = NAME_TO_HASH.get(type_name)
+        if h is None:
+            return False
+        f = FIELD_REGISTRY.get((h, ori_name))
+        return f is not None and getattr(f, "widget", None) == "bool"
+    except Exception:
+        return False
+
+
+def _bitmask_field(type_name: str, ori_name: str):
+    """该字段的 Bitmask Field（widget=='bitmask'），否则 None。"""
+    if not type_name:
+        return None
+    try:
+        from ..efx_format.hashes import NAME_TO_HASH
+        from ..efx_format.schema.fields_model import FIELD_REGISTRY
+        h = NAME_TO_HASH.get(type_name)
+        if h is None:
+            return None
+        f = FIELD_REGISTRY.get((h, ori_name))
+        if f is not None and getattr(f, "widget", None) == "bitmask":
+            return f
+    except Exception:
+        pass
+    return None
+
+
 def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     """
     按 item.data_type 在 layout 上绘制对应控件（L1.5 重设计版）。
@@ -345,6 +411,65 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         layout.enabled = False
     # 友好显示名（仅显示，逻辑用 ori_name）；label_override 优先（如 MATERIAL 路径的槽名）
     fname = label_override if label_override else _friendly_name(item.ori_name, type_name)
+
+    # ── 枚举字段 → 下拉（P2，纯显示层，值仍存 int 槽）───────────────────────────
+    # 仅定长块（FIELD_REGISTRY 标了 enum widget）的 int 背板字段；read_only 字段回退普通渲染。
+    if (dtype in ("INT", "BYTE1", "SHORT1", "UINT") and not item.read_only
+            and _field_is_enum(type_name, item.ori_name)):
+        row = layout.row(align=True)
+        row.scale_y = 1.1
+        row.use_property_split = False
+        split = row.split(factor=0.45)
+        split.label(text=fname)
+        split.prop(item, "enum_proxy", text="")
+        _draw_info_icon(row, type_name, item.ori_name)
+        return
+
+    # ── Bool 字段 → 勾选框（P2，纯显示层，值仍存 int 槽）──────────────────────────
+    if (dtype in ("INT", "BYTE1", "SHORT1", "UINT") and not item.read_only
+            and _field_is_bool(type_name, item.ori_name)):
+        row = layout.row(align=True)
+        row.scale_y = 1.1
+        row.use_property_split = False
+        split = row.split(factor=0.45)
+        split.label(text=fname)
+        split.prop(item, "bool_proxy", text="")
+        _draw_info_icon(row, type_name, item.ori_name)
+        return
+
+    # ── Bitmask 字段 → 摘要 + 弹窗编辑按钮（P2，纯显示层，值仍存 int 槽）───────────
+    _bm = _bitmask_field(type_name, item.ori_name) if dtype in ("INT", "BYTE1", "SHORT1", "UINT") else None
+    if _bm is not None and not item.read_only:
+        from . import bitmask_ops, fields as _f
+        from .i18n import get_lang
+        val = _f._enum_backing_read(item)
+        summ = bitmask_ops.bitmask_summary(val, _bm, zh=(get_lang() == "ZH"))
+        row = layout.row(align=True)
+        row.scale_y = 1.1
+        row.use_property_split = False
+        split = row.split(factor=0.45)
+        split.label(text=fname)
+        op = split.operator("efx.edit_bitmask", text=(summ or "…"), icon="CHECKBOX_HLT")
+        op.type_name = type_name
+        op.field = item.ori_name
+        _draw_info_icon(row, type_name, item.ori_name)
+        return
+
+    # ── EnumVec3 逐轴枚举（INT3 背板）→ 标题行 + X/Y/Z 三个下拉（P2）───────────────
+    if (dtype == "INT3" and not item.read_only
+            and _field_is_enum_vec3(type_name, item.ori_name)):
+        title = layout.row(align=True)
+        title.scale_y = 1.1
+        title.use_property_split = False
+        title.label(text=fname)
+        _draw_info_icon(title, type_name, item.ori_name)
+        for axis, prop in (("X", "enum_vec3_x"), ("Y", "enum_vec3_y"), ("Z", "enum_vec3_z")):
+            r = layout.row(align=True)
+            r.scale_y = 1.1
+            r.use_property_split = False
+            r.label(text=axis, icon="BLANK1")
+            r.prop(item, prop, text="")
+        return
 
     # ── FLOAT6（XYZ type 0）：固定+随机/轴，3×2 展开 ─────────────────────────
     # 顺序：[fixed_x(0), random_x(1), fixed_y(2), random_y(3), fixed_z(4), random_z(5)]
@@ -878,6 +1003,14 @@ def _draw_attribute_fields_content(layout, context):
                 _ptb_hint_row = col.row(align=True)
                 _ptb_hint_row.enabled = False
                 _ptb_hint_row.label(text=T("attribute.ptbehavior_hint"))
+            # Route 2：该块有模式过滤规则时，给一个"显示全部字段"开关（默认过滤）。
+            from . import field_visibility as _fv_hdr
+            if type_name in _fv_hdr.FIELD_VISIBILITY:
+                from .i18n import get_lang as _gl
+                _tog = col.row(align=True)
+                _tog.prop(context.scene, "efx_show_all_fields",
+                          text=("显示全部字段" if _gl() == "ZH" else "Show all fields"),
+                          icon="HIDE_OFF")
             col.separator(factor=0.5)
             # 逐字段绘制（带 value+jitter 位置配对：jitter 字段与紧邻前一个
             # 同类型标量 value 合并一行，模拟 XYZ Static/Random 分组风格）
@@ -885,6 +1018,15 @@ def _draw_attribute_fields_content(layout, context):
             n = len(items)
             _item_by_name = {it.ori_name: it for it in items}
             _axis_group_at, _axis_group_consumed = _resolve_axis_groups(type_name, _item_by_name)
+            # Route 2：按模式字段过滤生效字段（"显示全部字段"开关可关闭过滤）。
+            from . import field_visibility as _fv
+            from . import fields as _fld
+            _show_all_fields = getattr(context.scene, "efx_show_all_fields", False)
+            _has_vis_rules = type_name in _fv.FIELD_VISIBILITY
+
+            def _mode_getter(fname, _ibn=_item_by_name, _rd=_fld._enum_backing_read):
+                _it = _ibn.get(fname)
+                return _rd(_it) if _it is not None else None
             i = 0
             while i < n:
                 item = items[i]
@@ -895,6 +1037,12 @@ def _draw_attribute_fields_content(layout, context):
                     continue
                 # __opaque_hint__ 是内部 sentinel，不渲染为字段行
                 if item.ori_name.startswith("__") and item.ori_name.endswith("__"):
+                    i += 1
+                    continue
+                # Route 2 模式过滤：非生效字段隐藏（show_all 关时）。放在 axis-group 判定前，
+                # 使被隐藏的组首字段（如 velocityX）连带整组不绘制。
+                if (_has_vis_rules and not _show_all_fields
+                        and _fv.field_hidden(type_name, item.ori_name, _mode_getter)):
                     i += 1
                     continue
                 # Color Editor 模式：非颜色/亮度字段直接跳过，不进入任何特例渲染分支
@@ -1295,7 +1443,7 @@ def _draw_entry_properties_content(layout, context):
     row.label(text=T("entry.type_label") + kind_label, icon="INFO")
 
     # Root entry 的 UnitBoundary 子条目（结构化时可编辑；含 RT/LayoutBank 的
-    # root 走 opaque 只读，不显示）。语义未完全逆向：ints[2] + floats[8]。
+    # root 走 opaque 只读，不显示）。语义未完全解释：ints[2] + floats[8]。
     if entry_kind == "root" and int(obj.get("root_structured", 0)) == 1:
         n = int(obj.get("root_ub_count", 0))
         if n == 0:
