@@ -30,7 +30,7 @@ from . import uvc_preview as _uvc       # _entry_mesh_target / _resolve_root
 from . import session_core as _sc       # 标记式 reconcile（bind/unbind 用）
 from . import root_collection as _rc
 from ..efx_format import timl as _timl
-from ..efx_format import timl_names as _tn
+from ..efx_format.timl import names as _tn
 
 
 # ─────────────────────────────────────────────────────────────────────────────

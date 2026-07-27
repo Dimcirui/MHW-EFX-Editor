@@ -1,7 +1,4 @@
 # efx_format package
-# Pure-Python parser for MHW .efx effect files.
-# Phase 0: opaque byte-perfect roundtrip.
-# Phase 1: field-level schema codec for known attribute block types.
 
 from .efxfile import EFXFile
 from .structs import (

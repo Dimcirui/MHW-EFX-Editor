@@ -1,5 +1,5 @@
 """
-efx_format/timl_names.py  —  TIML hash → 可读名 + game↔Blender 坐标换算（纯 Python，零 bpy）
+efx_format/timl_names.py  —  TIML hash → 可读名 + game↔Blender 坐标换算
 
 TIML 通道名由两段 hash 组成：
   - timelineParameterHash：这条动画**影响哪个对象/块**（Transform3D / RgbFire / TypeRibbon…）。
@@ -263,9 +263,7 @@ FIELD_TO_DT = {
     ("BILLBOARD3D", "height"):     [(0x531B9E44, 2)],
     ("BILLBOARD3D", "scale"):      [(0x0EBAEC37, 2)],
     ("BILLBOARD3D", "width"):      [(0x241CAED2, 2)],
-    # BILLBOARD2D：官方 dti dump（nEffect::nTimelineParam::TypeBillboard2D）confirmed
-    # Color/ColorRange/ColorRate/Rotation/SizeScalar 五个哈希跟 BILLBOARD3D 完全同名同值；
-    # rotation/scale 同时经用户实机测试独立验证。
+    # Color/ColorRange/ColorRate/Rotation/SizeScalar/rotation/scale 五个哈希跟 BILLBOARD3D 完全同名同值；
     ("BILLBOARD2D", "color"):      [(0x58689812, 3)],
     ("BILLBOARD2D", "colorRange"): [(0xC216C23D, 3)],
     ("BILLBOARD2D", "brightness"): [(0x9F1E012E, 2)],
@@ -303,8 +301,8 @@ FIELD_TO_DT = {
 }
 
 # ── BLOCK_NATIVE_AXIS：块类型名(大写) → 该块 TIML 动画在真实语料里锁定的轴 slot ──────
-# 2026-07-01 全语料统计（efx_samples 全 10163 文件，6041 条 TIML）：绝大多数块类型的
-# 动画几乎只出现在单一轴上（A0=发射轴/系统时间线，A1=寿命轴/每粒子）。锁定率 >90% 的
+# 绝大多数块类型的动画几乎只出现在单一轴上（A0=发射轴/系统时间线，A1=寿命轴/每粒子）。
+# 锁定率 >90% 的
 # 视为"母轴"。强烈线索：游戏似乎只在母轴上应用对应块的动画——把轨道加到另一条轴会
 # 静默无效。实测佐证：用户测 TubeLight/Transform3D/RgbFire（均 A0 锁定）加到 A1 全不
 # 生效，而 Billboard3D（两轴都常见，350:1657）加哪条都生效。
@@ -341,7 +339,6 @@ def block_native_axis(block_type: str):
 
 
 # ── CORPUS_PAIRS：TLP hash → [(dt_hash, data_type), ...] ─────────────────────────
-# 来源：全量 10163 个 .efx 文件扫描（含官方 660 + 9503 额外），频次降序排列。
 # 只收录有命名的 DT hash（DT_NAMES 或 DT_TRANSFORM 覆盖的条目）。
 CORPUS_PAIRS = {
     0x327A81AC: [  # Billboard3D，1645次最多

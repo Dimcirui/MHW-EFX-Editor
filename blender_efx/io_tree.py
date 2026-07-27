@@ -125,7 +125,7 @@ _EXPORT_RECALC_TIML_LEN = False
 
 def _recalc_timl_length(data: bytes) -> bytes:
     """把每条存在的 TIML 动画的 animation_length 精确设为 末关键帧+1（逐轴）。定长原地 patch。"""
-    from ..efx_format import timl_meta as _tm
+    from ..efx_format.timl import meta as _tm
     try:
         anims = _tm.parse_animations(data)
     except Exception:

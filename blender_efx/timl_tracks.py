@@ -19,7 +19,7 @@ from bpy.types import Operator, Panel
 from .i18n import T
 from .timl_meta_ui import _active_entry, _entry_timl_bytes, _store_timl
 from ..efx_format import timl as _timl
-from ..efx_format.timl_names import (
+from ..efx_format.timl.names import (
     BLOCK_TO_TLP, FIELD_TO_DT, CORPUS_PAIRS,
     TLP_NAMES, DT_NAMES, DT_TRANSFORM,
     timeline_param_name, datatype_name, channel_label, block_native_axis,

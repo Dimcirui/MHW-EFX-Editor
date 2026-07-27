@@ -194,7 +194,7 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
         # 原地等长 patch，不改 timl 长度、不碰 byte-perfect。
         if obj.get("efx_timl_auto_grow", True):
             try:
-                from ..efx_format import timl_meta as _tm
+                from ..efx_format.timl import meta as _tm
                 data = _tm.auto_grow_lengths(data)
             except Exception:
                 pass

@@ -43,7 +43,7 @@ def add_block(values: dict, shader_hash: int) -> dict:
     新建空材质槽（sets=[]，仅有 shader_hash，用户导入贴图前无槽位可填——
     与"没有实测依据不假设完整性"的原则一致）。
     """
-    from . import material_meta as mm
+    from . import meta as mm
 
     shader_hash &= 0xFFFFFFFF
     schema = mm.material_slot_schema(shader_hash) or []
@@ -93,7 +93,7 @@ def set_block_shader(block: dict, new_shader_hash: int) -> None:
     schema 依据就不能猜测性地丢弃用户已有数据（跟 add_block 新建空槽不同：那边是
     全新数据没什么可保留的，这里是编辑已有数据，能不丢就不丢）。
     """
-    from . import material_meta as mm
+    from . import meta as mm
 
     new_shader_hash &= 0xFFFFFFFF
     schema = mm.material_slot_schema(new_shader_hash)

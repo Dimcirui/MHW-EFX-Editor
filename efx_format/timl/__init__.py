@@ -53,8 +53,8 @@ import struct
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from .hashes import jamcrc
-from .timl_names import DT_TRANSFORM
+from ..hashes import jamcrc
+from .names import DT_TRANSFORM
 
 _MAGIC = b"timl"
 

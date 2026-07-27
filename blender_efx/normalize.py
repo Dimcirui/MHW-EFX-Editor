@@ -19,7 +19,7 @@ reorder 重排算子共用。三件事：
    **权威身份哈希**（语料实证 100%/99.7%，见 memory play-type-is-jamcrc-of-name）
    ——未命名段仍带着真实非零哈希（"有名字但没进标签表"，非零装饰）。**本函数只
    反查/合成标签字符串，绝不改动 body_type/play_type**：
-     ① 优先用 efx_format.jamcrc_names.JAMCRC_TO_NAME 反查现有哈希 → 命中则用
+     ① 优先用 efx_format.hashes.jamcrc_names.JAMCRC_TO_NAME 反查现有哈希 → 命中则用
         反查出的真名（body_type/play_type 与新标签天然自洽，语料验证 47/47 命中）；
      ② 未命中（当前语料 0 例）→ 退回合成 "类型_序号"（哈希与标签不一致但哈希
         本就已保留，不构成新问题）。
@@ -159,7 +159,7 @@ def _lookup_real_name(hash_val):
     if hash_val is None:
         return None
     try:
-        from ..efx_format.jamcrc_names import JAMCRC_TO_NAME
+        from ..efx_format.hashes.jamcrc_names import JAMCRC_TO_NAME
     except ImportError:
         return None
     return JAMCRC_TO_NAME.get(hash_val)

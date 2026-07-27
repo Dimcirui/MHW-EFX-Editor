@@ -1,7 +1,10 @@
 """
-EFXFile: opaque roundtrip parser for MHW .efx effect files.
+EFXFile: faithful roundtrip parser for MHW .efx effect files (serialize(parse(x)) == x).
 
-Phase 0 strategy:
+Known structures are fully parsed; anything uncertain is stored as raw bytes and
+written back verbatim (opaque fallback) — both satisfy exact byte roundtrip.
+
+File layout (parse order):
   - Header (72 B) → fully parsed
   - EFX_Type (labelSize B) → kept as raw bytes + label list
   - Play (countPlay entries) → parsed per BT (with opaque fallback)
@@ -13,8 +16,6 @@ Phase 0 strategy:
         - Unknown attr types: opaque blob (forward-scan to next known hash)
   - Subselect (subselectionSize B) → parsed per BT
   - End (countEOF ints) → list of ints
-
-All sections serialize back to byte-perfect bytes.
 
 Type widths (BT convention, little-endian):
   long/ulong = 4 B,  int/uint = 4 B,  short = 2 B,  byte = 1 B
@@ -61,195 +62,38 @@ def _xyz_size(xyz_type: int) -> int:
         return 12  # float x, y, z
     return 0
 
-
 def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     """
     Return total byte size (including the 4-byte type hash prefix) of a known
     attribute block at *pos*.  Returns None if type is unknown or has variable
     length that requires byte inspection (will be handled by forward-scan fallback).
 
-    All sizes computed from EFX_Subtypes.bt / EFX_Play.bt with long=4B rule.
+    Fixed-size types: on-disk length = 4 (type hash) + data_bytes size, taken from ATTR_SCHEMA_MAP.
+    Only variable / dispatch types (path_len or nested, '_custom' in the map) are sized by reading bytes below.
     """
     def rd_i(offset: int) -> int:
         return struct.unpack_from('<i', data, pos + offset)[0]
 
     h = type_hash
 
-    # ExternTransform3D structure size = 4+72+4+144+4 = 228B
-    # XYZ(0)=24B, translate+rotate+resize=3*24=72B, 6 vel XYZs=144B
-    EXTERN_TRANSFORM3D_SIZE = 228
-    # Transform3D = 4(type) + 228 = 232B
-    if h == TRANSFORM3D:
-        return 4 + EXTERN_TRANSFORM3D_SIZE
+    # Fixed-size types
+    from .structs import ATTR_SCHEMA_MAP
+    _entry = ATTR_SCHEMA_MAP.get(h)
+    if _entry is not None and _entry[1] is not None:
+        return 4 + _entry[1]
 
-    # ParentOptions = 4(type) + 4 + 3*12 + 4 + 4 + 4 + 4 + 4 = 64B
-    # XYZ(1) = 3 ints = 12B
-    if h == PARENTOPTIONS:
-        return 4 + 4 + 12 + 12 + 12 + 4 + 4 + 4 + 4 + 4  # = 64
+    # Variable/dispatch types
+    # In ATTR_SCHEMA_MAP, marked as '_custom'/size=None, need to read bytes to determine length.
 
-    # Spawn: 4(type) + ExternSpawn = 4 + 64B
-    # ExternSpawn: 16 ints = 64B
-    if h == SPAWN:
-        return 4 + 4*18  # = 76 (ExternSpawn: 18 ints)
-
-    # Life: 4(type) + 12*long = 4 + 48 = 52B
-    if h == LIFE:
-        return 4 + 4*12  # = 52
-
-    # EmitterShape3D: 4(type) + ExternEmitterShape3D
-    # ExternEmitterShape3D: int typeFlag(4) + XYZ rangeXYZ(0)(24B) +
-    #   shapeType(4) + rangeDivideAxis(4) + unknOrientation(4) +
-    #   localRotationX(4)+Y(4)+Z(4) + rotationOrder(4) + scaleHorizontal(4) + scaleVertical(4) +
-    #   rangeDivideHorizontalNum(4) + rangeDivideVerticalNum(4) + radiusEnd(4) + radiusOrigin(4) +
-    #   unknBitmaskRadiusRelated(4) + unknFlag4(4)
-    # = 4 + 24 + 15*4 = 88B; total with type = 92B
-    if h == EMITTERSHAPE3D:
-        return 4 + 4 + 24 + 15*4  # = 92
-
-    # Velocity3D: 4(type) + ExternVelocity3D(108B)
-    if h == VELOCITY3D:
-        return 4 + 108
-
-    # FadeByDepth: 4(type) + int unkn0 + 4 floats = 4+4+16 = 24B
-    if h == FADEBYDEPTH:
-        return 4 + 4 + 4*4  # = 24
-
-    # Billboard3D: 4(type) + ExternBillboard3D (variable: has path_len)
-    # billboard_data (26 fields total):
-    #   unkn0(4)+appRule(4)+XYZ(2)[2](8)+brightness(4)+unkn20(4)+EPVColorBlend(4)+unkn22(4)+
-    #   EPVColorSlot1(4)+SlotOverride1(4)+unknDim(4)+unknDimJ(4)+scale(4)+scaleJ(4)+
-    #   width(4)+widthJ(4)+height(4)+heightJ(4)+
-    #   flowmapSpeed(4)+j(4)+Accel(4)+j(4)+Strength(4)+j(4)+StrengthAccel(4)+j(4)+path_len(4)
-    #   = 4+4+8+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 108B total billboard_data
-    # ExternBillboard3D extras: unkn5(4) + unkn6(uint64=8B) + unkn7(4) + unkn8(4) + unkn9(4) = 24B
-    # path[path_len] at the end.
-    # path_len field is the LAST int of billboard_data, at offset 4(type)+108-4 = 108 from block start
-    # Total = 4(type) + 108(billboard_data incl path_len) + 24(extras) + path_len = 136 + path_len
-    if h == BILLBOARD3D:
-        path_len_val = rd_i(4 + 104)  # type(4) + 104B of billboard_data before path_len
-        return 4 + 108 + 24 + path_len_val  # = 136 + path_len
-
-    # ScaleAnim: 4(type) + ExternScaleAnim(76B)
-    # ExternScaleAnim: int unkn0(4) + float animSpeed(4) + long NULL(4) + float scaleSpeed(4) +
-    #   scaleSpeedJ(4) + float unkn1[2](8) + float scaleAccel(4) + scaleAccelJ(4) +
-    #   float unkn2[8](32) + int delay(4) + int delayJ(4) = 4+4+4+4+4+8+4+4+32+4+4 = 76B
-    if h == SCALEANIM:
-        return 4 + 76  # = 80
-
-    # UVSequence: 4(type) + ExternUVSequence (variable: has path_len)
-    # Fixed part: int unkn0(4) + int uvs_index(4) + long NULL(4) + int startFrame(4) +
-    #   startFrameJ(4) + float animSpeed(4) + animSpeedJ(4) + animAccel(4) + animAccelJ(4) +
-    #   int loopEnum(4) + int path_len(4) = 11*4 = 44B
-    # Then path[path_len]
-    # path_len at type+4+44 = +48
-    if h == UVSEQUENCE:
-        # type(4) + unkn0+uvs_index+NULL+startFrame+j+animSpeed+j+animAccel+j+loopEnum (10 fields=40B) + path_len(4B)
-        # path_len is at offset 44 from block start (type@0, then 10 fields before path_len)
-        path_len_val = rd_i(44)   # path_len field at offset 44 from block start
-        return 4 + 40 + 4 + path_len_val  # = 48 + path_len
-
-    # AlphaCorrection: 4(type) + int unkn0(4) + float unkn1(4) + float transparent(4) + long NULL(4) + int unkn2(4) = 24B
-    if h == ALPHACORRECTION:
-        return 4 + 4 + 4 + 4 + 4 + 4  # = 24
-
-    # ShaderSettings: 4(type) + int*2(8) + int spacer(4) + int unkn2(4) + float*2(8) + int*2(8) + int ctrl(4) +
-    #   float*16(64) + byte*4(4) + int visOnPreview(4) + int*2(8) = 128B
-    if h == SHADERSETTINGS:
-        return 4 + 8 + 4 + 4 + 8 + 8 + 4 + 64 + 4 + 4 + 8  # = 120... let me recount
-        # unkn0(4)+unkn1(4)+spacer(4)+unkn2(4)+zDepthModStart(4)+zDepthModEnd(4)+
-        # unkn3_0(4)+unkn3_1(4)+controlBitflag(4)+float unkn4[16](64)+
-        # byte[4](4)+visibleOnPreview(4)+unkn5[2](8) = 9*4+64+4+4+8 = 116B after type
-        return 4 + 4*9 + 64 + 4 + 4 + 8  # = 4+36+64+16 = 120
-
-    # RgbFire: 4(type) + ExternRgbFire (FIXED size, NO path)
-    # ExternRgbFire from BT (EFX_Subtypes.bt):
-    # int unkn0(4) + XYZ color1(2)(4) + float bright1(4) + XYZ color2(2)(4) + float bright2(4) +
-    # float unkn4(4) + float bright3(4) + float bright4(4) + ColorParam color1Param(40) + ColorParam color2Param(40)
-    # ColorParam = 10 ints = 40B
-    # = 4+4+4+4+4+4+4+4+40+40 = 112B
-    # RgbFire total = 4(type) + 112 = 116B (empirically confirmed in 010.efx)
-    if h == RGBFIRE:
-        return 4 + 112  # = 116B (no path_len, fixed size)
-
-    # Mesh: 4(type) + Mod3Properties(174B) + byte BeginMod3(1B) + string path1 + string path2
-    # Mod3Properties size: int unkn0[2](8)+long CD1(4)+float emissive_sat(4)+float emissive_sat_j(4)+
-    #   float emissive_bright(4)+float emissive_bright_j(4)+XYZ rotation(0)(24)+
-    #   float rotation2(4)+float rotation2Jitter(4)+XYZ scale(0)(24)+
-    #   float global_scale(4)+float global_scale_j(4)+int starting_model_viscon(4)+int end_model_viscon(4)+
-    #   colour[4](16)+int unkn7_0/1(8)+int rotationOrder(4)+int tracking_flags(4)+int unkn40(4)+int affectedByLight(4)+
-    #   int shadowCastBitflag(4)+int epv_color_slot1(4)+int unkn5(4)+int epv_color_slot2(4)+
-    #   int unkn6_1(4)+byte colorize_material1[4](4)+byte colorize_material2[4](4)+
-    #   int randommizeViscon(4)+short NULL1(2)
-    #   = 8+4+4+4+4+4+24+4+4+24+4+4+4+4+16+12+4+4+4+4+4+4+4+4+4+4+4+2 = 174B
-    # ExternMesh = Mod3Properties(174) + byte BeginMod3(1) + string path1(null-term) + string path2(null-term)
-    # Total = 4(type) + 174 + 1 = 179B fixed + two null-terminated strings
-    if h == MESH:
-        path1_start = pos + 179
-        null1 = data.index(b'\x00', path1_start)
-        null2 = data.index(b'\x00', null1 + 1)
-        return null2 - pos + 1  # includes both null terminators
-
-    # RotateAnim: 4(type) + int*2(8) + long*2(8) + XYZ(0)(24B) + float*2(8) + float(4) + XYZ(0)(24B) + float(4)
-    # Wait from BT:
-    # long type(4) + int unkn0_0(4) + int unkn0_1(4) + long NULL[2](8) + XYZ spin_velocity(0)(24B) +
-    # float unkn1_0(4) + float unkn1_1(4) + float momentum_retention(4) + XYZ spin_acceleration(0)(24B) + float unkn1_2(4)
-    # = 4+8+8+24+4+4+4+24+4 = 84B
-    if h == ROTATEANIM:
-        return 4 + 8 + 8 + 24 + 4 + 4 + 4 + 24 + 4  # = 84
-
-    # PlEmissive: 4(type) + ExternPlEmissive
-    # ExternPlEmissive: int unkn0[2](8)+float unkn1(4)+ubyte body_p,wp_p,short NULL(4)+int epv(4)+
-    #   XYZ(2)(4)+float unkn4(4)+float area[2](8)+float bright(4)+int area_of_aura(4)+
-    #   float radii[3](12)+float unkn5[5](20)
-    # = 8+4+4+4+4+4+8+4+4+12+20 = 76B
-    if h == PLEMISSIVE:
-        return 4 + 76  # = 80
-
-    # Guide (EFX_Crimson.bt): type(4) + 23 floats + int[2] + float[3]
-    # type(4) + initialPos(4)+initialPosJ(4)+speed(4)+speedJ(4)+accel(4)+accelJ(4)+
-    #   innerRadius(4)+innerRadiusJ(4)+outerRadius(4)+outerRadiusJ(4)        (10 floats)
-    #   restitutionDelay(4)+restitutionDelayJ(4)+restitutionEcc(4)+restitutionEccJ(4)+
-    #   restitutionElasticity(4)+restitutionElasticityJ(4)+unkn16(4)+unkn17(4)+unkn18(4)+unkn19(4) (10 floats)
-    #   unkn20(4)+unkn21(4)+unkn22(4)                                        (3 floats)
-    #   int_unkn1[2](8)+float_unkn2[3](12)
-    # = 4 + 23*4 + 8 + 12 = 4+92+8+12 = 116B
-    if h == GUIDE:
-        return 4 + 92 + 8 + 12  # = 116
-
-    # Lightning: type(4)+unkn00[2](8)+spacer0(4)+XYZ(2)(4)*3+unkn02-04(12)+group05(100)+
-    #   inflection1(20)+inflection2(20)+glow/length(16)+width(8)+startWidth group(16)+
-    #   unkn05_45-48(16)+unkn06[2](8)+unkn07_00-09(40)+unkn07_10-27(72)+
-    #   unkn08[2](8)+unkn09[20](80)+unkn10[4](16)+unkn11[2](8)+unkn12[2](8)+
-    #   unkn13[6](24)+unkn14[3](12)+unkn15[9](36)+short unkn16(2)+int path_len(4)+path
-    # Fixed portion before path_len: 550B; path_len at offset 550; total = 554 + path_len
-    if h == LIGHTNING:
-        path_len_val = rd_i(550)  # int path_len at offset 550 from block start
-        return 554 + path_len_val
-
-    # ParentEmissive: 4(type) + long unkn0[2](8) + float unkn2(4) + long unkn3(4) + XYZ(2)(4) +
-    #   float bright(4) + float rimParam[3](12) + long unkn4(4) + float blendParam[3](12) + float unkn8[5](20)
-    # = 4+8+4+4+4+4+12+4+12+20 = 76B
-    if h == PARENTEMISSIVE:
-        return 4 + 8 + 4 + 4 + 4 + 4 + 12 + 4 + 12 + 20  # = 76
-
-    # PtCollision: type(4)+int unkn00-unkn07(8*4=32)+float unkn1[3](12)+int unkn2[2](8)+
-    #   float bounceElasticity+j+Mult+horiz+unkn34-37 (8 floats=32B)+int unkn38(4)+
-    #   int unkn4[2](8)+int ieIndex(4)+int unkn6[3](12) = 4+32+12+8+32+4+8+4+12 = 116B
-    if h == PTCOLLISION:
-        return 4 + 32 + 12 + 8 + 32 + 4 + 8 + 4 + 12  # = 116
-
-    # PlSnow: 4(type) + 21 × 4B 字段 = 88B。
-    # ⚠ 2026-07 修：原来这里跟 PLSNOW_SCHEMA 一样漏了 BT 最后一个字段
-    # craquelure_smoothing_threshold，少算 4B（84 写成了 80+4=84 总长，实为
-    # 84+4=88）。凡是某 entry 里 PLSNOW 后面还跟着别的属性/entry 的文件，
-    # 从这里起就整体错位 4 字节，最终触发 main_opaque 兜底（DEGRADED）。
-    # unkn0[2](8)+spacer(4)+body_part_id(4)+weapon_id(4)+colour(4)+epvcolorslot(4)+
-    # alpha_effect(4)+normal_map_strength(4)+alpha_threshold(4)+unkn4_0(4)+unkn4_1(4)+
-    # unkn5(4)+roughness(4)+metallicness(4)+subsurface(4)+unkn6_0(4)+craquelure_effect(4)+
-    # craquelure_threshold(4)+unkn6_1(4)+craquelure_smoothing_threshold(4)
-    # = 21 × 4B = 84B data_bytes，+4(type) = 88B
-    if h == PLSNOW:
-        return 4 + 21*4  # = 88
+    # Variable length blocks derive size from codec schema: custom_on_disk_size handles path_len tails,
+    # custom_nullstr_size handles fixed-prefix + null-terminated string families.
+    # If neither recognizes the type, return None and fall through to the specialized walker below.
+    from .structs import custom_on_disk_size, custom_nullstr_size
+    _s = custom_on_disk_size(h, data, pos)
+    if _s is None:
+        _s = custom_nullstr_size(h, data, pos)
+    if _s is not None:
+        return _s
 
     # PtBehavior: long type(4) + EFX_Behavior
     # EFX_Behavior: int unkn0(4) + int behav_type_len(4) + int para_count(4) + char b_type[behav_type_len]
@@ -324,197 +168,7 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
                     p += 4              # long unkn_type
         return p                    # total size from pos
 
-    # Plane: dds_data(112B) + int unkn5[4](16) + XYZ rotate(0)(24B) + uint64 unkn7(8) + char p[path_len]
-    # Note: dds_data INCLUDES the type field (long type + 26 more fields = 112B total):
-    #   type(4)+unkn0(4)+applicationRule(4)+XYZ(2)[2](8)+brightness(4)+unkn20(4)+EPVColorBlend(4)+unkn22(4)+
-    #   EPVColorSlot1(4)+EPVColorSlot2(4)+SlotOverride1(4)+SlotOverride2(4)+
-    #   scale(4)+scaleJ(4)+width(4)+widthJ(4)+height(4)+heightJ(4)+
-    #   flowmapSpeed(4)+flowmapSpeedJ(4)+flowmapAccel(4)+flowmapAccelJ(4)+
-    #   flowmapStrength(4)+flowmapStrengthJ(4)+flowmapStrengthAccel(4)+flowmapStrengthAccelJ(4)+
-    #   path_len(4) = 3*4+8+23*4 = 12+8+92 = 112B; path_len at offset 108 from block start
-    # Total Plane block = 160 + path_len
-    if h == PLANE:
-        path_len_val = rd_i(108)  # path_len is the last field of dds_data at offset 108
-        return 160 + path_len_val
-
-    # RgbWater: 4(type) + ExternRgbWater (variable: has path_len)
-    # ExternRgbWater: int unkn0(4)+XYZ(2)[2](8)+float*7(28)+int*3(12)+int unkn2[26](104)+int path_len(4)+path
-    # fixed: 4+8+28+12+104+4 = 160B
-    if h == RGBWATER:
-        path_len_val = rd_i(4 + 156)
-        return 4 + 156 + 4 + path_len_val
-
-    # Turbulence: 4(type) + int unkn0(4)+int path_len(4)+char p[path_len]+float forceMultiplier(4)+
-    #   float unkn1[2](8)+XYZ offsetPos(0)(24)+XYZ offsetPosVel(0)(24)+XYZ offsetAngle(0)(24)+
-    #   XYZ offsetAngleVel(0)(24)+XYZ offsetScale(0)(24)+float unkn3[5](20)
-    # path is BEFORE the rest of the floats! path_len at type+8
-    if h == TURBULENCE:
-        path_len_val = rd_i(4 + 4)  # type(4) + unkn0(4) = at +8, path_len at +8
-        return 4 + 4 + 4 + path_len_val + 4 + 8 + 24*5 + 20
-
-    # FadeByEmitterAngle: 4(type) + int*2(8) + long unkn(4) + float*4(16) = 36B
-    if h == FADEBYEMITTERANGLE:
-        return 4 + 8 + 4 + 16  # = 32
-
-    # Ribbon: 364B fixed + null-terminated path string
-    # Struct (EFX_Subtypes.bt): type(4)+unkn0(4)+section_length(4)+spacer0(4)+
-    #   color(2)(4)+spacer1(4)+color2(2)(4)+spacer2(4)+brightness(4)+unkn4[2](8)+
-    #   scale(4)+scaleJ(4)+width(4)+widthJ(4)+length(4)+lengthJ(4)+
-    #   uv_map_height(4)+mat_tess_density(4)+mat_tess_j(4)+uv_map_width(4)+
-    #   horiz_physics(4)+vert_physics(4)+unkn15(4)+
-    #   restitution_dir(4)+unkn16[4](16)+startingAngle(4)+startingAngleJ(4)+
-    #   unkn16_0[2](8)+short unkn16_1(2)+short unkn16_2(2)+spacer3(4)+
-    #   unkn17(4)+spacer4(4)+lengthwise_offset(4)+unknown19_0(4)+
-    #   restitution(4)+restitutionJ(4)+inertial_excess(4)+inertialJ(4)+
-    #   springiness(4)+springinessJ(4)+spacer5(4)+
-    #   unkn20[4](16)+unkn21(4)+unkn22[3](12)+tailTiedToBone(4)+unkn23[8](32)+
-    #   unkn24(4)+epvcolor[2](8)+spacer7(4)+base_width_mult(4)+base_opacity(4)+
-    #   tip_width_mult(4)+tip_opacity(4)+spacer8(4)+unkn27[2](8)+
-    #   visiblePreview(2)+spacer9(2)+
-    #   base_flap_freq(4)+base_flap_freqJ(4)+base_flap_amount(4)+base_flap_amountJ(4)+
-    #   tip_flap_freq(4)+tip_flap_freqJ(4)+tip_flap_amount(4)+tip_flap_amountJ(4)+
-    #   ib_junk[32](32)
-    #   = 364B fixed + string path1 (null-terminated)
-    if h == RIBBON:
-        path_start = pos + 364
-        null_pos = data.index(b'\x00', path_start)
-        return null_pos - pos + 1  # 364 + len(path) + 1(null)
-
-    # Noise: 4(type) + long NULL(4) + int section_length(4) + long spacer(4) + float*8(32) = 48B
-    if h == NOISE:
-        return 4 + 4 + 4 + 4 + 32  # = 48
-
-    # UVControl: 4(type) + Material_Animation_Data[2](each 7*4*4=112B) + int unkn2(4) + float*8(32) = 4+224+4+32 = 264B
-    # Material_Animation_Data: int unkn0(4) + uv_transform*7(each 4*4=16B) = 4+7*16=116B? No:
-    # initialPos,speed,acceleration,scale,scaleSpeed,scaleAcceleration = 6 uv_transforms + int unkn0
-    # uv_transform = float u,uJ,v,vJ = 16B
-    # Material_Animation_Data = 4 + 6*16 = 100B
-    # UVControl = 4(type) + 2*100B + int unkn2(4) + float*8(32) = 4+200+4+32 = 240B
-    if h == UVCONTROL:
-        return 4 + 200 + 4 + 32  # = 240
-
-    # FadeByAngle: 4(type) + int*2(8) + float*4(16) + int64 NULL(8) + int*2(8) = 44B
-    if h == FADEBYANGLE:
-        return 4 + 8 + 16 + 8 + 8  # = 44
-
-    # EmitterBoundary: 4(type) + int*2(8) + float*8(32) = 44B
-    if h == EMITTERBOUNDARY:
-        return 4 + 8 + 32  # = 44
-
-    # PtLife: 4(type) + short*10(20) = 24B
-    if h == PTLIFE:
-        return 4 + 10*2  # = 24
-
-    # StrainRibbon (EFX_Crimson.bt): type(4)+固定 340B+path_len(4)+path
-    # path_len 在偏移 344，总长 = 348 + path_len（18 实例验证，均落在下一块）
-    if h == STRAINRIBBON:
-        path_len_val = rd_i(344)
-        if path_len_val < 0 or path_len_val > 4096:
-            return None  # 异常 → 回退 forward-scan
-        return 348 + path_len_val
-
-    # ScreenSpaceCollision: 4(type) + int*2(8) + long spacer(4) + float*3(12) + int*2(8) + float bounce*(6*4=24)...
-    # = 4+8+4+4+4+4+4+4+4 = 40? From BT:
-    # long type(4)+int*2(8)+long spacer(4)+float unkn1(4)+float bounce(4)+float bounceJ(4)+
-    # int lifespan(4)+int lifespanJ(4)+float bounceConditional(4) = 4+8+4+4*6 = 40B
-    if h == SCREENSPACECOLLISION:
-        return 4 + 8 + 4 + 4*6  # = 40
-
-    # RayCast: type(4)+unknown0(4)+fixed70(4)+spacer0(4)+distanceMod0(4)+j(4)+prop1(4)+j(4)+
-    #   spacer1-3(12)+prop2(4)+XYZ(3)(12)+direction(4)+distanceMod1(4)+j(4)+spacer(4)+unknown1(4)+short(2) = 82B
-    if h == RAYCAST:
-        return 82
-
-    # ExternReference: 4(type) + int unkn0(4) + int referenceIndex(4) + int unkn1[7](28) = 40B
-    if h == EXTERNREFERENCE:
-        return 4 + 4 + 4 + 4*7  # = 40
-
-    # FakePlane (EFX_Crimson.bt): type(4)+int unkn0[2](8)+byte unkn1[4](4)+
-    #   float unkn2(4)+int unkn3(4)+long unkn4(4)+float unkn5[9](36) = 64B
-    if h == FAKEPLANE:
-        return 4 + 8 + 4 + 4 + 4 + 4 + 36  # = 64
-
-    # Dummy: 4(type) + int*2(8) + byte(1) = 13B
-    if h == DUMMY:
-        return 4 + 8 + 1  # = 13
-
-    # RandomFix: 4(type) + int*10(40) = 44B
-    if h == RANDOMFIX:
-        return 4 + 40  # = 44
-
-    # Transform2D: 4(type) + int(4) + float[2](8) + float(4) + float[2](8) = 28B
-    if h == TRANSFORM2D:
-        return 4 + 4 + 8 + 4 + 8  # = 28
-
-    # Billboard2D (EFX_Subtypes.bt): type(4)+long unkn0[2](8)+XYZ(2)color,colorRange(8)+
-    #   float brightness,randomBrightnessMult(8)+int useColorRange,blendMode,EPVColorSlot1,EPVColorSlot2(16)+
-    #   float rotJitter[2]+scaleJitter[2]+imageResX+scaleX+imageResY+scaleY(8 floats=32)+
-    #   float unkn4[8](32)+int path_len(4)+int unkn5[2](8)+char p[path_len]
-    # 固定部分 120B，path_len 在偏移 108；总长 = 120 + path_len。
-    # XYZ(2)=3 ubyte+1 NULL=4B。实测全语料 580 实例 / 121 文件 0 错。
-    if h == BILLBOARD2D:
-        path_len_val = rd_i(108)
-        if path_len_val < 0 or path_len_val > 1024:
-            return None  # 异常 → 回退 forward-scan
-        return 120 + path_len_val
-
-    # Blink: 4(type) + int*2(8) + float*11(44) = 56B
-    if h == BLINK:
-        return 4 + 8 + 44  # = 56
-
-    # LuminanceBleed: long type(4) + long unkn0(4) + float unkn1[3](12) = 20B
-    # (per BT: typedef struct { long type; long unkn0; float unkn1[3]; } LuminanceBleed;)
-    if h == LUMINANCEBLEED:
-        return 4 + 4 + 12  # = 20B
-
-    # EmitterShape2D (EFX_Subtypes.bt): type(4)+int unkn0(4)+
-    #   float offsetX,XJitter,Y,YJitter(16)+int unkn20,spawnCount,unkn22,unkn22(16) = 40B
-    # ⚠ 旧值 36B 漏算了最后一个 int（BT 尾部是 4 个 int 非 3 个）；实测全语料 292 实例恒 40B。
-    if h == EMITTERSHAPE2D:
-        return 4 + 4 + 16 + 16  # = 40
-
-    # Velocity2D (EFX_Subtypes.bt): type(4)+int unkn0[2](8)+
-    #   float rotationJitter,initialVelocity,ivJ,accel,accelJ,offsetX,offsetY,sizeX,sizeY(9 floats=36)+
-    #   int velocityType(4)+float gravity,gravityJitter(8)+
-    #   int ivDelay,ivDelayJ,gravDelay,gravDelayJ(16) = 4+8+36+4+8+16 = 76B
-    # ⚠ 旧值 72B 少 4B（少数 1 个 float）；实测全语料 277 实例恒 76B。
-    if h == VELOCITY2D:
-        return 4 + 8 + 36 + 4 + 8 + 16  # = 76
-
-    # Refraction: 4(type) + int unkn0(4) + int pixelNormOffset(4) + int unkn2(4) = 16B
-    if h == REFRACTION:
-        return 4 + 4 + 4 + 4  # = 16
-
-    # MasterOnly: 4(type) + int unkn0(4) = 8B
-    if h == MASTERONLY:
-        return 4 + 4  # = 8
-
-    # TubeLight (EFX_Crimson.bt): type(4)+unkn0[3](12)+unkn1[11](44)+unkn2[2](8)+
-    #   unkn3[4](16)+unkn4[4](16)+unkn5[2](8)+unkn6[4](16)+unkn7(4)+path_len(4)+path
-    # 固定部分 132B，path_len 在偏移 128，总长 = 132 + path_len
-    if h == TUBELIGHT:
-        path_len_val = rd_i(128)
-        if path_len_val < 0 or path_len_val > 1024:
-            return None  # 异常 → 回退 forward-scan
-        return 132 + path_len_val
-
-    # Shovel: variable-ish (ends with short) - actually from BT it has fixed fields but ends with short:
-    # type(4)+long*2(8)+long spacer(4)+float*6(24)+long unkn9(4)+long unkn10(4)+float unkn11(4)+
-    # long*3(12)+long pattern(4)+long unkn16(4)+short unkn17(2) = 4+8+4+24+4+4+4+12+4+4+2 = 74B
-    if h == SHOVEL:
-        return 4 + 8 + 4 + 24 + 4 + 4 + 4 + 12 + 4 + 4 + 2  # = 74
-
-    # Layout（EFX_Crimson.bt 确认）: 4(type) + int*2(8) + long*4(16) + LayoutBank_Block(变长)。
-    # ⚠ 2026-07 曾误判"LayoutBank_Block 结束后偶尔多出的 20B 是具名引用尾巴"——
-    # 实为 bug：那 20B 其实是*下一个 Main Entry 自己的 20B 头*（type+unkn0+
-    # attr_count+null+timl_length，jamcrc 反查出的"名字"只是下一个 entry 的
-    # body_type，纯属巧合像具名引用）。触发条件已核实：8/8 误判样本里 LAYOUT
-    # 都恰好是所在 entry 的最后一个属性——原判定用"落点是否为已知 ATTR_HASHES/
-    # ROOT_MARKER"探测边界，但下一个 Entry 的 body_type 是任意 jamcrc 值，
-    # 根本不在 ATTR_HASHES 集合里，导致误判"这里不像边界"从而多吞 20B，
-    # 造成下一个 entry 的头部错位（"孤儿空属性 entry"就是这么来的，见用户
-    # 010 模板实测反证：真实该 entry 有 14 个属性，不是 0 个）。结论：LAYOUT
-    # 没有可选尾巴，恒为 24B 前缀 + LayoutBank_Block，不需要、也不能做落点猜测。
+    # Layout: 4(type) + int*2(8) + long*4(16) + LayoutBank_Block(variable_length).
     if h == LAYOUT:
         from .structs import _walk_layoutbank_block
         try:
@@ -524,97 +178,7 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
             return None
         return end - pos
 
-    # RepeatArea: 实测全 135 实例恒 52B → 4(type) + 52 = 56B 定长
-    if h == REPEATAREA:
-        return 4 + 52  # = 56
-
-    # FakeDoF: 4(type) + 32B 固定，恒定长（原以为有 32B/52B 两种、靠 forward-scan
-    # 兜底定界，2026-07 查实那"多出的 20B"其实是下一个 Main Entry 自己的 20B
-    # 头——forward-scan 在 FAKEDOF 是所在 entry 最后一个属性时，找不到已知
-    # ATTR_HASHES 就一路扫过整个下一 entry 头部，直到撞上其*第一个属性*的
-    # type_hash 才停手，误吞 20B。语料实证：全部 3 个"32B 无尾"实例均非
-    # entry 末位属性（forward-scan 原本就该在这碰到真正的下一属性正确停下），
-    # 13 个"疑似 52B 有尾"实例 100% 是 entry 末位属性（触发条件与 LAYOUT 的
-    # bug 完全同源）。FAKEDOF 恒 32B，无需 forward-scan。
-    if h == FAKEDOF:
-        return 4 + 32  # = 36
-
-    # LinkPartsVisible: 4(type) + int*3(12) = 16B
-    if h == LINKPARTSVISIBLE:
-        return 4 + 12  # = 16
-
-    # PtTrigger: 4(type) + int*2(8) + long unkn1(4) + int unkn2(4) = 20B
-    if h == PTTRIGGER:
-        return 4 + 8 + 4 + 4  # = 20
-
-    # PathChain: 4(type) + int*2(8) + long(4) + float(4) + int(4) + float*6(24) + int*8(32) + byte(1) = 81B
-    if h == PATHCHAIN:
-        return 4 + 8 + 4 + 4 + 4 + 24 + 32 + 1  # = 81
-
-    # Homing: 4(type) + int*2(8) + long spacer(4) + float*6(24) + long*2(8) + int*2(8) = 56B
-    # BT: type+unknown+unknown0+spacer+restoringForce+speed+speedMultiplier+f3+vanishDistance+forceFieldDistance+homingTarget+vanishMode+forceFieldMode+unknown1
-    if h == HOMING:
-        return 4 + 8 + 4 + 24 + 8 + 8  # = 56
-
-    # EmitterShapeMesh (EFX_Crimson.bt): type(4)+int unkn0[2](8)+long unkn1[3](12)+
-    #   byte unkn2[8](8)+int unkn3(4) = 36B fixed + null-terminated string path1 (Mod3 path)
-    # ⚠ 务必精确定界：path1 让块总长不是 4 的倍数，会把后续块推到奇数地址；旧版
-    #   靠 forward_scan(只探 4 对齐)会跳过全部后续块、把它们吞进本块，导致 body
-    #   边界错乱、吃进下一个 body（em013_046 实证）。
-    if h == EMITTERSHAPEMESH:
-        path1_start = pos + 36
-        null1 = data.index(b'\x00', path1_start)
-        return null1 - pos + 1  # 36 + len(path1) + 1(null)
-
-    # SpawnByAngle: 4(type) + int*2(8) + long(4) + float(4) + int(4) + short(2) = 26B
-    if h == SPAWNBYANGLE:
-        return 4 + 8 + 4 + 4 + 4 + 2  # = 26
-
-    # CheckPureAttribute: 4(type) + int*2(8) + long(4) + int*7(28) = 44B
-    if h == CHECKPUREATTRIBUTE:
-        return 4 + 8 + 4 + 28  # = 44
-
-    # TonemapFilter: 4(type) + int*2(8) + long(4) + float*3(12) + int path_len(4) + path
-    if h == TONEMAPFILTER:
-        path_len_val = rd_i(4 + 8 + 4 + 12)
-        return 4 + 8 + 4 + 12 + 4 + path_len_val
-
-    # ColorCorrectFilter: 4(type) + int*4(16) + float*168(672) = 692B
-    if h == COLORCORRECTFILTER:
-        return 4 + 16 + 672  # = 692
-
-    # SpawnByOcclusion: 4(type) + int*2(8) + long(4) + float(4) + int(4) = 24B
-    if h == SPAWNBYOCCLUSION:
-        return 4 + 8 + 4 + 4 + 4  # = 24
-
-    # FadeByOcclusion: 4(type) + int*2(8) + long(4) + float*3(12) = 28B
-    if h == FADEBYOCCLUSION:
-        return 4 + 8 + 4 + 12  # = 28
-
-    # ParentSnow: 4(type) + int*2(8) + long(4) + int unkn2(4) + XYZ(2)(4) + long*2(8) + float*13(52) = 84B
-    if h == PARENTSNOW:
-        return 4 + 8 + 4 + 4 + 4 + 8 + 52  # = 84
-
-    # OtomoSnow: 4(type) + int*2(8) + long(4) + int*2(8) + XYZ(2)(4) + int(4) + long(4) + float*4(16) + long(4) + float*8(32) = 88B
-    if h == OTOMOSNOW:
-        return 4 + 8 + 4 + 8 + 4 + 4 + 4 + 16 + 4 + 32  # = 88
-
-    # ParentMaterial: 4(type) + int*2(8) + float(4) = 16B
-    if h == PARENTMATERIAL:
-        return 4 + 8 + 4  # = 16
-
-    # RibbonBlade: variable (has path_len near end)
-    # Structure: type(4)+unkn0[2](8)+spacer0(4)+unkn03(4)+width(4)+unkn05[2](8)+spacer1(4)+unkn07[2](8)+
-    #   5 floats(20)+spacer2(4)+unkn10(4)+uvRep(4)+unkn12[3](12)+spacer3(4)+
-    #   EPVColorSlot head(36)+EPVColorSlot tailEnd(36)+4*(float+long)(32)+
-    #   short NULL9(2)+int path_len(4)+char p[path_len]
-    # Fixed size before path = 202B; path_len at offset 198; total = 202 + path_len
-    if h == RIBBONBLADE:
-        path_len_val = rd_i(198)  # path_len field at offset 198 from block start
-        return 202 + path_len_val
-
     return None  # truly unknown type
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data classes
@@ -623,26 +187,20 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
 @dataclass
 class EFXHeader:
     """72-byte file header (fully parsed)。
-
-    is_3d：文件级 2D/3D 特效类型标志（原 unkn0，2026-07 实机验证并改名，见
-    memory header-is-3d-flag-discovery）。0=2D、1=3D，语料库 10162 样本零例外：
-    unkn0=0 的文件里全部 entry 都用 2D 类型块（TRANSFORM2D 等），从不含任何 3D
-    类型块，反之亦然。混用 2D/3D 属性块（尤其是加了 SHADERSETTINGS/
-    ALPHACORRECTION 之类修饰属性后）且与本标志不匹配会导致游戏闪退（实机确认）。
     """
     signature: bytes        # b"EFX\x00"
     version: int
     constant: tuple         # 5 ints
     efxr: bytes             # b"efxr"
-    is_3d: int
+    is_3d: int              # 0=2D, 1=3D. mismatch with entry will cause CTD
     unkn1: int
-    count_body: int
+    count_body: int         # count entry
     label_size: int
-    count_play: int
+    count_play: int         # count action
     count_extern: int
     count_subselect: int
     subselect_size: int
-    count_eof: int
+    count_eof: int          # count direct-activation list
     double_buffer: int
 
     STRUCT = struct.Struct('<4s i 5i 4s 10I')
@@ -660,7 +218,6 @@ class EFXHeader:
             self.count_eof, self.double_buffer,
         )
 
-
 @dataclass
 class ActionEntry:
     """One entry within a ActionData block: either PlayEFX or PlayEmitter."""
@@ -669,7 +226,6 @@ class ActionEntry:
 
     def serialize(self) -> bytes:
         return struct.pack('<I', self.type_hash) + self.raw
-
 
 @dataclass
 class ActionData:
@@ -683,7 +239,6 @@ class ActionData:
             out += e.serialize()
         return out
 
-
 @dataclass
 class ExternDataItem:
     """One Extern_Data sub-item within an Extern_Attribute (opaque payload)."""
@@ -694,7 +249,6 @@ class ExternDataItem:
 
     def serialize(self) -> bytes:
         return struct.pack('<Iii', self.type_hash, self.unkn, self.attr_count) + self.data_bytes
-
 
 @dataclass
 class ExternAttribute:
@@ -709,7 +263,6 @@ class ExternAttribute:
         for item in self.items:
             out += item.serialize()
         return out
-
 
 @dataclass
 class AttrBlock:
@@ -811,7 +364,6 @@ class AttrBlock:
             )
         self.data_bytes = encoded
 
-
 @dataclass
 class EntryData:
     """A Main_Data body (non-Root)."""
@@ -824,7 +376,7 @@ class EntryData:
     attr_blocks: List[AttrBlock]
 
     def serialize(self) -> bytes:
-        # evc 哨兵：attr_count 为负数时 range() 为空 → 解析出 0 块，但原始字段值需保留
+        # evc dummy: attr_count is negative → range() is empty → parse 0 blocks, but original field value must be preserved
         count = self.attr_count if (not self.attr_blocks and self.attr_count != 0) else len(self.attr_blocks)
         head = struct.pack('<IiiiI', self.body_type, self.unkn0,
                            count, self.null, self.timl_length)
@@ -832,7 +384,6 @@ class EntryData:
         for blk in self.attr_blocks:
             out += blk.serialize()
         return out
-
 
 @dataclass
 class EntryDataExtended:
@@ -876,15 +427,13 @@ class EntryDataExtended:
             out += blk.serialize()
         return out
 
-
 @dataclass
 class RootUnitBoundary:
     """
-    Root 子条目 UnitBoundary（EFX_Root.bt）。固定 44 字节：
+    Root Subentry UnitBoundary (EFX_Root.bt). Fixed 44 bytes:
       long type(4) = ROOT_UNITBOUNDARY
-      int  ints[2] (8)        —— 单位/边界相关整型（语义未完全逆向）
-      float floats[8] (32)    —— 实测后段含包围盒式数值；.bt 标注 7 float + 1 long NULL，
-                                 但官方数据该尾字段常为非零 float，故统一按 8 float 存取。
+      int  ints[2] (8)        —— unit/boundary related integers (unexplained)
+      float floats[8] (32)    —— contains bounding-box-like values (8 floats).
     """
     ints: tuple    # (int0, int1)
     floats: tuple  # 8 floats
@@ -894,26 +443,24 @@ class RootUnitBoundary:
                 + struct.pack('<2i', *self.ints)
                 + struct.pack('<8f', *self.floats))
 
-
 @dataclass
 class RootOpaqueEntry:
-    """Root 子条目中尚未结构化的类型（RenderTarget / LayoutBank），原样存取。"""
-    raw: bytes   # 整个子条目字节（含前导 type）
+    """Root Subentry with unstructured type (RenderTarget / LayoutBank), stored as-is."""
+    raw: bytes   # Entire subentry bytes (including leading type)
 
     def serialize(self) -> bytes:
         return self.raw
 
-
 @dataclass
 class RootBody:
     """
-    Root body（type == ROOT_MARKER）。
-
-    16B 头（root_type + const0 + count + const1）后跟 count 个子条目。
-    UnitBoundary 结构化为可编辑字段；RenderTarget/LayoutBank 保留 opaque。
-    若 raw 非 None（旧式/无法结构化的整段不透明回退），serialize 直接重发 raw。
+    Root body (type == ROOT_MARKER)
+    
+    16B header (root_type + const0 + count + const1) followed by count subentries.
+    UnitBoundary is structured into editable fields; RenderTarget/LayoutBank are opaque.
+    If raw is not None (legacy/unstructured opaque fallback), serialize() returns raw verbatim.
     """
-    # 子条目 type marker（EFX_Root.bt）
+    # Subentry type markers
     UNITBOUNDARY = 1413509420
     RENDERTARGET = 2083659062
     LAYOUTBANK   = 2050487542
@@ -922,7 +469,7 @@ class RootBody:
     const0: int = 1
     const1: int = 0
     entries: list = field(default_factory=list)   # RootUnitBoundary | RootOpaqueEntry
-    raw: bytes = None   # 整段不透明回退（unknown 兜底用）
+    raw: bytes = None   # opaque fallback for unknown root bodies
 
     def serialize(self) -> bytes:
         if self.raw is not None:
@@ -932,7 +479,6 @@ class RootBody:
         for e in self.entries:
             out += e.serialize()
         return out
-
 
 @dataclass
 class SubselectTable:
@@ -947,7 +493,6 @@ class SubselectTable:
         for e in self.entries:
             out += struct.pack('<i', e)
         return out
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main EFX parser/serializer
@@ -972,12 +517,13 @@ class EFXFile:
         self.main: List = []                  # List[EntryData | RootBody]
         self.subselect: List[SubselectTable] = []
         self.eof_ints: List[int] = []
-        self.eof_tail: bytes = b''     # eof 之后的不透明尾字节（部分游戏文件有，如 4 字节 footer）
-        # ── main 段不可解析时的不透明回退 ──────────────────────────────────────
-        # 某些文件 main 段含我们尚无法定界的块（forward_scan 启发式越界），整段
-        # 解析会崩。此时把 main 起点到 EOF 的全部字节（main+subselect+eof+tail）
-        # 原样存为 opaque blob，serialize 时 verbatim 重发 → 仍 byte-perfect、可导入。
-        # 代价：此文件 main 段不可在 Blender 内逐块编辑（整体只读）。
+        self.eof_tail: bytes = b''     # end-of-file tail bytes after EOF
+
+        # ── opaque fallback when main section is unparseable ──────────────────────────────────────
+        # some files have main section blocks that cannot yet delimit (forward_scan heuristic overrun),
+        # causing the whole parse to crash. In this case, store all bytes from main start to EOF
+        # as an opaque blob, and serialize() will verbatim re-emit it → still byte-perfect and importable.
+        # Cost: main section cannot be edited block-by-block in Blender (read-only).
         self.main_opaque: bool = False
         self.opaque_main_tail: bytes = b''
 
@@ -1020,8 +566,8 @@ class EFXFile:
         obj.extern, pos = cls._parse_extern(data, pos, hdr.count_extern)
 
         # ── Main（+ Subselect + End）─────────────────────────────────────────
-        # main 段含未定界块时 _parse_main 会崩。此时整段（main 起点→EOF）转 opaque
-        # 回退，保证文件仍能 byte-perfect 导入（代价：main 不可逐块编辑）。
+        # If _parse_main crashes due to undelimited blocks, the entire segment (from main start to EOF)
+        # is treated as opaque fallback, ensuring the file can still be imported byte-perfectly
         main_start = pos
         try:
             obj.main, pos = cls._parse_main(data, pos, hdr.count_body)
@@ -1036,11 +582,11 @@ class EFXFile:
             obj.eof_ints = list(struct.unpack_from(f'<{hdr.count_eof}I', data, pos))
             pos += hdr.count_eof * 4
 
-            # eof 之后的尾字节：部分游戏文件在 eof 后有不透明 footer（如 jichu1.efx
-            # 末尾多 4 字节）。捕获为 opaque tail 原样保留（78 样本 tail 为空）。
+            # end-of-file tail bytes: some game files have opaque footer bytes after EOF
+            # These are captured as opaque tail bytes and preserved verbatim (78 sample tail is empty).
             obj.eof_tail = data[pos:]
         except Exception:
-            # main 解析失败：整段（含 subselect/eof/tail）转 opaque，verbatim 重发。
+            # main parsing failed: treat the entire segment (including subselect/eof/tail) as opaque, re-emit verbatim.
             obj.main = []
             obj.subselect = []
             obj.eof_ints = []
@@ -1060,7 +606,7 @@ class EFXFile:
         for ea in self.extern:
             out += ea.serialize()
 
-        # main 段不可解析时走 opaque 回退：main 起点之后全部字节 verbatim 重发。
+        # main section is unparseable: fall back to opaque handling
         if self.main_opaque:
             out += self.opaque_main_tail
             return out
@@ -1074,7 +620,7 @@ class EFXFile:
         for v in self.eof_ints:
             out += struct.pack('<I', v)
 
-        out += self.eof_tail   # eof 后不透明 footer（多数文件为空）
+        out += self.eof_tail   # end-of-file tail bytes (most files are empty)
 
         return out
 
@@ -1150,11 +696,11 @@ class EFXFile:
     @staticmethod
     def _efx_behavior_size(data: bytes, pos: int) -> int:
         """
-        Return byte size of one EFX_Behavior struct at *pos* (EFX_Crimson.bt):
+        Return the byte size of one EFX_Behavior struct at *pos*:
           int unkn0(4) + int behav_type_len(4) + int para_count(4)
           + char b_type[behav_type_len] + EFX_Behav[para_count]
-        EFX_Behav = long unkn(4) + long const0(4) + int t(4) + 变长 data（按 t 分派）。
-        与主体 PTBEHAVIOR 块的 EFX_Behavior 共用同一编码（见 _known_attr_size::PTBEHAVIOR）。
+        EFX_Behav = long unkn(4) + long const0(4) + int t(4) + variable-length data (dispatched by t).
+        Shares the same encoding with the main PTBEHAVIOR block's EFX_Behavior (see _known_attr_size::PTBEHAVIOR).
         """
         behav_type_len = struct.unpack_from('<i', data, pos + 4)[0]
         para_count = struct.unpack_from('<i', data, pos + 8)[0]
@@ -1206,11 +752,7 @@ class EFXFile:
             283026906: 84,    # EXTERNVELOCITY3D2 (long unkn[21] = 84B)
             705591903: 72,    # EXTERNVELOCITY3D5 (long unkn[18] = 72B)
             1879331968: 80,   # EXTERNVELOCITY3D6 (long unkn[20] = 80B)
-            # ⚠ 2026-07 修：原 288B（"long unkn[72]，brute-force verified"）错——用户对照
-            # MHW-EFX-Template-master 的 EFX_Extern.bt 反证：ExternVelocity3D7 真实定义是
-            # long unkn[39] + byte unkn1 = 39*4+1 = 157B，不是 288B。全语料仅 3 个文件含
-            # 这个类型，此前从未在含它的文件上验证过完整 byte-perfect（这 3 个文件此前
-            # 全部靠 main_opaque 兜底逃过检测）。
+
             0x3002E4CE: 157,  # EXTERNVELOCITY3D7 (long unkn[39] + byte unkn1 = 39*4+1 = 157B)
             0x295D488A: 133,  # EXTERNBILLBOARD3D (133B/elem, confirmed via structural analysis)
             0x320E3177: 361,  # EXTERNVELOCITY3D1 (361B/elem, confirmed via structural analysis)
@@ -1231,12 +773,10 @@ class EFXFile:
                 p = null2 + 1
             return p - pos
 
-        # Variable-length: EXTERNPTBEHAVIOR - data = EFX_Behavior efx_behaiv[attri_count]
-        # (EFX_Extern.bt). EFX_Behavior 与主体 PTBEHAVIOR 块同源：int unkn0(4) +
-        # int behav_type_len(4) + int para_count(4) + char b_type[behav_type_len] +
-        # EFX_Behav[para_count]（每个参数变长，按 t 分派）。
-        # ⚠ 旧实现把 b_type 当 null 结尾串、尾巴写死 16B —— 参数数组变长导致整段错位，
-        #   后续 extern 项落进字符串区（em024_062 / em026_001 实证）。
+        # Variable-length: EXTERNPTBEHAVIOR - data = EFX_Behavior efx_behavior[attri_count]
+        # EFX_Behavior is the same as the main PTBEHAVIOR block: int unkn0(4) +
+        # int behav_type_len(4) + int para_count(4) + char
+        # b_type[behav_type_len] + EFX_Behav[para_count] (each parameter is variable-length, dispatched by t).
         if type_hash == 0x5FFC3E36:  # EXTERNPTBEHAVIOR
             p = pos
             for _ in range(attri_count):
@@ -1278,15 +818,8 @@ class EFXFile:
           int CONST1 (4B, = 0)
           for count sub-entries: each starts with a known hash and has its own fixed/variable size.
 
-        For phase 0, we parse until we find the end of the root body by scanning forward.
-        Strategy: parse sub-entries by hash until we've consumed `count` of them.
-        But since Root sub-entry structures are complex (LayoutBank has variable blocks),
-        we store the entire Root body as opaque bytes bounded by:
-          - next body's known type hash at a 4B-aligned position, OR
-          - end of Main section (calculated from file structure).
-
-        We cannot know the end without forward-scanning or using total-file structure.
-        For now, parse header + count sub-entries opaquely using known sub-structure.
+        The header (16 B) is parsed; the sub-entry payload is kept opaque (bounded by
+        _known_attr_size / forward-scan), so the Root body round-trips byte-for-byte.
         """
         pos = start_pos
         root_type = struct.unpack_from('<I', data, pos)[0]   # = ROOT_MARKER

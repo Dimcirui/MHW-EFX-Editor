@@ -736,7 +736,7 @@ class EFX_OT_ptb_add_override(bpy.types.Operator):
     def execute(self, context):
         from . import fields as _fields
         from ..efx_format.structs import unpack_ptbehavior, pack_ptbehavior
-        from ..efx_format.ptbehavior_edit import add_override
+        from ..efx_format.ptbehavior.edit import add_override
 
         if self.key_choice == "__none__":
             self.report({"WARNING"}, "No property selected")
@@ -780,7 +780,7 @@ class EFX_OT_ptb_remove_override(bpy.types.Operator):
     def execute(self, context):
         from . import fields as _fields
         from ..efx_format.structs import unpack_ptbehavior, pack_ptbehavior
-        from ..efx_format.ptbehavior_edit import remove_override
+        from ..efx_format.ptbehavior.edit import remove_override
 
         bp = context.active_object.efx_block
         cur = _fields.ptbehavior_current_bytes(bp)   # 烘焙待编辑值
@@ -833,7 +833,7 @@ def _material_shader_enum_items(self, context):
     收窄后为空（mrl3 只用了未知类型）则安全退回全样，不留用户对着空下拉卡住。
     """
     global _MATERIAL_SHADER_ENUM_CACHE
-    from ..efx_format import material_meta as _mm
+    from ..efx_format.material import meta as _mm
 
     entries = sorted(_mm.MATERIAL_TYPE_NAMES.items(), key=lambda kv: kv[1])
 
@@ -875,7 +875,7 @@ class EFX_OT_material_add_block(bpy.types.Operator):
     def execute(self, context):
         from . import fields as _fields
         from ..efx_format.structs import unpack_material, pack_material
-        from ..efx_format import material_edit as _me
+        from ..efx_format.material import edit as _me
 
         try:
             shader_hash = int(self.shader_choice)
@@ -929,7 +929,7 @@ class EFX_OT_material_set_shader(bpy.types.Operator):
     def execute(self, context):
         from . import fields as _fields
         from ..efx_format.structs import unpack_material, pack_material
-        from ..efx_format import material_edit as _me
+        from ..efx_format.material import edit as _me
 
         try:
             shader_hash = int(self.shader_choice)
@@ -970,7 +970,7 @@ class EFX_OT_material_remove_block(bpy.types.Operator):
     def execute(self, context):
         from . import fields as _fields
         from ..efx_format.structs import unpack_material, pack_material
-        from ..efx_format import material_edit as _me
+        from ..efx_format.material import edit as _me
 
         bp = context.active_object.efx_block
         cur = _fields.material_current_bytes(bp)   # 烘焙待编辑值
@@ -1005,7 +1005,7 @@ class EFX_OT_material_import_mrl3_filter(bpy.types.Operator, ImportHelper):
     filter_glob: StringProperty(default="*.mrl3", options={'HIDDEN'})
 
     def execute(self, context):
-        from ..efx_format.mrl3_reader import read_material_type_hashes, Mrl3ParseError
+        from ..efx_format.material.mrl3_reader import read_material_type_hashes, Mrl3ParseError
 
         try:
             with open(self.filepath, "rb") as f:

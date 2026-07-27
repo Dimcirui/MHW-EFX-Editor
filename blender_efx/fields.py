@@ -1716,7 +1716,7 @@ def _init_ptbehavior_attribute(blk, bp) -> bool:
     bt.orig_b64 = ''
     bt.string_value = d['b_type'].rstrip(b'\x00').decode('utf-8', errors='replace')
 
-    from ..efx_format.ptbehavior_names import name_for as _ptb_name_for
+    from ..efx_format.ptbehavior.names import name_for as _ptb_name_for
 
     for i, param in enumerate(d['params']):
         t = param['t']
@@ -1879,8 +1879,8 @@ def ptbehavior_addable_items(bp):
     label = 已知名 / 0x%08X。供添加下拉的 EnumProperty 回调使用。
     """
     from ..efx_format.structs import unpack_ptbehavior
-    from ..efx_format.ptbehavior_edit import addable_catalog
-    from ..efx_format.ptbehavior_names import name_for
+    from ..efx_format.ptbehavior.edit import addable_catalog
+    from ..efx_format.ptbehavior.names import name_for
 
     try:
         d, _ = unpack_ptbehavior(base64.b64decode(bp.raw_b64))
@@ -1916,7 +1916,7 @@ def _init_material_attribute(blk, bp) -> bool:
     返回 True=成功（bp.is_editable 由本函数设置）；False=失败（已清理 items）。
     """
     from ..efx_format.structs import unpack_material
-    from ..efx_format import material_edit as _me
+    from ..efx_format.material import edit as _me
 
     try:
         d, _ = unpack_material(blk.data_bytes)
@@ -1978,7 +1978,7 @@ def rebuild_material_attribute(bp, original_data: bytes = None) -> bytes:
     original_data : bytes | None — 若 None 则从 bp.raw_b64 解码
     """
     from ..efx_format.structs import unpack_material, pack_material
-    from ..efx_format import material_edit as _me
+    from ..efx_format.material import edit as _me
 
     orig = original_data if original_data is not None else base64.b64decode(bp.raw_b64)
     d, _ = unpack_material(orig)

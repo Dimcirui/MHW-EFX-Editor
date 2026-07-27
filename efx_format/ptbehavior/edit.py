@@ -11,7 +11,7 @@ unpack_ptbehavior 产出的 values dict 上做增删覆盖项，再交给 pack_p
 
 import zlib
 
-from .ptbehavior_catalog import PTBEHAVIOR_CATALOG
+from .catalog import PTBEHAVIOR_CATALOG
 
 
 def jamcrc(s: str) -> int:

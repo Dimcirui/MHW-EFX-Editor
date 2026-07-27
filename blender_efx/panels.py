@@ -106,11 +106,12 @@ def _friendly_name(ori_name: str, type_name: str = "") -> str:
     if ori_name.startswith("__") and ori_name.endswith("__"):
         return ori_name
 
-    # 中文模式：优先查中文标签表，命中即返回；未命中回退英文友好名（下方派生）。
+    # 中文模式：优先查中文标签（定长块＝Field.label_zh，custom 块＝残余表），
+    # 命中即返回；未命中回退英文友好名（下方派生）。见 efx_format/schema/labels.py。
     from .i18n import get_lang
     if get_lang() == "ZH":
-        from .field_labels import label_zh
-        zh = label_zh(ori_name, type_name or None)
+        from ..efx_format.schema.labels import field_label_zh
+        zh = field_label_zh(type_name or None, ori_name)
         if zh:
             return zh
 
@@ -574,7 +575,7 @@ def _draw_tubelight_int_as_color(layout, item, type_name, label):
 def _draw_material_editor(layout, context, material_groups: dict) -> None:
     """绘制材质槽列表：每槽一个可折叠框（类型 + 更改类型 + 删除），槽内逐条贴图路径；
     末尾 mrl3 独立过滤器行（导入/清除，跟 mesh/Model Editor 完全解耦）。"""
-    from ..efx_format import material_meta as _mm
+    from ..efx_format.material import meta as _mm
 
     if not material_groups:
         row = layout.row(align=True)

@@ -25,7 +25,7 @@ import bpy
 from bpy.types import Operator, Panel
 
 from .i18n import T
-from ..efx_format import timl_meta as tm
+from ..efx_format.timl import meta as tm
 from ..efx_format import timl as _timl   # 完整解析/序列化（animation 增删用）
 
 

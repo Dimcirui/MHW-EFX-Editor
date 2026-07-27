@@ -1,5 +1,5 @@
 """
-efx_format/timl_meta.py  —  TIML 头部元字段的轻量解析 + 原地编辑（纯 Python，零 bpy）
+efx_format/timl_meta.py  —  TIML 头部元字段的轻量解析 + 原地编辑
 
 定位
 ----

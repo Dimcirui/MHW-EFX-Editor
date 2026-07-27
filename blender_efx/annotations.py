@@ -97,15 +97,15 @@ FIELD_ANNOTATIONS = {
         "EN": "4 is the most common value. 0-XYZ, 1-YZX, 2-ZXY, 3-ZYX, 4-YXZ, 5-XZY",
         "ZH": "4 为最常见值。0-XYZ，1-YZX，2-ZXY，3-ZYX，4-YXZ，5-XZY",
     },
-    ("TRANSFORM3D", "Translation_Velocity_Modifier"): {
+    ("TRANSFORM3D", "translation_velocity_modifier"): {
         "EN": "Multiplier / Acceleration? Range [0, 1]",
         "ZH": "乘数 / 加速度？范围 [0, 1]",
     },
-    ("TRANSFORM3D", "Rotation_Velocity_Modifier"): {
+    ("TRANSFORM3D", "rotation_velocity_modifier"): {
         "EN": "Multiplier / Acceleration? Range [0, 1]",
         "ZH": "乘数 / 加速度？范围 [0, 1]",
     },
-    ("TRANSFORM3D", "Scale_Velocity_Modifier"): {
+    ("TRANSFORM3D", "scale_velocity_modifier"): {
         "EN": "Multiplier / Acceleration? Range [0, 1]",
         "ZH": "乘数 / 加速度？范围 [0, 1]",
     },
