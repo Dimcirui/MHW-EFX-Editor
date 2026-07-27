@@ -28,16 +28,11 @@ FIELD_LABELS_ZH = {
     "scale_velocity": "缩放速度",
     "scale_velocity_modifier": "缩放速度修正",
     "spin_velocity": "自旋速度",
-    "spin_acceleration": "自旋加速度",
     "main_axis_speed": "主轴速度",
     "main_axis_speed2": "主轴速度2",
     # 原 secondary_axis_speed/2，实测确认（2026-07-11）是 main_axis_speed/2 的 jitter
     "main_axis_speed_jitter": "主轴速度抖动",
     "main_axis_speed2_jitter": "主轴速度2抖动",
-    "sizeX": "X 基准点伸缩",
-    "sizeY": "Y 基准点伸缩",
-    "sizeZ": "Z 基准点伸缩",
-    "momentum_retention": "动量保留率",
 
     # ── 变换 ───────────────────────────────────────────────────────────────
     "rangeXYZ": "生成范围",
@@ -103,8 +98,9 @@ FIELD_LABELS_ZH = {
     "altBurstIntervalJitter": "替代批次间隔抖动（帧）",
     "burstsPerCycle": "每轮批次数",
     "burstsPerCycleJitter": "每轮批次数抖动",
-    "instanceCountUnknLimit": "实例数上限",
-    "instanceCountUnknLimitJitter": "实例数上限抖动",
+    # instanceCountUnknLimit(+Jitter)：4 种假设均测试无效，语义确认放弃，不再用"实例数上限"这类
+    # 听起来已确认的中文名误导用户；不在此登记 CN 标签，回退到英文原名自动拆词
+    # "Instance Count Unkn Limit" / "...Jitter"（中英文界面统一显示英文，避免虚假确定感）。
     "emitterRepeatCount": "重复次数",
     "emitterStartDelay": "发射器启动延迟（帧）",
     "emitterStartDelayJitter": "发射器启动延迟抖动（帧）",
@@ -230,7 +226,7 @@ FIELD_LABELS_ZH = {
     "blendParam": "混合参数",
     "animationSpeed": "动画速度",
     "extraMaterialInitialPosition": "附加材质初始位置",
-    "extraMaterialInitialPositionJ": "附加材质初始位置抖动",
+    "extraMaterialInitialPositionJitter": "附加材质初始位置抖动",
     "extraMaterialSpeed": "附加材质速度",
     "extraMaterialSpeedJitter": "附加材质速度抖动",
 
@@ -256,13 +252,21 @@ FIELD_LABELS_ZH = {
     # 原 smooth_radius_randomized/2，实测确认（2026-07-11）是 teleport_radius/2 的 jitter
     "teleport_radius_jitter": "传送半径抖动",
     "teleport_radius2_jitter": "传送半径2抖动",
-    "initialVelocity": "初速度",
-    "initialVelocityJitter": "初速度偏差",
-    "initialVelocityAxis": "初速度基准轴",
+    "speed": "初速度",
+    "speedJitter": "初速度偏差",
+    "baseAxis": "基准轴",
+    "rotOrder": "旋转顺序",
     "acceleration": "加速度",
     "accelerationJitter": "加速度偏差",
-    "initialVelocityDelay": "初速度延迟",
-    "initialVelocityDelayJitter": "初速度延迟抖动",
+    "movementDelay": "运动延迟",
+    "movementDelayJitter": "运动延迟抖动",
+    "velocityX": "速度 X",
+    "velocityY": "速度 Y",
+    "velocityZ": "速度 Z",
+    "divergenceX": "发散度 X",
+    "divergenceY": "发散度 Y",
+    "divergenceZ": "发散度 Z",
+    "minMovementThreshold": "最小移动阈值",
     "velocityType": "速度类型",
     "pattern": "图案",
     "shapeType": "形状类型",
@@ -339,6 +343,15 @@ FIELD_LABELS_ZH = {
     "billboardRotationJitter": "平面旋转抖动",
     "billboardRotationAccel": "平面旋转加速度",
     "billboardRotationAccelJitter": "平面旋转加速度抖动",
+    "rotationModeMask": "旋转模式",
+    "spinAccelerationX": "自旋加速度 X",
+    "spinAccelerationXJitter": "自旋加速度 X 抖动",
+    "spinAccelerationY": "自旋加速度 Y",
+    "spinAccelerationYJitter": "自旋加速度 Y 抖动",
+    "spinAccelerationZ": "自旋加速度 Z",
+    "spinAccelerationZJitter": "自旋加速度 Z 抖动",
+    "rotateDelayStart": "旋转延迟起始帧",
+    "rotateDelayStartJitter": "旋转延迟起始帧抖动",
     "prop1": "属性1",
     "prop1Jitter": "属性1抖动",
     "prop2": "属性2",
@@ -362,10 +375,19 @@ FIELD_LABELS_ZH = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 FIELD_LABELS_ZH_BY_TYPE = {
-    # ── VELOCITY3D offsetX/Y/Z（跟其他类型泛用的"X 偏移"语义不同，单独作用域） ──
-    ("VELOCITY3D", "offsetX"): "X 基准点偏置",
-    ("VELOCITY3D", "offsetY"): "Y 基准点偏置",
-    ("VELOCITY3D", "offsetZ"): "Z 基准点偏置",
+    # ── VELOCITY3D/VELOCITY2D velocityX/Y/Z、divergenceX/Y/Z（原 offsetX/Y/Z、sizeX/Y/Z，
+    # 2026-07-26 依社区续作 schema 改名）：跟全局泛用的"速度 X"/"发散度 X"语义不同（这里特指
+    # 基准点公式 Vi=(divergence-1)*x0+velocity 里的截距/斜率角色），单独作用域覆盖 ──
+    ("VELOCITY3D", "velocityX"): "X 基准点偏置",
+    ("VELOCITY3D", "velocityY"): "Y 基准点偏置",
+    ("VELOCITY3D", "velocityZ"): "Z 基准点偏置",
+    ("VELOCITY3D", "divergenceX"): "X 基准点伸缩",
+    ("VELOCITY3D", "divergenceY"): "Y 基准点伸缩",
+    ("VELOCITY3D", "divergenceZ"): "Z 基准点伸缩",
+    ("VELOCITY2D", "velocityX"): "X 基准点偏置",
+    ("VELOCITY2D", "velocityY"): "Y 基准点偏置",
+    ("VELOCITY2D", "divergenceX"): "X 基准点伸缩",
+    ("VELOCITY2D", "divergenceY"): "Y 基准点伸缩",
     # ── UVSEQUENCE loopingMode 拆分字段 ──────────────────────────────────────
     ("UVSEQUENCE", "playbackMode"): "播放模式",
     ("UVSEQUENCE", "flipCode"): "翻转码",
@@ -430,11 +452,12 @@ FIELD_LABELS_ZH_BY_TYPE = {
     ("HOMING", "vanishMode"):      "消失模式",
 
     # ── VELOCITY2D（2D 速度，来源 EFX_Subtypes.bt）────────────────────────────
-    # initialVelocity/initialVelocityJitter/acceleration/accelerationJitter/
-    # offsetX/offsetY/sizeX/sizeY/initialVelocityDelay/initialVelocityDelayJitter/
-    # rotation/rotationJitter 2026-07 改名，走全局通用标签（同 VELOCITY3D）。
-    # velocityType 枚举含义与 VELOCITY3D 不同（0-1线性 2-3静止），保留专属标签。
-    ("VELOCITY2D", "velocityType"):                    "速度类型(0-1线性 2-3静止)",
+    # speed/speedJitter/acceleration/accelerationJitter/velocityX/Y/divergenceX/Y/
+    # movementDelay/movementDelayJitter/rotation/rotationJitter 走全局通用标签
+    # （同 VELOCITY3D，2026-07-26 依社区续作 schema 改名）。velocityType 枚举
+    # 与 VELOCITY3D 同一套语义（0=Directional/1=DirectionalSpread/2=Radial/
+    # 3=EmitterMotion），保留专属标签只是历史遗留，非语义区分。
+    ("VELOCITY2D", "velocityType"):                    "速度类型",
     ("VELOCITY2D", "gravity"):                         "重力",
     ("VELOCITY2D", "gravityJitter"):                   "重力抖动",
     ("VELOCITY2D", "gravityDelay"):                    "重力延迟",
@@ -448,11 +471,12 @@ FIELD_LABELS_ZH_BY_TYPE = {
     # PLEMISSIVE body_p/wp_p 的显示名由面板 label_override 给出（Aura Part (Player)/(Weapon)），不在此表。
 
     # ── EMITTERSHAPE2D（2D 发射形状，来源 EFX_Subtypes.bt）────────────────────
-    ("EMITTERSHAPE2D", "offsetX"):       "偏移 X",
-    ("EMITTERSHAPE2D", "offsetXJitter"): "偏移 X 抖动",
-    ("EMITTERSHAPE2D", "offsetY"):       "偏移 Y",
-    ("EMITTERSHAPE2D", "offsetYJitter"): "偏移 Y 抖动",
+    ("EMITTERSHAPE2D", "rangeX"):        "生成范围 X",
+    ("EMITTERSHAPE2D", "rangeXJitter"):  "生成范围 X 抖动",
+    ("EMITTERSHAPE2D", "rangeY"):        "生成范围 Y",
+    ("EMITTERSHAPE2D", "rangeYJitter"):  "生成范围 Y 抖动",
     ("EMITTERSHAPE2D", "spawnCount"):    "生成数量",
+    ("EMITTERSHAPE2D", "shapeType"):     "形状类型",
 
     # ── RANDOMFIX ──────────────────────────────────────────────────────────
     ("RANDOMFIX", "useRandomSeedTableCount"): "种子表使用次数",

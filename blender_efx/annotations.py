@@ -226,28 +226,55 @@ FIELD_ANNOTATIONS = {
 
     # ─── VELOCITY3D ───────────────────────────────────────────────────────────
     # ExternVelocity3D (EFX_Subtypes.bt)
-    ("VELOCITY3D", "initialVelocityAxis"): {
-        "EN": "Base axis for initialVelocity (one of six cardinal axes, not a free direction "
-              "vector), combined with rotationX/Y/Z to give the final direction. "
-              "0=left,1=up,2=front,3=right,4=down,5=back. Only meaningful when velocityType=0.",
-        "ZH": "initialVelocity 的基准轴（六个基准轴之一，不是自由方向向量），与 rotationX/Y/Z "
-              "复合得到最终方向。0=左,1=上,2=前,3=右,4=下,5=后。仅在 velocityType=0 时有意义。",
+    ("VELOCITY3D", "baseAxis"): {
+        "EN": "Base axis for speed (one of six cardinal axes, not a free direction vector), "
+              "combined with rotationX/Y/Z to give the final direction. Only meaningful when "
+              "velocityType=Directional. Confirmed (2026-07-26): 0=left,1=up,2=front,3=right,"
+              "4=down,5=back — equivalent to the community RE Engine sequel schema's Cartesian "
+              "AxisType (0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z), since in the game's default coordinate "
+              "system +X=left, +Y=up, +Z=front. The two descriptions are the same mapping, just "
+              "phrased differently — not a real disagreement.",
+        "ZH": "speed 的基准轴（六个基准轴之一，不是自由方向向量），与 rotationX/Y/Z 复合得到最终"
+              "方向。仅在 velocityType=Directional 时有意义。已确认(2026-07-26)：0=左,1=上,2=前,"
+              "3=右,4=下,5=后——跟社区 RE Engine 续作 schema 的笛卡尔 AxisType"
+              "（0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z）是同一套映射，因为游戏默认坐标系下 +X=左,"
+              "+Y=上,+Z=前。两种描述只是措辞不同，不是真的分歧。",
+    },
+    ("VELOCITY3D", "rotOrder"): {
+        "EN": "Confirmed (2026-07-26) via a community RE Engine sequel schema as a rotation-order "
+              "enum: 0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX. Not the same numeric mapping as "
+              "TRANSFORM3D's rotation order convention.",
+        "ZH": "已依 2026-07-26 一份社区 RE Engine 续作 schema 确认为旋转顺序枚举："
+              "0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX。跟 TRANSFORM3D 的旋转顺序惯例不是同一套数值映射。",
     },
     ("VELOCITY3D", "acceleration"): {
-        "EN": "Acceleration coefficient. 1=uniform, >1=accelerate, <1=decelerate until 0.",
-        "ZH": "加速度系数，1为匀速，>1为加速，<1为减速直至0。",
+        "EN": "Acceleration coefficient. 1=uniform, >1=accelerate, <1=decelerate until 0. "
+              "(A community schema calls the equivalent field \"drag\" — 1=no drag/constant "
+              "speed, 0=instant stop — conceptually the same force; kept the name acceleration "
+              "per 2026-07-26 decision.)",
+        "ZH": "加速度系数，1为匀速，>1为加速，<1为减速直至0。（社区 schema 里对应字段叫 \"drag\""
+              "(阻力)——1=无阻力/匀速，0=瞬间停止，本质是同一个力；2026-07-26 决定保留 "
+              "acceleration 这个名字不跟随改名。）",
     },
     ("VELOCITY3D", "velocityType"): {
         "EN": "Decides how the particle's movement DIRECTION is determined (speed always comes "
-              "from initialVelocity/acceleration; gravity is independent and always applies). "
-              "0=Direction (direction from initialVelocityAxis + rotation), 1=Normal (regular; "
-              "direction decided solely by offset and size), 2=Radial (always moves outward), "
-              "3=Spread (direction matches the emitter's velocity direction at spawn), "
-              "4=ScreenSpace, 5=Unkn.",
-        "ZH": "决定粒子运动方向如何确定（速度始终由 initialVelocity/acceleration 决定，重力独立"
-              "于此始终生效）。0=Direction(由 initialVelocityAxis + rotation 决定粒子运动方向)，"
-              "1=Normal(常规，仅由 offset 和 size 共同决定粒子运动方向)，2=Radial(始终向外运动)，"
-              "3=Spread(运动方向和生成时 Emitter 的速度方向一致)，4=ScreenSpace，5=Unkn。",
+              "from speed/acceleration; gravity is independent and always applies). "
+              "0=Directional (direction from baseAxis + rotation), 1=DirectionalSpread (confirmed "
+              "2026-07-26 in-game as the Vi=(divergence-1)*spawnPos+velocity, normalized, model — "
+              "formerly mislabeled \"Normal\"), 2=Radial (always moves outward, rotation/velocity/"
+              "divergence have no effect), 3=EmitterMotion (inherits the emitter's own movement; "
+              "gated by minMovementThreshold; formerly labeled \"Spread\"). ⚠ Our corpus has also "
+              "shown values 4/5 (previously documented as ScreenSpace/Unkn) that a community RE "
+              "Engine sequel schema's 4-value enum doesn't include — unreconciled, needs re-check "
+              "against the corpus before trusting either side fully.",
+        "ZH": "决定粒子运动方向如何确定（速度始终由 speed/acceleration 决定，重力独立于此始终"
+              "生效）。0=Directional(由 baseAxis + rotation 决定方向)，1=DirectionalSpread"
+              "(2026-07-26 实机确认即 Vi=(divergence-1)*生成坐标+velocity 归一化模型，原误"
+              "标为\"Normal\")，2=Radial(始终向外运动，rotation/velocity/divergence 均无效)，"
+              "3=EmitterMotion(继承 emitter 自身移动，受 minMovementThreshold 门控，原标"
+              "为\"Spread\")。⚠ 我们语料还观测到 4/5 取值（旧注释里叫 ScreenSpace/Unkn），"
+              "社区一份 RE Engine 续作 schema 只有 0~3 四态、没有这两个——两边没对上，"
+              "回查语料前不能全信任何一边。",
     },
     ("VELOCITY3D", "gravity"): {
         "EN": "Gravity. Always applies regardless of velocityType.",
@@ -324,9 +351,14 @@ FIELD_ANNOTATIONS = {
         "EN": "Axis mask (bitmask): bit0=X, bit1=Y, bit2=Z. Controls which axes receive spin.",
         "ZH": "轴掩码（bitmask）：bit0=X，bit1=Y，bit2=Z。控制哪些轴参与自旋。",
     },
-    ("ROTATEANIM", "unknBitmask0_1"): {
-        "EN": "Rotation mode: 0/1=billboard plane rotation only; 2 or 3=spin velocity enabled.",
-        "ZH": "旋转模式：0/1=仅 billboard 平面旋转；取 2 或 3 时 spin_velocity 生效。",
+    ("ROTATEANIM", "rotationModeMask"): {
+        "EN": "Confirmed in-game (2026-07): 0=billboard plane rotation system only (billboardRotation "
+              "+ billboardRotationAccel); 1=same + randomized forward/reverse direction; 2=spin "
+              "velocity system only (spin_velocity + spinAcceleration); 3=same + randomized "
+              "forward/reverse direction (each axis independently randomized).",
+        "ZH": "实机确认(2026-07)：0=仅启用平面旋转系(billboardRotation+billboardRotationAccel)；"
+              "1=同上+随机正反向；2=仅启用自旋速度系(spin_velocity+spinAcceleration)；"
+              "3=同上+随机正反向(每个轴独立随机)。",
     },
 
     # ─── ALPHACORRECTION ──────────────────────────────────────────────────────
@@ -1634,27 +1666,27 @@ FIELD_ANNOTATIONS = {
     },
     # VELOCITY3D
     ("VELOCITY3D", "rotationX"): {
-        "EN": "Rotates initialVelocity's direction, around the X axis. Only meaningful when "
-              "velocityType=0.",
-        "ZH": "旋转 initialVelocity 的朝向，绕 X 轴旋转。仅在 velocityType=0 时有意义。",
+        "EN": "Rotates speed's direction, around the X axis. Only meaningful when "
+              "velocityType=Directional.",
+        "ZH": "旋转 speed 的朝向，绕 X 轴旋转。仅在 velocityType=Directional 时有意义。",
     },
     ("VELOCITY3D", "rotationY"): {
-        "EN": "Rotates initialVelocity's direction, around the Y axis. Only meaningful when "
-              "velocityType=0.",
-        "ZH": "旋转 initialVelocity 的朝向，绕 Y 轴旋转。仅在 velocityType=0 时有意义。",
+        "EN": "Rotates speed's direction, around the Y axis. Only meaningful when "
+              "velocityType=Directional.",
+        "ZH": "旋转 speed 的朝向，绕 Y 轴旋转。仅在 velocityType=Directional 时有意义。",
     },
     ("VELOCITY3D", "rotationZ"): {
-        "EN": "Rotates initialVelocity's direction, around the Z axis. Only meaningful when "
-              "velocityType=0.",
-        "ZH": "旋转 initialVelocity 的朝向，绕 Z 轴旋转。仅在 velocityType=0 时有意义。",
+        "EN": "Rotates speed's direction, around the Z axis. Only meaningful when "
+              "velocityType=Directional.",
+        "ZH": "旋转 speed 的朝向，绕 Z 轴旋转。仅在 velocityType=Directional 时有意义。",
     },
-    ("VELOCITY3D", "initialVelocity"): {
-        "EN": "Grants particles their initial velocity.",
-        "ZH": "赋予粒子初速度。",
+    ("VELOCITY3D", "speed"): {
+        "EN": "Grants particles their initial velocity. Formerly initialVelocity.",
+        "ZH": "赋予粒子初速度。原 initialVelocity。",
     },
-    ("VELOCITY3D", "initialVelocityJitter"): {
-        "EN": "Random addend on initialVelocity.",
-        "ZH": "初速度偏差（initialVelocity 的随机加数）。",
+    ("VELOCITY3D", "speedJitter"): {
+        "EN": "Random addend on speed. Formerly initialVelocityJitter.",
+        "ZH": "初速度偏差（speed 的随机加数）。原 initialVelocityJitter。",
     },
     ("VELOCITY3D", "accelerationJitter"): {
         "EN": "Random jitter on acceleration (same nature as the velocity jitter).",
@@ -1664,43 +1696,60 @@ FIELD_ANNOTATIONS = {
         "EN": "Frames before gravity takes effect.",
         "ZH": "gravity 生效前的延迟帧数。",
     },
-    ("VELOCITY3D", "initialVelocityDelay"): {
-        "EN": "Frames before initialVelocity takes effect.",
-        "ZH": "initialVelocity 生效前的延迟帧数。",
+    ("VELOCITY3D", "movementDelay"): {
+        "EN": "Frames before speed takes effect. Formerly initialVelocityDelay.",
+        "ZH": "speed 生效前的延迟帧数。原 initialVelocityDelay。",
     },
-    ("VELOCITY3D", "offsetX"): {
+    ("VELOCITY3D", "velocityX"): {
         "EN": "Only takes effect paired with a generation-method attribute (e.g. "
-              "EMITTERSHAPE3D/EMITTERSHAPEMESH) and velocityType=1(Normal). Together with "
-              "sizeX, determines this axis's reference point.",
+              "EMITTERSHAPE3D/EMITTERSHAPEMESH) and velocityType=DirectionalSpread. Together with "
+              "divergenceX, determines this axis's reference point (Vi=(divergence-1)*x0+velocity, "
+              "computed once at spawn from the particle's spawn coordinate — NOT re-evaluated over "
+              "time; confirmed correct in 2D via VELOCITY2D+EMITTERSHAPE2D testing 2026-07-26, "
+              "ruling out a live-position/vector-field alternative). Formerly offsetX. Scale note: "
+              "this field is ~100x the spawn coordinate's own magnitude (e.g. EMITTERSHAPE range "
+              "units) — plug the raw field value in directly, do not normalize it to the "
+              "[-1,1]-ish range used by the interactive demo without multiplying by 100.",
         "ZH": "仅在搭配生成方式类属性（如 EMITTERSHAPE3D/EMITTERSHAPEMESH）且 "
-              "velocityType=1(Normal) 时生效。与 sizeX 共同决定该轴的基准点位置。",
+              "velocityType=DirectionalSpread 时生效。与 divergenceX 共同决定该轴的基准点"
+              "（Vi=(divergence-1)*x0+velocity，只在生成瞬间用粒子的生成坐标算一次，之后不再随"
+              "时间重算——2026-07-26 已用 VELOCITY2D+EMITTERSHAPE2D 实机验证确认这个'生成时刻"
+              "快照'模型是对的，排除了'实时位置/向量场'的替代假说）。原 offsetX。量级提醒：这个"
+              "字段的数值大约是生成坐标本身量级的 100 倍（如 EMITTERSHAPE 的 range 单位），直接填"
+              "原始字段值即可，不要按交互 demo 里 [-1,1] 左右的坐标范围去套，除非乘以 100。",
     },
-    ("VELOCITY3D", "offsetY"): {
-        "EN": "See offsetX.",
-        "ZH": "见 offsetX。",
+    ("VELOCITY3D", "velocityY"): {
+        "EN": "See velocityX. Formerly offsetY. Note: Y sign convention may be flipped relative "
+              "to the game's in-editor axis (confirmed inverted in the 2D VELOCITY2D/"
+              "EMITTERSHAPE2D test).",
+        "ZH": "见 velocityX。原 offsetY。注意：Y 的正负号方向可能跟游戏内的轴向相反（2D 的 "
+              "VELOCITY2D/EMITTERSHAPE2D 测试已确认是翻转的）。",
     },
-    ("VELOCITY3D", "offsetZ"): {
-        "EN": "See offsetX.",
-        "ZH": "见 offsetX。",
+    ("VELOCITY3D", "velocityZ"): {
+        "EN": "See velocityX. Formerly offsetZ.",
+        "ZH": "见 velocityX。原 offsetZ。",
     },
-    ("VELOCITY3D", "sizeX"): {
+    ("VELOCITY3D", "divergenceX"): {
         "EN": "Only takes effect paired with a generation-method attribute (e.g. "
-              "EMITTERSHAPE3D/EMITTERSHAPEMESH) and velocityType=1(Normal). Together with "
-              "offsetX, determines this axis's reference point. 1=no effect; <1=moves toward "
+              "EMITTERSHAPE3D/EMITTERSHAPEMESH) and velocityType=DirectionalSpread. Together with "
+              "velocityX, determines this axis's reference point. 1=no effect; <1=moves toward "
               "the reference point (passes through to the other side); >1=moves away from it. "
-              "Speed is constant, independent of the value's magnitude.",
+              "Speed is constant, independent of the value's magnitude. Formerly sizeX. Model "
+              "confirmed correct (spawn-time snapshot, not live-position) via 2D testing "
+              "2026-07-26 — see velocityX.",
         "ZH": "仅在搭配生成方式类属性（如 EMITTERSHAPE3D/EMITTERSHAPEMESH）且 "
-              "velocityType=1(Normal) 时生效。与 offsetX 共同决定该轴基准点：1=该轴无效果；"
-              "<1 时朝基准点运动（会穿过继续到对面）；>1 时背离基准点运动。速度恒定，"
-              "与数值大小无关，仅决定方向。",
+              "velocityType=DirectionalSpread 时生效。与 velocityX 共同决定该轴基准点：1=该轴"
+              "无效果；<1 时朝基准点运动（会穿过继续到对面）；>1 时背离基准点运动。速度恒定，"
+              "与数值大小无关，仅决定方向。原 sizeX。模型（生成时刻快照，非实时位置）已于 "
+              "2026-07-26 通过 2D 测试确认正确，详见 velocityX。",
     },
-    ("VELOCITY3D", "sizeY"): {
-        "EN": "See sizeX.",
-        "ZH": "见 sizeX。",
+    ("VELOCITY3D", "divergenceY"): {
+        "EN": "See divergenceX. Formerly sizeY.",
+        "ZH": "见 divergenceX。原 sizeY。",
     },
-    ("VELOCITY3D", "sizeZ"): {
-        "EN": "See sizeX.",
-        "ZH": "见 sizeX。",
+    ("VELOCITY3D", "divergenceZ"): {
+        "EN": "See divergenceX. Formerly sizeZ.",
+        "ZH": "见 divergenceX。原 sizeZ。",
     },
     # BILLBOARD3D（含本版新拆分字段）
     ("BILLBOARD3D", "color"): {
@@ -1736,6 +1785,12 @@ FIELD_ANNOTATIONS = {
               "at animation start; negative = shrinking).",
         "ZH": "初始扩散加速度，与 initialScaleSpeed 配对（动画刚进来的缩小效果，负值=缩小）。",
     },
+    ("SCALEANIM", "unknFloat"): {
+        "EN": "Formerly named NULL — corpus scan shows ~30% of instances are non-zero clean "
+              "decimals (0.02/0.04/0.1/0.2/...), not padding. Semantics unconfirmed.",
+        "ZH": "原名 NULL——全语料实测约 30% 实例非零，且是干净小数（0.02/0.04/0.1/0.2 等），"
+              "并非填充占位。具体语义未确认。",
+    },
     ("SCALEANIM", "scaleSpeedX"): {
         "EN": "X-axis scale speed during playback (billboard = X/Y; mesh = X/Y/Z).",
         "ZH": "播放过程中 X 轴缩放速度（billboard 用 X/Y 两轴；模型用 X/Y/Z 三轴）。",
@@ -1768,8 +1823,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "billboardRotation 的随机分量。",
     },
     ("ROTATEANIM", "spin_velocity"): {
-        "EN": "Model/plane rotation along three axes (with spin_acceleration below for each).",
-        "ZH": "模型/平面的三轴旋转方式（下方 spin_acceleration 为各自加速度）。",
+        "EN": "Model/plane rotation along three axes (with spinAccelerationX/Y/Z below for each).",
+        "ZH": "模型/平面的三轴旋转方式（下方 spinAccelerationX/Y/Z 为各自加速度）。",
     },
 
     # ─── LIGHTNING ────────────────────────────────────────────────────────────
@@ -2417,21 +2472,23 @@ FIELD_ANNOTATIONS = {
         "EN": "Per-particle random offset applied to highFreqAmplitude. Common range: 0~100.",
         "ZH": "对 highFreqAmplitude 施加的逐粒子随机偏移。常见取值在 0~100 之间。",
     },
-    ("EMITTERSHAPE2D", "offsetX"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("EMITTERSHAPE2D", "rangeX"): {
+        "EN": "Formerly offsetX. Confirmed (2026-07) as the 2D counterpart of "
+              "EMITTERSHAPE3D.rangeXYZ (spawn range), static half of a static/random pair.",
+        "ZH": "原 offsetX。已确认(2026-07)对应 EMITTERSHAPE3D.rangeXYZ 同一概念（生成范围）"
+              "的 2D 版本，static/random 一对的 static 半边。",
     },
-    ("EMITTERSHAPE2D", "offsetXJitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("EMITTERSHAPE2D", "rangeXJitter"): {
+        "EN": "Formerly offsetXJitter. Random component of rangeX.",
+        "ZH": "原 offsetXJitter。rangeX 的随机分量。",
     },
-    ("EMITTERSHAPE2D", "offsetY"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("EMITTERSHAPE2D", "rangeY"): {
+        "EN": "Formerly offsetY. Y-axis counterpart of rangeX.",
+        "ZH": "原 offsetY。rangeX 的 Y 轴对应。",
     },
-    ("EMITTERSHAPE2D", "offsetYJitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("EMITTERSHAPE2D", "rangeYJitter"): {
+        "EN": "Formerly offsetYJitter. Random component of rangeY.",
+        "ZH": "原 offsetYJitter。rangeY 的随机分量。",
     },
     ("EMITTERSHAPE2D", "spawnCount"): {
         "EN": "Common values: [0, 3, 5, 6, 8, 10, 16, 18].",
@@ -2443,9 +2500,20 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
               "[1, 2, 3, 7, 8, 9, 13]。",
     },
-    ("EMITTERSHAPE2D", "unknFlag20"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+    ("EMITTERSHAPE2D", "shapeType"): {
+        "EN": "Formerly unknFlag20. Confirmed (2026-07) as the 2D counterpart of "
+              "EMITTERSHAPE3D.shapeType: 0=square, 1=circle, 2+=point. Corpus scan (292 samples) "
+              "has only observed 0/1 so far — the 2+ case is unconfirmed by our data.",
+        "ZH": "原 unknFlag20。已确认(2026-07)对应 EMITTERSHAPE3D.shapeType 同一概念："
+              "0=方形，1=圆形，2及以上=点。全语料 292 例目前只观测到 0/1，2+ 的情况暂无数据佐证。",
+    },
+    ("EMITTERSHAPE2D", "unknEnum22_0"): {
+        "EN": "3 distinct values: 0=94%, 2=4%, 1=2%. Semantics undetermined.",
+        "ZH": "3 种取值：0=94%，2=4%，1=2%。语义待定。",
+    },
+    ("EMITTERSHAPE2D", "unknFixed22_1"): {
+        "EN": "Always 0 across the entire 292-sample corpus.",
+        "ZH": "全语料 292 例恒为 0。",
     },
     ("EMITTERSHAPE3D", "rotationOrder"): {
         "EN": "Enum 0~5, 4 is the most common.",
@@ -3336,9 +3404,13 @@ FIELD_ANNOTATIONS = {
     ("RIBBONBLADE", "widthDirection"): {
         "EN": "Direction the streak's width extends toward. AxisDirection6: 0=Left, 1=Up, "
               "2=Forward, 3=Right, 4=Down, 5=Backwards. Same enum as RIBBON.restitution_direction "
-              "and VELOCITY3D.initialVelocityAxis. Formerly unkn03.",
+              "and VELOCITY3D.baseAxis (confirmed 2026-07-26 equivalent to the Cartesian "
+              "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z mapping — in the game's default coordinate system "
+              "+X=left, +Y=up, +Z=front). Formerly unkn03.",
         "ZH": "刀光宽度延伸的朝向。AxisDirection6：0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON."
-              "restitution_direction、VELOCITY3D.initialVelocityAxis 是同一套枚举。原名 unkn03。",
+              "restitution_direction、VELOCITY3D.baseAxis 是同一套枚举（2026-07-26 确认等价于笛卡尔 "
+              "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z 映射——游戏默认坐标系下 +X=左,+Y=上,+Z=前）。"
+              "原名 unkn03。",
     },
     ("RIBBONBLADE", "length"): {
         "EN": "Tail length, only effective when lengthMode=0 (contraction speed is then "
@@ -3419,10 +3491,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("ROTATEANIM", "momentum_retention"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
     ("ROTATEANIM", "billboardRotationAccel"): {
         "EN": "Acceleration of billboardRotation (static value; pairs with "
               "billboardRotationAccelJitter as the random).",
@@ -3433,9 +3501,47 @@ FIELD_ANNOTATIONS = {
         "EN": "Random component of billboardRotationAccel.",
         "ZH": "billboardRotationAccel 的随机分量。",
     },
-    ("ROTATEANIM", "unknEnum1_2"): {
-        "EN": "Usually 0; other common values: [1, 2, 5, 10, 15, 20, 30, 60, 128].",
-        "ZH": "通常为 0；其余常见取值为 [1, 2, 5, 10, 15, 20, 30, 60, 128]。",
+    ("ROTATEANIM", "spinAccelerationX"): {
+        "EN": "Formerly momentum_retention — corpus scan (2026-07) shows this and the following "
+              "5 fields were shifted one slot off; regrouped into X/Y/Z static+random pairs of "
+              "spin acceleration. Static value mostly 0.9~1.0.",
+        "ZH": "原 momentum_retention——2026-07 实测发现原 XYZ 分组整体错位一格，重新按 X/Y/Z 各自"
+              "的自旋加速度 static/random 分组。static 值多集中在 0.9~1.0。",
+    },
+    ("ROTATEANIM", "spinAccelerationXJitter"): {
+        "EN": "Random component of spinAccelerationX. Mostly 0; occasionally a clean small decimal.",
+        "ZH": "spinAccelerationX 的随机分量。多为 0；偶尔是干净的小数。",
+    },
+    ("ROTATEANIM", "spinAccelerationY"): {
+        "EN": "Y-axis counterpart of spinAccelerationX (static value).",
+        "ZH": "spinAccelerationX 的 Y 轴对应（static 值）。",
+    },
+    ("ROTATEANIM", "spinAccelerationYJitter"): {
+        "EN": "Random component of spinAccelerationY.",
+        "ZH": "spinAccelerationY 的随机分量。",
+    },
+    ("ROTATEANIM", "spinAccelerationZ"): {
+        "EN": "Z-axis counterpart of spinAccelerationX (static value).",
+        "ZH": "spinAccelerationX 的 Z 轴对应（static 值）。",
+    },
+    ("ROTATEANIM", "spinAccelerationZJitter"): {
+        "EN": "Random component of spinAccelerationZ.",
+        "ZH": "spinAccelerationZ 的随机分量。",
+    },
+    ("ROTATEANIM", "rotateDelayStart"): {
+        "EN": "Formerly the last float of the (mis-shifted) spin_acceleration XYZ group — always "
+              "reads as 0.0 as float32 (denormal artifact), but as int32 shows clean frame-count "
+              "values (5/10/15/20/30/100/512...). Static half of a static/random pair with "
+              "rotateDelayStartJitter; likely delay frames before rotation starts.",
+        "ZH": "原 spin_acceleration XYZ 分组(错位)的最后一个 float——按 float32 解读恒为 0.0"
+              "（denormal 假象），按 int32 解读呈现干净帧数(5/10/15/20/30/100/512...)。是与 "
+              "rotateDelayStartJitter 组成的 static/random 一对，疑似旋转开始前的延迟帧数。",
+    },
+    ("ROTATEANIM", "rotateDelayStartJitter"): {
+        "EN": "Formerly unknEnum1_2. Random component of rotateDelayStart; usually 0. Other common "
+              "values: [1, 2, 5, 10, 15, 20, 30, 60, 128].",
+        "ZH": "原 unknEnum1_2。rotateDelayStart 的随机分量；通常为 0；其余常见取值为 "
+              "[1, 2, 5, 10, 15, 20, 30, 60, 128]。",
     },
     ("SCALEANIM", "initialScaleAccelJitter"): {
         "EN": "Common range: 0~1.",
@@ -3726,7 +3832,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("UVCONTROL", "extraMaterialInitialPositionJ"): {
+    ("UVCONTROL", "extraMaterialInitialPositionJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
@@ -3742,9 +3848,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("UVCONTROL", "uv2_unkn0"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+    ("UVCONTROL", "uv2_enable"): {
+        "EN": "1860-sample corpus scan: clean binary 0/1 distribution — likely uv2 sub-channel on/off switch.",
+        "ZH": "1860 例全语料实测：干净的 0/1 二元分布——疑似 uv2 子通道启用开关。",
     },
     ("UVSEQUENCE", "animationAcceleration"): {
         "EN": "Common range: 0~100.",
@@ -3778,13 +3884,39 @@ FIELD_ANNOTATIONS = {
         "ZH": "生成时叠加到 uvs_index 上的抖动量（BT 模板误标为 NULL，实际并非恒定值）。"
               "通常为 0；其余取值为 1~8 的小整数。",
     },
-    ("VELOCITY2D", "initialVelocityDelay"): {
-        "EN": "Common values: [0, 1, 2, 5, 16, 20].",
-        "ZH": "常见取值为 [0, 1, 2, 5, 16, 20]。",
+    ("VELOCITY2D", "velocityX"): {
+        "EN": "2D counterpart of VELOCITY3D.velocityX — same Vi=(divergence-1)*x0+velocity model, "
+              "confirmed correct via direct in-game testing 2026-07-26 (spawn-time snapshot, "
+              "not live-position). Formerly offsetX. This field is ~100x the spawn coordinate's "
+              "own magnitude (e.g. EMITTERSHAPE2D.rangeX/Y units).",
+        "ZH": "VELOCITY3D.velocityX 的 2D 版本——同一套 Vi=(divergence-1)*x0+velocity 模型，已于 "
+              "2026-07-26 实机测试直接确认正确（生成时刻快照，非实时位置）。原 offsetX。这个"
+              "字段的数值约是生成坐标本身量级的 100 倍（如 EMITTERSHAPE2D.rangeX/Y 单位）。",
     },
-    ("VELOCITY2D", "initialVelocityDelayJitter"): {
-        "EN": "Common values: [0, 1, 3, 4, 5, 10, 20].",
-        "ZH": "常见取值为 [0, 1, 3, 4, 5, 10, 20]。",
+    ("VELOCITY2D", "velocityY"): {
+        "EN": "See velocityX. Formerly offsetY. Y sign convention confirmed flipped relative to "
+              "the interactive demo's math convention (2026-07-26 test).",
+        "ZH": "见 velocityX。原 offsetY。Y 的正负号方向已确认跟交互 demo 的数学约定相反"
+              "（2026-07-26 实测）。",
+    },
+    ("VELOCITY2D", "divergenceX"): {
+        "EN": "2D counterpart of VELOCITY3D.divergenceX. 1=no effect; <1=moves toward the "
+              "reference point; >1=moves away. Speed constant, independent of magnitude. "
+              "Formerly sizeX.",
+        "ZH": "VELOCITY3D.divergenceX 的 2D 版本。1=该轴无效果；<1 朝基准点运动；>1 背离基准点"
+              "运动。速度恒定，与数值大小无关。原 sizeX。",
+    },
+    ("VELOCITY2D", "divergenceY"): {
+        "EN": "See divergenceX. Formerly sizeY.",
+        "ZH": "见 divergenceX。原 sizeY。",
+    },
+    ("VELOCITY2D", "movementDelay"): {
+        "EN": "Common values: [0, 1, 2, 5, 16, 20]. Formerly initialVelocityDelay.",
+        "ZH": "常见取值为 [0, 1, 2, 5, 16, 20]。原 initialVelocityDelay。",
+    },
+    ("VELOCITY2D", "movementDelayJitter"): {
+        "EN": "Common values: [0, 1, 3, 4, 5, 10, 20]. Formerly initialVelocityDelayJitter.",
+        "ZH": "常见取值为 [0, 1, 3, 4, 5, 10, 20]。原 initialVelocityDelayJitter。",
     },
     ("VELOCITY2D", "acceleration"): {
         "EN": "Common range: 0~1.",
@@ -3794,17 +3926,22 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("VELOCITY2D", "initialVelocityJitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("VELOCITY2D", "speedJitter"): {
+        "EN": "Common range: 0~100. Formerly initialVelocityJitter.",
+        "ZH": "常见取值在 0~100 之间。原 initialVelocityJitter。",
     },
     ("VELOCITY2D", "gravityJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("VELOCITY3D", "unknFloat"): {
-        "EN": "Mostly 0 (~98%); range 0~40 when non-zero.",
-        "ZH": "多数为 0（约98%）；非零时取值范围 0~40。",
+    ("VELOCITY3D", "minMovementThreshold"): {
+        "EN": "Formerly unknFloat/NULL2. Confirmed (2026-07-26) in-game as a threshold: only "
+              "relevant when velocityType=EmitterMotion — the emitter's own velocity must "
+              "exceed this before it's applied to particles. Mostly 0 (~98% of the corpus); "
+              "range 0~40 when non-zero.",
+        "ZH": "原 unknFloat/NULL2。2026-07-26 实机确认为阈值：仅在 velocityType=EmitterMotion 时"
+              "有意义——emitter 自身速度需超过这个阈值才会施加给粒子。语料里多数为 0（约98%）；"
+              "非零时取值范围 0~40。",
     },
     ("VELOCITY3D", "gravity_jitter"): {
         "EN": "Common range: 0~100.",

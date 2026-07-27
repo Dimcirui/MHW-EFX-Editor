@@ -608,33 +608,43 @@ assert _schema_size(SHADERSETTINGS_SCHEMA) == 116, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_VELOCITY3D_SCHEMA = [
-    ('typeFlag', 'i'),   # 原 unkn0_0
-    ('initialVelocityAxis', 'i'),  # 原 unknBitmask0_1/initialVelocityDirection，2026-07 用户实机测试确认为方向基准轴枚举
-    ('unknAxis', 'i'),  # 原 unknBitmask0_2，疑似旋转顺序但实机结果对不上 TRANSFORM3D 惯例，暂缓深究
+    ('typeFlag', 'i'),   # 原 unkn0_0（续作 schema 叫 uniqueID，但为跟全仓库 typeFlag 惯例统一未改名）
+    ('baseAxis', 'i'),  # 原 initialVelocityAxis/unknBitmask0_1，2026-07-26 依续作 schema 改名（枚举语义仍按旧
+                         # 假说 0=左1=上2=前3=右4=下5=后标注，跟续作 AxisType 的 0=+X..5=-Z 笛卡尔映射有出入，未定论）
+    ('rotOrder', 'i'),  # 原 unknAxis/unknBitmask0_2，2026-07-26 依续作 schema RotOrder 枚举坐实：
+                        # 0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX（跟 TRANSFORM3D 惯例不是同一套映射）
     ('rotationX', 'f'),
     ('rotationXJitter', 'f'),
     ('rotationY', 'f'),
     ('rotationYJitter', 'f'),
     ('rotationZ', 'f'),
     ('rotationZJitter', 'f'),
-    ('initialVelocity', 'f'),  # 原 expansion_radius_limit，2026-07 用户实机测试确认为初速度
-    ('initialVelocityJitter', 'f'),  # 原 expansion_radius_jitter
+    ('speed', 'f'),  # 原 initialVelocity/expansion_radius_limit，2026-07-26 依续作 schema 改名（语义不变）
+    ('speedJitter', 'f'),  # 原 initialVelocityJitter/expansion_radius_jitter
     ('acceleration', 'f'),  # 原 expansion_radius_elasticity，2026-07 用户实机测试确认为加速度
+                             # ⚠ 续作 schema 管这叫 drag（1=无阻力/匀速，0=瞬间停止），本质上是同一个力，
+                             # 用户 2026-07-26 决定保留 acceleration 这个名字不改
     ('accelerationJitter', 'f'),  # 原 expansion_radius_elasticity_jitter
-    ('offsetX', 'f'),  # 原 velocityX，2026-07 用户实机测试+RE Engine续作schema确认为Offset
-    ('offsetY', 'f'),  # 原 velocityY
-    ('offsetZ', 'f'),  # 原 velocityZ
-    ('sizeX', 'f'),  # 原 energyOnAxisX，2026-07 用户实机测试+RE Engine续作schema确认为Size
-    ('sizeY', 'f'),  # 原 energyOnAxisY
-    ('sizeZ', 'f'),  # 原 energyOnAxisZ
-    ('velocityType', 'i'),  # 原 expansionType，2026-07 依 RE Engine 续作 schema 的 VelocityType 枚举改名
+    ('velocityX', 'f'),  # 原 offsetX，2026-07-26 依续作 schema 改回 velocityX（用户确认）；只在
+                          # velocityType=DirectionalSpread 时生效，方向性，量级不影响运动
+    ('velocityY', 'f'),  # 原 offsetY
+    ('velocityZ', 'f'),  # 原 offsetZ
+    ('divergenceX', 'f'),  # 原 sizeX/energyOnAxisX，2026-07-26 依续作 schema 改名（语义不变：
+                            # 1=该轴无效果，<1 朝基准点，>1 背离基准点）
+    ('divergenceY', 'f'),  # 原 sizeY/energyOnAxisY
+    ('divergenceZ', 'f'),  # 原 sizeZ/energyOnAxisZ
+    ('velocityType', 'i'),  # 原 expansionType；枚举 0=Directional,1=DirectionalSpread(原"Normal"，
+                             # 2026-07-26 依续作 schema 确认即 velocity/divergence+位置归一化模型)，2=Radial，
+                             # 3=EmitterMotion(原"Spread")。⚠ 我们语料曾观测到 4/5(旧注释ScreenSpace/Unkn)，
+                             # 续作只有 0~3 四态，两边样本是否一致尚未核实，未删减语料侧的注释
     ('gravity', 'f'),  # TIML DT 0x6A5FE3C4("Gravity") 已确认
     ('gravity_jitter', 'f'),
-    ('initialVelocityDelay', 'i'),  # 原 expansionDelay，2026-07 用户实机测试确认为初速度生效延迟帧
-    ('initialVelocityDelayJitter', 'i'),  # 原 expansionDelayJitter
+    ('movementDelay', 'i'),  # 原 initialVelocityDelay/expansionDelay，2026-07-26 依续作 schema 改名（语义不变）
+    ('movementDelayJitter', 'i'),  # 原 initialVelocityDelayJitter/expansionDelayJitter
     ('gravityDelay', 'i'),
     ('gravityDelayJitter', 'i'),
-    ('unknFloat', 'f'),  # 原 NULL2，名字像占位，但实测非零值干净重解读为 40.0，语义未确认
+    ('minMovementThreshold', 'f'),  # 原 unknFloat/NULL2，2026-07-26 用户实机测试确认为阈值（仅
+                                     # velocityType=EmitterMotion 时有意义：emitter 速度低于此阈值不施加给粒子）
 ]
 assert _schema_size(EXTERN_VELOCITY3D_SCHEMA) == 108, \
     f"EXTERN_VELOCITY3D_SCHEMA size mismatch: {_schema_size(EXTERN_VELOCITY3D_SCHEMA)}"
@@ -789,7 +799,8 @@ EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_SCHEMA
 EXTERN_SCALEANIM_SCHEMA = [
     ('typeFlag', 'i'),   # 原 unkn0
     ('initialScaleSpeed', 'f'),        # 初始扩散速度（原 animationSpeed）TIML DT 0xC24DF97C("SizeScalarAdd") 已确认
-    ('NULL', 'i'),
+    ('unknFloat', 'f'),  # 原 NULL，实测非恒 0（约 30% 非零，clean 小数如 0.02/0.04/0.1/0.2），语义未确认
+
     ('initialScaleAccel', 'f'),        # 初始扩散加速度（原 scaleSpeed）
     ('initialScaleAccelJitter', 'f'),  # 原 scaleSpeedJitter
     ('scaleSpeedX', 'f'),              # X 轴缩放速度（原 unkn1[0]）TIML DT 0x909EC047("SizeXAdd") 已确认
@@ -925,7 +936,10 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 
 ROTATEANIM_SCHEMA = [
     ('spinAxisMask', 'i'),  # 原 unkn0_0；轴掩码 bitmask：bit0=X, bit1=Y, bit2=Z（已确认，非 typeFlag 候选）
-    ('unknBitmask0_1', 'i'),  # 旋转模式：取 2 或 3 时 spin_velocity 生效；取 0/1 时仅 billboard 平面旋转
+    # rotationModeMask（原 unknBitmask0_1）：用户实机确认 4 态——0=仅平面旋转系(billboardRotation+
+    # billboardRotationAccel)；1=同上+随机正反向；2=仅自旋速度系(spin_velocity+spinAcceleration+
+    # 已废弃的 momentum_retention 概念)；3=同上+随机正反向(每轴独立随机)。
+    ('rotationModeMask', 'i'),
     # 社区实测+用户实机(2026-07)：这两个专门控制 BILLBOARD3D 平面类的旋转，模板原标为 int，实为 float。
     # billboardRotation + billboardRotationJitter(原 billboardRotationSpeed) 是一组 static/random。
     ('billboardRotation', 'f'),
@@ -934,9 +948,19 @@ ROTATEANIM_SCHEMA = [
     # billboardRotationAccel + Jitter(原 unkn1_0/unkn1_1)：billboardRotation 的加速度 static/random，用户实机确认
     ('billboardRotationAccel', 'f'),  # 原 unkn1_0
     ('billboardRotationAccelJitter', 'f'),  # 原 unkn1_1
-    ('momentum_retention', 'f'),
-    ('spin_acceleration', ('XYZ', 0)),
-    ('unknEnum1_2', 'i'),
+    # 用户实机(2026-07-26)：原 momentum_retention + spin_acceleration(XYZ) + unknEnum1_2 整体错位一格。
+    # 全语料实测证实：spinAccelerationX/Y/Z 的 static 分布集中在 0.9~1.0，random 分布 96%+ 为 0（偶尔
+    # 干净小数）；原 spin_acceleration.random_z 当 float 解读 100% 恒为 0.0（denormal 假象），当 int32
+    # 解读呈现 5/10/15/20/30/100/512 等干净帧数刻度，与 unknEnum1_2（帧数刻度一致）组成 static/random
+    # 一对，改名 rotateDelayStart(+Jitter)，字段类型由 float 改为 int。
+    ('spinAccelerationX',       'f'),  # 原 momentum_retention
+    ('spinAccelerationXJitter', 'f'),  # 原 spin_acceleration.fixed_x
+    ('spinAccelerationY',       'f'),  # 原 spin_acceleration.random_x
+    ('spinAccelerationYJitter', 'f'),  # 原 spin_acceleration.fixed_y
+    ('spinAccelerationZ',       'f'),  # 原 spin_acceleration.random_y
+    ('spinAccelerationZJitter', 'f'),  # 原 spin_acceleration.fixed_z
+    ('rotateDelayStart',        'i'),  # 原 spin_acceleration.random_z（float 恒 0.0，实为 int 帧数）
+    ('rotateDelayStartJitter',  'i'),  # 原 unknEnum1_2
 ]
 assert _schema_size(ROTATEANIM_SCHEMA) == 80, \
     f"ROTATEANIM_SCHEMA size mismatch: {_schema_size(ROTATEANIM_SCHEMA)}"
@@ -1664,7 +1688,7 @@ UVCONTROL_SCHEMA = [
     ('uv1_scaleSpeed',          ('f', 4)),
     ('uv1_scaleAcceleration',   ('f', 4)),
     # uv2 Material_Animation_Data
-    ('uv2_unkn0',               'i'),
+    ('uv2_enable',              'i'),  # 原 uv2_unkn0，实测 1860 例仅 0/1 两种取值，干净二元
     ('uv2_initialPosition',     ('f', 4)),
     ('uv2_speed',               ('f', 4)),
     ('uv2_acceleration',        ('f', 4)),
@@ -1674,7 +1698,7 @@ UVCONTROL_SCHEMA = [
     # extra fields
     ('unknFlag2',                          'i'),
     ('extraMaterialInitialPosition',   'f'),
-    ('extraMaterialInitialPositionJ',  'f'),
+    ('extraMaterialInitialPositionJitter', 'f'),  # 原 extraMaterialInitialPositionJ（后缀不规范，未被通用 Jitter 配对识别）
     ('extraMaterialSpeed',             'f'),
     ('extraMaterialSpeedJitter',       'f'),
     ('opacity',                        'f'),
@@ -1697,14 +1721,18 @@ assert _schema_size(UVCONTROL_SCHEMA) == 236, \
 # ─────────────────────────────────────────────────────────────────────────────
 EMITTERSHAPE2D_SCHEMA = [
     ('typeFlag',    'i'),   # 原 unkn0
-    ('offsetX',     'f'),
-    ('offsetXJitter','f'),
-    ('offsetY',     'f'),
-    ('offsetYJitter','f'),
-    ('unknFlag20',      'i'),
+    # rangeX/Y(+Jitter)：原 offsetX/Y(+Jitter)，用户 2026-07-26 确认对应 EMITTERSHAPE3D.rangeXYZ
+    # 同一概念（生成范围），只是 2D 版本存成独立标量而非 XYZ 复合类型（少一根 Z 轴）。
+    ('rangeX',       'f'),
+    ('rangeXJitter', 'f'),
+    ('rangeY',       'f'),
+    ('rangeYJitter', 'f'),
+    # shapeType：原 unknFlag20，用户 2026-07-26 确认对应 EMITTERSHAPE3D.shapeType：
+    # 0=方形，1=圆形，2+=点。⚠ 全语料 292 例目前只观测到 0/1，未见过 ≥2 的实例。
+    ('shapeType',   'i'),
     ('spawnCount',  'i'),
-    ('unknEnum22_0',    'i'),
-    ('unknFixed22_1',    'i'),
+    ('unknEnum22_0',    'i'),  # 3种取值{0:94%,1:2%,2:4%}，语义待定
+    ('unknFixed22_1',    'i'),  # 全语料 292 例恒为 0
 ]
 assert _schema_size(EMITTERSHAPE2D_SCHEMA) == 36, \
     f"EMITTERSHAPE2D_SCHEMA size mismatch: {_schema_size(EMITTERSHAPE2D_SCHEMA)}"
@@ -1723,19 +1751,20 @@ VELOCITY2D_SCHEMA = [
     ('typeFlag', 'i'),  # 原 unkn0_0
     ('rotation', 'f'),  # 原 unkn0_1，2026-07-26 用户确认为旋转角度
     ('rotationJitter',                 'f'),  # 原 unkn10
-    ('initialVelocity',                'f'),  # 原 expansionRadius
-    ('initialVelocityJitter',          'f'),  # 原 expansionRadiusJitter
-    ('acceleration',                   'f'),  # 原 expansionRadiusElasticity
+    ('speed',                          'f'),  # 原 initialVelocity/expansionRadius，2026-07-26 依续作 schema 改名
+    ('speedJitter',                    'f'),  # 原 initialVelocityJitter/expansionRadiusJitter
+    ('acceleration',                   'f'),  # 原 expansionRadiusElasticity（用户 2026-07-26 决定保留此名，
+                                               # 不跟随续作 schema 的 drag 命名，二者本质是同一个力）
     ('accelerationJitter',             'f'),  # 原 expansionRadiusElasticityJitter
-    ('offsetX',                        'f'),  # 原 unkn15
-    ('offsetY',                        'f'),  # 原 unkn16
-    ('sizeX',                          'f'),  # 原 energyOnAxisX
-    ('sizeY',                          'f'),  # 原 energyOnAxisY，9 floats = 36
-    ('velocityType',                   'i'),  # 原 expansionType，2026-07-26 用户确认同 V3D 改名
+    ('velocityX',                      'f'),  # 原 offsetX/unkn15，2026-07-26 依续作 schema 改回 velocityX
+    ('velocityY',                      'f'),  # 原 offsetY/unkn16
+    ('divergenceX',                    'f'),  # 原 sizeX/energyOnAxisX，2026-07-26 依续作 schema 改名
+    ('divergenceY',                    'f'),  # 原 sizeY/energyOnAxisY，9 floats = 36
+    ('velocityType',                   'i'),  # 原 expansionType，同 V3D 改名（枚举语义见 V3D 注释）
     ('gravity',                        'f'),
     ('gravityJitter',                  'f'),       # 8
-    ('initialVelocityDelay',           'i'),  # 原 expansionDelay
-    ('initialVelocityDelayJitter',     'i'),  # 原 expansionDelayJitter
+    ('movementDelay',                  'i'),  # 原 initialVelocityDelay/expansionDelay，2026-07-26 依续作 schema 改名
+    ('movementDelayJitter',            'i'),  # 原 initialVelocityDelayJitter/expansionDelayJitter
     ('gravityDelay',                   'i'),
     ('gravityDelayJitter',             'i'),       # 16
 ]

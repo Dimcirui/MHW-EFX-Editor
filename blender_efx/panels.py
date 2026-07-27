@@ -41,6 +41,11 @@ L1.5 属性字段显示重设计：
     用 index= 分量绘制，不开 property_split，保证布局不乱。
   - INT3（XYZ type 1，3个int=x,y,z）：字段名一行 + 1行 X/Y/Z 分量。
   - FLOAT3（XYZ type 3 或 float[3]，x,y,z）：字段名一行 + 1行 X/Y/Z 分量。
+  - FLOAT4（4个float，顺序=[fixed_x,random_x,fixed_y,random_y]，UVCONTROL uv1/uv2 材质动画用）：
+    字段名一行 + 2 行（X Static/Random、Y Static/Random），跟 FLOAT6 同款，少一根轴。
+  - 虚拟轴向组合控件（AXIS_GROUPS，见下）：部分类型把同概念的 X/Y/Z 独立标量字段（因各轴
+    实测语义不完全对称、无法收进真正的 XYZ 复合类型）在 UI 层重新拼成跟 FLOAT6 一样的
+    标题行 + 逐轴行显示，不改变底层 schema/字节布局，纯展示层的分组。
   - 标量/颜色/字符串等：保持现有绘制（友好名 + 值 + ⓘ + 色块+alpha）。
   - 整体风格（ctc 风）：字段列表包在 box() 里，scale_y=1.1 放大行高，
     手动 index 分量行不开 property_split（row.use_property_split=False）。
@@ -200,6 +205,100 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     _draw_info_icon(row, type_name, vitem.ori_name)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 虚拟轴向组合控件（用户 2026-07-26 提议）：部分类型的 X/Y/(Z) 分量因各轴实测语义不完全
+# 对称（如 ROTATEANIM.spinAcceleration 系列错位重构后拆成独立标量），无法用真正的 XYZ
+# 复合类型（FLOAT6/FLOAT3/INT3）表示，只能各轴各自建标量字段。这里在 UI 层把它们重新
+# 拼成跟 FLOAT6 同款的标题行 + 逐轴行显示——纯展示层分组，不改 schema/字节布局。
+#
+# 结构：type_name -> [ (title_key, [(axis_label, base_field_name), ...]), ... ]
+#   title_key      友好名来源（过 _friendly_name 转换/中文标签表）
+#   axis_label     行首标签（"X"/"Y"/"Z"）
+#   base_field_name 该轴的 value 字段名；若存在 "<name>Jitter" 字段则自动配对成 Static/Random，
+#                   否则单值显示（跟 FLOAT3/INT3 一样只有 X/Y/Z 无静态随机之分）。
+# ─────────────────────────────────────────────────────────────────────────────
+AXIS_GROUPS: dict = {
+    "ROTATEANIM": [
+        ("spinAcceleration", [("X", "spinAccelerationX"), ("Y", "spinAccelerationY"), ("Z", "spinAccelerationZ")]),
+    ],
+    "TRANSFORM2D": [
+        ("offset", [("X", "offsetX"), ("Y", "offsetY")]),
+        ("scale",  [("X", "scaleX"),  ("Y", "scaleY")]),
+    ],
+    "VELOCITY2D": [
+        ("velocity",   [("X", "velocityX"),   ("Y", "velocityY")]),
+        ("divergence", [("X", "divergenceX"), ("Y", "divergenceY")]),
+    ],
+    "VELOCITY3D": [
+        ("rotation",   [("X", "rotationX"),   ("Y", "rotationY"),   ("Z", "rotationZ")]),
+        ("velocity",   [("X", "velocityX"),   ("Y", "velocityY"),   ("Z", "velocityZ")]),
+        ("divergence", [("X", "divergenceX"), ("Y", "divergenceY"), ("Z", "divergenceZ")]),
+    ],
+    "EMITTERSHAPE3D": [
+        ("localRotation", [("X", "localRotationX"), ("Y", "localRotationY"), ("Z", "localRotationZ")]),
+    ],
+    "EMITTERSHAPE2D": [
+        ("range", [("X", "rangeX"), ("Y", "rangeY")]),
+    ],
+    "SCALEANIM": [
+        ("scaleSpeed", [("X", "scaleSpeedX"), ("Y", "scaleSpeedY"), ("Z", "scaleSpeedZ")]),
+        ("scaleAccel", [("X", "scaleAccelX"), ("Y", "scaleAccelY"), ("Z", "scaleAccelZ")]),
+    ],
+}
+
+
+def _resolve_axis_groups(type_name: str, item_by_name: dict):
+    """把 AXIS_GROUPS 里该类型的分组规格解析成可绘制的形式；缺字段（如 custom 变体裁剪过）
+    的分组整体跳过。返回 (group_first_name -> group_spec 字典, 全部被消费的字段名 set)。"""
+    group_render_at = {}
+    consumed = set()
+    for title_key, axes in AXIS_GROUPS.get(type_name, []):
+        names = []
+        ok = True
+        for _axis_label, base in axes:
+            if base not in item_by_name:
+                ok = False
+                break
+            names.append(base)
+            jn = base + "Jitter"
+            if jn in item_by_name:
+                names.append(jn)
+        if not ok:
+            continue
+        group_render_at[names[0]] = (title_key, axes)
+        consumed.update(names)
+    return group_render_at, consumed
+
+
+def _draw_axis_group(layout, type_name: str, group, item_by_name: dict):
+    """绘制一个虚拟轴向组合控件：标题行 + 逐轴行（跟 FLOAT6 同款）。"""
+    title_key, axes = group
+    fname = _friendly_name(title_key, type_name)
+    first_base = axes[0][1]
+
+    title_row = layout.row(align=True)
+    title_row.scale_y = 1.1
+    title_row.use_property_split = False
+    title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
+    _draw_info_icon(title_row, type_name, first_base)
+
+    for axis_label, base in axes:
+        vitem = item_by_name[base]
+        jitem = item_by_name.get(base + "Jitter")
+        vattr = _SCALAR_PROP_ATTR[vitem.data_type]
+
+        row = layout.row(align=True)
+        row.scale_y = 1.1
+        row.use_property_split = False
+        row.label(text=axis_label, icon="BLANK1")
+        if jitem is not None:
+            jattr = _SCALAR_PROP_ATTR[jitem.data_type]
+            row.prop(vitem, vattr, text=T("field.static"))
+            row.prop(jitem, jattr, text=T("field.random"))
+        else:
+            row.prop(vitem, vattr, text="")
+
+
 def _xyz_prop_name(item, base_prop):
     """选择绘制哪个属性：Scene.efx_blender_coords 开 且 该字段有单位映射时用 *_display
     （Blender 约定显示/编辑），否则用原 *_value（游戏原值）。返回 (prop_name, is_blender)。"""
@@ -350,6 +449,32 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
             pass
         return
 
+    # ── FLOAT4（X/Y 各自 Static/Random，2×2 展开）───────────────────────────
+    # 顺序：[fixed_x(0), random_x(1), fixed_y(2), random_y(3)]（与 FLOAT6 的 X/Y/Z 惯例一致，
+    # 少一根轴）。原来单行塞 4 个数值框并排显示，改成跟 FLOAT6 一样的并列式两行，更好读
+    # 也更紧凑（数值框不用挤在 0.45 分栏里）。
+    if dtype == "FLOAT4":
+        title_row = layout.row(align=True)
+        title_row.scale_y = 1.1
+        title_row.use_property_split = False
+        title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
+        _draw_info_icon(title_row, type_name, item.ori_name)
+
+        x_row = layout.row(align=True)
+        x_row.scale_y = 1.1
+        x_row.use_property_split = False
+        x_row.label(text="X", icon="BLANK1")
+        x_row.prop(item, "float4_value", index=0, text=T("field.static"))
+        x_row.prop(item, "float4_value", index=1, text=T("field.random"))
+
+        y_row = layout.row(align=True)
+        y_row.scale_y = 1.1
+        y_row.use_property_split = False
+        y_row.label(text="Y", icon="BLANK1")
+        y_row.prop(item, "float4_value", index=2, text=T("field.static"))
+        y_row.prop(item, "float4_value", index=3, text=T("field.random"))
+        return
+
     # ── 通用单行布局 ──────────────────────────────────────────────────────────
     row = layout.row(align=True)
     row.scale_y = 1.1
@@ -371,8 +496,6 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         split.prop(item, "short1_value", text="")
     elif dtype == "FLOAT2":
         split.prop(item, "float2_value", text="")
-    elif dtype == "FLOAT4":
-        split.prop(item, "float4_value", text="")
     elif dtype == "COLOUR":
         split.prop(item, "colour_value", text="")
     elif dtype == "INT2":
@@ -759,6 +882,8 @@ def _draw_attribute_fields_content(layout, context):
             # 同类型标量 value 合并一行，模拟 XYZ Static/Random 分组风格）
             items = list(bp.field_items)
             n = len(items)
+            _item_by_name = {it.ori_name: it for it in items}
+            _axis_group_at, _axis_group_consumed = _resolve_axis_groups(type_name, _item_by_name)
             i = 0
             while i < n:
                 item = items[i]
@@ -775,6 +900,14 @@ def _draw_attribute_fields_content(layout, context):
                 # （TUBELIGHT headColor/tailColor、RIBBONBLADE head.*/tailEnd.* 等颜色
                 # 特例字段本身就会通过 is_color_field 判据，特例渲染分支正常生效）。
                 if _color_only and not _cf.is_color_field(type_hash_int, item.ori_name, item.data_type):
+                    i += 1
+                    continue
+                # 虚拟轴向组合控件（AXIS_GROUPS）：分组首字段触发整组绘制，其余成员跳过
+                if item.ori_name in _axis_group_at:
+                    _draw_axis_group(col, type_name, _axis_group_at[item.ori_name], _item_by_name)
+                    i += 1
+                    continue
+                if item.ori_name in _axis_group_consumed:
                     i += 1
                     continue
                 # L2 #1c：EXTERNREFERENCE 的 referenceIndex 字段替换为 extern 指针 UI
@@ -1476,10 +1609,19 @@ def _draw_plain_field_list(col, field_items, type_name: str = "") -> None:
     """渲染 field_items 列表（含 value+jitter 配对），无 EXTERNREFERENCE / PTLIFE 等属性专属逻辑。"""
     items = list(field_items)
     n = len(items)
+    _item_by_name = {it.ori_name: it for it in items}
+    _axis_group_at, _axis_group_consumed = _resolve_axis_groups(type_name, _item_by_name)
     i = 0
     while i < n:
         item = items[i]
         if item.ori_name.startswith("__") and item.ori_name.endswith("__"):
+            i += 1
+            continue
+        if item.ori_name in _axis_group_at:
+            _draw_axis_group(col, type_name, _axis_group_at[item.ori_name], _item_by_name)
+            i += 1
+            continue
+        if item.ori_name in _axis_group_consumed:
             i += 1
             continue
         nxt = items[i + 1] if i + 1 < n else None
