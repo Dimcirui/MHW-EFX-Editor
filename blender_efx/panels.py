@@ -412,7 +412,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
     # 友好显示名（仅显示，逻辑用 ori_name）；label_override 优先（如 MATERIAL 路径的槽名）
     fname = label_override if label_override else _friendly_name(item.ori_name, type_name)
 
-    # ── 枚举字段 → 下拉（P2，纯显示层，值仍存 int 槽）───────────────────────────
+    # ── 枚举字段 → 下拉（纯显示层，值仍存 int 槽）─────────────────────────────────
     # 仅定长块（FIELD_REGISTRY 标了 enum widget）的 int 背板字段；read_only 字段回退普通渲染。
     if (dtype in ("INT", "BYTE1", "SHORT1", "UINT") and not item.read_only
             and _field_is_enum(type_name, item.ori_name)):
@@ -425,7 +425,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         _draw_info_icon(row, type_name, item.ori_name)
         return
 
-    # ── Bool 字段 → 勾选框（P2，纯显示层，值仍存 int 槽）──────────────────────────
+    # ── Bool 字段 → 勾选框（纯显示层，值仍存 int 槽）────────────────────────────────
     if (dtype in ("INT", "BYTE1", "SHORT1", "UINT") and not item.read_only
             and _field_is_bool(type_name, item.ori_name)):
         row = layout.row(align=True)
@@ -437,7 +437,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         _draw_info_icon(row, type_name, item.ori_name)
         return
 
-    # ── Bitmask 字段 → 摘要 + 弹窗编辑按钮（P2，纯显示层，值仍存 int 槽）───────────
+    # ── Bitmask 字段 → 摘要 + 弹窗编辑按钮（纯显示层，值仍存 int 槽）─────────────────
     _bm = _bitmask_field(type_name, item.ori_name) if dtype in ("INT", "BYTE1", "SHORT1", "UINT") else None
     if _bm is not None and not item.read_only:
         from . import bitmask_ops, fields as _f
@@ -455,7 +455,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         _draw_info_icon(row, type_name, item.ori_name)
         return
 
-    # ── EnumVec3 逐轴枚举（INT3 背板）→ 标题行 + X/Y/Z 三个下拉（P2）───────────────
+    # ── EnumVec3 逐轴枚举（INT3 背板）→ 标题行 + X/Y/Z 三个下拉 ─────────────────────
     if (dtype == "INT3" and not item.read_only
             and _field_is_enum_vec3(type_name, item.ori_name)):
         title = layout.row(align=True)
@@ -1003,9 +1003,13 @@ def _draw_attribute_fields_content(layout, context):
                 _ptb_hint_row = col.row(align=True)
                 _ptb_hint_row.enabled = False
                 _ptb_hint_row.label(text=T("attribute.ptbehavior_hint"))
-            # Route 2：该块有模式过滤规则时，给一个"显示全部字段"开关（默认过滤）。
+            # "显示全部字段"开关：当该块有可隐藏字段时显示——模式过滤规则
+            # 或保留填充灰字段（0xCD 占位 / section_length 等只读位）。默认隐藏这些字段。
             from . import field_visibility as _fv_hdr
-            if type_name in _fv_hdr.FIELD_VISIBILITY:
+            from .field_labels import is_reserved_fill as _irf_hdr
+            _hdr_has_vis = type_name in _fv_hdr.FIELD_VISIBILITY
+            _hdr_has_reserved = any(_irf_hdr(type_name, it.ori_name) for it in bp.field_items)
+            if _hdr_has_vis or _hdr_has_reserved:
                 from .i18n import get_lang as _gl
                 _tog = col.row(align=True)
                 _tog.prop(context.scene, "efx_show_all_fields",
@@ -1018,9 +1022,10 @@ def _draw_attribute_fields_content(layout, context):
             n = len(items)
             _item_by_name = {it.ori_name: it for it in items}
             _axis_group_at, _axis_group_consumed = _resolve_axis_groups(type_name, _item_by_name)
-            # Route 2：按模式字段过滤生效字段（"显示全部字段"开关可关闭过滤）。
+            # 按模式字段过滤生效字段（"显示全部字段"开关可关闭过滤）。
             from . import field_visibility as _fv
             from . import fields as _fld
+            from .field_labels import is_reserved_fill as _irf
             _show_all_fields = getattr(context.scene, "efx_show_all_fields", False)
             _has_vis_rules = type_name in _fv.FIELD_VISIBILITY
 
@@ -1039,10 +1044,15 @@ def _draw_attribute_fields_content(layout, context):
                 if item.ori_name.startswith("__") and item.ori_name.endswith("__"):
                     i += 1
                     continue
-                # Route 2 模式过滤：非生效字段隐藏（show_all 关时）。放在 axis-group 判定前，
+                # 模式过滤：非生效字段隐藏（show_all 关时）。放在 axis-group 判定前，
                 # 使被隐藏的组首字段（如 velocityX）连带整组不绘制。
                 if (_has_vis_rules and not _show_all_fields
                         and _fv.field_hidden(type_name, item.ori_name, _mode_getter)):
+                    i += 1
+                    continue
+                # 保留填充/只读灰字段（0xCD 占位 / section_length 等）：默认隐藏，
+                # "显示全部字段"开关可显示。放在 axis-group 判定前（保留字段非轴组成员）。
+                if not _show_all_fields and _irf(type_name, item.ori_name):
                     i += 1
                     continue
                 # Color Editor 模式：非颜色/亮度字段直接跳过，不进入任何特例渲染分支

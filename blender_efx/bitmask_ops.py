@@ -1,23 +1,24 @@
 """
-blender_efx/bitmask_ops.py  —  通用位掩码弹窗编辑器（P2，泛化自 part_mask_ops）
+blender_efx/bitmask_ops.py  —  通用位掩码弹窗编辑器（泛化自 part_mask_ops）
 
-由 typed Field 模型驱动：字段标 widget='bitmask'、`Field.bits` 是有序段列表。本弹窗把
-每个 **BitDef（可混合 toggle 位）** 画成勾选框，段外的**残留位**（不在任何段 mask 内）另用
-一个整数框暴露并保留——确保未定义位零丢失、可精确还原（bitmask 版的 enum 越界回退）。
-
-⚠ **BitEnum（互斥位组 → 下拉）暂未接入**：当前所有 bitmask 字段实测都是纯可混合位
-（spinAxisMask / enableVelocityBitflag / tableSelectionGroup），没有互斥组可测。等出现真正的
-互斥字段（如 controlBitflag / UVSEQUENCE 打包字节）再据其语义补下拉渲染。届时那些 mask 会
-从"残留"里分出来。现在遇到 BitEnum 段：其 mask 归入残留（仍可编辑、数据安全），只是没下拉。
+由 typed Field 模型驱动：字段标 widget='bitmask'、`Field.bits` 是有序段列表，元素两类：
+  · **BitDef（可混合 toggle 位）** → 勾选框；
+  · **BitEnum（互斥位组）** → 下拉（同 enum，选项即该组编码的 one-of-N 值）。
+段外的**残留位**（不在任何段 mask 内）另用整数框暴露并保留——确保未定义位零丢失、可精确
+还原（bitmask 版的越界回退）。BitEnum 子值若越出选项集，下拉动态注入原值合成项（同 enum_proxy）。
 
 值存于 field_item 的 int 背板槽（int_value/byte1_value/…，由 fields._enum_backing_read/write
 按 data_type 选槽），其 update 回调自动置脏 → 导出重 pack。
 """
 
 import bpy
-from bpy.props import BoolProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, IntProperty, StringProperty, EnumProperty
 
-_MAX_BITS = 16   # toggle 勾选框池上限（当前最大 tableSelectionGroup 8 位，留余量）
+_MAX_BITS  = 16   # toggle 勾选框池上限
+_MAX_ENUMS = 8    # 互斥组下拉池上限（当前最多 loopingMode 4 组，留余量）
+
+# BitEnum 下拉的 items 缓存（避免动态 EnumProperty 的 GC 陷阱：持有 list 对象引用）。
+_BENUM_ITEMS_CACHE = {}
 
 
 def _find_item(bp, ori_name):
@@ -44,9 +45,15 @@ def _bitmask_field(type_name, field_name):
 
 
 def _toggles(field):
-    """字段里的可混合位（BitDef）——当前唯一支持渲染的段类型。"""
+    """字段里的可混合位（BitDef）——勾选框段。"""
     from ..efx_format.schema.fields_model import BitDef
     return [b for b in field.bits if isinstance(b, BitDef)]
+
+
+def _bitenums(field):
+    """字段里的互斥位组（BitEnum）——下拉段。"""
+    from ..efx_format.schema.fields_model import BitEnum
+    return [b for b in field.bits if isinstance(b, BitEnum)]
 
 
 def _defined_mask(field):
@@ -58,12 +65,47 @@ def _defined_mask(field):
     return m
 
 
+def _benum_items_factory(idx):
+    """生成第 idx 个 BitEnum 下拉的 items 回调（闭包捕获 idx）。回调据当前字段与语言返回
+    选项；当前子值越界则注入合成项。列表缓存进 _BENUM_ITEMS_CACHE 防 GC。"""
+    def _items(self, context):
+        field = _bitmask_field(self.type_name, self.field)
+        benums = _bitenums(field) if field else []
+        if idx >= len(benums):
+            return [('0', '—', '')]
+        be = benums[idx]
+        from .i18n import get_lang
+        zh = (get_lang() == "ZH")
+        items = [(str(o.value), (o.zh if zh else o.en), '') for o in be.options]
+        # 当前子值（从 item 背板读）越界 → 注入原值合成项，避免 setattr 失败
+        obj = context.active_object if context else None
+        if obj is not None:
+            it = _find_item(obj.efx_block, self.field)
+            if it is not None:
+                from .fields import _enum_backing_read
+                cur = (_enum_backing_read(it) & be.mask) >> be.shift
+                if all(o.value != cur for o in be.options):
+                    items.append((str(cur), ("值 %d (?)" % cur) if zh else ("value %d (?)" % cur), ''))
+        _BENUM_ITEMS_CACHE[(self.type_name, self.field, idx, zh)] = items
+        return _BENUM_ITEMS_CACHE[(self.type_name, self.field, idx, zh)]
+    return _items
+
+
 def bitmask_summary(value, field, zh=True):
-    """把位掩码值转成面板按钮上的可读摘要。"""
-    toggles = _toggles(field)
-    names = [(b.zh if zh else b.en) for b in toggles if value & b.bit]
+    """把位掩码值转成面板按钮上的可读摘要（混合位名 + 互斥组当前项 + 残留）。"""
+    from ..efx_format.schema.fields_model import BitDef, BitEnum
+    parts = []
+    for b in field.bits:
+        if isinstance(b, BitDef):
+            if value & b.bit:
+                parts.append(b.zh if zh else b.en)
+        else:  # BitEnum
+            sub = (value & b.mask) >> b.shift
+            lbl = next((o.zh if zh else o.en for o in b.options if o.value == sub), None)
+            grp = b.zh if zh else b.en
+            parts.append("%s:%s" % (grp, lbl if lbl is not None else ("值%d" % sub if zh else "v%d" % sub)))
     resid = value & ~_defined_mask(field)
-    base = "+".join(names) if names else ("无" if zh else "none")
+    base = "  ".join(parts) if parts else ("无" if zh else "none")
     if resid:
         base += "  +0x%X" % resid
     return base
@@ -102,22 +144,39 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
         val = _enum_backing_read(item)
         for i, b in enumerate(_toggles(field)[:_MAX_BITS]):
             setattr(self, "bit_%d" % i, bool(val & b.bit))
+        for i, be in enumerate(_bitenums(field)[:_MAX_ENUMS]):
+            sub = (val & be.mask) >> be.shift
+            try:
+                setattr(self, "benum_%d" % i, str(sub))
+            except TypeError:
+                pass  # 子值暂不在 items 中（items 回调会注入后重试无碍）
         self.residual = val & ~_defined_mask(field)
-        return context.window_manager.invoke_props_dialog(self, width=280)
+        return context.window_manager.invoke_props_dialog(self, width=300)
 
     def draw(self, context):
+        from ..efx_format.schema.fields_model import BitDef
         layout = self.layout
         field = _bitmask_field(self.type_name, self.field)
         if field is None:
             return
         from .i18n import get_lang
         zh = (get_lang() == "ZH")
-        for i, b in enumerate(_toggles(field)[:_MAX_BITS]):
-            layout.prop(self, "bit_%d" % i, text=(b.zh if zh else b.en))
-        layout.separator()
-        row = layout.row()
-        row.prop(self, "residual")
-        row.label(text="(未定义位，保留)" if zh else "(undefined bits, preserved)")
+        ti = ei = 0
+        for b in field.bits:   # 按声明顺序渲染，勾选框与下拉交错
+            if isinstance(b, BitDef):
+                if ti < _MAX_BITS:
+                    layout.prop(self, "bit_%d" % ti, text=(b.zh if zh else b.en))
+                ti += 1
+            else:  # BitEnum
+                if ei < _MAX_ENUMS:
+                    layout.prop(self, "benum_%d" % ei, text=(b.zh if zh else b.en))
+                ei += 1
+        resid_mask = _defined_mask(field)
+        if resid_mask != -1 and (~resid_mask) & 0xFFFFFFFF:   # 尚有未定义位才显示残留框
+            layout.separator()
+            row = layout.row()
+            row.prop(self, "residual")
+            row.label(text="(未定义位，保留)" if zh else "(undefined bits, preserved)")
 
     def execute(self, context):
         obj = context.active_object
@@ -132,6 +191,9 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
         for i, b in enumerate(_toggles(field)[:_MAX_BITS]):
             if getattr(self, "bit_%d" % i):
                 val |= b.bit
+        for i, be in enumerate(_bitenums(field)[:_MAX_ENUMS]):
+            sub = int(getattr(self, "benum_%d" % i))
+            val |= (sub << be.shift) & be.mask
         val |= int(self.residual)
         from .fields import _enum_backing_write
         _enum_backing_write(item, val)   # update=_mark_attribute_dirty 自动置脏
@@ -141,6 +203,10 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
 # toggle 勾选框池：给类追加 bit_0..bit_{_MAX_BITS-1} 布尔属性（label 在 draw 里动态覆盖）。
 for _i in range(_MAX_BITS):
     EFX_OT_edit_bitmask.__annotations__["bit_%d" % _i] = BoolProperty(name="bit %d" % _i, default=False)
+# 互斥组下拉池：benum_0..benum_{_MAX_ENUMS-1}，每个 items 由 _benum_items_factory 动态给出。
+for _i in range(_MAX_ENUMS):
+    EFX_OT_edit_bitmask.__annotations__["benum_%d" % _i] = EnumProperty(
+        name="enum %d" % _i, items=_benum_items_factory(_i))
 del _i
 
 

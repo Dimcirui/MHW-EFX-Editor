@@ -338,7 +338,7 @@ def _int_as_color_set(self, val):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 枚举字段控件（P2）：把 int 背板的枚举字段在 UI 渲成下拉。**纯显示层**——值仍存在原 int
+# 枚举字段控件：把 int 背板的枚举字段在 UI 渲成下拉。**纯显示层**——值仍存在原 int
 # 值槽（int_value/byte1_value/short1_value/uint_str），序列化/往返只认 int 槽，enum 控件读写
 # 的也是同一个槽，故此控件即便有 bug 也不影响 byte-perfect。枚举定义取自 typed Field 模型
 # （efx_format schema/ 的 FIELD_REGISTRY，按 (type_hash, ori_name) 反查）。
@@ -537,7 +537,7 @@ class EFXFieldItem(PropertyGroup):
     # dict_to_items 从 block_props.type_hash_str 拷入；非定长块/未知则留空。
     type_hash_str: StringProperty(default="")
 
-    # 枚举字段下拉代理（P2，纯显示层）：items/get/set 都转发到 int 背板槽，见上方回调注释。
+    # 枚举字段下拉代理（纯显示层）：items/get/set 都转发到 int 背板槽，见上方回调注释。
     enum_proxy: EnumProperty(
         name="",
         description="Enum value (backed by the underlying integer slot)",
@@ -1575,6 +1575,9 @@ def _build_custom_field_items(values, schema, bp) -> bool:
         item = bp.field_items.add()
         item.ori_name = e['item_name']
         item.data_type = e['dtype']
+        # 供 enum_proxy / enum_vec3 回调反查 FIELD_REGISTRY（同 dict_to_items）；
+        # 缺它则 custom 块的枚举字段下拉取不到选项、只显示 "—"。
+        item.type_hash_str = getattr(bp, "type_hash_str", "") or ""
         item.edited = False
         item.orig_b64 = ""
         item.read_only = False

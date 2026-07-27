@@ -1220,61 +1220,32 @@ FIELD_ANNOTATIONS = {
         "EN": "UVS File Path Index (see the paired Jitter field for spawn-time variance).",
         "ZH": "UVS 文件路径索引（生成时的随机抖动量见旁边的 Jitter 字段）。",
     },
-    ("UVSEQUENCE", "playbackMode"): {
-        "EN": "Animation playback mode: 0=Show only the first frame,  1=Loop continuously,  "
-              "2=Play once then force-kill the particle,  3=Play once then freeze on the "
-              "last frame until Life ends.",
-        "ZH": "播放模式：0=只显示起始帧，1=循环播放，2=播放一次后强制粒子消亡，"
-              "3=播放一次后停在最后一帧直到 Life 结束。",
-    },
-    ("UVSEQUENCE", "flipCode"): {
-        "EN": "Bitmask controlling texture flip: +1=Force horizontal flip,  "
-              "+2=Randomize horizontal flip,  +4=Force vertical flip,  "
-              "+8=Randomize vertical flip. Random picks happen once at particle spawn, "
-              "not re-rolled during the loop. Two groups: {1,2} (horizontal) and {4,8} "
-              "(vertical) — combining flags within the same group cancels out (no effect), "
-              "while combining across groups (e.g. 1+4) stacks normally.",
-        "ZH": "控制贴图翻转的位掩码：+1=强制左右翻转，+2=左右翻转随机取，"
-              "+4=强制上下翻转，+8=上下翻转随机取。随机项在粒子生成时取一次，"
-              "循环期间不会重新取。分两组：{1,2}（左右）与 {4,8}（上下）——"
-              "同组内叠加会相互抵消失效，跨组叠加（如 1+4）则可正常同时生效。",
-    },
-    ("UVSEQUENCE", "direction"): {
-        "EN": "Playback direction: 0=Forward,  1=Reverse,  2=Randomly forward or reverse "
-              "(picked once at particle spawn).",
-        "ZH": "播放方向：0=正向播放，1=倒放，2=正/倒随机取一种（粒子生成时取一次）。",
+    ("UVSEQUENCE", "loopingMode"): {
+        "EN": "Packed playback byte, edited via the popup as four groups: playback mode "
+              "(first frame only / loop / play once then vanish / play once then hold), "
+              "horizontal flip, vertical flip (each none / flip / random), and direction "
+              "(forward / reverse / random). Random picks happen once at spawn.",
+        "ZH": "打包的播放字节，用弹窗按四组编辑：播放模式（只显示起始帧／循环／播一次后消亡／"
+              "播一次后定格）、水平翻转、垂直翻转（各：不翻／固定翻／随机翻）、播放方向"
+              "（正向／倒放／随机）。随机项在粒子生成时取一次。",
     },
     ("UVSEQUENCE", "loopingOrientation"): {
-        "EN": "Texture rotation on the particle (loopingEnum byte 1), independent of "
-              "flipCode's flip (a flipped texture still rotates the same direction): "
-              "0=Normal,  1=Rotate 90° clockwise,  2=Rotate 90° counter-clockwise,  "
+        "EN": "Texture rotation on the particle, independent of the horizontal/vertical "
+              "flip (a flipped texture still rotates the same direction): 0=Normal,  "
+              "1=Rotate 90° clockwise,  2=Rotate 90° counter-clockwise,  "
               "3=Randomly pick one of the first three.",
-        "ZH": "贴图在粒子上的旋转（loopingEnum 第 1 字节），与 flipCode 的左右翻转相互独立"
-              "（即使贴图已翻转，1/2 仍分别是顺/逆时针旋转，不会因翻转而互换）："
-              "0=正常朝向，1=顺时针旋转 90°，2=逆时针旋转 90°，3=前三种随机取一种。",
+        "ZH": "贴图在粒子上的旋转，与水平/垂直翻转相互独立（即使贴图已翻转，1/2 仍分别是"
+              "顺/逆时针旋转，不会因翻转而互换）：0=正常朝向，1=顺时针旋转 90°，"
+              "2=逆时针旋转 90°，3=前三种随机取一种。",
     },
 
     # ─── BILLBOARD3D (fixed part fields) ──────────────────────────────────────
-    # applicationRule 是一个 int32 位域，UI 拆成三段裸填子字段（见 structs.py
-    # _split_application_rule）。三段掩码不相交，合起来即原值。
-    ("BILLBOARD3D", "applicationRuleFlowmap"): {
-        "EN": "Flowmap group (bits 0x0C of applicationRule). Values: 0=off, 4=enabled "
-              "& looping continuously, 12=enabled but plays once then freezes on the "
-              "last frame. (8=bit 0x08 alone, flowmap stays off.)",
-        "ZH": "流动贴图组（applicationRule 的 0x0C 位）。可取：0=关闭，4=启用并持续循环，"
-              "12=启用但只播一次后定格末帧。（8=仅 0x08 位，flowmap 仍关闭。）",
-    },
-    ("BILLBOARD3D", "applicationRuleMode"): {
-        "EN": "Application mode selector (bits 0x30 of applicationRule), 3 mutually "
-              "exclusive states. Values: 0=default, 16=mode C, 32=mode D. Exact meaning "
-              "not yet confirmed in-game.",
-        "ZH": "应用模式选择（applicationRule 的 0x30 位），3 态互斥。可取：0=默认，"
-              "16=模式 C，32=模式 D。具体含义尚未实机确认。",
-    },
-    ("BILLBOARD3D", "applicationRuleReserved"): {
-        "EN": "Reserved bits of applicationRule (0x01/0x02 and bit 6+). Always 0 in "
-              "official data — keep 0.",
-        "ZH": "applicationRule 的保留位（0x01/0x02 及第 6 位以上）。官方数据恒为 0，请保持 0。",
+    ("BILLBOARD3D", "applicationRule"): {
+        "EN": "Packed flags edited via the popup: two mixable toggles (enable flowmap / "
+              "play once then freeze) plus a 3-way application mode (default / mode 1 / "
+              "mode 2). Mode meaning not yet confirmed in-game.",
+        "ZH": "打包标志，用弹窗编辑：两个可混合开关（启用流动贴图／播一次后冻结）加一个"
+              "三选一应用模式（默认／模式1／模式2）。模式具体含义尚未实机确认。",
     },
     ("BILLBOARD3D", "brightness"): {
         "EN": "Brightness",
@@ -1294,24 +1265,12 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── PLANE (fixed part fields — same layout as BILLBOARD3D dds_data) ──────
-    ("PLANE", "applicationRuleFlowmap"): {
-        "EN": "Flowmap group (bits 0x0C of applicationRule). Values: 0=off, 4=enabled "
-              "& looping continuously, 12=enabled but plays once then freezes on the "
-              "last frame. (8=bit 0x08 alone, flowmap stays off.)",
-        "ZH": "流动贴图组（applicationRule 的 0x0C 位）。可取：0=关闭，4=启用并持续循环，"
-              "12=启用但只播一次后定格末帧。（8=仅 0x08 位，flowmap 仍关闭。）",
-    },
-    ("PLANE", "applicationRuleMode"): {
-        "EN": "Application mode selector (bits 0x30 of applicationRule), 3 mutually "
-              "exclusive states. Values: 0=default, 16=mode C, 32=mode D. Exact meaning "
-              "not yet confirmed in-game.",
-        "ZH": "应用模式选择（applicationRule 的 0x30 位），3 态互斥。可取：0=默认，"
-              "16=模式 C，32=模式 D。具体含义尚未实机确认。",
-    },
-    ("PLANE", "applicationRuleReserved"): {
-        "EN": "Reserved bits of applicationRule (0x01/0x02 and bit 6+). Always 0 in "
-              "official data — keep 0.",
-        "ZH": "applicationRule 的保留位（0x01/0x02 及第 6 位以上）。官方数据恒为 0，请保持 0。",
+    ("PLANE", "applicationRule"): {
+        "EN": "Packed flags edited via the popup: two mixable toggles (enable flowmap / "
+              "play once then freeze) plus a 3-way application mode (default / mode 1 / "
+              "mode 2). Mode meaning not yet confirmed in-game.",
+        "ZH": "打包标志，用弹窗编辑：两个可混合开关（启用流动贴图／播一次后冻结）加一个"
+              "三选一应用模式（默认／模式1／模式2）。模式具体含义尚未实机确认。",
     },
     ("PLANE", "brightness"): {
         "EN": "Brightness",
@@ -1870,9 +1829,10 @@ FIELD_ANNOTATIONS = {
         "EN": "Self-emission color (RGB) + overall emissive alpha coefficient (A).",
         "ZH": "自发光颜色（RGB）+ 整体自发光透明度系数（A）。",
     },
-    ("LIGHTNING", "unknEnum04"): {
-        "EN": "≈4.0 as float; guessed emissive intensity multiplier (unconfirmed).",
-        "ZH": "转为浮点约等于 4.0；推测是发光强度倍率（未确认）。",
+    ("LIGHTNING", "unkn04"): {
+        "EN": "Float (corpus values 0.0/0.4/1.0…100.0); guessed emissive intensity "
+              "multiplier (unconfirmed).",
+        "ZH": "浮点（全语料取值 0.0/0.4/1.0…100.0）；推测是发光强度倍率（未确认）。",
     },
     ("LIGHTNING", "unknEnum05_01"): {
         "EN": "Instance mode flag (lightningInstanceModeFlag). 1=standard single instance; "
