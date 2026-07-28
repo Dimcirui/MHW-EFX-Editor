@@ -2562,25 +2562,67 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("FADEBYANGLE", "unkn_angle1"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("FADEBYANGLE", "cutoffConeAngle"): {
+        "EN": "Confirmed: half-angle of the cone (around baseAxis) inside which the effect is "
+              "fully invisible.",
+        "ZH": "已确认：以 baseAxis 为中心的锥角（半角），落在这个角度以内特效完全不可见。",
     },
-    ("FADEBYANGLE", "unkn1_2"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("FADEBYANGLE", "fadeConeAngle"): {
+        "EN": "Confirmed: half-angle of the outer fade boundary — between cutoffConeAngle and "
+              "this angle the effect fades gradually; beyond it, fully visible.",
+        "ZH": "已确认：渐隐过渡区外边界的锥角（半角）——在 cutoffConeAngle 到这个角度之间做渐隐"
+              "过渡，超出则完全可见。",
     },
-    ("FADEBYANGLE", "unknEnum2_1"): {
-        "EN": "Common values: [0, 4, 5].",
-        "ZH": "常见取值为 [0, 4, 5]。",
+    ("FADEBYANGLE", "minAlpha"): {
+        "EN": "Confirmed: floor alpha the fade can reach. 1 = never fades out; 0.5 = fades to "
+              "half opacity at most.",
+        "ZH": "已确认：渐隐能达到的最低 alpha。设为 1 时完全不触发消失，设为 0.5 时最多只淡"
+              "到一半透明度。",
     },
-    ("FADEBYOCCLUSION", "unknFlag2_1"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+    ("FADEBYANGLE", "baseAxis"): {
+        "EN": "Confirmed (2026-07-29) via in-game rotation testing: same AxisDirection6 enum as "
+              "VELOCITY3D (0=left,1=up,2=front,3=right,4=down,5=back). Combined with "
+              "axisRotationX/Y/Z + rotOrder to give the direction that triggers the fade.",
+        "ZH": "已依 2026-07-29 实机旋转测试确认：与 VELOCITY3D 同一套 AxisDirection6 枚举"
+              "（0=左,1=上,2=前,3=右,4=下,5=后）。与 axisRotationX/Y/Z + rotOrder 复合得到"
+              "触发渐隐的朝向。",
     },
-    ("FADEBYOCCLUSION", "unknFlag2_2"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+    ("FADEBYANGLE", "rotOrder"): {
+        "EN": "Confirmed (2026-07-29) via in-game rotation testing: same rotation-order enum as "
+              "VELOCITY3D (0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX). Composition: "
+              "v' = Ry(axisRotationY)·Rx(axisRotationX)·Rz(axisRotationZ)·baseAxis.",
+        "ZH": "已依 2026-07-29 实机旋转测试确认：与 VELOCITY3D 同一套旋转顺序枚举"
+              "（0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX）。复合公式："
+              "v' = Ry(axisRotationY)·Rx(axisRotationX)·Rz(axisRotationZ)·baseAxis。",
+    },
+    ("FADEBYANGLE", "coneVisibilityFlags"): {
+        "EN": "Confirmed (2026-07-29) via exhaustive in-game testing of all 8 bit combinations. "
+              "bit0 (Enable Double Cone): always mirrors the same rule onto the opposite cone "
+              "(-baseAxis), independent of the other bits. bit1 (Exclude Cone): always swaps "
+              "inside/outside visibility, independent of the other bits. bit2: alone it also "
+              "swaps visibility, but is silently overridden (no effect) whenever bit0 is set — "
+              "overall inversion = bit1 OR (bit2 AND NOT bit0). bit2's exact purpose is still "
+              "unconfirmed.",
+        "ZH": "已依 2026-07-29 实机穷举全部 8 种位组合确认。bit0（启用双锥）：恒定生效，把同一"
+              "条规则镜像到对立角（-baseAxis），不受其他位影响。bit1（排除锥体）：恒定生效，"
+              "互换锥角内/外的可见性，不受其他位影响。bit2：单独置位时也会反转可见性，但只要"
+              "bit0=1 就完全失效——整体反转 = bit1 OR (bit2 且 bit0 为假)。bit2 具体作用仍未"
+              "确认。",
+    },
+    ("FADEBYOCCLUSION", "occlusionRadius"): {
+        "EN": "Confirmed: detection volume for occlusion — the larger this is, the more "
+              "easily the shrink effect triggers.",
+        "ZH": "已确认：遮挡判定体积——设得越大，越容易触发缩小效果。",
+    },
+    ("FADEBYOCCLUSION", "minScale"): {
+        "EN": "Confirmed: minimum scale ratio the effect can shrink to. 1 = never shrinks.",
+        "ZH": "已确认：特效被遮挡时允许缩小到的最小比例。设为 1 时完全不缩小。",
+    },
+    ("FADEBYOCCLUSION", "minAlpha"): {
+        "EN": "Confirmed: minimum alpha the effect can fade to while shrinking. 1 = shrinks "
+              "only, never fades; 0 = fades out fully while shrinking.",
+        "ZH": "已确认：特效缩小的同时允许淡到的最小透明度。设为 1 时只缩小不渐隐，设为 0 时"
+              "缩小的同时会完全渐隐。",
     },
     ("FAKEDOF", "unkn4"): {
         "EN": "Common range: 0~1.",
@@ -2669,11 +2711,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
               "[1, 2, 5, 6, 7, 8, 9, 10, 12]。",
     },
-    ("LIFE", "unkn2_0"): {
+    ("LIFE", "unknFrame"): {
         "EN": "Usually 0; other common values: [2, 5, 10, 20, 30, 35, 40, 50, 100].",
         "ZH": "通常为 0；其余常见取值为 [2, 5, 10, 20, 30, 35, 40, 50, 100]。",
     },
-    ("LIFE", "unknEnum2_1"): {
+    ("LIFE", "unknFrameJitter"): {
         "EN": "Usually 0; other common values: [5, 6, 10, 15, 20, 30, 40, 50, 60].",
         "ZH": "通常为 0；其余常见取值为 [5, 6, 10, 15, 20, 30, 40, 50, 60]。",
     },

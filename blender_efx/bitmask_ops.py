@@ -172,7 +172,8 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
                     layout.prop(self, "benum_%d" % ei, text=(b.zh if zh else b.en))
                 ei += 1
         resid_mask = _defined_mask(field)
-        if resid_mask != -1 and (~resid_mask) & 0xFFFFFFFF:   # 尚有未定义位才显示残留框
+        # strict 字段（已穷举确认段外位不用）不显示残留框，即使 32 位里仍有未覆盖的位。
+        if not getattr(field, "strict", False) and resid_mask != -1 and (~resid_mask) & 0xFFFFFFFF:
             layout.separator()
             row = layout.row()
             row.prop(self, "residual")

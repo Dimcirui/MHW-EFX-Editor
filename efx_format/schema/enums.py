@@ -100,6 +100,14 @@ BITS_ENABLE_VELOCITY = [(0x1, "Enable Velocity", "启用速度"), (0x2, "Enable 
 BITS_SPIN_AXIS = [(0x1, "X", "X"), (0x2, "Y", "Y"), (0x4, "Z", "Z")]
 BITS_RANDOMFIX_TABLE = [(1 << _i, "Table %d" % _i, "表 %d" % _i) for _i in range(8)]
 
+# FADEBYANGLE.coneVisibilityFlags：2026-07-29 用户实机全 8 组合穷举确认 bit0/bit1，
+# bit2 仍未知（真值表见 attributes.py 内联注释）。
+BITS_FADEBYANGLE_FLAGS = [
+    (0x1, "Enable Double Cone", "启用双锥（镜像对立角）"),
+    (0x2, "Exclude Cone", "排除锥体（反转可见性）"),
+    (0x4, "Unknown", "未知"),
+]
+
 # BILLBOARD3D / PLANE 的 applicationRule（打包 int32）。official 10084 文件实测干净：
 # bit2/bit3 两个独立可混合开关（{0,4,8,12} 全组合出现）；bit4-5 三值互斥（{0,16,32}，never 48）；
 # 其余位官方恒 0（残留可编辑保留）。混合/互斥判据据语义注释 + 全语料数据双证。

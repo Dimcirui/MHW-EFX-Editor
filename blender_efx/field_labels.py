@@ -29,7 +29,7 @@ RESERVED_FILL_FIELDS = frozenset({
     ('EMITTERSHAPEMESH', 'unkn1_1'),
     ('EMITTERSHAPEMESH', 'unkn1_2'),
     ('FADEBYEMITTERANGLE', 'unkn'),
-    ('FADEBYOCCLUSION', 'unkn1'),
+    ('FADEBYOCCLUSION', 'spacer0'),  # 原 unkn1，2026-07-29 复核：全语料恒 0xCDCDCDCD
     ('FAKEDOF', 'unkn2'),
     ('FAKEPLANE', 'unkn4'),
     ('HOMING', 'spacer'),
@@ -94,6 +94,7 @@ RESERVED_FILL_FIELDS = frozenset({
     ('TONEMAPFILTER', 'unkn1'),
     ('TUBELIGHT', 'unkn3_2'),
     ('TUBELIGHT', 'unkn5_1'),  # 恒 0xCDCDCDCD 未初始化标记（2026-07-01 实机测试确认，schema 拆分后新增）
+    ('UVSEQUENCE', 'loopingPad'),  # loopingEnum byte2-3，实测恒 0 的保留填充
 
     # ── "section_length" 类结构性长度标记（非 0xCD 填充，2026-07-11 全语料统计确认）───
     # 这批字段是各类型 schema 的第 2 个 4B 字段，全语料 100% 恒等于「该 attribute 总字节数
@@ -118,6 +119,7 @@ RESERVED_FILL_FIELDS = frozenset({
     ('SPAWNBYANGLE', 'section_length'),
     ('CHECKPUREATTRIBUTE', 'section_length'),
     ('SPAWNBYOCCLUSION', 'section_length'),
+    ('FADEBYOCCLUSION', 'section_length'),  # 原 unknFixed0_1，2026-07-29 复核：全语料恒 16=24B-8
     ('PARENTSNOW', 'section_length'),
     ('OTOMOSNOW', 'section_length'),
     ('FAKEPLANE', 'section_length'),

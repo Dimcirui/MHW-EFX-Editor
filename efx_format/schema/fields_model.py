@@ -173,13 +173,16 @@ class Bool(Field):
 
 class Bitmask(Field):
     """位掩码字段：底层整数，UI 渲成弹窗（勾选框 = 可混合 BitDef，下拉 = 互斥 BitEnum；
-    段外残留位保留并可编辑）。bits 是有序列表，元素可为 BitDef / BitEnum / (bit,en[,zh]) 元组。"""
-    def __init__(self, name, bits, *, backing='i', **kw):
+    段外残留位默认保留并可编辑）。bits 是有序列表，元素可为 BitDef / BitEnum / (bit,en[,zh]) 元组。
+    strict=True：已穷举确认段外位从不使用，编辑弹窗不再显示"其余位"整数框（读到的残留值仍
+    原样保留写回，只是不给编辑入口，不是强制清零）。"""
+    def __init__(self, name, bits, *, backing='i', strict=False, **kw):
         super().__init__(name, backing, widget="bitmask", **kw)
         self.bits = [
             b if isinstance(b, (BitDef, BitEnum)) else BitDef(*b)
             for b in bits
         ]
+        self.strict = strict
 
 
 class Raw(Field):

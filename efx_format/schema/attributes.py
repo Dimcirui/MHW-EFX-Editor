@@ -13,7 +13,7 @@ from .enums import (
     ENUM_RAYCAST_DIR, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
     ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE,
-    BITS_ENABLE_VELOCITY, BITS_SPIN_AXIS, BITS_RANDOMFIX_TABLE,
+    BITS_ENABLE_VELOCITY, BITS_SPIN_AXIS, BITS_RANDOMFIX_TABLE, BITS_FADEBYANGLE_FLAGS,
     _AXIS_DIRECTION6, _ROT_ORDER6, _VELOCITY_TYPE, _TRANSFORM_ROT_ORDER,
 )
 from .codec import _schema_size
@@ -166,6 +166,10 @@ SPAWN_SCHEMA = EXTERN_SPAWN_SCHEMA
 #   long timeToDeathJitter                   4 B
 #   long indefiniteLifespan                  4 B
 # data_bytes: 12 × 4 = 48 B ✓
+#
+# unknFrame/unknFrameJitter（原 unkn2[2]/unkn2_0+unknEnum2_1）：语义仍未确认，但字段位置
+# 正好夹在其他几组 duration/durationJitter 之间，形态上是同一种 static/random 配对，
+# 先按这套惯例改名挂起（"Frame" 只是命名占位，不代表已确认是帧数）。
 # ─────────────────────────────────────────────────────────────────────────────
 
 LIFE_ATTR = Attribute(size=48, fields=[
@@ -174,8 +178,8 @@ LIFE_ATTR = Attribute(size=48, fields=[
     Int("fadeInDurationJitter", label_zh="淡入时长抖动"),
     Int("duration", label_zh="持续时间"),
     Int("durationJitter", label_zh="持续时间抖动"),
-    Int("unkn2_0"),
-    Int("unknEnum2_1"),
+    Int("unknFrame"),
+    Int("unknFrameJitter"),
     Int("fadeOutDuration", label_zh="淡出时长"),
     Int("fadeOutDurationJitter", label_zh="淡出时长抖动"),
     Int("timeToDeath", label_zh="死亡时间"),
@@ -1168,37 +1172,40 @@ assert _schema_size(EMITTERBOUNDARY_SCHEMA) == 40, \
 # FadeByAngle schema  (data_bytes = 40 B; full block = 44 B)
 #
 # BT (EFX_Subtypes.bt):
-#   int unkn0[2](8) + float unkn1[4](16) + int64 NULL(8) + int unkn2[2](8) = 40 B  
+#   int unkn0[2](8) + float unkn1[4](16) + int64 NULL(8) + int unkn2[2](8) = 40 B
 #
-# 疑似角度值字段普查（2026-07-23，全语料 4697 块统计，待实机验证——参照
-# FADEBYDEPTH/FADEBYEMITTERANGLE 两个已用实机测试确认的同类"渐隐"块，回头
-# 用同样方法核对本块）：unkn_angle0~4 高频取值扎堆在 15/30/45/60/90/180 这类
-# 经典角度预设、且 unkn_angle2/3/4 呈现正负对称分布，与角度参数形态吻合，
-# 先统一改名挂起，实际语义（阈值/范围/偏移等）待逐个测出后再定具体名字：
-#   unkn_angle0 (原 unkn1_0)：[0,160]，98.4% 非零，几乎每块都用
-#   unkn_angle1 (原 unkn1_1)：[0,100]，99.4% 非零，几乎每块都用
-#   unkn_angle2 (原 unkn1_3)：[-120,119]，11.7% 非零，正负对称
-#   unkn_angle3 (原 NULL_0，拆自原 int64 NULL 低 32 位)：[-120,180]，3.6% 非零，正负对称  
-#   unkn_angle4 (原 NULL_1，拆自原 int64 NULL 高 32 位)：曾被误判"恒 0 占位"，  
-#     语料扩大到 4697 块后发现 23 个反例——按 float32 解出来是干净的整数度数
-#     （±7/±20/±24/±25/±30/±35），已订正类型 i→f，与 unkn_angle3 大概率是一对
-#     （原 int64 拆出的高低 32 位）
-# 不像角度、原样保留 unkn 命名的：unkn0_0([1,33] 100% 非零，像索引/枚举)、
-# unkn0_1([0,7] 80.1% 非零，像位标志)、unkn1_2([0,1] 仅 0.4% 非零，罕见)、
-# unkn2_0([0,5] 95.4% 非零)、unkn2_1([0,5] 99.9% 非零、几乎恒为 4)。
+# 2026-07-29 用户实机测试全部确认（视角朝基轴方向看时特效渐隐/消失）：
+#   cutoffConeAngle (原 unkn_angle0)：完全消失锥角（半角）——落在这个角度以内完全不可见
+#   fadeConeAngle   (原 unkn_angle1)：渐隐锥角（半角）——cutoffConeAngle 到这个角度之间做渐隐过渡
+#   minAlpha        (原 unkn1_2)：渐隐允许达到的最小 alpha（=1 时完全不触发消失，=0.5 时只淡到一半）
+#   rotation.xyz (原 axisRotationX/Y/Z / unkn_angle2/3/4)：基轴的旋转分量，与 baseAxis/rotOrder 复合
+#   baseAxis   (原 unknBitmask2_0)：基准轴，AxisDirection6（0左1上2前3右4下5后），与 VELOCITY3D
+#              同一套枚举，6 个值全部逐一实机验证通过
+#   rotOrder   (原 unknEnum2_1)：旋转顺序，_ROT_ORDER6（0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX），
+#              与 VELOCITY3D 同一套枚举，复合公式 v' = Ry(rotation.y)·Rx(rotation.x)·
+#              Rz(rotation.z)·baseAxis，实机验证通过（含分组验证 0/1/4 vs 2/3/5）
+# 三者共同确定"往哪个方向看会触发渐隐/消失"，跟 VELOCITY3D 的 [baseAxis, rotOrder] 是同一套
+# 底层机制的另一处复用。
+#
+# coneVisibilityFlags（原 unkn0_1）：2026-07-29 用户实机穷举全部 8 种位组合确认：
+#   bit0=enableDoubleCone：独立生效，不受 bit1/bit2 影响——置位后额外在对立角（-baseAxis）
+#     追加一份与主锥角完全相同的可见性规则（镜像）。
+#   bit1=excludeCone：真正的"反转"开关，恒定生效——置位后"锥角内/外"的可见性互换
+#     （变成锥角内不可见、外可见），不受 bit0/bit2 影响。
+#   bit2（未知）：单独置位时表现跟 bit1 一样是反转，但只要 bit0=1 就完全失效（被盖掉，
+#     不再反转）——即整体反转 = bit1 OR (bit2 AND NOT bit0)。这个"被 bit0 单向遮蔽"的
+#     不对称行为无法用一个独立同等地位的开关解释，具体内部语义仍不清楚，先保留占位标签。
 # ─────────────────────────────────────────────────────────────────────────────
 
 FADEBYANGLE_ATTR = Attribute(size=40, fields=[
     Int("typeFlag"),  # 原 unkn0_0
-    Int("unknBitmask0_1"),
-    Float("unkn_angle0"),
-    Float("unkn_angle1"),
-    Float("unkn1_2"),
-    Float("unkn_angle2"),
-    Float("unkn_angle3"),
-    Float("unkn_angle4"),
-    Int("unknBitmask2_0"),
-    Int("unknEnum2_1"),
+    Bitmask("coneVisibilityFlags", BITS_FADEBYANGLE_FLAGS, label_zh="锥体可见性标志", strict=True),
+    Float("cutoffConeAngle", label_zh="完全消失锥角"),
+    Float("fadeConeAngle", label_zh="渐隐锥角"),
+    Float("minAlpha", label_zh="最小透明度"),
+    Raw("rotation", ('XYZ', 3), label_zh="旋转"),  # 原 axisRotationX/Y/Z
+    Enum("baseAxis", _AXIS_DIRECTION6, label_zh="基准轴"),
+    Enum("rotOrder", _ROT_ORDER6, label_zh="旋转顺序"),
 ])
 FADEBYANGLE_SCHEMA = FADEBYANGLE_ATTR.schema
 assert _schema_size(FADEBYANGLE_SCHEMA) == 40, \
@@ -1601,13 +1608,22 @@ assert _schema_size(SPAWNBYOCCLUSION_SCHEMA) == 20, \
     f"SPAWNBYOCCLUSION_SCHEMA size mismatch: {_schema_size(SPAWNBYOCCLUSION_SCHEMA)}"
 
 # FadeByOcclusion (28B total, 24B data)
+#
+# 2026-07-29 用户实机测试确认：这个块不是靠隐藏/透明度渐隐，是"被遮挡时把特效缩小"，
+# 跟续作 schema 的 Radius/MinSize 对应（见 fadebyocclusion-shrink-mechanism 记忆）：
+#   occlusionRadius (原 unkn2_0)：判定体积，设得越大越容易触发缩小
+#   minScale        (原 unknFlag2_1)：允许缩小到的最小比例（=1 时完全不缩小）
+#   minAlpha        (原 unknFlag2_2)：缩小时允许淡到的最小透明度（=1 时只缩小不渐隐，
+#                    =0 时缩小的同时会渐隐）
+# 顺带核对：unknFixed0_1 全语料恒为 16（=24B 总长-8，跟其他类型的 section_length 同一套
+# 结构性标记，非可调数据）；unkn1 全语料恒为 0xCDCDCDCD（未初始化填充，非可调数据）。
 FADEBYOCCLUSION_ATTR = Attribute(size=24, fields=[
     Int("typeFlag"),  # 原 unkn0_0
-    Int("unknFixed0_1"),  # 8B
-    Int("unkn1"),  # 4B
-    Float("unkn2_0"),
-    Float("unknFlag2_1"),
-    Float("unknFlag2_2"),  # 12B
+    Int("section_length", label_zh="段长度"),  # 原 unknFixed0_1，8B
+    Int("spacer0"),  # 原 unkn1，恒 0xCDCDCDCD，4B
+    Float("occlusionRadius", label_zh="遮挡判定半径"),
+    Float("minScale", label_zh="最小缩放比例"),
+    Float("minAlpha", label_zh="最小透明度"),  # 12B
 ])
 FADEBYOCCLUSION_SCHEMA = FADEBYOCCLUSION_ATTR.schema
 assert _schema_size(FADEBYOCCLUSION_SCHEMA) == 24, \

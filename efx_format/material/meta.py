@@ -6,8 +6,15 @@ efx_format/material_meta.py — MATERIAL 块的哈希→名称查表（纯数据
 皆解包自 MHW ShaderPackage.sdf）。EFX 的 MATERIAL 块与 mrl3 共享同一套材质系统：
   - Tex_Block.material_shader_id_hash → 主材质类型（master material type）
   - Tex_Set.t                         → 贴图槽资源名（tAlbedoMap / tNormalMap / ...）
-本表仅收录用于**只读标注**的子集：112 个主材质类型 + 304 个 t*Map 贴图槽。
+本表仅收录用于**只读标注**的子集：112 个主材质类型 + 318 个 t*Map 贴图槽。
 名称已去除 "__disclosure" 后缀。生成脚本见 git 历史（一次性，非运行期依赖）。
+2026-07-29 用户提供 ShaderPackage.sdf 完整反查字典（master_material_dict.json 全量），
+交叉验证：既有 304 条全部吻合（jamcrc(name+"__disclosure") 与本表哈希一致），零冲突；
+新增 13 条本表此前缺失的贴图槽（tSnowMap/tHeightMap/tVertexColorMap 等）。全量官方语料
+（5989 个 MATERIAL 块/52956 个贴图槽）扫描确认：Tex_Set 用两套并存的哈希约定——
+'set' 字段 = jamcrc(裸名)，'t' 字段 = jamcrc(名+"__disclosure")，两套值都以同一个
+显示名收进本表（如 tAlbedoMap 有 991242969 和 2990329967 两个键）；扫描只剩 1 个真正
+未收录的哈希（724528908 = jamcrc("tSnowMap") 裸名），已补上，全量语料 0 未解析残留。
 """
 
 # 主材质类型：shader_id_hash(uint32) → 类型名
@@ -130,10 +137,12 @@ MATERIAL_TYPE_NAMES = {
 TEXTURE_SLOT_NAMES = {
     23755858: 'tGBufferDepthMap',
     31204677: 'tNormalMap',
+    33935594: 'tSnowMap',
     39917589: 'tAlbedoOverMap_',
     49427678: 'tSplashMap_',
     57795617: 'tOcclusionMap',
     94184640: 'tSSSSSMap',
+    97126080: 'tArrayMap',
     100217271: 'tFilterTempMap1',
     110895663: 'tFaceMayuMap',
     112470662: 'tDetailMapD',
@@ -161,7 +170,9 @@ TEXTURE_SLOT_NAMES = {
     435884614: 'tSSLR_TemporalMapUAV',
     445829372: 'tAddNormalMap_',
     463182229: 'tDetailMapA',
+    464372238: 'tSnowEmissiveBlendMap',
     467146344: 'tSkinMap_',
+    469396279: 'tSnowRMTBlendMap',
     481971785: 'tMipMapTarget2',
     533769487: 'tEmissiveMapG_',
     580765934: 'tSSShadowBlurMap',
@@ -173,12 +184,14 @@ TEXTURE_SLOT_NAMES = {
     631946777: 'tAlbedoBlendMapB',
     643057311: 'tRMTBlendMapR_',
     644549756: 'tAlbedoMap_',
+    645194279: 'tNormalHeightMap',
     660625983: 'tCubeMap',
     667138669: 'tWaterCubeMapB',
     672619091: 'tDetailNormalMap',
     677727003: 'tEmissiveMapR_',
     688172724: 'tFacePaintMap',
     706285017: 'tFlowMap',
+    724528908: 'tSnowMap',
     737982737: 'tColorMaskMap_',
     745405611: 'tNormalBlendMapB_',
     760098306: 'tPatternMap_',
@@ -192,6 +205,7 @@ TEXTURE_SLOT_NAMES = {
     849248928: 'tWaterCustomNormalMap',
     871615671: 'tVertexTangentMap_',
     881761082: 'tWaterCustomEmissiveMap',
+    900380366: 'tSnowDetailNormalBlendMap',
     905375503: 'tPanoramaMap',
     919191292: 'tDepthMipMapTarget1',
     924554019: 'tMaterialBlendMap_',
@@ -210,6 +224,7 @@ TEXTURE_SLOT_NAMES = {
     1108858629: 'tPrimAlbedoMap',
     1123623178: 'tPrimNormalMap',
     1135803242: 'tSkySunRegionMap',
+    1138491810: 'tSnowMaterialBlendMap',
     1152189272: 'tFaceMayuMap',
     1154527028: 'tBaseMap',
     1180566376: 'tSkyCurveMap',
@@ -228,6 +243,7 @@ TEXTURE_SLOT_NAMES = {
     1336909238: 'tAddNormalMaskMap',
     1342246974: 'tAlbedoUniqueMap',
     1360660718: 'tNormalBlendMapG_',
+    1362772392: 'tFurNormalBlendMap',
     1368160824: 'tPaintPbMap',
     1368195399: 'tFlowMap_',
     1376768424: 'tFurMaskMap',
@@ -242,6 +258,7 @@ TEXTURE_SLOT_NAMES = {
     1473501889: 'tEmissiveMapB',
     1475060300: 'tDetailEmissiveMap_',
     1490452752: 'tAlbedoExtendMap_',
+    1494153207: 'tFurBlendMap',
     1529038850: 'tFurMaskMap_',
     1541445856: 'tNormalBlendMapR',
     1553862657: 'tMipMapOutput',
@@ -370,6 +387,8 @@ TEXTURE_SLOT_NAMES = {
     3522028730: 'tOpacityBlendMap',
     3541148635: 'tPaintKzMap',
     3548870785: 'tPaintPbMap_',
+    3550690490: 'tSnowAlbedoMap',
+    3553780361: 'tSnowNormalBlendMap',
     3572663017: 'tVertexNormalMap',
     3596751107: 'tSkyTempSunAlphaMap',
     3604694468: 'tAlbedoOverMap',
@@ -431,6 +450,8 @@ TEXTURE_SLOT_NAMES = {
     4259717088: 'tFurMaskMap',
     4265345484: 'tSkyBlendBaseMap',
     4278313984: 'tSrcMap2',
+    4282826776: 'tHeightMap',
+    4285975789: 'tVertexColorMap',
     4290060682: 'tPartsMaskMap_',
 }
 
