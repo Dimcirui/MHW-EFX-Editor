@@ -186,6 +186,33 @@ def _is_jitter_name(name: str) -> bool:
     return name.endswith("Jitter") or name.endswith("_jitter") or name in _NONSTANDARD_JITTER_NAMES
 
 
+def _is_matching_jitter(base_name: str, candidate_name: str) -> bool:
+    """candidate_name 是否确实是 base_name 的 jitter 搭档（按名字派生关系判断，而非仅仅
+    "长得像 jitter"）。原来的相邻位置配对只检查下一个字段是否为任意 jitter 名，未核对是否
+    真的由 base_name 派生——当 value/jitter 在字节布局里不相邻（如 RIBBON 的
+    rotationYJitter 排在 rotationY 前面，见 ribbon-family 相关 schema 注释）时，会错误地把
+    下一个无关的 jitter 字段（如 rotationZJitter）配对给当前字段（rotationY），2026-07-30 修复。"""
+    return candidate_name in (base_name + "Jitter", base_name + "_jitter", base_name + "_j")
+
+
+def _sibling_field_value(item, name):
+    """从 item 所属 Object 的 field_items 集合里按名字查另一个字段的当前整数值（枚举/bool/int
+    背板），找不到或取不到时返回 None。用于同一个 attr 内"某字段的显示方式取决于另一个字段的
+    当前取值"这种场景（如 EMITTERSHAPE3D.rangeXYZ 的固定/随机 vs 偏移/尺寸措辞，取决于
+    shapeType，2026-07-30）。"""
+    obj = item.id_data
+    if obj is None or not hasattr(obj, "efx_block"):
+        return None
+    from . import fields as _f
+    for it in obj.efx_block.field_items:
+        if it.ori_name == name:
+            try:
+                return _f._enum_backing_read(it)
+            except Exception:
+                return None
+    return None
+
+
 def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     """
     把 value 字段与紧随其后的 jitter 字段合并成一行两列：友好名 | 固定 | 随机。
@@ -244,6 +271,12 @@ AXIS_GROUPS: dict = {
     "SCALEANIM": [
         ("scaleSpeed", [("X", "scaleSpeedX"), ("Y", "scaleSpeedY"), ("Z", "scaleSpeedZ")]),
         ("scaleAccel", [("X", "scaleAccelX"), ("Y", "scaleAccelY"), ("Z", "scaleAccelZ")]),
+    ],
+    # RIBBON 的 rotationX/Y/Z：字节布局里 Y/Z 两组的 value/jitter 顺序是反的（rotationYJitter
+    # 排在 rotationY 前面，rotationZJitter 排在 rotationZ 前面），相邻位置配对逻辑找不到，
+    # 靠这里按名字查找而非位置的分组机制正确显示，2026-07-30。
+    "RIBBON": [
+        ("rotation", [("X", "rotationX"), ("Y", "rotationY"), ("Z", "rotationZ")]),
     ],
 }
 
@@ -488,29 +521,39 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         except Exception:
             pass
 
-        # X 行：Static index=0  Random index=1
+        # EMITTERSHAPE3D.rangeXYZ 的两个值不是 static+random：Cylinder(2) 下是
+        # offset+size（外边界=offset+size），其余形状下是 min+max。
+        if type_name == "EMITTERSHAPE3D" and item.ori_name == "rangeXYZ":
+            if _sibling_field_value(item, "shapeType") == 2:
+                lbl_a, lbl_b = T("field.offset"), T("field.size")
+            else:
+                lbl_a, lbl_b = T("field.min"), T("field.max")
+        else:
+            lbl_a, lbl_b = T("field.static"), T("field.random")
+
+        # X 行：index=0 / index=1
         x_row = layout.row(align=True)
         x_row.scale_y = 1.1
         x_row.use_property_split = False
         x_row.label(text="X", icon="BLANK1")
-        x_row.prop(item, prop6, index=0, text=T("field.static"))
-        x_row.prop(item, prop6, index=1, text=T("field.random"))
+        x_row.prop(item, prop6, index=0, text=lbl_a)
+        x_row.prop(item, prop6, index=1, text=lbl_b)
 
-        # Y 行：Static index=2  Random index=3
+        # Y 行：index=2 / index=3
         y_row = layout.row(align=True)
         y_row.scale_y = 1.1
         y_row.use_property_split = False
         y_row.label(text="Y", icon="BLANK1")
-        y_row.prop(item, prop6, index=2, text=T("field.static"))
-        y_row.prop(item, prop6, index=3, text=T("field.random"))
+        y_row.prop(item, prop6, index=2, text=lbl_a)
+        y_row.prop(item, prop6, index=3, text=lbl_b)
 
-        # Z 行：Static index=4  Random index=5
+        # Z 行：index=4 / index=5
         z_row = layout.row(align=True)
         z_row.scale_y = 1.1
         z_row.use_property_split = False
         z_row.label(text="Z", icon="BLANK1")
-        z_row.prop(item, prop6, index=4, text=T("field.static"))
-        z_row.prop(item, prop6, index=5, text=T("field.random"))
+        z_row.prop(item, prop6, index=4, text=lbl_a)
+        z_row.prop(item, prop6, index=5, text=lbl_b)
         return
 
     # ── INT3（XYZ type 1）：x,y,z 三分量整数 ─────────────────────────────────
@@ -1151,7 +1194,7 @@ def _draw_attribute_fields_content(layout, context):
                         and not _is_jitter_name(item.ori_name)
                         and not item.ori_name.startswith("__")
                         and nxt.data_type == item.data_type
-                        and _is_jitter_name(nxt.ori_name)):
+                        and _is_matching_jitter(item.ori_name, nxt.ori_name)):
                     _draw_value_jitter_pair(col, item, nxt, type_name=type_name)
                     i += 2
                     continue
@@ -1789,7 +1832,7 @@ def _draw_plain_field_list(col, field_items, type_name: str = "") -> None:
                 and not _is_jitter_name(item.ori_name)
                 and not item.ori_name.startswith("__")
                 and nxt.data_type == item.data_type
-                and _is_jitter_name(nxt.ori_name)):
+                and _is_matching_jitter(item.ori_name, nxt.ori_name)):
             _draw_value_jitter_pair(col, item, nxt, type_name=type_name)
             i += 2
             continue

@@ -115,7 +115,7 @@ def _read_es3d_params(es3d_obj):
     return {
         "shape": _read_int(es3d_obj, "shapeType", 0),
         "size": _read_range_xyz(es3d_obj),
-        "angle": _read_float(es3d_obj, "scaleHorizontal", 360.0),
+        "angle": _read_float(es3d_obj, "scanAngleHorizontal", 360.0),
     }
 
 

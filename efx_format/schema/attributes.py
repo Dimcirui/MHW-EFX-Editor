@@ -9,11 +9,13 @@ from .fields_model import (
     Enum, EnumVec3, Bool, Bitmask, Raw,
 )
 from .enums import (
-    ENUM_SHAPE_TYPE3D, ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_PTLIFE_STATUS,
+    ENUM_SHAPE_TYPE3D, ENUM_RANGE_DIVIDE_AXIS, ENUM_ROTATION_CORRECT_TYPE,
+    ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_PTLIFE_STATUS,
     ENUM_RAYCAST_DIR, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
     ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE,
     BITS_ENABLE_VELOCITY, BITS_SPIN_AXIS, BITS_RANDOMFIX_TABLE, BITS_FADEBYANGLE_FLAGS,
+    BITS_SPAWN_UNKN31,
     _AXIS_DIRECTION6, _ROT_ORDER6, _VELOCITY_TYPE, _TRANSFORM_ROT_ORDER,
 )
 from .codec import _schema_size
@@ -49,7 +51,9 @@ EXTERN_TRANSFORM3D_ATTR = Attribute(size=228, fields=[
     Raw("rotation_velocity_modifier", ('XYZ', 0), label_zh="旋转速度修正"),
     Raw("scale_velocity", ('XYZ', 0), label_zh="缩放速度"),
     Raw("scale_velocity_modifier", ('XYZ', 0), label_zh="缩放速度修正"),
-    Bitmask("enableVelocityBitflag", BITS_ENABLE_VELOCITY, label_zh="启用速度位标志"),
+    # 全语料 111993/111993 穷举：取值只有 0/1/2/3，即 bit0/bit1 各自独立开关+组合，
+    # bit2 及以上从未出现过——确认是纯 2 位可混合掩码，非 4 值枚举，strict=True 不留残留位框。
+    Bitmask("enableVelocityBitflag", BITS_ENABLE_VELOCITY, label_zh="启用速度位标志", strict=True),
 ])
 EXTERN_TRANSFORM3D_SCHEMA = EXTERN_TRANSFORM3D_ATTR.schema
 assert _schema_size(EXTERN_TRANSFORM3D_SCHEMA) == 228, \
@@ -139,7 +143,8 @@ EXTERN_SPAWN_ATTR = Attribute(size=72, fields=[
     Int("emitterRepeatCount", label_zh="重复次数"),  # 原 repeatAtribute，批次数加成+换位置总开关
     Int("altBurstInterval", label_zh="替代批次间隔（帧）"),  # 原 unkn21（一度改名 ringBufferInterval，已订正），burstsPerCycle=1时的专属批次间隔
     Int("altBurstIntervalJitter", label_zh="替代批次间隔抖动（帧）"),  # 原 unkn30
-    Int("unknBitmask31"),
+    # 官方全语料(112573 块)穷举：可混合位只到 bit5（值 32），bit6+ 从未出现，strict=True。
+    Bitmask("unknBitmask31", BITS_SPAWN_UNKN31, strict=True),
 ])
 EXTERN_SPAWN_SCHEMA = EXTERN_SPAWN_ATTR.schema
 assert _schema_size(EXTERN_SPAWN_SCHEMA) == 72, \
@@ -210,7 +215,10 @@ assert _schema_size(LIFE_SCHEMA) == 48, \
 #   byte  objectInteractionFlag1             1 B
 #   byte  objectInteractionFlag2             1 B
 #   byte  objectInteractionFlag3             1 B
-#   int   visibleOnPreview                   4 B
+#   byte  unknBool0  ) 原 int visibleOnPreview 语料统计显示实为
+#   byte  unknBool1  ) 4 个各自独立的 0/1 字节（十六进制每字节恒
+#   byte  unknBool2  ) 0x00 或 0x01），非单一"预览可见"标志，拆
+#   byte  unknBool3  ) 分为 4 个布尔字节，语义待实机确认        1 B×4
 #   int   unkn5[2]                           8 B
 # data_bytes: 9×4 + 64 + 4 + 4 + 8 = 36 + 64 + 16 = 116 B ✓
 # ─────────────────────────────────────────────────────────────────────────────
@@ -248,7 +256,10 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Byte("objectInteractionFlag1", label_zh="物体交互标志1"),
     Byte("objectInteractionFlag2", label_zh="物体交互标志2"),
     Byte("objectInteractionFlag3", label_zh="物体交互标志3"),
-    Int("visibleOnPreview", label_zh="预览中可见"),
+    Bool("unknBool0", backing='B'),  # 原 visibleOnPreview 拆分（4 字节各恒 0/1，非单一标志）
+    Bool("unknBool1", backing='B'),
+    Bool("unknBool2", backing='B'),
+    Bool("unknBool3", backing='B'),
     Int("unknEnum5_0"),
     Int("unknBitmask5_1"),
 ])
@@ -270,7 +281,7 @@ assert _schema_size(SHADERSETTINGS_SCHEMA) == 116, \
 #   int   initialVelocityAxis（原 unknBitmask0_1）：initialVelocity 的基准轴，
 #         与 rotationX/Y/Z 复合决定最终朝向，仅在 velocityType=0(Direction) 时有意义。
 #         AxisDirection6 枚举（0=左,1=上,2=前,3=右,4=下,5=后），与 RIBBONBLADE.
-#         widthDirection / RIBBON.restitution_direction 同款；仅confirmed 3/4 两点。
+#         widthDirection / RIBBON.baseAxis 同款；仅confirmed 3/4 两点。
 #         用"Axis"而非"Direction"命名以区分它是"选六个基准轴之一"而非自由方向向量 4 B
 #   int   unknAxis（原 unknBitmask0_2）：疑似旋转顺序（结构上跟 EMITTERSHAPE3D.
 #         rotationOrder 一样 6 值以 4 为主流），但实机测试（固定 rotationX=rotationY=90，
@@ -441,49 +452,40 @@ assert _schema_size(EXTERN_VELOCITY3D6_SCHEMA) == 80, \
 # ─────────────────────────────────────────────────────────────────────────────
 # ExternEmitterShape3D schema  (88 B; full block = 92 B)
 #
-# 2026-07 定稿依据：用户多轮实机测试 + RE Engine 续作 schema（同名 Emitter Shape 3D 类型，
-# kagenocookie/RE-Engine-Lib 社区反查）交叉印证，字段名尽量采用续作命名：
+# 字段名对齐 RE Engine 续作 schema（同名 Emitter Shape 3D 类型，kagenocookie/RE-Engine-Lib）：
 #   RangeX/Y/Z→rangeXYZ, ShapeType→shapeType, RangeDivideAxis→rangeDivideAxis,
-#   LocalRotation→localRotationX/Y/Z, RotationOrder→rotationOrder(名称沿用，语义未confirmed),
-#   ScaleHorizontal/ScaleVertical→scaleHorizontal/scaleVertical,
-#   RangeDivideHorizontalNum/VerticalNum→rangeDivideHorizontalNum/VerticalNum。
-# 续作里 RangeDivideHorizontalNum 是 >RE3 才加的字段——MHW(MT Framework) 反而在续作早期
-# 版本还没有的时候就已经有横纵双轴独立细分的能力，续作大概率是先做了单轴版
-# （RangeDivideNum+RangeDivideAxis 只能选一个轴），RE3+ 才把 MT Framework 早就有的双轴
-# 能力重新加回去。
+#   LocalRotation→localRotationX/Y/Z, RotationOrder→rotationOrder, RotationCorrect→
+#   rotationCorrect, RangeDivideHorizontalNum/VerticalNum→同名。
+# radiusEnd/radiusOrigin 未对齐续作的 ScaleHorizontal/ScaleVertical（结构吻合，但那个名字
+# 对"半径"这个实际功能不直观）；本仓库 scanAngleHorizontal/Vertical 是横/纵扫描角度，跟续作
+# 同名的 ScaleHorizontal/ScaleVertical 语义未必相同。
+# 续作的 RangeDivideNum（单轴细分）MHW 没有——MHW 早就是横纵双轴独立细分。
 #
 #   int   typeFlag                           4 B
-#   XYZ   rangeXYZ(0)   6 floats            24 B  # 生成形状的边界大小（RangeX/Y/Z）
-#   int   shapeType：0=Box(立方体边框),1=Sphere(球面),2=Cylinder(圆环面),≥3=Point(点，
-#         非严格枚举，实测 3/4/5 均表现为点)                                  4 B
-#   int   rangeDivideAxis（原 unknEnum2）：枚举 0/1/2。立方体下确认：决定 12 条边里
-#         哪一组（4条一组，共3组，对应X/Y/Z轴向）参与生成；对球/环的具体作用未确认
-#         （官方语料里三种形状都会设各种取值，无形状排他性）                    4 B
-#   int   unknOrientation（原 unknEnum3_0）：影响朝向，具体机制不明。取值仅
-#         [0,1,3,5,7]（除0外必含最低位，疑似位掩码）；官方语料里非0值 67~93%
-#         集中在"环"形状上，与用户实测用立方体验证不完全对应，效果本身应形状无关
-#                                                                          4 B
-#   float localRotationX                    4 B  ─┐ 生成形状的总体旋转
+#   XYZ   rangeXYZ(0)   6 floats            24 B  # 每轴 min/max（Cylinder 下是 offset/size）
+#   int   shapeType：0=Box,1=Sphere,2=Cylinder,≥3=Point（非严格枚举，3/4/5 均为点）   4 B
+#   int   rangeDivideAxis（原 unknEnum2）：仅 Box 生效，选沿哪个轴细分；不受
+#         localRotation 影响                                                4 B
+#   int   rotationCorrect（原 unknEnum3_0）：全形状生效，照搬续作 RotationCorrectType；
+#         官方语料取值 [0,1,3,5,7] 不完全落在 0~4 内                            4 B
+#   float localRotationX                    4 B  ─┐ 生成形状的总体旋转，全形状生效
 #   float localRotationY                    4 B   │（RE Engine LocalRotation，Vector3）；
 #   float localRotationZ                    4 B  ─┘ 不影响生成对象自身法线/切线
-#   int   rotationOrder：枚举 0~5，4 最常见（71%）。结构上紧跟 localRotationXYZ，
-#         与续作 RotationOrder 字段位置一致，疑似复用 TRANSFORM3D 的
-#         XYZ/YZX/ZXY/ZYX/YXZ/XZY 顺序表，但未实机验证具体对应关系（VELOCITY3D 的
-#         unknAxis 曾用类似逻辑测试过，结果对不上 TRANSFORM3D 的编号，这里未测，
-#         别直接当作已confirmed）                                              4 B
-#   float scaleHorizontal（原 spawnAngleLimits）：仅对球/环生效，横向扫描角度范围。
-#         180 对应半球面/半圆环，360/0(等效)为整圆                              4 B
-#   float scaleVertical（原 unkn3_f1）：仅对球生效，纵向扫描角度。180 对应上半球面   4 B
-#   int   rangeDivideHorizontalNum（原 spawnPerCycle）：沿横向维度等分数量；
-#         立方体下完全不生效                                                  4 B
-#   int   rangeDivideVerticalNum（原 spawnTotal）：沿纵向维度等分数量，0=连续铺满；
-#         立方体下小值(1~3)表现为位掩码（1=边中点族/2=角族/3=两者并集），
-#         大值(如16)另有细分方式待研究                                        4 B
-#   float radiusEnd                         4 B  ─┐ 仅对"环"生效，与 radiusOrigin
-#   float radiusOrigin                      4 B  ─┘ 构成内外半径band，两者顺序互换
-#         结果一致（引擎内部按 min/max 取用，不看谁存在哪个字段）
-#   int   unknBitmaskRadiusRelated：枚举 0~5，具体机制不明                      4 B
-#   int   unknFlag4：0/1，具体机制不明，大部分情况下取 1                       4 B
+#   int   rotationOrder：全形状生效，与 TRANSFORM3D/RIBBON 共用 _TRANSFORM_ROT_ORDER   4 B
+#   float scanAngleHorizontal（原 spawnAngleLimits）：仅 Sphere/Cylinder 生效，
+#         横向扫描角度，180=半球/半环，360/0(等效)=整圆                          4 B
+#   float scanAngleVertical（原 unkn3_f1）：仅 Sphere 生效，纵向扫描角度，180=上半球  4 B
+#   int   rangeDivideHorizontalNum（原 spawnPerCycle）：仅 Sphere/Cylinder 生效，沿横向
+#         等分；细分作用在 rangeXYZ+扫描角度定出的最终形状之上（先定形状再细分）      4 B
+#   int   rangeDivideVerticalNum（原 spawnTotal）：全形状生效，沿纵向等分，0=连续铺满；
+#         同上作用在最终形状之上；Box 下小值(1~3)表现为位掩码（1=边中点族/2=角族/
+#         3=并集），大值(如16)细分方式待研究                                    4 B
+#   float radiusEnd                         4 B  ─┐ 仅 Cylinder 生效。两者构成内外半径
+#   float radiusOrigin                      4 B  ─┘ band，顺序互换结果一致（引擎按
+#         min/max 取用，不看谁存在哪个字段）；实际半径 = rangeXYZ.max × 该比例
+#   int   unknBitmaskRadiusRelated：目前视为全形状生效。枚举 0~5，机制不明            4 B
+#   int   unknFlag4：目前视为全形状生效。0/1，机制不明，多数为 1                     4 B
+# Point(shapeType≥3) 例外：以上按形状的过滤规则对它一律不生效（全部字段照常显示）。
 # Total: 4+24+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 4+24+15×4 = 88 B ✓
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -491,14 +493,14 @@ EXTERN_EMITTERSHAPE3D_ATTR = Attribute(size=88, fields=[
     Int("typeFlag"),  # 原 unkn0
     Raw("rangeXYZ", ('XYZ', 0), label_zh="生成范围"),  # 原 transform
     Enum("shapeType", ENUM_SHAPE_TYPE3D, label_zh="形状类型"),  # 原 patternControl
-    Int("rangeDivideAxis", label_zh="细分参考轴"),  # 原 unknEnum2
-    Int("unknOrientation"),  # 原 unknEnum3_0
+    Enum("rangeDivideAxis", ENUM_RANGE_DIVIDE_AXIS, label_zh="细分轴向"),  # 原 unknEnum2
+    Enum("rotationCorrect", ENUM_ROTATION_CORRECT_TYPE, label_zh="旋转修正方式"),  # 原 unknEnum3_0
     Float("localRotationX", label_zh="局部旋转 X"),  # 原 trayectoryRotationX
     Float("localRotationY", label_zh="局部旋转 Y"),  # 原 trayectoryRotationY
     Float("localRotationZ", label_zh="局部旋转 Z"),  # 原 trayectoryRotationZ
     Enum("rotationOrder", _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
-    Float("scaleHorizontal", label_zh="横向扫描角度"),  # 原 spawnAngleLimits
-    Float("scaleVertical", label_zh="纵向扫描角度"),  # 原 unkn3_f1
+    Float("scanAngleHorizontal", label_zh="横向扫描角度"),  # 原 scaleHorizontal/spawnAngleLimits
+    Float("scanAngleVertical", label_zh="纵向扫描角度"),  # 原 scaleVertical/unkn3_f1
     Int("rangeDivideHorizontalNum", label_zh="横向等分数量"),  # 原 spawnPerCycle
     Int("rangeDivideVerticalNum", label_zh="纵向等分数量"),  # 原 spawnTotal
     Float("radiusEnd", label_zh="结束半径"),
@@ -538,7 +540,10 @@ EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_SCHEMA
 EXTERN_SCALEANIM_ATTR = Attribute(size=76, fields=[
     Int("typeFlag"),  # 原 unkn0
     Float("initialScaleSpeed", label_zh="初始扩散速度"),  # 初始扩散速度（原 animationSpeed）TIML DT 0xC24DF97C("SizeScalarAdd") 已确认
-    Float("unknFloat"),  # 原 NULL，实测非恒 0（约 30% 非零，clean 小数如 0.02/0.04/0.1/0.2），语义未确认  
+    # 原 unknFloat/NULL：紧跟 initialScaleSpeed、恰好是它缺的 Jitter 搭档（该字段本身
+    # 约 30% 非零，clean 小数如 0.02/0.04/0.1/0.2，符合 jitter 数值特征），按 static/random
+    # 配对约定改名，未实机验证。
+    Float("initialScaleSpeedJitter", label_zh="初始扩散速度抖动"),
 
     Float("initialScaleAccel", label_zh="初始扩散加速度"),  # 初始扩散加速度（原 scaleSpeed）
     Float("initialScaleAccelJitter", label_zh="初始扩散加速度抖动"),  # 原 scaleSpeedJitter
@@ -636,7 +641,9 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Int("fireColorParam_durationJitter", label_zh="火焰色 持续时间抖动"),
     Int("fireColorParam_fadeOut", label_zh="火焰色 淡出"),
     Int("fireColorParam_fadeOutJitter", label_zh="火焰色 淡出抖动"),
-    Int("fireColorParam_unkn7"),
+    # 全语料(53532 块)穷举：unkn7 只有 0/1 两种取值，真布尔；unkn8/unkn9 都出现过 2 及以上
+    # 的稀有值，非纯布尔，保留 Int。
+    Bool("fireColorParam_unkn7"),
     Int("fireColorParam_unkn8"),
     Int("fireColorParam_unkn9"),
     # ColorParam smokeColorParam (10 ints)：smokeColor 的淡入/持续/淡出时序
@@ -647,7 +654,7 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Int("smokeColorParam_durationJitter", label_zh="烟雾色 持续时间抖动"),
     Int("smokeColorParam_fadeOut", label_zh="烟雾色 淡出"),
     Int("smokeColorParam_fadeOutJitter", label_zh="烟雾色 淡出抖动"),
-    Int("smokeColorParam_unkn7"),
+    Bool("smokeColorParam_unkn7"),
     Int("smokeColorParam_unkn8"),
     Int("smokeColorParam_unkn9"),
 ])

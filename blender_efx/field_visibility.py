@@ -27,6 +27,14 @@ def _bit0(v): return bool(v & 0x1)  # 位 0
 def _bit1(v): return bool(v & 0x2)  # 位 1
 
 
+def _shape3d(*allowed):
+    """EMITTERSHAPE3D 专用谓词工厂：shapeType 在允许集合内才显示；shapeType>=3（点，非严格
+    枚举，实测 3/4/5 均表现为点，见 schema 注释）恒豁免——用户实机测试确认(2026-07-30) Point
+    不套用任何过滤规则，全部字段照常显示。"""
+    allowed_set = set(allowed)
+    return lambda v: v in allowed_set or v >= 3
+
+
 FIELD_VISIBILITY = {
     # VELOCITY3D：velocityType=0(Direction) 用 axis+rotation 定方向；=1(Normal) 用 offset+size。
     "VELOCITY3D": {
@@ -76,6 +84,18 @@ FIELD_VISIBILITY = {
     "HOMING": {
         "vanishDistance":     ("vanishMode", _truthy),
         "forceFieldDistance": ("forceFieldMode", _truthy),
+    },
+    # EMITTERSHAPE3D：各字段按 shapeType（0=Box/1=Sphere/2=Cylinder/>=3=Point）适用范围
+    # 门控，用户实机测试确认(2026-07-30)。Point 全豁免不过滤（_shape3d 已内置）。
+    # rangeXYZ/rotationCorrect/localRotation*/rotationOrder/rangeDivideVerticalNum/
+    # unknBitmaskRadiusRelated/unknFlag4 全形状生效，不在此列（不门控 = 恒显示）。
+    "EMITTERSHAPE3D": {
+        "rangeDivideAxis":          ("shapeType", _shape3d(0)),
+        "scanAngleHorizontal":      ("shapeType", _shape3d(1, 2)),
+        "scanAngleVertical":        ("shapeType", _shape3d(1)),
+        "rangeDivideHorizontalNum": ("shapeType", _shape3d(1, 2)),
+        "radiusEnd":                ("shapeType", _shape3d(2)),
+        "radiusOrigin":             ("shapeType", _shape3d(2)),
     },
     # ROTATEANIM：rotationModeMask 0/1=平面旋转系 → billboardRotation(+加速度)；
     # 2/3=自旋速度系 → spinAcceleration X/Y/Z；rotateDelayStart 全局生效（不门控）。

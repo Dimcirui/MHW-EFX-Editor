@@ -18,8 +18,9 @@ field_name)`（panels._friendly_name 调用它）。本模块只剩「哪些字�
 # 重新生成：python3 tools/scan_fill_fields.py --all --emit-set
 # ⚠ 已手动排除 2 个名字像真实字段、可能有语义的项（--emit-set 会再次列出它们，
 #   重生成后需重新删除）：PLSNOW.alpha_effect、STRAINRIBBON.color3_w。
-#   （RIBBON.tailTiedToBone 曾在此列，2026-07-10 查明其 4B 恒为 0xCDCDCD00/01——只有
-#   最低字节 0/1 是真实数据，已拆成 tailTiedToBone(B,真实)+spacer6(B×3,纯填充)。）
+#   （RIBBON.enableFlowmap 曾在此列，2026-07-10 查明其 4B 恒为 0xCDCDCD00/01——只有
+#   最低字节 0/1 是真实数据，已拆成 enableFlowmap(B,真实)+spacer6(B×3,纯填充)；该字节
+#   2026-07-30 实机确认是 flowmap 总开关，原误读为 tailTiedToBone。）
 # ─────────────────────────────────────────────────────────────────────────────
 
 RESERVED_FILL_FIELDS = frozenset({
@@ -70,7 +71,7 @@ RESERVED_FILL_FIELDS = frozenset({
     ('RIBBON', 'spacer9'),
     ('RIBBON', 'unkn24'),
     # 原 ib_junk[32] 拆分出的 13 字节纯 0xCD 填充段（2026-07-21，全语料 15015 块核对）。
-    ('RIBBON', 'ribbon_flow_reserved'),
+    ('RIBBON', 'spacer28'),
     ('RIBBONBLADE', 'spacer0'),
     ('RIBBONBLADE', 'spacer1'),
     ('RIBBONBLADE', 'spacer2'),
@@ -94,6 +95,8 @@ RESERVED_FILL_FIELDS = frozenset({
     ('TONEMAPFILTER', 'unkn1'),
     ('TUBELIGHT', 'unkn3_2'),
     ('TUBELIGHT', 'unkn5_1'),  # 恒 0xCDCDCDCD 未初始化标记（2026-07-01 实机测试确认，schema 拆分后新增）
+    # 原 unknEnum0_2 拆分（2026-07-30）：byte2 恒 0xCD，同 unkn5_1 是同一种未初始化占位签名。
+    ('TUBELIGHT', 'unknFixed0_2_cd'),
     ('UVSEQUENCE', 'loopingPad'),  # loopingEnum byte2-3，实测恒 0 的保留填充
 
     # ── "section_length" 类结构性长度标记（非 0xCD 填充，2026-07-11 全语料统计确认）───

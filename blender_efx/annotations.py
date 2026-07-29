@@ -110,10 +110,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "乘数 / 加速度？范围 [0, 1]",
     },
     ("TRANSFORM3D", "enableVelocityBitflag"): {
-        "EN": "Bitflag — Bit 0: Enable Velocity, Bit 1: Enable Acceleration?"
-              "  | Observed: {0:26795, 1:2438, 2:340, 3:59}",
-        "ZH": "位标志 —— 位 0：启用速度，位 1：启用加速度？"
-              "  | 观测：{0:26795, 1:2438, 2:340, 3:59}",
+        "EN": "Two independent switches that can be combined: enable velocity, "
+              "enable acceleration.",
+        "ZH": "两个可同时开启的独立开关：启用速度、启用加速度。",
     },
 
     # ─── PARENTOPTIONS ────────────────────────────────────────────────────────
@@ -203,10 +202,6 @@ FIELD_ANNOTATIONS = {
 
     # ─── EMITTERSHAPE3D ───────────────────────────────────────────────────────
     # ExternEmitterShape3D (EFX_Subtypes.bt)
-    ("EMITTERSHAPE3D", "shapeType"): {
-        "EN": "0=Box(cube wireframe), 1=Sphere, 2=Cylinder(ring), >=3=Point",
-        "ZH": "0=Box(立方体边框)/1=Sphere（球面）/2=Cylinder(圆环面)/≥3=Point（点）",
-    },
     ("EMITTERSHAPE3D", "localRotationX"): {
         "EN": "Overall rotation of the emitter shape.",
         "ZH": "生成形状的总体旋转。",
@@ -220,8 +215,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "生成形状的总体旋转。",
     },
     ("EMITTERSHAPE3D", "rangeDivideHorizontalNum"): {
-        "EN": "Number of divisions along the horizontal dimension.",
-        "ZH": "沿横向维度等分数量。",
+        "EN": "Number of divisions along the horizontal dimension. Applied to the final "
+              "shape, after the generation range and sweep angles have shaped it.",
+        "ZH": "沿横向维度的等分数量。作用在生成范围与扫描角度定出的最终形状之上。",
     },
 
     # ─── VELOCITY3D ───────────────────────────────────────────────────────────
@@ -305,9 +301,21 @@ FIELD_ANNOTATIONS = {
         "EN": "Player Skin",
         "ZH": "玩家皮肤",
     },
-    ("SHADERSETTINGS", "visibleOnPreview"): {
-        "EN": "Bitflag — controls preview visibility",
-        "ZH": "位标志 —— 控制预览可见性",
+    ("SHADERSETTINGS", "unknBool0"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("SHADERSETTINGS", "unknBool1"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("SHADERSETTINGS", "unknBool2"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("SHADERSETTINGS", "unknBool3"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
     ("SHADERSETTINGS", "unknEnum3_1"): {
         "EN": "Render layer / billboard mode. "
@@ -485,17 +493,27 @@ FIELD_ANNOTATIONS = {
         "EN": "Fire color timing params (fade-in / duration / fade-out).",
         "ZH": "火焰色时序参数（淡入 / 持续 / 淡出）。",
     },
+    ("RGBFIRE", "fireColorParam_unkn8"): {
+        "EN": "Usually 0. Values 1 and 2 also occur, meaning unconfirmed.",
+        "ZH": "通常为 0。另有取值 1 和 2，含义未确认。",
+    },
     ("RGBFIRE", "fireColorParam_unkn9"): {
-        "EN": "Setting to 1 kills the fire color.",
-        "ZH": "设为 1 会消除火焰色。",
+        "EN": "Setting to 1 kills the fire color. Values 2/8/9 also occur, meaning "
+              "unconfirmed.",
+        "ZH": "设为 1 会消除火焰色。另有取值 2/8/9，含义未确认。",
     },
     ("RGBFIRE", "smokeColorParam_enable"): {
         "EN": "Smoke color timing params (fade-in / duration / fade-out). Note: even a short duration can tint a persistent effect permanently.",
         "ZH": "烟雾色时序参数（淡入 / 持续 / 淡出）。注意：即使持续时间很短，也可能对常驻特效造成持久染色。",
     },
+    ("RGBFIRE", "smokeColorParam_unkn8"): {
+        "EN": "Usually 0. Values 1 and 2 also occur, meaning unconfirmed.",
+        "ZH": "通常为 0。另有取值 1 和 2，含义未确认。",
+    },
     ("RGBFIRE", "smokeColorParam_unkn9"): {
-        "EN": "Setting to 1 kills the smoke color.",
-        "ZH": "设为 1 会消除烟雾色。",
+        "EN": "Setting to 1 kills the smoke color. Values 2/7/8/9 also occur, meaning "
+              "unconfirmed.",
+        "ZH": "设为 1 会消除烟雾色。另有取值 2/7/8/9，含义未确认。",
     },
 
     # ─── GUIDE ────────────────────────────────────────────────────────────────
@@ -1080,19 +1098,17 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── MESH (Mod3Properties fields — _custom type, flat part) ───────────────
+    ("MESH", "starting_model_viscon"): {
+        "EN": "Common values: [0, 1, 2, 3, 4, 7, 8, 9]; overwhelmingly 0.",
+        "ZH": "常见取值为 [0, 1, 2, 3, 4, 7, 8, 9]；绝大多数为 0。",
+    },
     ("MESH", "end_model_viscon"): {
         "EN": "Picks between starting/end at random",
         "ZH": "在起始/结束之间随机选取",
     },
     ("MESH", "tracking_flags"): {
-        "EN": "0=Guide Source,  1=Away from Source,  2=Look Away From Camera,  "
-              "3=WTF Occupies entire map,  4=Guide Camera,  5=Disappears,  "
-              "6=Don't Track Rotation At All,  7=Disappears,  "
-              "8=Perpendicular to Ground Don't Track",
-        "ZH": "0=引导源,  1=远离源,  2=背对摄像机,  "
-              "3=WTF 占满整张地图,  4=引导摄像机,  5=消失,  "
-              "6=完全不追踪旋转,  7=消失,  "
-              "8=垂直于地面且不追踪",
+        "EN": "Tracking mode. Pick one — these are not combinable.",
+        "ZH": "追踪模式。单选，各项不可叠加。",
     },
     ("MESH", "color"): {
         "EN": "Base color (RGBA). Shown as-is when useColorRange is off.",
@@ -1158,13 +1174,41 @@ FIELD_ANNOTATIONS = {
         "ZH": "开启时会强制 color 和 emissiveColor 都变成静态值，无视 useColorRange 和 "
               "useEmissiveColorRange 各自的开关状态。",
     },
-    ("MESH", "randommizeViscon"): {
-        "EN": "0=Spawn random sample of range,  1=Spawn all of the range",
-        "ZH": "0=生成范围内的随机样本,  1=生成整个范围",
+    ("MESH", "unknFlag_cm2_3"): {
+        "EN": "Fourth colorize_material2 toggle. Purpose unconfirmed.",
+        "ZH": "colorize_material2 的第四个开关。作用尚未确认。",
+    },
+    ("MESH", "unknBool0"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("MESH", "unknBool1"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("MESH", "unknBool2"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("MESH", "unknBool3"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("MESH", "unknBool4"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("MESH", "unknBool5"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
     ("MESH", "shadowCastBitflag"): {
         "EN": "Shadow casting bitflag",
         "ZH": "投影位标志",
+    },
+    ("MESH", "affectedByLight"): {
+        "EN": "Which lights affect the mesh. Per-bit meaning unconfirmed.",
+        "ZH": "哪些光照会影响该模型。各位含义尚未确认。",
     },
 
     # ─── RIBBON (fixed part fields) ───────────────────────────────────────────
@@ -1172,47 +1216,103 @@ FIELD_ANNOTATIONS = {
         "EN": "Material Repeating Density",
         "ZH": "材质重复密度",
     },
-    ("RIBBON", "horizontal_physics_subdivision_count"): {
-        "EN": "Number of Subdivisions +1 (horizontal dividers, minimum 2). "
-              "Disney magic at 5000.",
-        "ZH": "细分数 +1（水平分隔，最小为 2）。"
-              "5000 时出现迪士尼级魔法效果。",
+    ("RIBBON", "subdivisionCount"): {
+        "EN": "Number of cross-edges along the ribbon's length. N edges give N-1 segments of "
+              "2 triangles each, so 2 is a single quad.",
+        "ZH": "沿条带长度方向的切边数量。N 条边分出 N-1 段，每段 2 个三角面，因此 2 即单个"
+              "四边形。",
     },
-    ("RIBBON", "restitution_direction"): {
-        "EN": "AxisDirection6 (+ none): 0=Left, 1=Up, 2=Forward, 3=Right, 4=Down, 5=Backwards, 6=None",
-        "ZH": "AxisDirection6（+无）：0=左, 1=上, 2=前, 3=右, 4=下, 5=后, 6=无",
+    ("RIBBON", "unknBool16_2_0"): {
+        "EN": "Purpose unconfirmed. Turning it off stops the ribbon from facing the camera.",
+        "ZH": "作用尚未确认。关闭后将无法朝向摄像机。",
     },
-    ("RIBBON", "unknBitmask16_2"): {
-        "EN": "0=Align to World,  Anything else=Align to Source",
-        "ZH": "0=对齐到世界,  其他任何值=对齐到源",
+    ("RIBBON", "unknBool16_2_1"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
-    ("RIBBON", "unkn4_0"): {
-        # 实测：原 unkn4 第一个值，其实是 float 标量（全语料 0.0–30.0，零 NaN，常见 ±0.0）。语义未定。
-        "EN": "Float scalar (split from the old unkn4[0]). Observed clean values "
-              "0.0–30.0 across all samples (commonly 0.0 / -0.0). Purpose not yet "
-              "identified. The -2147483648 you may have seen as an int is actually "
-              "-0.0 read as a float.",
-        "ZH": "浮点标量（由旧 unkn4[0] 拆出）。全语料取值 0.0–30.0、零 NaN，常见 0.0 / -0.0。"
-              "用途尚未确定。之前以 int 看到的 -2147483648 实际是 float 的 -0.0。",
+    ("RIBBON", "unknBool1"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
-    ("RIBBON", "unknEnum4_1"): {
-        # 实测：原 unkn4 第二个值 = 形态/速度对齐开关（int 枚举，语料含 0/1/2）。
-        "EN": "Shape / velocity alignment (split from the old unkn4[1]): 0 = normal "
-              "bendable ribbon strip; 1 = flag form (rigid, no bend) — auto-aligns to "
-              "the velocity direction and generates a flat sheet; 2 also observed. "
-              "Initial length/size relate to the scale/width/length fields below.",
-        "ZH": "形态/速度对齐开关（由旧 unkn4[1] 拆出，int 枚举，语料含 0/1/2）："
-              "0 = 正常条带（可弯折）；1 = 旗帜形态（刚性不弯）——自动对齐速度方向、"
-              "生成一个面片；另观测到 2。初始长度/大小与下方 scale/width/length 等字段相关。",
+    ("RIBBON", "unknBool3a"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("RIBBON", "unknBool3b"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("RIBBON", "unknBool5"): {
+        "EN": "Hides the back half of the ribbon — only the front half renders.",
+        "ZH": "隐藏条带的后半部分，只显示前半部分。",
+    },
+    ("RIBBON", "unknBool7"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("RIBBON", "unknBool8"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("RIBBON", "flowmapPlayOnce"): {
+        "EN": "Plays the flowmap scroll once instead of looping.",
+        "ZH": "流动贴图只播放一次，不循环。",
+    },
+    ("RIBBON", "flowmapReverse"): {
+        "EN": "Plays the flowmap scroll backwards. Only takes effect when Play Once is "
+              "also enabled.",
+        "ZH": "逆向播放流动贴图。仅在同时启用「流动只播放一次」时才生效。",
+    },
+    ("RIBBON", "ribbonMode"): {
+        "EN": "Ribbon Follow draws the shape along the path the emitter actually travelled. "
+              "Ribbon Length is a plain rigid rectangle that faces the camera by rotating on "
+              "one axis only — so it flips a full 180° when the camera passes its edge-on "
+              "side, which is inherent to that construction. Ribbon Chain extends out from "
+              "the emitter and reacts elastically, driven by the restore strength / inertia / "
+              "springiness group, with the flap group adding a steady back-and-forth sway.",
+        "ZH": "轨迹跟随：沿发射器实际划过的轨迹绘制条带形状。定长面片：单纯的刚性矩形面片，"
+              "只靠单个轴的转动来朝向摄像机——因此摄像机经过其侧边时会整体翻转 180°，这是该"
+              "构造本身的固有表现。柔体链：从发射器向外延伸并带有弹性，由归位强度／惯性／"
+              "弹性三个参数驱动，另有抖动组提供恒定速率的来回摆动。",
     },
     ("RIBBON", "visiblePreview"): {
-        # 实测（游戏内验证）：原观测名 visiblePreview，实为"可见性修正"。
-        "EN": "Visibility Correction. Recommended value: 0. A non-zero value not only "
-              "breaks normal TIML use (the ribbon won't read the color animation on "
-              "animation1 / particle-lifetime axis) but also causes ribbon strips to go "
-              "mysteriously missing. Keep at 0.",
-        "ZH": "可见性修正。安全值：0。非 0 不仅会破坏 TIML 正常使用（条带读不到 "
-              "animation1 / 粒子寿命轴上的颜色变换），还会让条带生成莫名缺失。请保持为 0。",
+        "EN": "Visibility correction. Safe value: 0. A non-zero value moves the rear end "
+              "forward to the spawn point and brightens the ribbon, but breaks TIML color "
+              "animation on the animation1 / particle-lifetime axis and can make strips "
+              "go missing.",
+        "ZH": "可见性修正。安全值：0。非 0 时会把尾端前移到生成点并让条带变亮，但会破坏 "
+              "TIML 在 animation1／粒子寿命轴上的颜色变换，还可能让条带缺失。",
+    },
+    ("RIBBON", "enableFlap"): {
+        "EN": "Master switch for the flap oscillation group — the flap frequency/amount "
+              "fields only do anything while this is on.",
+        "ZH": "抖动组的总开关——下面的抖动频率／幅度字段只有在它开启时才起作用。",
+    },
+    ("RIBBON", "unknGlobalForceEnable"): {
+        "EN": "Master switch for the three global force fields below.",
+        "ZH": "下面三个全局力字段的总开关。",
+    },
+    ("RIBBON", "unknBool28_2"): {
+        "EN": "Purpose unconfirmed — appears to layer on top of the global force switch.",
+        "ZH": "作用尚未确认——似乎是叠加在全局力开关之上的。",
+    },
+    ("RIBBON", "unknGlobalForceX"): {
+        "EN": "Force applied to the ribbon from its tail end, along a fixed axis. The three "
+              "force axes are orthogonal and their directions never change — they follow "
+              "neither the local rotation nor the TRANSFORM3D rotation. Which way each axis "
+              "points is unconfirmed.",
+        "ZH": "自尾端施加到条带上的力，沿一个固定轴向。三个力的轴向互相正交、方向恒定不变"
+              "——既不跟随局部旋转，也不跟随 TRANSFORM3D 的旋转。各轴具体指向哪一侧尚未确认。",
+    },
+    ("RIBBON", "unknGlobalForceY"): {
+        "EN": "Force along the vertical axis. A negative value behaves much like gravity. "
+              "See unknGlobalForceX for the shared behaviour of this group.",
+        "ZH": "沿竖直轴的力。填负值时表现近似重力。这一组的共同行为说明见 unknGlobalForceX。",
+    },
+    ("RIBBON", "unknGlobalForceZ"): {
+        "EN": "Force along a fixed axis. See unknGlobalForceX for the shared behaviour of "
+              "this group.",
+        "ZH": "沿一个固定轴向的力。这一组的共同行为说明见 unknGlobalForceX。",
     },
 
     # ─── UVSEQUENCE (fixed part fields) ───────────────────────────────────────
@@ -1607,21 +1707,33 @@ FIELD_ANNOTATIONS = {
     },
     # EMITTERSHAPE3D
     ("EMITTERSHAPE3D", "rangeXYZ"): {
-        "EN": "Bounding size of the emitter shape.",
-        "ZH": "生成形状的边界大小。",
+        "EN": "Per-axis spawn range. Box/Sphere: the inner and outer boundary sizes, "
+              "particles spawn in the volume between them. Cylinder: a forward offset "
+              "(also the bore radius) plus the height, so the outer boundary is at "
+              "offset + size.",
+        "ZH": "逐轴的生成范围。立方体/球体：内外边界的尺寸，粒子在两者之间的空间内生成。"
+              "圆柱体：向前的偏移量（同时也是镂空半径）加上高度，外边界位于偏移+尺寸处。",
     },
-    ("EMITTERSHAPE3D", "scaleHorizontal"): {
-        "EN": "Only affects Sphere/Cylinder. Horizontal sweep angle range. 180 = half "
-              "sphere/half ring.",
-        "ZH": "仅对球/环生效，横向扫描角度范围。180对应半球面/半圆环。",
+    ("EMITTERSHAPE3D", "scanAngleHorizontal"): {
+        "EN": "Horizontal sweep angle.",
+        "ZH": "横向扫描角度。",
     },
     ("EMITTERSHAPE3D", "rangeDivideVerticalNum"): {
-        "EN": "Number of divisions along the vertical dimension.",
-        "ZH": "沿纵向维度等分数量。",
+        "EN": "Number of divisions along the vertical dimension, 0 = continuous. Applied "
+              "to the final shape, same as rangeDivideHorizontalNum.",
+        "ZH": "沿纵向维度的等分数量，0=连续铺满。跟横向等分数量一样作用在最终形状之上。",
     },
     ("EMITTERSHAPE3D", "radiusEnd"): {
-        "EN": "Only affects Cylinder. With radiusOrigin, forms the ring's inner/outer radius.",
-        "ZH": "仅对环生效，与 radiusOrigin 构成环面的内外半径。",
+        "EN": "Radius at the far end, as a ratio of the generation range. With radiusOrigin "
+              "these form the two ends of the cylinder — set them unequal for a frustum, or "
+              "one to 0 for a cone.",
+        "ZH": "远端半径，取值是生成范围的比例。与起始半径共同构成圆柱体的两端——两者不等"
+              "即为圆台，其中一个为 0 即为圆锥。",
+    },
+    ("EMITTERSHAPE3D", "radiusOrigin"): {
+        "EN": "Radius at the near end, as a ratio of the generation range. Swapping it with "
+              "radiusEnd gives the same shape.",
+        "ZH": "近端半径，取值是生成范围的比例。与结束半径互换取值得到的形状相同。",
     },
     # VELOCITY3D
     ("VELOCITY3D", "rotationX"): {
@@ -1728,10 +1840,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "颜色随机范围开关。0=禁用（始终显示 color）；1=启用（最终显示的颜色会在 "
               "color 与 colorRange 之间随机变化）。",
     },
-    ("BILLBOARD3D", "randomBrightnessMult"): {
-        "EN": "Random brightness multiplier: brightness is picked between 'not×this' and "
-              "'×this'. (Was mistyped as int in the template; corrected to float.)",
-        "ZH": "随机亮度乘数：亮度在「不×该值」与「×该值」之间随机取。（原模板误标为 int，已改为 float。）",
+    ("BILLBOARD3D", "brightnessJitter"): {
+        # 原名 randomBrightnessMult；改判定为 jitter（取值范围与 brightness 同量级，非 0~1 比例）。
+        "EN": "Jitter paired with brightness.",
+        "ZH": "与亮度配对的抖动量。",
     },
     ("BILLBOARD3D", "blendMode"): {
         "EN": "Shader blend mode: 0 = alpha blend (can show black at normal brightness), "
@@ -1744,11 +1856,10 @@ FIELD_ANNOTATIONS = {
               "at animation start; negative = shrinking).",
         "ZH": "初始扩散加速度，与 initialScaleSpeed 配对（动画刚进来的缩小效果，负值=缩小）。",
     },
-    ("SCALEANIM", "unknFloat"): {
-        "EN": "Formerly named NULL — corpus scan shows ~30% of instances are non-zero clean "
-              "decimals (0.02/0.04/0.1/0.2/...), not padding. Semantics unconfirmed.",
-        "ZH": "原名 NULL——全语料实测约 30% 实例非零，且是干净小数（0.02/0.04/0.1/0.2 等），"
-              "并非填充占位。具体语义未确认。",
+    ("SCALEANIM", "initialScaleSpeedJitter"): {
+        # 原名 NULL/unknFloat；按位置+取值形态判定为 initialScaleSpeed 的 jitter，未实机确认。
+        "EN": "Jitter paired with initialScaleSpeed. Not yet confirmed in-game.",
+        "ZH": "与初始扩散速度配对的抖动量。尚未实机确认。",
     },
     ("SCALEANIM", "scaleSpeedX"): {
         "EN": "X-axis scale speed during playback (billboard = X/Y; mesh = X/Y/Z).",
@@ -2476,8 +2587,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "全语料 292 例恒为 0。",
     },
     ("EMITTERSHAPE3D", "rotationOrder"): {
-        "EN": "Enum 0~5, 4 is the most common.",
-        "ZH": "枚举值0~5，其中4最常见。",
+        "EN": "Order the local rotation axes are applied in.",
+        "ZH": "局部旋转各轴的应用顺序。",
     },
     ("EMITTERSHAPE3D", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -2487,26 +2598,20 @@ FIELD_ANNOTATIONS = {
               "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]。",
     },
     ("EMITTERSHAPE3D", "rangeDivideAxis"): {
-        "EN": "Enum 0/1/2. For Box, determines which edges (with subdivision) get particles. "
-              "Effect on other shapes unclear.",
-        "ZH": "枚举值0、1、2。对于立方体，在有细分的情况下决定哪些边参与生成。对于其他形状的"
-              "作用暂不明确。",
+        "EN": "Which axis the box is subdivided along. Not affected by localRotation.",
+        "ZH": "立方体沿哪个轴细分。不受局部旋转影响。",
     },
-    ("EMITTERSHAPE3D", "unknOrientation"): {
-        "EN": "Affects orientation; exact mechanism unclear.",
-        "ZH": "影响朝向，但具体机制不明。",
-    },
-    ("EMITTERSHAPE3D", "scaleVertical"): {
-        "EN": "Only affects Sphere. Vertical sweep angle. 180 = upper half sphere.",
-        "ZH": "仅对球生效，纵向扫描角度。180对应上半球面。",
+    ("EMITTERSHAPE3D", "scanAngleVertical"): {
+        "EN": "Vertical sweep angle.",
+        "ZH": "纵向扫描角度。",
     },
     ("EMITTERSHAPE3D", "unknFlag4"): {
         "EN": "0/1, exact mechanism unclear. Mostly 1.",
-        "ZH": "0/1，具体机制不明，大部分情况下取1。",
+        "ZH": "0/1，具体机制不明，大部分情况下取 1。",
     },
     ("EMITTERSHAPE3D", "unknBitmaskRadiusRelated"): {
         "EN": "Enum 0~5, exact mechanism unclear.",
-        "ZH": "枚举值0~5，具体机制不明。",
+        "ZH": "枚举值 0~5，具体机制不明。",
     },
     ("EMITTERSHAPEMESH", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -2761,10 +2866,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 2, 4, 12, 16].",
         "ZH": "常见取值为 [0, 1, 2, 4, 12, 16]。",
     },
-    ("MESH", "NULL1"): {
-        "EN": "Common values: [0, 1, 256, 257].",
-        "ZH": "常见取值为 [0, 1, 256, 257]。",
-    },
     ("MESH", "emissive_saturation_j"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
@@ -3006,12 +3107,10 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("PLANE", "randomBrightnessMult"): {
-        "EN": "Same schema position as BILLBOARD3D's randomBrightnessMult. Exact behavior on "
-              "PLANE not yet confirmed. Common range: 0~100. "
-              "(RE Engine's own name for the equivalent field is 'Intensity'.)",
-        "ZH": "与 BILLBOARD3D 的 randomBrightnessMult 字段位置相同。在 PLANE 上的具体行为尚未"
-              "确认。常见取值在 0~100 之间。（RE Engine 里对应字段叫 'Intensity'。）",
+    ("PLANE", "brightnessJitter"): {
+        # 原名 randomBrightnessMult；同 BILLBOARD3D 的字段位置，PLANE 上的行为未实机确认。
+        "EN": "Jitter paired with brightness. Exact behavior on PLANE unconfirmed.",
+        "ZH": "与亮度配对的抖动量。在 PLANE 上的具体行为尚未确认。",
     },
     ("PLANE", "unknBitmask5_0"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 6].",
@@ -3151,12 +3250,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [1, 2, 5, 7]。",
     },
     ("RGBFIRE", "fireColorParam_unkn7"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
     ("RGBFIRE", "smokeColorParam_unkn7"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
     ("RGBFIRE", "unkn4"): {
         "EN": "Common range: 0~1.",
@@ -3254,33 +3353,40 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 16].",
         "ZH": "常见取值为 [0, 16]。",
     },
-    ("RIBBON", "base_flap_amount"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "flap1Amount"): {
+        "EN": "How far the flag swings. Stacks additively with the flap2 group, which has the same effect.",
+        "ZH": "旗帜摆动的幅度。与效果相同的抖动2组叠加生效。",
     },
-    ("RIBBON", "base_flap_amount_jitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "flap1AmountJitter"): {
+        "EN": "Jitter paired with flap1Amount.",
+        "ZH": "与抖动1幅度配对的抖动量。",
     },
-    ("RIBBON", "base_flap_frequency"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "flap1Frequency"): {
+        "EN": "How fast the flag oscillates back and forth. Stacks additively with the flap2 group, which has the same effect.",
+        "ZH": "旗帜来回摆动的快慢。与效果相同的抖动2组叠加生效。",
     },
-    ("RIBBON", "base_flap_frequency_jitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "flap1FrequencyJitter"): {
+        "EN": "Jitter paired with flap1Frequency.",
+        "ZH": "与抖动1频率配对的抖动量。",
     },
     ("RIBBON", "base_opacity"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+        "EN": "Opacity at the rear end (away from the direction of travel).",
+        "ZH": "后端（远离前进方向的一端）的不透明度。",
     },
     ("RIBBON", "base_width_multiplier"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+        "EN": "Width multiplier at the rear end (away from the direction of travel).",
+        "ZH": "后端（远离前进方向的一端）的宽度乘数。",
     },
-    ("RIBBON", "inertial_excess_jitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("RIBBON", "inertia"): {
+        "EN": "Segment inertia for Ribbon Chain. Higher values hold the extended shape more "
+              "stiffly and keep it oscillating longer; lowering it settles the ribbon faster "
+              "without visible bouncing.",
+        "ZH": "柔体链的分段惯性。数值越高，越能撑住伸展开的形状、振荡持续得越久；调低则更快"
+              "归位、看不到明显弹跳。",
+    },
+    ("RIBBON", "inertiaJitter"): {
+        "EN": "Jitter paired with inertia.",
+        "ZH": "与惯性配对的抖动量。",
     },
     ("RIBBON", "lengthwise_offset_relative_to_camera"): {
         "EN": "Common range: 0~1.",
@@ -3290,57 +3396,100 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("RIBBON", "restitution_jitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "restoreStrength"): {
+        "EN": "How strongly Ribbon Chain pulls back toward a straight shape. At 0 there is no "
+              "pull at all and the ribbon behaves much like Ribbon Follow; raising it makes "
+              "the ribbon straighten out.",
+        "ZH": "柔体链回归平直形态的力度。为 0 时完全没有回复力，表现与轨迹跟随高度相似；"
+              "调高则会让条带逐渐归位为平直。",
+    },
+    ("RIBBON", "restoreStrengthJitter"): {
+        "EN": "Jitter paired with restoreStrength.",
+        "ZH": "与归位强度配对的抖动量。",
     },
     ("RIBBON", "scale_jitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
     ("RIBBON", "springiness"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+        "EN": "Spring stiffness for Ribbon Chain. Raising it adds bouncy, jelly-like "
+              "oscillation; combined with high inertia the ribbon can keep bouncing without "
+              "ever settling.",
+        "ZH": "柔体链的弹簧刚度。调高会带来果冻般的弹跳振荡；与高惯性组合时条带可能一直弹、"
+              "永不归位。",
     },
     ("RIBBON", "springiness_jitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+        "EN": "Jitter paired with springiness.",
+        "ZH": "与弹性配对的抖动量。",
     },
-    ("RIBBON", "tip_flap_amount"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "flap2Amount"): {
+        "EN": "How far the flag swings. Same effect as the flap1 group; the two stack additively.",
+        "ZH": "旗帜摆动的幅度。与抖动1组效果相同，两组叠加生效。",
     },
-    ("RIBBON", "tip_flap_amount_jitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "flap2AmountJitter"): {
+        "EN": "Jitter paired with flap2Amount.",
+        "ZH": "与抖动2幅度配对的抖动量。",
     },
-    ("RIBBON", "tip_flap_frequency"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "flap2Frequency"): {
+        "EN": "How fast the flag oscillates back and forth. Same effect as the flap1 group; the two stack additively.",
+        "ZH": "旗帜来回摆动的快慢。与抖动1组效果相同，两组叠加生效。",
     },
-    ("RIBBON", "tip_flap_frequency_jitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "flap2FrequencyJitter"): {
+        "EN": "Jitter paired with flap2Frequency.",
+        "ZH": "与抖动2频率配对的抖动量。",
     },
     ("RIBBON", "tip_opacity"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+        "EN": "Opacity at the front end (in the direction of travel).",
+        "ZH": "前端（前进方向的一端）的不透明度。",
     },
     ("RIBBON", "tip_width_multiplier"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+        "EN": "Width multiplier at the front end (in the direction of travel).",
+        "ZH": "前端（前进方向的一端）的宽度乘数。",
     },
     ("RIBBON", "unknFlag16_0_1"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
-    ("RIBBON", "unknEnum16_1"): {
-        "EN": "Common values: [1, 257].",
-        "ZH": "常见取值为 [1, 257]。",
+    ("RIBBON", "unknFixed16_1_lo"): {
+        "EN": "Always 1 in observed data. Purpose unconfirmed.",
+        "ZH": "观测样本中恒为 1。作用尚未确认。",
     },
-    ("RIBBON", "unknEnum16arr_0"): {
-        "EN": "Common values: [0, 2, 4, 5].",
-        "ZH": "常见取值为 [0, 2, 4, 5]。",
+    ("RIBBON", "unknBool16_1"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
+    },
+    ("RIBBON", "rotationOrder"): {
+        "EN": "Order the rotation axes are applied in.",
+        "ZH": "旋转各轴的应用顺序。",
+    },
+    ("RIBBON", "rotationX"): {
+        "EN": "One of three static rotation components, composed via rotationOrder and "
+              "baseAxis. Which physical axis it maps to is unconfirmed — the ribbon's forced "
+              "camera-facing behavior makes this hard to observe.",
+        "ZH": "三个静态旋转分量之一，与旋转顺序、基准轴复合作用。具体对应哪个物理轴尚未确认"
+              "——条带强制朝向相机的行为让这一点难以观察。",
+    },
+    ("RIBBON", "rotationXJitter"): {
+        "EN": "Jitter paired with rotationX.",
+        "ZH": "与 rotationX 配对的抖动量。",
+    },
+    ("RIBBON", "rotationY"): {
+        "EN": "One of three static rotation components. Which physical axis it maps to is "
+              "unconfirmed.",
+        "ZH": "三个静态旋转分量之一。具体对应哪个物理轴尚未确认。",
+    },
+    ("RIBBON", "rotationYJitter"): {
+        "EN": "Jitter paired with rotationY.",
+        "ZH": "与 rotationY 配对的抖动量。",
+    },
+    ("RIBBON", "rotationZ"): {
+        "EN": "One of three static rotation components. Which physical axis it maps to is "
+              "unconfirmed.",
+        "ZH": "三个静态旋转分量之一。具体对应哪个物理轴尚未确认。",
+    },
+    ("RIBBON", "rotationZJitter"): {
+        "EN": "Jitter paired with rotationZ.",
+        "ZH": "与 rotationZ 配对的抖动量。",
     },
     ("RIBBON", "unkn21"): {
         "EN": "Common range: 0~1.",
@@ -3350,34 +3499,19 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
+    ("RIBBON", "unknBitmask22_1"): {
+        "EN": "Bitmask over bits 0~6. Per-bit meaning unconfirmed.",
+        "ZH": "位 0~6 的位掩码。各位含义尚未确认。",
+    },
     ("RIBBON", "unknFlag22_2"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
-    ("RIBBON", "tailTiedToBone"): {
-        "EN": "Boolean flag (0/1). Formerly read as a 4-byte int that was always "
-              "0xCDCDCD00/0xCDCDCD01 (uninitialized-memory fill) — only the lowest byte "
-              "was ever real data, now split out; the other 3 bytes are pure padding "
-              "(spacer6). 0=82%, 1=18% across the corpus.",
-        "ZH": "布尔开关（0/1）。原先按 4 字节 int 读取，恒为 0xCDCDCD00/0xCDCDCD01"
-              "（未初始化内存填充）——只有最低字节是真实数据，现已拆分；其余 3 字节纯占位"
-              "（spacer6）。全语料 0 占 82%，1 占 18%。",
-    },
-    ("RIBBON", "unkn23_1"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("RIBBON", "unkn23_2"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("RIBBON", "unkn23_5"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("RIBBON", "unkn23_6"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "enableFlowmap"): {
+        "EN": "Master switch for the flowmap scroll — the flowmap speed/strength fields and "
+              "the play-once/reverse toggles only do anything while this is on.",
+        "ZH": "流动贴图的总开关——下面的流动速度／强度以及只播一次／逆向播放等开关，只有"
+              "在它开启时才起作用。",
     },
     ("RIBBON", "unkn27_0"): {
         "EN": "Common range: 0~1.",
@@ -3387,17 +3521,20 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("RIBBON", "unknown19_0"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "spawnAnchorOffset"): {
+        "EN": "Where along the ribbon's length the spawn point sits, in ribbon-length units. "
+              "0 puts the front tip at the spawn point; 1 shifts forward by one full length "
+              "so the rear end sits there instead.",
+        "ZH": "生成点落在条带长度方向上的位置，以条带自身长度为单位。0=前端贴住生成点；"
+              "1=向前偏移一个完整长度，改由后端贴住生成点。",
     },
     ("RIBBON", "uv_map_width"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("RIBBON", "vertical_physics_subdivision_count"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+    ("RIBBON", "unknBool15"): {
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
     ("RIBBONBLADE", "NULL9"): {
         "EN": "Common values: [0, 1, 256].",
@@ -3405,12 +3542,12 @@ FIELD_ANNOTATIONS = {
     },
     ("RIBBONBLADE", "widthDirection"): {
         "EN": "Direction the streak's width extends toward. AxisDirection6: 0=Left, 1=Up, "
-              "2=Forward, 3=Right, 4=Down, 5=Backwards. Same enum as RIBBON.restitution_direction "
+              "2=Forward, 3=Right, 4=Down, 5=Backwards. Same enum as RIBBON.baseAxis "
               "and VELOCITY3D.baseAxis (confirmed 2026-07-26 equivalent to the Cartesian "
               "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z mapping — in the game's default coordinate system "
               "+X=left, +Y=up, +Z=front). Formerly unkn03.",
         "ZH": "刀光宽度延伸的朝向。AxisDirection6：0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON."
-              "restitution_direction、VELOCITY3D.baseAxis 是同一套枚举（2026-07-26 确认等价于笛卡尔 "
+              "baseAxis、VELOCITY3D.baseAxis 是同一套枚举（2026-07-26 确认等价于笛卡尔 "
               "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z 映射——游戏默认坐标系下 +X=左,+Y=上,+Z=前）。"
               "原名 unkn03。",
     },
@@ -3589,8 +3726,8 @@ FIELD_ANNOTATIONS = {
               "[1, 2, 3, 4, 5, 6, 7, 10, 11, 12]。",
     },
     ("SHADERSETTINGS", "unknEnum1"): {
-        "EN": "Common values: [80, 104].",
-        "ZH": "常见取值为 [80, 104]。",
+        "EN": "Always 104 in observed data. Purpose unconfirmed.",
+        "ZH": "观测样本中恒为 104。具体作用尚未确认。",
     },
     ("SHADERSETTINGS", "unknFlag2"): {
         "EN": "Common values: 0/1.",
@@ -3633,13 +3770,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200]。",
     },
     ("SHADERSETTINGS", "unknEnum4_8"): {
-        "EN": "Unnamed integer parameter (BT template mislabels it float — reinterpreted values "
-              "showed no clean float range, and -1 alone covers 63% of samples, a classic "
-              "unset/sentinel pattern; the rest are large ID/hash-like integers). "
-              "-1 = unset (most common). Purpose unconfirmed.",
-        "ZH": "未命名的整数参数（BT 模板误标为 float ——重解读后并非干净的浮点范围，且 -1 单独"
-              "占样本的 63%，是典型的“未设置”哨兵值；其余为疑似哈希/ID 的大整数）。"
-              "-1 = 未设置（最常见）。具体作用尚未确认。",
+        # 取值中两个非哨兵值匹配 jamcrc("Smoke")/jamcrc("Default")，疑似类别/分组名哈希。
+        "EN": "-1 = unset. Other values look like name hashes, possibly a category or group "
+              "identifier. Purpose unconfirmed.",
+        "ZH": "-1=未设置。其余取值形似名字哈希，可能是某种类别／分组标识。作用尚未确认。",
     },
     ("SHADERSETTINGS", "unkn4_9"): {
         "EN": "Usually 0; other common values: [-1000, -500, -200, -100, -50, 20, 50, 100, 200].",
@@ -3709,10 +3843,8 @@ FIELD_ANNOTATIONS = {
               "等早前粒子死亡腾出空间后又能满额生成。",
     },
     ("SPAWN", "unknBitmask31"): {
-        "EN": "Usually 0. Non-zero values look like a bitmask (1/2/4/8/16/32 present, "
-              "plus combinations 33=32+1, 34=32+2, 36=32+4). Per-bit meaning unconfirmed.",
-        "ZH": "通常为 0。非零取值呈现位掩码特征（含 1/2/4/8/16/32 及其组合 33=32+1、"
-              "34=32+2、36=32+4）。各 bit 含义尚未确认。",
+        "EN": "Bitmask over bits 0~5, usually 0. Per-bit meaning unconfirmed.",
+        "ZH": "位 0~5 的位掩码，通常为 0。各位含义尚未确认。",
     },
     ("SPAWNBYANGLE", "unknEnum3"): {
         "EN": "Common values: [1, 4].",
@@ -3814,9 +3946,10 @@ FIELD_ANNOTATIONS = {
         "EN": "Usually 1.0 (no scaling); occasionally 0.5 or 2.0.",
         "ZH": "通常为 1.0（不缩放）；偶见 0.5 或 2.0。",
     },
-    ("TUBELIGHT", "unknEnum0_2"): {
-        "EN": "Common values: [13434880, 13435136].",
-        "ZH": "常见取值为 [13434880, 13435136]。",
+    ("TUBELIGHT", "unknBool0_2"): {
+        # 原 unknEnum0_2 int 拆出的唯一真实数据字节；语料样本量小（22 块 / 17 文件）。
+        "EN": "Purpose unconfirmed.",
+        "ZH": "作用尚未确认。",
     },
     ("TUBELIGHT", "unkn2_0"): {
         "EN": "Common range: 0~1.",

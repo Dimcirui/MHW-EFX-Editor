@@ -12,10 +12,10 @@ from .codec import (
     _EPVCSLOT_FIELDS, _EPVCSLOT_SIZE, _unpack_epvcolorslot, _pack_epvcolorslot,
     _SCALAR_SIZE, _XYZ_FMT,
 )
-from .fields_model import Attribute, Int, Float, Enum, Bool, Bitmask, attr_from_legacy
+from .fields_model import Attribute, Int, Float, Enum, Bool, Bitmask, Byte, attr_from_legacy
 from .enums import (
-    BITS_APPLICATION_RULE, BITS_LOOPING_MODE,
-    ENUM_BLEND_MODE, ENUM_LOOPING_ORIENTATION,
+    BITS_APPLICATION_RULE, BITS_LOOPING_MODE, BITS_AFFECTED_BY_LIGHT, BITS_RIBBON_UNKN22_1,
+    ENUM_BLEND_MODE, ENUM_LOOPING_ORIENTATION, ENUM_MESH_TRACKING_FLAGS, ENUM_RIBBON_MODE,
     _AXIS_DIRECTION6, _TRANSFORM_ROT_ORDER,
 )
 from ..hashes import *  # noqa: F401,F403  —— 各 custom 类型 hash 常量
@@ -138,7 +138,10 @@ _BILLBOARD3D_FIXED_SCHEMA = [
     ('color',                      ('XYZ', 2)),  # TIML DT 0x58689812("Color") 已确认
     ('colorRange',                 ('XYZ', 2)),  # TIML DT 0xC216C23D("ColorRange") 已确认
     ('brightness',                 'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
-    ('randomBrightnessMult',       'f'),
+    # 原 randomBrightnessMult：全语料实测取值 0~240，跟 brightness 本身(0~255)同一量级，
+    # 并非 0~1 的"乘数"，是 brightness 的 jitter 一半，2026-07-30 改名（RIBBON 同款字段
+    # 同理改名，见 RIBBON schema 注释）。
+    ('brightnessJitter',           'f'),  # 原 randomBrightnessMult
     ('useColorRange',              'i'),  # bool
     ('blendMode',                  'i'),
     ('EPVColorSlot1',              'i'),
@@ -249,7 +252,7 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     ('color',             ('XYZ', 2)), # 4
     ('colorRange',        ('XYZ', 2)), # 4
     ('brightness',        'f'),
-    ('randomBrightnessMult', 'f'),     # 8
+    ('brightnessJitter',  'f'),     # 8  原 randomBrightnessMult，2026-07-30 改名（见 RIBBON schema 注释）
     ('useColorRange',     'i'),
     ('blendMode',         'i'),
     ('EPVColorSlot1',     'i'),
@@ -339,10 +342,16 @@ def pack_billboard2d(values: dict) -> bytes:
 #   int starting/end_model_viscon(8) + colour*4(16) + int unkn7_0/1(8) +
 #   int rotationOrder（原 unkn7_2；恰好 6 种取值 0~5，与 EMITTERSHAPE3D.rotationOrder
 #     同构且同样以 4 为主流值，猜测为共享的旋转轴顺序枚举，语义未确认）(4) +
-#   int tracking_flags(4) + int unkn40(4) + int affectedByLight(4) +
+#   int tracking_flags（互斥模式选择,已转 Enum,官方语料见 0/1/2/4/6/8/10,10 不在
+#     社区文档表内待确认,9 从未出现）(4) + int unkn40(4) +
+#   int affectedByLight（官方语料证实为可混合位掩码：bit0~6 各种组合都出现,
+#     bit7 从不单独/局部出现,只在 all_value=255 时整体置位,已转 Bitmask+all_value)(4) +
 #   int shadowCastBitflag(4) + int epv_color_slot1(4) + int unkn5(4) +
 #   int epv_color_slot2(4) + int unkn6_1(4) + byte colorize1[4](4) +
-#   byte colorize2[4](4) + int randommizeViscon(4) + short NULL1(2)  
+#   byte colorize2[4](4) +
+#   byte unknBool0..3（原 int randommizeViscon 拆分：4 字节各恒 0/1，同
+#     SHADERSETTINGS.visibleOnPreview 的打包字节模式，非单一标志）(4) +
+#   byte unknBool4..5（原 short NULL1 拆分：2 字节各恒 0/1，同上）(2)
 # = 8+4+8+8+24+8+24+8+8+16+12+4+4+4+4+4+4+4+4+4+4+4+2 = 174 B ✓
 #
 # （2026-07-06，色相/亮度组合排除测试）：color/colorRange 与
@@ -407,8 +416,12 @@ _MOD3_PROPERTIES_SCHEMA = [
                                         # 强制 color 和 emissiveColor 都变成静态值，忽略
                                         # useColorRange/useEmissiveColorRange，无视两者各自的开关状态
     ('unknFlag_cm2_3',              'B'),  # 原 colorize_material2[3]：未确认（曾疑似color4，被场景雾误导后撤回）
-    ('randommizeViscon',        'i'),
-    ('NULL1',                   'h'),
+    ('unknBool0',                    'B'),  # 原 int randommizeViscon 拆分（4 字节各恒 0/1，
+    ('unknBool1',                    'B'),  # 同 SHADERSETTINGS.visibleOnPreview 的打包字节模式，
+    ('unknBool2',                    'B'),  # 非单一"随机/全范围"标志），语义待实机确认
+    ('unknBool3',                    'B'),
+    ('unknBool4',                    'B'),  # 原 short NULL1 拆分（2 字节各恒 0/1，同上）
+    ('unknBool5',                    'B'),
 ]
 assert _schema_size(_MOD3_PROPERTIES_SCHEMA) == 174, \
     f"_MOD3_PROPERTIES_SCHEMA size mismatch: {_schema_size(_MOD3_PROPERTIES_SCHEMA)}"
@@ -418,9 +431,15 @@ assert _schema_size(_MOD3_PROPERTIES_SCHEMA) == 174, \
 _MESH_BOOL_FIELDS = (
     'enableIntensity1', 'useColorRange', 'enableIntensity2', 'useEmissiveColor',
     'useEmissiveColorRange', 'enableEmissiveIntensity', 'disableAllColorRange', 'unknFlag_cm2_3',
+    'unknBool0', 'unknBool1', 'unknBool2', 'unknBool3', 'unknBool4', 'unknBool5',
 )
 _mesh_ovr = {n: Bool(n, backing='B') for n in _MESH_BOOL_FIELDS}
 _mesh_ovr['rotationOrder'] = Enum('rotationOrder', _TRANSFORM_ROT_ORDER, label_zh="旋转顺序")
+_mesh_ovr['tracking_flags'] = Enum('tracking_flags', ENUM_MESH_TRACKING_FLAGS, label_zh="追踪标志")
+_mesh_ovr['affectedByLight'] = Bitmask(
+    'affectedByLight', BITS_AFFECTED_BY_LIGHT, all_value=255, strict=True,
+    label_zh="受光照影响",
+)
 MESH_ATTR = attr_from_legacy(
     _schema_size(_MOD3_PROPERTIES_SCHEMA) + 1,
     _MOD3_PROPERTIES_SCHEMA + [('BeginMod3', 'B')],
@@ -457,6 +476,9 @@ def pack_mesh(values: dict) -> bytes:
 # Ribbon (variable: fixed 360 B + null-terminated path)
 #
 # From efxfile.py: Ribbon full = 364 + null-term path, data_bytes = full - 4 = 360 + path
+# ⚠ 下面这张 breakdown 用的是改名前的旧字段名（仅作字节偏移对照用），当前权威字段名见
+#   _RIBBON_FIXED_SCHEMA 本体；其中 unkn23[8] 已确认是 flowmap 8 件套、tailTiedToBone
+#   实为 enableFlowmap、unkn24 低 2 字节实为 flowmapPlayOnce/flowmapReverse。
 # Structure breakdown (360 B fixed before path):
 #   unkn0(4) + section_length(4) + spacer0(4) +  
 #   XYZ color(2)(4) + spacer1(4) + XYZ color2(2)(4) + spacer2(4) +  
@@ -473,6 +495,7 @@ def pack_mesh(values: dict) -> bytes:
 #   base_width_mult(4) + base_opacity(4) + tip_width_mult(4) + tip_opacity(4) +
 #   spacer8(4) + unkn27[2](8) + short visiblePreview(2) + short spacer9(2) +  
 #   base_flap_freq(8) + base_flap_amount(8) + tip_flap_freq(8) + tip_flap_amount(8) +
+#     [现 flap1Frequency/Amount + flap2Frequency/Amount，各带 Jitter]
 #   byte unkn0(1) + byte flow_enable_a/b(2) + byte reserved[13](13) +  
 #   float flow_param0..3(16)   [原 ib_junk[32]，2026-07-21 拆分，见下方 schema 内注释]
 # Total fixed: verify = 360 B
@@ -483,14 +506,26 @@ _RIBBON_FIXED_SCHEMA = [
     ('section_length',           'i'),
     ('spacer0',                  'i'),
     ('color',                    ('XYZ', 2)),
-    ('spacer1',                  'i'),
-    ('color2',                   ('XYZ', 2)),
-    ('spacer2',                  'i'),
+    # 原 int spacer1：全语料只有 0xCDCDCD00/01，低字节真实变化(12.6%非零)，其余 3 字节纯
+    # 0xCD 占位——拆出 1 个真实 bool，2026-07-30。用户实机确认(2026-07-30)：启用颜色范围，
+    # 同 BILLBOARD2D/BILLBOARD3D/PLANE 的 useColorRange 同一套语义，改名。
+    ('useColorRange',            'B'),  # 原 unknBool1
+    ('spacer1',                  ('B', 3)),
+    ('colorRange',               ('XYZ', 2)),  # 原 color2；由 useColorRange 启用的随机范围端点
+    # 原 int spacer2 的低字节（其余 3 字节纯 0xCD 占位）：blendMode，同 BILLBOARD3D/
+    # BILLBOARD2D/PLANE 的 ENUM_BLEND_MODE。
+    ('blendMode',                'B'),  # 原 unknBool2
+    ('spacer2',                  ('B', 3)),
     ('brightness',               'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
-    # 原 unkn4(int[2]) 拆为两个独立字段（实测：[0] 是 float 标量，全语料 0.0–30.0、
-    # 零 NaN，常见 ±0.0；[1] 是 int 枚举 0/1/2 = 形态/速度对齐开关）。
-    ('unkn4_0',                  'f'),
-    ('unknEnum4_1',                  'i'),
+    # 原 unkn4(int[2]) 拆为两个独立字段：
+    # [0] 原名 randomBrightnessMult——全语料实测取值 0~240，跟 brightness 本身(0~255)同一
+    #     量级，并非 0~1 的"乘数"，是 brightness 的 static+jitter 配对里的 jitter 一半，
+    #     2026-07-30 改名（BILLBOARD3D/BILLBOARD2D/PLANE 的同名字段同样改名，见各自 schema）。
+    # [1] ribbonMode（原 unknEnum4_1）：三种条带形态，用户实机确认(2026-07-30)，命名对齐
+    #     续作(RE Engine)对应的 ribbon 类型族——0=RibbonFollow(轨迹跟随)、
+    #     1=RibbonLength(定长面片)、2=RibbonChain(柔体链)。
+    ('brightnessJitter',         'f'),  # 原 unkn4_0 / randomBrightnessMult
+    ('ribbonMode',                   'i'),  # 原 unknEnum4_1
     ('scale',                    'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
     ('scale_jitter',             'f'),
     ('width',                    'f'),  # TIML DT 0xF0DF339B("WidthSize") 已确认
@@ -501,102 +536,195 @@ _RIBBON_FIXED_SCHEMA = [
     ('material_tesselation_density', 'f'),
     ('material_tesselation_jitter',  'f'),
     ('uv_map_width',             'f'),
-    ('horizontal_physics_subdivision_count', 'i'),
-    ('vertical_physics_subdivision_count',   'i'),
+    # subdivisionCount（原 horizontal_physics_subdivision_count）：沿条带长度方向的横向切边
+    # 数量，N 条切边分出 N-1 段、每段 2 个三角面（用户实机确认 2026-07-30：设 4 得到 4 条边、
+    # 3 段）。语料 1~150，主流值 2（即单个四边形）。命名对齐 STRAINRIBBON.subdivisionCount。
+    ('subdivisionCount',         'i'),
+    # 原 vertical_physics_subdivision_count：全语料只有 0/1（同一属性里 subdivisionCount 却用到
+    # 1~150 共 33 种取值），"count"不成立，按 bool 处理；具体作用未确认，退回 unkn 命名。
+    ('unknBool15',               'i'),
     ('unkn15',                   'f'),
-    ('restitution_direction',    'i'),
-    ('unknEnum16arr_0', 'i'),
-    ('unkn16arr_1', 'f'),
-    ('unkn16arr_2', 'f'),
-    ('unkn16arr_3', 'f'),
-    ('startingAngle',            'f'),
-    ('startingAngleJitter',      'f'),
-    ('unkn16_0_0', 'f'),
+    # baseAxis：原 restitution_direction，值分布同 VELOCITY3D/FADEBYANGLE 共用的
+    # AxisDirection6（0左1上2前3右4下5后），非"反弹方向"专属语义，2026-07-30 改通用名。
+    ('baseAxis',                 'i'),
+    # rotationOrder：原 unknEnum16arr_0，98.83% 恒为 4，与 TRANSFORM3D/EMITTERSHAPE3D
+    # 共用同一套 _TRANSFORM_ROT_ORDER 枚举（2026-07-30 用户确认，不再单独猜测）。
+    ('rotationOrder',            'i'),
+    # rotationX/Y/Z + Jitter：原 unkn16arr_1~3 + startingAngle/startingAngleJitter + unkn16_0_0，
+    # 2026-07-30 用户实机测试确认为 rotOrder 复合旋转的 XYZ 三轴 static+random（byte 布局本身
+    # 交错、非顺序对齐：X=(arr_1,arr_2)/Y=(startingAngle,arr_3)/Z=(unkn16_0_0,startingAngleJitter)）。
+    # ⚠ 哪个是物理 X/Y/Z 轴仍受 ribbon 强制朝相机的自转干扰、未最终坐实，仅结构分组已确认。
+    ('rotationX',                'f'),  # 原 unkn16arr_1
+    ('rotationXJitter',          'f'),  # 原 unkn16arr_2
+    ('rotationYJitter',          'f'),  # 原 unkn16arr_3
+    ('rotationY',                'f'),  # 原 startingAngle
+    ('rotationZJitter',          'f'),  # 原 startingAngleJitter
+    ('rotationZ',                'f'),  # 原 unkn16_0_0
     ('unknFlag16_0_1', 'i'),
-    ('unknEnum16_1',                 'h'),
-    ('unknBitmask16_2',                 'h'),
-    ('spacer3',                  'i'),
+    # 原 short unknEnum16_1：全语料只有 0x0101/0x0001，低字节恒为 1（非通常的 0/0xCD 填充），
+    # 只有高字节真正在 0/1 之间变化——拆出 1 个真实 bool，2026-07-30。
+    ('unknFixed16_1_lo',         'B'),  # 恒 1
+    ('unknBool16_1',             'B'),  # 真实数据
+    # 原 short unknBitmask16_2：{0,1,256,257} 全部有意义比例出现，两字节各自独立的真实
+    # bool（非填充），2026-07-30 拆分。低字节实机表现是"关闭后无法朝向摄像机"（一度误判为
+    # 启用 Y 轴移动，已撤销该命名）；两个字节的确切语义都未定，保持 unkn 命名。
+    ('unknBool16_2_0',           'B'),
+    ('unknBool16_2_1',           'B'),
+    # 原 int spacer3：0xCDCD0000/0100/0001/0101，低 2 字节各自真实变化（byte0 罕见 0.43%，
+    # byte1 常见 27.24%），高 2 字节恒 0xCD 纯占位——拆出 2 个真实 bool，2026-07-30。
+    ('unknBool3a',               'B'),
+    ('unknBool3b',               'B'),
+    ('spacer3',                  ('B', 2)),
     ('unknFixed17',                   'f'),
     ('spacer4',                  'i'),
     ('lengthwise_offset_relative_to_camera', 'f'),
-    ('unknown19_0',              'f'),
-    ('restitution',              'f'),
-    ('restitution_jitter',       'f'),
-    ('inertial_excess',          'f'),
-    ('inertial_excess_jitter',   'f'),
+    # 原 unknown19_0：用户实机测试确认(2026-07-30)——0 时前后向 ribbon 的最前端贴近生成
+    # 位置；1 时前移 1 个相对长度，变成最后端贴近生成位置。数值分布跟
+    # lengthwise_offset_relative_to_camera（几乎恒 0.5，仅偶见其他值）差异很大（本字段
+    # 广泛分布 0~1 且可超出到 5.0），不像是同一种取值，判断是两个独立参数。
+    ('spawnAnchorOffset',        'f'),  # 原 unknown19_0
+
+    # ribbonMode=2(RibbonChain) 的弹簧-阻尼参数组。用户实机测试(2026-07-30)四组对照
+    # （restoreStrength 0/1 × inertia 1/0.5 × springiness 0/1）的表现与标准阻尼振子一致：
+    #   restoreStrength=0 → 无回复力，退化成与 ribbonMode=0(RibbonFollow) 高度相似的拖尾；
+    #   restoreStrength=1 → 缓慢归位为平直；再加 inertia=1 → 定形为硬长条；
+    #   再加 springiness=1 → 永不停歇地弹（等效无阻尼）；此时 inertia 降到 0.5 → 停止弹跳、
+    #   以一定速度归位（阻尼比 ζ=c/(2√(km))，降低 m 即提高 ζ——反证 inertia 是质量项而
+    #   非阻尼项，否则调低它会加剧振荡）。
+    # restitution→restoreStrength 改名原因：物理上 restitution(恢复系数)指"弹性/弹力"，
+    # 而该字段调高反而让条带**收敛**到平直，弹性其实在 springiness，旧名会误导。
+    ('restoreStrength',          'f'),  # 原 restitution
+    ('restoreStrengthJitter',    'f'),  # 原 restitution_jitter
+    ('inertia',                  'f'),  # 原 inertial_excess
+    ('inertiaJitter',            'f'),  # 原 inertial_excess_jitter
     ('springiness',              'f'),
     ('springiness_jitter',       'f'),
-    ('spacer5',                  'i'),
+    # 原 int spacer5：同 spacer1 模式，低字节真实变化(12.2%非零)，其余 3 字节纯 0xCD 占位。
+    # 实机表现是设为 1 后只显示条带前半部分（后半被隐藏），但确切语义未定，保持 unkn 命名。
+    ('unknBool5',                'B'),
+    ('spacer5',                  ('B', 3)),
     ('unkn20_0', 'f'),
     ('unkn20_1', 'f'),
     ('unkn20_2', 'f'),
     ('unkn20_3', 'f'),
     ('unkn21',                   'f'),
     ('unkn22_0', 'f'),
-    ('unknEnum22_1', 'i'),
+    # 原 unknEnum22_1：全语料 17 种取值全部可干净分解为 2 的幂之和(bit0~6, 值1~64)，
+    # 是可混合位掩码而非枚举，2026-07-30 改名 + 转 Bitmask。
+    ('unknBitmask22_1', 'i'),
     ('unknFlag22_2', 'i'),
-    # 原 4B int 恒为 0xCDCDCD00/0xCDCDCD01（未初始化填充）；实测只有最低字节（文件里的  
-    # 第 1 个字节）在 0/1 之间变化，真正承载语义，其余 3 字节恒为 0xCD 纯占位（2026-07-10）。  
-    ('tailTiedToBone',           'B'),
+    # 原 4B int 恒为 0xCDCDCD00/0xCDCDCD01（未初始化填充）；只有最低字节（文件里的第 1 个
+    # 字节）在 0/1 之间变化，其余 3 字节恒为 0xCD 纯占位（2026-07-10）。用户实机确认
+    # (2026-07-30)：该字节是 flowmap 总开关（原名 tailTiedToBone 是误读），改名。
+    ('enableFlowmap',            'B'),  # 原 tailTiedToBone
     ('spacer6',                  ('B', 3)),
-    ('unkn23_0', 'f'),
-    ('unkn23_1', 'f'),
-    ('unkn23_2', 'f'),
-    ('unknFixed23_3', 'f'),
-    ('unkn23_4', 'f'),
-    ('unkn23_5', 'f'),
-    ('unkn23_6', 'f'),
-    ('unknFixed23_7', 'f'),
-    ('unkn24',                   'i'),
+    # 用户实机确认(2026-07-30)：原 unkn23_0~7 就是 flowmap 8 件套，字段顺序与 BILLBOARD2D
+    # 的 flowmap 组逐项吻合（两边取值分布形态一一对应，含 acceleration 两项同为 100% 恒 1.0）。
+    ('flowmapSpeed',                     'f'),  # 原 unkn23_0
+    ('flowmapSpeedJitter',               'f'),  # 原 unkn23_1
+    ('flowmapAcceleration',              'f'),  # 原 unkn23_2
+    ('flowmapAccelerationJitter',        'f'),  # 原 unknFixed23_3
+    ('flowmapStrength',                  'f'),  # 原 unkn23_4
+    ('flowmapStrengthJitter',            'f'),  # 原 unkn23_5
+    ('flowmapStrengthAcceleration',      'f'),  # 原 unkn23_6
+    ('flowmapStrengthAccelerationJitter','f'),  # 原 unknFixed23_7
+    # 原 int unkn24 的低 2 字节（高 2 字节恒 0xCD 纯占位）。用户实机确认(2026-07-30)：
+    # flowmapPlayOnce=流动只播放一次；flowmapReverse=逆向播放，且必须 flowmapPlayOnce
+    # 启用才生效（官方语料存在 reverse=1/playOnce=0 的无效组合 48 例，故不做可见性门控，
+    # 依赖关系写在 tooltip 里）。
+    ('flowmapPlayOnce',          'B'),  # 原 unknBool24a
+    ('flowmapReverse',           'B'),  # 原 unknBool24b
+    ('unkn24',                   ('B', 2)),
     ('epvcolor_0',               'i'),
     ('epvcolor_1',               'i'),
-    ('spacer7',                  'i'),
+    # 原 int spacer7：同 spacer1 模式，低字节真实变化(1.8%非零，比较罕见)。
+    ('unknBool7',                'B'),
+    ('spacer7',                  ('B', 3)),
     ('base_width_multiplier',    'f'),
     ('base_opacity',             'f'),
     ('tip_width_multiplier',     'f'),
     ('tip_opacity',              'f'),
-    ('spacer8',                  'i'),
+    # 原 int spacer8：同 spacer1 模式，低字节真实变化(3.8%非零)。
+    ('unknBool8',                'B'),
+    ('spacer8',                  ('B', 3)),
     ('unkn27_0', 'f'),
     ('unkn27_1', 'f'),
-    ('visiblePreview',           'h'),
+    # 原 short visiblePreview：全语料 {0,1,256,257} 均有意义比例出现，实为 2 个独立字节，
+    # 2026-07-30 拆分。低字节=已实机确认的"可见性修正"(非0破坏TIML变色+条带消失)；
+    # 高字节经实机确认是下面 flap 抖动组的总开关，改名 enableFlap（语料佐证：开关=1 的
+    # 270 块里 229 块确有 flap 取值；另有 111 块设了 flap 值但开关=0，属无效残留）。
+    ('visiblePreview',           'B'),
+    ('enableFlap',               'B'),  # 原 unknFlag_visiblePreview2
     ('spacer9',                  'h'),
-    ('base_flap_frequency',      'f'),
-    ('base_flap_frequency_jitter','f'),
-    ('base_flap_amount',         'f'),
-    ('base_flap_amount_jitter',  'f'),
-    ('tip_flap_frequency',       'f'),
-    ('tip_flap_frequency_jitter','f'),
-    ('tip_flap_amount',          'f'),
-    ('tip_flap_amount_jitter',   'f'),
+    # flap 抖动组：给旗帜（ribbonMode=2 RibbonChain）一个恒定速率的来回摆动。用户实机确认
+    # (2026-07-30)：原 base_*/tip_* 两组效果基本相同、可叠加（类似 BLINK 的叠加式），并**不是**
+    # 名字暗示的"一组从根部起振、一组从尖端起振"，故改名 flap1/flap2 以免误导。
+    # 语料佐证：两组多为同时使用(251)，其次只用 flap1(77)，只用 flap2 极少(12)。
+    ('flap1Frequency',           'f'),  # 原 base_flap_frequency
+    ('flap1FrequencyJitter',     'f'),  # 原 base_flap_frequency_jitter
+    ('flap1Amount',              'f'),  # 原 base_flap_amount
+    ('flap1AmountJitter',        'f'),  # 原 base_flap_amount_jitter
+    ('flap2Frequency',           'f'),  # 原 tip_flap_frequency
+    ('flap2FrequencyJitter',     'f'),  # 原 tip_flap_frequency_jitter
+    ('flap2Amount',              'f'),  # 原 tip_flap_amount
+    ('flap2AmountJitter',        'f'),  # 原 tip_flap_amount_jitter
     # 原 ib_junk[32] 拆分（2026-07-21 全语料 15015 块统计）：
-    # byte[0] 恒为 0（15015/15015 无一例外）——未见变化，保留 unkn 命名。  
-    # byte[1]/byte[2] 是两个独立 bool 标志：只要任一为 1，下面 4 个 float 里非零
+    # byte[0] 恒为 0（15015/15015 无一例外）。
+    # byte[1]/byte[2] 是两个独立 bool 标志：只要任一为 1，后面 3 个 float 里非零
     # 的比例从基线 0.15%（两者都 0 时）跳到 80%~99%——近乎完美的 enable 门控关系。
-    # byte[3:16] 13 字节恒为 0xCD（未初始化占位，同 reserved-fill-fields 判据）。  
-    # 后 4 个 float：前 3 个有真实变化（含负值，如 -120~100），第 4 个恒为 0.0  
-    # （15015/15015 无一例外）。已排除“其实是 base_flap~tip_flap 8 件套的重复/错位”
-    # 假说：那 8 个字段本身统计自洽（全部非负、频率<幅值量级、jitter 远比 value 少
-    # 非零，典型 value+jitter 形态），而这里前 16B 是纯 0xCD 填充零信息、后 16B  
-    # 含负值（频率/幅值不该为负）——形态更接近 flowmap 速度/强度类可正可负的参数，
-    # 而非 flap 频率/幅值的重复。语义未确认，待实机测试 byte[1]/byte[2] 开关 +
-    # 后 3 个 float 对条带贴图流动效果的影响。
-    ('ribbon_flow_unkn0',       'B'),
-    ('ribbon_flow_enable_a',    'B'),
-    ('ribbon_flow_enable_b',    'B'),
-    ('ribbon_flow_reserved',    ('B', 13)),
-    ('ribbon_flow_param0',      'f'),
-    ('ribbon_flow_param1',      'f'),
-    ('ribbon_flow_param2',      'f'),
-    ('ribbon_flow_param3',      'f'),
+    # byte[3:16] 13 字节恒为 0xCD（未初始化占位，同 reserved-fill-fields 判据）。
+    # 第 4 个 float 恒为 0.0（15015/15015 无一例外）。已排除"其实是 flap 8 件套的重复/错位"假说。
+    # ⚠ 这批字段一度按"疑似 flowmap 参数"命名为 ribbon_flow_*，2026-07-30 已证伪——
+    #   真正的 flowmap 8 件套是上面的 flowmapSpeed~flowmapStrengthAccelerationJitter
+    #   （原 unkn23_*），总开关是 enableFlowmap。
+    # 用户实机确认(2026-07-30)：byte[1] 是后 3 个 float 的开关；byte[2] 疑似叠在 byte[1] 之上。
+    # 后 3 个 float 是三个正交方向的力（自尾端施力），方向恒定——不受 localRotation 也不受
+    # TRANSFORM3D 旋转影响，故为世界/全局方向，命名 unknGlobalForceX/Y/Z（param1=竖直轴→Y）。
+    # 具体各轴指向哪一侧仍未确认，保留 unkn 前缀。
+    ('unknFixed28_0',            'B'),
+    ('unknGlobalForceEnable',    'B'),  # 原 unknBool28_1
+    ('unknBool28_2',             'B'),
+    ('spacer28',                 ('B', 13)),
+    ('unknGlobalForceX',         'f'),  # 原 unkn28_param0
+    ('unknGlobalForceY',         'f'),  # 原 unkn28_param1（竖直轴，负值近似重力）
+    ('unknGlobalForceZ',         'f'),  # 原 unkn28_param2
+    ('unknFixed28_param3',      'f'),
 ]
 assert _schema_size(_RIBBON_FIXED_SCHEMA) == 360, \
     f"_RIBBON_FIXED_SCHEMA size mismatch: {_schema_size(_RIBBON_FIXED_SCHEMA)}"
 RIBBON_ATTR = attr_from_legacy(
     _schema_size(_RIBBON_FIXED_SCHEMA), _RIBBON_FIXED_SCHEMA,
     overrides={
-        # 反弹方向：全语料 {0..5}，同 VELOCITY3D/RIBBONBLADE 共享的 6 向枚举。
-        'restitution_direction': Enum('restitution_direction', _AXIS_DIRECTION6, label_zh="反弹方向"),
-        'tailTiedToBone':        Bool('tailTiedToBone', backing='B', label_zh="尾端绑定骨骼"),
+        # baseAxis：原 restitution_direction，同 VELOCITY3D/FADEBYANGLE/RIBBONBLADE 共享的
+        # 通用 AxisDirection6。（2026-07-30 一度误判要建独立枚举——当时的测试其实是
+        # rotationZ=90 复合旋转后的表观方向，baseAxis 本身取值没有问题，已撤销。）
+        'baseAxis':       Enum('baseAxis', _AXIS_DIRECTION6, label_zh="基准轴"),
+        # rotationOrder：原 unknEnum16arr_0，同 TRANSFORM3D/EMITTERSHAPE3D 共享的旋转顺序枚举。
+        'rotationOrder':  Enum('rotationOrder', _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
+        'enableFlowmap':  Bool('enableFlowmap', backing='B', label_zh="启用流动贴图"),
+        # 2026-07-30 批量取值调查后落地：干净 0/1 → Bool；可混合位掩码 → Bitmask。
+        'unknFlag16_0_1':          Bool('unknFlag16_0_1'),
+        'unknBool16_1':            Bool('unknBool16_1', backing='B'),
+        'unknBool16_2_0':          Bool('unknBool16_2_0', backing='B'),
+        'unknBool16_2_1':          Bool('unknBool16_2_1', backing='B'),
+        'unknBitmask22_1':         Bitmask('unknBitmask22_1', BITS_RIBBON_UNKN22_1, strict=True),
+        'unknFlag22_2':            Bool('unknFlag22_2'),
+        'visiblePreview':          Bool('visiblePreview', backing='B', label_zh="可见性修正"),
+        'enableFlap':              Bool('enableFlap', backing='B', label_zh="启用抖动"),
+        'unknGlobalForceEnable':   Bool('unknGlobalForceEnable', backing='B'),
+        'unknBool28_2':            Bool('unknBool28_2', backing='B'),
+        # 原 spacer0/1/2/3/5/7/8、unkn24 拆出的真实 bool（0xCD 占位掩盖的低字节数据）。
+        'useColorRange': Bool('useColorRange', backing='B', label_zh="启用颜色范围"),
+        'ribbonMode':    Enum('ribbonMode', ENUM_RIBBON_MODE, label_zh="条带模式"),
+        'blendMode':     Enum('blendMode', ENUM_BLEND_MODE, backing='B', label_zh="混合模式"),
+        'unknBool15':  Bool('unknBool15'),
+        'unknBool3a':  Bool('unknBool3a', backing='B'),
+        'unknBool3b':  Bool('unknBool3b', backing='B'),
+        'unknBool5':   Bool('unknBool5', backing='B'),
+        'unknBool7':   Bool('unknBool7', backing='B'),
+        'unknBool8':   Bool('unknBool8', backing='B'),
+        'flowmapPlayOnce': Bool('flowmapPlayOnce', backing='B', label_zh="流动只播放一次"),
+        'flowmapReverse':  Bool('flowmapReverse', backing='B', label_zh="流动逆向播放"),
     },
 )
 
@@ -639,9 +767,11 @@ _PLANE_DDS_SCHEMA = [
     ('color',              ('XYZ', 2)),  # TIML DT 0x58689812("Color") 已确认
     ('colorRange',         ('XYZ', 2)),
     ('brightness',         'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
-    # 原 unkn20，位置与 BILLBOARD3D 的 randomBrightnessMult 相同，暂按同名归类；
-    # 语义未confirmed（不同于 BILLBOARD3D 那条已实机验证的注释，这里先只搬名字）。
-    ('randomBrightnessMult', 'f'),
+    # 原 unkn20，位置与 BILLBOARD3D 的 brightnessJitter 相同，暂按同名归类；语义未
+    # confirmed（不同于 BILLBOARD3D 那条已实机验证的注释，这里先只搬名字）。全语料实测
+    # 取值 0~100，跟 brightness(0~255) 同量级，支持"jitter 而非 0~1 乘数"这一改名，
+    # 2026-07-30。
+    ('brightnessJitter',  'f'),  # 原 randomBrightnessMult
     ('useColorRange',      'i'),
     ('blendMode',          'i'),
     ('EPVColorSlot1',      'i'),
@@ -1519,7 +1649,14 @@ def pack_tonemapfilter(values: dict) -> bytes:
 TUBELIGHT_ATTR = Attribute(size=124, fields=[
     Int("typeFlag"),                                   # off0  原 unkn0_0
     Int("unknFixed0_1"),                               # off4
-    Int("unknEnum0_2"),                                # off8  含义不明
+    # off8 原 int unknEnum0_2：全语料(22 块/17 文件)只有 2 种取值 13434880/13435136=
+    # 0x00CD0000/0x00CD0100，拆成 4 字节可见：byte0 恒 0x00，byte2 恒 0xCD（未初始化占位，
+    # 同 off100 unkn5_1 的签名），byte3 恒 0x00——只有 byte1(0/1) 是真实数据，仿
+    # RIBBON.tailTiedToBone 先例拆分。样本量小（仅 22 块），结论待更多语料验证。
+    Byte("unknFixed0_2a"),                             # off8  恒 0x00
+    Bool("unknBool0_2", backing='B'),                  # off9  真实数据，含义未知
+    Byte("unknFixed0_2_cd"),                           # off10 恒 0xCD，未初始化占位
+    Byte("unknFixed0_2b"),                              # off11 恒 0x00
     Float("unkn1_0"),                                  # off12 可能为纹理滚动速度
     Float("unknFixed1_1"),                             # off16 含义不明
     Float("lightIntensity", label_zh="光照强度"),      # off20

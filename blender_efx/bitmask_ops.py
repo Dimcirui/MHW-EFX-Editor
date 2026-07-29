@@ -94,6 +94,9 @@ def _benum_items_factory(idx):
 def bitmask_summary(value, field, zh=True):
     """把位掩码值转成面板按钮上的可读摘要（混合位名 + 互斥组当前项 + 残留）。"""
     from ..efx_format.schema.fields_model import BitDef, BitEnum
+    all_value = getattr(field, "all_value", None)
+    if all_value is not None and value == all_value:
+        return "全部" if zh else "All"
     parts = []
     for b in field.bits:
         if isinstance(b, BitDef):
@@ -123,6 +126,8 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
     field: StringProperty()
     residual: IntProperty(name="Other bits", default=0, min=0,
                           description="段外未定义位（原值保留，可编辑）")
+    all_toggle: BoolProperty(name="All", default=False,
+                              description="整体写为 all_value（如全位 0xFF），跟上面各独立位互斥")
     # bit_0..bit_{_MAX_BITS-1} 勾选框池在类定义后追加（见下）；draw 时按字段实际位数用前 N 个。
 
     @classmethod
@@ -142,6 +147,8 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
             return {"CANCELLED"}
         from .fields import _enum_backing_read
         val = _enum_backing_read(item)
+        all_value = getattr(field, "all_value", None)
+        self.all_toggle = (all_value is not None and val == all_value)
         for i, b in enumerate(_toggles(field)[:_MAX_BITS]):
             setattr(self, "bit_%d" % i, bool(val & b.bit))
         for i, be in enumerate(_bitenums(field)[:_MAX_ENUMS]):
@@ -150,7 +157,7 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
                 setattr(self, "benum_%d" % i, str(sub))
             except TypeError:
                 pass  # 子值暂不在 items 中（items 回调会注入后重试无碍）
-        self.residual = val & ~_defined_mask(field)
+        self.residual = 0 if self.all_toggle else val & ~_defined_mask(field)
         return context.window_manager.invoke_props_dialog(self, width=300)
 
     def draw(self, context):
@@ -161,23 +168,30 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
             return
         from .i18n import get_lang
         zh = (get_lang() == "ZH")
+        all_value = getattr(field, "all_value", None)
+        col = layout.column()
+        col.enabled = not (all_value is not None and self.all_toggle)
         ti = ei = 0
         for b in field.bits:   # 按声明顺序渲染，勾选框与下拉交错
             if isinstance(b, BitDef):
                 if ti < _MAX_BITS:
-                    layout.prop(self, "bit_%d" % ti, text=(b.zh if zh else b.en))
+                    col.prop(self, "bit_%d" % ti, text=(b.zh if zh else b.en))
                 ti += 1
             else:  # BitEnum
                 if ei < _MAX_ENUMS:
-                    layout.prop(self, "benum_%d" % ei, text=(b.zh if zh else b.en))
+                    col.prop(self, "benum_%d" % ei, text=(b.zh if zh else b.en))
                 ei += 1
         resid_mask = _defined_mask(field)
         # strict 字段（已穷举确认段外位不用）不显示残留框，即使 32 位里仍有未覆盖的位。
         if not getattr(field, "strict", False) and resid_mask != -1 and (~resid_mask) & 0xFFFFFFFF:
-            layout.separator()
-            row = layout.row()
+            col.separator()
+            row = col.row()
             row.prop(self, "residual")
             row.label(text="(未定义位，保留)" if zh else "(undefined bits, preserved)")
+        if all_value is not None:
+            layout.separator()
+            layout.separator()
+            layout.prop(self, "all_toggle", text=("全部 (0x%X)" % all_value) if zh else ("All (0x%X)" % all_value))
 
     def execute(self, context):
         obj = context.active_object
@@ -188,14 +202,18 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
         if item is None:
             self.report({"ERROR"}, "Field '%s' not found" % self.field)
             return {"CANCELLED"}
-        val = 0
-        for i, b in enumerate(_toggles(field)[:_MAX_BITS]):
-            if getattr(self, "bit_%d" % i):
-                val |= b.bit
-        for i, be in enumerate(_bitenums(field)[:_MAX_ENUMS]):
-            sub = int(getattr(self, "benum_%d" % i))
-            val |= (sub << be.shift) & be.mask
-        val |= int(self.residual)
+        all_value = getattr(field, "all_value", None)
+        if all_value is not None and self.all_toggle:
+            val = all_value
+        else:
+            val = 0
+            for i, b in enumerate(_toggles(field)[:_MAX_BITS]):
+                if getattr(self, "bit_%d" % i):
+                    val |= b.bit
+            for i, be in enumerate(_bitenums(field)[:_MAX_ENUMS]):
+                sub = int(getattr(self, "benum_%d" % i))
+                val |= (sub << be.shift) & be.mask
+            val |= int(self.residual)
         from .fields import _enum_backing_write
         _enum_backing_write(item, val)   # update=_mark_attribute_dirty 自动置脏
         return {"FINISHED"}

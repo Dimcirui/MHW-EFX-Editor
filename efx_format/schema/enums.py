@@ -11,10 +11,25 @@ from .fields_model import EnumDef, BitDef, BitEnum
 # ─────────────────────────────────────────────────────────────────────────────
 
 ENUM_SHAPE_TYPE3D = EnumDef("ShapeType3D", [
-    (0, "Box", "立方体"), 
-    (1, "Sphere", "球面"), 
-    (2, "Cylinder", "圆环面"), 
+    (0, "Box", "立方体"),
+    (1, "Sphere", "球体"),
+    (2, "Cylinder", "圆柱体"),
     (3, "Point", "点"),
+])
+# EMITTERSHAPE3D.rangeDivideAxis：仅 Box 生效，选沿哪个轴细分；不受 localRotation 影响。
+ENUM_RANGE_DIVIDE_AXIS = EnumDef("RangeDivideAxis", [
+    (0, "X-axis", "X 轴"),
+    (1, "Z-axis", "Z 轴"),
+    (2, "Y-axis", "Y 轴"),
+])
+# EMITTERSHAPE3D.rotationCorrect：照搬续作(RE Engine) EFXEnums.cs 的 RotationCorrectType。
+# 官方语料取值 [0,1,3,5,7] 不完全落在 0~4 内，越界值由 Blender 层回退显示原整数。
+ENUM_ROTATION_CORRECT_TYPE = EnumDef("RotationCorrectType", [
+    (0, "None", "不修正"),
+    (1, "Parallel Camera", "与摄像机平行"),
+    (2, "Parallel Camera (Y axis only)", "与摄像机平行（仅 Y 轴）"),
+    (3, "To Camera", "朝向摄像机"),
+    (4, "To Camera (Y axis only)", "朝向摄像机（仅 Y 轴）"),
 ])
 ENUM_SHAPE_TYPE2D = EnumDef("ShapeType2D", [
     (0, "Square", "方形"), 
@@ -96,7 +111,31 @@ ENUM_TRACKING_POS = EnumDef("TrackingModePos",
 ENUM_TRACKING_ANGLE = EnumDef("TrackingModeAngle",
     _TRACKING_BASE + [(3, "Snap to Angle And Track", "对齐到角度并追踪")])  # angle
 
+# MESH.tracking_flags：社区文档给的 9 个值(0~8)各自含义互不相关（如 5/7 都叫
+# "Disappears" 但仍是两个独立编号），非可叠加位——语料只观测到 0/1/2/4/6/8/10，
+# 10 不在文档表内，暂标 Unknown；官方语料从未见 9，非文档遗漏即引擎未使用。
+ENUM_MESH_TRACKING_FLAGS = EnumDef("MeshTrackingFlags", [
+    (0, "Guide Source", "引导源"),
+    (1, "Away from Source", "远离源"),
+    (2, "Look Away From Camera", "背对摄像机"),
+    (3, "WTF Occupies Entire Map", "WTF 占满整张地图"),
+    (4, "Guide Camera", "引导摄像机"),
+    (5, "Disappears", "消失"),
+    (6, "Don't Track Rotation At All", "完全不追踪旋转"),
+    (7, "Disappears", "消失"),
+    (8, "Perpendicular to Ground, Don't Track", "垂直于地面且不追踪"),
+    (10, "Unknown (10)", "未知 (10)"),
+])
+
 BITS_ENABLE_VELOCITY = [(0x1, "Enable Velocity", "启用速度"), (0x2, "Enable Acceleration", "启用加速度")]
+
+# SPAWN.unknBitmask31：官方全语料(112573 块)穷举，可混合位只到 bit5（值 32），bit6 及以上
+# 从未出现——6 个占位未知位，per-bit 语义待确认。
+BITS_SPAWN_UNKN31 = [(1 << _i, "Unknown %d" % _i, "未知 %d" % _i) for _i in range(6)]
+
+# RIBBON.unknBitmask22_1：官方语料(14677 块)穷举，可混合位到 bit6（值 64），bit0 单独占大多数，
+# per-bit 语义待确认。
+BITS_RIBBON_UNKN22_1 = [(1 << _i, "Unknown %d" % _i, "未知 %d" % _i) for _i in range(7)]
 BITS_SPIN_AXIS = [(0x1, "X", "X"), (0x2, "Y", "Y"), (0x4, "Z", "Z")]
 BITS_RANDOMFIX_TABLE = [(1 << _i, "Table %d" % _i, "表 %d" % _i) for _i in range(8)]
 
@@ -141,6 +180,12 @@ BITS_LOOPING_MODE = [
     ], "Direction", "播放方向"),
 ]
 
+# MESH.affectedByLight：官方语料实测 7 个可混合位（bit0~6，值 1/2/4/8/16/32/64，各种
+# 组合都出现），加一个从不单独出现的 bit7（值 128）——只在 all_value=255（全位）时才出现，
+# 说明 255 是独立的"全部受光照影响"哨兵，非 7 位勾选框自然并集(127)。各位具体对应哪种光源
+# /光照类型尚未确认，暂用占位标签。
+BITS_AFFECTED_BY_LIGHT = [(1 << _i, "Light Bit %d" % _i, "光照位 %d" % _i) for _i in range(7)]
+
 _AXIS_DIRECTION6 = EnumDef("AxisDirection6", [
     (0, "Left", "左"),  # +X
     (1, "Up", "上"),    # +Y
@@ -153,11 +198,13 @@ _ROT_ORDER6 = EnumDef("RotOrder", [
     (0, "XYZ", "XYZ"), (1, "XZY", "XZY"), (2, "YXZ", "YXZ"),
     (3, "YZX", "YZX"), (4, "ZXY", "ZXY"), (5, "ZYX", "ZYX"),
 ])
-# TRANSFORM3D/EMITTERSHAPE3D 的 rotationOrder 用另一套取值→顺序映射（据 TRANSFORM3D 注释；
+# TRANSFORM3D/EMITTERSHAPE3D/RIBBON 的 rotationOrder 用另一套取值→顺序映射（据 TRANSFORM3D 注释；
 # 与 VELOCITY3D 的 _ROT_ORDER6 不同，两者实测不一致，见记忆 velocity3d-unknaxis-rotation-order-test）。
+# 2026-07-30 用户实机测试 EMITTERSHAPE3D 确认 4=ZXY（原表误标为 4=YXZ、2=ZXY，已对调两项；
+# 三个 attr 共用此表，同步生效）。
 _TRANSFORM_ROT_ORDER = EnumDef("TransformRotOrder", [
-    (0, "XYZ", "XYZ"), (1, "YZX", "YZX"), (2, "ZXY", "ZXY"),
-    (3, "ZYX", "ZYX"), (4, "YXZ", "YXZ"), (5, "XZY", "XZY"),
+    (0, "XYZ", "XYZ"), (1, "YZX", "YZX"), (2, "YXZ", "YXZ"),
+    (3, "ZYX", "ZYX"), (4, "ZXY", "ZXY"), (5, "XZY", "XZY"),
 ])
 _VELOCITY_TYPE = EnumDef("VelocityType", [
     (0, "Directional", "定向"),
@@ -170,6 +217,15 @@ _VELOCITY_TYPE = EnumDef("VelocityType", [
 ENUM_BLEND_MODE = EnumDef("BlendMode", [
     (0, "Alpha Blend", "Alpha 混合"),
     (1, "Additive", "Add 叠加"),
+])
+
+# RIBBON.ribbonMode（原 unknEnum4_1）：三种条带形态，用户实机确认(2026-07-30)。命名对齐续作
+# (RE Engine) 拆分出的同族 ribbon 类型——续作把 MHW 这个"一个属性 + 模式开关"的设计重构成了
+# 各自独立的类型（TypeRibbonFollow/Length/Chain…），故此处直接沿用其类型名。
+ENUM_RIBBON_MODE = EnumDef("RibbonMode", [
+    (0, "Ribbon Follow", "轨迹跟随"),
+    (1, "Ribbon Length", "定长面片"),
+    (2, "Ribbon Chain", "柔体链"),
 ])
 
 # UVSEQUENCE 的 loopingOrientation（贴图朝向；与水平/垂直翻转独立）。

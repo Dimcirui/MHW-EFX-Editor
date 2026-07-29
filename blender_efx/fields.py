@@ -133,7 +133,7 @@ def _mark_attribute_dirty(self, context):
                         mesh_align.realign_entry_if_active(body)
                 # EMITTERSHAPE3D 的形状/尺寸/弧形裁剪字段编辑 → 形状预览会话进行中则重同步
                 elif blk_hash == EMITTERSHAPE3D and self.ori_name in (
-                        "shapeType", "rangeXYZ", "scaleHorizontal"):
+                        "shapeType", "rangeXYZ", "scanAngleHorizontal"):
                     from . import es3d_preview
                     es3d_preview.resync_if_active(obj)
             except Exception:

@@ -34,7 +34,7 @@ _COLOR_ADJACENT_NAMES = frozenset({
     "brightness", "brightness1", "brightness2", "brightness3", "brightness4",
     "brightnessSlot1", "brightnessSlot2",
     "brightnessSlotMultiplier1", "brightnessSlotMultiplier2",
-    "randomBrightnessMult", "bright",
+    "brightnessJitter", "bright",   # brightnessJitter 原名 randomBrightnessMult
     "lightIntensity", "lightIntensityJitter",
     "enableIntensity1", "enableIntensity2", "enableEmissiveIntensity",
     "emissiveMultiplier", "emissiveStrength",
@@ -76,7 +76,7 @@ _PACKED_INT_COLOR_FIELDS = frozenset({
 _BRIGHTNESS_NAMES = frozenset({
     "brightness", "brightness1", "brightness2", "brightness3", "brightness4",
     "brightnessSlotMultiplier1", "brightnessSlotMultiplier2",
-    "randomBrightnessMult", "bright",
+    "brightnessJitter", "bright",   # brightnessJitter 原名 randomBrightnessMult
     "lightIntensity", "lightIntensityJitter",
     "emissiveMultiplier", "emissiveStrength",
     "emissionStrength", "emissionStrengthJitter",

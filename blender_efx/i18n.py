@@ -527,6 +527,12 @@ STRINGS = {
     # Fixed/Random 混用；全仓库所有"固定值+随机抖动量"配对控件统一走这两个 key。
     "field.static":          {"EN": "Static",               "ZH": "固定"},
     "field.random":          {"EN": "Random",               "ZH": "随机"},
+    # EMITTERSHAPE3D.rangeXYZ 的两个值不是 static+random：Box/Sphere 下是 min+max，
+    # Cylinder 下是 offset+size。
+    "field.min":             {"EN": "Min",                  "ZH": "最小"},
+    "field.max":             {"EN": "Max",                  "ZH": "最大"},
+    "field.offset":          {"EN": "Offset",               "ZH": "偏移"},
+    "field.size":            {"EN": "Size",                 "ZH": "尺寸"},
     "material.type":         {"EN": "Material type:", "ZH": "主材质类型："},
     # ── MATERIAL 结构化编辑器（Phase C，2026-07）───────────────────────────────
     "material.slot":         {"EN": "Material Slot", "ZH": "材质槽"},
