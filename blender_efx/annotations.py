@@ -70,6 +70,8 @@ FIELD_OFFICIAL_NAMES = {
     ("EMITTERSHAPE3D", "localRotationX"): ("LocalRotationX", "0x701FE225", "中"),
     ("EMITTERSHAPE3D", "localRotationY"): ("LocalRotationY", "0x0718D2B3", "中"),
     ("EMITTERSHAPE3D", "localRotationZ"): ("LocalRotationZ", "0x9E118309", "中"),
+    # ⚠ dump 里叫 RangeMin/Max，但 MHW 实机行为是 offset/size（内边界+厚度，用户
+    #   2026-07-30 测试确认全形状通用）——名字保留 dump 原文，语义以实测为准。
     ("EMITTERSHAPE3D", "rangeXYZ"):       ("RangeMin/Max[XYZ]", "0x760F3D43", "高"),
     # SCALEANIM：Size*Add 动画增量 ↔ 缩放速度（注释佐证整体/按轴，且 dump 无 Accel 参数）
     ("SCALEANIM", "initialScaleSpeed"): ("SizeScalarAdd", "0xC24DF97C", "高"),
@@ -1707,12 +1709,13 @@ FIELD_ANNOTATIONS = {
     },
     # EMITTERSHAPE3D
     ("EMITTERSHAPE3D", "rangeXYZ"): {
-        "EN": "Per-axis spawn range. Box/Sphere: the inner and outer boundary sizes, "
-              "particles spawn in the volume between them. Cylinder: a forward offset "
-              "(also the bore radius) plus the height, so the outer boundary is at "
-              "offset + size.",
-        "ZH": "逐轴的生成范围。立方体/球体：内外边界的尺寸，粒子在两者之间的空间内生成。"
-              "圆柱体：向前的偏移量（同时也是镂空半径）加上高度，外边界位于偏移+尺寸处。",
+        "EN": "Per-axis spawn range, given as offset + size for every shape. Offset is the "
+              "inner boundary (the hollow core), size is the thickness of the shell particles "
+              "spawn in, so the outer boundary sits at offset + size. Size 0 spawns particles "
+              "on the inner surface only.",
+        "ZH": "逐轴的生成范围，所有形状都是偏移+尺寸的组合。偏移是内边界（中间的空腔），"
+              "尺寸是粒子生成的那层壳的厚度，外边界位于偏移+尺寸处。尺寸为 0 时粒子只在"
+              "内边界表面上生成。",
     },
     ("EMITTERSHAPE3D", "scanAngleHorizontal"): {
         "EN": "Horizontal sweep angle.",
@@ -1772,55 +1775,43 @@ FIELD_ANNOTATIONS = {
         "ZH": "speed 生效前的延迟帧数。原 initialVelocityDelay。",
     },
     ("VELOCITY3D", "velocityX"): {
-        "EN": "Only takes effect paired with a generation-method attribute (e.g. "
-              "EMITTERSHAPE3D/EMITTERSHAPEMESH) and velocityType=DirectionalSpread. Together with "
-              "divergenceX, determines this axis's reference point (Vi=(divergence-1)*x0+velocity, "
-              "computed once at spawn from the particle's spawn coordinate — NOT re-evaluated over "
-              "time; confirmed correct in 2D via VELOCITY2D+EMITTERSHAPE2D testing 2026-07-26, "
-              "ruling out a live-position/vector-field alternative). Formerly offsetX. Scale note: "
-              "this field is ~100x the spawn coordinate's own magnitude (e.g. EMITTERSHAPE range "
-              "units) — plug the raw field value in directly, do not normalize it to the "
-              "[-1,1]-ish range used by the interactive demo without multiplying by 100.",
-        "ZH": "仅在搭配生成方式类属性（如 EMITTERSHAPE3D/EMITTERSHAPEMESH）且 "
-              "velocityType=DirectionalSpread 时生效。与 divergenceX 共同决定该轴的基准点"
-              "（Vi=(divergence-1)*x0+velocity，只在生成瞬间用粒子的生成坐标算一次，之后不再随"
-              "时间重算——2026-07-26 已用 VELOCITY2D+EMITTERSHAPE2D 实机验证确认这个'生成时刻"
-              "快照'模型是对的，排除了'实时位置/向量场'的替代假说）。原 offsetX。量级提醒：这个"
-              "字段的数值大约是生成坐标本身量级的 100 倍（如 EMITTERSHAPE 的 range 单位），直接填"
-              "原始字段值即可，不要按交互 demo 里 [-1,1] 左右的坐标范围去套，除非乘以 100。",
+        "EN": "Each particle's direction is computed per axis as "
+              "V_i = (divergence_i - 1) x i0 + velocity_i, where i0 is that particle's own "
+              "spawn coordinate on axis i, then normalized — only the direction is used, the "
+              "speed comes from speed/acceleration. velocity is simply the common movement "
+              "direction shared by all particles, regardless of where each one spawned.",
+        "ZH": "每个粒子的运动方向按下式逐轴算出：V_i =（divergence_i − 1）× i0 + velocity_i，"
+              "其中 i0 是该粒子生成时在 i 轴上的坐标；算完再归一化——只取方向，速度大小由"
+              "初速度/加速度决定。velocity 可以简单视作全体粒子共同的运动方向，与各自在哪"
+              "生成无关。",
     },
     ("VELOCITY3D", "velocityY"): {
-        "EN": "See velocityX. Formerly offsetY. Note: Y sign convention may be flipped relative "
-              "to the game's in-editor axis (confirmed inverted in the 2D VELOCITY2D/"
-              "EMITTERSHAPE2D test).",
-        "ZH": "见 velocityX。原 offsetY。注意：Y 的正负号方向可能跟游戏内的轴向相反（2D 的 "
-              "VELOCITY2D/EMITTERSHAPE2D 测试已确认是翻转的）。",
+        "EN": "See velocityX.",
+        "ZH": "见 velocityX。",
     },
     ("VELOCITY3D", "velocityZ"): {
-        "EN": "See velocityX. Formerly offsetZ.",
-        "ZH": "见 velocityX。原 offsetZ。",
+        "EN": "See velocityX.",
+        "ZH": "见 velocityX。",
     },
     ("VELOCITY3D", "divergenceX"): {
-        "EN": "Only takes effect paired with a generation-method attribute (e.g. "
-              "EMITTERSHAPE3D/EMITTERSHAPEMESH) and velocityType=DirectionalSpread. Together with "
-              "velocityX, determines this axis's reference point. 1=no effect; <1=moves toward "
-              "the reference point (passes through to the other side); >1=moves away from it. "
-              "Speed is constant, independent of the value's magnitude. Formerly sizeX. Model "
-              "confirmed correct (spawn-time snapshot, not live-position) via 2D testing "
-              "2026-07-26 — see velocityX.",
-        "ZH": "仅在搭配生成方式类属性（如 EMITTERSHAPE3D/EMITTERSHAPEMESH）且 "
-              "velocityType=DirectionalSpread 时生效。与 velocityX 共同决定该轴基准点：1=该轴"
-              "无效果；<1 时朝基准点运动（会穿过继续到对面）；>1 时背离基准点运动。速度恒定，"
-              "与数值大小无关，仅决定方向。原 sizeX。模型（生成时刻快照，非实时位置）已于 "
-              "2026-07-26 通过 2D 测试确认正确，详见 velocityX。",
+        "EN": "Direction is computed per axis as V_i = (divergence_i - 1) x i0 + velocity_i, "
+              "where i0 is that particle's own spawn coordinate on axis i. divergence is simply "
+              "how strongly particles spread out from / collapse toward the center, scaled by "
+              "where each one spawned: 1 = no effect on this axis; >1 = spreads outward; "
+              "<1 = converges inward, passing through to the other side. Direction only — the "
+              "magnitude does not change the speed.",
+        "ZH": "运动方向按下式逐轴算出：V_i =（divergence_i − 1）× i0 + velocity_i，其中 i0 是"
+              "该粒子生成时在 i 轴上的坐标。divergence 可以简单视作以生成位置为基础的发散/"
+              "收拢强度：1=该轴无效果；>1 向外发散；<1 向内收拢（会穿过中心继续到对面）。"
+              "只影响方向，数值大小不影响速度。",
     },
     ("VELOCITY3D", "divergenceY"): {
-        "EN": "See divergenceX. Formerly sizeY.",
-        "ZH": "见 divergenceX。原 sizeY。",
+        "EN": "See divergenceX.",
+        "ZH": "见 divergenceX。",
     },
     ("VELOCITY3D", "divergenceZ"): {
-        "EN": "See divergenceX. Formerly sizeZ.",
-        "ZH": "见 divergenceX。原 sizeZ。",
+        "EN": "See divergenceX.",
+        "ZH": "见 divergenceX。",
     },
     # BILLBOARD3D（含本版新拆分字段）
     ("BILLBOARD3D", "color"): {
@@ -2544,26 +2535,32 @@ FIELD_ANNOTATIONS = {
         "ZH": "对 highFreqAmplitude 施加的逐粒子随机偏移。常见取值在 0~100 之间。",
     },
     ("EMITTERSHAPE2D", "rangeX"): {
-        "EN": "Formerly offsetX. Confirmed (2026-07) as the 2D counterpart of "
-              "EMITTERSHAPE3D.rangeXYZ (spawn range), static half of a static/random pair.",
-        "ZH": "原 offsetX。已确认(2026-07)对应 EMITTERSHAPE3D.rangeXYZ 同一概念（生成范围）"
-              "的 2D 版本，static/random 一对的 static 半边。",
+        "EN": "X spawn range, the 2D counterpart of EMITTERSHAPE3D.rangeXYZ: offset is the "
+              "inner boundary (the hollow core), size is the thickness of the band particles "
+              "spawn in, so the outer boundary sits at offset + size. Size 0 spawns particles "
+              "on the inner edge only.",
+        "ZH": "X 轴生成范围，EMITTERSHAPE3D.rangeXYZ 的 2D 版本：偏移是内边界（中间的空腔），"
+              "尺寸是粒子生成的那圈带的厚度，外边界位于偏移+尺寸处。尺寸为 0 时粒子只在内"
+              "边界上生成。",
     },
     ("EMITTERSHAPE2D", "rangeXJitter"): {
-        "EN": "Formerly offsetXJitter. Random component of rangeX.",
-        "ZH": "原 offsetXJitter。rangeX 的随机分量。",
+        "EN": "See rangeX — this is the size half of the pair, not a random jitter.",
+        "ZH": "见 rangeX——这是配对里的「尺寸」半边，不是随机抖动量。",
     },
     ("EMITTERSHAPE2D", "rangeY"): {
-        "EN": "Formerly offsetY. Y-axis counterpart of rangeX.",
-        "ZH": "原 offsetY。rangeX 的 Y 轴对应。",
+        "EN": "Y-axis counterpart of rangeX.",
+        "ZH": "rangeX 的 Y 轴对应。",
     },
     ("EMITTERSHAPE2D", "rangeYJitter"): {
-        "EN": "Formerly offsetYJitter. Random component of rangeY.",
-        "ZH": "原 offsetYJitter。rangeY 的随机分量。",
+        "EN": "See rangeX — this is the size half of the pair, not a random jitter.",
+        "ZH": "见 rangeX——这是配对里的「尺寸」半边，不是随机抖动量。",
     },
-    ("EMITTERSHAPE2D", "spawnCount"): {
-        "EN": "Common values: [0, 3, 5, 6, 8, 10, 16, 18].",
-        "ZH": "常见取值为 [0, 3, 5, 6, 8, 10, 16, 18]。",
+    ("EMITTERSHAPE2D", "rangeDivideHorizontalNum"): {
+        "EN": "Number of divisions along the shape, 0 = continuous. The 2D counterpart of "
+              "EMITTERSHAPE3D.rangeDivideHorizontalNum — it subdivides the spawn range, it is "
+              "not a particle count. Common values: [0, 3, 5, 6, 8, 10, 16, 18].",
+        "ZH": "沿形状的等分数量，0=连续铺满。EMITTERSHAPE3D.横向等分数量的 2D 版本——它切分的"
+              "是生成范围，不是粒子个数。常见取值为 [0, 3, 5, 6, 8, 10, 16, 18]。",
     },
     ("EMITTERSHAPE2D", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -4020,30 +4017,37 @@ FIELD_ANNOTATIONS = {
               "通常为 0；其余取值为 1~8 的小整数。",
     },
     ("VELOCITY2D", "velocityX"): {
-        "EN": "2D counterpart of VELOCITY3D.velocityX — same Vi=(divergence-1)*x0+velocity model, "
-              "confirmed correct via direct in-game testing 2026-07-26 (spawn-time snapshot, "
-              "not live-position). Formerly offsetX. This field is ~100x the spawn coordinate's "
-              "own magnitude (e.g. EMITTERSHAPE2D.rangeX/Y units).",
-        "ZH": "VELOCITY3D.velocityX 的 2D 版本——同一套 Vi=(divergence-1)*x0+velocity 模型，已于 "
-              "2026-07-26 实机测试直接确认正确（生成时刻快照，非实时位置）。原 offsetX。这个"
-              "字段的数值约是生成坐标本身量级的 100 倍（如 EMITTERSHAPE2D.rangeX/Y 单位）。",
+        "EN": "Each particle's direction is computed per axis as "
+              "V_i = (divergence_i - 1) x i0 + velocity_i, where i0 is that particle's own "
+              "spawn coordinate on axis i, then normalized — only the direction is used, the "
+              "speed comes from speed/acceleration. velocity is simply the common movement "
+              "direction shared by all particles, regardless of where each one spawned. Values "
+              "here are ~100x the scale of the spawn coordinates "
+              "(EMITTERSHAPE2D.rangeX/Y units).",
+        "ZH": "每个粒子的运动方向按下式逐轴算出：V_i =（divergence_i − 1）× i0 + velocity_i，"
+              "其中 i0 是该粒子生成时在 i 轴上的坐标；算完再归一化——只取方向，速度大小由"
+              "初速度/加速度决定。velocity 可以简单视作全体粒子共同的运动方向，与各自在哪"
+              "生成无关。这里的数值量级约为生成坐标（EMITTERSHAPE2D.rangeX/Y 单位）的 100 倍。",
     },
     ("VELOCITY2D", "velocityY"): {
-        "EN": "See velocityX. Formerly offsetY. Y sign convention confirmed flipped relative to "
-              "the interactive demo's math convention (2026-07-26 test).",
-        "ZH": "见 velocityX。原 offsetY。Y 的正负号方向已确认跟交互 demo 的数学约定相反"
-              "（2026-07-26 实测）。",
+        "EN": "See velocityX.",
+        "ZH": "见 velocityX。",
     },
     ("VELOCITY2D", "divergenceX"): {
-        "EN": "2D counterpart of VELOCITY3D.divergenceX. 1=no effect; <1=moves toward the "
-              "reference point; >1=moves away. Speed constant, independent of magnitude. "
-              "Formerly sizeX.",
-        "ZH": "VELOCITY3D.divergenceX 的 2D 版本。1=该轴无效果；<1 朝基准点运动；>1 背离基准点"
-              "运动。速度恒定，与数值大小无关。原 sizeX。",
+        "EN": "Direction is computed per axis as V_i = (divergence_i - 1) x i0 + velocity_i, "
+              "where i0 is that particle's own spawn coordinate on axis i. divergence is simply "
+              "how strongly particles spread out from / collapse toward the center, scaled by "
+              "where each one spawned: 1 = no effect on this axis; >1 = spreads outward; "
+              "<1 = converges inward, passing through to the other side. Direction only — the "
+              "magnitude does not change the speed.",
+        "ZH": "运动方向按下式逐轴算出：V_i =（divergence_i − 1）× i0 + velocity_i，其中 i0 是"
+              "该粒子生成时在 i 轴上的坐标。divergence 可以简单视作以生成位置为基础的发散/"
+              "收拢强度：1=该轴无效果；>1 向外发散；<1 向内收拢（会穿过中心继续到对面）。"
+              "只影响方向，数值大小不影响速度。",
     },
     ("VELOCITY2D", "divergenceY"): {
-        "EN": "See divergenceX. Formerly sizeY.",
-        "ZH": "见 divergenceX。原 sizeY。",
+        "EN": "See divergenceX.",
+        "ZH": "见 divergenceX。",
     },
     ("VELOCITY2D", "movementDelay"): {
         "EN": "Common values: [0, 1, 2, 5, 16, 20]. Formerly initialVelocityDelay.",

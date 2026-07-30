@@ -462,7 +462,11 @@ assert _schema_size(EXTERN_VELOCITY3D6_SCHEMA) == 80, \
 # 续作的 RangeDivideNum（单轴细分）MHW 没有——MHW 早就是横纵双轴独立细分。
 #
 #   int   typeFlag                           4 B
-#   XYZ   rangeXYZ(0)   6 floats            24 B  # 每轴 min/max（Cylinder 下是 offset/size）
+#   XYZ   rangeXYZ(0)   6 floats            24 B  # 每轴 offset/size：offset=内边界（空腔），
+#         size=生成壳层厚度，外边界=offset+size。用户 2026-07-30 实机测试（offset=20 配
+#         size=0/10/20，壳厚分别为 0/空腔一半/与空腔等厚）确认 Box/Sphere/Cylinder 一致，
+#         推翻旧的"Box/Sphere 是 min/max、只有 Cylinder 是 offset/size"分叉说；RE DTI
+#         dump 的官方名 RangeMinX/RangeMaxX 与此行为对不上，以实测为准
 #   int   shapeType：0=Box,1=Sphere,2=Cylinder,≥3=Point（非严格枚举，3/4/5 均为点）   4 B
 #   int   rangeDivideAxis（原 unknEnum2）：仅 Box 生效，选沿哪个轴细分；不受
 #         localRotation 影响                                                4 B
@@ -482,7 +486,9 @@ assert _schema_size(EXTERN_VELOCITY3D6_SCHEMA) == 80, \
 #         3=并集），大值(如16)细分方式待研究                                    4 B
 #   float radiusEnd                         4 B  ─┐ 仅 Cylinder 生效。两者构成内外半径
 #   float radiusOrigin                      4 B  ─┘ band，顺序互换结果一致（引擎按
-#         min/max 取用，不看谁存在哪个字段）；实际半径 = rangeXYZ.max × 该比例
+#         min/max 取用，不看谁存在哪个字段）；实际半径 = rangeXYZ 该轴的外边界 × 该比例
+#         （旧注释写作 "rangeXYZ.max"，rangeXYZ 改判 offset/size 后需复测确认基准取的是
+#          外边界 offset+size 还是 size 本身）
 #   int   unknBitmaskRadiusRelated：目前视为全形状生效。枚举 0~5，机制不明            4 B
 #   int   unknFlag4：目前视为全形状生效。0/1，机制不明，多数为 1                     4 B
 # Point(shapeType≥3) 例外：以上按形状的过滤规则对它一律不生效（全部字段照常显示）。
@@ -1477,14 +1483,20 @@ EMITTERSHAPE2D_ATTR = Attribute(size=36, fields=[
     Int("typeFlag"),  # 原 unkn0
     # rangeX/Y(+Jitter)：原 offsetX/Y(+Jitter)，用户 2026-07-26 确认对应 EMITTERSHAPE3D.rangeXYZ
     # 同一概念（生成范围），只是 2D 版本存成独立标量而非 XYZ 复合类型（少一根 Z 轴）。
+    # ⚠ 与 rangeXYZ 一样是 offset/size（内边界+厚度，外边界=offset+size），**不是** 固定/随机；
+    # ori_name 的 *Jitter 后缀是历史命名，保留不动（改名会波及预设与已导入的 .blend），
+    # UI 措辞由 panels.py::_OFFSET_SIZE_PAIRS 覆盖成 偏移/尺寸。
     Float("rangeX", label_zh="生成范围 X"),
     Float("rangeXJitter", label_zh="生成范围 X 抖动"),
     Float("rangeY", label_zh="生成范围 Y"),
     Float("rangeYJitter", label_zh="生成范围 Y 抖动"),
     # shapeType：原 unknFlag20，用户 2026-07-26 确认对应 EMITTERSHAPE3D.shapeType：
-    # 0=方形，1=圆形，2+=点。⚠ 全语料 292 例目前只观测到 0/1，未见过 ≥2 的实例。  
+    # 0=方形，1=圆形，2+=点。⚠ 全语料 292 例目前只观测到 0/1，未见过 ≥2 的实例。
     Enum("shapeType", ENUM_SHAPE_TYPE2D, label_zh="形状类型"),
-    Int("spawnCount", label_zh="生成数量"),
+    # rangeDivideHorizontalNum：原 spawnCount（"生成数量"）。用户 2026-07-30 实机测试确认
+    # 它是**等分数量**而非生成个数，与 EMITTERSHAPE3D.rangeDivideHorizontalNum 同一概念的
+    # 2D 版本（2D 只有一根横向维度，故没有 Vertical 对应字段）。
+    Int("rangeDivideHorizontalNum", label_zh="横向等分数量"),
     Int("unknEnum22_0"),  # 3种取值{0:94%,1:2%,2:4%}，语义待定
     Int("unknFixed22_1"),  # 全语料 292 例恒为 0  
 ])

@@ -195,32 +195,30 @@ def _is_matching_jitter(base_name: str, candidate_name: str) -> bool:
     return candidate_name in (base_name + "Jitter", base_name + "_jitter", base_name + "_j")
 
 
-def _sibling_field_value(item, name):
-    """从 item 所属 Object 的 field_items 集合里按名字查另一个字段的当前整数值（枚举/bool/int
-    背板），找不到或取不到时返回 None。用于同一个 attr 内"某字段的显示方式取决于另一个字段的
-    当前取值"这种场景（如 EMITTERSHAPE3D.rangeXYZ 的固定/随机 vs 偏移/尺寸措辞，取决于
-    shapeType，2026-07-30）。"""
-    obj = item.id_data
-    if obj is None or not hasattr(obj, "efx_block"):
-        return None
-    from . import fields as _f
-    for it in obj.efx_block.field_items:
-        if it.ori_name == name:
-            try:
-                return _f._enum_backing_read(it)
-            except Exception:
-                return None
-    return None
+# 少数字节布局上长得像 value+jitter 的配对，语义其实是 offset+size（内边界+厚度，
+# 外边界=offset+size）。EMITTERSHAPE2D.rangeX/Y 是 EMITTERSHAPE3D.rangeXYZ 的 2D 版本，
+# 同一套语义，只是存成独立标量而非 FLOAT6（ori_name 里的 *Jitter 后缀是历史命名，保留
+# 不动以免动到预设/已导入的 .blend；这里只改显示措辞）。
+_OFFSET_SIZE_PAIRS = {
+    ("EMITTERSHAPE2D", "rangeX"),
+    ("EMITTERSHAPE2D", "rangeY"),
+}
 
 
 def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     """
     把 value 字段与紧随其后的 jitter 字段合并成一行两列：友好名 | 固定 | 随机。
     与 XYZ Static/Random 的分组风格一致（rotation X/Y/Z 等各成一行）。
+    _OFFSET_SIZE_PAIRS 里的配对改用 偏移 | 尺寸 措辞。
     """
     fname = _friendly_name(vitem.ori_name, type_name)
     vattr = _SCALAR_PROP_ATTR[vitem.data_type]
     jattr = _SCALAR_PROP_ATTR[jitem.data_type]
+
+    if (type_name, vitem.ori_name) in _OFFSET_SIZE_PAIRS:
+        lbl_a, lbl_b = T("field.offset"), T("field.size")
+    else:
+        lbl_a, lbl_b = T("field.static"), T("field.random")
 
     row = layout.row(align=True)
     row.scale_y = 1.1
@@ -228,8 +226,8 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     split = row.split(factor=0.45)
     split.label(text=fname)
     sub = split.row(align=True)
-    sub.prop(vitem, vattr, text=T("field.static"))
-    sub.prop(jitem, jattr, text=T("field.random"))
+    sub.prop(vitem, vattr, text=lbl_a)
+    sub.prop(jitem, jattr, text=lbl_b)
     _draw_info_icon(row, type_name, vitem.ori_name)
 
 
@@ -521,13 +519,11 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         except Exception:
             pass
 
-        # EMITTERSHAPE3D.rangeXYZ 的两个值不是 static+random：Cylinder(2) 下是
-        # offset+size（外边界=offset+size），其余形状下是 min+max。
+        # EMITTERSHAPE3D.rangeXYZ 的两个值不是 static+random，而是 offset+size：
+        # 内边界=offset、厚度=size、外边界=offset+size。用户 2026-07-30 实机测试确认
+        # 全形状（Box/Sphere/Cylinder）都是这套，不存在"Box/Sphere 是 min/max"的分叉。
         if type_name == "EMITTERSHAPE3D" and item.ori_name == "rangeXYZ":
-            if _sibling_field_value(item, "shapeType") == 2:
-                lbl_a, lbl_b = T("field.offset"), T("field.size")
-            else:
-                lbl_a, lbl_b = T("field.min"), T("field.max")
+            lbl_a, lbl_b = T("field.offset"), T("field.size")
         else:
             lbl_a, lbl_b = T("field.static"), T("field.random")
 
