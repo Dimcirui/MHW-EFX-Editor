@@ -65,12 +65,17 @@ ENUM_HOMING_TARGET = EnumDef("HomingTarget", [
     (2, "World Origin", "世界原点"), 
     (3, "World Origin", "世界原点"),
 ])
+# 2026-07-30 实测重命名：五个值不是五种"力"，而是「以归航目标为球心、半径 =
+# forceFieldRadius 的球」上挂的五种规则。1/3 都会剔除**在球内出生**的粒子（3 额外
+# 关掉球内的转向力）；2/4 是一对，用 forceFieldSpeedScale 缩放速度，2 作用于球内、
+# 4 作用于球外。旧名 Normal/Exclusion/Deceleration/Escape-Catch/Acceleration 里
+# "Acceleration"（加速场）尤其误导——它不加速任何东西，只是把球外的速度缩放掉。
 ENUM_HOMING_FORCEFIELD = EnumDef("HomingForceFieldMode", [
-    (0, "Normal", "普通"), 
-    (1, "Exclusion", "排除场"), 
-    (2, "Deceleration", "减速场"),
-    (3, "Escape-Catch", "逃逸抓取场"), 
-    (4, "Acceleration", "加速场"),
+    (0, "None", "无"),
+    (1, "Cull Spawn Inside", "内部出生剔除"),
+    (2, "Slow Inside", "内部减速"),
+    (3, "No Turn Inside", "内部不转向"),
+    (4, "Slow Outside", "外部减速"),
 ])
 ENUM_HOMING_VANISH = EnumDef("HomingVanishMode", [
     (0, "None", "不触发"), 

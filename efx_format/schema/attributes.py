@@ -1338,29 +1338,55 @@ assert _schema_size(RAYCAST_SCHEMA) == 78, \
 # BT (EFX_Subtypes.bt):
 #   int unknown(4) + int unknown0(4) + long spacer(4) +  
 #   float restoringForce(4) + float speed(4) + float speedMultiplier(4) +
+#     ↑ 本仓库现名 turnRate / initialSpeed / targetSpeed（见下方改名说明）
 #   float f3(4) + float vanishDistance(4) + float forceFieldDistance(4) +
+#     ↑ 现名 forceFieldSpeedScale / vanishRadius / forceFieldRadius
 #   long homingTarget(4) + long vanishMode(4) +
 #   int forceFieldMode(4) + int unknown1(4)
 # = 4+4+4+4+4+4+4+4+4+4+4+4+4 = 52 B ✓
 # Note: SPEC.md confirms HOMING = 56 B (with +12 offset often 0xCDCDCD00),  
 # matches efxfile.py: 4(type)+4+4+4+24+8+8 = 4+52 = 56 full.
 # homingTarget 原名 i0，（2026-07-11）：归航运动始终指向目标点的**实时**位置
-# （非旧假说所说的"触发时捕获定住"）。restoringForce/vanishDistance/vanishMode/
-# forceFieldMode 原名 f0/f4/i1/enableRadialVanish，2026-07-11 按实测语义改名；
-# vanishDistance/forceFieldDistance（原 activationDistance/radius）2026-07-11 二次改名，
-# 分别对应 vanishMode/forceFieldMode 各自的距离阈值。
+# （非旧假说所说的"触发时捕获定住"）。vanishMode/forceFieldMode 原名 i1/
+# enableRadialVanish，2026-07-11 按实测语义改名。
+#
+# ── 运动学模型（2026-07-30 用八角探针系统实测坐实，取代此前的"回复力/弹簧"读法）──
+# 单个粒子的行为：
+#   ① 从生成位置**径直飞向**归航目标，这一段是直线、不转弯；
+#   ② 到达目标的瞬间，获得一个与入射方向**垂直（90°）**的速度；
+#   ③ 之后在这个平面内转圈，角速度 = turnRate，半径 r = v / turnRate，圆在目标点
+#      与入射方向相切，转一整圈回到目标点，如此往复、无衰减。
+#   ④ v 从 initialSpeed 出发（上限被 targetSpeed 钳住）乘法式逼近 targetSpeed：
+#      两者相等 → 严格闭合圆；initialSpeed 更小 → 从小圈向外旋开；任一为 0 → 不动。
+# ⚠ 多粒子的**合成剪影**会呈现四叶草/扁球/圆盘/水平线等图案，那些都不是单粒子行为，
+#   早期基于球形发射器剪影推出的"逐轴简谐振荡 + 绕局部 Y 涡旋"结论已被证伪。
+# ⚠ HOMING 硬依赖同 entry 的 VELOCITY3D（哪怕 V3D 字段全 0），否则粒子没有惯性、
+#   跑到目标点即停。validate.py (5m) 已有对应 WARN。
+#
+# 改名（2026-07-30，依上述实测）：
+#   restoringForce  → turnRate            不是力度，是转弯角速度，单位**度/秒**
+#                                         （rF=360 实测正好每秒一整圈）
+#   speed           → initialSpeed        起始速度，取 min(自身, targetSpeed)
+#   speedMultiplier → targetSpeed         不是倍率，是速度最终收敛到的值；
+#                                         终半径 = targetSpeed / turnRate（线性）
+#   f3              → forceFieldSpeedScale 力场作用区内的速度倍率，0=停住、
+#                                         ≥1=不缩放；仅 forceFieldMode 2/4 用得到
+#                                         （语料 21/21 零例外：mode 2/4 必配 <1，
+#                                          mode 0 的 149 条一个 <1 都没有）
+#   vanishDistance  → vanishRadius        是球半径不是距离，球心=归航目标
+#   forceFieldDistance → forceFieldRadius 同上
 # ─────────────────────────────────────────────────────────────────────────────
 
 HOMING_ATTR = Attribute(size=52, fields=[
     Int("typeFlag"),  # 原 unknown
     Int("section_length", label_zh="段长度"),  # 原 unknown0
     Int("spacer"),
-    Float("restoringForce", label_zh="拉回力度"),  # 原 f0
-    Float("speed", label_zh="初速度"),
-    Float("speedMultiplier", label_zh="速度倍率"),
-    Float("f3"),
-    Float("vanishDistance", label_zh="消失距离"),  # 原 f4 / activationDistance
-    Float("forceFieldDistance", label_zh="力场距离"),  # 原 radius
+    Float("turnRate", label_zh="转向速率"),  # 原 restoringForce / f0；单位度/秒
+    Float("initialSpeed", label_zh="起始速度"),  # 原 speed
+    Float("targetSpeed", label_zh="终速度"),  # 原 speedMultiplier
+    Float("forceFieldSpeedScale", label_zh="力场速度倍率"),  # 原 f3
+    Float("vanishRadius", label_zh="消失半径"),  # 原 vanishDistance / f4 / activationDistance
+    Float("forceFieldRadius", label_zh="力场半径"),  # 原 forceFieldDistance / radius
     Enum("homingTarget", ENUM_HOMING_TARGET, label_zh="归航目标"),  # 原 i0
     Enum("vanishMode", ENUM_HOMING_VANISH, label_zh="消失模式"),  # 原 i1
     Enum("forceFieldMode", ENUM_HOMING_FORCEFIELD, label_zh="力场模式"),  # 原 enableRadialVanish

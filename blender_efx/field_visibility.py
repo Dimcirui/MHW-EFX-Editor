@@ -11,9 +11,10 @@ blender_efx/field_visibility.py — 按 mode 字段过滤生效字段（Route 2�
 未列出的字段恒显示；mode 字段本身恒显示；读不到模式值时保守显示。
 
 ⚠ 置信度：VELOCITY3D/2D 的 velocityType 门控有 schema 注释/实测支撑（velocityType=0 方向类
-字段、=1 offset/size 类字段）。UVCONTROL（uv2_enable 直接开关 uv2 组）、TRANSFORM3D
-（enableVelocityBitflag 位名即"启用速度/加速度"）为强语义推断。HOMING/ROTATEANIM/RANDOMFIX
-因 mode→字段关系尚不明确，**暂不门控**（默认全显示），待实机/RE 补充。
+字段、=1 offset/size 类字段）。EMITTERSHAPE3D 的 shapeType 门控、HOMING 的三条门控均为实机
+测试确认。UVCONTROL（uv2_enable 直接开关 uv2 组）、TRANSFORM3D（enableVelocityBitflag 位名
+即"启用速度/加速度"）为强语义推断。RANDOMFIX 因 mode→字段关系尚不明确，**暂不门控**
+（默认全显示），待实机/RE 补充。
 """
 
 # ── 谓词（模块级具名，便于复用/可读）───────────────────────────────────────────
@@ -22,6 +23,7 @@ def _eq1(v): return v == 1          # 枚举取 1
 def _eq3(v): return v == 3          # 枚举取 3
 def _in01(v): return v in (0, 1)    # 枚举取 0 或 1
 def _in23(v): return v in (2, 3)    # 枚举取 2 或 3
+def _in24(v): return v in (2, 4)    # 枚举取 2 或 4
 def _truthy(v): return v != 0       # 布尔/开关（≠0 生效）
 def _bit0(v): return bool(v & 0x1)  # 位 0
 def _bit1(v): return bool(v & 0x2)  # 位 1
@@ -80,10 +82,14 @@ FIELD_VISIBILITY = {
         "rotation_velocity_modifier":    ("enableVelocityBitflag", _bit1),
         "scale_velocity_modifier":       ("enableVelocityBitflag", _bit1),
     },
-    # HOMING：消失模式=0(不触发)时隐藏消失距离；力场模式=0(普通)时隐藏力场距离。
+    # HOMING：消失模式=0(不触发)时隐藏消失半径；力场模式=0(无)时隐藏力场半径；
+    # 力场速度倍率只被「内部减速(2)」「外部减速(4)」两个模式用到，其余模式隐藏
+    # （用户 2026-07-30 实测：mode 1/3 下改它看不出任何变化；语料 21/21 零例外，
+    #  mode 2/4 必配 <1，mode 0 的 149 条一个 <1 都没有）。
     "HOMING": {
-        "vanishDistance":     ("vanishMode", _truthy),
-        "forceFieldDistance": ("forceFieldMode", _truthy),
+        "vanishRadius":          ("vanishMode", _truthy),
+        "forceFieldRadius":      ("forceFieldMode", _truthy),
+        "forceFieldSpeedScale":  ("forceFieldMode", _in24),
     },
     # EMITTERSHAPE3D：各字段按 shapeType（0=Box/1=Sphere/2=Cylinder/>=3=Point）适用范围
     # 门控，用户实机测试确认(2026-07-30)。Point 全豁免不过滤（_shape3d 已内置）。

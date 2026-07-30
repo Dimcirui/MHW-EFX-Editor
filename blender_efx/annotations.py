@@ -674,11 +674,10 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── HOMING ───────────────────────────────────────────────────────────────
-    # 字段语义来自全语料 212 个官方块统计 + 系统性实测（2026-07 重新解释，
-    # 推翻此前 2026-06 的"轨道力学"假说：不是角速度/轨道半径，而是一个指向
-    # 目标点实时位置的力，restoringForce 是回复力强度，speed/speedMultiplier 是
-    # 字面上的速度/加速度）。typeFlag/section_length/spacer 是大部分 attribute 都有的
-    # 头部字段，见下方通用说明。
+    # 字段语义来自全语料 212 个块统计 + 八角探针系统实测（2026-07-30 定稿）。
+    # 运动学模型与改名依据见 efx_format/schema/attributes.py 的 Homing schema 注释；
+    # 调查过程记在 docs/ATTRIBUTE_BEHAVIOR_NOTES.md。
+    # typeFlag/section_length/spacer 是大部分 attribute 都有的头部字段，见下方通用说明。
     ("HOMING", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
               "marker rather than a tunable value. Exact value semantics unconfirmed.",
@@ -693,63 +692,61 @@ FIELD_ANNOTATIONS = {
         "EN": "Always 0xCDCDCD00 — do not modify",
         "ZH": "恒为 0xCDCDCD00，请勿修改",
     },
-    ("HOMING", "restoringForce"): {
-        "EN": "Pull-back force degree that pulls particles back toward the homing "
-              "target after they pass it. 0=no pull-back at all (particles fly straight "
-              "through and never return). Higher=stronger pull-back, converging to a "
-              "smaller resting radius around the target. Common range 90–360. "
-              "Formerly f0.",
-        "ZH": "把粒子拉回归航目标的拉回力度（越过目标点之后生效）。0=完全没有拉回力"
-              "（粒子直线飞离，不会再回来）；值越大拉回越强，最终停留半径越小。"
-              "常见取值在 90~360 之间。原名 f0。",
+    ("HOMING", "turnRate"): {
+        "EN": "The particle first flies straight at the homing target; the moment it "
+              "arrives it gains a velocity perpendicular to its incoming path, then "
+              "circles in that plane, returning to the target once per revolution. This "
+              "field is the angular rate of that turn, in degrees per second (360 = one "
+              "full revolution per second). Orbit radius = speed / turn rate, so higher "
+              "values turn tighter and faster.",
+        "ZH": "粒子先径直飞向归航目标；到达目标的瞬间获得一个与入射方向垂直的速度，之后"
+              "在这个平面内转圈，每绕一圈回到目标点，如此往复。本字段是转弯的角速度，"
+              "单位是度/秒（360 = 每秒转一整圈）。轨道半径 = 速度 ÷ 转向速率，所以数值"
+              "越大，转得越快、圈子越小。",
     },
-    ("HOMING", "speed"): {
-        "EN": "Speed toward the homing target. Negative values cause particles to "
-              "escape outward instead of homing in.",
-        "ZH": "朝归航目标运动的速度。负值会让粒子向外逃逸，而不是被吸引过去。",
+    ("HOMING", "initialSpeed"): {
+        "EN": "The starting speed of the homing motion, capped by the target speed — a "
+              "higher value has no extra effect, the particle simply starts at the target "
+              "speed. Below the target speed the orbit starts small and spirals outward. "
+              "If this or the target speed is 0 the particle does not move.",
+        "ZH": "归航运动的起始速度，上限被终速度钳住——填得比终速度大不会有额外效果，粒子"
+              "一开始就以终速度运动。低于终速度时，轨道从小圈开始向外旋开。本字段或终"
+              "速度为 0 时，粒子不会运动。",
     },
-    ("HOMING", "speedMultiplier"): {
-        "EN": "Acceleration toward the homing target. 0 or negative makes particles "
-              "stay stationary (no matter what speed is set to).",
-        "ZH": "朝归航目标运动的加速度。0 或负值会让粒子保持静止（无论 speed 设成多少）。",
+    ("HOMING", "targetSpeed"): {
+        "EN": "The speed the homing motion settles at, which sets the orbit size "
+              "(radius = speed / turn rate). Equal to the initial speed, the orbit is a "
+              "closed circle; larger than it, the orbit spirals outward and approaches "
+              "the size this speed implies. If this or the initial speed is 0 the "
+              "particle does not move.",
+        "ZH": "归航运动最终稳定到的速度，决定轨道大小（半径 = 速度 ÷ 转向速率）。与起始"
+              "速度相等时轨道是严格闭合的圆；大于起始速度时，轨道从小圈向外旋开、逐渐"
+              "逼近这个速度对应的大小。本字段或起始速度为 0 时，粒子不会运动。",
     },
-    ("HOMING", "f3"): {
-        "EN": "No observed effect (0.0–1.0 tested). Meaning not identified — "
-              "deliberately left untranslated. Common value 1.0 (84%).",
-        "ZH": "未观察到可见影响（已测 0.0–1.0）。含义未确认，故意不给译名。"
-              "常见取值为 1.0（84%）。",
+    ("HOMING", "forceFieldSpeedScale"): {
+        "EN": "The factor applied to particle speed inside the force field's affected "
+              "region; only used when the force field mode is Slow Inside or Slow "
+              "Outside. 0 stops the particle, 1 leaves the speed untouched, and values "
+              "above 1 have no extra effect. Which side of the sphere is affected is set "
+              "by the mode.",
+        "ZH": "力场作用区域内粒子速度的缩放比例，仅在力场模式为「内部减速」或「外部减速」"
+              "时生效。0 = 速度归零，1 = 不缩放，大于 1 没有额外效果。作用在球内还是球外"
+              "由力场模式决定。",
     },
-    ("HOMING", "vanishDistance"): {
-        "EN": "Distance threshold from the homing target: when a particle's distance "
-              "to the target shrinks to vanishDistance, vanishMode's effect "
-              "triggers (see vanishMode). Particles disappear almost immediately if "
-              "vanishDistance is close to the emitter shape's spawn radius, while a "
-              "small vanishDistance (e.g. <5) leaves a small fraction of particles "
-              "persisting (they never quite reach that distance). Common value 50 (72%). "
-              "Formerly f4/activationDistance.",
-        "ZH": "距归航目标的距离阈值：当粒子与目标的距离缩小到 vanishDistance 时，"
-              "触发 vanishMode 的效果（见 vanishMode）。若 vanishDistance 接近发射"
-              "形状的出生半径，粒子几乎刚出生就消失；vanishDistance 较小（如 <5）"
-              "时会有少部分粒子不消失（它们运动过程中没有真正缩小到这个距离）。"
-              "常见取值为 50（72%）。原名 f4/activationDistance。",
+    ("HOMING", "vanishRadius"): {
+        "EN": "Radius of the vanish-check sphere, centred on the homing target. A "
+              "particle entering it triggers the vanish check; the consequence is set by "
+              "the vanish mode. Set it close to the emitter's spawn radius and particles "
+              "vanish almost as soon as they spawn; set it very small (below ~5) and a "
+              "few particles never get close enough to trigger at all.",
+        "ZH": "消失判定球体的半径，球心在归航目标上。粒子进入这个球即触发消失判定，后果由"
+              "消失模式决定。取值接近发射器的出生半径时，粒子几乎刚出生就消失；取值很小"
+              "（低于 5 左右）时会有少部分粒子始终靠不够近、不触发判定。",
     },
-    ("HOMING", "forceFieldDistance"): {
-        "EN": "Force-field boundary radius, meaning depends on forceFieldMode's mode: "
-              "1=exclusion field (particles spawned outside this radius vanish "
-              "immediately, checked only at spawn); 2=deceleration field (particles "
-              "entering this boundary slow down); 3=escape-catch field (particles "
-              "escaping outward are not forcibly dragged back by restoringForce — they "
-              "keep escaping until they hit this boundary, then get redirected back "
-              "toward the target; restoringForce still matters here, since "
-              "restoringForce=0 means an escaped particle is never caught at all); "
-              "4=acceleration field (particles entering this boundary speed up). "
-              "Common value 1000 (71%). Formerly radius.",
-        "ZH": "力场边界半径，含义取决于力场模式（forceFieldMode）：1=排除场"
-              "（出生时在此半径外的粒子直接消失，只在出生时判定）；2=减速场（进入此边界"
-              "的粒子减速）；3=逃逸抓取场（逃逸中的粒子不会被 restoringForce 强行拉回，"
-              "会一直逃逸到碰到这个边界才被转向拉回目标；但 restoringForce 依然起作用"
-              "——restoringForce=0 时逃逸的粒子完全不会被抓回来）；4=加速场（进入此边界"
-              "的粒子加速）。常见取值为 1000（71%）。原名 radius。",
+    ("HOMING", "forceFieldRadius"): {
+        "EN": "Radius of the force field sphere, centred on the homing target. What the "
+              "sphere does is chosen by the force field mode.",
+        "ZH": "力场球体的半径，球心在归航目标上。这个球做什么由力场模式决定。",
     },
     ("HOMING", "homingTarget"): {
         "EN": "Homing target = (homingTarget mod 4): 0=spawn point (emitter pos), "
@@ -763,38 +760,33 @@ FIELD_ANNOTATIONS = {
               "官方用值：0=83%，1=14%，2=4%。",
     },
     ("HOMING", "vanishMode"): {
-        "EN": "Vanish mode, triggered when a particle's distance to the homing "
-              "target reaches vanishDistance (see vanishDistance). "
-              "0=nothing happens, particles never vanish this way. "
-              "1=cancels an otherwise-infinite LIFE at that moment, but LIFE's duration "
-              "timer keeps running normally from spawn (not reset) — if the duration "
-              "already elapsed by the time of contact, the particle vanishes "
-              "immediately; otherwise it keeps counting down as normal and vanishes "
-              "when the duration ends. "
-              "2=particle vanishes immediately on contact. "
-              "Official: 0=72%, 2=27%, 1=1%. Formerly i1.",
-        "ZH": "消失模式，当粒子与归航目标的距离缩小到 vanishDistance 时触发"
-              "（见 vanishDistance）。0=不触发，粒子不会因此消失；"
-              "1=触发那一刻取消原本的无限寿命，但 LIFE 的持续时间计时器从出生起就正常"
-              "走时（不会重置/重新开始）——如果触发时持续时间已经到了，粒子立即消失；"
-              "没到的话就继续正常计时，到时间后再消失；2=触发瞬间粒子立即消失。"
-              "官方：0=72%，2=27%，1=1%。原名 i1。",
+        "EN": "What happens when a particle enters the vanish-check sphere (see vanish "
+              "radius). None performs no check and particles never vanish this way. "
+              "Cancel Infinite Life drops an otherwise-endless LIFE at that moment, but "
+              "LIFE's duration timer has been running from spawn and is not reset — if "
+              "the duration has already elapsed the particle vanishes at once, otherwise "
+              "it keeps counting down and vanishes when the duration ends. Vanish "
+              "Immediately removes the particle on the spot.",
+        "ZH": "粒子进入消失判定球（半径见消失半径）后的后果。「不触发」= 不做判定，粒子不会"
+              "因此消失；「取消无限寿命」= 触发那一刻取消原本的无限寿命，但 LIFE 的持续时间"
+              "计时器从出生起就正常走时、不会重置——如果触发时持续时间已经到了，粒子立即"
+              "消失，没到就继续计时到时间再消失；「立即消失」= 触发瞬间当场消失。",
     },
     ("HOMING", "forceFieldMode"): {
-        "EN": "Force field mode, changes what forceFieldDistance means (see "
-              "forceFieldDistance). 0=normal (no special force-field behavior; at high "
-              "restoringForce particles stay orbiting tightly near the target). "
-              "1=exclusion field. 2=deceleration field. 3=escape-catch field "
-              "(restoringForce's pull-back is partially disabled — escaping particles "
-              "are not dragged back until they hit the forceFieldDistance boundary). "
-              "4=acceleration field. "
-              "Official: 0=73%, 3=10%, 2=8%, 1=7%, 4=2%. Formerly enableRadialVanish.",
-        "ZH": "力场模式，决定 forceFieldDistance 字段的含义（见 forceFieldDistance）。"
-              "0=普通（无特殊力场行为；同样很高的 restoringForce 下粒子基本只在目标点"
-              "附近运动）；1=排除场；2=减速场；3=逃逸抓取场（restoringForce 的拉回力"
-              "在一定程度上失效——逃逸的粒子不会被强行拉回，直到碰到 forceFieldDistance"
-              " 边界才被拉回）；"
-              "4=加速场。官方：0=73%，3=10%，2=8%，1=7%，4=2%。原名 enableRadialVanish。",
+        "EN": "The rule attached to the force field sphere (centred on the homing "
+              "target, see force field radius). Cull Spawn Inside removes particles born "
+              "inside the sphere and leaves ones flying in from outside untouched. No "
+              "Turn Inside removes the turning force inside the sphere so particles coast "
+              "straight, then snaps them back the moment they leave; it also culls "
+              "particles born inside, which you can avoid by moving the spawn range "
+              "outside the sphere. Slow Inside and Slow Outside scale particle speed by "
+              "the force field speed scale, acting inside and outside the sphere "
+              "respectively.",
+        "ZH": "挂在力场球体（球心=归航目标，半径见力场半径）上的规则。「内部出生剔除」= 在"
+              "球内出生的粒子直接消失，从球外飞进来的不受影响。「内部不转向」= 球内不受"
+              "转向力、粒子直线滑行，一出球立刻被拉回；球内出生的粒子同样会消失，把生成"
+              "范围挪到球外即可避免。「内部减速」和「外部减速」= 用力场速度倍率缩放粒子"
+              "速度，前者作用于球内，后者作用于球外。",
     },
     ("HOMING", "unknownEnum1"): {
         "EN": "Almost always 0 (97% of official attributes)",
