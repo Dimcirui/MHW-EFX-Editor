@@ -10,7 +10,7 @@ from .fields_model import (
 )
 from .enums import (
     ENUM_SHAPE_TYPE3D, ENUM_RANGE_DIVIDE_AXIS, ENUM_ROTATION_CORRECT_TYPE,
-    ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_PTLIFE_STATUS,
+    ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_IMPACT_PLAY_TRIGGER_MODE, ENUM_PTLIFE_STATUS,
     ENUM_RAYCAST_DIR, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
     ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE,
@@ -1019,9 +1019,18 @@ assert _schema_size(PLSNOW_SCHEMA) == 84, \
 #   int unkn38(4) + int unkn4[2](8) + int ieIndex(4) + int unkn6[3](12)
 # = 32+12+8+32+4+8+4+12 = 112 B ✓
 #
-# unkn2[2] 的第一个 int（原 unknEnum2_0）2026-07 用户实机测试确认为 bounceCountLimit：
-# 反弹次数上限，如=2则仅允许弹跳2次，第3次触地强行停留（不再是纯粹未知枚举）。
+# unkn2[2] 的第一个 int（原 unknEnum2_0→bounceCountLimit）2026-07-31 用户实机测试确认为
+# bounceCount：反弹次数，如=2则反弹2次，第3次触地触发 physicsEnum 收尾行为（不再是纯粹未知枚举）。
 # 语料分布 0~5 集中(98.8%)，个别到 20/25，与"反弹次数"语义吻合。
+#
+# 2026-07-31 用户实机测试确认 impactPlayTriggerMode 组（原 unkn38/unknBitmask4_0/unknFlag4_1）：
+# ieIndex 引用的 Play 在反弹序列中的触发时机，行为随 physicsEnum 而不同——physicsEnum=0（穿透）
+# 时一次性判定全部反弹，其余 physicsEnum 值下逐次反弹判定：
+#   0=每次触地都触发；
+#   1=前 N 次触地触发，N 由 impactPlayTriggerCount ± impactPlayTriggerCountJitter 决定；
+#   2=仅最后一次触地触发。
+# impactPlayTriggerCountJitter（原疑似 impactPlayTriggerCountRandom 布尔开关）2026-07-31
+# 用户实机测试确认实为 impactPlayTriggerCount 的 jitter，非开关，已并入该组按 value+jitter 惯例改名。
 # ─────────────────────────────────────────────────────────────────────────────
 
 PTCOLLISION_ATTR = Attribute(size=112, fields=[
@@ -1031,24 +1040,29 @@ PTCOLLISION_ATTR = Attribute(size=112, fields=[
     Int("unkn03"),
     Int("unknEnum04"),
     Int("unknFixed05"),
-    Float("unkn06"),
-    Float("unkn07"),
-    Float("unkn1_0"),
-    Float("unkn1_1"),
-    Float("unkn1_2"),
-    Int("bounceCountLimit", label_zh="反弹次数上限"),  # 原 unknEnum2_0，2026-07 用户实机测试确认为反弹次数上限（如=2则仅允许弹跳2次，第3次触地强行停留）
-    Int("unknEnum2_1"),
+    # 2026-07-31 用户实机测试确认：碰撞面沿 -Y 轴的投影偏移，正值向下偏移、负值向上偏移。
+    Float("projectionOffset", label_zh="投影偏移"),  # 原 unkn06
+    # 2026-07-31 用户实机测试：固定同一个值不产生不同表现（排除 jitter），但不同取值会
+    # 产生"无变化"/"产生水平碰撞"/"抬高碰撞水平面"/"改变 action 触发点"等多种质变效果——
+    # 疑似跨越不同数值区间触发不同行为模式，非线性距离参数。具体分段边界未测。
+    Float("projectionDist", label_zh="投影距离"),  # 原 unkn07
+    Float("unkn1_0"),  # 2026-07-31 用户实机测试排除：不是碰撞判定 radius
+    Float("unkn1_1"),  # 2026-07-31 用户实机测试排除：不是碰撞判定 radius
+    Float("unkn1_2"),  # 2026-07-31 用户实机测试排除：不是碰撞判定 radius
+    Int("bounceCount", label_zh="反弹次数"),  # 原 unknEnum2_0→bounceCountLimit，2026-07-31 用户建议去掉"上限"（配合 physicsEnum 收尾行为，反弹满该次数后触发对应收尾）
+    Int("bounceCountJitter", label_zh="反弹次数抖动"),  # 原 unknEnum2_1→bounceCountLimitJitter，2026-07-31 用户实机测试确认为 bounceCount 的抖动
     Float("bounceElasticity", label_zh="弹跳弹性"),
     Float("bounceElasticityJitter", label_zh="弹跳弹性抖动"),
+    # 2026-07-31 用户实机测试确认：跟 bounceElasticity 效果完全相同，两者是叠加关系（非倍率，维持原名）。
     Float("bounceElasticityMultiplier", label_zh="弹跳弹性倍率"),
     Float("horizontalBounce", label_zh="水平弹跳"),
     Float("unkn34"),
     Float("unkn35"),
     Float("unkn36"),
     Float("unkn37"),
-    Int("unknEnum38"),
-    Int("unknBitmask4_0"),
-    Bool("unknFlag4_1"),
+    Enum("impactPlayTriggerMode", ENUM_IMPACT_PLAY_TRIGGER_MODE, label_zh="触地触发模式"),  # 原 unknEnum38
+    Int("impactPlayTriggerCount", label_zh="触地触发次数"),  # 原 unknBitmask4_0，非位掩码——实测是次数 N，配合 impactPlayTriggerMode=1 使用
+    Int("impactPlayTriggerCountJitter", label_zh="触地触发次数抖动"),  # 原 unknFlag4_1→impactPlayTriggerCountRandom，2026-07-31 用户实机测试确认为 impactPlayTriggerCount 的 jitter
     Int("ieIndex", label_zh="碰撞触发 Play"),
     Int("unknEnum6_0"),
     Int("unknEnum6_1"),
@@ -1474,7 +1488,9 @@ assert _schema_size(SHOVEL_SCHEMA) == 70, \
 
 UVCONTROL_ATTR = Attribute(size=236, fields=[
     # uv1 Material_Animation_Data
-    Int("uv1_unkn0"),  # uv1/uv2 并列子结构首字段，非块级 typeFlag，不套用该命名
+    # 2026-07-31 全语料扫描(official 1784例)：18 种取值(1~26)从未为 0，覆盖低4位几乎
+    # 全部非零组合+罕见第5位；具备位掩码特征但具体位含义未实机确认，先只改名不拆位。
+    Int("uv1_unknFlag", label_zh="UV1 未知标志"),  # 原 uv1_unkn0
     Raw("uv1_initialPosition", ('f', 4), label_zh="UV1 初始位置"),
     Raw("uv1_speed", ('f', 4), label_zh="UV1 速度"),
     Raw("uv1_acceleration", ('f', 4), label_zh="UV1 加速度"),
@@ -1489,16 +1505,18 @@ UVCONTROL_ATTR = Attribute(size=236, fields=[
     Raw("uv2_scale", ('f', 4), label_zh="UV2 缩放"),
     Raw("uv2_scaleSpeed", ('f', 4), label_zh="UV2 缩放速度"),
     Raw("uv2_scaleAcceleration", ('f', 4), label_zh="UV2 缩放加速度"),
-    # extra fields
-    Bool("unknFlag2"),
-    Float("extraMaterialInitialPosition", label_zh="附加材质初始位置"),
-    Float("extraMaterialInitialPositionJitter", label_zh="附加材质初始位置抖动"),  # 原 extraMaterialInitialPositionJ（后缀不规范，未被通用 Jitter 配对识别）
-    Float("extraMaterialSpeed", label_zh="附加材质速度"),
-    Float("extraMaterialSpeedJitter", label_zh="附加材质速度抖动"),
-    Float("opacity", label_zh="不透明度"),
-    Float("opacityJitter", label_zh="不透明度抖动"),
-    Float("opacityAcceleration", label_zh="不透明度加速度"),
-    Float("opacityAccelerationJitter", label_zh="不透明度加速度抖动"),
+    # extra fields — flowmap 8 件套（2026-07-31 改名，命名对齐 RIBBON/RIBBONBLADE/
+    # BILLBOARD2D/BILLBOARD3D/PLANE 同款 flowmap 组：Speed/Acceleration/Strength/
+    # StrengthAcceleration 各配 Jitter，另加 enableFlowmap 总开关）。
+    Bool("enableFlowmap", label_zh="启用流动贴图"),  # 原 unknFlag2
+    Float("flowmapSpeed", label_zh="流动贴图速度"),  # 原 extraMaterialInitialPosition
+    Float("flowmapSpeedJitter", label_zh="流动贴图速度抖动"),  # 原 extraMaterialInitialPositionJitter
+    Float("flowmapAcceleration", label_zh="流动贴图加速度"),  # 原 extraMaterialSpeed
+    Float("flowmapAccelerationJitter", label_zh="流动贴图加速度抖动"),  # 原 extraMaterialSpeedJitter
+    Float("flowmapStrength", label_zh="流动贴图强度"),  # 原 opacity
+    Float("flowmapStrengthJitter", label_zh="流动贴图强度抖动"),  # 原 opacityJitter
+    Float("flowmapStrengthAcceleration", label_zh="流动贴图强度加速度"),  # 原 opacityAcceleration
+    Float("flowmapStrengthAccelerationJitter", label_zh="流动贴图强度加速度抖动"),  # 原 opacityAccelerationJitter
 ])
 UVCONTROL_SCHEMA = UVCONTROL_ATTR.schema
 assert _schema_size(UVCONTROL_SCHEMA) == 236, \

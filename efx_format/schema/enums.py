@@ -36,11 +36,24 @@ ENUM_SHAPE_TYPE2D = EnumDef("ShapeType2D", [
     (1, "Circle", "圆形"), 
     (2, "Point", "点"),
 ])
+# 2026-07-31 用户实机测试重新整理（旧 5 个名字都不准）：反弹次数(bounceCount)次后，
+# 最后一次接触地面（例如反弹 2 次，实际共接触地面 3 次）触发下列收尾行为：
+# 0=直接穿透，不反弹；1=反弹完毕后最后一次触地强制消亡；2=反弹完毕后直接渐隐+消亡；
+# 3=反弹完毕后停留在地面；4=反弹完毕后直接坠落穿透（不再判定地面碰撞），不强制消亡——
+# 若粒子寿命无限则持续存在，跟 2 的区别就是不强制杀死粒子。
 ENUM_COLLISION_PHYSICS = EnumDef("CollisionPhysics", [
-    (0, "Fall Through", "穿透坠落"), 
-    (1, "Bounce and Fade", "反弹并渐隐"),
-    (2, "Bounce and Fall Through", "反弹后穿透坠落"), 
-    (3, "Remaining after Bouncing", "反弹后残留"),
+    (0, "Fall Through", "穿透坠落"),
+    (1, "Bounce Then Kill", "反弹后强制消亡"),
+    (2, "Bounce Then Fade", "反弹后渐隐消亡"),
+    (3, "Bounce Then Stay", "反弹后停留地面"),
+    (4, "Bounce Then Fall Through", "反弹后穿透坠落"),
+])
+# PTCOLLISION.impactPlayTriggerMode：ieIndex 引用的 Play 在反弹序列里何时触发。
+# 2026-07-31 用户实机测试确认；具体行为见 attributes.py PtCollision schema 头注释。
+ENUM_IMPACT_PLAY_TRIGGER_MODE = EnumDef("ImpactPlayTriggerMode", [
+    (0, "Every Impact", "每次触地"),
+    (1, "Early Impacts", "前 N 次触地"),
+    (2, "Final Impact", "仅最后一次触地"),
 ])
 ENUM_PTLIFE_STATUS = EnumDef("PtLifeStatus", [
     (0, "On Spawn", "生成时"), 

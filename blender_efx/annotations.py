@@ -577,16 +577,14 @@ FIELD_ANNOTATIONS = {
 
     # ─── PTCOLLISION ──────────────────────────────────────────────────────────
     # PtCollision (EFX_Subtypes.bt)
-    ("PTCOLLISION", "physicsEnum"): {
-        "EN": "0=Fall Through,  1=Bounce and Fade,  "
-              "2=Bounce and Fall Through,  3=For Remaining after Bouncing (set multiplier to 0)",
-        "ZH": "0=穿透坠落,  1=反弹并渐隐,  "
-              "2=反弹后穿透坠落,  3=用于反弹后的残留（将乘数设为 0）",
+    ("PTCOLLISION", "projectionOffset"): {
+        "EN": "Offsets the collision plane along -Y. Positive values shift it down, "
+              "negative values shift it up.",
+        "ZH": "沿 -Y 轴偏移碰撞面。正值向下偏移，负值向上偏移。",
     },
-    ("PTCOLLISION", "bounceCountLimit"): {
-        "EN": "Max bounce count. E.g. 2 = only 2 bounces allowed; the 3rd ground "
-              "contact forces the particle to stay.",
-        "ZH": "反弹次数上限。例如=2 时仅允许弹跳 2 次，第 3 次触地强行停留。",
+    ("PTCOLLISION", "projectionDist"): {
+        "EN": "Complex mechanism, affects multiple behaviors, not yet clear.",
+        "ZH": "机制复杂，会改变多种表现，暂时不明确。",
     },
     ("PTCOLLISION", "bounceElasticity"): {
         "EN": "Bounce Elasticity On Collision",
@@ -596,9 +594,20 @@ FIELD_ANNOTATIONS = {
         "EN": "Bounce Elasticity Jitter",
         "ZH": "反弹弹性随机偏差",
     },
-    ("PTCOLLISION", "horizontalBounce"): {
-        "EN": "Multiplier of bounce elasticity",
-        "ZH": "反弹弹性的乘数",
+    ("PTCOLLISION", "bounceElasticityMultiplier"): {
+        "EN": "Same effect as bounceElasticity, the two add together.",
+        "ZH": "作用与 bounceElasticity 类似，叠加。",
+    },
+    ("PTCOLLISION", "impactPlayTriggerMode"): {
+        "EN": "0=Triggers on every check.  1=Triggers on the first N checks, N determined "
+              "jointly by impactPlayTriggerCount and impactPlayTriggerCountJitter.  "
+              "2=Triggers only on the last check.",
+        "ZH": "0=每次判定都触发。1=前 N 次判定触发，具体次数由 impactPlayTriggerCount 和 "
+              "impactPlayTriggerCountJitter 共同决定。2=仅最后一次判定触发。",
+    },
+    ("PTCOLLISION", "impactPlayTriggerCount"): {
+        "EN": "Fixed number of checks when impactPlayTriggerMode=1.",
+        "ZH": "impactPlayTriggerMode=1 时的固定判定次数。",
     },
     ("PTCOLLISION", "ieIndex"): {
         "EN": "0=Call ActionEFX Index?,  0xFFFFFFFF=Null",
@@ -650,9 +659,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Multiplies speed every second (UV2)",
         "ZH": "每秒对速度做乘法（UV2）",
     },
-    ("UVCONTROL", "opacityAcceleration"): {
-        "EN": "Multiplies opacity every second",
-        "ZH": "每秒对不透明度做乘法",
+    ("UVCONTROL", "flowmapStrengthAcceleration"): {
+        "EN": "Flowmap strength acceleration. Part of the flowmap octet. Formerly opacityAcceleration.",
+        "ZH": "流动贴图强度加速度。属于 flowmap 八件套之一。原名 opacityAcceleration。",
     },
 
     # ─── EMITTERSHAPE2D ───────────────────────────────────────────────────────
@@ -3152,10 +3161,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [20, 21, 28, 31, 34].",
         "ZH": "常见取值为 [20, 21, 28, 31, 34]。",
     },
-    ("PTCOLLISION", "bounceElasticityMultiplier"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
     ("PTCOLLISION", "unknEnum04"): {
         "EN": "Common values: [0, 1, 10, 15].",
         "ZH": "常见取值为 [0, 1, 10, 15]。",
@@ -3167,10 +3172,6 @@ FIELD_ANNOTATIONS = {
     ("PTCOLLISION", "unkn1_2"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
-    },
-    ("PTCOLLISION", "unknEnum2_1"): {
-        "EN": "Common values: [0, 1, 2, 3, 10].",
-        "ZH": "常见取值为 [0, 1, 2, 3, 10]。",
     },
     ("PTCOLLISION", "unkn34"): {
         "EN": "Common range: 0~1.",
@@ -3187,10 +3188,6 @@ FIELD_ANNOTATIONS = {
     ("PTCOLLISION", "unkn37"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
-    },
-    ("PTCOLLISION", "unknFlag4_1"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
     },
     ("PTCOLLISION", "unknEnum6_0"): {
         "EN": "Common values: [0, 2, 3, 4, 5].",
@@ -3956,21 +3953,27 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("UVCONTROL", "extraMaterialInitialPositionJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("UVCONTROL", "flowmapSpeedJitter"): {
+        "EN": "Jitter for flowmapSpeed. Part of the flowmap octet. Common range: 0~1. "
+              "Formerly extraMaterialInitialPositionJitter.",
+        "ZH": "flowmapSpeed 的抖动。属于 flowmap 八件套之一。常见取值在 0~1 之间。"
+              "原名 extraMaterialInitialPositionJitter。",
     },
-    ("UVCONTROL", "extraMaterialSpeed"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("UVCONTROL", "flowmapAcceleration"): {
+        "EN": "Flowmap acceleration. Part of the flowmap octet. Common range: 0~1. "
+              "Formerly extraMaterialSpeed.",
+        "ZH": "流动贴图加速度。属于 flowmap 八件套之一。常见取值在 0~1 之间。"
+              "原名 extraMaterialSpeed。",
     },
-    ("UVCONTROL", "opacityJitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("UVCONTROL", "flowmapStrengthJitter"): {
+        "EN": "Jitter for flowmapStrength. Part of the flowmap octet. Common range: 0~100. "
+              "Formerly opacityJitter.",
+        "ZH": "flowmapStrength 的抖动。属于 flowmap 八件套之一。常见取值在 0~100 之间。"
+              "原名 opacityJitter。",
     },
-    ("UVCONTROL", "unknFlag2"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+    ("UVCONTROL", "enableFlowmap"): {
+        "EN": "Master switch for the flowmap scroll. Common values: 0/1. Formerly unknFlag2.",
+        "ZH": "流动贴图的总开关。常见取值为 0/1。原名 unknFlag2。",
     },
     ("UVCONTROL", "uv2_enable"): {
         "EN": "1860-sample corpus scan: clean binary 0/1 distribution — likely uv2 sub-channel on/off switch.",
