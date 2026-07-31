@@ -5,7 +5,7 @@ type    = "add-on"
 
 name     = "MHW EFX Editor"
 tagline  = "Import and export Monster Hunter World EFX effect files"
-version  = "0.5.2"
+version  = "0.5.3"
 
 maintainer = "Dimcirui"
 
