@@ -1450,6 +1450,34 @@ def _read_item_value(item: EFXFieldItem, dtype: str, spec):
 # rebuild_data_bytes  —  按字段重建 data_bytes（L1.1b 核心路径）
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _resolve_renamed_spec(block_props, spec_map: dict, item):
+    """
+    字段改名导出兼容层（见 field_rename_aliases.py）：item.ori_name 在当前 schema
+    （spec_map）里查不到时，按 (type_name, 旧名) 查改名表找当前名，再用当前名的
+    spec 重试。新旧 dtype 对不上（字段其实被拆分/合并/改了存储类型，不是纯改名）
+    就不用——只有查到且 dtype 匹配才返回 spec，否则返回 None（调用方按原样报错，
+    安全退回整块 raw_b64，不会比没有这张表更差）。
+    """
+    from ..efx_format.hashes import HASH_TO_NAME
+    from .field_rename_aliases import FIELD_RENAME_ALIASES
+
+    type_hash_str = getattr(block_props, "type_hash_str", "") or ""
+    if not type_hash_str:
+        return None
+    type_name = HASH_TO_NAME.get(int(type_hash_str))
+    if type_name is None:
+        return None
+    new_name = FIELD_RENAME_ALIASES.get((type_name, item.ori_name))
+    if new_name is None:
+        return None
+    candidate = spec_map.get(new_name)
+    if candidate is None:
+        return None
+    if _spec_to_dtype(candidate) != item.data_type:
+        return None
+    return candidate
+
+
 def rebuild_data_bytes(block_props, schema: list) -> bytes:
     """
     按字段顺序重建 data_bytes，实现逐字段无损性：
@@ -1477,6 +1505,8 @@ def rebuild_data_bytes(block_props, schema: list) -> bytes:
     for item in block_props.field_items:
         name = item.ori_name
         spec = spec_map.get(name)
+        if spec is None:
+            spec = _resolve_renamed_spec(block_props, spec_map, item)
         if spec is None:
             raise ValueError(f"rebuild_data_bytes: 字段 {name!r} 不在 schema 中")
 
@@ -2317,12 +2347,25 @@ def rebuild_custom_field_attribute(bp, type_hash: int) -> bytes:
     entries = _decompose_custom_schema(schema)
     entry_map = {e['item_name']: e for e in entries} if entries else {}
 
+    from ..efx_format.hashes import HASH_TO_NAME
+    from .field_rename_aliases import FIELD_RENAME_ALIASES
+    type_name = HASH_TO_NAME.get(type_hash)
+
     # ── 覆盖被编辑的标量/颜色/嵌套字段 ───────────────────────────────────────
     for item in bp.field_items:
         if item.data_type == 'STRING' or item.ori_name.startswith('__'):
             continue
-        if item.edited and (not item.read_only) and item.ori_name in entry_map:
-            e = entry_map[item.ori_name]
+        e = entry_map.get(item.ori_name)
+        if e is None and type_name is not None:
+            # 改名兼容：item.ori_name 是旧名字时查表找当前名，dtype 得对得上
+            # （见 field_rename_aliases.py）；查不到/对不上就当作没查到，维持
+            # 原行为（该编辑被安全跳过，values 保留 unpack 出来的原始值）。
+            new_name = FIELD_RENAME_ALIASES.get((type_name, item.ori_name))
+            if new_name is not None:
+                candidate = entry_map.get(new_name)
+                if candidate is not None and candidate['dtype'] == item.data_type:
+                    e = candidate
+        if item.edited and (not item.read_only) and e is not None:
             try:
                 e['set'](values, _read_item_value(item, item.data_type, e['spec']))
             except Exception:
