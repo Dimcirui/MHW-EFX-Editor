@@ -938,8 +938,8 @@ def pack_ribbonblade(values: dict) -> bytes:
 # 字段布局对照 EFX_Crimson.bt 的 StrainRibbon struct（社区注释验证）。
 # color/colorRange 是字节 RGBA 色（XYZ type 2），与其他渲染主体（BILLBOARD3D/MESH 等）
 # 同款 color+colorRange+useColorRange 三件套（用户实机确认，2026-07-23）；color3 实为
-# endPointScatter/originReleaseFlag 两个开关 + color3_z（真实 0/1 标志，语料 69.6%/30.4%，
-# 模板误标成保留字节）+ color3_w（真保留，恒为 0xCD），共拆成 4 个 byte。  
+# endPointScatter/originReleaseFlag 两个开关 + enableFlowmap（原 color3_z，2026-07-31 关联
+# 检验定为 flowmap 总开关，见下方行内注释）+ color3_w（真保留，恒为 0xCD），共拆成 4 个 byte。
 # 含一片 MT Framework 物理参数（tension/gravity/inertia/displacement 等）——
 # MHW 即 MT Framework 引擎，这些在 MHW 内有效；unkn/spacer 为保留/对齐字段。  
 # ⚠ spacer00/01/02 同源 bug：原按 4B int 读取恒为 0xCDCDCD00 系列，但 MSB==0xCD 判据  
@@ -981,16 +981,26 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('widthwiseUVScalingBML',  'f'),
     ('endPointScatter',        'B'),        # color3.x（终点扩散开关）
     ('originReleaseFlag',      'B'),        # color3.y（起点解锁标志）
-    ('color3_z',               'B'),        # 真实 0/1 标志（语料 69.6%/30.4%，非保留，模板误标成颜色）
-    ('color3_w',               'B'),        # 真保留，恒为 0xCD  
-    ('unkn06_0', 'f'),
-    ('unkn06_1', 'f'),
-    ('unkn06_2', 'f'),
-    ('unknFixed06_3', 'f'),
-    ('unkn06_4', 'f'),
-    ('unknFlag06_5', 'f'),
-    ('unkn06_6', 'f'),
-    ('unkn06_7', 'f'),   # unkn06_00..07，32B
+    # 原 color3_z：曾记为"真实 0/1 标志、语义待确认、模板误标成颜色"。2026-07-31 关联检验
+    # 定为 flowmap 总开关——按其取值分组统计"下面 8 件套是否偏离默认 [1,0,1,0,1,0,1,0]"：
+    # =0 的 126 块**全部(126/126)**停在默认，=1 的 55 块有 52 块(94.5%)偏离；同组对照字节
+    # endPointScatter(75%/30.8%)、originReleaseFlag、color3_w 全都毫无相关性，排除巧合。
+    # （3 个"=1 但仍默认"的反例属于"开了没调"，同 RIBBON 那 48 个无效 reverse 组合。）
+    ('enableFlowmap',          'B'),        # 原 color3_z
+    ('color3_w',               'B'),        # 真保留，恒为 0xCD
+    # 原 unkn06_0..unkn06_7（32B）= flowmap 8 件套。2026-07-31 对全 340B 逐槽滑窗，**只有这
+    # 一个窗口**匹配 RIBBON 已确认的签名 [1,0,1,0,1,0,1,0]，零歧义；最硬的指纹
+    # （accelJitter/strAccelJitter 100% 恒 0、distinct=1）在 RIBBON/LIGHTNING/STRAINRIBBON
+    # 三块全中。原命名自己也撞对了形态：unknFixed06_3("Fixed"=恒定)正落在恒 0 的 accelJitter
+    # 位、unknFlag06_5(只有 {0.0,1.0})正落在 strengthJitter 位。
+    ('flowmapSpeed',                     'f'),  # 原 unkn06_0
+    ('flowmapSpeedJitter',               'f'),  # 原 unkn06_1
+    ('flowmapAcceleration',              'f'),  # 原 unkn06_2
+    ('flowmapAccelerationJitter',        'f'),  # 原 unknFixed06_3
+    ('flowmapStrength',                  'f'),  # 原 unkn06_4
+    ('flowmapStrengthJitter',            'f'),  # 原 unknFlag06_5
+    ('flowmapStrengthAcceleration',      'f'),  # 原 unkn06_6
+    ('flowmapStrengthAccelerationJitter','f'),  # 原 unkn06_7
     ('unknEnum06_08_00',           'h'),
     ('unknEnum06_08_01',           'h'),
     ('lengthBreakpoint',       'f'),        # 以下一片为 MT Framework 物理参数（MHW 引擎）
@@ -1034,7 +1044,14 @@ _STRAINRIBBON_FIXED_SCHEMA = [
 ]
 assert _schema_size(_STRAINRIBBON_FIXED_SCHEMA) == 340, \
     f"_STRAINRIBBON_FIXED_SCHEMA size mismatch: {_schema_size(_STRAINRIBBON_FIXED_SCHEMA)}"
-STRAINRIBBON_ATTR = attr_from_legacy(_schema_size(_STRAINRIBBON_FIXED_SCHEMA), _STRAINRIBBON_FIXED_SCHEMA)
+# enableFlowmap 渲成勾选框（backing 'B' 与 tuple spec 一致 → 字节等价不受影响）。
+_STRAINRIBBON_OVR = {
+    'enableFlowmap': Bool('enableFlowmap', backing='B', label_zh="启用流动贴图"),
+}
+STRAINRIBBON_ATTR = attr_from_legacy(
+    _schema_size(_STRAINRIBBON_FIXED_SCHEMA), _STRAINRIBBON_FIXED_SCHEMA,
+    overrides=_STRAINRIBBON_OVR,
+)
 
 
 def unpack_strainribbon(data: bytes, off: int = 0):
@@ -1255,20 +1272,58 @@ _LIGHTNING_FIXED_SCHEMA = [
     # unkn12[2]: 2*4=8B
     ('unknFixed12_0', 'i'),
     ('unknEnum12_1', 'i'),
-    # unkn13[6]: 6*4=24B
-    ('unkn13',      ('f', 6)),
+    # 原 unkn13(('f',6), 24B @472)：整块渲成一个 ARRAY_STR 逗号字符串框。2026-07-31 拆开——
+    # [0] 众数 360.0(94.6%)，其余 90/120/180 —— 干净的整圆角度预设，与 STRAINRIBBON.
+    #     angleRelated（恒 360.0）、HOMING.turnRate（度/秒）同款形态，故只标"角度相关"，
+    #     具体语义未测。
+    # [3] 语料 99.4% 为 0，罕见的两个"非零"值其实是 float 位模式 0x00000002 / 0x00000003
+    #     （按 float 读会显示成 2.8e-45 / 4.2e-45 这种无意义的非规格化小数，肉眼与 0 无法
+    #     区分）——它其实是 int，取值 {0,2,3}，故改按 'i' 解读（字节布局不变）。
+    ('unknAngle13_0',   'f'),  # 原 unkn13[0]，角度相关
+    ('unknFixed13_1',   'f'),  # 恒 0.0
+    ('unknFixed13_2',   'f'),  # 恒 0.0
+    ('unknEnum13_3',    'i'),  # 原按 float 读，实为 int，取值 {0,2,3}
+    ('unknFixed13_4',   'f'),  # 恒 1.0
+    ('unknFixed13_5',   'f'),  # 恒 1.0
     # unkn14[3]: 3*4=12B
     ('unknEnum14_0', 'i'),
     ('unknFlag14_1', 'i'),
     ('unknFixed14_2', 'i'),
-    # unkn15[9]: 9*4=36B
-    ('unkn15',      ('f', 9)),
+    # 原 unkn15(('f',9), 36B)：整块只渲成一个 ARRAY_STR 逗号字符串框。2026-07-31 依 official
+    # 全语料 483 个 LIGHTNING 块拆分——
+    # · unkn15[0] 根本不是 float：全语料只有 2 种取值（字节 00 00 CD CD 占 91.7% /
+    #   00 01 CD CD 占 8.3%），高 2 字节恒 0xCD 纯占位、byte1 是真实 0/1 布尔。这与 RIBBON
+    #   的 enableFlowmap（1 字节真值 + 3 字节 0xCD spacer，紧贴其 flowmap 8 件套）是同一
+    #   布局，据此命名；⚠ 语义未实机验证。
+    # · unkn15[1..8] 就是 flowmap 8 件套，与 RIBBON 已确认的同组逐位同构，四条结构指纹全中：
+    #   ① 四个 value 槽众数均 1.0、四个 jitter 槽众数均 0.0 的交替；
+    #   ② accelJitter / strAccelJitter 两槽在 LIGHTNING 与 RIBBON 都是 100% 恒 0(distinct=1)；
+    #   ③ value 槽取值多样性远高于 jitter 槽；④ strength 是多样性最高的一项（两边都如此）。
+    #   错位一格的 unkn15[0..7] 完全对不上（会把上述 0xCD 占位槽当成 flowmapSpeed）。
+    ('unknFixed15_0a',                   'B'),  # 恒 0
+    ('enableFlowmap',                    'B'),  # byte1，真实 0/1（8.3% 置位）
+    ('spacer15_0',                       ('B', 2)),  # 恒 0xCD 占位
+    ('flowmapSpeed',                     'f'),  # 原 unkn15[1]
+    ('flowmapSpeedJitter',               'f'),  # 原 unkn15[2]
+    ('flowmapAcceleration',              'f'),  # 原 unkn15[3]
+    ('flowmapAccelerationJitter',        'f'),  # 原 unkn15[4]
+    ('flowmapStrength',                  'f'),  # 原 unkn15[5]
+    ('flowmapStrengthJitter',            'f'),  # 原 unkn15[6]
+    ('flowmapStrengthAcceleration',      'f'),  # 原 unkn15[7]
+    ('flowmapStrengthAccelerationJitter','f'),  # 原 unkn15[8]
     # short unkn16: 2B
     ('unknEnum16',      'h'),
 ]
 assert _schema_size(_LIGHTNING_FIXED_SCHEMA) == 546, \
     f"_LIGHTNING_FIXED_SCHEMA size mismatch: {_schema_size(_LIGHTNING_FIXED_SCHEMA)}"
-LIGHTNING_ATTR = attr_from_legacy(_schema_size(_LIGHTNING_FIXED_SCHEMA), _LIGHTNING_FIXED_SCHEMA)
+# enableFlowmap 渲成勾选框（backing 'B' 与 tuple spec 一致 → 字节等价不受影响）。
+_LIGHTNING_OVR = {
+    'enableFlowmap': Bool('enableFlowmap', backing='B', label_zh="启用流动贴图"),
+}
+LIGHTNING_ATTR = attr_from_legacy(
+    _schema_size(_LIGHTNING_FIXED_SCHEMA), _LIGHTNING_FIXED_SCHEMA,
+    overrides=_LIGHTNING_OVR,
+)
 
 
 def unpack_lightning(data: bytes, off: int = 0):

@@ -44,6 +44,18 @@ _LABELS_GLOBAL = {
     'emissive_brightness_j': '自发光亮度抖动',
     'brightness': '亮度',
     'opacity': '不透明度',
+    # flowmap 8 件套 + 总开关：RIBBON / BILLBOARD2D / BILLBOARD3D / PLANE / LIGHTNING
+    # 共用同名同义字段，统一在此给通用中文名（RIBBONBLADE 的「流光贴图」措辞由下面的
+    # 按类型专属表覆盖；UVCONTROL 走 Field.label_zh 优先级更高，同样不受影响）。
+    'enableFlowmap': '启用流动贴图',
+    'flowmapSpeed': '流动贴图速度',
+    'flowmapSpeedJitter': '流动贴图速度抖动',
+    'flowmapAcceleration': '流动贴图加速度',
+    'flowmapAccelerationJitter': '流动贴图加速度抖动',
+    'flowmapStrength': '流动贴图强度',
+    'flowmapStrengthJitter': '流动贴图强度抖动',
+    'flowmapStrengthAcceleration': '流动贴图强度加速度',
+    'flowmapStrengthAccelerationJitter': '流动贴图强度加速度抖动',
     # TUBELIGHT 全字段标签已折入 TUBELIGHT_ATTR 的 Field.label_zh，此处退休。
     'animationSpeed': '动画速度',
     'width': '宽度',
@@ -137,6 +149,7 @@ _LABELS_BY_TYPE = {
     ('LIGHTNING', 'emissive'): '自发光颜色',
     ('LIGHTNING', 'EPVColorSlot1'): 'EPV 颜色槽1',
     ('LIGHTNING', 'EPVColorSlot2'): 'EPV 颜色槽2',
+    ('LIGHTNING', 'unknAngle13_0'): '未知角度',
     # ── RIBBONBLADE ──
     ('RIBBONBLADE', 'widthDirection'): '宽度延伸方向',
     ('RIBBONBLADE', 'length'): '拖尾长度',
