@@ -11,8 +11,13 @@ blender_efx/action_emitter.py  —  L2 #1b：PlayEmitter targets 指针化
 
 PlayEmitter 结构（raw = type_hash 之后的字节，来自 efxfile.py _parse_play）：
   offset  0: int unkn[7]       28 B   ← 始终保留原始字节
-  offset 28: XYZ xyz(3)        12 B   ← float[3]，始终保留原始字节
-  offset 40: int NULL[3]       12 B   ← 始终保留原始字节
+  offset 16: float unkn[4..6]  12 B   ← 干净的角度值（多为 -90），但**实测编辑无任何效果**，
+                                        不是被调用 entry 的旋转（用户 2026-07-31 实机测试）
+  offset 28: XYZ xyz(3)        12 B   ← float[3]，可编辑；**Size（统一缩放尺寸）**，默认
+                                        1.0=不缩放。已实机确认生效
+  offset 40: int NULL[3]       12 B   ← 实为 **Position（位置偏移）**，名不副实；已实机确认
+                                        生效（用户 2026-07-31）。PlayEFX 侧同理：@40 是
+                                        Size、@52「NULL[3]」是 Position
   offset 52: int target_count   4 B   ← 重建时更新（当前阶段数量不变）
   offset 56: int targets[N]    4*N B  ← 由 entry 指针映射 → 局部 index 重写
 
@@ -53,6 +58,7 @@ from bpy.props import (
     EnumProperty,
     PointerProperty,
     IntProperty,
+    FloatProperty,
     FloatVectorProperty,
 )
 from bpy.types import PropertyGroup, Operator
@@ -128,11 +134,136 @@ class EFXActionEntryProps(PropertyGroup):
         default=False,
     )
     xyz: FloatVectorProperty(
-        name="Position Offset XYZ",
-        description="Position offset of the ActionEntry (float[3])",
+        name="Size XYZ",
+        description="Uniform size scale applied to whatever this entry calls - the entries for "
+                    "PlayEmitter, the external .efx for PlayEFX (1.0 = unchanged). Both types "
+                    "keep the position offset in a separate slot. (float[3])",
+        size=3,
+        default=(1.0, 1.0, 1.0),
+    )
+
+    # ── 全字段暴露（2026-07-31）────────────────────────────────────────────────
+    # 之前只有 xyz + targets/path 可编辑，unkn[7]/NULL[3] 全部只随 raw_b64 原样保留。
+    # 现在按 official 全语料（4794 PlayEmitter / 560 PlayEFX）的取值形态逐个暴露。
+    #
+    # ⚠ fields_loaded 门控：这批属性是 0.5.3 才加的，比它更早导入的 .blend 里它们
+    #   全是默认 0——若无条件写回就会把 rotation/rotationOrder 等真实数据抹成 0。
+    #   故只在导入（或新建 entry）时显式置 True 后才用属性值重建，否则一律沿用
+    #   raw_b64 的原始字节。老 .blend 因此表现为「这些字段不可编辑但绝不被破坏」，
+    #   重新导入即恢复可编辑。
+    fields_loaded: BoolProperty(
+        name="Fields Loaded",
+        description="Internal: True once the unkn/rotation/position properties below have "
+                    "been populated from the raw bytes. Guards .blend files imported before "
+                    "these fields existed from having real data overwritten with zeros",
+        default=False,
+    )
+
+    # ── PlayEmitter 专属（偏移基于 emitter raw）────────────────────────────────
+    em_unkn0: IntProperty(
+        name="Unkn0",
+        description="PlayEmitter unkn[0] @0. Small integer, 37 distinct values across the "
+                    "official corpus (0~23 contiguous, then sparse up to 50); zero in ~35%. "
+                    "Looks like an index or count. Purpose unconfirmed",
+        default=0,
+    )
+    em_unkn1: BoolProperty(
+        name="Unkn1",
+        description="PlayEmitter unkn[1] @4. Strictly 0/1 across the corpus. Purpose unconfirmed",
+        default=False,
+    )
+    em_unkn2: BoolProperty(
+        name="Unkn2",
+        description="PlayEmitter unkn[2] @8. Strictly 0/1 across the corpus. Purpose unconfirmed",
+        default=False,
+    )
+    # ⚠ 标识符仍叫 em_rotation_order / em_rotation 只是为了不破坏已存 .blend（改
+    #   PropertyGroup 标识符会让旧数据回落默认值，而 fields_loaded 仍为 True，导出就会把
+    #   原本的 -90.0 写成 0）。实测语义**不成立**，故显示名/说明一律退回未知。
+    em_rotation_order: IntProperty(
+        name="Unkn3",
+        description="PlayEmitter unkn[3] @12. Almost always 4, occasionally 2 or 0. Was guessed "
+                    "to be the shared rotation-order enum, but the adjacent angle group turned "
+                    "out to have no effect in-game, so that reading is withdrawn. Purpose "
+                    "unconfirmed",
+        default=4,
+    )
+    em_rotation: FloatVectorProperty(
+        name="Unkn4-6 (angles?)",
+        description="PlayEmitter unkn[4..6] @16. Holds clean degree values (-90 in most nonzero "
+                    "cases, also 90 / -140 / -180 / -150 / 78), but editing it has no visible "
+                    "effect in-game, so it is not the rotation of the called entries. May be an "
+                    "internal convention correction, or gated behind something not yet found. "
+                    "Purpose unconfirmed",
         size=3,
         default=(0.0, 0.0, 0.0),
     )
+    em_position: FloatVectorProperty(
+        name="Position XYZ",
+        description="Position offset applied to the entries this Action calls. Named NULL[3] in "
+                    "the community template, but it carries real values across the corpus",
+        size=3,
+        default=(0.0, 0.0, 0.0),
+    )
+
+    # ── PlayEFX 专属（偏移基于 playefx raw；命名对齐 EFX_Play.bt 的字段下标）────
+    pefx_unkn0: IntProperty(
+        name="Unkn0",
+        description="PlayEFX unkn0 @0. Small integer, 19 distinct values. Purpose unconfirmed",
+        default=0,
+    )
+    pefx_type_str: StringProperty(
+        name="Type",
+        description="PlayEFX type @8 (uint32 as a decimal string). Constant 1082828692 across "
+                    "the whole corpus",
+        default="0",
+    )
+    pefx_unkn_0: BoolProperty(
+        name="Unkn[0]",
+        description="PlayEFX unkn[0] @12. Strictly 0/1 across the corpus. Purpose unconfirmed",
+        default=False,
+    )
+    pefx_unkn_1: BoolProperty(
+        name="Unkn[1]",
+        description="PlayEFX unkn[1] @16. Strictly 0/1 across the corpus. Purpose unconfirmed",
+        default=False,
+    )
+    pefx_unkn_2: IntProperty(
+        name="Unkn[2]",
+        description="PlayEFX unkn[2] @20. Constant 2 across the corpus. Purpose unconfirmed",
+        default=2,
+    )
+    pefx_unkn_3: FloatProperty(
+        name="Unkn[3]",
+        description="PlayEFX unkn[3] @24. Float; only ever 0, -90 or 90 in the corpus. "
+                    "Purpose unconfirmed",
+        default=0.0,
+    )
+    pefx_unkn_4: FloatProperty(
+        name="Unkn[4]",
+        description="PlayEFX unkn[4] @28. Float, always 0 in the corpus. Purpose unconfirmed",
+        default=0.0,
+    )
+    pefx_unkn_5: FloatProperty(
+        name="Unkn[5]",
+        description="PlayEFX unkn[5] @32. Float, always 0 in the corpus. Purpose unconfirmed",
+        default=0.0,
+    )
+    pefx_unkn_6: IntProperty(
+        name="Unkn[6]",
+        description="PlayEFX unkn[6] @36. Almost always 4, occasionally 2 or 0. Purpose unconfirmed",
+        default=4,
+    )
+    pefx_null: FloatVectorProperty(
+        name="Position XYZ",
+        description="PlayEFX NULL[3] @52. Position offset of the effect this entry calls - the "
+                    "counterpart of PlayEmitter's own position slot. Named NULL in the community "
+                    "template, but a handful of entries carry real distance-magnitude values "
+                    "(-300, -175, -100, 100). Interpretation unverified",
+        size=3,
+        default=(0.0, 0.0, 0.0),
+    )
+
     efx_path: StringProperty(
         name="EFX Path",
         description="Path to the external .efx file referenced by PlayEFX (null-terminated string)",
@@ -191,6 +322,46 @@ def _b64dec(s: str) -> bytes:
     return base64.b64decode(s)
 
 
+def load_entry_fields_from_raw(item, raw: bytes, is_emitter: bool) -> None:
+    """
+    把一个 ActionEntry 的 raw 字节解成 item 上的可编辑属性，并置 fields_loaded=True。
+
+    导入（init_action_props）与新建 entry（EFX_OT_action_entry_add）共用本函数，保证
+    两条路径填出来的属性完全一致——新建的 entry 也因此立刻可编辑全部字段。
+
+    偏移见本文件头部结构说明。任何长度不足/解析异常都保持 fields_loaded=False，
+    此时重建路径沿用原始字节（见 _rebuild_emitter_raw / _rebuild_actionefx_raw）。
+    """
+    try:
+        if is_emitter:
+            if len(raw) < 52:
+                return
+            item.em_unkn0 = struct.unpack_from('<i', raw, 0)[0]
+            item.em_unkn1 = bool(struct.unpack_from('<i', raw, 4)[0])
+            item.em_unkn2 = bool(struct.unpack_from('<i', raw, 8)[0])
+            item.em_rotation_order = struct.unpack_from('<i', raw, 12)[0]
+            item.em_rotation = struct.unpack_from('<3f', raw, 16)
+            item.xyz = struct.unpack_from('<3f', raw, 28)
+            item.em_position = struct.unpack_from('<3f', raw, 40)
+        else:
+            if len(raw) < 64:
+                return
+            item.pefx_unkn0 = struct.unpack_from('<i', raw, 0)[0]
+            item.pefx_type_str = str(struct.unpack_from('<I', raw, 8)[0])
+            item.pefx_unkn_0 = bool(struct.unpack_from('<i', raw, 12)[0])
+            item.pefx_unkn_1 = bool(struct.unpack_from('<i', raw, 16)[0])
+            item.pefx_unkn_2 = struct.unpack_from('<i', raw, 20)[0]
+            item.pefx_unkn_3 = struct.unpack_from('<f', raw, 24)[0]
+            item.pefx_unkn_4 = struct.unpack_from('<f', raw, 28)[0]
+            item.pefx_unkn_5 = struct.unpack_from('<f', raw, 32)[0]
+            item.pefx_unkn_6 = struct.unpack_from('<i', raw, 36)[0]
+            item.xyz = struct.unpack_from('<3f', raw, 40)
+            item.pefx_null = struct.unpack_from('<3f', raw, 52)
+    except Exception:
+        return
+    item.fields_loaded = True
+
+
 def init_action_props(play_obj: bpy.types.Object,
                     pd,
                     main_bodies_by_index: dict) -> None:
@@ -228,14 +399,13 @@ def init_action_props(play_obj: bpy.types.Object,
         if entry.type_hash == PLAYEMITTER:
             item.is_emitter = True
             # PlayEmitter raw 布局（type_hash 之后）：
-            #   [0:28]  unkn[7] (28B)
-            #   [28:40] XYZ float[3] (12B)  ← 可编辑
-            #   [40:52] NULL[3] (12B)
+            #   [0:28]  unkn[7] (28B)      ← 拆成 unkn0/unkn1/unkn2/rotationOrder + rotation XYZ
+            #   [28:40] XYZ float[3] (12B) ← Size XYZ
+            #   [40:52] NULL[3] (12B)      ← Position XYZ（名不副实，语料里有真实取值）
             #   [52:56] target_count (int32)
             #   [56:]   targets[N] (int32 each)
             raw = entry.raw
-            if len(raw) >= 40:
-                item.xyz = struct.unpack_from('<3f', raw, 28)
+            load_entry_fields_from_raw(item, raw, True)
             if len(raw) >= 56:
                 target_count = struct.unpack_from('<i', raw, 52)[0]
                 for ti in range(target_count):
@@ -258,8 +428,7 @@ def init_action_props(play_obj: bpy.types.Object,
             #   [64:]   path[path_len]       ← 可编辑
             item.is_emitter = False
             raw = entry.raw
-            if len(raw) >= 52:
-                item.xyz = struct.unpack_from('<3f', raw, 40)
+            load_entry_fields_from_raw(item, raw, False)
             if len(raw) >= 8:
                 path_len = struct.unpack_from('<i', raw, 4)[0]
                 if path_len > 0 and 64 + path_len <= len(raw):
@@ -344,10 +513,13 @@ def _rebuild_emitter_raw(item: EFXActionEntryProps,
     重建 PlayEmitter entry 的 raw 字节。
 
     策略：
-      raw[:28]  unkn[7] 原样保留
-      raw[28:40] 用 item.xyz 重写（float[3]）
-      raw[40:52] NULL[3] 原样保留
+      raw[:28]   unkn0/unkn1/unkn2/rotationOrder + rotation XYZ（fields_loaded 时按属性重写）
+      raw[28:40] 用 item.xyz 重写（Size XYZ，float[3]）
+      raw[40:52] Position XYZ（fields_loaded 时按属性重写）
       target_count + targets 由 entry 指针映射重建
+
+    ⚠ fields_loaded=False（这批属性存在之前导入的老 .blend）时，raw[:28] 与 raw[40:52]
+      一律沿用原始字节——否则默认 0 会把真实的 rotation/rotationOrder 抹平。
 
     悬空 target（body_ptr=None 或不在 entry_index_map）静默跳过。
     """
@@ -364,10 +536,18 @@ def _rebuild_emitter_raw(item: EFXActionEntryProps,
             continue
         target_indices.append(local_idx)
 
-    # 保留 unkn[7]（0-27），写入 XYZ（28-39），保留 NULL[3]（40-51）
-    prefix = (orig_raw[:28]
-              + struct.pack('<3f', *item.xyz)
-              + orig_raw[40:52])
+    if item.fields_loaded:
+        head = (struct.pack('<i', int(item.em_unkn0))
+                + struct.pack('<i', 1 if item.em_unkn1 else 0)
+                + struct.pack('<i', 1 if item.em_unkn2 else 0)
+                + struct.pack('<i', int(item.em_rotation_order))
+                + struct.pack('<3f', *item.em_rotation))
+        pos = struct.pack('<3f', *item.em_position)
+    else:
+        head = orig_raw[:28]
+        pos = orig_raw[40:52]
+
+    prefix = head + struct.pack('<3f', *item.xyz) + pos
 
     N = len(target_indices)
     new_raw = prefix + struct.pack('<i', N)
@@ -382,23 +562,65 @@ def _rebuild_actionefx_raw(item: EFXActionEntryProps) -> bytes:
     重建 PlayEFX entry 的 raw 字节。
 
     策略：
-      raw[0:4]   unkn0 原样保留
+      raw[0:4]   unkn0（fields_loaded 时按属性重写）
       raw[4:8]   path_len 按新路径重算
-      raw[8:40]  type + unkn[7] 原样保留
+      raw[8:40]  type + unkn[0..6]（fields_loaded 时按属性重写）
       raw[40:52] 用 item.xyz 重写（float[3]）
-      raw[52:64] NULL[3] 原样保留
+      raw[52:64] NULL[3]（fields_loaded 时按属性重写）
       raw[64:]   用 item.efx_path 重写（UTF-8 + null 终止符）
+
+    ⚠ 同 _rebuild_emitter_raw：fields_loaded=False 时这些区间一律沿用原始字节。
+      pefx_type_str 解析失败（空串/溢出）同样退回原字节，不写坏 type 字段。
+
+    ⚠ 路径未改动时原样沿用原始 path_len + 路径字节，不重新编码——同
+      rebuild_custom_field_attribute 对 custom 块路径的处理。无条件重新编码会破坏两类
+      原文件写法：① path_len==0 且完全没有路径字节（官方语料确有此写法，evc1054_020/021），
+      重新编码会凭空补出 path_len=1 + 一个 \\x00；② 路径尾部带多余 null 对齐填充。
     """
     orig_raw = _b64dec(str(item.raw_b64))
 
-    path_bytes = item.efx_path.encode('utf-8') + b'\x00'
-    path_len = len(path_bytes)
+    # 还原原始路径串（与 init_action_props 的解码逻辑一致），判断用户是否真的改过
+    orig_path_len = struct.unpack_from('<i', orig_raw, 4)[0] if len(orig_raw) >= 8 else 0
+    orig_path_bytes = (orig_raw[64:64 + orig_path_len]
+                       if orig_path_len > 0 and 64 + orig_path_len <= len(orig_raw)
+                       else b'')
+    _nz = orig_path_bytes.find(b'\x00')
+    orig_path_str = (orig_path_bytes[:_nz] if _nz >= 0 else orig_path_bytes) \
+        .decode('utf-8', errors='replace')
 
-    new_raw = (orig_raw[:4]
-               + struct.pack('<i', path_len)
-               + orig_raw[8:40]
+    if item.efx_path == orig_path_str:
+        path_len_bytes = orig_raw[4:8]
+        path_bytes = orig_path_bytes
+    else:
+        path_bytes = item.efx_path.encode('utf-8') + b'\x00'
+        path_len_bytes = struct.pack('<i', len(path_bytes))
+
+    head = orig_raw[:4]        # unkn0
+    mid = orig_raw[8:40]       # type + unkn[0..6]
+    tail = orig_raw[52:64]     # NULL[3]
+    if item.fields_loaded:
+        try:
+            type_val = int(str(item.pefx_type_str)) & 0xFFFFFFFF
+            head = struct.pack('<i', int(item.pefx_unkn0))
+            mid = (struct.pack('<I', type_val)
+                   + struct.pack('<i', 1 if item.pefx_unkn_0 else 0)
+                   + struct.pack('<i', 1 if item.pefx_unkn_1 else 0)
+                   + struct.pack('<i', int(item.pefx_unkn_2))
+                   + struct.pack('<f', item.pefx_unkn_3)
+                   + struct.pack('<f', item.pefx_unkn_4)
+                   + struct.pack('<f', item.pefx_unkn_5)
+                   + struct.pack('<i', int(item.pefx_unkn_6)))
+            tail = struct.pack('<3f', *item.pefx_null)
+        except (ValueError, TypeError, struct.error):
+            head = orig_raw[:4]
+            mid = orig_raw[8:40]
+            tail = orig_raw[52:64]
+
+    new_raw = (head
+               + path_len_bytes
+               + mid
                + struct.pack('<3f', *item.xyz)
-               + orig_raw[52:64]
+               + tail
                + path_bytes)
 
     return new_raw
@@ -550,8 +772,11 @@ class EFX_OT_action_entry_add(Operator):
             item.type_hash_str = str(PLAYEFX)
             item.is_emitter    = False
             item.raw_b64       = _b64mod.b64encode(_BLANK_PLAYEFX_RAW).decode('ascii')
-            item.xyz           = (0.0, 0.0, 0.0)
             item.efx_path      = ""
+            # 从模板字节填满全部可编辑属性（含 fields_loaded=True），新 entry 立刻可编辑。
+            # ⚠ 别再在这之后覆写 item.xyz——模板里 @40 已是 Size=(1,1,1)，写 (0,0,0)
+            #   等于零缩放（语料 560/560 无一例为 0）。
+            load_entry_fields_from_raw(item, _BLANK_PLAYEFX_RAW, False)
         else:
             emitter_raw = (_BLANK_EMITTER_UNKN7
                            + struct.pack("<3f", 1.0, 1.0, 1.0)
@@ -560,6 +785,7 @@ class EFX_OT_action_entry_add(Operator):
             item.type_hash_str = str(PLAYEMITTER)
             item.is_emitter    = True
             item.raw_b64       = _b64mod.b64encode(emitter_raw).decode('ascii')
+            load_entry_fields_from_raw(item, emitter_raw, True)
             item.xyz           = (1.0, 1.0, 1.0)
 
         props.active_entry_index = len(props.entries) - 1
@@ -664,7 +890,21 @@ def _draw_action_content(layout, context):
             rem_op = hdr.operator("efx.action_entry_remove", text="", icon="X")
             rem_op.entry_index = ei
 
-            entry_box.prop(entry, "xyz", text=T("action.pos_offset_xyz"))
+            # 已实机确认生效的两组放前面；旋转组实测无效果，降级进下面的未知区。
+            entry_box.prop(entry, "xyz", text=T("action.size_xyz"))
+            entry_box.prop(entry, "em_position", text=T("action.position_xyz"))
+            unk_col = entry_box.column(align=True)
+            unk_col.label(text=T("action.unknown_fields"))
+            unk_col.prop(entry, "em_unkn0")
+            unk_row = unk_col.row(align=True)
+            unk_row.prop(entry, "em_unkn1", toggle=False)
+            unk_row.prop(entry, "em_unkn2", toggle=False)
+            unk_col.prop(entry, "em_rotation_order")
+            unk_col.prop(entry, "em_rotation", text=T("action.unkn_angles"))
+            if not entry.fields_loaded:
+                warn = entry_box.row()
+                warn.alert = True
+                warn.label(text=T("action.reimport_needed"), icon="ERROR")
 
             tgt_count = len(entry.targets)
             entry_box.label(
@@ -709,7 +949,26 @@ def _draw_action_content(layout, context):
             rem_op.entry_index = ei
 
             entry_box.prop(entry, "efx_path", text=T("action.efx_path"))
-            entry_box.prop(entry, "xyz", text=T("action.pos_offset_xyz"))
+            # @40 是 Size 不是位置偏移：语料 560 个 PlayEFX 里 (1,1,1) 占 65.7%、
+            # (0,0,0) 零例——位置偏移不可能一个零都没有。
+            entry_box.prop(entry, "xyz", text=T("action.size_xyz"))
+            entry_box.prop(entry, "pefx_null", text=T("action.position_xyz"))
+            entry_box.prop(entry, "pefx_type_str", text=T("action.playefx_type"))
+            unk_col = entry_box.column(align=True)
+            unk_col.label(text=T("action.unknown_fields"))
+            unk_col.prop(entry, "pefx_unkn0")
+            unk_row = unk_col.row(align=True)
+            unk_row.prop(entry, "pefx_unkn_0", toggle=False)
+            unk_row.prop(entry, "pefx_unkn_1", toggle=False)
+            unk_col.prop(entry, "pefx_unkn_2")
+            unk_col.prop(entry, "pefx_unkn_3")
+            unk_col.prop(entry, "pefx_unkn_4")
+            unk_col.prop(entry, "pefx_unkn_5")
+            unk_col.prop(entry, "pefx_unkn_6")
+            if not entry.fields_loaded:
+                warn = entry_box.row()
+                warn.alert = True
+                warn.label(text=T("action.reimport_needed"), icon="ERROR")
 
     # ── 新增 entry 按钮 ──────────────────────────────────────────────────────
     layout.separator()

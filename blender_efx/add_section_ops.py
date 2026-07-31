@@ -44,7 +44,8 @@ from . import root_collection as _rc
 # 模板常量（真实样本抓取）
 # ─────────────────────────────────────────────────────────────────────────────
 
-# PLAYEMITTER unkn[7]（28B）：corpus 最常见模式（int[2]=4 标记），其余 0。
+# PLAYEMITTER unkn[7]（28B）：corpus 最常见模式，其余 0。int[0]=2、int[3]=4
+# （int[3] 即 rotationOrder 槽，语料 99.6% 为 4）——已核对语料，本模板无需订正。
 _BLANK_EMITTER_UNKN7 = bytes.fromhex(
     "02000000000000000000000004000000000000000000000000000000"
 )
@@ -75,12 +76,23 @@ _EXTERN_TYPE_B64 = {
 }
 
 # PlayEFX 空白模板（type_hash 之后，65B）：unkn0/type/unkn[7]/NULL[3] 全零，xyz=(0,0,0)，path="\0"
+# PLAYEFX（64B 固定段 + path）。2026-07-31 依 official 全语料 560 个 PlayEFX 订正 4 处
+# 常量——原模板这 4 处全是 0，与语料里**无一例外**的取值不符，新建出来的 PlayEFX 大概率
+# 游戏内不生效（同 make_blank_timl 那次的坑）：
+#   type   @8 : 560/560 恒为 0x408AA794（源字符串未知的格式级 magic，原模板写 0）
+#   unkn[2]@20: 560/560 恒为 2（原模板写 0）
+#   unkn[6]@36: 99.5% 为 4（原模板写 0）
+#   xyz    @40: 65.7% 为 (1,1,1)，**(0,0,0) 零例**——该槽是 Size 不是位置偏移，
+#               写 0 等于零缩放（原模板写 (0,0,0)）
 _BLANK_PLAYEFX_RAW = (
     b'\x00' * 4                          # unkn0
     + struct.pack('<i', 1)               # path_len = 1（仅 null 终止符）
-    + b'\x00' * 4                        # type
-    + b'\x00' * 28                       # unkn[7]
-    + struct.pack('<3f', 0.0, 0.0, 0.0)  # xyz
+    + struct.pack('<I', 1082828692)      # type = 0x408AA794（语料 560/560 恒定）
+    + b'\x00' * 8                        # unkn[0..1]
+    + struct.pack('<i', 2)               # unkn[2] = 2（语料 560/560 恒定）
+    + b'\x00' * 12                       # unkn[3..5]（rotation 槽，默认 0）
+    + struct.pack('<i', 4)               # unkn[6] = 4（语料 99.5%）
+    + struct.pack('<3f', 1.0, 1.0, 1.0)  # xyz = Size，默认不缩放
     + b'\x00' * 12                       # NULL[3]
     + b'\x00'                            # path[1] = null terminator
 )
