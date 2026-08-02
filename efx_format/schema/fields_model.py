@@ -178,8 +178,11 @@ class Bitmask(Field):
     原样保留写回，只是不给编辑入口，不是强制清零）。
     all_value：可选"全选"哨兵值（如 0xFF），跟其余位不是简单并集关系（可能置了一个从未
     单独出现过的位）——弹窗底部单独隔开放一个"全部"勾选框，跟上面各独立位互斥；勾选即整
-    体写为 all_value，取消则按上面各勾选框正常组合。"""
-    def __init__(self, name, bits, *, backing='i', strict=False, all_value=None, **kw):
+    体写为 all_value，取消则按上面各勾选框正常组合。
+    gate_first：第一个 BitDef 是总开关，未勾选时其余 BitDef 勾选框弹窗内置灰不可编辑
+    （已有值保留，只是不给新编辑入口）——用于"bit0 关闭时其余位无意义"这类场景。"""
+    def __init__(self, name, bits, *, backing='i', strict=False, all_value=None,
+                 gate_first=False, **kw):
         super().__init__(name, backing, widget="bitmask", **kw)
         self.bits = [
             b if isinstance(b, (BitDef, BitEnum)) else BitDef(*b)
@@ -187,6 +190,7 @@ class Bitmask(Field):
         ]
         self.strict = strict
         self.all_value = all_value
+        self.gate_first = gate_first
 
 
 class Raw(Field):

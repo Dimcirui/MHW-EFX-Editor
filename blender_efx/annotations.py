@@ -3115,16 +3115,22 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 1, 2, 3, 4, 6]。",
     },
     ("PLANE", "unknEnum5_1"): {
-        "EN": "Common values: [0, 1, 3, 5, 7].",
-        "ZH": "常见取值为 [0, 1, 3, 5, 7]。",
+        "EN": "Bitmask (bit0 = master toggle, bits 1/2 sub-modes only meaningful when bit0 is on; "
+              "non-zero values in official data are always odd, e.g. 1/3/5/7). Related to "
+              "orientation relative to the camera; per-bit meaning unconfirmed.",
+        "ZH": "位掩码（bit0 为总开关，bit1/bit2 是仅在 bit0 开启时才有意义的子模式；"
+              "官方语料非零值恒为奇数，如 1/3/5/7）。与朝向-摄像机的关系有关，各 bit 具体含义尚未确认。",
     },
-    ("PLANE", "unknBitmask5_2"): {
-        "EN": "Observed values: [0, 1, 2, 3, 4, 5]; most commonly 1 or 0.",
-        "ZH": "观测取值为 [0, 1, 2, 3, 4, 5]；最常见为 1 或 0。",
+    ("PLANE", "baseAxis"): {
+        "EN": "Same AxisDirection6 enum as VELOCITY3D/FADEBYANGLE (0=left,1=up,2=front,3=right,"
+              "4=down,5=back).",
+        "ZH": "与 VELOCITY3D/FADEBYANGLE 同一套 AxisDirection6 枚举（0=左,1=上,2=前,3=右,4=下,5=后）。",
     },
-    ("PLANE", "unknEnum5_3"): {
-        "EN": "Common values: [0, 2, 3, 4, 5].",
-        "ZH": "常见取值为 [0, 2, 3, 4, 5]。",
+    ("PLANE", "rotationOrder"): {
+        "EN": "Same rotation-order enum as MESH.rotationOrder (0=XYZ,1=YZX,2=YXZ,3=ZYX,4=ZXY,"
+              "5=XZY); overwhelmingly 4(ZXY) in official data, same shape as MESH.rotationOrder.",
+        "ZH": "与 MESH.rotationOrder 同一套旋转顺序枚举（0=XYZ,1=YZX,2=YXZ,3=ZYX,4=ZXY,5=XZY）；"
+              "官方语料压倒性取值 4(ZXY)，与 MESH.rotationOrder 分布形状一致。",
     },
     ("PLANE", "unknBitmask7_0"): {
         "EN": "Observed values [0, 1, 2, 3, 4, 8, 32, 33, 36] look like a bitmask "

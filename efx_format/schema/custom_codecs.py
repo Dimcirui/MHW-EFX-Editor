@@ -15,6 +15,7 @@ from .codec import (
 from .fields_model import Attribute, Int, Float, Enum, Bool, Bitmask, Byte, attr_from_legacy
 from .enums import (
     BITS_APPLICATION_RULE, BITS_LOOPING_MODE, BITS_AFFECTED_BY_LIGHT, BITS_RIBBON_UNKN22_1,
+    BITS_PLANE_UNKN5_1,
     ENUM_BLEND_MODE, ENUM_LOOPING_ORIENTATION, ENUM_MESH_TRACKING_FLAGS, ENUM_RIBBON_MODE,
     _AXIS_DIRECTION6, _TRANSFORM_ROT_ORDER,
 )
@@ -803,8 +804,8 @@ _PLANE_DDS_SCHEMA = [
 _PLANE_EXTRAS_SCHEMA = [
     ('unknBitmask5_0', 'i'),
     ('unknEnum5_1', 'i'),
-    ('unknBitmask5_2', 'i'),
-    ('unknEnum5_3', 'i'),
+    ('baseAxis', 'i'),      # 原 unknBitmask5_2；实机确认为 AxisDirection6 基准轴
+    ('rotationOrder', 'i'), # 原 unknEnum5_3；实机确认为旋转顺序，与 MESH.rotationOrder 同款枚举
     ('rotation',('XYZ', 0)),
     # 拆分自原 uint64 unkn7：低32位=小整数/位掩码，高32位=0/1 标志（实测 4328 个 PLANE 块核对）
     ('unknBitmask7_0', 'i'),
@@ -847,6 +848,9 @@ PLANE_ATTR = attr_from_legacy(
         'applicationRule': Bitmask('applicationRule', BITS_APPLICATION_RULE, label_zh="应用规则"),
         'useColorRange':   Bool('useColorRange', label_zh="启用颜色范围"),
         'blendMode':       Enum('blendMode', ENUM_BLEND_MODE, label_zh="混合模式"),
+        'unknEnum5_1':     Bitmask('unknEnum5_1', BITS_PLANE_UNKN5_1, gate_first=True),
+        'baseAxis':        Enum('baseAxis', _AXIS_DIRECTION6, label_zh="基准轴"),
+        'rotationOrder':   Enum('rotationOrder', _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
     },
 )
 

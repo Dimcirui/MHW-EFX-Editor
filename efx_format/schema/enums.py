@@ -165,6 +165,15 @@ BITS_FADEBYANGLE_FLAGS = [
     (0x4, "Unknown", "未知"),
 ]
 
+# PLANE.unknEnum5_1：全语料非零值恒含 bit0（{1,3,5,7}，从未出现 2/4/6），bit0 是总开关，
+# bit1/bit2 是仅在 bit0 开启时才有意义的子模式；用户实机确认与朝向-摄像机关系有关，
+# 具体子位语义未确认。gate_first=True。
+BITS_PLANE_UNKN5_1 = [
+    (0x1, "Enable", "启用（总开关）"),
+    (0x2, "Unknown", "未知"),
+    (0x4, "Unknown", "未知"),
+]
+
 # BILLBOARD3D / PLANE 的 applicationRule（打包 int32）。official 10084 文件实测干净：
 # bit2/bit3 两个独立可混合开关（{0,4,8,12} 全组合出现）；bit4-5 三值互斥（{0,16,32}，never 48）；
 # 其余位官方恒 0（残留可编辑保留）。混合/互斥判据据语义注释 + 全语料数据双证。

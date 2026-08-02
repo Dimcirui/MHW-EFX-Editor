@@ -373,4 +373,8 @@ FIELD_RENAME_ALIASES = {
 
     # ⚠ LIGHTNING 的 unkn15 / unkn13 是**字段拆分**（一个 ('f',N) 拆成多个），dtype 与
     #   大小都变了，本表覆盖不了——那两处只能靠重新导入，故意不在这里登记。
+
+    # ── PLANE（2026-08-03 实机确认 baseAxis / rotationOrder）───────────────────
+    ("PLANE", "unknBitmask5_2"): "baseAxis",
+    ("PLANE", "unknEnum5_3"): "rotationOrder",
 }

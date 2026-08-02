@@ -171,11 +171,15 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
         all_value = getattr(field, "all_value", None)
         col = layout.column()
         col.enabled = not (all_value is not None and self.all_toggle)
+        gate_first = getattr(field, "gate_first", False)
         ti = ei = 0
         for b in field.bits:   # 按声明顺序渲染，勾选框与下拉交错
             if isinstance(b, BitDef):
                 if ti < _MAX_BITS:
-                    col.prop(self, "bit_%d" % ti, text=(b.zh if zh else b.en))
+                    row = col.row()
+                    if gate_first and ti > 0:
+                        row.enabled = bool(self.bit_0)
+                    row.prop(self, "bit_%d" % ti, text=(b.zh if zh else b.en))
                 ti += 1
             else:  # BitEnum
                 if ei < _MAX_ENUMS:
