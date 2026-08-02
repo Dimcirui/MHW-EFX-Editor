@@ -2,8 +2,8 @@
 blender_efx/transform_sync.py  —  TRANSFORM3D + PARENTOPTIONS → body empty 视口定位
 
 把每个 body 的基础变换摆到视口做**可视化代理**（单向，不反写、不参与导出）：
-  - 基准 = 该 body 绑定骨骼（PARENTOPTIONS.bone_lim）的世界位置；
-    bone_lim = -1 / 255 / 找不到对应骨骼 → 以世界原点为基准（=旧行为）。
+  - 基准 = 该 body 绑定骨骼（PARENTOPTIONS.jointNo）的世界位置；
+    jointNo = -1 / 255 / 找不到对应骨骼 → 以世界原点为基准（=旧行为）。
   - 在基准之上叠加 TRANSFORM3D 的 translate/rotate/resize（基础值）。
   - 一次性烘焙到 body empty 的 matrix_world（不建父子约束，不跟随骨架 pose）。
 
@@ -11,7 +11,7 @@ blender_efx/transform_sync.py  —  TRANSFORM3D + PARENTOPTIONS → body empty �
 
 骨骼映射（用户确认）：
   - MHW_Model_Editor 把骨骼命名为 MhBone_<boneFunction 补零3位>；255 是"无"哨兵。
-  - EFX 的 bone_lim 即 boneFunction → 目标骨骼名 = f"MhBone_{bone_lim:03d}"。
+  - EFX 的 jointNo 即 boneFunction → 目标骨骼名 = f"MhBone_{jointNo:03d}"。
   - 骨架由 N 面板的 Scene.efx_armature 选择器指定。
 
 坐标约定（用户实测确认）：
@@ -138,14 +138,14 @@ def _attribute_of_type(entry_obj, type_hash, children_map=None):
     return None
 
 
-def _entry_bone_lim(entry_obj, children_map=None):
-    """读 entry 的 PARENTOPTIONS.bone_lim（int）；无 PARENTOPTIONS/字段 → None。"""
+def _entry_joint_no(entry_obj, children_map=None):
+    """读 entry 的 PARENTOPTIONS.jointNo（int）；无 PARENTOPTIONS/字段 → None。"""
     po = _attribute_of_type(entry_obj, _parentopts_hash(), children_map)
     if po is None:
         return None
     try:
         for it in po.efx_block.field_items:
-            if it.ori_name == "bone_lim":
+            if it.ori_name == "jointNo":
                 return int(it.int_value)
     except Exception:
         pass
@@ -179,22 +179,22 @@ def _t3d_local_matrix(t3d_attribute):
 
 # ── 骨骼基准矩阵 ─────────────────────────────────────────────────────────────
 
-# 视为"无绑定骨骼 / 原点基准"的 bone_lim 哨兵值。
+# 视为"无绑定骨骼 / 原点基准"的 jointNo 哨兵值。
 _BONE_NONE_SENTINELS = (-1, 255)
 
 
-def bone_base_matrix(armature_obj, bone_lim):
+def bone_base_matrix(armature_obj, jointNo):
     """
     返回绑定骨骼的世界 rest 矩阵；以下情形返回 None（→ 以世界原点为基准）：
       - armature_obj 为空 / 非骨架
-      - bone_lim 为 None / -1 / 255
-      - 骨架中无名为 MhBone_<bone_lim:03d> 的骨骼
+      - jointNo 为 None / -1 / 255
+      - 骨架中无名为 MhBone_<jointNo:03d> 的骨骼
     """
     if armature_obj is None or armature_obj.type != "ARMATURE":
         return None
-    if bone_lim is None or bone_lim in _BONE_NONE_SENTINELS or bone_lim < 0:
+    if jointNo is None or jointNo in _BONE_NONE_SENTINELS or jointNo < 0:
         return None
-    bone_name = f"MhBone_{bone_lim:03d}"
+    bone_name = f"MhBone_{jointNo:03d}"
     bone = armature_obj.data.bones.get(bone_name)
     if bone is None:
         return None
@@ -206,7 +206,7 @@ def bone_base_matrix(armature_obj, bone_lim):
 
 def apply_entry_transform(entry_obj, armature_obj=None, base_override=None, children_map=None) -> bool:
     """
-    按 entry 的 TRANSFORM3D（基础变换）+ PARENTOPTIONS（bone_lim 绑定骨骼）
+    按 entry 的 TRANSFORM3D（基础变换）+ PARENTOPTIONS（jointNo 绑定骨骼）
     计算 entry empty 的 matrix_world 并写入。返回是否成功。
 
     base_override：锚定机制传入「基点 entry 的 matrix_world」。提供时它**优先于**骨骼
@@ -230,7 +230,7 @@ def apply_entry_transform(entry_obj, armature_obj=None, base_override=None, chil
         if base_override is not None:
             base = base_override                    # 锚定：继承基点 entry 的完整矩阵
         else:
-            bone = bone_base_matrix(armature_obj, _entry_bone_lim(entry_obj, children_map))
+            bone = bone_base_matrix(armature_obj, _entry_joint_no(entry_obj, children_map))
             if bone is not None:
                 base = Matrix.Translation(bone.to_translation())  # 只取骨骼 head 位置，不继承朝向
             else:
@@ -355,7 +355,7 @@ def place_single_entry(entry_obj, armature_obj=None, use_anchor=True) -> bool:
 
 def sync_all_transform3d(root_obj, armature_obj=None, use_anchor=True) -> int:
     """
-    对 root_obj 下所有 EFX_ENTRY，按 TRANSFORM3D + bone_lim 摆位。返回处理数量。
+    对 root_obj 下所有 EFX_ENTRY，按 TRANSFORM3D + jointNo 摆位。返回处理数量。
     供导入后一次性摆位、以及"刷新特效体位置"算子调用。
 
     use_anchor=True 时启用锚定机制：满足规则的 entry 以基点 entry 的最终位置为基准
@@ -386,7 +386,7 @@ def sync_all_transform3d(root_obj, armature_obj=None, use_anchor=True) -> int:
 # ── 算子：刷新特效体位置 ──────────────────────────────────────────────────────
 
 class EFX_OT_sync_transform(bpy.types.Operator):
-    """按 TRANSFORM3D + 绑定骨骼(bone_lim) 重新计算并摆放所有特效体（视口可视化，不影响导出）"""
+    """按 TRANSFORM3D + 绑定骨骼(jointNo) 重新计算并摆放所有特效体（视口可视化，不影响导出）"""
 
     bl_idname      = "efx.sync_transform_to_view"
     bl_label       = "Refresh Entry Positions"

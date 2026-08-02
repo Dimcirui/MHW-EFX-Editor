@@ -186,7 +186,7 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
                     f"EFX import failed: {filepath}\n{traceback.format_exc()}",
                 )
 
-        # ── 导入后按 TRANSFORM3D + 绑定骨骼(bone_lim) 摆放各特效体 ────────────
+        # ── 导入后按 TRANSFORM3D + 绑定骨骼(jointNo) 摆放各特效体 ────────────
         # 骨架取 N 面板的 Scene.efx_armature（未选则以世界原点为基准）。
         if imported_roots:
             try:

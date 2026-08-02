@@ -99,7 +99,7 @@ def _friendly_name(ori_name: str, type_name: str = "") -> str:
       unkn0                  → "Unkn0"
       patternControl         → "Pattern Control"
       enableVelocityBitflag  → "Enable Velocity Bitflag"
-      uv1_acceleration       → "Uv1 Acceleration"
+      uv1_offsetCoef       → "Uv1 Acceleration"
       __opaque_hint__        → "__opaque_hint__"（原样返回，勿转换）
     """
     # 特殊内部名称（opaque hint 等）直接返回
@@ -114,6 +114,13 @@ def _friendly_name(ori_name: str, type_name: str = "") -> str:
         zh = field_label_zh(type_name or None, ori_name)
         if zh:
             return zh
+
+    # 英文标签冻结表：内部名向官方名对齐后，界面措辞仍沿用旧称。命中即返回，
+    # 未命中才走下面的 camelCase 派生。中文模式若无中文标签也会落到这里。
+    from ..efx_format.schema.labels import field_label_en
+    en = field_label_en(type_name or None, ori_name)
+    if en:
+        return en
 
     s = ori_name
 
@@ -233,7 +240,7 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 虚拟轴向组合控件（用户 2026-07-26 提议）：部分类型的 X/Y/(Z) 分量因各轴实测语义不完全
-# 对称（如 ROTATEANIM.spinAcceleration 系列错位重构后拆成独立标量），无法用真正的 XYZ
+# 对称（如 ROTATEANIM.spinSpeedCoef 系列错位重构后拆成独立标量），无法用真正的 XYZ
 # 复合类型（FLOAT6/FLOAT3/INT3）表示，只能各轴各自建标量字段。这里在 UI 层把它们重新
 # 拼成跟 FLOAT6 同款的标题行 + 逐轴行显示——纯展示层分组，不改 schema/字节布局。
 #
@@ -245,7 +252,7 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
 # ─────────────────────────────────────────────────────────────────────────────
 AXIS_GROUPS: dict = {
     "ROTATEANIM": [
-        ("spinAcceleration", [("X", "spinAccelerationX"), ("Y", "spinAccelerationY"), ("Z", "spinAccelerationZ")]),
+        ("spinSpeedCoef", [("X", "spinSpeedCoefX"), ("Y", "spinSpeedCoefY"), ("Z", "spinSpeedCoefZ")]),
     ],
     "TRANSFORM2D": [
         ("offset", [("X", "offsetX"), ("Y", "offsetY")]),
@@ -1252,7 +1259,7 @@ class EFX_PT_entry(bpy.types.Panel):
         # ── Active EFX 选择器（新增 entry 的目标根）────────────────────────────
         layout.prop(context.scene, "efx_active_efx", text=T("entry.active_efx"))
 
-        # ── 骨架选择器 + 刷新特效体位置（按 TRANSFORM3D + bone_lim 绑定骨骼摆位）─
+        # ── 骨架选择器 + 刷新特效体位置（按 TRANSFORM3D + jointNo 绑定骨骼摆位）─
         layout.prop(context.scene, "efx_armature", text=T("entry.armature"))
         layout.prop(context.scene, "efx_anchor_placement", text=T("entry.anchor_placement"))
         layout.prop(context.scene, "efx_blender_coords", text=T("entry.blender_coords"))

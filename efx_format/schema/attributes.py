@@ -13,7 +13,7 @@ from .enums import (
     ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_IMPACT_PLAY_TRIGGER_MODE, ENUM_PTLIFE_STATUS,
     ENUM_RAYCAST_DIR, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
     ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
-    ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE,
+    ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE, ENUM_REFRACTION_OFFSET,
     BITS_ENABLE_VELOCITY, BITS_SPIN_AXIS, BITS_RANDOMFIX_TABLE, BITS_FADEBYANGLE_FLAGS,
     BITS_SPAWN_UNKN31,
     _AXIS_DIRECTION6, _ROT_ORDER6, _VELOCITY_TYPE, _TRANSFORM_ROT_ORDER,
@@ -70,29 +70,29 @@ TRANSFORM3D_SCHEMA = EXTERN_TRANSFORM3D_SCHEMA
 # BT (EFX_Subtypes.bt):
 #   long    type                              4 B  ← in type_hash, not in data_bytes
 #   int     unkn0                             4 B
-#   XYZ     translation_tracking(1)          12 B  (int x,y,z)
-#   XYZ     angle_tracking(1)                12 B
-#   XYZ     scale_tracking(1)                12 B
-#   int     spawnTrack                        4 B
+#   XYZ     relationPos(1)          12 B  (int x,y,z)
+#   XYZ     relationRot(1)                12 B
+#   XYZ     relationScl(1)                12 B
+#   int     particleUseLocal                        4 B
 #   int     unkn1                             4 B
 #   int     spawnLock                         4 B
 #   int     bleedPos                          4 B
-#   int     bone_lim                          4 B
+#   int     jointNo                          4 B
 # data_bytes total: 4 + 36 + 4*5 = 4+36+20 = 60 B  ✓  (full block = 64 B)
 # ─────────────────────────────────────────────────────────────────────────────
 
 PARENTOPTIONS_ATTR = Attribute(size=60, fields=[
     Int("typeFlag"),  # 原 unkn0
-    EnumVec3("translation_tracking", ENUM_TRACKING_POS, label_zh="平移跟踪"),
-    EnumVec3("angle_tracking", ENUM_TRACKING_ANGLE, label_zh="角度跟踪"),
-    EnumVec3("scale_tracking", ENUM_TRACKING_POS, label_zh="缩放跟踪"),
-    Bool("spawnTrack", label_zh="跨生成追踪"),
+    EnumVec3("relationPos", ENUM_TRACKING_POS, label_zh="平移跟踪"),
+    EnumVec3("relationRot", ENUM_TRACKING_ANGLE, label_zh="角度跟踪"),
+    EnumVec3("relationScl", ENUM_TRACKING_POS, label_zh="缩放跟踪"),
+    Bool("particleUseLocal", label_zh="跨生成追踪"),
     Bool("unknFlag1"),
     # 原 spawnLock/bleedPos：实为一对 fixed+jitter，作用是"跨生成追踪启用后，达到该帧数即
     # 停止追踪"（0=始终追踪），并非各自独立的"锁定位置/渗出位置"。
-    Int("lockToPositionFrame", label_zh="停止追踪帧数"),
-    Int("lockToPositionFrameJitter", label_zh="停止追踪帧数抖动"),
-    Int("bone_lim", label_zh="绑定骨骼"),  # 绑定骨骼的序号
+    Int("constRelease", label_zh="停止追踪帧数"),
+    Int("constReleaseJitter", label_zh="停止追踪帧数抖动"),
+    Int("jointNo", label_zh="绑定骨骼"),  # 绑定骨骼的序号
 ])
 PARENTOPTIONS_SCHEMA = PARENTOPTIONS_ATTR.schema
 assert _schema_size(PARENTOPTIONS_SCHEMA) == 60, \
@@ -376,8 +376,8 @@ VELOCITY3D_ATTR = Attribute(size=108, native_timl_axis=0, fields=[
     Float("rotationZJitter", label_zh="Z 旋转抖动"),
     Float("speed", label_zh="初速度"),
     Float("speedJitter", label_zh="初速度偏差"),
-    Float("acceleration", label_zh="加速度"),
-    Float("accelerationJitter", label_zh="加速度偏差"),
+    Float("speedCoef", label_zh="加速度"),
+    Float("speedCoefJitter", label_zh="加速度偏差"),
     Float("velocityX", label_zh="X 基准点偏置"),
     Float("velocityY", label_zh="Y 基准点偏置"),
     Float("velocityZ", label_zh="Z 基准点偏置"),
@@ -527,7 +527,7 @@ EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_SCHEMA
 #
 # BT (EFX_Subtypes.bt):
 #   int   unkn0                              4 B
-#   float animationSpeed                     4 B
+#   float animationSpeed                4 B
 #   long  NULL                               4 B  
 #   float scaleSpeed                         4 B
 #   float scaleSpeedJitter                   4 B
@@ -691,7 +691,7 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 ROTATEANIM_ATTR = Attribute(size=80, fields=[
     Bitmask("spinAxisMask", BITS_SPIN_AXIS),  # 原 unkn0_0；轴掩码 bitmask：bit0=X, bit1=Y, bit2=Z（已确认，非 typeFlag 候选）
     # rotationModeMask（原 unknBitmask0_1）：用户实机确认 4 态——0=仅平面旋转系(billboardRotation+
-    # billboardRotationAccel)；1=同上+随机正反向；2=仅自旋速度系(spin_velocity+spinAcceleration+
+    # billboardRotationCoef)；1=同上+随机正反向；2=仅自旋速度系(spin_velocity+spinSpeedCoef+
     # 已废弃的 momentum_retention 概念)；3=同上+随机正反向(每轴独立随机)。
     Enum("rotationModeMask", ENUM_ROTATION_MODE, label_zh="旋转模式"),
     # 社区实测+用户实机(2026-07)：这两个专门控制 BILLBOARD3D 平面类的旋转，模板原标为 int，实为 float。
@@ -699,20 +699,20 @@ ROTATEANIM_ATTR = Attribute(size=80, fields=[
     Float("billboardRotation", label_zh="平面旋转"),
     Float("billboardRotationJitter", label_zh="平面旋转抖动"),  # 原 billboardRotationSpeed，实为 billboardRotation 的 random 分量
     Raw("spin_velocity", ('XYZ', 0), label_zh="自旋速度"),
-    # billboardRotationAccel + Jitter(原 unkn1_0/unkn1_1)：billboardRotation 的加速度 static/random，
-    Float("billboardRotationAccel", label_zh="平面旋转加速度"),  # 原 unkn1_0
-    Float("billboardRotationAccelJitter", label_zh="平面旋转加速度抖动"),  # 原 unkn1_1
+    # billboardRotationCoef + Jitter(原 unkn1_0/unkn1_1)：billboardRotation 的加速度 static/random，
+    Float("billboardRotationCoef", label_zh="平面旋转加速度"),  # 原 unkn1_0
+    Float("billboardRotationCoefJitter", label_zh="平面旋转加速度抖动"),  # 原 unkn1_1
     # 用户实机(2026-07-26)：原 momentum_retention + spin_acceleration(XYZ) + unknEnum1_2 整体错位一格。
-    # 全语料实测证实：spinAccelerationX/Y/Z 的 static 分布集中在 0.9~1.0，random 分布 96%+ 为 0（偶尔
+    # 全语料实测证实：spinSpeedCoefX/Y/Z 的 static 分布集中在 0.9~1.0，random 分布 96%+ 为 0（偶尔
     # 干净小数）；原 spin_acceleration.random_z 当 float 解读 100% 恒为 0.0（denormal 假象），当 int32  
     # 解读呈现 5/10/15/20/30/100/512 等干净帧数刻度，与 unknEnum1_2（帧数刻度一致）组成 static/random
     # 一对，改名 rotateDelayStart(+Jitter)，字段类型由 float 改为 int。
-    Float("spinAccelerationX", label_zh="自旋加速度 X"),  # 原 momentum_retention
-    Float("spinAccelerationXJitter", label_zh="自旋加速度 X 抖动"),  # 原 spin_acceleration.fixed_x
-    Float("spinAccelerationY", label_zh="自旋加速度 Y"),  # 原 spin_acceleration.random_x
-    Float("spinAccelerationYJitter", label_zh="自旋加速度 Y 抖动"),  # 原 spin_acceleration.fixed_y
-    Float("spinAccelerationZ", label_zh="自旋加速度 Z"),  # 原 spin_acceleration.random_y
-    Float("spinAccelerationZJitter", label_zh="自旋加速度 Z 抖动"),  # 原 spin_acceleration.fixed_z
+    Float("spinSpeedCoefX", label_zh="自旋加速度 X"),  # 原 momentum_retention
+    Float("spinSpeedCoefXJitter", label_zh="自旋加速度 X 抖动"),  # 原 spin_acceleration.fixed_x
+    Float("spinSpeedCoefY", label_zh="自旋加速度 Y"),  # 原 spin_acceleration.random_x
+    Float("spinSpeedCoefYJitter", label_zh="自旋加速度 Y 抖动"),  # 原 spin_acceleration.fixed_y
+    Float("spinSpeedCoefZ", label_zh="自旋加速度 Z"),  # 原 spin_acceleration.random_y
+    Float("spinSpeedCoefZJitter", label_zh="自旋加速度 Z 抖动"),  # 原 spin_acceleration.fixed_z
     Int("rotateDelayStart", label_zh="旋转延迟起始帧"),  # 原 spin_acceleration.random_z（float 恒 0.0，实为 int 帧数）
     Int("rotateDelayStartJitter", label_zh="旋转延迟起始帧抖动"),  # 原 unknEnum1_2
 ])
@@ -770,8 +770,8 @@ assert _schema_size(LUMINANCEBLEED_SCHEMA) == 16, \
 
 REFRACTION_ATTR = Attribute(size=12, fields=[
     Int("typeFlag"),  # 原 unkn0
-    Int("pixelNormalOffset", label_zh="像素法线偏移"),
-    Float("unkn2"),
+    Enum("pixelNormalOffset", ENUM_REFRACTION_OFFSET, label_zh="像素法线偏移"),
+    Float("seeThroughBlend", label_zh="透视混合系数"),  # 原 unkn2
 ])
 REFRACTION_SCHEMA = REFRACTION_ATTR.schema
 assert _schema_size(REFRACTION_SCHEMA) == 12, \
@@ -1491,32 +1491,32 @@ UVCONTROL_ATTR = Attribute(size=236, fields=[
     # 2026-07-31 全语料扫描(official 1784例)：18 种取值(1~26)从未为 0，覆盖低4位几乎
     # 全部非零组合+罕见第5位；具备位掩码特征但具体位含义未实机确认，先只改名不拆位。
     Int("uv1_unknFlag", label_zh="UV1 未知标志"),  # 原 uv1_unkn0
-    Raw("uv1_initialPosition", ('f', 4), label_zh="UV1 初始位置"),
-    Raw("uv1_speed", ('f', 4), label_zh="UV1 速度"),
-    Raw("uv1_acceleration", ('f', 4), label_zh="UV1 加速度"),
+    Raw("uv1_offset", ('f', 4), label_zh="UV1 初始位置"),
+    Raw("uv1_offsetAdd", ('f', 4), label_zh="UV1 速度"),
+    Raw("uv1_offsetCoef", ('f', 4), label_zh="UV1 加速度"),
     Raw("uv1_scale", ('f', 4), label_zh="UV1 缩放"),
-    Raw("uv1_scaleSpeed", ('f', 4), label_zh="UV1 缩放速度"),
-    Raw("uv1_scaleAcceleration", ('f', 4), label_zh="UV1 缩放加速度"),
+    Raw("uv1_scaleAdd", ('f', 4), label_zh="UV1 缩放速度"),
+    Raw("uv1_scaleCoef", ('f', 4), label_zh="UV1 缩放加速度"),
     # uv2 Material_Animation_Data
     Bool("uv2_enable"),  # 原 uv2_unkn0，实测 1860 例仅 0/1 两种取值，干净二元
-    Raw("uv2_initialPosition", ('f', 4), label_zh="UV2 初始位置"),
-    Raw("uv2_speed", ('f', 4), label_zh="UV2 速度"),
-    Raw("uv2_acceleration", ('f', 4), label_zh="UV2 加速度"),
+    Raw("uv2_offset", ('f', 4), label_zh="UV2 初始位置"),
+    Raw("uv2_offsetAdd", ('f', 4), label_zh="UV2 速度"),
+    Raw("uv2_offsetCoef", ('f', 4), label_zh="UV2 加速度"),
     Raw("uv2_scale", ('f', 4), label_zh="UV2 缩放"),
-    Raw("uv2_scaleSpeed", ('f', 4), label_zh="UV2 缩放速度"),
-    Raw("uv2_scaleAcceleration", ('f', 4), label_zh="UV2 缩放加速度"),
+    Raw("uv2_scaleAdd", ('f', 4), label_zh="UV2 缩放速度"),
+    Raw("uv2_scaleCoef", ('f', 4), label_zh="UV2 缩放加速度"),
     # extra fields — flowmap 8 件套（2026-07-31 改名，命名对齐 RIBBON/RIBBONBLADE/
     # BILLBOARD2D/BILLBOARD3D/PLANE 同款 flowmap 组：Speed/Acceleration/Strength/
     # StrengthAcceleration 各配 Jitter，另加 enableFlowmap 总开关）。
     Bool("enableFlowmap", label_zh="启用流动贴图"),  # 原 unknFlag2
     Float("flowmapSpeed", label_zh="流动贴图速度"),  # 原 extraMaterialInitialPosition
     Float("flowmapSpeedJitter", label_zh="流动贴图速度抖动"),  # 原 extraMaterialInitialPositionJitter
-    Float("flowmapAcceleration", label_zh="流动贴图加速度"),  # 原 extraMaterialSpeed
-    Float("flowmapAccelerationJitter", label_zh="流动贴图加速度抖动"),  # 原 extraMaterialSpeedJitter
+    Float("flowmapSpeedCoef", label_zh="流动贴图加速度"),  # 原 extraMaterialSpeed
+    Float("flowmapSpeedCoefJitter", label_zh="流动贴图加速度抖动"),  # 原 extraMaterialSpeedJitter
     Float("flowmapStrength", label_zh="流动贴图强度"),  # 原 opacity
     Float("flowmapStrengthJitter", label_zh="流动贴图强度抖动"),  # 原 opacityJitter
-    Float("flowmapStrengthAcceleration", label_zh="流动贴图强度加速度"),  # 原 opacityAcceleration
-    Float("flowmapStrengthAccelerationJitter", label_zh="流动贴图强度加速度抖动"),  # 原 opacityAccelerationJitter
+    Float("flowmapStrengthCoef", label_zh="流动贴图强度加速度"),  # 原 opacityAcceleration
+    Float("flowmapStrengthCoefJitter", label_zh="流动贴图强度加速度抖动"),  # 原 opacityAccelerationJitter
 ])
 UVCONTROL_SCHEMA = UVCONTROL_ATTR.schema
 assert _schema_size(UVCONTROL_SCHEMA) == 236, \
@@ -1554,9 +1554,9 @@ VELOCITY2D_ATTR = Attribute(size=72, fields=[
     Float("rotationJitter", label_zh="旋转抖动"),  # 原 unkn10
     Float("speed", label_zh="初速度"),  # 原 initialVelocity/expansionRadius，2026-07-26 依续作 schema 改名
     Float("speedJitter", label_zh="初速度偏差"),  # 原 initialVelocityJitter/expansionRadiusJitter
-    Float("acceleration", label_zh="加速度"),  # 原 expansionRadiusElasticity（用户 2026-07-26 决定保留此名，
+    Float("speedCoef", label_zh="加速度"),  # 原 expansionRadiusElasticity（用户 2026-07-26 决定保留此名，
                                                # 不跟随续作 schema 的 drag 命名，二者本质是同一个力）
-    Float("accelerationJitter", label_zh="加速度偏差"),  # 原 expansionRadiusElasticityJitter
+    Float("speedCoefJitter", label_zh="加速度偏差"),  # 原 expansionRadiusElasticityJitter
     Float("velocityX", label_zh="X 基准点偏置"),  # 原 offsetX/unkn15，2026-07-26 依续作 schema 改回 velocityX
     Float("velocityY", label_zh="Y 基准点偏置"),  # 原 offsetY/unkn16
     Float("divergenceX", label_zh="X 基准点伸缩"),  # 原 sizeX/energyOnAxisX，2026-07-26 依续作 schema 改名

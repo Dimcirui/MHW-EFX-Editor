@@ -46,14 +46,16 @@ from ..hashes import *  # noqa: F401,F403  —— 各 custom 类型 hash 常量
 
 _UVSEQUENCE_FIXED_SCHEMA = [
     ('typeFlag',                'i'),   # 原 unkn0
-    ('uvs_index',               'i'),
-    ('uvsIndexJitter',          'i'),  # 原 unkn2/NULL，实测为 uvs_index 的抖动量
-    ('startingFrame',           'i'),
-    ('startingFrameJitter',     'i'),
-    ('animationSpeed',          'f'),
-    ('animationSpeedJitter',    'f'),
-    ('animationAcceleration',   'f'),
-    ('animationAccelerationJitter', 'f'),
+    # 原 uvs_index：改 camelCase 以匹配 sequenceNoJitter，否则 panels.py::_is_matching_jitter
+    # 按 base+"Jitter" 派生名配对时对不上（期望 uvs_indexJitter），UI 会把 value/jitter 拆成两行。
+    ('sequenceNo',                'i'),
+    ('sequenceNoJitter',          'i'),  # 原 unkn2/NULL，实测为 sequenceNo 的抖动量
+    ('patternNo',           'i'),
+    ('patternNoJitter',     'i'),
+    ('playSpeed',          'f'),
+    ('playSpeedJitter',    'f'),
+    ('playSpeedCoef',   'f'),
+    ('playSpeedCoefJitter', 'f'),
     # loopingEnum（4B）按语义拆分：byte0=动画模式，byte1=贴图朝向，byte2-3=padding（恒0）。
     # 用户实机测试（2026-07-10，配合 BILLBOARD2D 当稳定测试画布）坐实 byte0 三段结构：
     # value = direction×64 + flipCode×4 + playbackMode。
@@ -156,12 +158,12 @@ _BILLBOARD3D_FIXED_SCHEMA = [
     ('heightJitter',               'f'),
     ('flowmapSpeed',               'f'),
     ('flowmapSpeedJitter',         'f'),
-    ('flowmapAcceleration',        'f'),
-    ('flowmapAccelerationJitter',  'f'),
+    ('flowmapSpeedCoef',        'f'),
+    ('flowmapSpeedCoefJitter',  'f'),
     ('flowmapStrength',            'f'),
     ('flowmapStrengthJitter',      'f'),
-    ('flowmapStrengthAcceleration','f'),
-    ('flowmapStrengthAccelerationJitter', 'f'),
+    ('flowmapStrengthCoef','f'),
+    ('flowmapStrengthCoefJitter', 'f'),
     # path_len is next (part of billboard_data), then extras, then path
     # we handle path_len + extras + path manually below
 ]  # = 4+4+4+4+4+12+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
@@ -238,8 +240,8 @@ BILLBOARD3D_ATTR = attr_from_legacy(
 #   long unkn0_0,applicationRule(8) + XYZ(2) color,colorRange(8) + float brightness,randomBrightnessMult(8) +
 #   int useColorRange,blendMode,EPVColorSlot1,EPVColorSlot2(16) + float rotation,rotationJitter + scale,scaleJitter +
 #   width + widthJitter + height + heightJitter (8 floats=32) +
-#   float flowmapSpeed/Jitter,flowmapAcceleration/Jitter,flowmapStrength/Jitter,
-#   flowmapStrengthAcceleration/Jitter(32) + int path_len(4) + int unkn5[2](8) + char p[path_len]
+#   float flowmapSpeed/Jitter,flowmapSpeedCoef/Jitter,flowmapStrength/Jitter,
+#   flowmapStrengthCoef/Jitter(32) + int path_len(4) + int unkn5[2](8) + char p[path_len]
 # 固定部分 116B；path_len 在 data 偏移 104。
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -272,12 +274,12 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     # 字段逐一对应（"值有变化 + 紧跟的 Jitter 恒/几乎恒为 0"这套模式四对齐用）。  
     ('flowmapSpeed', 'f'),
     ('flowmapSpeedJitter', 'f'),
-    ('flowmapAcceleration', 'f'),
-    ('flowmapAccelerationJitter', 'f'),
+    ('flowmapSpeedCoef', 'f'),
+    ('flowmapSpeedCoefJitter', 'f'),
     ('flowmapStrength', 'f'),
     ('flowmapStrengthJitter', 'f'),
-    ('flowmapStrengthAcceleration', 'f'),
-    ('flowmapStrengthAccelerationJitter', 'f'),   # 32
+    ('flowmapStrengthCoef', 'f'),
+    ('flowmapStrengthCoefJitter', 'f'),   # 32
     ('path_len',         'i'),        # 4
     # 位置跟 BILLBOARD3D 的 path_len 之后、path 字节之前那段 extras（unkn5/unkn6_0…）
     # 完全对应（都是"path_len 后、path 前"这个槎位）。
@@ -622,12 +624,12 @@ _RIBBON_FIXED_SCHEMA = [
     # 的 flowmap 组逐项吻合（两边取值分布形态一一对应，含 acceleration 两项同为 100% 恒 1.0）。
     ('flowmapSpeed',                     'f'),  # 原 unkn23_0
     ('flowmapSpeedJitter',               'f'),  # 原 unkn23_1
-    ('flowmapAcceleration',              'f'),  # 原 unkn23_2
-    ('flowmapAccelerationJitter',        'f'),  # 原 unknFixed23_3
+    ('flowmapSpeedCoef',              'f'),  # 原 unkn23_2
+    ('flowmapSpeedCoefJitter',        'f'),  # 原 unknFixed23_3
     ('flowmapStrength',                  'f'),  # 原 unkn23_4
     ('flowmapStrengthJitter',            'f'),  # 原 unkn23_5
-    ('flowmapStrengthAcceleration',      'f'),  # 原 unkn23_6
-    ('flowmapStrengthAccelerationJitter','f'),  # 原 unknFixed23_7
+    ('flowmapStrengthCoef',      'f'),  # 原 unkn23_6
+    ('flowmapStrengthCoefJitter','f'),  # 原 unknFixed23_7
     # 原 int unkn24 的低 2 字节（高 2 字节恒 0xCD 纯占位）。用户实机确认(2026-07-30)：
     # flowmapPlayOnce=流动只播放一次；flowmapReverse=逆向播放，且必须 flowmapPlayOnce
     # 启用才生效（官方语料存在 reverse=1/playOnce=0 的无效组合 48 例，故不做可见性门控，
@@ -675,7 +677,7 @@ _RIBBON_FIXED_SCHEMA = [
     # byte[3:16] 13 字节恒为 0xCD（未初始化占位，同 reserved-fill-fields 判据）。
     # 第 4 个 float 恒为 0.0（15015/15015 无一例外）。已排除"其实是 flap 8 件套的重复/错位"假说。
     # ⚠ 这批字段一度按"疑似 flowmap 参数"命名为 ribbon_flow_*，2026-07-30 已证伪——
-    #   真正的 flowmap 8 件套是上面的 flowmapSpeed~flowmapStrengthAccelerationJitter
+    #   真正的 flowmap 8 件套是上面的 flowmapSpeed~flowmapStrengthCoefJitter
     #   （原 unkn23_*），总开关是 enableFlowmap。
     # 用户实机确认(2026-07-30)：byte[1] 是后 3 个 float 的开关；byte[2] 疑似叠在 byte[1] 之上。
     # 后 3 个 float 是三个正交方向的力（自尾端施力），方向恒定——不受 localRotation 也不受
@@ -789,12 +791,12 @@ _PLANE_DDS_SCHEMA = [
     ('heightJitter',       'f'),
     ('flowmapSpeed',       'f'),
     ('flowmapSpeedJitter', 'f'),
-    ('flowmapAcceleration','f'),
-    ('flowmapAccelerationJitter', 'f'),
+    ('flowmapSpeedCoef','f'),
+    ('flowmapSpeedCoefJitter', 'f'),
     ('flowmapStrength',    'f'),
     ('flowmapStrengthJitter','f'),
-    ('flowmapStrengthAcceleration','f'),
-    ('flowmapStrengthAccelerationJitter','f'),
+    ('flowmapStrengthCoef','f'),
+    ('flowmapStrengthCoefJitter','f'),
     # path_len handled separately
 ]  # = 4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
 
@@ -895,12 +897,12 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     # 待实机测试非零值验证。
     ('flowmapSpeed',                    'f'),  # 原 unkn23
     ('flowmapSpeedJitter',              'f'),  # 原 NULL5 (i->f)  
-    ('flowmapAcceleration',             'f'),  # 原 unkn24
-    ('flowmapAccelerationJitter',       'f'),  # 原 NULL6 (i->f)  
+    ('flowmapSpeedCoef',             'f'),  # 原 unkn24
+    ('flowmapSpeedCoefJitter',       'f'),  # 原 NULL6 (i->f)  
     ('flowmapStrength',                 'f'),  # 原 unkn25
     ('flowmapStrengthJitter',           'f'),  # 原 NULL7 (i->f)  
-    ('flowmapStrengthAcceleration',     'f'),  # 原 unkn26
-    ('flowmapStrengthAccelerationJitter', 'f'),  # 原 NULL8 (i->f)  
+    ('flowmapStrengthCoef',     'f'),  # 原 unkn26
+    ('flowmapStrengthCoefJitter', 'f'),  # 原 NULL8 (i->f)  
     ('NULL9',       'h'),
 ]
 assert _schema_size(_RIBBONBLADE_FIXED_SCHEMA) == 194, \
@@ -995,12 +997,12 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     # 位、unknFlag06_5(只有 {0.0,1.0})正落在 strengthJitter 位。
     ('flowmapSpeed',                     'f'),  # 原 unkn06_0
     ('flowmapSpeedJitter',               'f'),  # 原 unkn06_1
-    ('flowmapAcceleration',              'f'),  # 原 unkn06_2
-    ('flowmapAccelerationJitter',        'f'),  # 原 unknFixed06_3
+    ('flowmapSpeedCoef',              'f'),  # 原 unkn06_2
+    ('flowmapSpeedCoefJitter',        'f'),  # 原 unknFixed06_3
     ('flowmapStrength',                  'f'),  # 原 unkn06_4
     ('flowmapStrengthJitter',            'f'),  # 原 unknFlag06_5
-    ('flowmapStrengthAcceleration',      'f'),  # 原 unkn06_6
-    ('flowmapStrengthAccelerationJitter','f'),  # 原 unkn06_7
+    ('flowmapStrengthCoef',      'f'),  # 原 unkn06_6
+    ('flowmapStrengthCoefJitter','f'),  # 原 unkn06_7
     ('unknEnum06_08_00',           'h'),
     ('unknEnum06_08_01',           'h'),
     ('lengthBreakpoint',       'f'),        # 以下一片为 MT Framework 物理参数（MHW 引擎）
@@ -1305,12 +1307,12 @@ _LIGHTNING_FIXED_SCHEMA = [
     ('spacer15_0',                       ('B', 2)),  # 恒 0xCD 占位
     ('flowmapSpeed',                     'f'),  # 原 unkn15[1]
     ('flowmapSpeedJitter',               'f'),  # 原 unkn15[2]
-    ('flowmapAcceleration',              'f'),  # 原 unkn15[3]
-    ('flowmapAccelerationJitter',        'f'),  # 原 unkn15[4]
+    ('flowmapSpeedCoef',              'f'),  # 原 unkn15[3]
+    ('flowmapSpeedCoefJitter',        'f'),  # 原 unkn15[4]
     ('flowmapStrength',                  'f'),  # 原 unkn15[5]
     ('flowmapStrengthJitter',            'f'),  # 原 unkn15[6]
-    ('flowmapStrengthAcceleration',      'f'),  # 原 unkn15[7]
-    ('flowmapStrengthAccelerationJitter','f'),  # 原 unkn15[8]
+    ('flowmapStrengthCoef',      'f'),  # 原 unkn15[7]
+    ('flowmapStrengthCoefJitter','f'),  # 原 unkn15[8]
     # short unkn16: 2B
     ('unknEnum16',      'h'),
 ]

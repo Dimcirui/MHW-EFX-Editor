@@ -129,7 +129,7 @@ def _compute_channel(ch, t):
 
     ⚠ UVCONTROL 的 ('f',4) 字段布局是 [U值, ?, V值, ?]——U 在 index 0、V 在 **index 2**
     （index 1/3 实测恒为 0，疑似 jitter/保留）。实证：uv1_scale=(4,0,4,0)=U/V 各 4 倍，
-    uv1_initialPosition=(0,0,0.6,0)=V 偏移 0.6。早期误读 index 1 致 V 方向塌缩成条纹。
+    uv1_offset=(0,0,0.6,0)=V 偏移 0.6。早期误读 index 1 致 V 方向塌缩成条纹。
     """
     init = ch["init"]
     speed = ch["speed"]
@@ -455,7 +455,7 @@ def _collect_transform_entries(roots, armature):
             # 只取骨骼世界位置（head），不继承骨骼 rest 朝向：
             # Blender 骨骼默认沿 +Y，指向 +Z 的 MhBone 其 matrix_local 内嵌 +90°X 伪旋转，
             # 整体继承会把网格莫名转 +90°X。朝向统一交给 M_G2B 轴交换。
-            bone_base = _tsync.bone_base_matrix(armature, _tsync._entry_bone_lim(body))
+            bone_base = _tsync.bone_base_matrix(armature, _tsync._entry_joint_no(body))
             bone_pos = bone_base.to_translation() if bone_base is not None else None
 
             ent = {"mesh": mesh, "bone_pos": bone_pos}

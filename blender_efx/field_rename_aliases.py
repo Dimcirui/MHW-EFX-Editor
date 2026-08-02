@@ -79,12 +79,12 @@ FIELD_RENAME_ALIASES = {
     ("UVCONTROL", "unknFlag2"): "enableFlowmap",
     ("UVCONTROL", "extraMaterialInitialPosition"): "flowmapSpeed",
     ("UVCONTROL", "extraMaterialInitialPositionJitter"): "flowmapSpeedJitter",
-    ("UVCONTROL", "extraMaterialSpeed"): "flowmapAcceleration",
-    ("UVCONTROL", "extraMaterialSpeedJitter"): "flowmapAccelerationJitter",
+    ("UVCONTROL", "extraMaterialSpeed"): "flowmapSpeedCoef",
+    ("UVCONTROL", "extraMaterialSpeedJitter"): "flowmapSpeedCoefJitter",
     ("UVCONTROL", "opacity"): "flowmapStrength",
     ("UVCONTROL", "opacityJitter"): "flowmapStrengthJitter",
-    ("UVCONTROL", "opacityAcceleration"): "flowmapStrengthAcceleration",
-    ("UVCONTROL", "opacityAccelerationJitter"): "flowmapStrengthAccelerationJitter",
+    ("UVCONTROL", "opacityAcceleration"): "flowmapStrengthCoef",
+    ("UVCONTROL", "opacityAccelerationJitter"): "flowmapStrengthCoefJitter",
 
     # ── BILLBOARD3D / BILLBOARD2D / PLANE ───────────────────────────────────
     ("BILLBOARD3D", "randomBrightnessMult"): "brightnessJitter",
@@ -114,12 +114,12 @@ FIELD_RENAME_ALIASES = {
     ("RIBBON", "tailTiedToBone"): "enableFlowmap",
     ("RIBBON", "unkn23_0"): "flowmapSpeed",
     ("RIBBON", "unkn23_1"): "flowmapSpeedJitter",
-    ("RIBBON", "unkn23_2"): "flowmapAcceleration",
-    ("RIBBON", "unknFixed23_3"): "flowmapAccelerationJitter",
+    ("RIBBON", "unkn23_2"): "flowmapSpeedCoef",
+    ("RIBBON", "unknFixed23_3"): "flowmapSpeedCoefJitter",
     ("RIBBON", "unkn23_4"): "flowmapStrength",
     ("RIBBON", "unkn23_5"): "flowmapStrengthJitter",
-    ("RIBBON", "unkn23_6"): "flowmapStrengthAcceleration",
-    ("RIBBON", "unknFixed23_7"): "flowmapStrengthAccelerationJitter",
+    ("RIBBON", "unkn23_6"): "flowmapStrengthCoef",
+    ("RIBBON", "unknFixed23_7"): "flowmapStrengthCoefJitter",
     ("RIBBON", "base_flap_frequency"): "flap1Frequency",
     ("RIBBON", "base_flap_frequency_jitter"): "flap1FrequencyJitter",
     ("RIBBON", "base_flap_amount"): "flap1Amount",
@@ -142,12 +142,12 @@ FIELD_RENAME_ALIASES = {
     ("STRAINRIBBON", "color3_z"): "enableFlowmap",
     ("STRAINRIBBON", "unkn06_0"): "flowmapSpeed",
     ("STRAINRIBBON", "unkn06_1"): "flowmapSpeedJitter",
-    ("STRAINRIBBON", "unkn06_2"): "flowmapAcceleration",
-    ("STRAINRIBBON", "unknFixed06_3"): "flowmapAccelerationJitter",
+    ("STRAINRIBBON", "unkn06_2"): "flowmapSpeedCoef",
+    ("STRAINRIBBON", "unknFixed06_3"): "flowmapSpeedCoefJitter",
     ("STRAINRIBBON", "unkn06_4"): "flowmapStrength",
     ("STRAINRIBBON", "unknFlag06_5"): "flowmapStrengthJitter",
-    ("STRAINRIBBON", "unkn06_6"): "flowmapStrengthAcceleration",
-    ("STRAINRIBBON", "unkn06_7"): "flowmapStrengthAccelerationJitter",
+    ("STRAINRIBBON", "unkn06_6"): "flowmapStrengthCoef",
+    ("STRAINRIBBON", "unkn06_7"): "flowmapStrengthCoefJitter",
     # ⚠ 同一未发布周期内二次改名产生的中间名——这些名字进过发给用户的中间测试
     #   构建，用那些包导入过的 .blend 里烘的就是它们，故必须一并登记（补漏）。
     ("PTCOLLISION", "bounceCountLimitJitter"): "bounceCountJitter",
@@ -225,6 +225,7 @@ FIELD_RENAME_ALIASES = {
     ("RAYCAST", "fixed70"): "section_length",
     ("RAYCAST", "unknown0"): "typeFlag",
     ("REFRACTION", "unkn0"): "typeFlag",
+    ("REFRACTION", "unkn2"): "seeThroughBlend",
     ("RGBFIRE", "unkn0"): "typeFlag",
     ("RGBFIRE", "color1"): "fireColor",
     ("RGBFIRE", "color2"): "smokeColor",
@@ -232,22 +233,22 @@ FIELD_RENAME_ALIASES = {
     ("RIBBON", "unkn0"): "typeFlag",
     ("RIBBONBLADE", "unkn0_0"): "typeFlag",
     ("RIBBONBLADE", "NULL5"): "flowmapSpeedJitter",
-    ("RIBBONBLADE", "NULL6"): "flowmapAccelerationJitter",
+    ("RIBBONBLADE", "NULL6"): "flowmapSpeedCoefJitter",
     ("RIBBONBLADE", "NULL7"): "flowmapStrengthJitter",
-    ("RIBBONBLADE", "NULL8"): "flowmapStrengthAccelerationJitter",
+    ("RIBBONBLADE", "NULL8"): "flowmapStrengthCoefJitter",
     ("RIBBONBLADE", "unkn03"): "widthDirection",
     ("RIBBONBLADE", "unkn04"): "width",
     ("RIBBONBLADE", "unkn05_0"): "length",
     ("RIBBONBLADE", "unkn07_1"): "lengthMode",
     ("RIBBONBLADE", "unkn23"): "flowmapSpeed",
-    ("RIBBONBLADE", "unkn24"): "flowmapAcceleration",
+    ("RIBBONBLADE", "unkn24"): "flowmapSpeedCoef",
     ("RIBBONBLADE", "unkn25"): "flowmapStrength",
-    ("RIBBONBLADE", "unkn26"): "flowmapStrengthAcceleration",
+    ("RIBBONBLADE", "unkn26"): "flowmapStrengthCoef",
     ("ROTATEANIM", "billboardRotationSpeed"): "billboardRotationJitter",
-    ("ROTATEANIM", "momentum_retention"): "spinAccelerationX",
+    ("ROTATEANIM", "momentum_retention"): "spinSpeedCoefX",
     ("ROTATEANIM", "unkn0_0"): "spinAxisMask",
-    ("ROTATEANIM", "unkn1_0"): "billboardRotationAccel",
-    ("ROTATEANIM", "unkn1_1"): "billboardRotationAccelJitter",
+    ("ROTATEANIM", "unkn1_0"): "billboardRotationCoef",
+    ("ROTATEANIM", "unkn1_1"): "billboardRotationCoefJitter",
     ("ROTATEANIM", "unknEnum1_2"): "rotateDelayStartJitter",
     ("SCALEANIM", "unkn0"): "typeFlag",
     ("SCALEANIM", "delayJitter"): "animUpdateStartJitter",
@@ -287,10 +288,9 @@ FIELD_RENAME_ALIASES = {
     ("TRANSFORM3D", "unkn0"): "typeFlag",
     ("UVCONTROL", "uv2_unkn0"): "uv2_enable",
     ("UVSEQUENCE", "unkn0"): "typeFlag",
-    ("UVSEQUENCE", "unkn2"): "uvsIndexJitter",
     ("VELOCITY2D", "unkn0_0"): "typeFlag",
-    ("VELOCITY2D", "expansionRadiusElasticity"): "acceleration",
-    ("VELOCITY2D", "expansionRadiusElasticityJitter"): "accelerationJitter",
+    ("VELOCITY2D", "expansionRadiusElasticity"): "speedCoef",
+    ("VELOCITY2D", "expansionRadiusElasticityJitter"): "speedCoefJitter",
     ("VELOCITY2D", "expansionType"): "velocityType",
     ("VELOCITY2D", "initialVelocity"): "speed",
     ("VELOCITY2D", "initialVelocityDelay"): "movementDelay",
@@ -302,6 +302,74 @@ FIELD_RENAME_ALIASES = {
     ("VELOCITY2D", "sizeY"): "divergenceY",
     ("VELOCITY2D", "unkn0_1"): "rotation",
     ("VELOCITY2D", "unkn10"): "rotationJitter",
+
+    # ── 2026-08-03 官方 DTI 名对齐（UI 措辞不变，只改内部名）─────────────────
+    # flowmap 八件套：Acceleration 实为每帧乘算系数（中性值 1.0），官方名 mFlowSpeedCoef /
+    # mFlowStrengthCoef。8 个类型共用同一套字段名。
+    **{
+        (_t, _old): _new
+        for _t in ("BILLBOARD2D", "BILLBOARD3D", "LIGHTNING", "PLANE",
+                   "RIBBON", "RIBBONBLADE", "STRAINRIBBON", "UVCONTROL")
+        for _old, _new in (
+            ("flowmapAcceleration",               "flowmapSpeedCoef"),
+            ("flowmapAccelerationJitter",         "flowmapSpeedCoefJitter"),
+            ("flowmapStrengthAcceleration",       "flowmapStrengthCoef"),
+            ("flowmapStrengthAccelerationJitter", "flowmapStrengthCoefJitter"),
+        )
+    },
+
+    # UVCONTROL：官方 Offset / OffsetAdd / OffsetCoef（Scale 同构）三件套
+    ("UVCONTROL", "uv1_initialPosition"): "uv1_offset",
+    ("UVCONTROL", "uv1_speed"): "uv1_offsetAdd",
+    ("UVCONTROL", "uv1_acceleration"): "uv1_offsetCoef",
+    ("UVCONTROL", "uv1_scaleSpeed"): "uv1_scaleAdd",
+    ("UVCONTROL", "uv1_scaleAcceleration"): "uv1_scaleCoef",
+    ("UVCONTROL", "uv2_initialPosition"): "uv2_offset",
+    ("UVCONTROL", "uv2_speed"): "uv2_offsetAdd",
+    ("UVCONTROL", "uv2_acceleration"): "uv2_offsetCoef",
+    ("UVCONTROL", "uv2_scaleSpeed"): "uv2_scaleAdd",
+    ("UVCONTROL", "uv2_scaleAcceleration"): "uv2_scaleCoef",
+
+    # UVSEQUENCE：官方 mSequenceNo / mPatternNo / mPlaySpeed / mPlaySpeedCoef
+    ("UVSEQUENCE", "uvs_index"): "sequenceNo",          # 0.5.3 中间名 uvsIndex 见下条
+    ("UVSEQUENCE", "uvsIndex"): "sequenceNo",
+    ("UVSEQUENCE", "uvsIndexJitter"): "sequenceNoJitter",
+    ("UVSEQUENCE", "unkn2"): "sequenceNoJitter",        # 覆盖上一轮 unkn2→uvsIndexJitter
+    ("UVSEQUENCE", "startingFrame"): "patternNo",
+    ("UVSEQUENCE", "startingFrameJitter"): "patternNoJitter",
+    ("UVSEQUENCE", "animationSpeed"): "playSpeed",
+    ("UVSEQUENCE", "animationSpeedJitter"): "playSpeedJitter",
+    ("UVSEQUENCE", "animationAcceleration"): "playSpeedCoef",
+    ("UVSEQUENCE", "animationAccelerationJitter"): "playSpeedCoefJitter",
+
+    # ROTATEANIM：两组 Accel 语料上均为 1.0 中性 → 系数
+    ("ROTATEANIM", "billboardRotationAccel"): "billboardRotationCoef",
+    ("ROTATEANIM", "billboardRotationAccelJitter"): "billboardRotationCoefJitter",
+    ("ROTATEANIM", "spinAccelerationX"): "spinSpeedCoefX",
+    ("ROTATEANIM", "spinAccelerationXJitter"): "spinSpeedCoefXJitter",
+    ("ROTATEANIM", "spinAccelerationY"): "spinSpeedCoefY",
+    ("ROTATEANIM", "spinAccelerationYJitter"): "spinSpeedCoefYJitter",
+    ("ROTATEANIM", "spinAccelerationZ"): "spinSpeedCoefZ",
+    ("ROTATEANIM", "spinAccelerationZJitter"): "spinSpeedCoefZJitter",
+
+    # VELOCITY2D / VELOCITY3D：同族系数（推翻 2026-07-26 保留 acceleration 的命名）
+    ("VELOCITY3D", "acceleration"): "speedCoef",
+    ("VELOCITY3D", "accelerationJitter"): "speedCoefJitter",
+    ("VELOCITY3D", "elasticity"): "speedCoef",               # 0.5.0 前的更早旧名
+    ("VELOCITY3D", "elasticityJitter"): "speedCoefJitter",
+    ("VELOCITY2D", "acceleration"): "speedCoef",
+    ("VELOCITY2D", "accelerationJitter"): "speedCoefJitter",
+
+    # PARENTOPTIONS：官方 mRelationPos/Rot/Scl、mParticleUseLocal、mConstRelease、mJointNo
+    ("PARENTOPTIONS", "translation_tracking"): "relationPos",
+    ("PARENTOPTIONS", "angle_tracking"): "relationRot",
+    ("PARENTOPTIONS", "scale_tracking"): "relationScl",
+    ("PARENTOPTIONS", "spawnTrack"): "particleUseLocal",
+    ("PARENTOPTIONS", "lockToPositionFrame"): "constRelease",
+    ("PARENTOPTIONS", "lockToPositionFrameJitter"): "constReleaseJitter",
+    ("PARENTOPTIONS", "spawnLock"): "constRelease",          # 0.5.0 前的更早旧名
+    ("PARENTOPTIONS", "bleedPos"): "constReleaseJitter",
+    ("PARENTOPTIONS", "bone_lim"): "jointNo",
 
     # ⚠ LIGHTNING 的 unkn15 / unkn13 是**字段拆分**（一个 ('f',N) 拆成多个），dtype 与
     #   大小都变了，本表覆盖不了——那两处只能靠重新导入，故意不在这里登记。

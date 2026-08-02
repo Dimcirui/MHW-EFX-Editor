@@ -38,9 +38,9 @@ blender_efx/annotations.py  —  L1.3 BT 注释接入
 
 FIELD_OFFICIAL_NAMES = {
     # ── PARENTOPTIONS（nEffect::ParentOptions，按内存偏移 0x30–0x50 铁对齐）──
-    ("PARENTOPTIONS", "translation_tracking"): ("mRelationPos[XYZ]", "0xC8E41E1E", "确认"),
-    ("PARENTOPTIONS", "angle_tracking"):       ("mRelationRot[XYZ]", "0x2DAC4052", "确认"),
-    ("PARENTOPTIONS", "scale_tracking"):       ("mRelationScl[XYZ]", "0x1E11460A", "确认"),
+    ("PARENTOPTIONS", "relationPos"): ("mRelationPos[XYZ]", "0xC8E41E1E", "确认"),
+    ("PARENTOPTIONS", "relationRot"):       ("mRelationRot[XYZ]", "0x2DAC4052", "确认"),
+    ("PARENTOPTIONS", "relationScl"):       ("mRelationScl[XYZ]", "0x1E11460A", "确认"),
 
     # ── 语义映射（nTimelineParam 动画参数 ↔ schema 字段，按置信度标注）──────────
     # TRANSFORM3D：translate/rotate/resize = 位置/旋转/缩放（XYZ 三连）铁定确认
@@ -119,7 +119,7 @@ FIELD_ANNOTATIONS = {
 
     # ─── PARENTOPTIONS ────────────────────────────────────────────────────────
     # ParentOptions (EFX_Subtypes.bt)
-    ("PARENTOPTIONS", "translation_tracking"): {
+    ("PARENTOPTIONS", "relationPos"): {
         "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
               "  1=Track Player Movement,  2=Do not track further movements,"
               "  3=Ignore Basic Transform",
@@ -127,7 +127,7 @@ FIELD_ANNOTATIONS = {
               "  1=追踪玩家移动，  2=不再追踪后续移动，"
               "  3=忽略基础变换",
     },
-    ("PARENTOPTIONS", "angle_tracking"): {
+    ("PARENTOPTIONS", "relationRot"): {
         "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
               "  1=Track Player Movement,  2=Do not track further movements,"
               "  3=Snap to Angle And Track",
@@ -135,7 +135,7 @@ FIELD_ANNOTATIONS = {
               "  1=追踪玩家移动，  2=不再追踪后续移动，"
               "  3=对齐到角度并追踪",
     },
-    ("PARENTOPTIONS", "scale_tracking"): {
+    ("PARENTOPTIONS", "relationScl"): {
         "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
               "  1=Track Player Movement,  2=Do not track further movements,"
               "  3=Ignore Basic Transform",
@@ -143,22 +143,22 @@ FIELD_ANNOTATIONS = {
               "  1=追踪玩家移动，  2=不再追踪后续移动，"
               "  3=忽略基础变换",
     },
-    ("PARENTOPTIONS", "spawnTrack"): {
+    ("PARENTOPTIONS", "particleUseLocal"): {
         "EN": "Track Across Spawns",
         "ZH": "设为 1 时，追踪绑定位置",
     },
-    ("PARENTOPTIONS", "lockToPositionFrame"): {
+    ("PARENTOPTIONS", "constRelease"): {
         "EN": "Formerly spawnLock. Only meaningful when spawnTrack is enabled — after this "
               "many frames, tracking stops and the effect locks to its current position. "
               "0 = always keep tracking.",
         "ZH": "原名 spawnLock。仅在 spawnTrack 启用时生效——达到该帧数后停止追踪，"
               "特效锁定在当前位置。0 = 始终追踪。",
     },
-    ("PARENTOPTIONS", "lockToPositionFrameJitter"): {
+    ("PARENTOPTIONS", "constReleaseJitter"): {
         "EN": "Formerly bleedPos. Jitter paired with lockToPositionFrame.",
         "ZH": "原名 bleedPos。与 lockToPositionFrame 配对的抖动量。",
     },
-    ("PARENTOPTIONS", "bone_lim"): {
+    ("PARENTOPTIONS", "jointNo"): {
         "EN": "Bone Limitation. The index/serial number of the bone this is bound to.",
         "ZH": "骨骼限制。绑定到的骨骼的序号。",
     },
@@ -245,7 +245,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "已依 2026-07-26 一份社区 RE Engine 续作 schema 确认为旋转顺序枚举："
               "0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX。跟 TRANSFORM3D 的旋转顺序惯例不是同一套数值映射。",
     },
-    ("VELOCITY3D", "acceleration"): {
+    ("VELOCITY3D", "speedCoef"): {
         "EN": "Acceleration coefficient. 1=uniform, >1=accelerate, <1=decelerate until 0. "
               "(A community schema calls the equivalent field \"drag\" — 1=no drag/constant "
               "speed, 0=instant stop — conceptually the same force; kept the name acceleration "
@@ -651,15 +651,15 @@ FIELD_ANNOTATIONS = {
 
     # ─── UVCONTROL ────────────────────────────────────────────────────────────
     # UVControl (EFX_Subtypes.bt)
-    ("UVCONTROL", "uv1_acceleration"): {
+    ("UVCONTROL", "uv1_offsetCoef"): {
         "EN": "Multiplies speed every second (UV1)",
         "ZH": "每秒对速度做乘法（UV1）",
     },
-    ("UVCONTROL", "uv2_acceleration"): {
+    ("UVCONTROL", "uv2_offsetCoef"): {
         "EN": "Multiplies speed every second (UV2)",
         "ZH": "每秒对速度做乘法（UV2）",
     },
-    ("UVCONTROL", "flowmapStrengthAcceleration"): {
+    ("UVCONTROL", "flowmapStrengthCoef"): {
         "EN": "Flowmap strength acceleration. Part of the flowmap octet. Formerly opacityAcceleration.",
         "ZH": "流动贴图强度加速度。属于 flowmap 八件套之一。原名 opacityAcceleration。",
     },
@@ -1319,7 +1319,7 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── UVSEQUENCE (fixed part fields) ───────────────────────────────────────
-    ("UVSEQUENCE", "uvs_index"): {
+    ("UVSEQUENCE", "sequenceNo"): {
         "EN": "UVS File Path Index (see the paired Jitter field for spawn-time variance).",
         "ZH": "UVS 文件路径索引（生成时的随机抖动量见旁边的 Jitter 字段）。",
     },
@@ -1763,7 +1763,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Random addend on speed. Formerly initialVelocityJitter.",
         "ZH": "初速度偏差（speed 的随机加数）。原 initialVelocityJitter。",
     },
-    ("VELOCITY3D", "accelerationJitter"): {
+    ("VELOCITY3D", "speedCoefJitter"): {
         "EN": "Random jitter on acceleration (same nature as the velocity jitter).",
         "ZH": "加速度偏差（性质同初速度偏差）。",
     },
@@ -2445,11 +2445,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 2, 3, 9].",
         "ZH": "常见取值为 [0, 1, 2, 3, 9]。",
     },
-    ("BILLBOARD3D", "flowmapAcceleration"): {
+    ("BILLBOARD3D", "flowmapSpeedCoef"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("BILLBOARD3D", "flowmapAccelerationJitter"): {
+    ("BILLBOARD3D", "flowmapSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
@@ -2457,11 +2457,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("BILLBOARD3D", "flowmapStrengthAcceleration"): {
+    ("BILLBOARD3D", "flowmapStrengthCoef"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("BILLBOARD3D", "flowmapStrengthAccelerationJitter"): {
+    ("BILLBOARD3D", "flowmapStrengthCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
@@ -3077,11 +3077,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Random jitter added to rotation2 each time the effect plays.",
         "ZH": "rotation2 的随机抖动范围，每次播放特效时随机浮动。",
     },
-    ("PLANE", "flowmapAcceleration"): {
+    ("PLANE", "flowmapSpeedCoef"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("PLANE", "flowmapAccelerationJitter"): {
+    ("PLANE", "flowmapSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
@@ -3089,11 +3089,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("PLANE", "flowmapStrengthAcceleration"): {
+    ("PLANE", "flowmapStrengthCoef"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("PLANE", "flowmapStrengthAccelerationJitter"): {
+    ("PLANE", "flowmapStrengthCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
@@ -3221,9 +3221,12 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [-4, -3, -2, -1].",
         "ZH": "常见取值为 [-4, -3, -2, -1]。",
     },
-    ("REFRACTION", "unkn2"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("REFRACTION", "seeThroughBlend"): {
+        "EN": "See-through blend factor, range 0~1. 0 = background content is "
+              "completely obscured; 1 = distortion while still seeing through to "
+              "the original background content (blended).",
+        "ZH": "透视混合系数，取值 0~1。0=背后内容被完全遮挡不可见；1=扭曲的同时，"
+              "可以透过看到背后原本内容（混合叠加）。",
     },
     ("REPEATAREA", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -3584,7 +3587,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "流光贴图速度。常见取值在 0~1 之间。属于 flowmap 四件套"
               "（速度/加速度/强度/强度加速度）之一。原名 unkn23。",
     },
-    ("RIBBONBLADE", "flowmapAcceleration"): {
+    ("RIBBONBLADE", "flowmapSpeedCoef"): {
         "EN": "Flowmap acceleration. Part of the flowmap quartet. Formerly unkn24.",
         "ZH": "流光贴图加速度。属于 flowmap 四件套之一。原名 unkn24。",
     },
@@ -3592,7 +3595,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Flowmap strength. Common range: 0~100. Confirmed in-game. Formerly unkn25.",
         "ZH": "流光贴图强度。常见取值在 0~100 之间。已实机确认。原名 unkn25。",
     },
-    ("RIBBONBLADE", "flowmapStrengthAcceleration"): {
+    ("RIBBONBLADE", "flowmapStrengthCoef"): {
         "EN": "Flowmap strength acceleration. Common range: 0~1. Confirmed in-game. Formerly unkn26.",
         "ZH": "流光贴图强度加速度。常见取值在 0~1 之间。已实机确认。原名 unkn26。",
     },
@@ -3600,7 +3603,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Jitter for flowmapSpeed. Confirmed float in-game. Formerly NULL5.",
         "ZH": "flowmapSpeed 的抖动。已实机确认为 float。原名 NULL5。",
     },
-    ("RIBBONBLADE", "flowmapAccelerationJitter"): {
+    ("RIBBONBLADE", "flowmapSpeedCoefJitter"): {
         "EN": "Jitter for flowmapAcceleration. Confirmed float in-game. Formerly NULL6.",
         "ZH": "flowmapAcceleration 的抖动。已实机确认为 float。原名 NULL6。",
     },
@@ -3608,7 +3611,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Jitter for flowmapStrength. Confirmed float in-game. Formerly NULL7.",
         "ZH": "flowmapStrength 的抖动。已实机确认为 float。原名 NULL7。",
     },
-    ("RIBBONBLADE", "flowmapStrengthAccelerationJitter"): {
+    ("RIBBONBLADE", "flowmapStrengthCoefJitter"): {
         "EN": "Jitter for flowmapStrengthAcceleration. Confirmed float in-game. Formerly NULL8.",
         "ZH": "flowmapStrengthAcceleration 的抖动。已实机确认为 float。原名 NULL8。",
     },
@@ -3616,40 +3619,40 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("ROTATEANIM", "billboardRotationAccel"): {
+    ("ROTATEANIM", "billboardRotationCoef"): {
         "EN": "Acceleration of billboardRotation (static value; pairs with "
               "billboardRotationAccelJitter as the random).",
         "ZH": "billboardRotation 的加速度（固定值；与 billboardRotationAccelJitter 组成 "
               "static/random 一组）。",
     },
-    ("ROTATEANIM", "billboardRotationAccelJitter"): {
+    ("ROTATEANIM", "billboardRotationCoefJitter"): {
         "EN": "Random component of billboardRotationAccel.",
         "ZH": "billboardRotationAccel 的随机分量。",
     },
-    ("ROTATEANIM", "spinAccelerationX"): {
+    ("ROTATEANIM", "spinSpeedCoefX"): {
         "EN": "Formerly momentum_retention — corpus scan (2026-07) shows this and the following "
               "5 fields were shifted one slot off; regrouped into X/Y/Z static+random pairs of "
               "spin acceleration. Static value mostly 0.9~1.0.",
         "ZH": "原 momentum_retention——2026-07 实测发现原 XYZ 分组整体错位一格，重新按 X/Y/Z 各自"
               "的自旋加速度 static/random 分组。static 值多集中在 0.9~1.0。",
     },
-    ("ROTATEANIM", "spinAccelerationXJitter"): {
+    ("ROTATEANIM", "spinSpeedCoefXJitter"): {
         "EN": "Random component of spinAccelerationX. Mostly 0; occasionally a clean small decimal.",
         "ZH": "spinAccelerationX 的随机分量。多为 0；偶尔是干净的小数。",
     },
-    ("ROTATEANIM", "spinAccelerationY"): {
+    ("ROTATEANIM", "spinSpeedCoefY"): {
         "EN": "Y-axis counterpart of spinAccelerationX (static value).",
         "ZH": "spinAccelerationX 的 Y 轴对应（static 值）。",
     },
-    ("ROTATEANIM", "spinAccelerationYJitter"): {
+    ("ROTATEANIM", "spinSpeedCoefYJitter"): {
         "EN": "Random component of spinAccelerationY.",
         "ZH": "spinAccelerationY 的随机分量。",
     },
-    ("ROTATEANIM", "spinAccelerationZ"): {
+    ("ROTATEANIM", "spinSpeedCoefZ"): {
         "EN": "Z-axis counterpart of spinAccelerationX (static value).",
         "ZH": "spinAccelerationX 的 Z 轴对应（static 值）。",
     },
-    ("ROTATEANIM", "spinAccelerationZJitter"): {
+    ("ROTATEANIM", "spinSpeedCoefZJitter"): {
         "EN": "Random component of spinAccelerationZ.",
         "ZH": "spinAccelerationZ 的随机分量。",
     },
@@ -3852,7 +3855,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("STRAINRIBBON", "color3_z"): {
+    ("STRAINRIBBON", "enableFlowmap"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
@@ -3888,27 +3891,27 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 257].",
         "ZH": "常见取值为 [0, 1, 257]。",
     },
-    ("STRAINRIBBON", "unkn06_1"): {
+    ("STRAINRIBBON", "flowmapSpeedJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("STRAINRIBBON", "unkn06_2"): {
+    ("STRAINRIBBON", "flowmapSpeedCoef"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("STRAINRIBBON", "unkn06_4"): {
+    ("STRAINRIBBON", "flowmapStrength"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("STRAINRIBBON", "unknFlag06_5"): {
+    ("STRAINRIBBON", "flowmapStrengthJitter"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("STRAINRIBBON", "unkn06_6"): {
+    ("STRAINRIBBON", "flowmapStrengthCoef"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("STRAINRIBBON", "unkn06_7"): {
+    ("STRAINRIBBON", "flowmapStrengthCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
@@ -3959,7 +3962,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "flowmapSpeed 的抖动。属于 flowmap 八件套之一。常见取值在 0~1 之间。"
               "原名 extraMaterialInitialPositionJitter。",
     },
-    ("UVCONTROL", "flowmapAcceleration"): {
+    ("UVCONTROL", "flowmapSpeedCoef"): {
         "EN": "Flowmap acceleration. Part of the flowmap octet. Common range: 0~1. "
               "Formerly extraMaterialSpeed.",
         "ZH": "流动贴图加速度。属于 flowmap 八件套之一。常见取值在 0~1 之间。"
@@ -3979,15 +3982,15 @@ FIELD_ANNOTATIONS = {
         "EN": "1860-sample corpus scan: clean binary 0/1 distribution — likely uv2 sub-channel on/off switch.",
         "ZH": "1860 例全语料实测：干净的 0/1 二元分布——疑似 uv2 子通道启用开关。",
     },
-    ("UVSEQUENCE", "animationAcceleration"): {
+    ("UVSEQUENCE", "playSpeedCoef"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("UVSEQUENCE", "animationAccelerationJitter"): {
+    ("UVSEQUENCE", "playSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("UVSEQUENCE", "animationSpeedJitter"): {
+    ("UVSEQUENCE", "playSpeedJitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
@@ -4004,12 +4007,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
               "[1, 2, 5, 6, 7, 8, 9, 11, 13, 14]。",
     },
-    ("UVSEQUENCE", "uvsIndexJitter"): {
-        "EN": "Jitter added to uvs_index at spawn (BT template mislabels the raw byte "
-              "'NULL' — it is not a fixed constant). Usually 0; other values seen are "
-              "small integers 1~8.",
-        "ZH": "生成时叠加到 uvs_index 上的抖动量（BT 模板误标为 NULL，实际并非恒定值）。"
-              "通常为 0；其余取值为 1~8 的小整数。",
+    ("UVSEQUENCE", "sequenceNoJitter"): {
+        "EN": "Jitter added to the UVS file path index at spawn. Usually 0; other "
+              "values are small integers 1~8.",
+        "ZH": "生成时叠加到 UVS 文件路径索引上的抖动量。通常为 0；其余取值为 1~8 的小整数。",
     },
     ("VELOCITY2D", "velocityX"): {
         "EN": "Each particle's direction is computed per axis as "
@@ -4052,11 +4053,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 3, 4, 5, 10, 20]. Formerly initialVelocityDelayJitter.",
         "ZH": "常见取值为 [0, 1, 3, 4, 5, 10, 20]。原 initialVelocityDelayJitter。",
     },
-    ("VELOCITY2D", "acceleration"): {
+    ("VELOCITY2D", "speedCoef"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("VELOCITY2D", "accelerationJitter"): {
+    ("VELOCITY2D", "speedCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },

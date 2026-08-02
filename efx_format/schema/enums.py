@@ -253,3 +253,10 @@ ENUM_LOOPING_ORIENTATION = EnumDef("LoopingOrientation", [
     (2, "Rotate 90° CCW", "逆时针90°"),
     (3, "Random", "随机"),
 ])
+
+# REFRACTION.pixelNormalOffset：官方语料仅见 0/1/2，用户实机确认(2026-08-02)三档效果。
+ENUM_REFRACTION_OFFSET = EnumDef("RefractionOffset", [
+    (0, "None", "不偏移"),
+    (1, "Single", "单次偏移"),
+    (2, "Multiple", "多重偏移"),
+])

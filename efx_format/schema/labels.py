@@ -50,14 +50,14 @@ _LABELS_GLOBAL = {
     'enableFlowmap': '启用流动贴图',
     'flowmapSpeed': '流动贴图速度',
     'flowmapSpeedJitter': '流动贴图速度抖动',
-    'flowmapAcceleration': '流动贴图加速度',
-    'flowmapAccelerationJitter': '流动贴图加速度抖动',
+    'flowmapSpeedCoef': '流动贴图加速度',
+    'flowmapSpeedCoefJitter': '流动贴图加速度抖动',
     'flowmapStrength': '流动贴图强度',
     'flowmapStrengthJitter': '流动贴图强度抖动',
-    'flowmapStrengthAcceleration': '流动贴图强度加速度',
-    'flowmapStrengthAccelerationJitter': '流动贴图强度加速度抖动',
+    'flowmapStrengthCoef': '流动贴图强度加速度',
+    'flowmapStrengthCoefJitter': '流动贴图强度加速度抖动',
     # TUBELIGHT 全字段标签已折入 TUBELIGHT_ATTR 的 Field.label_zh，此处退休。
-    'animationSpeed': '动画速度',
+    'playSpeed': '动画速度',
     'width': '宽度',
     'widthJitter': '宽度抖动',
     'height': '高度',
@@ -156,12 +156,12 @@ _LABELS_BY_TYPE = {
     ('RIBBONBLADE', 'lengthMode'): '拖尾长度模式',
     ('RIBBONBLADE', 'flowmapSpeed'): '流光贴图速度',
     ('RIBBONBLADE', 'flowmapSpeedJitter'): '流光贴图速度抖动',
-    ('RIBBONBLADE', 'flowmapAcceleration'): '流光贴图加速度',
-    ('RIBBONBLADE', 'flowmapAccelerationJitter'): '流光贴图加速度抖动',
+    ('RIBBONBLADE', 'flowmapSpeedCoef'): '流光贴图加速度',
+    ('RIBBONBLADE', 'flowmapSpeedCoefJitter'): '流光贴图加速度抖动',
     ('RIBBONBLADE', 'flowmapStrength'): '流光贴图强度',
     ('RIBBONBLADE', 'flowmapStrengthJitter'): '流光贴图强度抖动',
-    ('RIBBONBLADE', 'flowmapStrengthAcceleration'): '流光贴图强度加速度',
-    ('RIBBONBLADE', 'flowmapStrengthAccelerationJitter'): '流光贴图强度加速度抖动',
+    ('RIBBONBLADE', 'flowmapStrengthCoef'): '流光贴图强度加速度',
+    ('RIBBONBLADE', 'flowmapStrengthCoefJitter'): '流光贴图强度加速度抖动',
 }
 
 
@@ -177,3 +177,85 @@ def field_label_zh(type_name, field_name):
         if bt is not None:
             return bt
     return _LABELS_GLOBAL.get(field_name)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 英文标签冻结表
+#
+# 英文标签默认是 Blender 层从 ori_name 现推的（camelCase 拆词，见 panels.py::_friendly_name），
+# 所以**改内部名会连带改掉英文界面**。内部名向官方 DTI 名对齐（Coef/Add/relation… 体系）时，
+# 界面措辞要保持不变——沿用多年的社区叫法不动——故此处把改名前的派生结果显式钉住。
+#
+# 只登记「内部名已改、但界面要维持旧称」的字段；新字段/未改名字段不进表，继续走派生。
+# ⚠ 表内 value 是**用户可见文案**，不写内部新名。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_LABELS_EN_GLOBAL = {
+    # flowmap 八件套（8 个类型共用同一套派生名）
+    'flowmapSpeedCoef':              'Flowmap Acceleration',
+    'flowmapSpeedCoefJitter':        'Flowmap Acceleration Jitter',
+    'flowmapStrengthCoef':           'Flowmap Strength Acceleration',
+    'flowmapStrengthCoefJitter':     'Flowmap Strength Acceleration Jitter',
+}
+
+_LABELS_EN_BY_TYPE = {
+    # ── UVCONTROL：Offset/Add/Coef 体系 ──
+    ('UVCONTROL', 'uv1_offset'):       'Uv1 initial Position',
+    ('UVCONTROL', 'uv1_offsetAdd'):    'Uv1 speed',
+    ('UVCONTROL', 'uv1_offsetCoef'):   'Uv1 acceleration',
+    ('UVCONTROL', 'uv1_scaleAdd'):     'Uv1 scale Speed',
+    ('UVCONTROL', 'uv1_scaleCoef'):    'Uv1 scale Acceleration',
+    ('UVCONTROL', 'uv2_offset'):       'Uv2 initial Position',
+    ('UVCONTROL', 'uv2_offsetAdd'):    'Uv2 speed',
+    ('UVCONTROL', 'uv2_offsetCoef'):   'Uv2 acceleration',
+    ('UVCONTROL', 'uv2_scaleAdd'):     'Uv2 scale Speed',
+    ('UVCONTROL', 'uv2_scaleCoef'):    'Uv2 scale Acceleration',
+    # ── UVSEQUENCE：PlaySpeed/PlaySpeedCoef + SequenceNo/PatternNo ──
+    ('UVSEQUENCE', 'playSpeed'):           'Animation Speed',
+    ('UVSEQUENCE', 'playSpeedJitter'):     'Animation Speed Jitter',
+    ('UVSEQUENCE', 'playSpeedCoef'):       'Animation Acceleration',
+    ('UVSEQUENCE', 'playSpeedCoefJitter'): 'Animation Acceleration Jitter',
+    ('UVSEQUENCE', 'sequenceNo'):          'Uvs Index',
+    ('UVSEQUENCE', 'sequenceNoJitter'):    'Uvs Index Jitter',
+    ('UVSEQUENCE', 'patternNo'):           'Starting Frame',
+    ('UVSEQUENCE', 'patternNoJitter'):     'Starting Frame Jitter',
+    # ── ROTATEANIM ──
+    ('ROTATEANIM', 'billboardRotationCoef'):       'Billboard Rotation Accel',
+    ('ROTATEANIM', 'billboardRotationCoefJitter'): 'Billboard Rotation Accel Jitter',
+    ('ROTATEANIM', 'spinSpeedCoefX'):              'Spin Acceleration X',
+    ('ROTATEANIM', 'spinSpeedCoefXJitter'):        'Spin Acceleration XJitter',
+    ('ROTATEANIM', 'spinSpeedCoefY'):              'Spin Acceleration Y',
+    ('ROTATEANIM', 'spinSpeedCoefYJitter'):        'Spin Acceleration YJitter',
+    ('ROTATEANIM', 'spinSpeedCoefZ'):              'Spin Acceleration Z',
+    ('ROTATEANIM', 'spinSpeedCoefZJitter'):        'Spin Acceleration ZJitter',
+    # ── VELOCITY2D / VELOCITY3D ──
+    ('VELOCITY3D', 'speedCoef'):       'Acceleration',
+    ('VELOCITY3D', 'speedCoefJitter'): 'Acceleration Jitter',
+    ('VELOCITY2D', 'speedCoef'):       'Acceleration',
+    ('VELOCITY2D', 'speedCoefJitter'): 'Acceleration Jitter',
+    # ── PARENTOPTIONS ──
+    ('PARENTOPTIONS', 'relationPos'):        'Translation tracking',
+    ('PARENTOPTIONS', 'relationRot'):        'Angle tracking',
+    ('PARENTOPTIONS', 'relationScl'):        'Scale tracking',
+    ('PARENTOPTIONS', 'particleUseLocal'):   'Spawn Track',
+    ('PARENTOPTIONS', 'constRelease'):       'Lock To Position Frame',
+    ('PARENTOPTIONS', 'constReleaseJitter'): 'Lock To Position Frame Jitter',
+    ('PARENTOPTIONS', 'jointNo'):            'Bone lim',
+}
+
+
+def field_label_en(type_name, field_name):
+    """返回字段英文标签；无则 None（调用方回退 _friendly_name 派生）。
+
+    查找顺序与 field_label_zh 对称：Field.label_en → 按类型表 → 全局表。
+    """
+    if type_name:
+        h = NAME_TO_HASH.get(type_name)
+        if h is not None:
+            f = FIELD_REGISTRY.get((h, field_name))
+            if f is not None and f.label_en:
+                return f.label_en
+        bt = _LABELS_EN_BY_TYPE.get((type_name, field_name))
+        if bt is not None:
+            return bt
+    return _LABELS_EN_GLOBAL.get(field_name)

@@ -66,12 +66,12 @@ FIELD_VISIBILITY = {
     },
     # UVCONTROL：uv2_enable 关时 uv2 子组不生效（强语义推断）。
     "UVCONTROL": {
-        "uv2_initialPosition":  ("uv2_enable", _truthy),
-        "uv2_speed":            ("uv2_enable", _truthy),
-        "uv2_acceleration":     ("uv2_enable", _truthy),
+        "uv2_offset":  ("uv2_enable", _truthy),
+        "uv2_offsetAdd":            ("uv2_enable", _truthy),
+        "uv2_offsetCoef":     ("uv2_enable", _truthy),
         "uv2_scale":            ("uv2_enable", _truthy),
-        "uv2_scaleSpeed":       ("uv2_enable", _truthy),
-        "uv2_scaleAcceleration":("uv2_enable", _truthy),
+        "uv2_scaleAdd":       ("uv2_enable", _truthy),
+        "uv2_scaleCoef":("uv2_enable", _truthy),
     },
     # TRANSFORM3D：enableVelocityBitflag bit0=启用速度、bit1=启用加速度（强语义推断）。
     "TRANSFORM3D": {
@@ -104,18 +104,18 @@ FIELD_VISIBILITY = {
         "radiusOrigin":             ("shapeType", _shape3d(2)),
     },
     # ROTATEANIM：rotationModeMask 0/1=平面旋转系 → billboardRotation(+加速度)；
-    # 2/3=自旋速度系 → spinAcceleration X/Y/Z；rotateDelayStart 全局生效（不门控）。
+    # 2/3=自旋速度系 → spinSpeedCoef X/Y/Z；rotateDelayStart 全局生效（不门控）。
     "ROTATEANIM": {
         "billboardRotation":            ("rotationModeMask", _in01),
         "billboardRotationJitter":      ("rotationModeMask", _in01),
-        "billboardRotationAccel":       ("rotationModeMask", _in01),
-        "billboardRotationAccelJitter": ("rotationModeMask", _in01),
-        "spinAccelerationX":            ("rotationModeMask", _in23),
-        "spinAccelerationXJitter":      ("rotationModeMask", _in23),
-        "spinAccelerationY":            ("rotationModeMask", _in23),
-        "spinAccelerationYJitter":      ("rotationModeMask", _in23),
-        "spinAccelerationZ":            ("rotationModeMask", _in23),
-        "spinAccelerationZJitter":      ("rotationModeMask", _in23),
+        "billboardRotationCoef":       ("rotationModeMask", _in01),
+        "billboardRotationCoefJitter": ("rotationModeMask", _in01),
+        "spinSpeedCoefX":            ("rotationModeMask", _in23),
+        "spinSpeedCoefXJitter":      ("rotationModeMask", _in23),
+        "spinSpeedCoefY":            ("rotationModeMask", _in23),
+        "spinSpeedCoefYJitter":      ("rotationModeMask", _in23),
+        "spinSpeedCoefZ":            ("rotationModeMask", _in23),
+        "spinSpeedCoefZJitter":      ("rotationModeMask", _in23),
     },
     # RANDOMFIX：randomSeedTable 由 tableSelectionGroup 还是 useRandomSeedTableCount 决定
     # 尚不明确，暂不门控（默认全显示）。
