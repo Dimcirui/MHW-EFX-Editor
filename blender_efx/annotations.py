@@ -964,6 +964,26 @@ FIELD_ANNOTATIONS = {
               "marker rather than a tunable value. Only 1 official sample observed.",
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。官方语料仅 1 例。",
     },
+    ("TONEMAPFILTER", "intensity"): {
+        "EN": "Effect intensity.",
+        "ZH": "滤镜生效强度。",
+    },
+    ("TONEMAPFILTER", "triggerRadius"): {
+        "EN": "Effect range: only takes effect while the camera is within this radius.",
+        "ZH": "生效范围：镜头进入这个范围内才会触发生效。",
+    },
+    ("TONEMAPFILTER", "unknFixed0_1"): {
+        "EN": "Meaning unconfirmed. Only 1 official sample observed (value 16); doesn't "
+              "cleanly match the path length (32), the path length without its trailing "
+              "null (31), or the fixed header size (24), so a possible \"byte length "
+              "excluding the path\" reading isn't supported by this single data point.",
+        "ZH": "含义未确认。官方语料仅 1 例（取值 16）：跟路径长度（32）、去掉末尾 null 的路径长度"
+              "（31）、固定头部大小（24）都对不上，单个样本不支持\"路径之外的字节长\"这个猜测。",
+    },
+    ("TONEMAPFILTER", "unknFixed2_2"): {
+        "EN": "Meaning unconfirmed.",
+        "ZH": "含义未确认。",
+    },
     ("LAYOUT", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
               "marker rather than a tunable value.",
@@ -1101,13 +1121,10 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── MESH (Mod3Properties fields — _custom type, flat part) ───────────────
-    ("MESH", "starting_model_viscon"): {
-        "EN": "Common values: [0, 1, 2, 3, 4, 7, 8, 9]; overwhelmingly 0.",
-        "ZH": "常见取值为 [0, 1, 2, 3, 4, 7, 8, 9]；绝大多数为 0。",
-    },
-    ("MESH", "end_model_viscon"): {
-        "EN": "Picks between starting/end at random",
-        "ZH": "在起始/结束之间随机选取",
+    ("MESH", "visconIndex"): {
+        "EN": "Selects which mesh(es) in the linked mod3 to display — matches "
+              "mesh(es) whose Visible Condition equals this value.",
+        "ZH": "指定调用所链接 mod3 内 Visible Condition 与此值相同的网格。",
     },
     ("MESH", "tracking_flags"): {
         "EN": "Tracking mode. Pick one — these are not combinable.",

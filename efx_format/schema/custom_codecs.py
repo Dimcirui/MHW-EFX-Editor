@@ -342,7 +342,8 @@ def pack_billboard2d(values: dict) -> bytes:
 #     rotation2Jitter 常见 360/0——360 即"全范围随机"，语义上是 rotation 之外的一对
 #     标量旋转+抖动，具体轴/用途未确认）+
 #   XYZ scale(0)(24) + float global_scale/j(8) +
-#   int starting/end_model_viscon(8) + colour*4(16) + int unkn7_0/1(8) +
+#   int visconIndex/Jitter（原 starting/end_model_viscon；2026-08 实机确认是固定/随机配对，
+#     非 start/end：视觉条件（mod3 Visible Condition）索引 + 其随机量）(8) + colour*4(16) + int unkn7_0/1(8) +
 #   int rotationOrder（原 unkn7_2；恰好 6 种取值 0~5，与 EMITTERSHAPE3D.rotationOrder
 #     同构且同样以 4 为主流值，猜测为共享的旋转轴顺序枚举，语义未确认）(4) +
 #   int tracking_flags（互斥模式选择,已转 Enum,官方语料见 0/1/2/4/6/8/10,10 不在
@@ -392,8 +393,8 @@ _MOD3_PROPERTIES_SCHEMA = [
     ('scale',                   ('XYZ', 0)),
     ('global_scale',            'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
     ('global_scale_jitter',     'f'),
-    ('starting_model_viscon',   'i'),
-    ('end_model_viscon',        'i'),
+    ('visconIndex',             'i'),  # 原 starting_model_viscon
+    ('visconIndexJitter',       'i'),  # 原 end_model_viscon
     ('color',                   'colour'),  # TIML DT 0x58689812("Color") 已确认
     ('colorRange',              'colour'),
     ('emissiveColor',           'colour'),
@@ -443,6 +444,7 @@ _mesh_ovr['affectedByLight'] = Bitmask(
     'affectedByLight', BITS_AFFECTED_BY_LIGHT, all_value=255, strict=True,
     label_zh="受光照影响",
 )
+_mesh_ovr['visconIndex'] = Int('visconIndex', label_zh="可见条件索引")
 MESH_ATTR = attr_from_legacy(
     _schema_size(_MOD3_PROPERTIES_SCHEMA) + 1,
     _MOD3_PROPERTIES_SCHEMA + [('BeginMod3', 'B')],
@@ -1680,11 +1682,14 @@ _TONEMAPFILTER_FIXED_SCHEMA = [
     ('typeFlag', 'i'),   # 原 unkn0_0，语料仅 1 例
     ('unknFixed0_1', 'i'),   # 8B
     ('unkn1', 'i'),        # 4B
-    ('unknFixed2_0', 'f'),
-    ('unknFixed2_1', 'f'),
-    ('unknFixed2_2', 'f'),   # 12B
+    ('intensity', 'f'),      # 原 unknFixed2_0；2026-08 用户实机确认为生效强度
+    ('triggerRadius', 'f'),  # 原 unknFixed2_1；2026-08 用户实机确认为生效范围（相机需在此范围内才触发）
+    ('unknFixed2_2', 'f'),   # 12B，仍未确认
 ]  # 24B
-TONEMAPFILTER_ATTR = attr_from_legacy(_schema_size(_TONEMAPFILTER_FIXED_SCHEMA), _TONEMAPFILTER_FIXED_SCHEMA)
+TONEMAPFILTER_ATTR = attr_from_legacy(
+    _schema_size(_TONEMAPFILTER_FIXED_SCHEMA), _TONEMAPFILTER_FIXED_SCHEMA,
+    labels={'intensity': "生效强度", 'triggerRadius': "生效范围"},
+)
 
 
 def unpack_tonemapfilter(data: bytes, off: int = 0):

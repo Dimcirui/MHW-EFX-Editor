@@ -284,6 +284,8 @@ FIELD_RENAME_ALIASES = {
     ("STRAINRIBBON", "unkn10_01"): "angleRelated",
     ("STRAINRIBBON", "unkn10_02"): "angleRelatedJitter",
     ("TONEMAPFILTER", "unkn0_0"): "typeFlag",
+    ("TONEMAPFILTER", "unknFixed2_0"): "intensity",
+    ("TONEMAPFILTER", "unknFixed2_1"): "triggerRadius",
     ("TRANSFORM2D", "unknown"): "typeFlag",
     ("TRANSFORM3D", "unkn0"): "typeFlag",
     ("UVCONTROL", "uv2_unkn0"): "uv2_enable",
@@ -377,4 +379,8 @@ FIELD_RENAME_ALIASES = {
     # ── PLANE（2026-08-03 实机确认 baseAxis / rotationOrder）───────────────────
     ("PLANE", "unknBitmask5_2"): "baseAxis",
     ("PLANE", "unknEnum5_3"): "rotationOrder",
+
+    # ── MESH（2026-08 实机确认 viscon 是固定/随机配对，非 start/end）──────────
+    ("MESH", "starting_model_viscon"): "visconIndex",
+    ("MESH", "end_model_viscon"): "visconIndexJitter",
 }
