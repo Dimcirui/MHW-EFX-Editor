@@ -144,8 +144,8 @@ FIELD_ANNOTATIONS = {
               "  3=忽略基础变换",
     },
     ("PARENTOPTIONS", "particleUseLocal"): {
-        "EN": "Track Across Spawns",
-        "ZH": "设为 1 时，追踪绑定位置",
+        "EN": "When enabled, all particles will follow the emitter's movement.",
+        "ZH": "启用后，所有粒子将会跟随发射器运动。",
     },
     ("PARENTOPTIONS", "constRelease"): {
         "EN": "Formerly spawnLock. Only meaningful when spawnTrack is enabled — after this "

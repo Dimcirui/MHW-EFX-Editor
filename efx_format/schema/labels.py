@@ -237,7 +237,6 @@ _LABELS_EN_BY_TYPE = {
     ('PARENTOPTIONS', 'relationPos'):        'Translation tracking',
     ('PARENTOPTIONS', 'relationRot'):        'Angle tracking',
     ('PARENTOPTIONS', 'relationScl'):        'Scale tracking',
-    ('PARENTOPTIONS', 'particleUseLocal'):   'Spawn Track',
     ('PARENTOPTIONS', 'constRelease'):       'Lock To Position Frame',
     ('PARENTOPTIONS', 'constReleaseJitter'): 'Lock To Position Frame Jitter',
     ('PARENTOPTIONS', 'jointNo'):            'Bone lim',

@@ -86,7 +86,7 @@ PARENTOPTIONS_ATTR = Attribute(size=60, fields=[
     EnumVec3("relationPos", ENUM_TRACKING_POS, label_zh="平移跟踪"),
     EnumVec3("relationRot", ENUM_TRACKING_ANGLE, label_zh="角度跟踪"),
     EnumVec3("relationScl", ENUM_TRACKING_POS, label_zh="缩放跟踪"),
-    Bool("particleUseLocal", label_zh="跨生成追踪"),
+    Bool("particleUseLocal", label_en="Follow Emitter", label_zh="跟随发射器"),
     Bool("unknFlag1"),
     # 原 spawnLock/bleedPos：实为一对 fixed+jitter，作用是"跨生成追踪启用后，达到该帧数即
     # 停止追踪"（0=始终追踪），并非各自独立的"锁定位置/渗出位置"。
