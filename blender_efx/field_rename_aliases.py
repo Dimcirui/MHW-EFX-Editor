@@ -383,4 +383,10 @@ FIELD_RENAME_ALIASES = {
     # ── MESH（2026-08 实机确认 viscon 是固定/随机配对，非 start/end）──────────
     ("MESH", "starting_model_viscon"): "visconIndex",
     ("MESH", "end_model_viscon"): "visconIndexJitter",
+
+    # ── PTLIFE（2026-08 折成 static/random 配对，改名 unknFrame0/1）──────────
+    ("PTLIFE", "unknEnum6"): "unknFrame0",
+    ("PTLIFE", "unknFixed7"): "unknFrame0Jitter",
+    ("PTLIFE", "unknEnum8"): "unknFrame1",
+    ("PTLIFE", "unknFixed9"): "unknFrame1Jitter",
 }

@@ -617,8 +617,13 @@ FIELD_ANNOTATIONS = {
     # ─── PTLIFE ───────────────────────────────────────────────────────────────
     # PtLife (EFX_Subtypes.bt)
     ("PTLIFE", "status"): {
-        "EN": "Determines when the specified Action is triggered. 0=On spawn, 1=Appear, 2=Keep, 3=Vanish, 4=On end, -1=Unknown",
-        "ZH": "决定何时触发指定的 Action。0=生成时，1=出现，2=保持，3=消失，4=结束时，-1=未知",
+        "EN": "Determines when the specified Action is triggered, matching the particle's "
+              "fade-in / sustain / fade-out lifecycle stages (LIFE.fadeInDuration/duration/"
+              "fadeOutDuration). 0=On spawn, 1=Fade in, 2=Sustain, 3=Fade out, 4=On death, "
+              "-1=Unknown",
+        "ZH": "决定何时触发指定的 Action，对应粒子淡入/持续/淡出三段生命周期"
+              "（LIFE.fadeInDuration/duration/fadeOutDuration）。0=生成时，1=淡入时，"
+              "2=持续时，3=淡出时，4=死亡时，-1=未知",
     },
     ("PTLIFE", "relationIndex"): {
         "EN": "Action Emitter / Action EFX Index that declares the children",
@@ -3224,17 +3229,40 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 2, 3, 4, 5].",
         "ZH": "常见取值为 [0, 2, 3, 4, 5]。",
     },
+    ("PTLIFE", "unknFixed1"): {
+        "EN": "Genuinely constant: 0 in all 8904 official blocks.",
+        "ZH": "确实恒定：官方语料 8904 个块全部为 0。",
+    },
     ("PTLIFE", "unknEnum5"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "Always exactly mirrors relationIndex's -1 sentinel (0 whenever relationIndex "
+              "is set, -1 whenever relationIndex is -1; official corpus, 0/8904 mismatches). "
+              "Likely the unused upper half of a 32-bit relationIndex slot rather than an "
+              "independent value.",
+        "ZH": "恒与 relationIndex 的 -1 哨兵值同步（relationIndex 有值时恒为 0，relationIndex "
+              "为 -1 时恒为 -1；官方语料 8904 例 0 个例外）。更像是 relationIndex 这个 32 位槽位"
+              "里没用到的高 16 位，而非独立取值。",
     },
-    ("PTLIFE", "unknEnum6"): {
-        "EN": "Common values: [0, 10, 30, 60, 70, 90, 240, 490].",
-        "ZH": "常见取值为 [0, 10, 30, 60, 70, 90, 240, 490]。",
+    ("PTLIFE", "unknFrame0"): {
+        "EN": "Common values: [0, 10, 30, 60, 70, 90, 240, 490] — all multiples of 10, "
+              "consistent with a frame count. No clean match found against the sibling "
+              "LIFE block's fadeInDuration/duration/fadeOutDuration/timeToDeath in the same "
+              "entry, so it isn't simply a copy of one of those. Paired with unknFrame0Jitter "
+              "below, same static/random convention as LIFE.unknFrame/unknFrameJitter; the "
+              "jitter side is 0 in all 8961 known blocks so its effect is unconfirmed.",
+        "ZH": "常见取值为 [0, 10, 30, 60, 70, 90, 240, 490]——全是 10 的倍数，符合帧数特征。"
+              "跟同一 entry 内 LIFE 块的 fadeInDuration/duration/fadeOutDuration/timeToDeath "
+              "都对不上，不是这几个字段的简单复制。与下方 unknFrame0Jitter 配对，同 "
+              "LIFE.unknFrame/unknFrameJitter 一样是 static/random 惯例；随机一侧在全部 8961 "
+              "个已知块里恒为 0，实际效果尚未确认。",
     },
-    ("PTLIFE", "unknEnum8"): {
-        "EN": "Common values: [0, 20].",
-        "ZH": "常见取值为 [0, 20]。",
+    ("PTLIFE", "unknFrame1"): {
+        "EN": "Only 1 non-zero occurrence in the official corpus (value 20, alongside "
+              "unknFrame0=30 in the same block) — a multiple of 10 like unknFrame0, but too "
+              "rare to establish a reliable correlation. Paired with unknFrame1Jitter below, "
+              "same static/random convention; the jitter side is 0 in all 8961 known blocks.",
+        "ZH": "官方语料里非零仅 1 例（取值 20，同一块里 unknFrame0=30）——跟 unknFrame0 一样是 "
+              "10 的倍数，但样本太少建立不了可靠关联。与下方 unknFrame1Jitter 配对，同一套 "
+              "static/random 惯例；随机一侧在全部 8961 个已知块里恒为 0。",
     },
     ("PTTRIGGER", "unknEnum2"): {
         "EN": "Common values: [1, 2, 4, 8].",

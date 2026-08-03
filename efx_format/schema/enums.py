@@ -55,12 +55,14 @@ ENUM_IMPACT_PLAY_TRIGGER_MODE = EnumDef("ImpactPlayTriggerMode", [
     (1, "Early Impacts", "前 N 次触地"),
     (2, "Final Impact", "仅最后一次触地"),
 ])
+#  2026-08 用户实机确认：与 LIFE 的淡入/持续/淡出三段寿命节奏一一对应
+#  （fadeInDuration/duration/fadeOutDuration，见 attributes.py LIFE_ATTR）。
 ENUM_PTLIFE_STATUS = EnumDef("PtLifeStatus", [
-    (0, "On Spawn", "生成时"), 
-    (1, "Appear", "出现"), 
-    (2, "Keep", "保持"),
-    (3, "Vanish", "消失"), 
-    (4, "On End", "结束时"), 
+    (0, "On Spawn", "生成时"),
+    (1, "Fade In", "淡入时"),
+    (2, "Sustain", "持续时"),
+    (3, "Fade Out", "淡出时"),
+    (4, "On Death", "死亡时"),
     (-1, "Unknown", "未知"),
 ])
 # needs further investigation, this should be same as AxisDirection6

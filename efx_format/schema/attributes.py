@@ -1157,14 +1157,18 @@ assert _schema_size(EXTERNREFERENCE_SCHEMA) == 36, \
 PTLIFE_ATTR = Attribute(size=20, fields=[
     Short("typeFlag"),  # 原 unkn0
     Short("unknFixed1"),
-    Enum("status", ENUM_PTLIFE_STATUS, backing='h', label_zh="状态"),
+    Enum("status", ENUM_PTLIFE_STATUS, backing='h', label_en="Trigger On", label_zh="触发条件"),
     Short("unknEnum3"),
     Short("relationIndex", label_zh="关联 Play"),
     Short("unknEnum5"),
-    Short("unknEnum6"),
-    Short("unknFixed7"),
-    Short("unknEnum8"),
-    Short("unknFixed9"),
+    # unknFrame0/1 及各自 Jitter：原 unknEnum6/unknFixed7、unknEnum8/unknFixed9。位置相邻 +
+    # 数值特征（unknFrame0/1 非零时恒为 10 的倍数，像帧数）同 LIFE.unknFrame/unknFrameJitter
+    # 一样按 static/random 配对改名；Jitter 一侧全部已知语料（8961 块）恒为 0，是否真的承担
+    # 随机量仍未证实，仅按位置+数值形态归类。
+    Short("unknFrame0"),
+    Short("unknFrame0Jitter"),
+    Short("unknFrame1"),
+    Short("unknFrame1Jitter"),
 ])
 PTLIFE_SCHEMA = PTLIFE_ATTR.schema
 assert _schema_size(PTLIFE_SCHEMA) == 20, \
