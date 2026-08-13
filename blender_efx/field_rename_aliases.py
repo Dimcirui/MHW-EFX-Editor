@@ -373,6 +373,25 @@ FIELD_RENAME_ALIASES = {
     ("PARENTOPTIONS", "bleedPos"): "constReleaseJitter",
     ("PARENTOPTIONS", "bone_lim"): "jointNo",
 
+    # RGBFIRE fire/smoke 生命期时序块：官方 mUseFireLife / mFireAppearFrame(range) /
+    # mFireKeepFrame / mFireVanishFrame / mFireLighting / mFireLifeType
+    **{
+        (_t, f"{_p}ColorParam_{_old}"): f"{_p}ColorParam_{_new}"
+        for _t in ("RGBFIRE",)
+        for _p in ("fire", "smoke")
+        for _old, _new in (
+            ("enable",         "useLife"),
+            ("fadeIn",         "appearFrame"),
+            ("fadeInJitter",   "appearFrameJitter"),
+            ("duration",       "keepFrame"),
+            ("durationJitter", "keepFrameJitter"),
+            ("fadeOut",        "vanishFrame"),
+            ("fadeOutJitter",  "vanishFrameJitter"),
+            ("unkn7",          "lighting"),
+            ("unkn8",          "lifeType"),
+        )
+    },
+
     # ⚠ LIGHTNING 的 unkn15 / unkn13 是**字段拆分**（一个 ('f',N) 拆成多个），dtype 与
     #   大小都变了，本表覆盖不了——那两处只能靠重新导入，故意不在这里登记。
 

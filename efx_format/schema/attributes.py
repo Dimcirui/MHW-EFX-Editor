@@ -639,29 +639,40 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Float("unkn4"),
     Float("brightness3", label_zh="亮度3"),
     Float("brightness4", label_zh="亮度4"),
-    # ColorParam fireColorParam (10 ints)：fireColor 的淡入/持续/淡出时序
-    Bool("fireColorParam_enable", label_zh="火焰色 启用"),
-    Int("fireColorParam_fadeIn", label_zh="火焰色 淡入"),
-    Int("fireColorParam_fadeInJitter", label_zh="火焰色 淡入抖动"),
-    Int("fireColorParam_duration", label_zh="火焰色 持续时间"),
-    Int("fireColorParam_durationJitter", label_zh="火焰色 持续时间抖动"),
-    Int("fireColorParam_fadeOut", label_zh="火焰色 淡出"),
-    Int("fireColorParam_fadeOutJitter", label_zh="火焰色 淡出抖动"),
-    # 全语料(53532 块)穷举：unkn7 只有 0/1 两种取值，真布尔；unkn8/unkn9 都出现过 2 及以上
-    # 的稀有值，非纯布尔，保留 Int。
-    Bool("fireColorParam_unkn7"),
-    Int("fireColorParam_unkn8"),
+    # ColorParam fireColorParam (10 ints)：fireColor 的生命期时序块。
+    # 内部名对齐官方 DTI（nEffect::MhEffectDecalBehavior 的 fire 段）：
+    #   useLife←mUseFireLife / appearFrame(+Jitter)←mFireAppearFrame(range) /
+    #   keepFrame←mFireKeepFrame / vanishFrame←mFireVanishFrame /
+    #   lighting←mFireLighting(原 unkn7) / lifeType←mFireLifeType(原 unkn8)。
+    # 三个 range 字段各占两格（值+抖动），正是官方 range 类型的字节展开。
+    # ⚠ 前缀 fireColorParam_/smokeColorParam_ 保留：color_fields.py 靠它把整块
+    #   归类为「颜色相关」（Color Editor 模式过滤依据）。
+    # UI 措辞：淡入/持续时间/淡出三对沿用旧称不动；useLife/lighting/lifeType 三项
+    #   因原本无中文标签（界面显示派生英文名 "…unkn7"）故直接给正式标签。
+    Bool("fireColorParam_useLife", label_en="Use Fire Life", label_zh="启用火焰生命期"),
+    Int("fireColorParam_appearFrame", label_zh="火焰色 淡入"),
+    Int("fireColorParam_appearFrameJitter", label_zh="火焰色 淡入抖动"),
+    Int("fireColorParam_keepFrame", label_zh="火焰色 持续时间"),
+    Int("fireColorParam_keepFrameJitter", label_zh="火焰色 持续时间抖动"),
+    Int("fireColorParam_vanishFrame", label_zh="火焰色 淡出"),
+    Int("fireColorParam_vanishFrameJitter", label_zh="火焰色 淡出抖动"),
+    Bool("fireColorParam_lighting", label_en="Fire Lighting", label_zh="火焰受光照"),
+    Int("fireColorParam_lifeType", label_en="Fire Life Type", label_zh="火焰生命期模式"),
+    # unkn9：官方 fire 段只有 9 格、我们有 10 格，这一格没有对应官方名。取值
+    # {0,1,2,7,8,9}，按 int32 位重解读成 float 全为 0（次正规噪声），确认是整数。
     Int("fireColorParam_unkn9"),
-    # ColorParam smokeColorParam (10 ints)：smokeColor 的淡入/持续/淡出时序
-    Bool("smokeColorParam_enable", label_zh="烟雾色 启用"),
-    Int("smokeColorParam_fadeIn", label_zh="烟雾色 淡入"),
-    Int("smokeColorParam_fadeInJitter", label_zh="烟雾色 淡入抖动"),
-    Int("smokeColorParam_duration", label_zh="烟雾色 持续时间"),
-    Int("smokeColorParam_durationJitter", label_zh="烟雾色 持续时间抖动"),
-    Int("smokeColorParam_fadeOut", label_zh="烟雾色 淡出"),
-    Int("smokeColorParam_fadeOutJitter", label_zh="烟雾色 淡出抖动"),
-    Bool("smokeColorParam_unkn7"),
-    Int("smokeColorParam_unkn8"),
+    # ColorParam smokeColorParam (10 ints)：smokeColor 的生命期时序块，与 fire 段同构
+    # （mUseSmokeLife / mSmokeAppearFrame / KeepFrame / VanishFrame / mSmokeLighting /
+    # mSmokeLifeType）。
+    Bool("smokeColorParam_useLife", label_en="Use Smoke Life", label_zh="启用烟雾生命期"),
+    Int("smokeColorParam_appearFrame", label_zh="烟雾色 淡入"),
+    Int("smokeColorParam_appearFrameJitter", label_zh="烟雾色 淡入抖动"),
+    Int("smokeColorParam_keepFrame", label_zh="烟雾色 持续时间"),
+    Int("smokeColorParam_keepFrameJitter", label_zh="烟雾色 持续时间抖动"),
+    Int("smokeColorParam_vanishFrame", label_zh="烟雾色 淡出"),
+    Int("smokeColorParam_vanishFrameJitter", label_zh="烟雾色 淡出抖动"),
+    Bool("smokeColorParam_lighting", label_en="Smoke Lighting", label_zh="烟雾受光照"),
+    Int("smokeColorParam_lifeType", label_en="Smoke Life Type", label_zh="烟雾生命期模式"),
     Int("smokeColorParam_unkn9"),
 ])
 EXTERN_RGBFIRE_SCHEMA = EXTERN_RGBFIRE_ATTR.schema

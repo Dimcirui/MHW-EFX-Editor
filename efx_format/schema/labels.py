@@ -240,6 +240,20 @@ _LABELS_EN_BY_TYPE = {
     ('PARENTOPTIONS', 'constRelease'):       'Lock To Position Frame',
     ('PARENTOPTIONS', 'constReleaseJitter'): 'Lock To Position Frame Jitter',
     ('PARENTOPTIONS', 'jointNo'):            'Bone lim',
+    # ── RGBFIRE 的 fire/smoke 生命期时序块（appear/keep/vanish 三对沿用旧英文措辞；
+    #    同块的 useLife/lighting/lifeType 三项给了正式标签，不在冻结表内）──
+    ('RGBFIRE', 'fireColorParam_appearFrame'):        'Fire Color Param fade In',
+    ('RGBFIRE', 'fireColorParam_appearFrameJitter'):  'Fire Color Param fade In Jitter',
+    ('RGBFIRE', 'fireColorParam_keepFrame'):          'Fire Color Param duration',
+    ('RGBFIRE', 'fireColorParam_keepFrameJitter'):    'Fire Color Param duration Jitter',
+    ('RGBFIRE', 'fireColorParam_vanishFrame'):        'Fire Color Param fade Out',
+    ('RGBFIRE', 'fireColorParam_vanishFrameJitter'):  'Fire Color Param fade Out Jitter',
+    ('RGBFIRE', 'smokeColorParam_appearFrame'):       'Smoke Color Param fade In',
+    ('RGBFIRE', 'smokeColorParam_appearFrameJitter'): 'Smoke Color Param fade In Jitter',
+    ('RGBFIRE', 'smokeColorParam_keepFrame'):         'Smoke Color Param duration',
+    ('RGBFIRE', 'smokeColorParam_keepFrameJitter'):   'Smoke Color Param duration Jitter',
+    ('RGBFIRE', 'smokeColorParam_vanishFrame'):       'Smoke Color Param fade Out',
+    ('RGBFIRE', 'smokeColorParam_vanishFrameJitter'): 'Smoke Color Param fade Out Jitter',
 }
 
 

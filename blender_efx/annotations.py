@@ -491,11 +491,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Color Balance 2 — setting either balance to 0 makes all disappear",
         "ZH": "色彩平衡 2 —— 任一平衡设为 0 都会让全部消失",
     },
-    ("RGBFIRE", "fireColorParam_enable"): {
+    ("RGBFIRE", "fireColorParam_useLife"): {
         "EN": "Fire color timing params (fade-in / duration / fade-out).",
         "ZH": "火焰色时序参数（淡入 / 持续 / 淡出）。",
     },
-    ("RGBFIRE", "fireColorParam_unkn8"): {
+    ("RGBFIRE", "fireColorParam_lifeType"): {
         "EN": "Usually 0. Values 1 and 2 also occur, meaning unconfirmed.",
         "ZH": "通常为 0。另有取值 1 和 2，含义未确认。",
     },
@@ -504,11 +504,11 @@ FIELD_ANNOTATIONS = {
               "unconfirmed.",
         "ZH": "设为 1 会消除火焰色。另有取值 2/8/9，含义未确认。",
     },
-    ("RGBFIRE", "smokeColorParam_enable"): {
+    ("RGBFIRE", "smokeColorParam_useLife"): {
         "EN": "Smoke color timing params (fade-in / duration / fade-out). Note: even a short duration can tint a persistent effect permanently.",
         "ZH": "烟雾色时序参数（淡入 / 持续 / 淡出）。注意：即使持续时间很短，也可能对常驻特效造成持久染色。",
     },
-    ("RGBFIRE", "smokeColorParam_unkn8"): {
+    ("RGBFIRE", "smokeColorParam_lifeType"): {
         "EN": "Usually 0. Values 1 and 2 also occur, meaning unconfirmed.",
         "ZH": "通常为 0。另有取值 1 和 2，含义未确认。",
     },
@@ -3289,14 +3289,8 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [1, 2, 5, 7].",
         "ZH": "常见取值为 [1, 2, 5, 7]。",
     },
-    ("RGBFIRE", "fireColorParam_unkn7"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
-    },
-    ("RGBFIRE", "smokeColorParam_unkn7"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
-    },
+    # fire/smoke 的 lighting 两项不再挂 tooltip：标签「火焰受光照 / 烟雾受光照」已经说完，
+    # 原先的「作用尚未确认」与新标签矛盾，删除。
     ("RGBFIRE", "unkn4"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
