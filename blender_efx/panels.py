@@ -522,7 +522,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         # T2: +TIML 按钮（仅确认字段显示）
         try:
             from . import timl_tracks as _tt
-            _tt.draw_field_timl_buttons(title_row, type_name, item.ori_name)
+            _tt.draw_field_timl_buttons(title_row, type_name, item.ori_name, item)
         except Exception:
             pass
 
@@ -616,7 +616,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         # T2: +TIML 按钮（仅确认字段显示）
         try:
             from . import timl_tracks as _tt
-            _tt.draw_field_timl_buttons(row, type_name, item.ori_name)
+            _tt.draw_field_timl_buttons(row, type_name, item.ori_name, item)
         except Exception:
             pass
         return

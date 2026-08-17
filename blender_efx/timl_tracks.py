@@ -148,21 +148,101 @@ def _track_exists(timl_obj, slot: int, tlp_hash: int, dt_hash: int) -> bool:
     return False
 
 
-def draw_field_timl_buttons(row, type_name: str, ori_name: str):
+def _ptbehavior_channel(attr_obj, item):
+    """PTBEHAVIOR 参数行 → (tlp_hash, dt_hash, data_type)；不可动画则 None。
+
+    PTBEHAVIOR 不是普通块：TLP 由它自己的 b_type（DTI 类名字符串）算出，DT 由参数名
+    去掉前导 m 后取 jamcrc —— 两条规则都在语料上验证过，故这一整类无需静态映射表
+    （详见 efx_format/timl/names.py 的 ptbehavior_* 说明）。
+
+    参数名取 item.hint_name（ori_name 是 'p3' 这样的序号占位）。名字未知（显示成
+    0x%08X）→ 算不出 DT，不给按钮。只放行 FLOAT / COLOR_RGBA 两种值槽：语料里的
+    behavior 轨道全是 data_type 2/3，整型参数（槽位号、枚举等）做动画没有意义。
+    """
+    from ..efx_format.timl.names import ptbehavior_tlp_candidates, ptbehavior_param_dt
+
+    # t==0x15 的参数展开成 p{i}_v0..v3 四个子项，共用同一个参数名 —— 若照常给按钮
+    # 会出现 4 个指向同一条轨道的入口；且 4 浮点参数怎么映射到 TIML 通道未知，
+    # 整类跳过。
+    if "_v" in (getattr(item, "ori_name", "") or ""):
+        return None
+
+    dt = ptbehavior_param_dt(getattr(item, "hint_name", "") if item else "")
+    if dt is None:
+        return None
+    if item.data_type == "COLOR_RGBA":
+        data_type = 3
+    elif item.data_type == "FLOAT":
+        data_type = 2
+    else:
+        return None
+
+    b_type = ""
+    for it in attr_obj.efx_block.field_items:
+        if it.ori_name == "b_type":
+            b_type = it.string_value
+            break
+    cands = ptbehavior_tlp_candidates(b_type)
+    if not cands:
+        return None
+
+    # Mh* 子类可能把轨道挂在自身 TLP 或基类 TLP 下（从不并存）——优先复用该 TIML 里
+    # 已经存在的那个，避免把同一属性的轨道拆到两个 TLP。
+    tlp = cands[0]
+    if len(cands) > 1:
+        body = _active_entry()
+        if body is not None:
+            try:
+                t = _timl.parse_timl(_entry_timl_bytes(body))
+                present = {ty.timeline_param_hash & 0xFFFFFFFF
+                           for a in t.animations if a is not None for ty in a.types}
+                for c in cands:
+                    if c in present:
+                        tlp = c
+                        break
+            except Exception:
+                pass
+    return tlp, dt, data_type
+
+
+def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
     """在字段标题行 row 上追加单个 +TIML 图标按钮（T2）。
-    点击后弹出 popup 选 +A0/+A1。仅 FIELD_TO_DT 确认字段显示；无 TIML 时灰显。"""
-    key = (type_name.upper(), ori_name)
-    if key not in FIELD_TO_DT:
-        return
-    if BLOCK_TO_TLP.get(type_name.upper()) is None:
-        return
+    点击后弹出 popup 选 +A0/+A1。无 TIML 时灰显。
+
+    两条路径：
+      - 普通块：查 FIELD_TO_DT + BLOCK_TO_TLP 的静态映射，仅确认字段显示。
+      - PTBEHAVIOR：TLP/DT 由 b_type 与参数名运行时算出（见 _ptbehavior_channel），
+        算得出就显示。需要 item 才能拿到 hint_name（参数真名）。
+    """
+    tname = type_name.upper()
+    tlp_hex = dt_hex = ""
+    data_type = 0
+
+    if tname == "PTBEHAVIOR":
+        if item is None:
+            return
+        obj = bpy.context.active_object
+        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+            return
+        ch = _ptbehavior_channel(obj, item)
+        if ch is None:
+            return
+        tlp_hex, dt_hex, data_type = "%08X" % ch[0], "%08X" % ch[1], ch[2]
+    else:
+        if (tname, ori_name) not in FIELD_TO_DT:
+            return
+        if BLOCK_TO_TLP.get(tname) is None:
+            return
+
     body = _active_entry()
-    has_timl = (body is not None)
     sub = row.row(align=True)
-    sub.enabled = has_timl   # 会话内也可用：改内存模型并实时重建曲线
+    sub.enabled = (body is not None)   # 会话内也可用：改内存模型并实时重建曲线
     op = sub.operator("efx.timl_field_add_menu", text="", icon="ANIM")
-    op.block_type = type_name.upper()
+    op.block_type = tname
     op.field_name = ori_name
+    op.tlp_hash_hex = tlp_hex
+    op.dt_hash_hex = dt_hex
+    op.dt_data_type = data_type
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -178,6 +258,11 @@ class EFX_OT_timl_field_add_menu(Operator):
 
     block_type: StringProperty(default="")
     field_name: StringProperty(default="")
+    # PTBEHAVIOR 专用：TLP/DT 在绘制时已按 b_type + 参数名算好，直接透传给添加算子
+    # （该块没有静态 FIELD_TO_DT 条目）。普通块留空。
+    tlp_hash_hex: StringProperty(default="")
+    dt_hash_hex:  StringProperty(default="")
+    dt_data_type: IntProperty(default=0)
 
     @classmethod
     def poll(cls, context):
@@ -206,6 +291,9 @@ class EFX_OT_timl_field_add_menu(Operator):
             op.block_type = self.block_type
             op.field_name = self.field_name
             op.slot = slot
+            op.tlp_hash_hex = self.tlp_hash_hex
+            op.dt_hash_hex  = self.dt_hash_hex
+            op.dt_data_type = self.dt_data_type
         if native in (0, 1):
             axis_name = "A0" if native == 0 else "A1"
             layout.separator()
@@ -234,21 +322,34 @@ class EFX_OT_timl_add_field_tracks(Operator):
     block_type: StringProperty(default="")   # e.g. "TRANSFORM3D"
     field_name: StringProperty(default="")   # e.g. "translate"
     slot: IntProperty(default=0)             # 0=A0, 1=A1
+    # PTBEHAVIOR 专用：绘制时算好的 TLP/DT 直传（见 draw_field_timl_buttons）
+    tlp_hash_hex: StringProperty(default="")
+    dt_hash_hex:  StringProperty(default="")
+    dt_data_type: IntProperty(default=0)
 
     @classmethod
     def poll(cls, context):
         return _active_entry() is not None
 
     def execute(self, context):
-        key = (self.block_type.upper(), self.field_name)
-        entries = FIELD_TO_DT.get(key)
-        if not entries:
-            self.report({"ERROR"}, f"No confirmed DT mapping for {key}")
-            return {"CANCELLED"}
-        tlp_hash = BLOCK_TO_TLP.get(self.block_type.upper())
-        if tlp_hash is None:
-            self.report({"ERROR"}, f"No TLP mapping for attribute type '{self.block_type}'")
-            return {"CANCELLED"}
+        if self.tlp_hash_hex and self.dt_hash_hex:
+            # PTBEHAVIOR 路径：单条通道，TLP/DT 已由 b_type + 参数名算出
+            try:
+                tlp_hash = int(self.tlp_hash_hex, 16)
+                entries = [(int(self.dt_hash_hex, 16), int(self.dt_data_type))]
+            except ValueError:
+                self.report({"ERROR"}, "Invalid hash hex value")
+                return {"CANCELLED"}
+        else:
+            key = (self.block_type.upper(), self.field_name)
+            entries = FIELD_TO_DT.get(key)
+            if not entries:
+                self.report({"ERROR"}, f"No confirmed DT mapping for {key}")
+                return {"CANCELLED"}
+            tlp_hash = BLOCK_TO_TLP.get(self.block_type.upper())
+            if tlp_hash is None:
+                self.report({"ERROR"}, f"No TLP mapping for attribute type '{self.block_type}'")
+                return {"CANCELLED"}
         body, timl = _resolve_for_edit()   # 已 commit 进行中关键帧编辑
         if timl is None:
             self.report({"ERROR"}, "No valid TIML found on active entry")

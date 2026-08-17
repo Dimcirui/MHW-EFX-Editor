@@ -72,6 +72,8 @@ TLP_NAMES = {
 
 import math
 
+from ..hashes import jamcrc
+
 # ── datatypeHash → 显示名（DT_NAMES）─────────────────────────────────────────────────
 # 来源：refs/dti_effect_fields.json 字段 hash 直接对比语料 datatypeHash，83/130 命中。
 # 未命中的 47 条由 datatype_name() 回退到 0x 十六进制。
@@ -250,6 +252,58 @@ def blender_to_game(kind: str, bl_index: int, v: float) -> float:
     if kind == "rot":
         return math.degrees(v) * _AXIS_SIGN[bl_index]
     return v
+
+
+# ── PTBEHAVIOR：TLP / DT 运行时计算（不需要静态映射表）────────────────────────────
+# 语料实证（2026-08）：MhEffectDecalBehavior / MhPointLightBehavior /
+# MhSpotLightBehavior / PointLightBehavior / RadialBlurFilterBehavior 这五个 TLP
+# 与 PTBEHAVIOR 100% 共现（lift 15.5x）——它们不是独立的属性块，而是 PTBEHAVIOR
+# 的**类型变体**：PTBEHAVIOR 的 b_type 字段直接存 DTI 类名字符串
+# （"nEffect::PointLightBehavior" 或裸 "MhPointLightBehavior"）。
+#
+# 两条哈希规则都已在语料上验证，因此这一整类不需要枚举映射表：
+#   TLP = jamcrc("nEffect::nTimelineParam::<b_type 短名>") & 0x7FFFFFFF
+#   DT  = jamcrc(<参数名去掉前导 m>)   —— PTBEHAVIOR 的参数 key 是 jamcrc("mFoo")，
+#         而 TIML 的 datatypeHash 是 jamcrc("Foo")，同一命名空间、差一个 m 前缀。
+#         18/18 抽样命中（mIntensity→Intensity、mEmissiveMapFactorIntensity→…等）。
+
+def _short_class(b_type: str) -> str:
+    """b_type 字符串 → DTI 短类名（去掉 nEffect:: 之类的命名空间前缀和尾部 NUL）。"""
+    s = (b_type or "").split("\x00")[0].strip()
+    return s.split("::")[-1]
+
+
+def ptbehavior_tlp_candidates(b_type: str) -> list:
+    """b_type → 候选 TLP hash 列表（按优先级）。
+
+    首选自身类名推出的 TLP；若是 Mh* 子类，再追加去掉 Mh 的基类 TLP —— 实测
+    b_type=MhPointLightBehavior 的 PTBEHAVIOR 会二选一地把轨道挂在
+    MhPointLightBehavior(327 entry) 或基类 PointLightBehavior(222 entry) 下，
+    从不并存。调用方应优先复用该 TIML 里已存在的那个，避免同一属性被拆到两个 TLP。
+    """
+    short = _short_class(b_type)
+    if not short:
+        return []
+    out = [jamcrc(("nEffect::nTimelineParam::" + short).encode()) & 0x7FFFFFFF]
+    if short.startswith("Mh") and len(short) > 2:
+        base = short[2:]
+        h = jamcrc(("nEffect::nTimelineParam::" + base).encode()) & 0x7FFFFFFF
+        if h not in out:
+            out.append(h)
+    return out
+
+
+def ptbehavior_param_dt(param_name: str):
+    """PTBEHAVIOR 参数名（如 'mIntensity'）→ TIML datatypeHash；名字未知则 None。
+
+    未知名在 UI 里是 '0x%08X' 形式（PTBEHAVIOR_NAMES 没收录），此时算不出 DT——
+    真名未知就没法去 m 前缀，返回 None 让调用方不显示 +TIML 按钮。
+    """
+    s = (param_name or "").strip()
+    if not s or s.startswith("0x"):
+        return None
+    bare = s[1:] if (len(s) > 1 and s[0] == "m" and s[1].isupper()) else s
+    return jamcrc(bare.encode()) & 0xFFFFFFFF
 
 
 def timeline_param_name(h: int) -> str:
