@@ -173,6 +173,63 @@ DT_TRANSFORM = {
     0x7A88BE0F: ("scl:Z", "scale", 2, "scl"),
 }
 
+# ── DT_NEUTRAL：新增 TIML 轨道的首帧兜底值 ────────────────────────────────────────
+# 新增一条轨道时首帧应当是**中性值**——加轨道本身不改变特效当下的外观，之后由用户
+# 编关键帧。dataclass 式的全 0 默认在乘算类属性上是错的：亮度/强度/缩放系数填 0
+# 等于让特效直接消失，根本不能作为编辑起点。
+#
+# ⚠ 不要用"语料里这个 DT 的首帧值分布"来定这张表——会被 TIML 轨道做动画的字段，
+#   恰恰是那些要动的字段，其首帧是别人动画的起点而非中性值（SizeY 语料首帧最常见
+#   130.0 就是这么来的）。选择偏差，测的是错的总体。
+#
+# 优先级：add_transform 的 seed 参数（调用方从该属性当前静态字段值取，见
+#   blender_efx/timl_tracks.py::_field_seed_values）> 本表 > 0.0。
+# Color（data_type==3）不走本表，恒 255,255,255,255（白色不透明）。
+DT_NEUTRAL = {
+    # ── 纯乘算系数 / 比率：1.0 就是语义上的恒等值 ──────────────────────────
+    0x9F1E012E: 1.0,   # ColorRate
+    0x18C577DE: 1.0,   # EmissiveColorRate
+    0x94BCC5CE: 1.0,   # Intensity
+    0x7D235C30: 1.0,   # EmissiveMapFactorIntensity
+    0x1BB0EB80: 1.0,   # mEmissiveMapFactorIntensity
+    0xAB9D6334: 1.0,   # ColorIntensity
+    0xB6C0BDF8: 1.0,   # CoreIntensity
+    0x085BC9D5: 1.0,   # LightIntensity
+    0x4E00491F: 1.0,   # IntensitySheet
+    0x4279F094: 1.0,   # mMaxIntensityRate
+    0x13804BC9: 1.0,   # mMinIntensityRate
+    0x4D41A06B: 1.0,   # NormalBlendRate
+    0x0EBAEC37: 1.0,   # SizeScalar
+    0x9486DF23: 1.0,   # scl:X
+    0xE381EFB5: 1.0,   # scl:Y
+    0x7A88BE0F: 1.0,   # scl:Z
+    0xE5C92264: 1.0,   # PlaySpeed
+    0x33A4A86B: 1.0,   # PlaySpeedCoef
+    0x831B390B: 1.0,   # AlphaCorrectionMax（配对的 Min 中性值是 0.0，不入表）
+    # ── 绝对量级（游戏单位下的实际尺寸/半径/速度）───────────────────────────
+    # 这些字段没有"恒等值"——真实特效里 SizeY≈130、Radius≈350、EffectiveRadius≈1000，
+    # 1.0 只是"1 个单位"，视觉上几乎看不见。正常路径由 seed 从属性当前字段值取到
+    # 正确量级；这里给 1.0 仅作调色板按钮（只给 raw hash、拿不到字段）的兜底，
+    # 取非 0 是为了不让特效直接消失。
+    0x241CAED2: 1.0,   # SizeX
+    0x531B9E44: 1.0,   # SizeY
+    0xCA12CFFE: 1.0,   # SizeZ
+    0xF0DF339B: 1.0,   # WidthSize
+    0xF92E647B: 1.0,   # Length
+    0x316D89C5: 1.0,   # CoreThickness
+    0xC32F9493: 1.0,   # Radius
+    0x435F3054: 1.0,   # EffectiveRadius
+    # 未列出的一律 0.0：加法偏移（*Add）、位置（pos:*）、角度（rot:*/Rotation*）、
+    # Gravity/Speed/Blur*/AlphaCorrectionMin/Roughness 等，以及 45 条未具名 hex DT
+    # ——没有语义依据，猜不如不猜。
+}
+
+
+def dt_neutral_value(h: int) -> float:
+    """新增轨道首帧的兜底中性值（无 seed 时用）。未收录的 DT → 0.0。"""
+    return DT_NEUTRAL.get(h & 0xFFFFFFFF, 0.0)
+
+
 # game↔Blender 数值换算（MHW Y-up↔Blender Z-up 标准换算，互为精确逆）。
 # AXIS_SIGN 按 blender 轴：blender Y(index1) 取负（game Z → blender -Y）。
 _AXIS_SIGN = (1.0, -1.0, 1.0)
@@ -298,6 +355,74 @@ FIELD_TO_DT = {
     ("SCALEANIM", "scaleSpeedZ"):       [(0x3A9708CC, 2)],
     ("TUBELIGHT", "headColor"):   [(0x3BA67E7C, 3)],
     ("TUBELIGHT", "tailColor"):   [(0x2AA40DE9, 3)],
+    # ── 2026-08 补漏：已有 BLOCK_TO_TLP 映射、但字段表漏掉的 DT ────────────────
+    # 缺口来源：官方语料按 (TLP, DT) 统计，+TIML 按钮原先只覆盖 47.3% 的轨道。
+    # 只补"字段名与 DT 官方名精确一致"或"与已映射块结构完全同构"的条目；
+    # 语义拿不准的见本表下方 FIELD_TO_DT_UNRESOLVED。
+    # TRANSFORM2D：与 TRANSFORM3D 同构，但 2D 是拆开的标量字段而非 XYZ 向量
+    ("TRANSFORM2D", "offsetX"):   [(0x8E8AFE06, 2)],   # pos:X
+    ("TRANSFORM2D", "offsetY"):   [(0xF98DCE90, 2)],   # pos:Y
+    ("TRANSFORM2D", "scaleX"):    [(0x9486DF23, 2)],   # scl:X
+    ("TRANSFORM2D", "scaleY"):    [(0xE381EFB5, 2)],   # scl:Y
+    # BILLBOARD2D：width/height ↔ SizeX/SizeY，与 BILLBOARD3D 同名同哈希
+    ("BILLBOARD2D", "width"):     [(0x241CAED2, 2)],   # SizeX
+    ("BILLBOARD2D", "height"):    [(0x531B9E44, 2)],   # SizeY
+    # UVSEQUENCE：DTI 改名后字段名与 DT 名精确一致
+    ("UVSEQUENCE", "playSpeed"):     [(0xE5C92264, 2)],
+    ("UVSEQUENCE", "playSpeedCoef"): [(0x33A4A86B, 2)],
+    # VELOCITY2D/3D：speed ↔ Speed（两块共用同一 DT hash）
+    ("VELOCITY2D", "speed"):      [(0x31182E0D, 2)],
+    ("VELOCITY3D", "speed"):      [(0x31182E0D, 2)],
+    # EMITTERSHAPE3D：localRotationY/Z 与 DT 名精确一致（X 在语料里未出现）
+    ("EMITTERSHAPE3D", "localRotationY"): [(0x0718D2B3, 2)],
+    ("EMITTERSHAPE3D", "localRotationZ"): [(0x9E118309, 2)],
+    # EMITTERSHAPE3D.rangeXYZ ↔ RangeMin/Max XYZ：官方名的 Min/Max 就是我们实测
+    # 改判出的 offset/size（Min=offset、Max=size），两种叫法指同一对，此前记为
+    # 矛盾是误会。rangeXYZ 是 XYZ type 0（FLOAT6），背板按游戏序逐轴成对交错
+    # [offsetX,sizeX, offsetY,sizeY, offsetZ,sizeZ]，故 DT 也按这个顺序排——
+    # 挂 6 条而非 3 条，_field_seed_values 对 6 条走逐位对齐。
+    ("EMITTERSHAPE3D", "rangeXYZ"): [
+        (0x760F3D43, 2), (0x6484D92C, 2),   # RangeMinX(offsetX), RangeMaxX(sizeX)
+        (0x01080DD5, 2), (0x1383E9BA, 2),   # RangeMinY(offsetY), RangeMaxY(sizeY)
+        (0x98015C6F, 2), (0x8A8AB800, 2),   # RangeMinZ(offsetZ), RangeMaxZ(sizeZ)
+    ],
+    # RIBBON：color ↔ Color（XYZ type 2 = RGBA），该块 361 条轨道里 136 条是它
+    ("RIBBON", "color"):          [(0x58689812, 3)],
+    # TUBELIGHT：lightIntensity 与 DT 名精确一致
+    ("TUBELIGHT", "lightIntensity"): [(0x085BC9D5, 2)],
+    # STRAINRIBBON：endPosition(XYZ type 3) ↔ TerminatePosition X/Y/Z，游戏分量序
+    ("STRAINRIBBON", "endPosition"): [(0x6458334F, 2), (0x135F03D9, 2), (0x8A565263, 2)],
+    # ROTATEANIM：官方名里的 "Add" 是**速度**不是加速度，按语料量级判定（2026-08）——
+    #   加速度/系数类字段被结构性钉在 1 附近（billboardRotationCoef 中位 1.000/最大
+    #   1.20，spinSpeedCoef* 最大 1.10，SCALEANIM 的 scaleAccel* 最大 2.0），而
+    #   Add 类 DT 的关键帧值 routinely 冲到 6/10/20（RotationAdd 最大 20、
+    #   RotationAddX 最大 10、SizeScalarAdd 最大 6），给"最大只到 1.2 的系数"做的
+    #   动画不可能跑到 20。速度类字段则是小中位+宽范围（billboardRotation 中位
+    #   0.65/最大 500，spin_velocity 中位 2~3/最大 300），与 DT 分布吻合。
+    #   同一判据也确认了 SCALEANIM 既有的 SizeXAdd↔scaleSpeedX 等四条是对的。
+    ("ROTATEANIM", "billboardRotation"): [(0xE81961E4, 2)],                          # RotationAdd
+    ("ROTATEANIM", "spin_velocity"): [(0xC23FE6C6, 2), (0xB538D650, 2), (0x2C3187EA, 2)],  # RotationAdd X/Y/Z
+}
+
+# ── FIELD_TO_DT_UNRESOLVED：语料里有轨道、但字段归属没定论的 DT ─────────────────
+# 不进 FIELD_TO_DT（+TIML 按钮不显示），登记在此免得反复重新调查。要加进主表
+# 必须先坐实"这条 DT 对应哪个字段"，光看名字像不够——错的映射会让用户以为在给
+# A 字段做动画、实际写进了 B 字段的通道。
+FIELD_TO_DT_UNRESOLVED = {
+    # RGBWATER 全 4 条：ColorRate / WaterLerpGtoB / IntensitySheet / ColorSpecular
+    #   该块字段大半仍是 unknEnum2_*，brightnessSlot1/2 与 multiplier1/2 谁对应
+    #   ColorRate 没依据；后三条在字段表里没有像样的候选。
+    ("RGBWATER", "?"): [(0x9F1E012E, 2), (0xA7EDA21C, 2), (0x4E00491F, 2), (0x60D69856, 3)],
+    # TUBELIGHT：CoreThickness（17 条）候选 columnRadius / columnEdgeSoftness；
+    #   CoreIntensity（7 条）无对应字段。columnRadius 已实机确认过语义，正因如此
+    #   不能凭"thickness≈radius"就把 DT 挂上去。
+    ("TUBELIGHT", "?"): [(0x316D89C5, 2), (0xB6C0BDF8, 2)],
+    # STRAINRIBBON：ColorRate 候选 emissionStrength（RIBBON 那边是 brightness，
+    #   本块没有同名字段）；LocalRotationY 在本块字段表里没有对应项。
+    ("STRAINRIBBON", "?"): [(0x9F1E012E, 2), (0x0718D2B3, 2)],
+    # MESH：ColorRate（24 条）—— emissive_brightness 已占 EmissiveColorRate，
+    #   剩下 emissive_saturation 是配对的另一半，不像整体亮度系数。
+    ("MESH", "?ColorRate"): [(0x9F1E012E, 2)],
 }
 
 # ── BLOCK_NATIVE_AXIS：块类型名(大写) → 该块 TIML 动画在真实语料里锁定的轴 slot ──────

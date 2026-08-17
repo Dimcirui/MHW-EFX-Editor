@@ -54,7 +54,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from ..hashes import jamcrc
-from .names import DT_TRANSFORM
+from .names import DT_TRANSFORM, dt_neutral_value
 
 _MAGIC = b"timl"
 
@@ -438,26 +438,53 @@ def make_blank_animdata(slot: int) -> "TimlData":
 
 
 def _make_default_keyframes(data_type: int, dt_hash: int,
-                            anim_length: float = 30.0) -> "List[TimlKeyframe]":
-    """生成两个默认关键帧（frame=0 和 frame=anim_length），作为新轨道起始内容。"""
+                            anim_length: float = 30.0,
+                            seed=None) -> "List[TimlKeyframe]":
+    """生成两个默认关键帧（frame=0 和 frame=anim_length），作为新轨道起始内容。
+
+    首帧取值优先级（见 names.DT_NEUTRAL 的说明）：
+      1. seed —— 调用方给的当前静态字段值（标量或 Color 的 4 通道序列）。加轨道
+         因此不改变特效当下的外观，绝对量级字段（SizeY/Radius…）也能拿到正确量级。
+      2. DT_NEUTRAL 表 —— 乘算类属性的恒等值 1.0 等。
+      3. 0.0 / Color 白色不透明。
+    seed 的单位与字节里一致（游戏单位），不做 game↔blender 换算——TIML 关键帧值
+    本身也存游戏单位，换算只发生在驱动 Blender fcurve 那一层。
+    """
     frames = [0.0, max(1.0, anim_length)]
-    xform = DT_TRANSFORM.get(dt_hash & 0xFFFFFFFF)
-    default_value = 1.0 if (xform is not None and xform[3] == "scl") else 0.0
     kfs = []
     for fr in frames:
-        if data_type == 3:  # Color RGBA：白色全透
-            subs = [{"value": 255, "back": 0.0, "period": 0.0} for _ in range(4)]
-        else:               # Float/SInt/Int/Bool：scl 轴默认 1.0(缩放系数)，其余 0.0
-            subs = [{"value": default_value, "back": 0.0, "period": 0.0}]
+        if data_type == 3:  # Color RGBA
+            if seed is not None:
+                try:
+                    chans = [max(0, min(255, int(round(float(c))))) for c in seed][:4]
+                except (TypeError, ValueError):
+                    chans = []
+                while len(chans) < 4:
+                    chans.append(255)
+            else:
+                chans = [255, 255, 255, 255]   # 白色不透明
+            subs = [{"value": chans[i], "back": 0.0, "period": 0.0} for i in range(4)]
+        else:               # Float/SInt/Int/Bool
+            if seed is not None:
+                try:
+                    v = float(seed[0] if isinstance(seed, (list, tuple)) else seed)
+                except (TypeError, ValueError, IndexError):
+                    v = dt_neutral_value(dt_hash)
+            else:
+                v = dt_neutral_value(dt_hash)
+            subs = [{"value": v, "back": 0.0, "period": 0.0}]
         raw = encode_keyframe(data_type, dt_hash, fr, 2, data_type, subs)  # transition=2=LINEAR
         kfs.append(TimlKeyframe(raw=raw, frame_timing=fr, transition=2, data_type=data_type))
     return kfs
 
 
 def add_transform(timl: "Timl", slot: int, tlp_hash: int,
-                  dt_hash: int, data_type: int) -> bool:
+                  dt_hash: int, data_type: int, seed=None) -> bool:
     """在 slot 轴（0=A0, 1=A1）下新增 (tlp_hash, dt_hash) 通道。
-    已存在返回 False；成功返回 True 并设 timl.dirty=True。"""
+    已存在返回 False；成功返回 True 并设 timl.dirty=True。
+
+    seed：该属性当前的静态字段值（标量，或 Color 的 4 通道序列），用作两个默认
+    关键帧的取值，使新轨道起点等于当下外观。None → 回退 DT_NEUTRAL 表。"""
     tlp_hash &= 0xFFFFFFFF
     dt_hash &= 0xFFFFFFFF
     # 补槽（None 占位，count 跟随）
@@ -486,7 +513,7 @@ def add_transform(timl: "Timl", slot: int, tlp_hash: int,
             return False
 
     anim_len = anim.animation_length if anim.animation_length > 0.0 else 30.0
-    kfs = _make_default_keyframes(data_type, dt_hash, anim_len)
+    kfs = _make_default_keyframes(data_type, dt_hash, anim_len, seed=seed)
     tlp.transforms.append(TimlTransform(datatype_hash=dt_hash, data_type=data_type, keyframes=kfs))
     timl.dirty = True
     return True

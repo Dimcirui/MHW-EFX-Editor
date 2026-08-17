@@ -41,6 +41,74 @@ def _is_zh() -> bool:
         return False
 
 
+# 新增轨道首帧的 seed：从属性当前静态字段值读取，使"加一条轨道"不改变外观。
+# 只有标量/向量/颜色几种值槽有意义；其余（字符串数组、枚举、路径等）返回 None
+# 交给 DT_NEUTRAL 兜底。
+_SEED_SCALAR = {
+    "FLOAT":  lambda it: [float(it.float_value)],
+    "INT":    lambda it: [float(it.int_value)],
+    "BYTE1":  lambda it: [float(it.byte1_value)],
+    "SHORT1": lambda it: [float(it.short1_value)],
+    "FLOAT2": lambda it: [float(v) for v in it.float2_value],
+    # FLOAT3 = XYZ type 3，背板按游戏序 [gx, gy, gz]
+    "FLOAT3": lambda it: [float(v) for v in it.float3_value],
+    "FLOAT4": lambda it: [float(v) for v in it.float4_value],
+    # FLOAT6 = XYZ type 0，背板按游戏序逐轴成对交错 [x_a, x_b, y_a, y_b, z_a, z_b]。
+    # 这一对是什么取决于字段：多数是"值/抖动"（translate/rotate/resize），
+    # EMITTERSHAPE3D.rangeXYZ 则是"offset/size"。返回全部 6 个，由
+    # _field_seed_values 按该字段挂了几条 DT 决定怎么对齐。
+    "FLOAT6": lambda it: [float(v) for v in it.float6_value],
+    "INT3":   lambda it: [float(v) for v in it.int3_value],
+    # 颜色两种值槽：COLOUR 已是 0-255 ubyte；COLOR_RGBA 是 picker 的 0-1 float
+    "COLOUR":     lambda it: [float(v) for v in it.colour_value],
+    "COLOR_RGBA": lambda it: [float(v) * 255.0 for v in it.color_rgba_value],
+}
+
+
+def _field_seed_values(block_type: str, field_name: str, n_dt: int):
+    """读活动 EFX_ATTRIBUTE 上 field_name 字段的当前值，返回长度 n_dt 的 seed 列表
+    （每个元素喂给一条 DT 轨道）；拿不到则返回 None（由 DT_NEUTRAL 兜底）。
+
+    向量字段按分量对齐 DT：FIELD_TO_DT 里向量条目就是游戏分量顺序（X,Y,Z），
+    如 TRANSFORM3D.translate → pos:X/pos:Y/pos:Z，故 seed[i] 直接给 entries[i]。
+    Color 字段只有一条 DT，整个 4 通道序列作为该条的 seed。
+    """
+    import bpy
+    obj = bpy.context.active_object
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+        return None
+    try:
+        items = obj.efx_block.field_items
+    except AttributeError:
+        return None
+    item = None
+    for it in items:
+        if it.ori_name == field_name:
+            item = it
+            break
+    if item is None:
+        return None
+    reader = _SEED_SCALAR.get(item.data_type)
+    if reader is None:
+        return None
+    try:
+        vals = reader(item)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if not vals:
+        return None
+    if n_dt == 1:
+        # 单条 DT：标量给标量，颜色给整个通道序列
+        return [vals if len(vals) > 1 else vals[0]]
+    if n_dt == 3 and len(vals) == 6:
+        # FLOAT6 挂 3 条 DT：成对交错里只有前一个是"值"，后一个是抖动
+        # （translate → pos:X/Y/Z）。取 0/2/4，否则会把 X 的抖动当成 Y 的值。
+        return [vals[0], vals[2], vals[4]]
+    # 其余按位置直接对齐（含 FLOAT6 挂 6 条 DT 的 rangeXYZ → offset/size 交错）；
+    # 分量不够则用最后一个值补齐
+    return [vals[i] if i < len(vals) else vals[-1] for i in range(n_dt)]
+
+
 def _resolve_for_edit():
     """持久化模型：解析"要编辑哪个 Timl 模型"。**先提交进行中的关键帧编辑**（commit
     fcurves→字节），再从字节解析——否则随后 set_entry_timl 重建会用旧字节冲掉正在改的关键帧。
@@ -186,9 +254,15 @@ class EFX_OT_timl_add_field_tracks(Operator):
             self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
 
+        # 新轨道首帧用该属性当前的静态字段值，使"加一条轨道"不改变特效当下的外观
+        # （绝对量级字段如 SizeY/Radius 因此也能拿到正确量级）。读不到则由
+        # DT_NEUTRAL 兜底（乘算类 → 1.0，其余 → 0.0）。
+        seeds = _field_seed_values(self.block_type.upper(), self.field_name, len(entries))
+
         added = 0
-        for dt_hash, data_type in entries:
-            if _timl.add_transform(timl, self.slot, tlp_hash, dt_hash, data_type):
+        for i, (dt_hash, data_type) in enumerate(entries):
+            seed = seeds[i] if seeds is not None else None
+            if _timl.add_transform(timl, self.slot, tlp_hash, dt_hash, data_type, seed=seed):
                 added += 1
         if added == 0:
             self.report({"WARNING"}, "All tracks already exist")
