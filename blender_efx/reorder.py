@@ -617,150 +617,27 @@ class EFX_OT_rename_action_extern(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# auto_sort_entry_attributes  —  导出前静默规范化属性顺序
+# auto_sort_entry_attributes  —  按规范顺序重排 entry 内属性
 #
-# 顺序来自 10163 个 EFX 文件 / 109662 个 entry 的中位归一化位置统计（2026-06）。
+# ⚠ 顺序表已于 2026-08-18 整体替换。旧表来自 2026-06 的「中位归一化位置」统计，
+#   与官方语料实际顺序冲突严重：拿它重排 official 语料，24.6% 的 entry（52.0% 的
+#   文件）会被改动顺序，其中最大一处是 ALPHACORRECTION 排在 UVSEQUENCE 之前——
+#   而语料里 7426 次都是 UVSEQUENCE 在前。由于本函数在导出前无条件跑（可用
+#   auto_sort_attributes 关掉），旧表实际上会静默破坏这半数文件的 byte-perfect，
+#   且 CLI 的两套 roundtrip 都走不到这条路径（不经过 io_tree/operators），测不出来。
 #
-# 规范顺序层（sort key）：
-#    0  声明层      EXTERNREFERENCE / RANDOMFIX（永远最前）
-#   10  骨架层      TRANSFORM3D / TRANSFORM2D（2D 对应，与 3D 互斥，实测 0.000）/
-#                   PARENTOPTIONS / RAYCAST / LINKPARTSVISIBLE /
-#                   SPAWNBYOCCLUSION（实测 0.200）/ SPAWN / LIFE /
-#                   SPAWNBYANGLE（实测 0.308，LIFE 之后）
-#   20  早期可见性  FADEBYDEPTH / FADEBYANGLE / FADEBYEMITTERANGLE / FADEBYOCCLUSION
-#                   FAKEPLANE（地面检测，在发射器之前）
-#   30  发射器      EMITTERSHAPE3D / EMITTERSHAPE2D / EMITTERSHAPEMESH
-#   40  速度        VELOCITY3D / VELOCITY2D / REPEATAREA（实测 0.538，速度区）
-#   50  渲染主体    PLANE / RIBBONBLADE / UVCONTROL / BILLBOARD3D / LIGHTNING /
-#                   RIBBON / DUMMY / MESH / STRAINRIBBON / TUBELIGHT / BILLBOARD2D
-#   60  动画        ROTATEANIM / SCALEANIM
-#   70  UV 修饰     ALPHACORRECTION / UVSEQUENCE
-#   80  着色器及晚期约束  SHADERSETTINGS / EMITTERBOUNDARY / LAYOUT（实测 0.923）/
-#                         SCREENSPACECOLLISION / MATERIAL（实测 1.000，MESH 专属末位）
-#   90  晚期效果    BLINK / GUIDE / HOMING / LUMINANCEBLEED / MASTERONLY / NOISE /
-#                   PATHCHAIN / REFRACTION / TURBULENCE
-#  100  角色附着    PLEMISSIVE / PARENTEMISSIVE / PLSNOW / PARENTSNOW / OTOMOSNOW /
-#                   PARENTMATERIAL / SHOVEL
-#  110  PTBEHAVIOR  （孤立行为系统，与大多数属性互斥）
-#  120  Misc/control（TIML / SPAWNBYOCCLUSION / CHECKPUREATTRIBUTE 等）
-#  150  （未知类型默认值）
-#  200  全局染色    RGBFIRE / RGBWATER（总是最后）
-#  210  生命周期触发 PTCOLLISION / PTLIFE / PTTRIGGER（总是最后）
+# 现表下沉到 efx_format/categories.py::ATTRIBUTE_CANONICAL_ORDER（纯 Python，
+# 零 bpy），由支配关系图拓扑排序得出，全语料仅 0.48% 的 entry 会被改动。
+# 依据与统计口径见 docs/ATTRIBUTE_STATS.md「Entry 内属性的规范顺序」。
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_attribute_sort_key_map() -> dict:
-    """Lazy-build hash→sort_key；导入失败返回空字典。"""
+    """Lazy-build hash→sort_key；导入失败返回空字典（调用方退化为不排序）。"""
     try:
-        from ..efx_format.hashes import (
-            EXTERNREFERENCE,
-            TRANSFORM3D, PARENTOPTIONS, SPAWN, LIFE,
-            BILLBOARD3D, RIBBON, MESH, PLANE, FAKEPLANE,
-            LIGHTNING, DUMMY, RIBBONBLADE, STRAINRIBBON, TUBELIGHT, BILLBOARD2D,
-            UVSEQUENCE, ALPHACORRECTION, REFRACTION, BLINK, LUMINANCEBLEED,
-            MATERIAL, UVCONTROL,
-            EMITTERSHAPE3D, EMITTERSHAPE2D, EMITTERSHAPEMESH, EMITTERBOUNDARY,
-            SPAWNBYANGLE, SPAWNBYOCCLUSION,
-            VELOCITY3D, VELOCITY2D, SCALEANIM, ROTATEANIM, TURBULENCE,
-            HOMING, GUIDE, PATHCHAIN, SCREENSPACECOLLISION,
-            FADEBYDEPTH, FADEBYANGLE, FADEBYEMITTERANGLE, FADEBYOCCLUSION,
-            SHADERSETTINGS, MASTERONLY, RAYCAST, LINKPARTSVISIBLE,
-            PLEMISSIVE, PARENTEMISSIVE, PLSNOW, PARENTSNOW, OTOMOSNOW,
-            PARENTMATERIAL, SHOVEL,
-            PTBEHAVIOR,
-            RANDOMFIX, TIML, CHECKPUREATTRIBUTE, REPEATAREA, LAYOUT,
-            TRANSFORM2D, FAKEDOF, TONEMAPFILTER, COLORCORRECTFILTER,
-            RGBFIRE, RGBWATER, NOISE,
-            PTCOLLISION, PTLIFE, PTTRIGGER,
-        )
+        from ..efx_format.categories import ATTRIBUTE_CANONICAL_ORDER
     except ImportError:
         return {}
-    return {
-        # ── 0 声明层 ──────────────────────────────────────────────────────────
-        EXTERNREFERENCE:        0,
-        RANDOMFIX:              1,    # 实测 0.000，与 EXTERNREFERENCE 并列最前
-        # ── 10 骨架层 ─────────────────────────────────────────────────────────
-        TRANSFORM3D:            10,
-        TRANSFORM2D:            10,   # 实测 0.000，TRANSFORM2D 是 TRANSFORM3D 的 2D 对应
-                                       # （offsetX/Y+rotation+scaleX/Y），与之互斥，同归骨架层
-        PARENTOPTIONS:          11,
-        RAYCAST:                12,   # 实测 0.167，骨架层内（FAKEPLANE 的地面探测前置）
-        LINKPARTSVISIBLE:       13,   # 实测 0.182
-        SPAWNBYOCCLUSION:       13.5, # 实测 0.200（n=1），与 RAYCAST/LINKPARTSVISIBLE 同区间
-        SPAWN:                  14,
-        LIFE:                   15,
-        SPAWNBYANGLE:           16,   # 实测 0.308，LIFE 之后、FADE 层之前
-        # ── 20 早期可见性 / 地面检测 ──────────────────────────────────────────
-        FADEBYDEPTH:            20,   # 实测 0.357
-        FADEBYANGLE:            21,   # 实测 0.364
-        FADEBYEMITTERANGLE:     22,   # 实测 0.417
-        FADEBYOCCLUSION:        23,   # 实测 0.417
-        FAKEPLANE:              24,   # 实测 0.438，在发射器之前
-        # ── 30 发射器 ─────────────────────────────────────────────────────────
-        EMITTERSHAPE3D:         30,   # 实测 0.455
-        EMITTERSHAPE2D:         31,
-        EMITTERSHAPEMESH:       32,   # 实测 0.455
-        # ── 40 速度 ───────────────────────────────────────────────────────────
-        VELOCITY3D:             40,   # 实测 0.538
-        VELOCITY2D:             41,
-        REPEATAREA:             42,   # 实测 0.538，速度区同位
-        # ── 50 渲染主体 ───────────────────────────────────────────────────────
-        PLANE:                  50,   # 实测 0.571
-        RIBBONBLADE:            51,   # 实测 0.571
-        UVCONTROL:              52,   # 实测 0.600（MESH 专属，但出现在 MESH 之前）
-        BILLBOARD3D:            53,   # 实测 0.615
-        LIGHTNING:              54,   # 实测 0.636
-        RIBBON:                 55,   # 实测 0.636
-        DUMMY:                  56,   # 实测 0.667
-        MESH:                   57,   # 实测 0.667
-        STRAINRIBBON:           58,   # 实测 0.700
-        TUBELIGHT:              59,
-        BILLBOARD2D:            59,
-        # ── 60 动画 ───────────────────────────────────────────────────────────
-        ROTATEANIM:             60,   # 实测 0.667
-        SCALEANIM:              61,   # 实测 0.727
-        # ── 70 UV 修饰 ────────────────────────────────────────────────────────
-        ALPHACORRECTION:        70,   # 实测 0.818
-        UVSEQUENCE:             71,   # 实测 0.818
-        # ── 80 着色器及晚期约束 ───────────────────────────────────────────────
-        SHADERSETTINGS:         80,   # 实测 0.900
-        EMITTERBOUNDARY:        81,   # 实测 0.917
-        LAYOUT:                 82,   # 实测 0.923
-        SCREENSPACECOLLISION:   83,   # 实测 0.933
-        MATERIAL:               84,   # 实测 1.000（MESH 专属，总在末尾）
-        # ── 90 晚期效果 ───────────────────────────────────────────────────────
-        BLINK:                  90,   # 实测 1.000
-        GUIDE:                  91,   # 实测 1.000
-        HOMING:                 92,   # 实测 1.000
-        LUMINANCEBLEED:         93,   # 实测 1.000
-        MASTERONLY:             94,   # 实测 1.000
-        NOISE:                  95,   # 实测 1.000
-        PATHCHAIN:              96,   # 实测 1.000
-        REFRACTION:             97,   # 实测 1.000
-        TURBULENCE:             98,   # 实测 1.000
-        # ── 100 角色附着 ──────────────────────────────────────────────────────
-        PLEMISSIVE:             100,
-        PARENTEMISSIVE:         101,
-        PLSNOW:                 102,
-        PARENTSNOW:             103,
-        OTOMOSNOW:              104,
-        PARENTMATERIAL:         105,
-        SHOVEL:                 106,
-        # ── 110 孤立行为系统 ──────────────────────────────────────────────────
-        PTBEHAVIOR:             110,
-        # ── 120 Misc/control ──────────────────────────────────────────────────
-        TIML:                   121,
-        CHECKPUREATTRIBUTE:     122,
-        FAKEDOF:                124,
-        TONEMAPFILTER:          125,
-        COLORCORRECTFILTER:     126,
-        # ── 200 全局染色（总是最后） ──────────────────────────────────────────
-        RGBFIRE:                200,
-        RGBWATER:               201,
-        # ── 210 生命周期触发（总是最后） ──────────────────────────────────────
-        PTCOLLISION:            210,
-        PTLIFE:                 211,
-        PTTRIGGER:              212,
-    }
+    return dict(ATTRIBUTE_CANONICAL_ORDER)
 
 
 _ATTRIBUTE_SORT_KEY_MAP = None  # lazy-initialized on first export
@@ -768,21 +645,27 @@ _ATTRIBUTE_SORT_KEY_MAP = None  # lazy-initialized on first export
 
 def auto_sort_entry_attributes(root_obj) -> int:
     """
-    静默对 root_obj 下每个 entry 的 EFX_ATTRIBUTE 按规范顺序排序（就地修改 efx_index）。
+    对 root_obj 下每个 entry 的 EFX_ATTRIBUTE 按规范顺序排序（就地修改 efx_index）。
 
-    规范顺序：EXTERNREFERENCE/RANDOMFIX → 骨架/SPAWNBYANGLE → 早期可见性/FAKEPLANE →
-             发射器 → 速度/REPEATAREA → 渲染主体 → 动画 → UV修饰 →
-             着色器/LAYOUT/晚期约束/MATERIAL → 晚期效果 → 角色附着 →
-             PTBEHAVIOR → 杂项 → RGBFIRE/RGBWATER → 生命周期触发
+    规范顺序表 = efx_format.categories.ATTRIBUTE_CANONICAL_ORDER（语料拓扑排序得出，
+    见该文件顶部注释）。排序是**稳定**的：同 rank 或未知类型保持相互间的原有先后。
 
     只修改 efx_index；io_tree.export_efx_tree 按 efx_index 排序序列化，无需重建显示名。
     返回被重新排序的 entry 数量（未变动的 entry 不计）。
+
+    ⚠ 规范顺序是惯例（官方语料 99.5% 符合）而非格式硬约束，本函数会改动那 0.48%
+    本就"逆序"的官方 entry。导出算子的 auto_sort_attributes 开关可整体关掉。
     """
     global _ATTRIBUTE_SORT_KEY_MAP
     if _ATTRIBUTE_SORT_KEY_MAP is None:
         _ATTRIBUTE_SORT_KEY_MAP = _build_attribute_sort_key_map()
     sort_map = _ATTRIBUTE_SORT_KEY_MAP
-    _DEFAULT_KEY = 150
+    if not sort_map:
+        return 0  # 表加载失败：不排序，保持用户原顺序
+    try:
+        from ..efx_format.categories import CANONICAL_ORDER_DEFAULT as _DEFAULT_KEY
+    except ImportError:
+        _DEFAULT_KEY = 999
 
     if root_obj is None:
         return 0

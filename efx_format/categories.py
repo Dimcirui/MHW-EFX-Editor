@@ -244,6 +244,130 @@ SUFFIX_DISPLAY_TYPES = frozenset({
 })
 
 
+# ── Canonical attribute order within an entry ────────────────────────────────
+#
+# Derived from the official corpus (10084 files / 112573 entries), 2026-08-18.
+#
+# Attribute order inside an entry is a STRICT TOTAL ORDER, not a loose layering:
+# of the 884 attribute pairs co-occurring >=20 times, 878 agree on direction at
+# >=99%, 6 at 90-99%, and NONE below 90%. Topologically sorting the dominance
+# graph yields the table below; replaying it over the whole corpus leaves only
+# 545 / 112573 entries (0.48%) with any adjacent inversion, concentrated in
+# SHADERSETTINGS->body (182 / 62785 = 0.3%, noise level).
+#
+# ⚠ This is a CONVENTION (99.5%), not a hard format constraint — whether the game
+# tolerates an out-of-order entry has never been tested. Use it to place newly
+# added attributes and to drive an explicit "sort" action; do NOT treat a
+# deviation as an export-blocking error.
+#
+# ⚠ Ranks for these types rest on very few samples and should not be trusted as
+# conclusions: RIBBONBLADE (n=50), TUBELIGHT (n=22), CHECKPUREATTRIBUTE (n=16),
+# PLSNOW (n=5), PARENTSNOW (n=3), OTOMOSNOW (n=2), TONEMAPFILTER /
+# PARENTMATERIAL / SPAWNBYOCCLUSION (n=1).
+#
+# Rationale/evidence: docs/ATTRIBUTE_STATS.md "Entry 内属性的规范顺序".
+ATTRIBUTE_CANONICAL_ORDER = {
+    EXTERNREFERENCE:         0,
+    RANDOMFIX:               1,
+    TRANSFORM2D:             2,
+    TRANSFORM3D:             3,
+    PARENTOPTIONS:           4,
+    LINKPARTSVISIBLE:        5,
+    RAYCAST:                 6,
+    SPAWN:                   7,
+    SPAWNBYOCCLUSION:        8,
+    SPAWNBYANGLE:            9,
+    LIFE:                   10,
+    EMITTERSHAPE2D:         11,
+    FADEBYANGLE:            12,
+    FADEBYDEPTH:            13,
+    RIBBONBLADE:            14,
+    VELOCITY2D:             15,
+    FADEBYOCCLUSION:        16,
+    CHECKPUREATTRIBUTE:     17,
+    BILLBOARD2D:            18,
+    FADEBYEMITTERANGLE:     19,
+    EMITTERSHAPEMESH:       20,
+    PARENTSNOW:             21,
+    TUBELIGHT:              22,
+    FAKEPLANE:              23,
+    DUMMY:                  24,
+    EMITTERSHAPE3D:         25,
+    PARENTEMISSIVE:         26,
+    VELOCITY3D:             27,
+    UVCONTROL:              28,
+    OTOMOSNOW:              29,
+    PLSNOW:                 30,
+    TONEMAPFILTER:          31,
+    MESH:                   32,
+    PTTRIGGER:              33,
+    LIGHTNING:              34,
+    REPEATAREA:             35,
+    PLANE:                  36,
+    BILLBOARD3D:            37,
+    RIBBON:                 38,
+    ROTATEANIM:             39,
+    SCALEANIM:              40,
+    UVSEQUENCE:             41,
+    STRAINRIBBON:           42,
+    PARENTMATERIAL:         43,
+    ALPHACORRECTION:        44,
+    SHADERSETTINGS:         45,
+    PLEMISSIVE:             46,
+    REFRACTION:             47,
+    EMITTERBOUNDARY:        48,
+    PTLIFE:                 49,
+    PTBEHAVIOR:             50,
+    RGBFIRE:                51,
+    MATERIAL:               52,
+    RGBWATER:               53,
+    PTCOLLISION:            54,
+    SHOVEL:                 55,
+    TURBULENCE:             56,
+    SCREENSPACECOLLISION:   57,
+    NOISE:                  58,
+    BLINK:                  59,
+    MASTERONLY:             60,
+    PATHCHAIN:              61,
+    LAYOUT:                 62,
+    HOMING:                 63,
+    COLORCORRECTFILTER:     64,
+    FAKEDOF:                65,
+    LUMINANCEBLEED:         66,
+    GUIDE:                  67,
+}
+
+# Unregistered/unknown types sort to the very end; they are never seen in the
+# official corpus, so there is no evidence for placing them anywhere earlier.
+CANONICAL_ORDER_DEFAULT = 999
+
+
+def canonical_rank(type_hash: int) -> int:
+    """
+    return the canonical position of the attribute type within an entry
+    (smaller = earlier); unknown types return CANONICAL_ORDER_DEFAULT.
+    """
+    return ATTRIBUTE_CANONICAL_ORDER.get(type_hash, CANONICAL_ORDER_DEFAULT)
+
+
+def canonical_insert_index(existing_hashes, new_hash: int) -> int:
+    """
+    Given the type_hashes of an entry's existing attributes IN CURRENT ORDER,
+    return the list position at which new_hash should be inserted so the result
+    follows the canonical order.
+
+    Ties (same rank) and unknown types append after the existing run of equal
+    rank, so repeated adds keep a stable, predictable order.
+    """
+    rank = canonical_rank(new_hash)
+    pos = len(existing_hashes)
+    for i, h in enumerate(existing_hashes):
+        if canonical_rank(h) > rank:
+            pos = i
+            break
+    return pos
+
+
 def category_of(type_hash: int) -> str:
     """
     return the top-level category slug of the attribute type; unregistered types default to 'misc'.

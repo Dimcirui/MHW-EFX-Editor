@@ -267,7 +267,8 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
 
     说明
     ----
-    - 新属性 efx_index = 同 entry 内现有属性最大 index + 1
+    - 新属性 efx_index 按**规范顺序**插入（`categories.canonical_insert_index`），
+      插入点之后的兄弟属性整体后移一位并重建显示名；不再一律追加到末尾
     - attr_count 由导出端（io_tree §4c）按实际属性数重算，无需手动维护
     - EXTERNREFERENCE 引用指针在 init_attribute_props 内初始化；PTLIFE/PTCOLLISION
       在本函数末尾补充指针化（越界 baked 值强制转可编辑悬空，供用户指定 Action）
@@ -292,15 +293,37 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
     cols = entry_obj.users_collection
     collection = cols[0] if cols else bpy.context.scene.collection
 
-    # ── 计算新 efx_index ─────────────────────────────────────────────────────
-    max_idx = -1
+    # ── 计算新 efx_index：插到规范顺序对应的位置，而不是一律追加到末尾 ────────
+    # 规范顺序表见 efx_format/categories.py::ATTRIBUTE_CANONICAL_ORDER（官方语料
+    # 拓扑排序得出，99.5% 的 entry 符合）。追加到末尾会让新属性落在几乎必然错误的
+    # 位置（例如在 RGBFIRE/PTLIFE 这些惯例末位属性之后）。
+    from ..efx_format.categories import canonical_insert_index
+
+    siblings = []
     for obj in bpy.data.objects:
         if obj.parent == entry_obj and obj.get("~TYPE") == "EFX_ATTRIBUTE":
             try:
-                max_idx = max(max_idx, int(obj.get("efx_index", 0)))
+                idx = int(obj.get("efx_index", 0))
             except (ValueError, TypeError):
-                pass
-    new_idx = max_idx + 1
+                idx = 0
+            try:
+                h = int(str(obj.get("type_hash", "0")))
+            except (ValueError, TypeError):
+                h = 0
+            siblings.append((idx, h, obj))
+    siblings.sort(key=lambda t: t[0])
+
+    new_idx = canonical_insert_index([h for _, h, _ in siblings], type_hash)
+
+    # 插入点及其之后的兄弟属性整体后移一位，腾出 new_idx；显示名含序号，需同步重建
+    from .delete_ops import _rebuild_attribute_name
+    for pos, (_, _, obj) in enumerate(siblings):
+        shifted = pos if pos < new_idx else pos + 1
+        obj["efx_index"] = shifted
+        try:
+            obj.name = _rebuild_attribute_name(obj, shifted)
+        except Exception:
+            pass  # 名字重建失败不阻断新增（efx_index 才是导出权威）
 
     # ── 构建显示名 ────────────────────────────────────────────────────────────
     from ..efx_format.hashes import pretty_type_name
