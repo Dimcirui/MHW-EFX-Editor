@@ -159,8 +159,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "原名 bleedPos。与 lockToPositionFrame 配对的抖动量。",
     },
     ("PARENTOPTIONS", "jointNo"): {
-        "EN": "Bone Limitation. The index/serial number of the bone this is bound to.",
-        "ZH": "骨骼限制。绑定到的骨骼的序号。",
+        "EN": "Bone Limitation. The index/serial number of the bone this is bound to. "
+              "-1 = not bound to any bone, the most common setting; a bone index is "
+              "specific to the model the effect was authored for, so it rarely "
+              "transfers when the entry is reused elsewhere.",
+        "ZH": "骨骼限制。绑定到的骨骼的序号。−1 = 不绑定任何骨骼，是最常见的设置；"
+              "骨骼序号是针对特效原本所属模型的，把 entry 复用到别处时通常不通用。",
     },
     ("PARENTOPTIONS", "unknFlag1"): {
         "EN": "Unknown. Observed: {0:20433, 1:9199}",

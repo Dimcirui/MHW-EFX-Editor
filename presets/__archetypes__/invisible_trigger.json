@@ -1,0 +1,43 @@
+{
+    "efx_preset_kind": "entry",
+    "entry_kind": "standard",
+    "display_name": "触发体(不可见)",
+    "props": {
+        "body_type": "3205436635",
+        "unkn0": "2",
+        "attr_count": "5",
+        "null": "0",
+        "timl_length": "0"
+    },
+    "timl_bytes": "",
+    "raw": "",
+    "source_label": "触发体(不可见)",
+    "source_counts": {
+        "extern": 0,
+        "entry": 12,
+        "action": 1
+    },
+    "in_eof": false,
+    "attributes": [
+        {
+            "type_hash": "10286765",
+            "data_bytes": "AQAAAAAAlEIAAAAAAAAgwgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
+        },
+        {
+            "type_hash": "368199626",
+            "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAABAAAAAAAAAD/////"
+        },
+        {
+            "type_hash": "1921765292",
+            "data_bytes": "AgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAADcAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
+        },
+        {
+            "type_hash": "201720946",
+            "data_bytes": "BQAAAAEAAAAA"
+        },
+        {
+            "type_hash": "493311524",
+            "data_bytes": "BgAAAAAABQAAAAAAAAAAAAAAAAA="
+        }
+    ]
+}

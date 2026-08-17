@@ -1,0 +1,39 @@
+{
+    "efx_preset_kind": "entry",
+    "display_name": "基础Entry（4骨架属性）",
+    "props": {
+        "body_type": "526957114",
+        "unkn0": "0",
+        "attr_count": "4",
+        "null": "0",
+        "timl_length": "0"
+    },
+    "timl_bytes": "",
+    "raw": "",
+    "source_label": "basic",
+    "source_counts": {
+        "extern": 0,
+        "entry": 0,
+        "action": 0
+    },
+    "in_eof": false,
+    "entry_kind": "standard",
+    "attributes": [
+        {
+            "type_hash": "10286765",
+            "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
+        },
+        {
+            "type_hash": "368199626",
+            "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAD/////"
+        },
+        {
+            "type_hash": "1921765292",
+            "data_bytes": "AgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
+        },
+        {
+            "type_hash": "1320868484",
+            "data_bytes": "DAAAAAUAAAAAAAAAPAAAAAAAAAAAAAAAAAAAABQAAAAUAAAAAAAAAAAAAAAAAAAA"
+        }
+    ]
+}

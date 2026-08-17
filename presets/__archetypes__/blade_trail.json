@@ -1,0 +1,55 @@
+{
+    "efx_preset_kind": "entry",
+    "entry_kind": "standard",
+    "display_name": "刀光拖尾",
+    "props": {
+        "body_type": "1782718100",
+        "unkn0": "0",
+        "attr_count": "8",
+        "null": "0",
+        "timl_length": "0"
+    },
+    "timl_bytes": "",
+    "raw": "",
+    "source_label": "刀光拖尾",
+    "source_counts": {
+        "extern": 0,
+        "entry": 6,
+        "action": 0
+    },
+    "in_eof": false,
+    "attributes": [
+        {
+            "type_hash": "10286765",
+            "data_bytes": "AQAAAAAA+MEAAAAAAADYwQAAAAAAAMBCAAAAAAAAskIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAB6RAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
+        },
+        {
+            "type_hash": "368199626",
+            "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAD/////"
+        },
+        {
+            "type_hash": "1921765292",
+            "data_bytes": "AgAAAAEAAAABAAAAAAAAAA8AAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
+        },
+        {
+            "type_hash": "1320868484",
+            "data_bytes": "CgAAAAAAAAAAAAAABQAAAAAAAAAAAAAAAAAAAB4AAAAAAAAAAAAAAAAAAAABAAAA"
+        },
+        {
+            "type_hash": "319363982",
+            "data_bytes": "AQAAAEgAAAAAzc3NBQAAAAAAyEIeAAAABAAAAADNzc0AAAAAAQAAAACAu0QAAMhEAAAAAAAAQEEAAAAAAM3NzQEAAABmZiY/AAAAAAAAAAAgAAAAAM3NzQAAAAD/////AAAAAP////8Azc3NAAAAAAAAgD8gAAAAAM3NzQAAAAD/////AAAAAP////8Azc3NAAAAAAAAgD8mAAAAAADNzQAAAD8AAAAAAACAPwAAAADNzEw9AAAAAAAAgD8AAAAAAAAnAAAAdmZ4XGRkc1xjbVxjbV9mbG93bWFwXGNtX2Zsb3dfMDA4X0ZfTk0A"
+        },
+        {
+            "type_hash": "1698970185",
+            "data_bytes": "BgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAABsAAAB2ZnhcdXZzXGVtXGVtMDM3XGVtMDM3XzAwMAA="
+        },
+        {
+            "type_hash": "61219887",
+            "data_bytes": "BwAAAAAAgD4AAIA/AAAAAAEAAAA="
+        },
+        {
+            "type_hash": "1978267738",
+            "data_bytes": "BAAAAGgAAAAAzc3NAQAAAAAAoMAAAKBAAAAAAAAAAAACAAAAAACAPwAAgD8AAAAAAACAPwAAgD8AAIA/zcxMPwAAAAAihdK1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP4AAQAAAAAAAAAAAAA="
+        }
+    ]
+}

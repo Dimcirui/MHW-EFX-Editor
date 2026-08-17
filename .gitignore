@@ -12,10 +12,11 @@ dist/
 # 测试用文件
 efx_samples/
 
-# 预设：__attributes__/ 是随扩展下发的默认属性预设（curated，入库保证构建可复现）；
-# 其余（用户运行期保存的、__entries__ 等）不入库。
+# 预设：__attributes__/ 与 __archetypes__/ 是随扩展下发的 curated 默认预设
+# （入库保证构建可复现）；其余（用户运行期保存的 __entries__ 等）不入库。
 presets/*
 !presets/__attributes__/
+!presets/__archetypes__/
 
 # 开发/参考文档与测试笔记。
 # 本地保留供开发与 Claude 读取；仅不进远程。

@@ -57,8 +57,21 @@ _HAS_POLL_MESSAGE_SET = hasattr(bpy.types.Operator, "poll_message_set")
 # 路径工具
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _archetypes_preset_dir() -> str:
+    """
+    返回 archetype 模板目录 presets/__archetypes__/ 的绝对路径。
+
+    **随扩展下发的 curated entry 模板**（"新建即可用"的起手配方），与
+    presets/__attributes__/ 对称：入库、进构建包、只读。属性集按官方语料的高频配方，
+    字段值按语料分位（见 docs/ATTRIBUTE_VALUE_RANGES.md）。
+    用户自己保存的 entry 预设走 __entries__，不混在这里——否则用户数据会被卷进 git，
+    而且插件升级覆盖目录时会被冲掉。
+    """
+    return os.path.join(_presets_root(), "__archetypes__")
+
+
 def _entries_preset_dir() -> str:
-    """返回 entry 预设目录 presets/__entries__/ 的绝对路径。"""
+    """返回用户 entry 预设目录 presets/__entries__/ 的绝对路径（保存目标）。"""
     return os.path.join(_presets_root(), "__entries__")
 
 
@@ -583,16 +596,18 @@ def _find_entry_collection(root_obj: bpy.types.Collection):
 
 def list_entry_presets():
     """
-    扫 __entries__/*.json + 兼容旧目录 __bodies__/*.json，返回 EnumProperty items 列表：
-      [(完整路径, 文件名去.json, ""), ...]
-    __bodies__ 是 3.0 重命名前的旧目录名，用户自定义预设多存在这里，只读兼容，
-    不再写入（新增/保存统一走 __entries__，见 _bodies_preset_dir_legacy）。
+    按此顺序扫三个目录，返回 EnumProperty items 列表 [(完整路径, 显示名, ""), ...]：
+      1. __archetypes__/  随扩展下发的 curated 模板（只读，见 _archetypes_preset_dir）
+      2. __entries__/     用户保存的 entry 预设（保存目标）
+      3. __bodies__/      3.0 重命名前的旧目录名，只读兼容、不再写入
     空目录返回 [("", "（无预设）", "")]。
     """
     from .presets import _encode_path_ident, _read_display_name
 
     result = []
-    for preset_dir in (_entries_preset_dir(), _bodies_preset_dir_legacy()):
+    for preset_dir in (_archetypes_preset_dir(),
+                       _entries_preset_dir(),
+                       _bodies_preset_dir_legacy()):
         if not os.path.isdir(preset_dir):
             continue
         for entry in sorted(os.scandir(preset_dir), key=lambda e: e.name):

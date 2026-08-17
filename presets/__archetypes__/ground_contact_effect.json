@@ -1,0 +1,47 @@
+{
+    "efx_preset_kind": "entry",
+    "entry_kind": "standard",
+    "display_name": "地面接触特效",
+    "props": {
+        "body_type": "3496625053",
+        "unkn0": "2",
+        "attr_count": "6",
+        "null": "0",
+        "timl_length": "0"
+    },
+    "timl_bytes": "",
+    "raw": "",
+    "source_label": "地面接触特效",
+    "source_counts": {
+        "extern": 0,
+        "entry": 20,
+        "action": 0
+    },
+    "in_eof": false,
+    "attributes": [
+        {
+            "type_hash": "10286765",
+            "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA0wwAAtEMAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAKBAAAAAAAAAAD8AAAAAAACgQAAAAADNzEw/AAAAAM3MTD8AAAAAzcxMPwAAAAAAAAAA"
+        },
+        {
+            "type_hash": "368199626",
+            "data_bytes": "AwAAAAEAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAD/////"
+        },
+        {
+            "type_hash": "1921765292",
+            "data_bytes": "AgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
+        },
+        {
+            "type_hash": "1320868484",
+            "data_bytes": "CAAAAAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        },
+        {
+            "type_hash": "201720946",
+            "data_bytes": "BwAAAAEAAAAA"
+        },
+        {
+            "type_hash": "1240420851",
+            "data_bytes": "AAAAAD4AAAAAzc3NAAAWQwAAAAAAABZDAAAAAAAAFkMAAAAAAAA0wwAAtEMAAAAAAAAAAAAAAAAAAAAABgAAAAEAAAAAAA=="
+        }
+    ]
+}

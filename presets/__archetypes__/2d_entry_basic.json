@@ -1,0 +1,55 @@
+{
+ "efx_preset_kind": "entry",
+ "entry_kind": "standard",
+ "display_name": "基础2D Entry（7属性）",
+ "props": {
+  "body_type": "1013701303",
+  "unkn0": "0",
+  "attr_count": "7",
+  "null": "0",
+  "timl_length": "0"
+ },
+ "timl_bytes": "",
+ "raw": "",
+ "source_label": "2D_Entry",
+ "source_counts": {
+  "extern": 0,
+  "entry": 0,
+  "action": 0
+ },
+ "in_eof": false,
+ "attributes": [
+  {
+   "type_hash": "428328940",
+   "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/"
+  },
+  {
+   "type_hash": "368199626",
+   "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAD/////"
+  },
+  {
+   "type_hash": "1921765292",
+   "data_bytes": "AgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
+  },
+  {
+   "type_hash": "1320868484",
+   "data_bytes": "DAAAAAAAAAAAAAAAPAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  {
+   "type_hash": "1524169119",
+   "data_bytes": "BQAAAAAAAABXa8hk/////wAAIEEAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAIBDAAAAAAAAgEMAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAABAAAAAAAAAAAAAAAA"
+  },
+  {
+   "type_hash": "480396424",
+   "data_bytes": "CAAAAArXozwAAAAApHB9PwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAA=="
+  },
+  {
+   "type_hash": "1698970185",
+   "data_bytes": "BQAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAACAAAABgAAAB2ZnhcdXZzXGNtXGNtX2xpZ2h0XzAwMAA="
+  },
+  {
+   "type_hash": "1978267738",
+   "data_bytes": "BAAAAGgAAAAAzc3NAQAAAAAAAADNzMw9AAAAAAAAAAABAAAAAACAP83MzD1mZmY/AACAPwAAgD8AAIA/AACAPwAAyEL/////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////8AAQAAAAAAAAAAAAA="
+  }
+ ]
+}
