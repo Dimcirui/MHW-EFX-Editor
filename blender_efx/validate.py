@@ -309,6 +309,34 @@ def validate_efx_tree(root_obj) -> list:
     # Trigger 两个子集合之一。正常切换/拖拽是互斥移动，不会产生异常；只有手动
     # Ctrl+drag 追加链接（双重挂载）或误把 entry 落在 Entry 叶子集合直接子级
     # （孤儿）才会出现 —— 见 (1b) 说明。
+    # EOF 规范化告知：导入时丢弃了越界/重复索引，或把非升序顺序归一化了。
+    # 这类文件本来就是坏的（手工编辑/旧工具产物，official 语料 0 例），修好是
+    # 预期行为——但导出结果不再与原文件逐字节相同，必须报出来而不是静默。
+    _eof_dropped = str(root_obj.get("eof_dropped", ""))
+    if _eof_dropped:
+        problems.append({
+            "level": "WARN",
+            "category": "eof_repaired",
+            "msg": (
+                f"EOF section had invalid entry indices {_eof_dropped} "
+                "(out of range or duplicated) — dropped on import; export writes the "
+                "repaired list, so the file will not be byte-identical to the original"
+            ),
+            "obj": "",
+        })
+    if root_obj.get("eof_reordered", 0):
+        problems.append({
+            "level": "WARN",
+            "category": "eof_reordered",
+            "msg": (
+                "EOF section was not in ascending order — normalized on import "
+                "(order carries no meaning; official files are always ascending). "
+                "Export writes ascending order, so the file will not be byte-identical "
+                "to the original"
+            ),
+            "obj": "",
+        })
+
     if str(root_obj.get("eof_model", "")) == "per_entry":
         dt_col = _rc.get_direct_trigger_collection(root_obj)
         ndt_col = _rc.get_not_direct_trigger_collection(root_obj)

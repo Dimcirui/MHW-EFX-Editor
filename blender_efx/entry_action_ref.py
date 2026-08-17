@@ -4,7 +4,7 @@ blender_efx/entry_action_ref.py  —  L2 #1d：补完 entry/action 引用层指�
 涵盖三项：
   1. PtLife.relationIndex     → action 指针（int16，偏移 8）
   2. PtCollision.ieIndex      → action 指针（int32，偏移 96）
-  3. eof_ints（End 段）       → 有序 entry 指针列表（CollectionProperty）
+  3. eof_ints（End 段）       → 直接触发 entry 索引集合（嵌套集合归属）
 
 设计原则（参照 CLAUDE.md / extern_ref.py 模式）：
   - Python 3.11 语法（目标 Blender 4.3.2）
@@ -59,9 +59,14 @@ PTCOLLISION_SCHEMA：112 字节。
 导出覆写：struct.pack_into('<i', buf, 96, new_index)  （int32，偏移 96）
 
 ────────────────────────────────────────────────────────────────────────────
-§ 3  eof_ints（End 段，entry 索引列表）—— hybrid：per_entry(对称嵌套集合) / opaque
+§ 3  eof_ints（End 段，entry 索引集合）→ per_entry（对称嵌套集合）
 ────────────────────────────────────────────────────────────────────────────
-干净（升序+无重复+全 in-range）→ "per_entry"：直接触发的载体是**集合归属**——
+EOF 段的语义是「哪些 entry 直接触发」的**索引集合**，顺序不承载信息——official
+语料 10084 文件全量实测坐实（10075 严格升序无重复全 in-range + 9 个 count_eof==0
+的空 main；越界/重复/非升序各 0 例，见 normalize_eof_ints 文档串）。因此导入时
+一律先 normalize_eof_ints 规范化（丢弃越界与重复、升序归一），再走 "per_entry"。
+
+per_entry：直接触发的载体是**集合归属**——
 Entry 叶子集合下嵌两个对称子集合 "Direct Trigger" / "Not Direct Trigger"
 （root_collection.py ensure_direct_trigger_collection / ensure_not_direct_
 trigger_collection）。entry **100% 分流**进其中一个——Entry 叶子集合自身直接
@@ -75,13 +80,16 @@ fail-safe：若 entry 异常地既不在 Direct Trigger 也不在 Not Direct Tri
 多触发、不漏触发）。若同时在两处（另一种拖拽失误）→ Direct Trigger 优先。
 validate.py 对这两种异常状态都有 WARN。
 
-不干净（evc 浮点结构等）→ "opaque"：整个 eof 段原样存 root_col["eof_ints"]
-字符串直通，不建任何集合，byte-perfect、只读。
+"opaque" 模型（整段原样存 root_col["eof_ints"] 字符串、只读）**导入端已不再产生**
+（2026-08）。代码里保留的 opaque 分支只服务一种情况：本次改动之前保存的 .blend
+里可能存着 eof_model="opaque" 的 root 集合，那种集合根本没有 DT/NDT 两个子集合，
+按 per_entry 的 fail-safe 规则会被判成"全部 entry 都触发"而写坏 EOF；读回原字符串
+才能保持它 byte-perfect。新导入的文件永远走 per_entry，这些分支对其不可达。
 
 导出：
   per_entry → 遍历 entry_index_map，按上述 fail-safe 规则判定每个 entry 是否
               触发，取其局部 index，升序返回。
-  opaque    → root_col["eof_ints"] 字符串原样解析回整数列表。
+  opaque    → root_col["eof_ints"] 字符串原样解析回整数列表（仅旧 .blend）。
 
 2026-07 二期改动：早期版本载体是每个 entry 的 efx_direct_trigger 布尔
 （BoolProperty）+ 一套已废弃的 efx_eof_list CollectionProperty 遗留层
@@ -279,16 +287,41 @@ def overlay_ptcollision_ie_index(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §3  eof_ints（End 段）→ 有序 entry 指针列表
+# §3  eof_ints（End 段）→ 直接触发 entry 索引集合（顺序无语义，见文件头 §3）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def eof_is_clean(eof_ints: list, count_body: int) -> bool:
-    """判定 eof 是否"干净"（可下放为集合归属）：升序 + 无重复 + 全部 in-range。
-    空列表视为干净（sorted(set([]))==[] 且 all() 空真）。"""
-    lst = list(eof_ints)
-    if any(not (0 <= v < count_body) for v in lst):
-        return False
-    return lst == sorted(set(lst))
+def normalize_eof_ints(eof_ints: list, count_body: int):
+    """把 EOF 段规范化成「直接触发 entry 索引集合」：丢弃越界值、去重，升序返回。
+
+    返回 (indices, dropped, reordered)：
+      indices   : list — 规范化后的升序索引，供集合分流使用
+      dropped   : list — 被丢弃的原始值（越界或重复），按出现顺序，供 WARN 报告
+      reordered : bool — 原列表的有效值本来就不是升序（顺序被规范化掉了）
+
+    为什么可以无损丢弃 —— official 语料 10084 个文件全量实测（2026-08）：
+      10075 个 EOF 严格升序、无重复、全 in-range；另 9 个 count_eof==0（其
+      count_body 同为 0，即 main 段本身是空的）。越界 0 例、重复 0 例、非升序
+      0 例。也就是说官方从未在 EOF 里写入索引之外的东西，这段的语义就是
+      「哪些 entry 直接触发」的集合，顺序不承载信息。
+      反面对照：efx_samples/ 根目录 78 个社区/手工样本里有 11 个越界（如
+      fire.efx 的 [99,99,...,0,9,10,11,99,...]、ymt00x 系列删 entry 后没重编号
+      的末位越界 1），nadao_qian.efx 则是 14/15 互换。这些都是编辑工具/手工改动
+      的产物，规范化后输出成官方唯一使用过的形状，方向上是修好而非破坏。
+
+    ⚠ 本函数只服务 Blender 编辑模型。efx_format/ 侧保持绝对忠实（裸 unpack /
+      裸 pack，越界值原样往返），codec 的 serialize(parse(x))==x 不受影响。
+    """
+    keep = []
+    dropped = []
+    seen = set()
+    for v in eof_ints:
+        v = int(v)
+        if not (0 <= v < count_body) or v in seen:
+            dropped.append(v)
+            continue
+        seen.add(v)
+        keep.append(v)
+    return sorted(keep), dropped, keep != sorted(keep)
 
 
 def _entry_subtree_objects(entry_obj: bpy.types.Object, children_by_parent: dict = None) -> list:
@@ -353,18 +386,34 @@ def init_eof_per_entry(
     count_body: int,
 ) -> None:
     """
-    导入端 hybrid：干净 → 设 root_obj["eof_model"]="per_entry"，把**每一个** entry
-    （及其 attribute/TIML 子对象）从 Entry 叶子集合分流进 "Direct Trigger" 或
+    导入端：设 root_obj["eof_model"]="per_entry"，把**每一个** entry（及其
+    attribute/TIML 子对象）从 Entry 叶子集合分流进 "Direct Trigger" 或
     "Not Direct Trigger" 子集合之一（100% 分流，Entry 叶子集合自身直接子级导入后
-    永远清空）；不干净 → "opaque"，保留 root_obj["eof_ints"] 字符串直通。
+    永远清空）。
+
+    2026-08 起无条件走 per_entry —— EOF 先经 normalize_eof_ints 规范化（丢弃越界/
+    重复、顺序归一），依据是 official 10084 文件全量实测该段纯为索引集合（详见
+    normalize_eof_ints 文档串）。此前对"不干净"列表回退 opaque 只读，实测那条
+    分支在官方语料上完全不可达，只有 ~12 个畸形社区文件会踩到，代价是它们在插件
+    里完全不能编辑触发分组。现在改为规范化后照常编辑，被丢弃的值记在
+    root_obj["eof_dropped"]，由 validate.py + Direct Trigger List 面板报 WARN，
+    不静默。
     """
-    if not eof_is_clean(eof_ints, count_body):
-        root_obj["eof_model"] = "opaque"
-        # root_obj["eof_ints"] 字符串已在 io_tree §3 写入，原样直通即可。
-        return
+    active_sorted, dropped, reordered = normalize_eof_ints(eof_ints, count_body)
 
     root_obj["eof_model"] = "per_entry"
-    active = set(int(v) for v in eof_ints)
+    # 诊断记录：被丢弃的原始值 / 顺序是否被归一化。空则清掉键，避免 .blend 里
+    # 残留上一次导入的陈旧记录（同一 root 集合被复用时）。
+    if dropped:
+        root_obj["eof_dropped"] = ",".join(str(v) for v in dropped)
+    elif "eof_dropped" in root_obj:
+        del root_obj["eof_dropped"]
+    if reordered:
+        root_obj["eof_reordered"] = 1
+    elif "eof_reordered" in root_obj:
+        del root_obj["eof_reordered"]
+
+    active = set(active_sorted)
 
     entry_col = _rc.get_leaf_collection(root_obj, "EFX_ENTRY")
     if entry_col is None:
@@ -389,7 +438,8 @@ def export_eof_per_entry(root_obj: bpy.types.Object, entry_index_map: dict) -> l
                   里 → 触发；不在 Not Direct Trigger 里（含误留在 Entry 叶子集合
                   直接子级的异常孤儿）→ 也触发（宁可多触发不漏触发）；否则不触发。
                   取局部 index，升序返回。
-      opaque    → root_obj["eof_ints"] 字符串原样。
+      opaque    → root_obj["eof_ints"] 字符串原样（**仅**本次改动前保存的旧
+                  .blend；新导入一律 per_entry，见文件头 §3）。
       无 eof_model（不该出现——ROOT 集合化后旧 .blend 早已不兼容）→ 空列表兜底。
     """
     model = str(root_obj.get("eof_model", ""))
@@ -486,9 +536,12 @@ class EFX_OT_eof_toggle_entry(bpy.types.Operator):
         entry_obj = context.active_object
         root = _rc.find_root_collection(entry_obj)
 
+        # opaque 只可能来自本次改动前保存的旧 .blend（新导入一律 per_entry）。
+        # 那种 root 没有 DT/NDT 子集合，无法表达归属 → 保持只读，提示重新导入。
         if str(root.get("eof_model", "")) == "opaque":
             self.report({"WARNING"},
-                        "This EFX's EOF section holds non-index (event) data and is read-only")
+                        "This EFX was imported by an older plugin version with a read-only "
+                        "EOF section. Re-import the .efx to enable trigger editing")
             return {"CANCELLED"}
 
         # per_entry 模型：在 Direct Trigger ↔ Not Direct Trigger 两个嵌套子集合
@@ -572,11 +625,22 @@ class EFX_PT_eof_list(bpy.types.Panel):
         root = context.collection
         model = str(root.get("eof_model", ""))
 
+        # opaque 仅存在于本次改动前保存的旧 .blend（新导入一律 per_entry）
         if model == "opaque":
             box = layout.box()
-            box.label(text="EOF holds non-index (event) data", icon="INFO")
-            box.label(text="Read-only; preserved verbatim on export")
+            box.label(text="EOF imported as read-only by an older version", icon="INFO")
+            box.label(text="Re-import the .efx to enable trigger editing")
             return
+
+        # 规范化提示：该文件的 EOF 段原本含越界/重复索引（手工编辑或旧工具的产物），
+        # 导入时已丢弃。导出会写成规范形状，与原文件不再逐字节相同 —— 明确告知。
+        _dropped = str(root.get("eof_dropped", ""))
+        if _dropped or root.get("eof_reordered", 0):
+            box = layout.box()
+            if _dropped:
+                box.label(text="Repaired invalid EOF indices: " + _dropped, icon="ERROR")
+            if root.get("eof_reordered", 0):
+                box.label(text="EOF order normalized to ascending", icon="INFO")
 
         entries = _rc.collect_top_level(root, "EFX_ENTRY")
         triggered = [e for e in entries if is_entry_in_eof(e)]

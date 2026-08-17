@@ -568,11 +568,14 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
             # 任何异常均安全回退：raw_b64 保证 byte-perfect
             pass
 
-    # ── 9. eof：载体下放到 entry 归属的嵌套集合（hybrid 闸门，结构权威下放重构）───
+    # ── 9. eof：载体下放到 entry 归属的嵌套集合（结构权威下放重构）──────────────
     #
-    # 干净(升序+无重复+全 in-range) → per_entry：激活 entry 移入 Entry 叶子集合下嵌套的
-    #   Direct Trigger 子集合，悬空指针从原理上消失、raw 噪声清零。不干净(evc 浮点结构)
-    #   → opaque：root_col["eof_ints"] 字符串原样直通（§3 已写入）。
+    # 一律 per_entry：EOF 先规范化成索引集合（丢弃越界/重复、升序归一，依据是
+    #   official 10084 文件全量实测该段纯为集合语义），再把每个 entry 分流进
+    #   Direct Trigger / Not Direct Trigger 子集合之一，悬空指针从原理上消失。
+    #   被丢弃的值记在 root_col["eof_dropped"]，validate + N 面板报 WARN。
+    #   （2026-08 前"不干净就回退 opaque 只读"的分支已撤，它在官方语料上不可达，
+    #     只让 ~12 个畸形社区文件失去可编辑性。）
     #   main_bodies_by_index 已在 §8 构建完毕。
     try:
         _entry_action_ref.init_eof_per_entry(

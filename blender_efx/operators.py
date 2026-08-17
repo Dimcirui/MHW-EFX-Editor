@@ -1271,7 +1271,7 @@ class EFX_OT_new_efx(bpy.types.Operator):
         root_col["labels_dirty"] = 1
         root_col["eof_ints"]     = ""
         root_col["eof_tail"]     = ""
-        # 空 eof 列表天然"干净"（见 entry_action_ref.eof_is_clean）→ per_entry 模型，
+        # per_entry 是唯一模型（见 entry_action_ref §3），新建文件同样如此，
         # 使新增 entry 后可用 Direct Trigger 切换（efx.eof_toggle_entry）。
         root_col["eof_model"]    = "per_entry"
 
