@@ -532,6 +532,129 @@ class EFX_OT_add_attribute_from_preset(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 「常用但缺失」建议：按渲染主体线推荐该 entry 通常还该有的属性
+# ─────────────────────────────────────────────────────────────────────────────
+
+def default_attribute_preset_path(type_hash: int):
+    """
+    返回该属性类型随扩展下发的默认预设路径（presets/__attributes__/<分类>/[<子组>/]<TYPE>.json），
+    不存在则返回 None。用于"一键补上建议属性"——直接复用用户手动新增时拿到的同一份数据。
+    """
+    from ..efx_format.hashes import HASH_TO_NAME
+    from ..efx_format.categories import attribute_preset_relpath
+    name = HASH_TO_NAME.get(type_hash)
+    if not name:
+        return None
+    path = os.path.join(_attribute_preset_dir(),
+                        *attribute_preset_relpath(type_hash),
+                        name + ".json")
+    return path if os.path.isfile(path) else None
+
+
+def entry_body_hash(entry_obj):
+    """
+    返回该 entry 的 renderer_body 类型 hash；无渲染主体返回 None。
+    多主体（语料里仅 10 例）取第一个。
+    """
+    from ..efx_format.categories import ATTRIBUTE_CATEGORY_OF
+    best = None
+    for obj in bpy.data.objects:
+        if obj.parent is not entry_obj or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+            continue
+        try:
+            h = int(str(obj.get("type_hash", "0")))
+        except (ValueError, TypeError):
+            continue
+        if ATTRIBUTE_CATEGORY_OF.get(h) == "renderer_body":
+            try:
+                idx = int(obj.get("efx_index", 0))
+            except (ValueError, TypeError):
+                idx = 0
+            if best is None or idx < best[0]:
+                best = (idx, h)
+    return best[1] if best else None
+
+
+def entry_present_hashes(entry_obj):
+    """返回该 entry 现有全部属性的 type_hash 集合。"""
+    out = set()
+    for obj in bpy.data.objects:
+        if obj.parent is not entry_obj or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+            continue
+        try:
+            out.add(int(str(obj.get("type_hash", "0"))))
+        except (ValueError, TypeError):
+            pass
+    return out
+
+
+def suggested_for_entry(entry_obj, min_rate=40):
+    """
+    返回 [(type_hash, 出现率, 预设路径), ...]：该主体线上常用（>=min_rate%）但本 entry
+    缺失、且有现成默认预设可一键补的属性。纯建议，不参与任何校验。
+
+    ⚠ 没有单一默认预设的类型会被静默跳过，这是刻意的：目前只有 **PTBEHAVIOR** 属于这种
+    情况——它是类型化稀疏覆盖包，随扩展下发的是 5 个变体预设
+    （`PTBEHAVIOR_<b_type>.json`），必须由用户选哪一种行为，不能替他挑一个补上。
+    后果是"无渲染主体"那条线（占全语料 8.1%）拿不到建议，可接受：该线 80% 的 entry
+    本来就已经有 PTBEHAVIOR，建议只在它缺失时才会触发。
+    """
+    from ..efx_format.categories import suggest_missing_attributes
+    body = entry_body_hash(entry_obj)
+    present = entry_present_hashes(entry_obj)
+    out = []
+    for h, rate in suggest_missing_attributes(body, present, min_rate=min_rate):
+        path = default_attribute_preset_path(h)
+        if path:
+            out.append((h, rate, path))
+    return out
+
+
+class EFX_OT_add_suggested_attribute(bpy.types.Operator):
+    """把某个"常用但缺失"的属性按默认预设补进当前 entry（插到规范顺序位）"""
+
+    bl_idname      = "efx.add_suggested_attribute"
+    bl_label       = "Add Suggested Attribute"
+    bl_description = "Add this commonly-used attribute to the entry, inserted at its canonical position"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    type_hash: StringProperty(name="Type Hash", default="")
+
+    @classmethod
+    def poll(cls, context):
+        return _resolve_target_entry(context.active_object) is not None
+
+    def execute(self, context):
+        entry_obj = _resolve_target_entry(context.active_object)
+        if entry_obj is None:
+            self.report({"ERROR"}, "Select an EFX_ENTRY (or one of its EFX_ATTRIBUTE) object first")
+            return {"CANCELLED"}
+        try:
+            h = int(self.type_hash)
+        except (ValueError, TypeError):
+            self.report({"ERROR"}, "Invalid type hash")
+            return {"CANCELLED"}
+        path = default_attribute_preset_path(h)
+        if not path:
+            self.report({"ERROR"}, "No default preset shipped for this attribute type")
+            return {"CANCELLED"}
+        try:
+            new_blk = add_attribute_to_entry_from_path(entry_obj, path)
+        except Exception as exc:
+            self.report({"ERROR"}, f"Failed to add attribute: {exc}")
+            return {"CANCELLED"}
+        try:
+            for o in context.selected_objects:
+                o.select_set(False)
+            new_blk.select_set(True)
+            context.view_layer.objects.active = new_blk
+        except Exception:
+            pass
+        self.report({"INFO"}, f"Attribute added: {new_blk.name}")
+        return {"FINISHED"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 算子：打开属性预设文件夹
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -699,6 +822,7 @@ class EFX_MT_attribute_preset_picker(bpy.types.Menu):
 _CLASSES = (
     EFX_OT_save_attribute_preset,
     EFX_OT_add_attribute_from_preset,
+    EFX_OT_add_suggested_attribute,
     EFX_OT_open_attribute_preset_folder,
     EFX_OT_copy_attribute,
     EFX_OT_paste_attribute,

@@ -278,6 +278,8 @@ STRINGS = {
     "attribute.add_section":     {"EN": "Add Attribute",       "ZH": "新增属性"},
     "attribute.add_to_prefix":   {"EN": "Add Attribute to: ",  "ZH": "新增属性到："},
     "attribute.add_to_no_entry":  {"EN": "(select an Entry)",   "ZH": "（请选中 Entry）"},
+    "attribute.suggest_title":   {"EN": "Commonly paired (missing here)",
+                                  "ZH": "这类特效常用、但这里没有"},
     "attribute.category":        {"EN": "Category",            "ZH": "分类"},
     "attribute.add":             {"EN": "Add",                 "ZH": "新增"},
     "attribute.paste":           {"EN": "Paste Attribute",     "ZH": "粘贴属性"},

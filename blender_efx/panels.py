@@ -1315,6 +1315,39 @@ def _draw_entry_presets_content(layout, context):
     layout.operator("efx.open_entry_preset_folder", text=T("entry.open_folder"), icon="FILE_FOLDER")
 
 
+def _draw_suggested_attributes(layout, entry_obj):
+    """
+    画「这条渲染主体线上常用、但本 entry 缺失」的属性建议行，每行一个一键补按钮。
+
+    数据来自官方语料按主体线统计的出现率（efx_format/categories.py::
+    ATTRIBUTE_LINE_RECIPES，依据见 docs/ATTRIBUTE_STATS.md「配方模板」）。
+    **只是建议**——官方自己也大量存在不带这些属性的 entry，缺了不是错误，
+    所以这里不用警告色、也不进 validate。
+    """
+    try:
+        from .attribute_ops import suggested_for_entry
+        from ..efx_format.hashes import HASH_TO_NAME, pretty_type_name
+        items = suggested_for_entry(entry_obj)
+    except Exception:
+        return  # 建议是锦上添花，任何异常都不该影响面板其余部分
+    if not items:
+        return
+
+    box = layout.box()
+    box.label(text=T("attribute.suggest_title"), icon="INFO")
+    for type_hash, rate, _path in items:
+        raw = HASH_TO_NAME.get(type_hash, "")
+        row = box.row(align=True)
+        op = row.operator("efx.add_suggested_attribute",
+                          text=pretty_type_name(raw) if raw else str(type_hash),
+                          icon="ADD")
+        op.type_hash = str(type_hash)
+        sub = row.row()
+        sub.alignment = "RIGHT"
+        sub.enabled = False          # 出现率只是信息，画成灰字
+        sub.label(text="%d%%" % rate)
+
+
 def _draw_attribute_presets_content(layout, context):
     """Attribute 预设模式：复制/保存整属性 + 分类选择 + 选预设新增 + 粘贴属性 + 打开文件夹。
     新增属性需选中 EFX_ENTRY 或其下的 EFX_ATTRIBUTE（连续新增属性免切回 entry），
@@ -1340,6 +1373,18 @@ def _draw_attribute_presets_content(layout, context):
         row_lbl = layout.row()
         row_lbl.enabled = False
         row_lbl.label(text=T("attribute.add_to_prefix") + T("attribute.add_to_no_entry"), icon="PLUS")
+    # 2b. 「常用但缺失」建议：按该 entry 的渲染主体线，列出官方通常还会带、但这里没有的
+    #     属性，一键补上（插到规范顺序位）。纯建议，不是校验——见
+    #     efx_format/categories.py::suggest_missing_attributes。
+    #     目标 entry 用与新增算子相同的解析（选中 EFX_ATTRIBUTE 时也算，连续新增免切回）。
+    try:
+        from .attribute_ops import _resolve_target_entry
+        _target = _resolve_target_entry(obj)
+    except Exception:
+        _target = None
+    if _target is not None:
+        _draw_suggested_attributes(layout, _target)
+
     layout.prop(wm, "efx_block_category_enum", text=T("attribute.category"))
     # 第二级"具体预设"用 Menu（按子组分组、灰字标题），点击预设行直接新增，
     # 不再需要单独的下拉选中 + Add 确认两步。

@@ -367,6 +367,169 @@ def canonical_insert_index(existing_hashes, new_hash: int) -> int:
             break
     return pos
 
+# ── Per-body-line attribute recipes ──────────────────────────────────────────
+#
+# "这条渲染主体线上，官方 entry 通常还带哪些属性" —— 用于在 UI 里提示常用但缺失的
+# 属性（模块栈面板的灰色"待添加"行），以及给 archetype 模板定属性集。
+#
+# 来源：official 语料 10084 文件 / 112573 entry（2026-08-18），按 entry 的
+# renderer_body 分线，值 = 该属性在该线 entry 中的出现率（百分数，四舍五入到整数）。
+# 只收 20 以上的；键 None = 无渲染主体的 entry（八成是 PTBEHAVIOR 那一类）。
+#
+# ⚠ 这是"官方怎么写"不是"必须怎么写"，只做建议、不做校验。
+# 完整分布（含字段级取值区间）见 docs/ATTRIBUTE_VALUE_RANGES.md 与
+# docs/ATTRIBUTE_STATS.md「配方模板」。
+ATTRIBUTE_LINE_RECIPES = {
+    BILLBOARD3D: (  # n=62785
+        (TRANSFORM3D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (SHADERSETTINGS, 100),
+        (UVSEQUENCE, 100),
+        (LIFE, 100),
+        (VELOCITY3D, 88),
+        (EMITTERSHAPE3D, 84),
+        (SCALEANIM, 78),
+        (RGBFIRE, 67),
+        (FADEBYDEPTH, 51),
+        (ROTATEANIM, 29),
+        (RANDOMFIX, 25),
+    ),
+    RIBBON: (  # n=14673
+        (TRANSFORM3D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (UVSEQUENCE, 100),
+        (SHADERSETTINGS, 100),
+        (LIFE, 100),
+        (VELOCITY3D, 84),
+        (EMITTERSHAPE3D, 83),
+        (SCALEANIM, 72),
+        (RGBFIRE, 60),
+        (FADEBYDEPTH, 52),
+        (RGBWATER, 23),
+    ),
+    MESH: (  # n=13624
+        (TRANSFORM3D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (LIFE, 99),
+        (VELOCITY3D, 84),
+        (SHADERSETTINGS, 79),
+        (ROTATEANIM, 78),
+        (EMITTERSHAPE3D, 77),
+        (MATERIAL, 43),
+        (SCALEANIM, 34),
+        (RANDOMFIX, 26),
+        (PTCOLLISION, 23),
+    ),
+    None: (  # n=9087
+        (TRANSFORM3D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (LIFE, 98),
+        (PTBEHAVIOR, 80),
+        (SHADERSETTINGS, 30),
+    ),
+    DUMMY: (  # n=6578
+        (TRANSFORM3D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (LIFE, 96),
+        (PTLIFE, 80),
+        (EMITTERSHAPE3D, 46),
+        (SHADERSETTINGS, 44),
+        (VELOCITY3D, 21),
+    ),
+    PLANE: (  # n=4503
+        (TRANSFORM3D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (SHADERSETTINGS, 100),
+        (UVSEQUENCE, 100),
+        (LIFE, 99),
+        (SCALEANIM, 65),
+        (EMITTERSHAPE3D, 57),
+        (RGBFIRE, 43),
+        (VELOCITY3D, 41),
+        (RANDOMFIX, 29),
+        (ROTATEANIM, 28),
+        (FADEBYDEPTH, 24),
+        (RGBWATER, 22),
+    ),
+    BILLBOARD2D: (  # n=580
+        (TRANSFORM2D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (LIFE, 100),
+        (UVSEQUENCE, 100),
+        (SHADERSETTINGS, 100),
+        (SCALEANIM, 63),
+        (EMITTERSHAPE2D, 50),
+        (VELOCITY2D, 48),
+        (ROTATEANIM, 21),
+    ),
+    LIGHTNING: (  # n=483
+        (TRANSFORM3D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (LIFE, 100),
+        (VELOCITY3D, 100),
+        (UVSEQUENCE, 100),
+        (SHADERSETTINGS, 100),
+        (RGBFIRE, 96),
+        (EMITTERSHAPE3D, 86),
+        (ALPHACORRECTION, 52),
+        (FADEBYDEPTH, 51),
+    ),
+    STRAINRIBBON: (  # n=181，样本少，仅供参考
+        (TRANSFORM3D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (UVSEQUENCE, 100),
+        (SHADERSETTINGS, 100),
+        (LIFE, 97),
+        (EMITTERSHAPE3D, 80),
+        (SCALEANIM, 44),
+        (RANDOMFIX, 32),
+        (RGBWATER, 20),
+        (VELOCITY3D, 20),
+    ),
+    RIBBONBLADE: (  # n=50，样本少，仅供参考
+        (TRANSFORM3D, 100),
+        (PARENTOPTIONS, 100),
+        (SPAWN, 100),
+        (LIFE, 100),
+        (UVSEQUENCE, 100),
+        (SHADERSETTINGS, 100),
+        (ALPHACORRECTION, 82),
+        (REFRACTION, 80),
+        (RGBFIRE, 20),
+    ),
+}
+
+
+def line_recipe(body_hash):
+    """
+    return the recipe list [(type_hash, rate_percent), ...] for the given renderer
+    body type; body_hash=None means an entry with no renderer body.
+    Unknown body types return an empty tuple.
+    """
+    return ATTRIBUTE_LINE_RECIPES.get(body_hash, ())
+
+
+def suggest_missing_attributes(body_hash, present_hashes, min_rate=40):
+    """
+    Given the renderer body of an entry and the type_hashes it already has,
+    return [(type_hash, rate_percent), ...] for attributes that are common on
+    this body line (rate >= min_rate) but absent, most-common first.
+
+    Purely advisory — never treat the result as a validation error.
+    """
+    present = set(present_hashes)
+    return [(h, r) for h, r in line_recipe(body_hash)
+            if r >= min_rate and h not in present]
+
 
 def category_of(type_hash: int) -> str:
     """
