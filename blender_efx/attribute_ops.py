@@ -299,25 +299,19 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
     # 位置（例如在 RGBFIRE/PTLIFE 这些惯例末位属性之后）。
     from ..efx_format.categories import canonical_insert_index
 
-    siblings = []
-    for obj in bpy.data.objects:
-        if obj.parent == entry_obj and obj.get("~TYPE") == "EFX_ATTRIBUTE":
-            try:
-                idx = int(obj.get("efx_index", 0))
-            except (ValueError, TypeError):
-                idx = 0
-            try:
-                h = int(str(obj.get("type_hash", "0")))
-            except (ValueError, TypeError):
-                h = 0
-            siblings.append((idx, h, obj))
-    siblings.sort(key=lambda t: t[0])
+    siblings = iter_entry_attributes(entry_obj)   # 已按 efx_index 升序
+    sib_hashes = []
+    for obj in siblings:
+        try:
+            sib_hashes.append(int(str(obj.get("type_hash", "0"))))
+        except (ValueError, TypeError):
+            sib_hashes.append(0)
 
-    new_idx = canonical_insert_index([h for _, h, _ in siblings], type_hash)
+    new_idx = canonical_insert_index(sib_hashes, type_hash)
 
     # 插入点及其之后的兄弟属性整体后移一位，腾出 new_idx；显示名含序号，需同步重建
     from .delete_ops import _rebuild_attribute_name
-    for pos, (_, _, obj) in enumerate(siblings):
+    for pos, obj in enumerate(siblings):
         shifted = pos if pos < new_idx else pos + 1
         obj["efx_index"] = shifted
         try:
@@ -551,36 +545,60 @@ def default_attribute_preset_path(type_hash: int):
     return path if os.path.isfile(path) else None
 
 
+def iter_entry_attributes(entry_obj):
+    """
+    按 efx_index 升序返回该 entry 的 EFX_ATTRIBUTE 子对象。
+
+    ⚠ **作用域优先取 entry 所在集合的 all_objects，而不是遍历 bpy.data.objects。**
+    本函数会被面板 draw（Entry Inspector、「常用但缺失」建议）在**每次重绘**时调用，
+    全场景扫描在"场景里累积了多个 efx 文件"时是实打实的开销——同 memory
+    `onchange-full-scene-scan-perf-bug` 的教训（那次是导入退化到分钟级），
+    `io_tree` 里也为同一原因刻意避开了 `obj.children`（那同样是全场景反查）。
+    集合取不到时才退回全局扫描，保证正确性优先。
+    """
+    pool = None
+    try:
+        cols = entry_obj.users_collection
+        if cols:
+            pool = cols[0].all_objects
+    except Exception:
+        pool = None
+    if pool is None:
+        pool = bpy.data.objects
+
+    out = []
+    for obj in pool:
+        if obj.parent is not entry_obj or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+            continue
+        try:
+            idx = int(obj.get("efx_index", 0))
+        except (ValueError, TypeError):
+            idx = 0
+        out.append((idx, obj))
+    out.sort(key=lambda t: t[0])
+    return [o for _, o in out]
+
+
 def entry_body_hash(entry_obj):
     """
     返回该 entry 的 renderer_body 类型 hash；无渲染主体返回 None。
-    多主体（语料里仅 10 例）取第一个。
+    多主体（语料里仅 10 例）取 efx_index 最小的那个。
     """
     from ..efx_format.categories import ATTRIBUTE_CATEGORY_OF
-    best = None
-    for obj in bpy.data.objects:
-        if obj.parent is not entry_obj or obj.get("~TYPE") != "EFX_ATTRIBUTE":
-            continue
+    for obj in iter_entry_attributes(entry_obj):
         try:
             h = int(str(obj.get("type_hash", "0")))
         except (ValueError, TypeError):
             continue
         if ATTRIBUTE_CATEGORY_OF.get(h) == "renderer_body":
-            try:
-                idx = int(obj.get("efx_index", 0))
-            except (ValueError, TypeError):
-                idx = 0
-            if best is None or idx < best[0]:
-                best = (idx, h)
-    return best[1] if best else None
+            return h
+    return None
 
 
 def entry_present_hashes(entry_obj):
     """返回该 entry 现有全部属性的 type_hash 集合。"""
     out = set()
-    for obj in bpy.data.objects:
-        if obj.parent is not entry_obj or obj.get("~TYPE") != "EFX_ATTRIBUTE":
-            continue
+    for obj in iter_entry_attributes(entry_obj):
         try:
             out.add(int(str(obj.get("type_hash", "0"))))
         except (ValueError, TypeError):

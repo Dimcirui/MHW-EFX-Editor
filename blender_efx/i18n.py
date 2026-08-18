@@ -280,6 +280,8 @@ STRINGS = {
     "attribute.add_to_no_entry":  {"EN": "(select an Entry)",   "ZH": "（请选中 Entry）"},
     "attribute.suggest_title":   {"EN": "Commonly paired (missing here)",
                                   "ZH": "这类特效常用、但这里没有"},
+    "inspector.no_attributes":   {"EN": "This entry has no attributes yet",
+                                  "ZH": "这个 Entry 还没有任何属性"},
     "attribute.category":        {"EN": "Category",            "ZH": "分类"},
     "attribute.add":             {"EN": "Add",                 "ZH": "新增"},
     "attribute.paste":           {"EN": "Paste Attribute",     "ZH": "粘贴属性"},

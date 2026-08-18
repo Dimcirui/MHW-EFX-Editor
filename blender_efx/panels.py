@@ -905,12 +905,17 @@ def _draw_ptcollision_ref_field(layout, obj) -> None:
 # 公共绘制函数：属性字段内容（两个 Panel 共用，避免重复代码）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_attribute_fields_content(layout, context):
+def _draw_attribute_fields_content(layout, context, obj=None):
     """
     绘制 EFX_ATTRIBUTE 的字段内容。
     被 EFX_PT_attribute_fields（N 面板）和 EFX_PT_attribute_fields_props（属性编辑器）共用。
+
+    obj 为 None 时取 `context.active_object`（上面两个面板的原有行为）；
+    **Entry Inspector 会显式传入非活动的属性对象**，逐个画出整个 entry 的模块栈——
+    那里被画的属性并不是 active_object，所以这个形参不能省。
     """
-    obj = context.active_object
+    if obj is None:
+        obj = context.active_object
 
     if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
         layout.label(text=T("attribute.select_hint"), icon="INFO")
@@ -1652,6 +1657,102 @@ class EFX_PT_entry_unkn(bpy.types.Panel):
 # 在 VIEW_3D N 面板 EFX 标签页下挂一个子面板，当选中 EFX_ATTRIBUTE 时展示字段。
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Entry Inspector  —  在一个面板里按规范顺序展示整个 entry 的属性模块栈
+#
+# 现状（本面板要解决的问题）：属性字段按 CLAUDE.md §4 的约定挂在属性编辑器的 Data
+# 标签下，**一次只显示被选中的那一个属性**。看完一个 12 属性的 entry 要在大纲里逐个
+# 点 12 次，也看不出它们的相对关系。参照 Unity 的 ParticleSystem Inspector：整个系统
+# 在一个 Inspector 里，模块可折叠、默认收起。
+#
+# 这是**加法不是替换**：逐属性的 EFX_PT_attribute_fields* 面板原样保留，两处共用
+# 同一个 _draw_attribute_fields_content，避免绘制逻辑分叉。
+#
+# 计划与后续期次见 docs/UI_REFACTOR_PLAN.md（P1 最小切片 = 模块头 + 折叠 + 复用字段
+# 绘制；删除按钮、出现率标注、字段分层等留待后续）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _draw_entry_inspector_content(layout, context):
+    """画整个 entry 的属性模块栈。每个属性一个可折叠的 box。
+
+    子对象收集走 `attribute_ops.iter_entry_attributes`（作用域限定在 entry 所在集合，
+    见该函数的性能说明）——本函数每次面板重绘都会跑，不能全场景扫描。
+    """
+    entry_obj = context.active_object
+    if entry_obj is None or entry_obj.get("~TYPE") != "EFX_ENTRY":
+        return
+
+    try:
+        from .attribute_ops import iter_entry_attributes
+        attrs = iter_entry_attributes(entry_obj)
+    except Exception:
+        return
+    if not attrs:
+        layout.label(text=T("inspector.no_attributes"), icon="INFO")
+        return
+
+    try:
+        from ..efx_format.hashes import HASH_TO_NAME, pretty_type_name
+    except ImportError:
+        HASH_TO_NAME, pretty_type_name = {}, lambda s: s
+
+    for a in attrs:
+        try:
+            h = int(str(a.get("type_hash", "0")))
+        except (ValueError, TypeError):
+            h = 0
+        raw = HASH_TO_NAME.get(h, "")
+        title = pretty_type_name(raw) if raw else (a.get("efx_type_name") or a.name)
+
+        box = layout.box()
+        header = box.row(align=True)
+        expanded = bool(a.efx_ui_expanded)
+        # emboss=False：折叠箭头画成纯图标，跟 Blender 原生子面板头一致
+        header.prop(a, "efx_ui_expanded", text="",
+                    icon="TRIA_DOWN" if expanded else "TRIA_RIGHT", emboss=False)
+        header.label(text=title)
+
+        if expanded:
+            _draw_attribute_fields_content(box, context, obj=a)
+
+
+class EFX_PT_entry_inspector(bpy.types.Panel):
+    """Entry Inspector（属性编辑器 → Object Data Properties，选中 EFX_ENTRY 时显示）"""
+
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "data"
+    bl_label        = "EFX Entry Inspector"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+
+    def draw(self, context):
+        _draw_entry_inspector_content(self.layout, context)
+
+
+class EFX_PT_entry_inspector_object(bpy.types.Panel):
+    """Entry Inspector 的 Object Properties 保底版（同 EFX_PT_attribute_fields_object 的理由：
+    万一某版本 Empty 的 'data' 上下文不渲染，用户仍能在 Object 标签找到）"""
+
+    bl_space_type   = "PROPERTIES"
+    bl_region_type  = "WINDOW"
+    bl_context      = "object"
+    bl_label        = "EFX Entry Inspector"
+    bl_options      = {"DEFAULT_CLOSED"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
+
+    def draw(self, context):
+        _draw_entry_inspector_content(self.layout, context)
+
+
 class EFX_PT_attribute_fields(bpy.types.Panel):
     """EFX 属性字段属性栏（选中 EFX_ATTRIBUTE 对象时显示）"""
 
@@ -2036,6 +2137,8 @@ _CLASSES = (
     EFX_PT_entry_properties_data,
     EFX_PT_entry_properties_object,
     EFX_PT_entry_unkn,
+    EFX_PT_entry_inspector,
+    EFX_PT_entry_inspector_object,
     EFX_PT_attribute_fields,
     EFX_PT_attribute_fields_props,
     EFX_PT_attribute_fields_object,
@@ -2062,8 +2165,20 @@ _CLASSES = (
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    # Entry Inspector 的模块折叠状态。**挂在属性对象上**而不是 window_manager——
+    # 折叠是"这个模块"的状态，跟着对象走才能在切换 entry / 存盘重开后保持一致；
+    # 放 WM 会导致切个 entry 折叠状态就串了。
+    bpy.types.Object.efx_ui_expanded = bpy.props.BoolProperty(
+        name="Expanded",
+        description="Whether this attribute's module is expanded in the Entry Inspector",
+        default=False,
+    )
 
 
 def unregister():
+    try:
+        del bpy.types.Object.efx_ui_expanded
+    except AttributeError:
+        pass
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
