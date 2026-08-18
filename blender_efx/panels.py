@@ -181,37 +181,36 @@ def _draw_field_row_buttons(row, type_name: str, ori_name: str,
 # 内部工具：按 data_type 绘制字段控件
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 可配对的标量 dtype → 其值控件属性名（value+jitter 同行显示用）
-_SCALAR_PROP_ATTR = {
-    "FLOAT":  "float_value",
-    "INT":    "int_value",
-    "UINT":   "uint_str",
-    "BYTE1":  "byte1_value",
-    "SHORT1": "short1_value",
-}
+# 布局纯逻辑（配对/轴组/顺序订正/分档）搬去了 `layout_model.py`——那个模块零 import，
+# 好让 `tools/ui_layout_sim.py` 在 Blender 外面拿全语料自检。这里只留查表的薄包装。
+from .layout_model import (
+    SCALAR_PROP_ATTR as _SCALAR_PROP_ATTR,
+    AXIS_GROUPS,
+    is_jitter_name as _is_jitter_name,
+    is_matching_jitter as _is_matching_jitter,
+    resolve_axis_groups as _resolve_axis_groups,
+)
 
 
-# 不符合 Jitter 后缀约定、但语义上是抖动字段的名称（MESH 的 _j 后缀字段）
-# SPAWN 原 randomizedSpawnsPerFrame/randomizedDelay/randomizedLifespan/occur2 已改名为标准
-# XJitter 后缀（2026-07-26 实机测试后重命名），不再需要在此特例登记。
-_NONSTANDARD_JITTER_NAMES = frozenset({
-    "emissive_saturation_j",
-    "emissive_brightness_j",
-})
+def reorder_items_for_display(type_name: str, items):
+    """查 `efx_format/field_order.py` 的锚点表，订正字段显示顺序（算法见 layout_model）。"""
+    from . import layout_model as _lm
+    try:
+        from ..efx_format.field_order import display_anchors
+    except ImportError:
+        return list(items)
+    return _lm.reorder_units(items, display_anchors(type_name))
 
 
-def _is_jitter_name(name: str) -> bool:
-    """字段名是否为 jitter（camelCase 'XJitter' / snake 'x_jitter' / 非标准后缀特例）。"""
-    return name.endswith("Jitter") or name.endswith("_jitter") or name in _NONSTANDARD_JITTER_NAMES
-
-
-def _is_matching_jitter(base_name: str, candidate_name: str) -> bool:
-    """candidate_name 是否确实是 base_name 的 jitter 搭档（按名字派生关系判断，而非仅仅
-    "长得像 jitter"）。原来的相邻位置配对只检查下一个字段是否为任意 jitter 名，未核对是否
-    真的由 base_name 派生——当 value/jitter 在字节布局里不相邻（如 RIBBON 的
-    rotationYJitter 排在 rotationY 前面，见 ribbon-family 相关 schema 注释）时，会错误地把
-    下一个无关的 jitter 字段（如 rotationZJitter）配对给当前字段（rotationY），2026-07-30 修复。"""
-    return candidate_name in (base_name + "Jitter", base_name + "_jitter", base_name + "_j")
+def classify_field_tiers(type_name: str, items, axis_group_at: dict, axis_group_consumed):
+    """查 `efx_format/field_tiers.py` 的分档表，分出常用/高级（算法见 layout_model）。"""
+    from . import layout_model as _lm
+    try:
+        from ..efx_format.field_tiers import advanced_names
+    except ImportError:
+        return set(), set()
+    return _lm.classify_tiers(items, advanced_names(type_name),
+                              axis_group_at, axis_group_consumed)
 
 
 # 少数字节布局上长得像 value+jitter 的配对，语义其实是 offset+size（内边界+厚度，
@@ -248,77 +247,6 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     sub.prop(vitem, vattr, text=lbl_a)
     sub.prop(jitem, jattr, text=lbl_b)
     _draw_field_row_buttons(row, type_name, vitem.ori_name, item=vitem)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 虚拟轴向组合控件（用户 2026-07-26 提议）：部分类型的 X/Y/(Z) 分量因各轴实测语义不完全
-# 对称（如 ROTATEANIM.spinSpeedCoef 系列错位重构后拆成独立标量），无法用真正的 XYZ
-# 复合类型（FLOAT6/FLOAT3/INT3）表示，只能各轴各自建标量字段。这里在 UI 层把它们重新
-# 拼成跟 FLOAT6 同款的标题行 + 逐轴行显示——纯展示层分组，不改 schema/字节布局。
-#
-# 结构：type_name -> [ (title_key, [(axis_label, base_field_name), ...]), ... ]
-#   title_key      友好名来源（过 _friendly_name 转换/中文标签表）
-#   axis_label     行首标签（"X"/"Y"/"Z"）
-#   base_field_name 该轴的 value 字段名；若存在 "<name>Jitter" 字段则自动配对成 Static/Random，
-#                   否则单值显示（跟 FLOAT3/INT3 一样只有 X/Y/Z 无静态随机之分）。
-# ─────────────────────────────────────────────────────────────────────────────
-AXIS_GROUPS: dict = {
-    "ROTATEANIM": [
-        ("spinSpeedCoef", [("X", "spinSpeedCoefX"), ("Y", "spinSpeedCoefY"), ("Z", "spinSpeedCoefZ")]),
-    ],
-    "TRANSFORM2D": [
-        ("offset", [("X", "offsetX"), ("Y", "offsetY")]),
-        ("scale",  [("X", "scaleX"),  ("Y", "scaleY")]),
-    ],
-    "VELOCITY2D": [
-        ("velocity",   [("X", "velocityX"),   ("Y", "velocityY")]),
-        ("divergence", [("X", "divergenceX"), ("Y", "divergenceY")]),
-    ],
-    "VELOCITY3D": [
-        ("rotation",   [("X", "rotationX"),   ("Y", "rotationY"),   ("Z", "rotationZ")]),
-        ("velocity",   [("X", "velocityX"),   ("Y", "velocityY"),   ("Z", "velocityZ")]),
-        ("divergence", [("X", "divergenceX"), ("Y", "divergenceY"), ("Z", "divergenceZ")]),
-    ],
-    "EMITTERSHAPE3D": [
-        ("localRotation", [("X", "localRotationX"), ("Y", "localRotationY"), ("Z", "localRotationZ")]),
-    ],
-    "EMITTERSHAPE2D": [
-        ("range", [("X", "rangeX"), ("Y", "rangeY")]),
-    ],
-    "SCALEANIM": [
-        ("scaleSpeed", [("X", "scaleSpeedX"), ("Y", "scaleSpeedY"), ("Z", "scaleSpeedZ")]),
-        ("scaleAccel", [("X", "scaleAccelX"), ("Y", "scaleAccelY"), ("Z", "scaleAccelZ")]),
-    ],
-    # RIBBON 的 rotationX/Y/Z：字节布局里 Y/Z 两组的 value/jitter 顺序是反的（rotationYJitter
-    # 排在 rotationY 前面，rotationZJitter 排在 rotationZ 前面），相邻位置配对逻辑找不到，
-    # 靠这里按名字查找而非位置的分组机制正确显示，2026-07-30。
-    "RIBBON": [
-        ("rotation", [("X", "rotationX"), ("Y", "rotationY"), ("Z", "rotationZ")]),
-    ],
-}
-
-
-def _resolve_axis_groups(type_name: str, item_by_name: dict):
-    """把 AXIS_GROUPS 里该类型的分组规格解析成可绘制的形式；缺字段（如 custom 变体裁剪过）
-    的分组整体跳过。返回 (group_first_name -> group_spec 字典, 全部被消费的字段名 set)。"""
-    group_render_at = {}
-    consumed = set()
-    for title_key, axes in AXIS_GROUPS.get(type_name, []):
-        names = []
-        ok = True
-        for _axis_label, base in axes:
-            if base not in item_by_name:
-                ok = False
-                break
-            names.append(base)
-            jn = base + "Jitter"
-            if jn in item_by_name:
-                names.append(jn)
-        if not ok:
-            continue
-        group_render_at[names[0]] = (title_key, axes)
-        consumed.update(names)
-    return group_render_at, consumed
 
 
 def _draw_axis_group(layout, type_name: str, group, item_by_name: dict):
@@ -908,118 +836,6 @@ def _draw_ptcollision_ref_field(layout, obj) -> None:
 # 公共绘制函数：属性字段内容（两个 Panel 共用，避免重复代码）
 # ─────────────────────────────────────────────────────────────────────────────
 
-def reorder_items_for_display(type_name: str, items):
-    """按 `efx_format/field_order.py` 的锚点表订正字段显示顺序，返回重排后的列表。
-
-    **默认原样返回**——字节序本来就是语义序（见该表的说明），这里只搬少数确实错位的行，
-    典型是 `useColorRange` 被甩在它管的 `colorRange` 十几行之后。
-
-    搬动以「行」为单位：value+jitter 先合成一个单元再整体移动，锚点带 jitter 时也落在
-    它那一对之后，不会把配对拆散。表写错导致落不了位（比如锚点成环）时**整体退回原顺序**，
-    宁可不排也不半排。⚠ 只影响显示：`field_items` 本身没动，导出仍按字节序重建。
-    """
-    try:
-        from ..efx_format.field_order import display_anchors
-    except ImportError:
-        return list(items)
-    anchors = display_anchors(type_name)
-    if not anchors:
-        return list(items)
-
-    # 1) 切成单元（value+jitter 合一，其余各自成单元）
-    units = []
-    i, n = 0, len(items)
-    while i < n:
-        it = items[i]
-        nxt = items[i + 1] if i + 1 < n else None
-        if (nxt is not None
-                and it.data_type in _SCALAR_PROP_ATTR
-                and not _is_jitter_name(it.ori_name)
-                and not it.ori_name.startswith("__")
-                and nxt.data_type == it.data_type
-                and _is_matching_jitter(it.ori_name, nxt.ori_name)):
-            units.append([it, nxt])
-            i += 2
-        else:
-            units.append([it])
-            i += 1
-
-    lead_at = {u[0].ori_name: k for k, u in enumerate(units)}
-    # 字段或锚点在这个变体里不存在（custom 变体会裁字段）就跳过该条，不是错误
-    moves = {f: a for f, a in anchors.items()
-             if f in lead_at and a in lead_at and f != a}
-    if not moves:
-        return list(items)
-
-    rest = [u for u in units if u[0].ori_name not in moves]
-    pending = dict((f, units[lead_at[f]]) for f in moves)
-    # 反复插入以支持链式锚点（A 挂 B、B 挂 C）
-    changed = True
-    while pending and changed:
-        changed = False
-        for f in list(pending):
-            target = moves[f]
-            pos = next((k for k, u in enumerate(rest)
-                        if u[0].ori_name == target), None)
-            if pos is None:
-                continue
-            rest.insert(pos + 1, pending.pop(f))
-            changed = True
-    if pending:
-        return list(items)   # 有落不了位的（成环）→ 整体退回，不半排
-    return [it for u in rest for it in u]
-
-
-def classify_field_tiers(type_name: str, items, axis_group_at: dict, axis_group_consumed):
-    """把字段分成「常用」/「高级」两档，返回 (高级组首名 set, 高级跟随成员名 set)。
-
-    判据表在 `efx_format/field_tiers.py`（语料生成、零 bpy）。**只影响显示不影响导出**——
-    高级区里的字段照常可编辑，导出走的还是同一套 rebuild_data_bytes。
-
-    定档以「一行」为单位而非单个字段：value+jitter 配对由 value 定档（jitter 从不单独成行），
-    轴组要全部基字段都是高级才整组下沉。否则会出现半行在常用区、半行在折叠区的割裂感——
-    `objectInteractionFlag0..3` 这种编号兄弟组的拉齐则在生成脚本里做掉了。
-    """
-    try:
-        from ..efx_format.field_tiers import advanced_names
-    except ImportError:
-        return set(), set()
-    tier_set = advanced_names(type_name)
-    if not tier_set:
-        return set(), set()
-
-    lead, follow = set(), set()
-    n = len(items)
-    i = 0
-    while i < n:
-        name = items[i].ori_name
-        if name in axis_group_consumed and name not in axis_group_at:
-            i += 1
-            continue
-        if name in axis_group_at:
-            bases = [b for _label, b in axis_group_at[name][1]]
-            if bases and all(b in tier_set for b in bases):
-                lead.add(name)
-                follow.update(x for x in axis_group_consumed if x != name)
-            i += 1
-            continue
-        nxt = items[i + 1] if i + 1 < n else None
-        paired = (
-            nxt is not None
-            and items[i].data_type in _SCALAR_PROP_ATTR
-            and not _is_jitter_name(name)
-            and not name.startswith("__")
-            and nxt.data_type == items[i].data_type
-            and _is_matching_jitter(name, nxt.ori_name)
-        )
-        if name in tier_set:
-            lead.add(name)
-            if paired:
-                follow.add(nxt.ori_name)
-        i += 2 if paired else 1
-    return lead, follow
-
-
 def _draw_attribute_fields_content(layout, context, obj=None):
     """
     绘制 EFX_ATTRIBUTE 的字段内容。
@@ -1203,6 +1019,26 @@ def _draw_attribute_fields_content(layout, context, obj=None):
             # ── 字段分档（常用 / 高级）───────────────────────────────────────
             _adv_lead, _adv_follow = classify_field_tiers(
                 type_name, items, _axis_group_at, _axis_group_consumed)
+            # 常用区一行都没有（字段全是占位名的类型：DUMMY/PATHCHAIN/FAKEPLANE…）时
+            # 放弃折叠，直接内联画——藏起来面板上就只剩一个孤零零的「高级 (N)」。
+            def _row_hidden(_name, _tn=type_name, _sa=_show_all_fields):
+                if _name.startswith("__") and _name.endswith("__"):
+                    return True
+                if not _sa and _has_vis_rules and _fv.field_hidden(_tn, _name, _mode_getter):
+                    return True
+                if not _sa and _irf(_tn, _name):
+                    return True
+                if _color_only:
+                    _it = _item_by_name.get(_name)
+                    if _it is not None and not _cf.is_color_field(
+                            type_hash_int, _name, _it.data_type):
+                        return True
+                return False
+
+            from . import layout_model as _lm_panel
+            if _lm_panel.all_rows_advanced(items, _adv_lead, _adv_follow, _row_hidden):
+                _adv_lead, _adv_follow = set(), set()
+
             _adv_expanded = bool(getattr(obj, "efx_ui_advanced", False))
             # 三个子 column 按创建顺序占位：折叠头要等循环跑完才知道该不该画（也才知道
             # 计数），先把槽位占住，回填时仍排在高级字段之前。
