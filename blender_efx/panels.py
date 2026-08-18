@@ -905,6 +905,68 @@ def _draw_ptcollision_ref_field(layout, obj) -> None:
 # 公共绘制函数：属性字段内容（两个 Panel 共用，避免重复代码）
 # ─────────────────────────────────────────────────────────────────────────────
 
+def reorder_items_for_display(type_name: str, items):
+    """按 `efx_format/field_order.py` 的锚点表订正字段显示顺序，返回重排后的列表。
+
+    **默认原样返回**——字节序本来就是语义序（见该表的说明），这里只搬少数确实错位的行，
+    典型是 `useColorRange` 被甩在它管的 `colorRange` 十几行之后。
+
+    搬动以「行」为单位：value+jitter 先合成一个单元再整体移动，锚点带 jitter 时也落在
+    它那一对之后，不会把配对拆散。表写错导致落不了位（比如锚点成环）时**整体退回原顺序**，
+    宁可不排也不半排。⚠ 只影响显示：`field_items` 本身没动，导出仍按字节序重建。
+    """
+    try:
+        from ..efx_format.field_order import display_anchors
+    except ImportError:
+        return list(items)
+    anchors = display_anchors(type_name)
+    if not anchors:
+        return list(items)
+
+    # 1) 切成单元（value+jitter 合一，其余各自成单元）
+    units = []
+    i, n = 0, len(items)
+    while i < n:
+        it = items[i]
+        nxt = items[i + 1] if i + 1 < n else None
+        if (nxt is not None
+                and it.data_type in _SCALAR_PROP_ATTR
+                and not _is_jitter_name(it.ori_name)
+                and not it.ori_name.startswith("__")
+                and nxt.data_type == it.data_type
+                and _is_matching_jitter(it.ori_name, nxt.ori_name)):
+            units.append([it, nxt])
+            i += 2
+        else:
+            units.append([it])
+            i += 1
+
+    lead_at = {u[0].ori_name: k for k, u in enumerate(units)}
+    # 字段或锚点在这个变体里不存在（custom 变体会裁字段）就跳过该条，不是错误
+    moves = {f: a for f, a in anchors.items()
+             if f in lead_at and a in lead_at and f != a}
+    if not moves:
+        return list(items)
+
+    rest = [u for u in units if u[0].ori_name not in moves]
+    pending = dict((f, units[lead_at[f]]) for f in moves)
+    # 反复插入以支持链式锚点（A 挂 B、B 挂 C）
+    changed = True
+    while pending and changed:
+        changed = False
+        for f in list(pending):
+            target = moves[f]
+            pos = next((k for k, u in enumerate(rest)
+                        if u[0].ori_name == target), None)
+            if pos is None:
+                continue
+            rest.insert(pos + 1, pending.pop(f))
+            changed = True
+    if pending:
+        return list(items)   # 有落不了位的（成环）→ 整体退回，不半排
+    return [it for u in rest for it in u]
+
+
 def classify_field_tiers(type_name: str, items, axis_group_at: dict, axis_group_consumed):
     """把字段分成「常用」/「高级」两档，返回 (高级组首名 set, 高级跟随成员名 set)。
 
@@ -1119,7 +1181,8 @@ def _draw_attribute_fields_content(layout, context, obj=None):
             col.separator(factor=0.5)
             # 逐字段绘制（带 value+jitter 位置配对：jitter 字段与紧邻前一个
             # 同类型标量 value 合并一行，模拟 XYZ Static/Random 分组风格）
-            items = list(bp.field_items)
+            # 显示顺序订正（锚点表，默认保持字节序；只影响显示不影响导出）
+            items = reorder_items_for_display(type_name, list(bp.field_items))
             n = len(items)
             _item_by_name = {it.ori_name: it for it in items}
             _axis_group_at, _axis_group_consumed = _resolve_axis_groups(type_name, _item_by_name)
