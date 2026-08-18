@@ -367,6 +367,28 @@ def canonical_insert_index(existing_hashes, new_hash: int) -> int:
             break
     return pos
 
+# ── Entry 主模块（骨架属性）────────────────────────────────────────────────
+#
+# 这几种属性 100% / 100% / 99.5% / 99.4% 地出现在每个 entry 上（official 语料
+# 112573 entry，2026-08-18），是"任何特效都得有"的骨架——对应 Unity ParticleSystem
+# 的 main module。UI 把它们归到 Inspector 顶部一条「主模块」带里，跟其余按需添加的
+# 属性区分开。TRANSFORM2D 一并收进来：2D 特效里它顶替 TRANSFORM3D 的位置。
+#
+# ⚠ 只是**显示**上的归并——底层仍是各自独立的属性对象，增删/重排/引用都不受影响。
+ENTRY_MAIN_MODULE = (
+    TRANSFORM3D,
+    TRANSFORM2D,
+    PARENTOPTIONS,
+    SPAWN,
+    LIFE,
+)
+
+
+def is_main_module(type_hash: int) -> bool:
+    """该属性类型是否属于 entry 骨架（Inspector 顶部的「主模块」带）。"""
+    return type_hash in ENTRY_MAIN_MODULE
+
+
 # ── Per-body-line attribute recipes ──────────────────────────────────────────
 #
 # "这条渲染主体线上，官方 entry 通常还带哪些属性" —— 用于在 UI 里提示常用但缺失的

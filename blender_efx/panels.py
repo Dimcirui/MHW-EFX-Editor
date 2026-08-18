@@ -1824,8 +1824,44 @@ class EFX_PT_entry_unkn(bpy.types.Panel):
 # 绘制；删除按钮、出现率标注、字段分层等留待后续）。
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _attribute_title(attr_obj, hash_to_name, pretty):
+    """属性对象 -> 显示标题（类型友好名；查不到就退回对象上的记录/对象名）。"""
+    try:
+        h = int(str(attr_obj.get("type_hash", "0")))
+    except (ValueError, TypeError):
+        h = 0
+    raw = hash_to_name.get(h, "")
+    return (pretty(raw) if raw
+            else (attr_obj.get("efx_type_name") or attr_obj.name)), h
+
+
+def _draw_inspector_module(container, context, attr_obj, title, boxed=True):
+    """画一个属性模块：折叠头（三角 + 类型名）+ 展开后的字段。
+
+    boxed=False 用于「主模块」带内部——那里外层已经有一个 box，再嵌一层会让
+    box 套到三层深（带 > 模块 > 字段），3.6 上的嵌套表现没验过，能浅就浅。
+    """
+    slot = container.box() if boxed else container.column(align=True)
+    header = slot.row(align=True)
+    expanded = bool(attr_obj.efx_ui_expanded)
+    # emboss=False：折叠箭头画成纯图标，跟 Blender 原生子面板头一致
+    header.prop(attr_obj, "efx_ui_expanded", text="",
+                icon="TRIA_DOWN" if expanded else "TRIA_RIGHT", emboss=False)
+    header.label(text=title)
+    if expanded:
+        _draw_attribute_fields_content(slot, context, obj=attr_obj)
+
+
 def _draw_entry_inspector_content(layout, context):
     """画整个 entry 的属性模块栈。每个属性一个可折叠的 box。
+
+    顶部是「主模块」带（`ENTRY_MAIN_MODULE` 的骨架属性：Transform / ParentOptions /
+    Spawn / Life，出现率 100/100/99.5/99.4%），对应 Unity ParticleSystem 的 main
+    module；其余属性按规范顺序跟在后面。**只是显示上的归并**——底层仍是各自独立的
+    属性对象，增删/重排/引用都不受影响。
+
+    ⚠ 带里的四个仍各自可折叠、不强制展开：它们合计约 29~40 行，常驻展开会把下面的
+    渲染主体挤出屏幕两三屏，比不归并更难用。
 
     子对象收集走 `attribute_ops.iter_entry_attributes`（作用域限定在 entry 所在集合，
     见该函数的性能说明）——本函数每次面板重绘都会跑，不能全场景扫描。
@@ -1847,25 +1883,24 @@ def _draw_entry_inspector_content(layout, context):
         from ..efx_format.hashes import HASH_TO_NAME, pretty_type_name
     except ImportError:
         HASH_TO_NAME, pretty_type_name = {}, lambda s: s
+    try:
+        from ..efx_format.categories import is_main_module
+    except ImportError:
+        is_main_module = lambda _h: False
 
-    for a in attrs:
-        try:
-            h = int(str(a.get("type_hash", "0")))
-        except (ValueError, TypeError):
-            h = 0
-        raw = HASH_TO_NAME.get(h, "")
-        title = pretty_type_name(raw) if raw else (a.get("efx_type_name") or a.name)
+    titled = [(_attribute_title(a, HASH_TO_NAME, pretty_type_name), a) for a in attrs]
+    skeleton = [(t, a) for (t, h), a in titled if is_main_module(h)]
+    others = [(t, a) for (t, h), a in titled if not is_main_module(h)]
 
-        box = layout.box()
-        header = box.row(align=True)
-        expanded = bool(a.efx_ui_expanded)
-        # emboss=False：折叠箭头画成纯图标，跟 Blender 原生子面板头一致
-        header.prop(a, "efx_ui_expanded", text="",
-                    icon="TRIA_DOWN" if expanded else "TRIA_RIGHT", emboss=False)
-        header.label(text=title)
+    if skeleton:
+        band = layout.box()
+        band_hdr = band.row(align=True)
+        band_hdr.label(text=T("inspector.main_module"), icon="PARTICLES")
+        for title, a in skeleton:
+            _draw_inspector_module(band, context, a, title, boxed=False)
 
-        if expanded:
-            _draw_attribute_fields_content(box, context, obj=a)
+    for title, a in others:
+        _draw_inspector_module(layout, context, a, title)
 
 
 class EFX_PT_entry_inspector(bpy.types.Panel):
