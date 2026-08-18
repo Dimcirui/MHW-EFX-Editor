@@ -905,6 +905,56 @@ def _draw_ptcollision_ref_field(layout, obj) -> None:
 # 公共绘制函数：属性字段内容（两个 Panel 共用，避免重复代码）
 # ─────────────────────────────────────────────────────────────────────────────
 
+def classify_field_tiers(type_name: str, items, axis_group_at: dict, axis_group_consumed):
+    """把字段分成「常用」/「高级」两档，返回 (高级组首名 set, 高级跟随成员名 set)。
+
+    判据表在 `efx_format/field_tiers.py`（语料生成、零 bpy）。**只影响显示不影响导出**——
+    高级区里的字段照常可编辑，导出走的还是同一套 rebuild_data_bytes。
+
+    定档以「一行」为单位而非单个字段：value+jitter 配对由 value 定档（jitter 从不单独成行），
+    轴组要全部基字段都是高级才整组下沉。否则会出现半行在常用区、半行在折叠区的割裂感——
+    `objectInteractionFlag0..3` 这种编号兄弟组的拉齐则在生成脚本里做掉了。
+    """
+    try:
+        from ..efx_format.field_tiers import advanced_names
+    except ImportError:
+        return set(), set()
+    tier_set = advanced_names(type_name)
+    if not tier_set:
+        return set(), set()
+
+    lead, follow = set(), set()
+    n = len(items)
+    i = 0
+    while i < n:
+        name = items[i].ori_name
+        if name in axis_group_consumed and name not in axis_group_at:
+            i += 1
+            continue
+        if name in axis_group_at:
+            bases = [b for _label, b in axis_group_at[name][1]]
+            if bases and all(b in tier_set for b in bases):
+                lead.add(name)
+                follow.update(x for x in axis_group_consumed if x != name)
+            i += 1
+            continue
+        nxt = items[i + 1] if i + 1 < n else None
+        paired = (
+            nxt is not None
+            and items[i].data_type in _SCALAR_PROP_ATTR
+            and not _is_jitter_name(name)
+            and not name.startswith("__")
+            and nxt.data_type == items[i].data_type
+            and _is_matching_jitter(name, nxt.ori_name)
+        )
+        if name in tier_set:
+            lead.add(name)
+            if paired:
+                follow.add(nxt.ori_name)
+        i += 2 if paired else 1
+    return lead, follow
+
+
 def _draw_attribute_fields_content(layout, context, obj=None):
     """
     绘制 EFX_ATTRIBUTE 的字段内容。
@@ -1083,6 +1133,18 @@ def _draw_attribute_fields_content(layout, context, obj=None):
             def _mode_getter(fname, _ibn=_item_by_name, _rd=_fld._enum_backing_read):
                 _it = _ibn.get(fname)
                 return _rd(_it) if _it is not None else None
+
+            # ── 字段分档（常用 / 高级）───────────────────────────────────────
+            _adv_lead, _adv_follow = classify_field_tiers(
+                type_name, items, _axis_group_at, _axis_group_consumed)
+            _adv_expanded = bool(getattr(obj, "efx_ui_advanced", False))
+            # 三个子 column 按创建顺序占位：折叠头要等循环跑完才知道该不该画（也才知道
+            # 计数），先把槽位占住，回填时仍排在高级字段之前。
+            _common_col = col.column(align=True)
+            _adv_hdr_col = col.column(align=True)
+            _adv_body_col = col.column(align=True)
+            _adv_count = 0
+
             i = 0
             while i < n:
                 item = items[i]
@@ -1112,9 +1174,19 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                 if _color_only and not _cf.is_color_field(type_hash_int, item.ori_name, item.data_type):
                     i += 1
                     continue
+                # 分档路由：高级字段进折叠子区（收起时直接跳过，只计数）。
+                # 放在所有"隐藏类"过滤之后——被隐藏的字段本就不该计入高级区计数。
+                _tcol = _common_col
+                if item.ori_name in _adv_lead or item.ori_name in _adv_follow:
+                    if item.ori_name in _adv_lead:
+                        _adv_count += 1
+                    if not _adv_expanded:
+                        i += 1
+                        continue
+                    _tcol = _adv_body_col
                 # 虚拟轴向组合控件（AXIS_GROUPS）：分组首字段触发整组绘制，其余成员跳过
                 if item.ori_name in _axis_group_at:
-                    _draw_axis_group(col, type_name, _axis_group_at[item.ori_name], _item_by_name)
+                    _draw_axis_group(_tcol, type_name, _axis_group_at[item.ori_name], _item_by_name)
                     i += 1
                     continue
                 if item.ori_name in _axis_group_consumed:
@@ -1122,17 +1194,17 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     continue
                 # L2 #1c：EXTERNREFERENCE 的 referenceIndex 字段替换为 extern 指针 UI
                 if _is_extern_ref and item.ori_name == "referenceIndex":
-                    _draw_extern_ref_field(col, obj)
+                    _draw_extern_ref_field(_tcol, obj)
                     i += 1
                     continue
                 # PTLIFE/PTCOLLISION：relationIndex/ieIndex 原始字段替换为 action
                 # 指针选择器（内联，样式跟 EXTERNREFERENCE 的 referenceIndex 一致）。
                 if _is_ptlife and item.ori_name == "relationIndex":
-                    _draw_ptlife_ref_field(col, obj)
+                    _draw_ptlife_ref_field(_tcol, obj)
                     i += 1
                     continue
                 if _is_ptcollision and item.ori_name == "ieIndex":
-                    _draw_ptcollision_ref_field(col, obj)
+                    _draw_ptcollision_ref_field(_tcol, obj)
                     i += 1
                     continue
                 # PTBEHAVIOR：param 行用属性 key 标签（hint_name=已知名/0x%08X）+ 行尾移除按钮
@@ -1148,7 +1220,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                         _lbl = f"{item.hint_name} [{_rest.split('_v')[1]}]"
                     else:
                         _lbl = item.hint_name
-                    _prow = col.row(align=True)
+                    _prow = _tcol.row(align=True)
                     _fcol = _prow.column(align=True)
                     _draw_field_item(_fcol, item, type_name=type_name, label_override=_lbl)
                     if _is_first_sub and _pord >= 0:
@@ -1163,7 +1235,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                 # 处理即可，不再需要专属分支）。
                 if _is_tubelight and item.ori_name in ("headColor", "tailColor"):
                     _lbl = "HeadColor" if item.ori_name == "headColor" else "TailColor"
-                    _draw_tubelight_int_as_color(col, item, type_name, _lbl)
+                    _draw_tubelight_int_as_color(_tcol, item, type_name, _lbl)
                     i += 1
                     continue
                 # PLEMISSIVE：body_p / wp_p（光圈部位掩码）保留原数值字段（直接可看/改），
@@ -1171,7 +1243,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                 if _is_plemissive and item.ori_name in ("body_p", "wp_p"):
                     _aura_lbl = ("Aura Part (Player)" if item.ori_name == "body_p"
                                  else "Aura Part (Weapon)")
-                    _pm_row = col.row(align=True)
+                    _pm_row = _tcol.row(align=True)
                     _fcol = _pm_row.column(align=True)
                     _draw_field_item(_fcol, item, type_name=type_name, label_override=_aura_lbl)
                     _bcol = _pm_row.column(align=True)
@@ -1192,7 +1264,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                         "color2":       ("颜色范围" if _zh_rb else "Color Range"),
                     }
                     _sub_lbl_rb = _sub_overrides_rb.get(_sub_key) or _friendly_name(_sub_key, type_name)
-                    _draw_field_item(col, item, type_name=type_name, label_override=f"{_prefix_rb} {_sub_lbl_rb}")
+                    _draw_field_item(_tcol, item, type_name=type_name, label_override=f"{_prefix_rb} {_sub_lbl_rb}")
                     i += 1
                     continue
                 # value + jitter 配对（位置性：下一个是同类型 jitter 标量）
@@ -1203,11 +1275,28 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                         and not item.ori_name.startswith("__")
                         and nxt.data_type == item.data_type
                         and _is_matching_jitter(item.ori_name, nxt.ori_name)):
-                    _draw_value_jitter_pair(col, item, nxt, type_name=type_name)
+                    _draw_value_jitter_pair(_tcol, item, nxt, type_name=type_name)
                     i += 2
                     continue
-                _draw_field_item(col, item, type_name=type_name)
+                _draw_field_item(_tcol, item, type_name=type_name)
                 i += 1
+
+            # 「高级」折叠头回填：循环跑完才知道计数，但 _adv_hdr_col 的槽位在循环前
+            # 就占好了，所以它仍然渲染在高级字段之前。
+            if _adv_count:
+                _adv_hdr_col.separator(factor=0.3)
+                _ahdr = _adv_hdr_col.row(align=True)
+                _ahdr.prop(
+                    obj, "efx_ui_advanced",
+                    text="%s (%d)" % (T("attribute.advanced"), _adv_count),
+                    icon="TRIA_DOWN" if _adv_expanded else "TRIA_RIGHT",
+                    emboss=False,
+                )
+                if _adv_expanded:
+                    # 提示行也进 _adv_hdr_col：body 里已经画满字段了，塞进去会掉到最底下
+                    _atip = _adv_hdr_col.row(align=True)
+                    _atip.enabled = False
+                    _atip.label(text=T("attribute.advanced_hint"))
 
             # PTBEHAVIOR：参数列表底部「添加覆盖」下拉（按 b_type 目录列可加属性）
             if _is_ptbehavior:
@@ -2173,12 +2262,20 @@ def register():
         description="Whether this attribute's module is expanded in the Entry Inspector",
         default=False,
     )
+    # 「高级」字段子折叠，同理挂在属性对象上：每个属性各记各的。
+    bpy.types.Object.efx_ui_advanced = bpy.props.BoolProperty(
+        name="Advanced",
+        description="Show rarely-edited fields (placeholders, reserved bits, "
+                    "and fields the official files never change)",
+        default=False,
+    )
 
 
 def unregister():
-    try:
-        del bpy.types.Object.efx_ui_expanded
-    except AttributeError:
-        pass
+    for _pn in ("efx_ui_expanded", "efx_ui_advanced"):
+        try:
+            delattr(bpy.types.Object, _pn)
+        except AttributeError:
+            pass
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
