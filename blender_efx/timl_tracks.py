@@ -136,6 +136,60 @@ def _read_for_display():
     return body, _timl.parse_timl(_entry_timl_bytes(body))
 
 
+# 「该字段已经在做动画吗」——字段行上 ♫ 按钮的按下态。逐行去解 TIML 字节太贵
+# （Inspector 一次重绘要画几十行），所以按 (entry 名, 字节长度) 缓存一份 (tlp,dt) 集合，
+# 并在 set_entry_timl 这个咽喉点显式失效。没有 TIML 的 entry（全语料 94.8%）直接空集返回，
+# 连解析都不做。
+_ANIM_CACHE = {"key": None, "set": frozenset()}
+
+
+def invalidate_anim_cache():
+    """TIML 字节被改写后清缓存（由 timl_edit.set_entry_timl 调用）。"""
+    _ANIM_CACHE["key"] = None
+
+
+def entry_animated_channels():
+    """当前 entry 的 TIML 里已存在的 (tlp_hash, dt_hash) 集合；无 TIML 返回空集。"""
+    body = _active_entry()
+    if body is None:
+        return frozenset()
+    try:
+        raw = _entry_timl_bytes(body)
+    except Exception:
+        return frozenset()
+    if not raw:
+        return frozenset()
+    key = (body.name, len(raw))
+    if _ANIM_CACHE["key"] == key:
+        return _ANIM_CACHE["set"]
+    out = set()
+    try:
+        timl_obj = _timl.parse_timl(raw)
+        for anim in (getattr(timl_obj, "animations", None) or []):
+            if anim is None:
+                continue
+            for t in anim.types:
+                tlp = t.timeline_param_hash & 0xFFFFFFFF
+                for tf in t.transforms:
+                    out.add((tlp, tf.datatype_hash & 0xFFFFFFFF))
+    except Exception:
+        out = set()
+    _ANIM_CACHE["key"] = key
+    _ANIM_CACHE["set"] = frozenset(out)
+    return _ANIM_CACHE["set"]
+
+
+def _timl_capable_entry():
+    """当前活动对象解析出的 EFX_ENTRY，**不要求它已经有 TIML**（`_active_entry` 要求）。
+    ♫ 按钮据此决定是否可点：还没有 TIML 的 entry 也该能点开，弹窗里给"先建 TIML"。"""
+    try:
+        from .timl_io import resolve_timl_entry, _entry_is_timl_capable
+        obj = resolve_timl_entry(bpy.context.active_object)
+        return obj if _entry_is_timl_capable(obj) else None
+    except Exception:
+        return None
+
+
 def _track_exists(timl_obj, slot: int, tlp_hash: int, dt_hash: int) -> bool:
     """检查 (slot, tlp_hash, dt_hash) 通道是否已存在。"""
     if slot >= len(timl_obj.animations) or timl_obj.animations[slot] is None:
@@ -218,26 +272,37 @@ def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
     tlp_hex = dt_hex = ""
     data_type = 0
 
+    animated = False
+    present = entry_animated_channels()
     if tname == "PTBEHAVIOR":
         if item is None:
             return
-        obj = bpy.context.active_object
+        # 属性对象取 item.id_data 而非 active_object——Entry Inspector 里画的是
+        # 非活动的属性对象，用 active_object 会拿到 entry 本身而白白跳过按钮。
+        obj = item.id_data
         if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return
         ch = _ptbehavior_channel(obj, item)
         if ch is None:
             return
         tlp_hex, dt_hex, data_type = "%08X" % ch[0], "%08X" % ch[1], ch[2]
+        animated = bool(present) and (ch[0] & 0xFFFFFFFF, ch[1] & 0xFFFFFFFF) in present
     else:
-        if (tname, ori_name) not in FIELD_TO_DT:
+        entries = FIELD_TO_DT.get((tname, ori_name))
+        if not entries:
             return
-        if BLOCK_TO_TLP.get(tname) is None:
+        tlp = BLOCK_TO_TLP.get(tname)
+        if tlp is None:
             return
+        if present:
+            animated = any((tlp & 0xFFFFFFFF, dt & 0xFFFFFFFF) in present
+                           for dt, _dtype in entries)
 
-    body = _active_entry()
     sub = row.row(align=True)
-    sub.enabled = (body is not None)   # 会话内也可用：改内存模型并实时重建曲线
-    op = sub.operator("efx.timl_field_add_menu", text="", icon="ANIM")
+    # 还没有 TIML 的 entry 也放行——弹窗里第一步就是"先建 TIML 段"。
+    # （全语料只有 5.2% 的 entry 自带 TIML，卡在这里等于按钮基本永远是灰的。）
+    sub.enabled = (_timl_capable_entry() is not None)
+    op = sub.operator("efx.timl_field_add_menu", text="", icon="ANIM", depress=animated)
     op.block_type = tname
     op.field_name = ori_name
     op.tlp_hash_hex = tlp_hex
@@ -266,7 +331,7 @@ class EFX_OT_timl_field_add_menu(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_entry() is not None   # 会话内/外均可
+        return _timl_capable_entry() is not None   # 会话内/外均可；无 TIML 也放行
 
     def invoke(self, context, event):
         return context.window_manager.invoke_popup(self, width=180)
@@ -274,8 +339,15 @@ class EFX_OT_timl_field_add_menu(Operator):
     def draw(self, context):
         layout = self.layout
         layout.label(text=f"{self.block_type} · {self.field_name}", icon="ANIM")
-        native = block_native_axis(self.block_type)   # 0=A0 母轴 / 1=A1 母轴 / None=两轴都行
         layout.separator()
+        # 这个 entry 还没有 TIML 段：先给创建入口，不在这里替用户默默建
+        # （空白 TIML 的头部常量有过写错的历史，建段保持为显式动作）。
+        if _active_entry() is None:
+            layout.label(text=T("timl.no_segment_yet"), icon="INFO")
+            layout.operator("efx.create_entry_timl",
+                            text=T("timl.create_blank_btn"), icon="ADD")
+            return
+        native = block_native_axis(self.block_type)   # 0=A0 母轴 / 1=A1 母轴 / None=两轴都行
 
         specs = {0: ("+A0  (Emission)", "ANIM"), 1: ("+A1  (Lifetime)", "PARTICLES")}
         # 母轴排第一并标推荐；非母轴排后面并加"该属性在此轴通常不生效"提示。两轴都行→原序。

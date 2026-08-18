@@ -145,16 +145,22 @@ def _friendly_name(ori_name: str, type_name: str = "") -> str:
 # 内部工具：ⓘ 图标辅助
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_info_icon(row, type_name: str, ori_name: str) -> None:
-    """
-    若 (type_name, ori_name) 有 BT 注释，在 row 末尾添加 ⓘ 图标按钮（EFX_OT_field_help）。
-    悬停即显示 BT 注释 tooltip。无注释时不添加任何控件。
+def _draw_field_row_buttons(row, type_name: str, ori_name: str,
+                            item=None, timl: bool = True) -> None:
+    """字段行末尾的两个附件：ⓘ 注释 + ♫ 动画。
+
+    ⓘ：该字段有 BT 注释时才画，悬停显示注释（EFX_OT_field_help）。
+    ♫：该字段在 `FIELD_TO_DT` 里有确认的 TIML datatype 时才画——**"这个参数能不能做
+    动画"由此一眼可见**。已经有轨道时按钮画成按下态。点开是选 A0/A1 的弹窗（沿用
+    既有的推荐轴逻辑，见 timl_tracks.draw_field_timl_buttons）。
+
+    timl=False 用于轴组标题行：那里的 ⓘ 借用第一条轴的注释，但 DT 是逐轴的，
+    按钮画在每条轴自己的行上才对得上。
     """
     if not type_name:
         return
     from .annotations import get_annotation
-    ann = get_annotation(type_name, ori_name)
-    if ann:
+    if get_annotation(type_name, ori_name):
         op = row.operator(
             "efx.field_help",
             text="",
@@ -163,6 +169,12 @@ def _draw_info_icon(row, type_name: str, ori_name: str) -> None:
         )
         op.type_name = type_name
         op.field_name = ori_name
+    if timl:
+        try:
+            from . import timl_tracks as _tt
+            _tt.draw_field_timl_buttons(row, type_name, ori_name, item)
+        except Exception:
+            pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +247,7 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
     sub = split.row(align=True)
     sub.prop(vitem, vattr, text=lbl_a)
     sub.prop(jitem, jattr, text=lbl_b)
-    _draw_info_icon(row, type_name, vitem.ori_name)
+    _draw_field_row_buttons(row, type_name, vitem.ori_name, item=vitem)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +331,8 @@ def _draw_axis_group(layout, type_name: str, group, item_by_name: dict):
     title_row.scale_y = 1.1
     title_row.use_property_split = False
     title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
-    _draw_info_icon(title_row, type_name, first_base)
+    # 标题行只借第一条轴的注释画 ⓘ；♫ 是逐轴的，画在各自的轴行上
+    _draw_field_row_buttons(title_row, type_name, first_base, timl=False)
 
     for axis_label, base in axes:
         vitem = item_by_name[base]
@@ -330,12 +343,14 @@ def _draw_axis_group(layout, type_name: str, group, item_by_name: dict):
         row.scale_y = 1.1
         row.use_property_split = False
         row.label(text=axis_label, icon="BLANK1")
+        vals = row.row(align=True)
         if jitem is not None:
             jattr = _SCALAR_PROP_ATTR[jitem.data_type]
-            row.prop(vitem, vattr, text=T("field.static"))
-            row.prop(jitem, jattr, text=T("field.random"))
+            vals.prop(vitem, vattr, text=T("field.static"))
+            vals.prop(jitem, jattr, text=T("field.random"))
         else:
-            row.prop(vitem, vattr, text="")
+            vals.prop(vitem, vattr, text="")
+        _draw_field_row_buttons(row, type_name, base, item=vitem)
 
 
 def _xyz_prop_name(item, base_prop):
@@ -460,7 +475,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         split = row.split(factor=0.45)
         split.label(text=fname)
         split.prop(item, "enum_proxy", text="")
-        _draw_info_icon(row, type_name, item.ori_name)
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
         return
 
     # ── Bool 字段 → 勾选框（纯显示层，值仍存 int 槽）────────────────────────────────
@@ -472,7 +487,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         split = row.split(factor=0.45)
         split.label(text=fname)
         split.prop(item, "bool_proxy", text="")
-        _draw_info_icon(row, type_name, item.ori_name)
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
         return
 
     # ── Bitmask 字段 → 摘要 + 弹窗编辑按钮（纯显示层，值仍存 int 槽）─────────────────
@@ -490,7 +505,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         op = split.operator("efx.edit_bitmask", text=(summ or "…"), icon="CHECKBOX_HLT")
         op.type_name = type_name
         op.field = item.ori_name
-        _draw_info_icon(row, type_name, item.ori_name)
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
         return
 
     # ── EnumVec3 逐轴枚举（INT3 背板）→ 标题行 + X/Y/Z 三个下拉 ─────────────────────
@@ -500,7 +515,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         title.scale_y = 1.1
         title.use_property_split = False
         title.label(text=fname)
-        _draw_info_icon(title, type_name, item.ori_name)
+        _draw_field_row_buttons(title, type_name, item.ori_name, item=item)
         for axis, prop in (("X", "enum_vec3_x"), ("Y", "enum_vec3_y"), ("Z", "enum_vec3_z")):
             r = layout.row(align=True)
             r.scale_y = 1.1
@@ -518,13 +533,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=(fname + (" [Blender]" if is_b else "")), icon="ORIENTATION_GLOBAL")
-        _draw_info_icon(title_row, type_name, item.ori_name)
-        # T2: +TIML 按钮（仅确认字段显示）
-        try:
-            from . import timl_tracks as _tt
-            _tt.draw_field_timl_buttons(title_row, type_name, item.ori_name, item)
-        except Exception:
-            pass
+        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item)
 
         # EMITTERSHAPE3D.rangeXYZ 的两个值不是 static+random，而是 offset+size：
         # 内边界=offset、厚度=size、外边界=offset+size。用户 2026-07-30 实机测试确认
@@ -566,7 +575,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
-        _draw_info_icon(title_row, type_name, item.ori_name)
+        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item)
 
         # X/Y/Z 分量行
         comp_row = layout.row(align=True)
@@ -586,7 +595,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=(fname + (" [Blender]" if is_b else "")), icon="ORIENTATION_GLOBAL")
-        _draw_info_icon(title_row, type_name, item.ori_name)
+        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item)
 
         # X/Y/Z 分量行
         comp_row = layout.row(align=True)
@@ -611,14 +620,8 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         val_row.prop(item, "color_rgba_value", text="")
         # alpha 数值条，使 alpha 在内联行就可见可编辑
         val_row.prop(item, "color_rgba_value", index=3, text="A", slider=True)
-        # ⓘ 图标（仅有注释时）
-        _draw_info_icon(row, type_name, item.ori_name)
-        # T2: +TIML 按钮（仅确认字段显示）
-        try:
-            from . import timl_tracks as _tt
-            _tt.draw_field_timl_buttons(row, type_name, item.ori_name, item)
-        except Exception:
-            pass
+        # ⓘ 注释 + ♫ 动画（♫ 已并进 _draw_field_row_buttons，别再单独调一次）
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
         return
 
     # ── FLOAT4（X/Y 各自 Static/Random，2×2 展开）───────────────────────────
@@ -630,7 +633,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
-        _draw_info_icon(title_row, type_name, item.ori_name)
+        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item)
 
         x_row = layout.row(align=True)
         x_row.scale_y = 1.1
@@ -714,7 +717,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
 
     # ⓘ 图标（有注释，且非 OPAQUE 内部提示行）
     if dtype not in ("OPAQUE",) and not item.ori_name.startswith("__"):
-        _draw_info_icon(row, type_name, item.ori_name)
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -732,7 +735,7 @@ def _draw_tubelight_int_as_color(layout, item, type_name, label):
     val_row = split.row(align=True)
     val_row.prop(item, "int_as_color_display", text="")
     val_row.prop(item, "int_as_color_display", index=3, text="A", slider=True)
-    _draw_info_icon(row, type_name, item.ori_name)
+    _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -450,6 +450,12 @@ def set_entry_timl(body, new_bytes):
     """**所有 timl_bytes 变更（新建/替换/删除）的唯一咽喉点**：写字节+长度、按需建/删 EFX_TIML
     句柄、从新字节重建持久 fcurve。空 bytes → 删句柄+Action。不做 commit-first（新字节为准，
     旧 fcurve 编辑按替换语义丢弃）；结构编辑请在调用前先 commit_fcurves_to_bytes。"""
+    # 字段行 ♫ 按钮的"已在做动画"缓存跟着 TIML 字节走，这里是唯一的写入咽喉点
+    try:
+        from . import timl_tracks as _tt
+        _tt.invalidate_anim_cache()
+    except Exception:
+        pass
     from . import io_tree as _iot
     new_bytes = bytes(new_bytes)
     _store_bytes(body, new_bytes)

@@ -278,6 +278,8 @@ STRINGS = {
     "attribute.add_section":     {"EN": "Add Attribute",       "ZH": "新增属性"},
     "attribute.add_to_prefix":   {"EN": "Add Attribute to: ",  "ZH": "新增属性到："},
     "attribute.add_to_no_entry":  {"EN": "(select an Entry)",   "ZH": "（请选中 Entry）"},
+    "timl.no_segment_yet":       {"EN": "This entry has no TIML segment yet",
+                                  "ZH": "本 entry 还没有 TIML 段"},
     "inspector.main_module":     {"EN": "Main",                "ZH": "主模块"},
     "attribute.advanced":        {"EN": "Advanced",            "ZH": "高级"},
     "attribute.advanced_hint":   {"EN": "Rarely edited — still fully editable",
