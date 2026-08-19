@@ -78,7 +78,8 @@ def _benum_items_factory(idx):
         zh = (get_lang() == "ZH")
         items = [(str(o.value), (o.zh if zh else o.en), '') for o in be.options]
         # 当前子值（从 item 背板读）越界 → 注入原值合成项，避免 setattr 失败
-        obj = context.active_object if context else None
+        obj = (context.blend_data.objects.get(self.obj_name) if self.obj_name
+               else (context.active_object if context else None))
         if obj is not None:
             it = _find_item(obj.efx_block, self.field)
             if it is not None:
@@ -124,21 +125,32 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
 
     type_name: StringProperty()
     field: StringProperty()
+    obj_name: StringProperty(
+        default="",
+        description="目标 EFX_ATTRIBUTE 对象名；为空则回退 context.active_object"
+                    "（供非 active_object 场景——如 Entry Inspector「主模块」带——显式指定）")
     residual: IntProperty(name="Other bits", default=0, min=0,
                           description="段外未定义位（原值保留，可编辑）")
     all_toggle: BoolProperty(name="All", default=False,
                               description="整体写为 all_value（如全位 0xFF），跟上面各独立位互斥")
     # bit_0..bit_{_MAX_BITS-1} 勾选框池在类定义后追加（见下）；draw 时按字段实际位数用前 N 个。
 
+    def _resolve_obj(self, context):
+        """obj_name 指定则按名查（供非 active_object 场景用），否则回退 active_object。
+        poll() 是 classmethod，拿不到本实例的 obj_name（Blender 限制，按钮属性在 poll 时
+        尚未绑定），故有效性校验挪到这里，无效时 invoke/execute 报错取消而非灰显按钮。"""
+        if self.obj_name:
+            return context.blend_data.objects.get(self.obj_name)
+        return context.active_object
+
     @classmethod
     def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ATTRIBUTE"
+        return True
 
     def invoke(self, context, event):
-        obj = context.active_object
+        obj = self._resolve_obj(context)
         field = _bitmask_field(self.type_name, self.field)
-        if field is None or obj is None:
+        if field is None or obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             self.report({"ERROR"}, "Not a bitmask field")
             return {"CANCELLED"}
         item = _find_item(obj.efx_block, self.field)
@@ -198,7 +210,7 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
             layout.prop(self, "all_toggle", text=("全部 (0x%X)" % all_value) if zh else ("All (0x%X)" % all_value))
 
     def execute(self, context):
-        obj = context.active_object
+        obj = self._resolve_obj(context)
         field = _bitmask_field(self.type_name, self.field)
         if field is None or obj is None:
             return {"CANCELLED"}

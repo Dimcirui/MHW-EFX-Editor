@@ -917,7 +917,13 @@ assert _schema_size(_RIBBONBLADE_FIXED_SCHEMA) == 194, \
 # 连续幅值、非离散选择器，保持 int。
 RIBBONBLADE_ATTR = attr_from_legacy(
     _schema_size(_RIBBONBLADE_FIXED_SCHEMA), _RIBBONBLADE_FIXED_SCHEMA,
-    overrides={'widthDirection': Enum('widthDirection', _AXIS_DIRECTION6, label_zh="宽度延伸方向")},
+    overrides={
+        'widthDirection': Enum('widthDirection', _AXIS_DIRECTION6, label_zh="宽度延伸方向"),
+        # 全语料(10084 文件/50 例)恒为 0 或 1，是二选一开关而非多档模式（2026-08-18 确认）：
+        # 关=用 length（收缩速度固定内置）；开=用 maxLengthLimit+contractionSpeed 组合控制。
+        # 对应字段的显示/隐藏见 field_visibility.FIELD_VISIBILITY["RIBBONBLADE"]。
+        'lengthMode': Bool('lengthMode', label_zh="启用自定义长度", label_en="Enable Custom Length"),
+    },
 )
 
 

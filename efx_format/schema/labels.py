@@ -153,7 +153,8 @@ _LABELS_BY_TYPE = {
     # ── RIBBONBLADE ──
     ('RIBBONBLADE', 'widthDirection'): '宽度延伸方向',
     ('RIBBONBLADE', 'length'): '拖尾长度',
-    ('RIBBONBLADE', 'lengthMode'): '拖尾长度模式',
+    # lengthMode 中文标签已改由 Field.label_zh="启用自定义长度" 提供（custom_codecs.py
+    # RIBBONBLADE_ATTR override，2026-08-18 改勾选框），此表项已让位、不再生效。
     ('RIBBONBLADE', 'flowmapSpeed'): '流光贴图速度',
     ('RIBBONBLADE', 'flowmapSpeedJitter'): '流光贴图速度抖动',
     ('RIBBONBLADE', 'flowmapSpeedCoef'): '流光贴图加速度',

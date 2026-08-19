@@ -119,6 +119,13 @@ FIELD_VISIBILITY = {
     },
     # RANDOMFIX：randomSeedTable 由 tableSelectionGroup 还是 useRandomSeedTableCount 决定
     # 尚不明确，暂不门控（默认全显示）。
+    # RIBBONBLADE：lengthMode 现渲成"启用自定义长度"勾选框（全语料 10084 文件仅 0/1 两值，
+    # 2026-08-18 确认）。关(0)=length 生效；开(1)=maxLengthLimit+contractionSpeed 生效。
+    "RIBBONBLADE": {
+        "length":          ("lengthMode", _eq0),
+        "maxLengthLimit":  ("lengthMode", _eq1),
+        "contractionSpeed": ("lengthMode", _eq1),
+    },
 }
 
 

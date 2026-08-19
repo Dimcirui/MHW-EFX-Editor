@@ -360,7 +360,7 @@ def _bitmask_field(type_name: str, ori_name: str):
     return None
 
 
-def _draw_field_item(layout, item, type_name: str = "", label_override=None):
+def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj=None):
     """
     按 item.data_type 在 layout 上绘制对应控件（L1.5 重设计版）。
 
@@ -433,6 +433,8 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None):
         op = split.operator("efx.edit_bitmask", text=(summ or "…"), icon="CHECKBOX_HLT")
         op.type_name = type_name
         op.field = item.ori_name
+        if obj is not None:
+            op.obj_name = obj.name
         _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
         return
 
@@ -1124,7 +1126,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                         _lbl = item.hint_name
                     _prow = _tcol.row(align=True)
                     _fcol = _prow.column(align=True)
-                    _draw_field_item(_fcol, item, type_name=type_name, label_override=_lbl)
+                    _draw_field_item(_fcol, item, type_name=type_name, label_override=_lbl, obj=obj)
                     if _is_first_sub and _pord >= 0:
                         _bcol = _prow.column(align=True)
                         _op = _bcol.operator("efx.ptb_remove_override", text="", icon="X")
@@ -1147,7 +1149,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                                  else "Aura Part (Weapon)")
                     _pm_row = _tcol.row(align=True)
                     _fcol = _pm_row.column(align=True)
-                    _draw_field_item(_fcol, item, type_name=type_name, label_override=_aura_lbl)
+                    _draw_field_item(_fcol, item, type_name=type_name, label_override=_aura_lbl, obj=obj)
                     _bcol = _pm_row.column(align=True)
                     _op = _bcol.operator("efx.set_part_mask", text="", icon="DOWNARROW_HLT")
                     _op.field = item.ori_name
@@ -1166,7 +1168,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                         "color2":       ("颜色范围" if _zh_rb else "Color Range"),
                     }
                     _sub_lbl_rb = _sub_overrides_rb.get(_sub_key) or _friendly_name(_sub_key, type_name)
-                    _draw_field_item(_tcol, item, type_name=type_name, label_override=f"{_prefix_rb} {_sub_lbl_rb}")
+                    _draw_field_item(_tcol, item, type_name=type_name, label_override=f"{_prefix_rb} {_sub_lbl_rb}", obj=obj)
                     i += 1
                     continue
                 # value + jitter 配对（位置性：下一个是同类型 jitter 标量）
@@ -1180,7 +1182,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     _draw_value_jitter_pair(_tcol, item, nxt, type_name=type_name)
                     i += 2
                     continue
-                _draw_field_item(_tcol, item, type_name=type_name)
+                _draw_field_item(_tcol, item, type_name=type_name, obj=obj)
                 i += 1
 
             # 「高级」折叠头回填：循环跑完才知道计数，但 _adv_hdr_col 的槽位在循环前

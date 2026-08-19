@@ -3604,11 +3604,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("RIBBONBLADE", "lengthMode"): {
-        "EN": "Tail length control mode. 0=driven by the length field (fixed internal "
-              "contraction speed). 1=driven by maxLengthLimit + contractionSpeed together "
+        "EN": "Off: tail length is driven by the length field (fixed internal contraction "
+              "speed). On: driven by maxLengthLimit + contractionSpeed together "
               "(contractionSpeed=0 means no active contraction unless maxLengthLimit is hit). "
               "Formerly unkn07_1.",
-        "ZH": "拖尾长度控制模式。0=由 length 字段决定（收缩速度固定内置）。1=由 "
+        "ZH": "关：拖尾长度由 length 字段决定（收缩速度固定内置）。开：由 "
               "maxLengthLimit + contractionSpeed 共同决定（contractionSpeed=0 时不主动收缩，"
               "除非到达 maxLengthLimit 上限）。原名 unkn07_1。",
     },
