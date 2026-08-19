@@ -65,15 +65,6 @@ ENUM_PTLIFE_STATUS = EnumDef("PtLifeStatus", [
     (4, "On Death", "死亡时"),
     (-1, "Unknown", "未知"),
 ])
-# needs further investigation, this should be same as AxisDirection6
-ENUM_RAYCAST_DIR = EnumDef("RaycastDirection", [
-    (0, "Left", "左"), 
-    (1, "Down", "下"), 
-    (2, "Forward", "前"),
-    (3, "Right", "右"), 
-    (4, "Up", "上"), 
-    (5, "Backward", "后"),
-])
 ENUM_HOMING_TARGET = EnumDef("HomingTarget", [
     (0, "Spawn Point", "生成点"), 
     (1, "Model Origin", "模型原点"),
@@ -223,6 +214,13 @@ _AXIS_DIRECTION6 = EnumDef("AxisDirection6", [
     (4, "Down", "下"),  # -Y
     (5, "Back", "后"),  # -Z
 ])
+# RAYCAST.direction 并入 AxisDirection6（2026-08-18，用户定调）。
+# 原先 RAYCAST 自带一张表，1/4 与 AxisDirection6 互换（旧表 1=下 4=上）。两边只可能对一个，
+# 用户判断是 RAYCAST 那张错了；语料也支持：1363 个 RAYCAST 块里 1 和 4 合计占 66.7%，
+# 按 AxisDirection6 读，占比最高的 4(36.0%) 是「下」——射线朝下探地面是最合理的主用法，
+# 按旧表则变成「上」最多。⚠ 仍未实机确认，若日后测出 RAYCAST 确实自成一套，改回独立 EnumDef 即可。
+ENUM_RAYCAST_DIR = _AXIS_DIRECTION6
+
 _ROT_ORDER6 = EnumDef("RotOrder", [
     (0, "XYZ", "XYZ"), (1, "XZY", "XZY"), (2, "YXZ", "YXZ"),
     (3, "YZX", "YZX"), (4, "ZXY", "ZXY"), (5, "ZYX", "ZYX"),
