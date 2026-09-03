@@ -202,6 +202,26 @@ def reorder_items_for_display(type_name: str, items):
     return _lm.reorder_units(items, display_anchors(type_name))
 
 
+def addon_prefs():
+    """取本插件的偏好设置对象；取不到返回 None（调用方须按默认值兜底）。
+
+    扩展装出来的包名是 `bl_ext.<repo>.efx_editor`、老式 addon 是 `efx_editor`，
+    而偏好设置的 `bl_idname` 是**顶层包名**——本模块在子包里，去掉最后一段即可。
+    """
+    try:
+        key = __package__.rsplit(".", 1)[0] if "." in __package__ else __package__
+        return bpy.context.preferences.addons[key].preferences
+    except Exception:
+        return None
+
+
+def field_tiers_enabled() -> bool:
+    """是否启用「常用 / 高级」字段分档。**默认关**——字节序本身带语义，
+    分档会把字段从原本的邻居里拽走，逆向字段作用时碍事。见偏好设置。"""
+    prefs = addon_prefs()
+    return bool(getattr(prefs, "field_tiers", False)) if prefs else False
+
+
 def classify_field_tiers(type_name: str, items, axis_group_at: dict, axis_group_consumed):
     """查 `efx_format/field_tiers.py` 的分档表，分出常用/高级（算法见 layout_model）。"""
     from . import layout_model as _lm
@@ -1019,7 +1039,8 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                 return _rd(_it) if _it is not None else None
 
             # ── 字段分档（常用 / 高级）───────────────────────────────────────
-            _adv_lead, _adv_follow = classify_field_tiers(
+            # 分档是**可选项**（偏好设置里默认关）：关掉时全部字段按字节序原样画。
+            _adv_lead, _adv_follow = (set(), set()) if not field_tiers_enabled() else classify_field_tiers(
                 type_name, items, _axis_group_at, _axis_group_consumed)
             # 常用区一行都没有（字段全是占位名的类型：DUMMY/PATHCHAIN/FAKEPLANE…）时
             # 放弃折叠，直接内联画——藏起来面板上就只剩一个孤零零的「高级 (N)」。

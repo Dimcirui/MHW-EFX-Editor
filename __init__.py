@@ -58,12 +58,29 @@ from . import blender_efx
 from . import blender_epv
 
 
-# ── 插件更新器偏好设置（Edit > Preferences > Add-ons > MHW EFX Editor）───────────
+# ── 插件偏好设置（Edit > Preferences > Add-ons > MHW EFX Editor）──────────────
 # CGCookie addon_updater：检查 GitHub 发行版（Dimcirui/MHW-EFX-Editor）并可下载/安装。
 # ⚠ 更新器主要面向老式 addon（zip 手动安装）分发；4.2+ 扩展由 Blender 扩展系统管理更新，
 #   自动就地安装未必可靠，但"检查更新 + 打开下载页"两版本都可用。扩展需 manifest 声明网络权限。
-class EFX_UpdaterPreferences(AddonPreferences):
+class EFX_Preferences(AddonPreferences):
+    """插件偏好设置（编辑器选项 + 更新器）。`bl_idname` 必须是顶层包名，别改。"""
+
     bl_idname = __name__
+
+    # ── 编辑器选项 ────────────────────────────────────────────────────────────
+    # 默认关：字段按**字节序**原样显示。字节序本身带语义（同类字段是挨着的），
+    # 分档会把「不常用」的字段从它原本的邻居里拽走，逆向字段作用时反而碍事。
+    # 想要更干净的面板再手动打开。
+    field_tiers: BoolProperty(
+        name="Group rarely-edited fields under \"Advanced\"",
+        description=(
+            "Fold placeholder / never-changed fields into a collapsible "
+            "\"Advanced\" section. Off by default: the byte order carries meaning "
+            "(related fields sit next to each other), and tiering pulls fields out "
+            "of that neighbourhood"
+        ),
+        default=False,
+    )
 
     auto_check_update: BoolProperty(
         name="Auto-check for Update",
@@ -84,6 +101,24 @@ class EFX_UpdaterPreferences(AddonPreferences):
         default=0, min=0, max=59)
 
     def draw(self, context):
+        layout = self.layout
+        try:
+            from .blender_efx.i18n import get_lang
+            zh = get_lang() == "ZH"
+        except Exception:
+            zh = False
+        box = layout.box()
+        box.label(text="编辑器" if zh else "Editor",
+                  icon="PREFERENCES")
+        box.prop(self, "field_tiers",
+                 text=("字段分档：把不常改的字段折进「高级」" if zh
+                       else "Group rarely-edited fields under \"Advanced\""))
+        sub = box.row()
+        sub.enabled = False
+        sub.label(text=("关闭时字段按字节序原样显示——字节序本身带语义，逆向字段作用时别开"
+                        if zh else
+                        "When off, fields keep their raw byte order, which carries meaning"))
+        layout.separator()
         addon_updater_ops.update_settings_ui(self, context)
 
 
@@ -92,7 +127,7 @@ def register():
     # 更新器须先注册（clear_state + 读取版本），再注册偏好设置类。
     # ⚠ 传 {"version": _VERSION} 而非 bl_info——扩展路径下 bl_info 名字可能已被剥离（见上）。
     addon_updater_ops.register({"version": _VERSION})
-    bpy.utils.register_class(EFX_UpdaterPreferences)
+    bpy.utils.register_class(EFX_Preferences)
     blender_efx.register()
     blender_epv.register()
 
@@ -101,5 +136,5 @@ def unregister():
     """注销扩展（Blender 扩展系统入口）。"""
     blender_epv.unregister()
     blender_efx.unregister()
-    bpy.utils.unregister_class(EFX_UpdaterPreferences)
+    bpy.utils.unregister_class(EFX_Preferences)
     addon_updater_ops.unregister()
