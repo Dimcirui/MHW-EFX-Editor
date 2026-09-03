@@ -93,6 +93,18 @@ _LABELS_GLOBAL = {
     'loopingOrientation': '贴图朝向',
     'loopingPad': '保留',
     # applicationRule/loopingMode 现为 Bitmask 字段（label 在 Field.label_zh），拆分子字段已退休。
+
+    # ── 路径槽（2026-09-03 由统一的 path / path1 / path2 改成按内容命名）──────
+    # 名字在 blender_efx/fields.py::_PATH_ITEM_NAMES 里定义（路径不在 schema，
+    # codec 按位置存取），每个名字全项目唯一，故一律进 GLOBAL 表。
+    'flowmapPath':  '流动贴图',
+    'cubemapPath':  '环境反射贴图',
+    'albedoPath':   '基础色贴图',
+    'lutPath':      '色彩查找表',
+    'uvsPath':      'UVS 序列',
+    'tfaPath':      '噪声场（.tfa）',
+    'mod3Path':     '模型（.mod3）',
+    'plPath':       '摆位表（.pl）',
 }
 
 # 类型专属中文名（键 =(TYPE_NAME, field_name)），优先于 _LABELS_GLOBAL。
@@ -197,6 +209,13 @@ _LABELS_EN_GLOBAL = {
     'flowmapSpeedCoefJitter':        'Flowmap Acceleration Jitter',
     'flowmapStrengthCoef':           'Flowmap Strength Acceleration',
     'flowmapStrengthCoefJitter':     'Flowmap Strength Acceleration Jitter',
+
+    # 路径槽：camelCase 派生对缩写词不友好（uvsPath → "Uvs Path"），显式钉住。
+    'uvsPath':   'UVS Path',
+    'tfaPath':   'TFA Path',
+    'mod3Path':  'Mod3 Path',
+    'plPath':    'PL Path',
+    'lutPath':   'LUT Path',
 }
 
 _LABELS_EN_BY_TYPE = {

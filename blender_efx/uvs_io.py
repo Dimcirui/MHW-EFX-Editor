@@ -45,7 +45,9 @@ def _get_uvsequence_path(obj) -> str:
     try:
         bp = obj.efx_block
         for item in bp.field_items:
-            if item.ori_name == "path":
+            # 'uvsPath' 是 2026-09-03 改名后的名字，'path' 是老 .blend 里的旧名
+            # （见 fields._PATH_ITEM_NAMES / field_rename_aliases）。
+            if item.ori_name in ("uvsPath", "path"):
                 raw = item.string_value
                 if isinstance(raw, bytes):
                     return raw.decode("utf-8", errors="replace").rstrip("\x00")

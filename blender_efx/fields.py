@@ -1667,10 +1667,7 @@ def _init_custom_field_attribute(blk, bp, paths) -> bool:
         return False
 
     # 追加路径 STRING item（路径不在 schema，需手动建）
-    if type_hash == _MESH_HASH():
-        _names = ['mod3_path', 'placement_path']
-    else:
-        _names = ['path'] * len(paths)
+    _names = path_item_names(type_hash, len(paths))
     for name, path_str in zip(_names, paths):
         item = bp.field_items.add()
         item.ori_name = name
@@ -1788,17 +1785,9 @@ def _init_path_attribute_props(blk, bp) -> None:
     # ── 建路径字段项（纯路径模式：MATERIAL/PTBEHAVIOR 及 Phase A 退回的属性）────
     bp.field_items.clear()
 
-    # 按类型确定路径字段命名方案：
-    #   MESH：两条固定路径（mod3 + placement）
-    #   MATERIAL / PTBEHAVIOR：可变数量，用 path_0/path_1/... 按序命名
-    #   其余单路径类型：固定名称 'path'
-    if type_hash == _MESH_HASH():
-        _names = ['mod3_path', 'placement_path']
-    elif type_hash in (_MATERIAL_HASH(), _PTBEHAVIOR_HASH()):
-        # L1.1c：MATERIAL/PTBEHAVIOR 含 0~N 条嵌入路径，按序编号
-        _names = [f'path_{i}' for i in range(len(paths))]
-    else:
-        _names = ['path']
+    # 按类型确定路径字段命名方案（见 _PATH_ITEM_NAMES）：已知语义的槽位给具体名字，
+    # MATERIAL/PTBEHAVIOR 这类可变条数的嵌入路径退回 path_0/path_1/... 按序编号。
+    _names = path_item_names(type_hash, len(paths))
 
     for name, path_str in zip(_names, paths):
         item = bp.field_items.add()
@@ -1820,6 +1809,60 @@ def _init_path_attribute_props(blk, bp) -> None:
     hint.opaque_str = ""
 
     bp.is_editable = True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 路径字段的 UI 名字表
+# ─────────────────────────────────────────────────────────────────────────────
+# 路径**不在 schema 里**（codec 的 extract_paths/rebuild_with_paths 按位置存取），
+# 所以这些名字纯粹是 UI 层的 item.ori_name，改名不影响任何字节。
+#
+# 命名规则（2026-09-03 确立）：
+#   ① 槽位指向一种**独立文件格式**时用扩展名 —— mod3Path / plPath / uvsPath / tfaPath。
+#   ② 槽位是贴图（全都是 .tex，扩展名无区分度）时用**用途** ——
+#      flowmapPath / cubemapPath / albedoPath / lutPath。
+#
+# 每一条都是拿 10084 个 official 文件的实际取值定的（后缀分布 + 目录），
+# 不是照搬 schema 里的占位名。⚠ 改这里必须同步 field_rename_aliases.py。
+_PATH_ITEM_NAMES = {
+    # ── 流动贴图：全部指向 vfx\dds\cm\cm_flowmap\cm_flow_XXX_F_NM，后缀 100% _NM。
+    # ⚠ 文件名里的 NM **不是法线贴图**——DTI 的 MhEffectDecalBehavior 里
+    #   mpFlowMap 与 mpNormalMap 是两个独立字段，这个槽对应前者。
+    'BILLBOARD2D':      ['flowmapPath'],
+    'BILLBOARD3D':      ['flowmapPath'],
+    'PLANE':            ['flowmapPath'],
+    'RIBBON':           ['flowmapPath'],
+    'RIBBONBLADE':      ['flowmapPath'],
+    'STRAINRIBBON':     ['flowmapPath'],
+    'LIGHTNING':        ['flowmapPath'],
+    # ── 其余贴图槽（按用途，DTI 对应名写在行尾）
+    'RGBWATER':         ['cubemapPath'],   # cm_cubemap\cm_cube_00X_CM ← mpCubeMap
+    'TUBELIGHT':        ['albedoPath'],    # *_BM（Base Map）95%     ← mpAlbedoMap
+    'TONEMAPFILTER':    ['lutPath'],       # light\LUT\*_LUTM 色彩查找表
+    # ── 独立文件格式（按扩展名）
+    'UVSEQUENCE':       ['uvsPath'],       # vfx\uvs\*      .uvs     ← mpUVSequence
+    'TURBULENCE':       ['tfaPath'],       # cm_exMap\*_T   .tfa
+    'EMITTERSHAPEMESH': ['mod3Path'],      # vfx\mod\*      .mod3
+    # MESH 两条：.mod3 模型 + .pl 摆位表。
+    # .pl = 「子网格序号 → 位置偏移」表（sig "PL\0\0" + count + (int index, float pos[3])[]），
+    # 导入时按 mod3 的 unknownIndex 把各部件挪到指定位置；与 mod3 同目录同名，非材质文件。
+    'MESH':             ['mod3Path', 'plPath'],
+}
+
+
+def path_item_names(type_hash, n_paths):
+    """返回该属性类型 n 条路径的 UI item 名（见 _PATH_ITEM_NAMES 的命名规则）。
+
+    表里没有、或条数对不上时退回 `path`（单条）/ `path_0..N`（多条，
+    MATERIAL/PTBEHAVIOR 的嵌入路径条数随槽位变，没有固定语义）。
+    """
+    from ..efx_format.hashes import HASH_TO_NAME
+    names = _PATH_ITEM_NAMES.get((HASH_TO_NAME.get(type_hash) or '').upper())
+    if names and len(names) == n_paths:
+        return list(names)
+    if n_paths == 1:
+        return ['path']
+    return [f'path_{i}' for i in range(n_paths)]
 
 
 def _MESH_HASH() -> int:
