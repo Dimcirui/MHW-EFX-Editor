@@ -58,9 +58,9 @@ _COLOR_ADJACENT_NAMES = frozenset({
 # 淡入淡出，含 unkn7/unkn8 等未完全确认的同块兄弟字段——同块即算颜色相关，不逐个列举）
 # RGBFIRE 的 fire/smoke 与 RGBWATER 的 specular/sheet 是同一套「颜色的生命期时序块」，
 # 靠前缀把整段归类为颜色相关（Color Editor 模式的过滤依据）。RGBWATER 三段此前一直漏在
-# 表外——它的段名 2026-09-03 才定下来（colorParam2_ 归属未定，但同属该结构，一并收）。
+# 表外——它的段名 2026-09-03 才定下来（三段 2026-09-03 全部定死：高光 / 水膜 / 水色插值）。
 _COLOR_ADJACENT_PREFIXES = ("fireColorParam_", "smokeColorParam_",
-                            "specularColorParam_", "sheetColorParam_", "colorParam2_")
+                            "specularColorParam_", "sheetColorParam_", "waterLerpParam_")
 
 # (type_hash, ori_name) 特例：打包 int32 RGBA，dtype 非 COLOR_RGBA
 _PACKED_INT_COLOR_FIELDS = frozenset({

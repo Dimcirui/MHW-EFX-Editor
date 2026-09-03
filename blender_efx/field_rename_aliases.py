@@ -476,4 +476,13 @@ FIELD_RENAME_ALIASES = {
     ("RGBWATER", "colorParam1_lighting"): "sheetColorParam_lighting",
     ("RGBWATER", "colorParam1_lifeType"): "sheetColorParam_lifeType",
     ("RGBWATER", "colorParam1_unkn9"): "sheetColorParam_unkn9",
+    ("RGBWATER", "colorParam2_useLife"): "waterLerpParam_useLife",
+    ("RGBWATER", "colorParam2_appearFrame"): "waterLerpParam_appearFrame",
+    ("RGBWATER", "colorParam2_appearFrameJitter"): "waterLerpParam_appearFrameJitter",
+    ("RGBWATER", "colorParam2_keepFrame"): "waterLerpParam_keepFrame",
+    ("RGBWATER", "colorParam2_keepFrameJitter"): "waterLerpParam_keepFrameJitter",
+    ("RGBWATER", "colorParam2_vanishFrame"): "waterLerpParam_vanishFrame",
+    ("RGBWATER", "colorParam2_vanishFrameJitter"): "waterLerpParam_vanishFrameJitter",
+    ("RGBWATER", "colorParam2_lighting"): "waterLerpParam_lighting",
+    ("RGBWATER", "colorParam2_lifeType"): "waterLerpParam_lifeType",
 }

@@ -1375,13 +1375,21 @@ def pack_lightning(values: dict) -> bytes:
 _RGBWATER_FIXED_SCHEMA = [
     # ── 三段 10/10/9 字段的生命期时序块，与 RGBFIRE 的 fireColorParam_/smokeColorParam_
     # 逐位同构（flag │ appear+J │ keep+J │ vanish+J │ lighting · lifeType · unkn9）。
-    # 2026-09-03 用户实机确认前两段的归属：段0 管高光、段1 管水膜。语料侧两道零门独立
-    # 印证——intensitySheet==0 的 97 个块里动过段1 的**一个都没有**（colorSheet 全黑的
-    # 42 个块同样是 0.0%）；intensitySpecular==0 的 199 个块里开过段0 useLife 的也是 0 个。
-    # ⚠ 段2 仍未定，且**不是 cubemap**：cubemap 真正启用（有 path 且 intensityCubeMap≠0）
-    # 时段2 的 useLife 是 19.4%、没启用时 22.2%，基本持平；反倒是别的层关掉时段2 用得更多
-    # （intensitySpecular==0 时 55.8%），看着像「总是在的那一层」。段2 只有 9 位（没有
-    # unkn9），是三段唯一的结构差异。
+    # 2026-09-03 用户实机把三段全部定死：
+    #     段0 → colorSpecular   段1 → colorSheet   段2 → waterLerpGtoB
+    # 也就是说**这三段对应的是本块的三个「颜色向」参数，不是四个 intensity**——四个强度
+    # 一个生命期段都没有。这个模型是自洽的：决定水面颜色的正好就是这三样。
+    #
+    # 语料侧独立印证（前两条是绝对零门，不是相关性）：
+    #   intensitySheet==0 的 97 个块 / colorSheet 全黑的 42 个块 → 动过段1 的 0.0%
+    #   intensitySpecular==0 的 199 个块 → 开过段0 useLife 的 0.0%
+    #   waterLerpGtoB==0 时段2 useLife 10.2%、≠0 时 24.4%（段2 唯一方向为正的关联；
+    #     不是零门是因为 0 本身是合法取值——插值的一端，不代表「这层关了」）
+    #   ⚠ 段2 曾被怀疑是 cubemap，已排除：cubemap 真正启用时段2 useLife 19.4%、
+    #     未启用 22.2%，持平且方向还是反的。
+    #
+    # 段2 只有 9 位（没有 unkn9），是三段唯一的结构差异——恰好它也是三段里唯一管标量
+    # （而非颜色）的，两件事可能相关。
     ('typeFlag',                 'i'),   # 原 unkn0
     # ── 头部 2 色 + 7 float。2026-09-03 用户在 Blender 里逐条建 TIML 轨道实测，把 4 个
     # 位置钉到了官方 TimelineParam 名（DT hash 见 timl/names.py::FIELD_TO_DT）。
@@ -1420,15 +1428,15 @@ _RGBWATER_FIXED_SCHEMA = [
     ('sheetColorParam_lighting', 'i'),
     ('sheetColorParam_lifeType', 'i'),
     ('sheetColorParam_unkn9', 'i'),
-    ('colorParam2_useLife', 'i'),
-    ('colorParam2_appearFrame', 'i'),
-    ('colorParam2_appearFrameJitter', 'i'),
-    ('colorParam2_keepFrame', 'i'),
-    ('colorParam2_keepFrameJitter', 'i'),
-    ('colorParam2_vanishFrame', 'i'),
-    ('colorParam2_vanishFrameJitter', 'i'),
-    ('colorParam2_lighting', 'i'),
-    ('colorParam2_lifeType', 'i'),
+    ('waterLerpParam_useLife', 'i'),
+    ('waterLerpParam_appearFrame', 'i'),
+    ('waterLerpParam_appearFrameJitter', 'i'),
+    ('waterLerpParam_keepFrame', 'i'),
+    ('waterLerpParam_keepFrameJitter', 'i'),
+    ('waterLerpParam_vanishFrame', 'i'),
+    ('waterLerpParam_vanishFrameJitter', 'i'),
+    ('waterLerpParam_lighting', 'i'),
+    ('waterLerpParam_lifeType', 'i'),
 ]  # = 4+8+28+12+104 = 156 B
 assert _schema_size(_RGBWATER_FIXED_SCHEMA) == 156, \
     f"_RGBWATER_FIXED_SCHEMA size mismatch: {_schema_size(_RGBWATER_FIXED_SCHEMA)}"
@@ -1451,18 +1459,18 @@ RGBWATER_ATTR = attr_from_legacy(
         'sheetColorParam_keepFrame': '水膜 保持帧',
         'sheetColorParam_vanishFrame': '水膜 消失帧',
         'sheetColorParam_lifeType': '水膜 生命期模式',
-        'colorParam2_appearFrame': '组2 出现帧',
-        'colorParam2_keepFrame': '组2 保持帧',
-        'colorParam2_vanishFrame': '组2 消失帧',
-        'colorParam2_lifeType': '组2 生命期模式',
+        'waterLerpParam_appearFrame': '水色插值 出现帧',
+        'waterLerpParam_keepFrame': '水色插值 保持帧',
+        'waterLerpParam_vanishFrame': '水色插值 消失帧',
+        'waterLerpParam_lifeType': '水色插值 生命期模式',
     },
     overrides={
         'specularColorParam_useLife':  Bool('specularColorParam_useLife',  label_en='Use Life 0',  label_zh='高光 启用生命期'),
         'specularColorParam_lighting': Bool('specularColorParam_lighting', label_en='Lighting 0', label_zh='高光 受光照'),
         'sheetColorParam_useLife':  Bool('sheetColorParam_useLife',  label_en='Use Life 1',  label_zh='水膜 启用生命期'),
         'sheetColorParam_lighting': Bool('sheetColorParam_lighting', label_en='Lighting 1', label_zh='水膜 受光照'),
-        'colorParam2_useLife':  Bool('colorParam2_useLife',  label_en='Use Life 2',  label_zh='组2 启用生命期'),
-        'colorParam2_lighting': Bool('colorParam2_lighting', label_en='Lighting 2', label_zh='组2 受光照'),
+        'waterLerpParam_useLife':  Bool('waterLerpParam_useLife',  label_en='Use Life 2',  label_zh='水色插值 启用生命期'),
+        'waterLerpParam_lighting': Bool('waterLerpParam_lighting', label_en='Lighting 2', label_zh='水色插值 受光照'),
     },
 )
 
