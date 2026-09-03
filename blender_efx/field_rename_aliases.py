@@ -439,4 +439,16 @@ FIELD_RENAME_ALIASES = {
     ("RGBWATER", "unknEnum2_23"): "colorParam2_vanishFrameJitter",
     ("RGBWATER", "unknFlag2_24"): "colorParam2_lighting",
     ("RGBWATER", "unknEnum2_25"): "colorParam2_lifeType",
+
+    # ── RGBWATER 头部（2026-09-03 实机确认后改成官方 TimelineParam 名）──────────
+    ("RGBWATER", "brightnessSlot1"): "colorRate",
+    ("RGBWATER", "emissiveMultiplier"): "waterLerpGtoB",
+    ("RGBWATER", "brightnessSlotMultiplier2"): "intensitySheet",
+    # 'color' 由 ('XYZ[]',2,2) 拆成两个 ('XYZ',2)：整字段是拆分（不登记），但拆出来的
+    # 两项各自与旧 UI item 名 color[0]/color[1] 一一对应、同字节同大小，属纯改名。
+    # EXTERN 版旧名是 color_0/color_1，一并登记。
+    ("RGBWATER", "color[0]"): "colorSpecular",
+    ("RGBWATER", "color[1]"): "colorSheet",
+    ("RGBWATER", "color_0"): "colorSpecular",
+    ("RGBWATER", "color_1"): "colorSheet",
 }

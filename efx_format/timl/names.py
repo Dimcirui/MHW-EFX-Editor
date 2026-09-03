@@ -510,13 +510,14 @@ FIELD_TO_DT = {
     ("RGBFIRE", "smokeColor"):    [(0x5A8C6820, 3)],
     ("RGBFIRE", "brightness2"):   [(0x9F1E012E, 2)],
     # ── RGBWATER（2026-09-03 用户实机逐条确认；轨道只在 A0 生效，见 BLOCK_NATIVE_AXIS）──
-    ("RGBWATER", "brightnessSlot1"):           [(0x9F1E012E, 2)],   # ColorRate
-    ("RGBWATER", "emissiveMultiplier"):        [(0xA7EDA21C, 2)],   # WaterLerpGtoB
-    ("RGBWATER", "brightnessSlotMultiplier2"): [(0x4E00491F, 2)],   # IntensitySheet
-    ("RGBWATER", "color[0]"):                  [(0x60D69856, 3)],   # ColorSpecular
-    # 未定：brightnessSlot2 / brightnessSlotMultiplier1 / opacity / unknownFloat / color[1]
-    # 对 IntensityCubeMap / IntensitySpecular / IntensityAlpha / ColorSheet（7 个 float 对
-    # 6 个 float DT，必有一个不可动画）。DTI 声明顺序与字节序对不上，只能实机测。
+    ("RGBWATER", "colorRate"):      [(0x9F1E012E, 2)],
+    ("RGBWATER", "waterLerpGtoB"):  [(0xA7EDA21C, 2)],
+    ("RGBWATER", "intensitySheet"): [(0x4E00491F, 2)],
+    ("RGBWATER", "colorSpecular"):  [(0x60D69856, 3)],
+    # 未定：brightnessSlot2 / brightnessSlotMultiplier1 / opacity / unknownFloat 对
+    # IntensityCubeMap / IntensitySpecular / IntensityAlpha（7 个 float 对 6 个 float DT，
+    # 必有一个不可动画）。DTI 声明顺序与字节序对不上，只能实机测。
+    # colorSheet 已按排除法命名但未实测，故不进本表（进了就等于宣称已确认）。
     ("SCALEANIM", "initialScaleSpeed"): [(0xC24DF97C, 2)],
     ("SCALEANIM", "scaleSpeedY"):       [(0x2822A722, 2)],
     ("SCALEANIM", "scaleSpeedX"):       [(0x909EC047, 2)],

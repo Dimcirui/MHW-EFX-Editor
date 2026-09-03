@@ -1381,12 +1381,23 @@ _RGBWATER_FIXED_SCHEMA = [
     # 三段 × 两个位置 × 精确同值，不可能是巧合。⚠ 仍未实机：**三组分别管哪个颜色通道未知**，
     # 故按位置编号 0/1/2，不猜通道名。段2 只有 9 位（没有 unkn9），是三段唯一的结构差异。
     ('typeFlag',                 'i'),   # 原 unkn0
-    ('color',                    ('XYZ[]', 2, 2)),
-    ('brightnessSlot1',          'f'),
-    ('emissiveMultiplier',       'f'),
+    # ── 头部 2 色 + 7 float。2026-09-03 用户在 Blender 里逐条建 TIML 轨道实测，把 4 个
+    # 位置钉到了官方 TimelineParam 名（DT hash 见 timl/names.py::FIELD_TO_DT）。
+    # 原 ('color', ('XYZ[]', 2, 2)) 拆成两个 ('XYZ', 2)：字节布局完全不变（unpack/pack
+    # 内部本就逐个走 _unpack_xyz），拆开纯粹为了让两个颜色各自拿到名字——原先界面显示
+    # 的是 color[0]/color[1]，没法和 ColorSpecular/ColorSheet 对上。
+    ('colorSpecular',            ('XYZ', 2)),   # 原 color[0]。实测 = DT ColorSpecular
+    ('colorSheet',               ('XYZ', 2)),   # 原 color[1]。⚠ 未实测：两个颜色对两个
+                                                # 颜色 DT，另一个已坐实，本条按排除法取名
+    ('colorRate',                'f'),   # 原 brightnessSlot1。实测 = DT ColorRate
+    ('waterLerpGtoB',            'f'),   # 原 emissiveMultiplier。实测 = DT WaterLerpGtoB
+    # ↓ 以下 4 个 float 仍未定。剩余候选 DT：IntensityCubeMap / IntensitySpecular /
+    #   IntensityAlpha（7 个 float 对 6 个 float DT，必有一个不可动画）。名字都是旧猜测，
+    #   别当结论。语料线索：brightnessSlot2 在填了 cubemapPath 的块里 78% 非零、没填的
+    #   只有 30%，是 IntensityCubeMap 的头号候选。
     ('brightnessSlot2',          'f'),
     ('brightnessSlotMultiplier1','f'),
-    ('brightnessSlotMultiplier2','f'),
+    ('intensitySheet',           'f'),   # 原 brightnessSlotMultiplier2。实测 = DT IntensitySheet
     ('opacity',                  'f'),
     ('unknownFloat',             'f'),
     ('colorParam0_useLife', 'i'),
@@ -1424,6 +1435,11 @@ assert _schema_size(_RGBWATER_FIXED_SCHEMA) == 156, \
 RGBWATER_ATTR = attr_from_legacy(
     _schema_size(_RGBWATER_FIXED_SCHEMA), _RGBWATER_FIXED_SCHEMA,
     labels={
+        'colorSpecular': '高光颜色',
+        'colorSheet': '水膜颜色',
+        'colorRate': '颜色比率',
+        'waterLerpGtoB': '水色 绿→蓝',
+        'intensitySheet': '水膜强度',
         'colorParam0_appearFrame': '组0 出现帧',
         'colorParam0_keepFrame': '组0 保持帧',
         'colorParam0_vanishFrame': '组0 消失帧',
@@ -1454,13 +1470,9 @@ RGBWATER_ATTR = attr_from_legacy(
 # 平铺展开）——按字节序原样拆成两个独立 ('XYZ', 2) 字段（unpack/pack 内部本就是
 # 逐个循环 _unpack_xyz/_pack_xyz，拆开纯属重命名，字节布局不变），使整个 schema
 # 可平铺表示，从而复用跟其它 6 个已支持 EXTERN 类型一样的通用 flat schema 编辑路径。
-EXTERN_RGBWATER_SCHEMA = []
-for _name, _spec in _RGBWATER_FIXED_SCHEMA:
-    if _name == 'color':
-        EXTERN_RGBWATER_SCHEMA.append(('color_0', ('XYZ', 2)))
-        EXTERN_RGBWATER_SCHEMA.append(('color_1', ('XYZ', 2)))
-    else:
-        EXTERN_RGBWATER_SCHEMA.append((_name, _spec))
+# 主属性 schema 现在本身就是全平铺的（'color' 已拆成 colorSpecular/colorSheet 两个
+# ('XYZ', 2)），直接照抄即可——原先在这里把 XYZ[] 拆成 color_0/color_1 的特判已无必要。
+EXTERN_RGBWATER_SCHEMA = list(_RGBWATER_FIXED_SCHEMA)
 EXTERN_RGBWATER_SCHEMA.append(('unkn_tail0', 'i'))
 EXTERN_RGBWATER_SCHEMA.append(('unkn_tail1', 'B'))
 assert _schema_size(EXTERN_RGBWATER_SCHEMA) == 161, \
