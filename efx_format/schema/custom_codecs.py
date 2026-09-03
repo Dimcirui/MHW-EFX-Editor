@@ -1387,18 +1387,16 @@ _RGBWATER_FIXED_SCHEMA = [
     # 内部本就逐个走 _unpack_xyz），拆开纯粹为了让两个颜色各自拿到名字——原先界面显示
     # 的是 color[0]/color[1]，没法和 ColorSpecular/ColorSheet 对上。
     ('colorSpecular',            ('XYZ', 2)),   # 原 color[0]。实测 = DT ColorSpecular
-    ('colorSheet',               ('XYZ', 2)),   # 原 color[1]。⚠ 未实测：两个颜色对两个
-                                                # 颜色 DT，另一个已坐实，本条按排除法取名
+    ('colorSheet',               ('XYZ', 2)),   # 原 color[1]。实测 = DT ColorSheet
     ('colorRate',                'f'),   # 原 brightnessSlot1。实测 = DT ColorRate
     ('waterLerpGtoB',            'f'),   # 原 emissiveMultiplier。实测 = DT WaterLerpGtoB
-    # ↓ 以下 4 个 float 仍未定。剩余候选 DT：IntensityCubeMap / IntensitySpecular /
-    #   IntensityAlpha（7 个 float 对 6 个 float DT，必有一个不可动画）。名字都是旧猜测，
-    #   别当结论。语料线索：brightnessSlot2 在填了 cubemapPath 的块里 78% 非零、没填的
-    #   只有 30%，是 IntensityCubeMap 的头号候选。
-    ('brightnessSlot2',          'f'),
-    ('brightnessSlotMultiplier1','f'),
+    ('intensityCubeMap',         'f'),   # 原 brightnessSlot2。实测 = DT IntensityCubeMap
+    ('intensitySpecular',        'f'),   # 原 brightnessSlotMultiplier1。实测 = DT IntensitySpecular
     ('intensitySheet',           'f'),   # 原 brightnessSlotMultiplier2。实测 = DT IntensitySheet
-    ('opacity',                  'f'),
+    ('intensityAlpha',           'f'),   # 原 opacity。实测 = DT IntensityAlpha
+    # 头部到此与官方 8 个 TimelineParam 一一对应且全部实机确认。剩下这一个 float 没有
+    # 对应 DT——引擎声明 6 个 float 参数、这里有 7 个 float，必有一个不可动画，就是它。
+    # 众数 0.3 占 73%，不像强度量。
     ('unknownFloat',             'f'),
     ('colorParam0_useLife', 'i'),
     ('colorParam0_appearFrame', 'i'),
@@ -1439,7 +1437,10 @@ RGBWATER_ATTR = attr_from_legacy(
         'colorSheet': '水膜颜色',
         'colorRate': '颜色比率',
         'waterLerpGtoB': '水色 绿→蓝',
+        'intensityCubeMap': '环境反射强度',
+        'intensitySpecular': '高光强度',
         'intensitySheet': '水膜强度',
+        'intensityAlpha': '透明度强度',
         'colorParam0_appearFrame': '组0 出现帧',
         'colorParam0_keepFrame': '组0 保持帧',
         'colorParam0_vanishFrame': '组0 消失帧',

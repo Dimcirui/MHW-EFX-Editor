@@ -510,14 +510,17 @@ FIELD_TO_DT = {
     ("RGBFIRE", "smokeColor"):    [(0x5A8C6820, 3)],
     ("RGBFIRE", "brightness2"):   [(0x9F1E012E, 2)],
     # ── RGBWATER（2026-09-03 用户实机逐条确认；轨道只在 A0 生效，见 BLOCK_NATIVE_AXIS）──
-    ("RGBWATER", "colorRate"):      [(0x9F1E012E, 2)],
-    ("RGBWATER", "waterLerpGtoB"):  [(0xA7EDA21C, 2)],
-    ("RGBWATER", "intensitySheet"): [(0x4E00491F, 2)],
-    ("RGBWATER", "colorSpecular"):  [(0x60D69856, 3)],
-    # 未定：brightnessSlot2 / brightnessSlotMultiplier1 / opacity / unknownFloat 对
-    # IntensityCubeMap / IntensitySpecular / IntensityAlpha（7 个 float 对 6 个 float DT，
-    # 必有一个不可动画）。DTI 声明顺序与字节序对不上，只能实机测。
-    # colorSheet 已按排除法命名但未实测，故不进本表（进了就等于宣称已确认）。
+    # 官方 8 个 TimelineParam 与本块头部 8 个字段**全部实机逐条确认**，无遗留。
+    # 头部的第 9 个 float（unknownFloat）没有对应 DT——引擎只声明 6 个 float 参数，
+    # 这里有 7 个 float，多出来的那个不可动画。
+    ("RGBWATER", "colorRate"):         [(0x9F1E012E, 2)],
+    ("RGBWATER", "waterLerpGtoB"):     [(0xA7EDA21C, 2)],
+    ("RGBWATER", "intensitySheet"):    [(0x4E00491F, 2)],
+    ("RGBWATER", "intensityCubeMap"):  [(0xAFB51DF4, 2)],
+    ("RGBWATER", "intensitySpecular"): [(0xD62C2891, 2)],
+    ("RGBWATER", "intensityAlpha"):    [(0x19DCE197, 2)],
+    ("RGBWATER", "colorSpecular"):     [(0x60D69856, 3)],
+    ("RGBWATER", "colorSheet"):        [(0xD6AD0996, 3)],
     ("SCALEANIM", "initialScaleSpeed"): [(0xC24DF97C, 2)],
     ("SCALEANIM", "scaleSpeedY"):       [(0x2822A722, 2)],
     ("SCALEANIM", "scaleSpeedX"):       [(0x909EC047, 2)],
@@ -808,6 +811,8 @@ DTI_EXTRA_PAIRS = {
         (0x49AE09C7, 2), (0x2FCE3B02, 2), (0xC4A60432, 2), (0xA2C636F7, 2), (0x2B0CF983, 2),
         (0x55BD853E, 2), (0xCCB4D484, 2), (0xBBB3E412, 2)
     ],
+    # ⚠ RgbWater 这 4 条已被实机验证**确实可用**（用户 2026-09-03 建轨道逐条测出对应字段）
+    #   —— 这是「DTI 有、语料 0 例」的条目并非死数据的直接证据，本表其余条目同理可测。
     0x2101C529: [  # RgbWater，+4
         (0x19DCE197, 2), (0xD62C2891, 2), (0xAFB51DF4, 2), (0xD6AD0996, 3)
     ],

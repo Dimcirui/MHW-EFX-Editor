@@ -451,4 +451,7 @@ FIELD_RENAME_ALIASES = {
     ("RGBWATER", "color[1]"): "colorSheet",
     ("RGBWATER", "color_0"): "colorSpecular",
     ("RGBWATER", "color_1"): "colorSheet",
+    ("RGBWATER", "brightnessSlot2"): "intensityCubeMap",
+    ("RGBWATER", "brightnessSlotMultiplier1"): "intensitySpecular",
+    ("RGBWATER", "opacity"): "intensityAlpha",
 }
