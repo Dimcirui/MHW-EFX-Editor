@@ -157,6 +157,112 @@ DT_NAMES = {
     0x16814F1C: "Roughness",            # cnt=1    Float            TLP:MhEffectDecalBehavior
     0x2FF50558: "Rotation",             # cnt=1    Float            TLP:Billboard3D
     0xAE7CD3C0: "RangeZ",              # cnt=1    Float            TLP:MhEffectDecalBehavior
+    # ── 以下 102 条来自 RE DTI dump 的 nTimelineParam 类，**全语料 0 例**（官方一次没用过）。
+    # hash 由 dump 直接给出，不是反查/合成。类型只取 f32/color 两种——它们与 TIML
+    # dataType 的对应已被语料标定（f32→2 n=5647 / color→3 n=2106）；u32/bool/vector2 等
+    # 没有任何语料样本可标定 dataType，写错会产出垃圾关键帧，故一律跳过（44 条）。
+    0x086567E1: "InitialPositionZ",          # cnt=0    Float
+    0x0E24B8A2: "mMultiplyRadiusSquare",     # cnt=0    Float
+    0x102FFF8B: "HeadEffectiveRadius",       # cnt=0    Float
+    0x1204171A: "OcclusionSphereRadius",     # cnt=0    Float
+    0x19DCE197: "IntensityAlpha",            # cnt=0    Float
+    0x275F8C25: "UVRangeZ",                  # cnt=0    Float
+    0x28342187: "ToneCurveBy4",              # cnt=0    Float
+    0x29922775: "ToneCurveGy0",              # cnt=0    Float
+    0x2A6477AF: "ToneCurveRx0",              # cnt=0    Float
+    0x2AD90E22: "ShadowDepthBias",           # cnt=0    Float
+    0x2B0CF983: "CenterW",                   # cnt=0    Float
+    0x2D09B3B6: "ToneCurveRx4",              # cnt=0    Float
+    0x2EFFE36C: "ToneCurveGy4",              # cnt=0    Float
+    0x2F59E59E: "ToneCurveBy0",              # cnt=0    Float
+    0x2FCE3B02: "StartH",                    # cnt=0    Float
+    0x30891634: "ToneCurveGx0",              # cnt=0    Float
+    0x312F10C6: "ToneCurveBx4",              # cnt=0    Float
+    0x337F46EE: "ToneCurveRy0",              # cnt=0    Float
+    0x341282F7: "ToneCurveRy4",              # cnt=0    Float
+    0x34B93272: "VignettingOffset",          # cnt=0    Float
+    0x353D6FFC: "Fresnel",                   # cnt=0    Float
+    0x3642D4DF: "ToneCurveBx0",              # cnt=0    Float
+    0x37E4D22D: "ToneCurveGx4",              # cnt=0    Float
+    0x40E3E2BB: "ToneCurveGx5",              # cnt=0    Float
+    0x4145E449: "ToneCurveBx1",              # cnt=0    Float
+    0x4315B261: "ToneCurveRy5",              # cnt=0    Float
+    0x44787678: "ToneCurveRy1",              # cnt=0    Float
+    0x46282050: "ToneCurveBx5",              # cnt=0    Float
+    0x478E26A2: "ToneCurveGx1",              # cnt=0    Float
+    0x49AE09C7: "EndH",                      # cnt=0    Float
+    0x55BD853E: "CenterZ",                   # cnt=0    Float
+    0x585ED508: "ToneCurveBy1",              # cnt=0    Float
+    0x59EEF098: "UVRangeW",                  # cnt=0    Float
+    0x59F8D3FA: "ToneCurveGy5",              # cnt=0    Float
+    0x5A0E8320: "ToneCurveRx5",              # cnt=0    Float
+    0x5D634739: "ToneCurveRx1",              # cnt=0    Float
+    0x5E9517E3: "ToneCurveGy1",              # cnt=0    Float
+    0x5F331111: "ToneCurveBy5",              # cnt=0    Float
+    0x6ACAAAD7: "CoreLength",                # cnt=0    Float
+    0x701FE225: "LocalRotationX",            # cnt=0    Float
+    0x7516AA5D: "LocalRotation",             # cnt=0    Float
+    0x7AF2755D: "ProjectionRotationZ",       # cnt=0    Float
+    0x7D0FD331: "TailEffectiveRadius",       # cnt=0    Float
+    0x7E6555E0: "FrameInfluence",            # cnt=0    Float
+    0x7F2CEB57: "EmissiveColorRange",        # cnt=0    Color[RGBA]
+    0x7F2FEA9B: "Falloff",                   # cnt=0    Float
+    0x84E65AB1: "Spread",                    # cnt=0    Float
+    0x916C365B: "InitialPositionY",          # cnt=0    Float
+    0x931E7E65: "TextureScrollSpeed",        # cnt=0    Float
+    0x93A7FACA: "VignettingPow",             # cnt=0    Float
+    0x994333F2: "VertexInfluence",           # cnt=0    Float
+    0x9DB8917C: "Acceleration",              # cnt=0    Float
+    0xA2C636F7: "StartW",                    # cnt=0    Float
+    0xA826417C: "ToneCurveBx7",              # cnt=0    Float
+    0xA980478E: "ToneCurveGx3",              # cnt=0    Float
+    0xAA2229C3: "LimitAngle",                # cnt=0    Float
+    0xAA761754: "ToneCurveRy3",              # cnt=0    Float
+    0xAD1BD34D: "ToneCurveRy7",              # cnt=0    Float
+    0xAEED8397: "ToneCurveGx7",              # cnt=0    Float
+    0xAF4B8565: "ToneCurveBx3",              # cnt=0    Float
+    0xAFB51DF4: "IntensityCubeMap",          # cnt=0    Float
+    0xB09B76CF: "ToneCurveGy3",              # cnt=0    Float
+    0xB13D703D: "ToneCurveBy7",              # cnt=0    Float
+    0xB1F7AEF0: "Metalic",                   # cnt=0    Float
+    0xB36D2615: "ToneCurveRx3",              # cnt=0    Float
+    0xB400E20C: "ToneCurveRx7",              # cnt=0    Float
+    0xB650B424: "ToneCurveBy3",              # cnt=0    Float
+    0xB78EE6DA: "BlendRate",                 # cnt=0    Float
+    0xB7F6B2D6: "ToneCurveGy7",              # cnt=0    Float
+    0xBA17788F: "EndZ",                      # cnt=0    Float
+    0xBBB3E412: "CenterX",                   # cnt=0    Float
+    0xBE56DD9F: "UVRangeY",                  # cnt=0    Float
+    0xC0F18240: "ToneCurveGy6",              # cnt=0    Float
+    0xC126B7BD: "MinRoughness",              # cnt=0    Float
+    0xC15784B2: "ToneCurveBy2",              # cnt=0    Float
+    0xC307D29A: "ToneCurveRx6",              # cnt=0    Float
+    0xC46A1683: "ToneCurveRx2",              # cnt=0    Float
+    0xC4A60432: "EndW",                      # cnt=0    Float
+    0xC63A40AB: "ToneCurveBy6",              # cnt=0    Float
+    0xC79C4659: "ToneCurveGy2",              # cnt=0    Float
+    0xC893EE17: "OcclusionBlurWidthScale",   # cnt=0    Float
+    0xC951ED09: "UVRangeX",                  # cnt=0    Float
+    0xCCB4D484: "CenterY",                   # cnt=0    Float
+    0xCDBCBB7E: "EmissionColorRange",        # cnt=0    Color[RGBA]
+    0xCF5D2EDD: "ShadowSlopedDepthBias",     # cnt=0    Float
+    0xD23788D3: "Cone",                      # cnt=0    Float
+    0xD62C2891: "IntensitySpecular",         # cnt=0    Float
+    0xD6AD0996: "ColorSheet",                # cnt=0    Color[RGBA]
+    0xD84CB5F3: "ToneCurveBx2",              # cnt=0    Float
+    0xD9EAB301: "ToneCurveGx6",              # cnt=0    Float
+    0xDA1CE3DB: "ToneCurveRy6",              # cnt=0    Float
+    0xDC774A4A: "StartZ",                    # cnt=0    Float
+    0xDD7127C2: "ToneCurveRy2",              # cnt=0    Float
+    0xDE877718: "ToneCurveGx2",              # cnt=0    Float
+    0xDF2171EA: "ToneCurveBx6",              # cnt=0    Float
+    0xE22A3268: "OcclusionBlurWidthOffset",  # cnt=0    Float
+    0xE2C6589E: "rot",                       # cnt=0    Float
+    0xE609DBFA: "ShadowMaxDepthBias",        # cnt=0    Float
+    0xE66B06CD: "InitialPositionX",          # cnt=0    Float
+    0xE7DF422D: "NearClipDistance",          # cnt=0    Float
+    0xEEBD5618: "EmissionRate",              # cnt=0    Float
+    0xF80CE653: "EmissionColor",             # cnt=0    Color[RGBA]
 }
 
 # transform 九条 hash（jamcrc）。MHW Y-up → Blender Z-up：游戏 Y↔Z 轴**置换**
@@ -403,6 +509,14 @@ FIELD_TO_DT = {
     ("RGBFIRE", "fireColor"):     [(0x39A1E557, 3)],
     ("RGBFIRE", "smokeColor"):    [(0x5A8C6820, 3)],
     ("RGBFIRE", "brightness2"):   [(0x9F1E012E, 2)],
+    # ── RGBWATER（2026-09-03 用户实机逐条确认；轨道只在 A0 生效，见 BLOCK_NATIVE_AXIS）──
+    ("RGBWATER", "brightnessSlot1"):           [(0x9F1E012E, 2)],   # ColorRate
+    ("RGBWATER", "emissiveMultiplier"):        [(0xA7EDA21C, 2)],   # WaterLerpGtoB
+    ("RGBWATER", "brightnessSlotMultiplier2"): [(0x4E00491F, 2)],   # IntensitySheet
+    ("RGBWATER", "color[0]"):                  [(0x60D69856, 3)],   # ColorSpecular
+    # 未定：brightnessSlot2 / brightnessSlotMultiplier1 / opacity / unknownFloat / color[1]
+    # 对 IntensityCubeMap / IntensitySpecular / IntensityAlpha / ColorSheet（7 个 float 对
+    # 6 个 float DT，必有一个不可动画）。DTI 声明顺序与字节序对不上，只能实机测。
     ("SCALEANIM", "initialScaleSpeed"): [(0xC24DF97C, 2)],
     ("SCALEANIM", "scaleSpeedY"):       [(0x2822A722, 2)],
     ("SCALEANIM", "scaleSpeedX"):       [(0x909EC047, 2)],
@@ -463,10 +577,7 @@ FIELD_TO_DT = {
 # 必须先坐实"这条 DT 对应哪个字段"，光看名字像不够——错的映射会让用户以为在给
 # A 字段做动画、实际写进了 B 字段的通道。
 FIELD_TO_DT_UNRESOLVED = {
-    # RGBWATER 全 4 条：ColorRate / WaterLerpGtoB / IntensitySheet / ColorSpecular
-    #   该块字段大半仍是 unknEnum2_*，brightnessSlot1/2 与 multiplier1/2 谁对应
-    #   ColorRate 没依据；后三条在字段表里没有像样的候选。
-    ("RGBWATER", "?"): [(0x9F1E012E, 2), (0xA7EDA21C, 2), (0x4E00491F, 2), (0x60D69856, 3)],
+    # RGBWATER 原在此（4 条全未定）——2026-09-03 用户实机逐条测出归属，已迁进 FIELD_TO_DT。
     # TUBELIGHT：CoreThickness（17 条）候选 columnRadius / columnEdgeSoftness；
     #   CoreIntensity（7 条）无对应字段。columnRadius 已实机确认过语义，正因如此
     #   不能凭"thickness≈radius"就把 DT 挂上去。
@@ -629,3 +740,114 @@ CORPUS_PAIRS = {
         (0xAFE95AC0, 3),
     ],
 }
+
+# ── DTI_EXTRA_PAIRS：DTI 里声明、但全语料 0 例的 (TLP → [(DT, dataType)]) ────────
+# CORPUS_PAIRS 只收语料实测到的组合，是「官方确实这么用过」的证据表，语义要保持干净
+# （tools/lib/timl_engine.py、tools/scan_tubelight.py 按这个含义在用）。但「官方没用过」
+# 不等于「引擎不支持」——不把这些放进调色板，用户就永远没法给它们建轨道做实机测试，
+# 而这正是往下推语义的主要手段（RgbWater 的 4 条字段映射就是这么测出来的）。
+# 故另立此表，仅供 UI 调色板 DT_PALETTE 合并使用。
+#
+# ⚠ 这里的每一条都**未经任何验证**：既没有官方用例，也没有实机确认。加了轨道游戏里
+#   是否生效、对应哪个字段，都要自己测。（多数块还受 BLOCK_NATIVE_AXIS 的母轴限制。）
+DTI_EXTRA_PAIRS = {
+    0x2B61B0ED: [  # Billboard2D（DTI: TypeBillboard2D），+8
+        (0x0EBAEC37, 2), (0x2FF50558, 2), (0xEEBD5618, 2), (0xCDBCBB7E, 3), (0xF80CE653, 3),
+        (0x9F1E012E, 2), (0xC216C23D, 3), (0x58689812, 3)
+    ],
+    0x327A81AC: [  # Billboard3D（DTI: TypeBillboard3D），+3
+        (0xEEBD5618, 2), (0xCDBCBB7E, 3), (0xF80CE653, 3)
+    ],
+    0x096CABC4: [  # ColorCorrectFilter，+51
+        (0x93A7FACA, 2), (0x34B93272, 2), (0xB13D703D, 2), (0xA826417C, 2), (0xC63A40AB, 2),
+        (0xDF2171EA, 2), (0x5F331111, 2), (0x46282050, 2), (0x28342187, 2), (0x312F10C6, 2),
+        (0xB650B424, 2), (0xAF4B8565, 2), (0xC15784B2, 2), (0xD84CB5F3, 2), (0x585ED508, 2),
+        (0x4145E449, 2), (0x2F59E59E, 2), (0x3642D4DF, 2), (0xB7F6B2D6, 2), (0xAEED8397, 2),
+        (0xC0F18240, 2), (0xD9EAB301, 2), (0x59F8D3FA, 2), (0x40E3E2BB, 2), (0x2EFFE36C, 2),
+        (0x37E4D22D, 2), (0xB09B76CF, 2), (0xA980478E, 2), (0xC79C4659, 2), (0xDE877718, 2),
+        (0x5E9517E3, 2), (0x478E26A2, 2), (0x29922775, 2), (0x30891634, 2), (0xAD1BD34D, 2),
+        (0xB400E20C, 2), (0xDA1CE3DB, 2), (0xC307D29A, 2), (0x4315B261, 2), (0x5A0E8320, 2),
+        (0x341282F7, 2), (0x2D09B3B6, 2), (0xAA761754, 2), (0xB36D2615, 2), (0xDD7127C2, 2),
+        (0xC46A1683, 2), (0x44787678, 2), (0x5D634739, 2), (0x337F46EE, 2), (0x2A6477AF, 2),
+        (0xB78EE6DA, 2)
+    ],
+    0x2A0363D4: [  # EmitterShape2D，+5
+        (0x7516AA5D, 2), (0x1383E9BA, 2), (0x01080DD5, 2), (0x6484D92C, 2), (0x760F3D43, 2)
+    ],
+    0x33185295: [  # EmitterShape3D，+1
+        (0x701FE225, 2)
+    ],
+    0x538AF627: [  # Mesh（DTI: TypeMesh），+3
+        (0xE5C92264, 2), (0x7F2CEB57, 3), (0xC216C23D, 3)
+    ],
+    0x65004E2A: [  # MhEffectDecalBehavior，+7
+        (0xAA2229C3, 2), (0x59EEF098, 2), (0x275F8C25, 2), (0xBE56DD9F, 2), (0xC951ED09, 2),
+        (0x353D6FFC, 2), (0xB1F7AEF0, 2)
+    ],
+    0x6DA6E5D1: [  # MhPointLightBehavior，+6
+        (0x0E24B8A2, 2), (0xE609DBFA, 2), (0xCF5D2EDD, 2), (0x2AD90E22, 2), (0xE7DF422D, 2),
+        (0xC126B7BD, 2)
+    ],
+    0x75963575: [  # MhSpotLightBehavior，+12
+        (0x0E24B8A2, 2), (0x7AF2755D, 2), (0x7F2FEA9B, 2), (0x84E65AB1, 2), (0xD23788D3, 2),
+        (0x435F3054, 2), (0xC32F9493, 2), (0xE609DBFA, 2), (0xCF5D2EDD, 2), (0x2AD90E22, 2),
+        (0xE7DF422D, 2), (0xC126B7BD, 2)
+    ],
+    0x2ED89BCC: [  # ParentMaterial，+2
+        (0x94BCC5CE, 2), (0xFA79B1CD, 3)
+    ],
+    0x3481666B: [  # Plane（DTI: TypePlane），+5
+        (0x241CAED2, 2), (0xEEBD5618, 2), (0xCDBCBB7E, 3), (0xF80CE653, 3), (0xC216C23D, 3)
+    ],
+    0x42E48DDE: [  # PointLightBehavior，+5
+        (0xE609DBFA, 2), (0xCF5D2EDD, 2), (0x2AD90E22, 2), (0xE7DF422D, 2), (0xC126B7BD, 2)
+    ],
+    0x582BA062: [  # RadialBlurFilterBehavior，+13
+        (0xE22A3268, 2), (0xC893EE17, 2), (0x1204171A, 2), (0xBA17788F, 2), (0xDC774A4A, 2),
+        (0x49AE09C7, 2), (0x2FCE3B02, 2), (0xC4A60432, 2), (0xA2C636F7, 2), (0x2B0CF983, 2),
+        (0x55BD853E, 2), (0xCCB4D484, 2), (0xBBB3E412, 2)
+    ],
+    0x2101C529: [  # RgbWater，+4
+        (0x19DCE197, 2), (0xD62C2891, 2), (0xAFB51DF4, 2), (0xD6AD0996, 3)
+    ],
+    0x1436E592: [  # Ribbon（DTI: TypeRibbon），+7
+        (0x994333F2, 2), (0x7E6555E0, 2), (0x9DB8917C, 2), (0xEEBD5618, 2), (0xCDBCBB7E, 3),
+        (0xF80CE653, 3), (0xC216C23D, 3)
+    ],
+    0x3DE576DC: [  # SpotLightBehavior，+13
+        (0x7AF2755D, 2), (0x7F2FEA9B, 2), (0x84E65AB1, 2), (0xD23788D3, 2), (0x435F3054, 2),
+        (0xC32F9493, 2), (0xE609DBFA, 2), (0xCF5D2EDD, 2), (0x2AD90E22, 2), (0xE7DF422D, 2),
+        (0xC126B7BD, 2), (0x94BCC5CE, 2), (0x58689812, 3)
+    ],
+    0x1F09850E: [  # StrainRibbon（DTI: TypeStrainRibbon），+20
+        (0x9E118309, 2), (0x701FE225, 2), (0x8A8AB800, 2), (0x1383E9BA, 2), (0x6484D92C, 2),
+        (0x98015C6F, 2), (0x01080DD5, 2), (0x760F3D43, 2), (0x086567E1, 2), (0x916C365B, 2),
+        (0xE66B06CD, 2), (0x994333F2, 2), (0x7E6555E0, 2), (0x9DB8917C, 2), (0x0EBAEC37, 2),
+        (0xEEBD5618, 2), (0xCDBCBB7E, 3), (0xF80CE653, 3), (0xC216C23D, 3), (0x58689812, 3)
+    ],
+    0x13A0F54F: [  # TonemapFilter，+1
+        (0x94BCC5CE, 2)
+    ],
+    0x540A2572: [  # Transform2D，+1
+        (0xE2C6589E, 2)
+    ],
+    0x39C68FB4: [  # TubeLight，+5
+        (0x7D0FD331, 2), (0x102FFF8B, 2), (0x931E7E65, 2), (0x435F3054, 2), (0x6ACAAAD7, 2)
+    ],
+    0x2BDA85F5: [  # Velocity2D，+1
+        (0x6A5FE3C4, 2)
+    ],
+}
+
+
+def _merge_pairs():
+    """CORPUS_PAIRS ∪ DTI_EXTRA_PAIRS —— UI 调色板用的完整 (TLP → DT 列表)。
+
+    语料条目在前、DTI 补充在后，所以下拉里官方用过的排前面。"""
+    out = {h: list(v) for h, v in CORPUS_PAIRS.items()}
+    for h, v in DTI_EXTRA_PAIRS.items():
+        out.setdefault(h, []).extend(v)
+    return out
+
+
+DT_PALETTE = _merge_pairs()

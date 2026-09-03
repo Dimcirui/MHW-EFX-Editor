@@ -20,7 +20,7 @@ from .i18n import T
 from .timl_meta_ui import _active_entry, _entry_timl_bytes, _store_timl
 from ..efx_format import timl as _timl
 from ..efx_format.timl.names import (
-    BLOCK_TO_TLP, FIELD_TO_DT, CORPUS_PAIRS,
+    BLOCK_TO_TLP, FIELD_TO_DT, DT_PALETTE,
     TLP_NAMES, DT_NAMES, DT_TRANSFORM,
     timeline_param_name, datatype_name, channel_label, block_native_axis,
 )
@@ -609,7 +609,7 @@ _tlp_enum_cache = [("NONE", "— 无匹配属性 —", "")]
 def _tlp_enum_items(self, context):
     """TLP 下拉 EnumProperty 回调。
     open_all=False：只列当前 entry 有对应 EFX_ATTRIBUTE 的 TLP + TIML 已有的 TLP。
-    open_all=True ：列出 CORPUS_PAIRS 中所有已知 TLP。"""
+    open_all=True ：列出 DT_PALETTE 中所有已知 TLP。"""
     global _tlp_enum_cache
     if context is None:
         return _tlp_enum_cache
@@ -619,10 +619,10 @@ def _tlp_enum_items(self, context):
     body = _active_entry()
 
     if open_all or body is None:
-        # 显示 CORPUS_PAIRS 全部 TLP，按名称字母序
+        # 显示 DT_PALETTE 全部 TLP，按名称字母序
         items = sorted(
             [("%08X" % h, timeline_param_name(h), "0x%08X" % h)
-             for h in CORPUS_PAIRS],
+             for h in DT_PALETTE],
             key=lambda x: x[1],
         )
     else:
@@ -639,10 +639,10 @@ def _tlp_enum_items(self, context):
                             allowed.add(typ.timeline_param_hash & 0xFFFFFFFF)
         except Exception:
             pass
-        # 只保留 CORPUS_PAIRS 中有数据的
+        # 只保留 DT_PALETTE 中有数据的
         items = sorted(
             [("%08X" % h, timeline_param_name(h), "0x%08X" % h)
-             for h in allowed if h in CORPUS_PAIRS],
+             for h in allowed if h in DT_PALETTE],
             key=lambda x: x[1],
         )
 
@@ -744,7 +744,7 @@ def _draw_tracks_panel(layout, context):
     except ValueError:
         return
 
-    pairs = CORPUS_PAIRS.get(tlp_h, [])
+    pairs = DT_PALETTE.get(tlp_h, [])
     if not pairs:
         add_box.label(text="No corpus data for this TLP", icon="INFO")
         return
@@ -802,7 +802,7 @@ def register():
 
     bpy.types.WindowManager.efx_timl_tracks_open_all = BoolProperty(
         name="Open All TLP",
-        description="开放全部：下拉列出所有 CORPUS_PAIRS TLP，而非只列当前 entry 有对应属性类型的",
+        description="开放全部：下拉列出所有 DT_PALETTE TLP，而非只列当前 entry 有对应属性类型的",
         default=False,
     )
     bpy.types.WindowManager.efx_timl_tracks_tlp_filter = bpy.props.EnumProperty(
