@@ -71,8 +71,43 @@ class _ChannelbagFCurvesProxy:
         return len(self._fcs) > 0
 
 
-def _ensure_channelbag(act, timl_obj):
-    """新版(4.4+) API 专用：按需建 slot/layer/strip，返回 timl_obj 对应的 ActionChannelbag。"""
+class _EmptyFCurves:
+    """4.4+ 只读取用时，channelbag 还不存在的空集合替身。
+
+    只读接口（len/iter/find/bool）行为等同空集合；new/remove 明确报错——走到这里
+    说明调用方在只读上下文里试图写，是逻辑错误，不该被静默吞掉。
+    """
+
+    def find(self, data_path, index=0):
+        return None
+
+    def new(self, *a, **kw):
+        raise RuntimeError("_act_fcurves(create=False) 下不能新建 fcurve")
+
+    def remove(self, fc):
+        raise RuntimeError("_act_fcurves(create=False) 下不能删除 fcurve")
+
+    def __iter__(self):
+        return iter(())
+
+    def __len__(self):
+        return 0
+
+    def __getitem__(self, i):
+        raise IndexError(i)
+
+    def __bool__(self):
+        return False
+
+
+def _ensure_channelbag(act, timl_obj, create=True):
+    """新版(4.4+) API 专用：返回 timl_obj 对应的 ActionChannelbag。
+
+    ⚠ create=True 会**写 ID 数据**（新建 slot/layer/strip、给 animation_data 赋
+    action_slot）。Blender 禁止在 poll()/draw() 里写 ID，那样会抛
+    "Writing to ID classes in this context is not allowed"。所以任何从 poll/draw
+    可达的路径必须传 create=False——此时只查不建，缺任何一层就返回 None。
+    """
     ad = timl_obj.animation_data
     slot = ad.action_slot if (ad is not None and ad.action_slot is not None) else None
     if slot is None:
@@ -81,19 +116,38 @@ def _ensure_channelbag(act, timl_obj):
                 slot = s
                 break
     if slot is None:
+        if not create:
+            return None
         slot = act.slots.new(id_type="OBJECT", name=timl_obj.name)
-    if ad is not None and ad.action_slot is not slot:
+    if create and ad is not None and ad.action_slot is not slot:
         ad.action_slot = slot
-    layer = act.layers[0] if act.layers else act.layers.new(name="Layer")
-    strip = layer.strips[0] if layer.strips else layer.strips.new(type="KEYFRAME")
-    return strip.channelbag(slot, ensure=True)
+    if act.layers:
+        layer = act.layers[0]
+    elif create:
+        layer = act.layers.new(name="Layer")
+    else:
+        return None
+    if layer.strips:
+        strip = layer.strips[0]
+    elif create:
+        strip = layer.strips.new(type="KEYFRAME")
+    else:
+        return None
+    return strip.channelbag(slot, ensure=create)
 
 
-def _act_fcurves(act, timl_obj):
-    """统一入口：旧版直接 act.fcurves；新版(4.4+)走 layers/strips/channelbag 代理。"""
+def _act_fcurves(act, timl_obj, create=False):
+    """统一入口：旧版直接 act.fcurves；新版(4.4+)走 layers/strips/channelbag 代理。
+
+    ⚠ 默认 create=False（只读）。只有确实要写 fcurve 的地方才传 create=True，
+    且那个调用点必须在算子 execute()/导入流程里，不能在 poll()/draw() 里。
+    """
     if _LEGACY_ACTION_FCURVES:
         return act.fcurves
-    return _ChannelbagFCurvesProxy(_ensure_channelbag(act, timl_obj))
+    bag = _ensure_channelbag(act, timl_obj, create=create)
+    if bag is None:
+        return _EmptyFCurves()
+    return _ChannelbagFCurvesProxy(bag)
 
 
 class EFXTimlChannel(PropertyGroup):
@@ -290,7 +344,8 @@ def build_persistent_fcurves(handle, body):
             handle.animation_data_create()
         handle.animation_data.action = act
     else:
-        fcs = _act_fcurves(act, handle)
+        # 唯一的写入路径（导入 / 进入编辑），必须 create=True 才能建出 channelbag
+        fcs = _act_fcurves(act, handle, create=True)
         while len(fcs):
             fcs.remove(fcs[0])
 
@@ -300,7 +355,8 @@ def build_persistent_fcurves(handle, body):
         decoded = [_timl.decode_keyframe(kf.raw, f.data_type, f.datatype_hash)
                    for kf in f.keyframes]
         if ch["mode"] == "xform":
-            fc = _act_fcurves(act, handle).new(data_path=ch["path"], index=ch["index"])
+            fc = _act_fcurves(act, handle, create=True).new(
+                data_path=ch["path"], index=ch["index"])
             for dec in decoded:
                 s = dec["subs"][0]
                 val = _tn.game_to_blender(ch["kind"], ch["bl_index"], s["value"])
@@ -309,7 +365,7 @@ def build_persistent_fcurves(handle, body):
             fc.update()
         else:
             handle.efx_timl_channels.add()   # 顺序 add → 集合索引 == ch["ci"]
-            fc = _act_fcurves(act, handle).new(data_path=ch["path"], index=0,
+            fc = _act_fcurves(act, handle, create=True).new(data_path=ch["path"], index=0,
                                                action_group=ch["gname"])
             for dec in decoded:
                 s = dec["subs"][ch["sub"]]
