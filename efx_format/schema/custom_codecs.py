@@ -1373,6 +1373,13 @@ def pack_lightning(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _RGBWATER_FIXED_SCHEMA = [
+    # ⚠ 2026-08-18：9..37 位原为 unknFlagInt_0 / unknEnum2_* 一串占位名，现按**结构同构**
+    # 改名成三组 colorParamN_*。依据：这 29 个字段刚好是三段 10-字段块，与 RGBFIRE 的
+    # fireColorParam_* / smokeColorParam_* 逐位对齐（flag │ appear+J │ keep+J │ vanish+J │
+    # lighting · lifeType · unkn9），且**三段的 keep 位众数全是 20、vanish 位全是 40**，
+    # 与 RGBFIRE 的 keepFrame=20 / vanishFrame=40 精确同值（全语料 13927 块）。
+    # 三段 × 两个位置 × 精确同值，不可能是巧合。⚠ 仍未实机：**三组分别管哪个颜色通道未知**，
+    # 故按位置编号 0/1/2，不猜通道名。段2 只有 9 位（没有 unkn9），是三段唯一的结构差异。
     ('typeFlag',                 'i'),   # 原 unkn0
     ('color',                    ('XYZ[]', 2, 2)),
     ('brightnessSlot1',          'f'),
@@ -1382,39 +1389,63 @@ _RGBWATER_FIXED_SCHEMA = [
     ('brightnessSlotMultiplier2','f'),
     ('opacity',                  'f'),
     ('unknownFloat',             'f'),
-    ('unknownFlagInt_0', 'i'),
-    ('unknownEnumInt_1', 'i'),
-    ('unknownEnumInt_2', 'i'),
-    ('unknEnum2_0', 'i'),
-    ('unknEnum2_1', 'i'),
-    ('unknEnum2_2', 'i'),
-    ('unknEnum2_3', 'i'),
-    ('unknFlag2_4', 'i'),
-    ('unknFlag2_5', 'i'),
-    ('unknEnum2_6', 'i'),
-    ('unknFlag2_7', 'i'),
-    ('unknEnum2_8', 'i'),
-    ('unknEnum2_9', 'i'),
-    ('unkn2_10', 'i'),
-    ('unknEnum2_11', 'i'),
-    ('unkn2_12', 'i'),
-    ('unknEnum2_13', 'i'),
-    ('unknFlag2_14', 'i'),
-    ('unknEnum2_15', 'i'),
-    ('unknEnum2_16', 'i'),
-    ('unknFlag2_17', 'i'),
-    ('unknEnum2_18', 'i'),
-    ('unknEnum2_19', 'i'),
-    ('unkn2_20', 'i'),
-    ('unknEnum2_21', 'i'),
-    ('unkn2_22', 'i'),
-    ('unknEnum2_23', 'i'),
-    ('unknFlag2_24', 'i'),
-    ('unknEnum2_25', 'i'),
+    ('colorParam0_useLife', 'i'),
+    ('colorParam0_appearFrame', 'i'),
+    ('colorParam0_appearFrameJitter', 'i'),
+    ('colorParam0_keepFrame', 'i'),
+    ('colorParam0_keepFrameJitter', 'i'),
+    ('colorParam0_vanishFrame', 'i'),
+    ('colorParam0_vanishFrameJitter', 'i'),
+    ('colorParam0_lighting', 'i'),
+    ('colorParam0_lifeType', 'i'),
+    ('colorParam0_unkn9', 'i'),
+    ('colorParam1_useLife', 'i'),
+    ('colorParam1_appearFrame', 'i'),
+    ('colorParam1_appearFrameJitter', 'i'),
+    ('colorParam1_keepFrame', 'i'),
+    ('colorParam1_keepFrameJitter', 'i'),
+    ('colorParam1_vanishFrame', 'i'),
+    ('colorParam1_vanishFrameJitter', 'i'),
+    ('colorParam1_lighting', 'i'),
+    ('colorParam1_lifeType', 'i'),
+    ('colorParam1_unkn9', 'i'),
+    ('colorParam2_useLife', 'i'),
+    ('colorParam2_appearFrame', 'i'),
+    ('colorParam2_appearFrameJitter', 'i'),
+    ('colorParam2_keepFrame', 'i'),
+    ('colorParam2_keepFrameJitter', 'i'),
+    ('colorParam2_vanishFrame', 'i'),
+    ('colorParam2_vanishFrameJitter', 'i'),
+    ('colorParam2_lighting', 'i'),
+    ('colorParam2_lifeType', 'i'),
 ]  # = 4+8+28+12+104 = 156 B
 assert _schema_size(_RGBWATER_FIXED_SCHEMA) == 156, \
     f"_RGBWATER_FIXED_SCHEMA size mismatch: {_schema_size(_RGBWATER_FIXED_SCHEMA)}"
-RGBWATER_ATTR = attr_from_legacy(_schema_size(_RGBWATER_FIXED_SCHEMA), _RGBWATER_FIXED_SCHEMA)
+RGBWATER_ATTR = attr_from_legacy(
+    _schema_size(_RGBWATER_FIXED_SCHEMA), _RGBWATER_FIXED_SCHEMA,
+    labels={
+        'colorParam0_appearFrame': '组0 出现帧',
+        'colorParam0_keepFrame': '组0 保持帧',
+        'colorParam0_vanishFrame': '组0 消失帧',
+        'colorParam0_lifeType': '组0 生命期模式',
+        'colorParam1_appearFrame': '组1 出现帧',
+        'colorParam1_keepFrame': '组1 保持帧',
+        'colorParam1_vanishFrame': '组1 消失帧',
+        'colorParam1_lifeType': '组1 生命期模式',
+        'colorParam2_appearFrame': '组2 出现帧',
+        'colorParam2_keepFrame': '组2 保持帧',
+        'colorParam2_vanishFrame': '组2 消失帧',
+        'colorParam2_lifeType': '组2 生命期模式',
+    },
+    overrides={
+        'colorParam0_useLife':  Bool('colorParam0_useLife',  label_en='Use Life 0',  label_zh='组0 启用生命期'),
+        'colorParam0_lighting': Bool('colorParam0_lighting', label_en='Lighting 0', label_zh='组0 受光照'),
+        'colorParam1_useLife':  Bool('colorParam1_useLife',  label_en='Use Life 1',  label_zh='组1 启用生命期'),
+        'colorParam1_lighting': Bool('colorParam1_lighting', label_en='Lighting 1', label_zh='组1 受光照'),
+        'colorParam2_useLife':  Bool('colorParam2_useLife',  label_en='Use Life 2',  label_zh='组2 启用生命期'),
+        'colorParam2_lighting': Bool('colorParam2_lighting', label_en='Lighting 2', label_zh='组2 受光照'),
+    },
+)
 
 # EXTERNRGBWATER（Extern 覆盖版，2026-07）：与主属性 _RGBWATER_FIXED_SCHEMA (156B)
 # 完全同构，无 path；语料实测（48/48 元素）额外多出固定 5B 尾巴 int32(恒为1)+

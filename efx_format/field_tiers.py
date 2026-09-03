@@ -16,7 +16,7 @@ efx_format/field_tiers.py — 属性字段分档表（常用 / 高级）。
 ⚠ 本文件由 `python tools/gen_field_tiers.py --write` 生成，别手改——
 手改会在下次重跑统计时丢失。要放行某个字段请加进生成脚本的 KEEP_COMMON。
 
-语料：`efx_samples/official/` 10084 文件（2026-08-18 生成）。
+语料：`efx_samples/official/` 10084 文件（2026-09-03 生成）。
 """
 
 # TYPE_NAME -> 该类型下归入「高级」的字段 ori_name 集合
@@ -497,35 +497,6 @@ ADVANCED_FIELDS = {
     }),
     'RGBWATER': frozenset({
         'typeFlag',
-        'unkn2_10',
-        'unkn2_12',
-        'unkn2_20',
-        'unkn2_22',
-        'unknEnum2_0',
-        'unknEnum2_1',
-        'unknEnum2_11',
-        'unknEnum2_13',
-        'unknEnum2_15',
-        'unknEnum2_16',
-        'unknEnum2_18',
-        'unknEnum2_19',
-        'unknEnum2_2',
-        'unknEnum2_21',
-        'unknEnum2_23',
-        'unknEnum2_25',
-        'unknEnum2_3',
-        'unknEnum2_6',
-        'unknEnum2_8',
-        'unknEnum2_9',
-        'unknFlag2_14',
-        'unknFlag2_17',
-        'unknFlag2_24',
-        'unknFlag2_4',
-        'unknFlag2_5',
-        'unknFlag2_7',
-        'unknownEnumInt_1',
-        'unknownEnumInt_2',
-        'unknownFlagInt_0',
         'unknownFloat',
     }),
     'RIBBON': frozenset({
