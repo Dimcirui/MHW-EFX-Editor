@@ -1373,13 +1373,15 @@ def pack_lightning(values: dict) -> bytes:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _RGBWATER_FIXED_SCHEMA = [
-    # ⚠ 2026-08-18：9..37 位原为 unknFlagInt_0 / unknEnum2_* 一串占位名，现按**结构同构**
-    # 改名成三组 colorParamN_*。依据：这 29 个字段刚好是三段 10-字段块，与 RGBFIRE 的
-    # fireColorParam_* / smokeColorParam_* 逐位对齐（flag │ appear+J │ keep+J │ vanish+J │
-    # lighting · lifeType · unkn9），且**三段的 keep 位众数全是 20、vanish 位全是 40**，
-    # 与 RGBFIRE 的 keepFrame=20 / vanishFrame=40 精确同值（全语料 13927 块）。
-    # 三段 × 两个位置 × 精确同值，不可能是巧合。⚠ 仍未实机：**三组分别管哪个颜色通道未知**，
-    # 故按位置编号 0/1/2，不猜通道名。段2 只有 9 位（没有 unkn9），是三段唯一的结构差异。
+    # ── 三段 10/10/9 字段的生命期时序块，与 RGBFIRE 的 fireColorParam_/smokeColorParam_
+    # 逐位同构（flag │ appear+J │ keep+J │ vanish+J │ lighting · lifeType · unkn9）。
+    # 2026-09-03 用户实机确认前两段的归属：段0 管高光、段1 管水膜。语料侧两道零门独立
+    # 印证——intensitySheet==0 的 97 个块里动过段1 的**一个都没有**（colorSheet 全黑的
+    # 42 个块同样是 0.0%）；intensitySpecular==0 的 199 个块里开过段0 useLife 的也是 0 个。
+    # ⚠ 段2 仍未定，且**不是 cubemap**：cubemap 真正启用（有 path 且 intensityCubeMap≠0）
+    # 时段2 的 useLife 是 19.4%、没启用时 22.2%，基本持平；反倒是别的层关掉时段2 用得更多
+    # （intensitySpecular==0 时 55.8%），看着像「总是在的那一层」。段2 只有 9 位（没有
+    # unkn9），是三段唯一的结构差异。
     ('typeFlag',                 'i'),   # 原 unkn0
     # ── 头部 2 色 + 7 float。2026-09-03 用户在 Blender 里逐条建 TIML 轨道实测，把 4 个
     # 位置钉到了官方 TimelineParam 名（DT hash 见 timl/names.py::FIELD_TO_DT）。
@@ -1398,26 +1400,26 @@ _RGBWATER_FIXED_SCHEMA = [
     # 对应 DT——引擎声明 6 个 float 参数、这里有 7 个 float，必有一个不可动画，就是它。
     # 众数 0.3 占 73%，不像强度量。
     ('unknownFloat',             'f'),
-    ('colorParam0_useLife', 'i'),
-    ('colorParam0_appearFrame', 'i'),
-    ('colorParam0_appearFrameJitter', 'i'),
-    ('colorParam0_keepFrame', 'i'),
-    ('colorParam0_keepFrameJitter', 'i'),
-    ('colorParam0_vanishFrame', 'i'),
-    ('colorParam0_vanishFrameJitter', 'i'),
-    ('colorParam0_lighting', 'i'),
-    ('colorParam0_lifeType', 'i'),
-    ('colorParam0_unkn9', 'i'),
-    ('colorParam1_useLife', 'i'),
-    ('colorParam1_appearFrame', 'i'),
-    ('colorParam1_appearFrameJitter', 'i'),
-    ('colorParam1_keepFrame', 'i'),
-    ('colorParam1_keepFrameJitter', 'i'),
-    ('colorParam1_vanishFrame', 'i'),
-    ('colorParam1_vanishFrameJitter', 'i'),
-    ('colorParam1_lighting', 'i'),
-    ('colorParam1_lifeType', 'i'),
-    ('colorParam1_unkn9', 'i'),
+    ('specularColorParam_useLife', 'i'),
+    ('specularColorParam_appearFrame', 'i'),
+    ('specularColorParam_appearFrameJitter', 'i'),
+    ('specularColorParam_keepFrame', 'i'),
+    ('specularColorParam_keepFrameJitter', 'i'),
+    ('specularColorParam_vanishFrame', 'i'),
+    ('specularColorParam_vanishFrameJitter', 'i'),
+    ('specularColorParam_lighting', 'i'),
+    ('specularColorParam_lifeType', 'i'),
+    ('specularColorParam_unkn9', 'i'),
+    ('sheetColorParam_useLife', 'i'),
+    ('sheetColorParam_appearFrame', 'i'),
+    ('sheetColorParam_appearFrameJitter', 'i'),
+    ('sheetColorParam_keepFrame', 'i'),
+    ('sheetColorParam_keepFrameJitter', 'i'),
+    ('sheetColorParam_vanishFrame', 'i'),
+    ('sheetColorParam_vanishFrameJitter', 'i'),
+    ('sheetColorParam_lighting', 'i'),
+    ('sheetColorParam_lifeType', 'i'),
+    ('sheetColorParam_unkn9', 'i'),
     ('colorParam2_useLife', 'i'),
     ('colorParam2_appearFrame', 'i'),
     ('colorParam2_appearFrameJitter', 'i'),
@@ -1441,24 +1443,24 @@ RGBWATER_ATTR = attr_from_legacy(
         'intensitySpecular': '高光强度',
         'intensitySheet': '水膜强度',
         'intensityAlpha': '透明度强度',
-        'colorParam0_appearFrame': '组0 出现帧',
-        'colorParam0_keepFrame': '组0 保持帧',
-        'colorParam0_vanishFrame': '组0 消失帧',
-        'colorParam0_lifeType': '组0 生命期模式',
-        'colorParam1_appearFrame': '组1 出现帧',
-        'colorParam1_keepFrame': '组1 保持帧',
-        'colorParam1_vanishFrame': '组1 消失帧',
-        'colorParam1_lifeType': '组1 生命期模式',
+        'specularColorParam_appearFrame': '高光 出现帧',
+        'specularColorParam_keepFrame': '高光 保持帧',
+        'specularColorParam_vanishFrame': '高光 消失帧',
+        'specularColorParam_lifeType': '高光 生命期模式',
+        'sheetColorParam_appearFrame': '水膜 出现帧',
+        'sheetColorParam_keepFrame': '水膜 保持帧',
+        'sheetColorParam_vanishFrame': '水膜 消失帧',
+        'sheetColorParam_lifeType': '水膜 生命期模式',
         'colorParam2_appearFrame': '组2 出现帧',
         'colorParam2_keepFrame': '组2 保持帧',
         'colorParam2_vanishFrame': '组2 消失帧',
         'colorParam2_lifeType': '组2 生命期模式',
     },
     overrides={
-        'colorParam0_useLife':  Bool('colorParam0_useLife',  label_en='Use Life 0',  label_zh='组0 启用生命期'),
-        'colorParam0_lighting': Bool('colorParam0_lighting', label_en='Lighting 0', label_zh='组0 受光照'),
-        'colorParam1_useLife':  Bool('colorParam1_useLife',  label_en='Use Life 1',  label_zh='组1 启用生命期'),
-        'colorParam1_lighting': Bool('colorParam1_lighting', label_en='Lighting 1', label_zh='组1 受光照'),
+        'specularColorParam_useLife':  Bool('specularColorParam_useLife',  label_en='Use Life 0',  label_zh='高光 启用生命期'),
+        'specularColorParam_lighting': Bool('specularColorParam_lighting', label_en='Lighting 0', label_zh='高光 受光照'),
+        'sheetColorParam_useLife':  Bool('sheetColorParam_useLife',  label_en='Use Life 1',  label_zh='水膜 启用生命期'),
+        'sheetColorParam_lighting': Bool('sheetColorParam_lighting', label_en='Lighting 1', label_zh='水膜 受光照'),
         'colorParam2_useLife':  Bool('colorParam2_useLife',  label_en='Use Life 2',  label_zh='组2 启用生命期'),
         'colorParam2_lighting': Bool('colorParam2_lighting', label_en='Lighting 2', label_zh='组2 受光照'),
     },
