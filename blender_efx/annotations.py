@@ -229,54 +229,29 @@ FIELD_ANNOTATIONS = {
     # ─── VELOCITY3D ───────────────────────────────────────────────────────────
     # ExternVelocity3D (EFX_Subtypes.bt)
     ("VELOCITY3D", "baseAxis"): {
-        "EN": "Base axis for speed (one of six cardinal axes, not a free direction vector), "
-              "combined with rotationX/Y/Z to give the final direction. Only meaningful when "
-              "velocityType=Directional. Confirmed (2026-07-26): 0=left,1=up,2=front,3=right,"
-              "4=down,5=back — equivalent to the community RE Engine sequel schema's Cartesian "
-              "AxisType (0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z), since in the game's default coordinate "
-              "system +X=left, +Y=up, +Z=front. The two descriptions are the same mapping, just "
-              "phrased differently — not a real disagreement.",
-        "ZH": "speed 的基准轴（六个基准轴之一，不是自由方向向量），与 rotationX/Y/Z 复合得到最终"
-              "方向。仅在 velocityType=Directional 时有意义。已确认(2026-07-26)：0=左,1=上,2=前,"
-              "3=右,4=下,5=后——跟社区 RE Engine 续作 schema 的笛卡尔 AxisType"
-              "（0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z）是同一套映射，因为游戏默认坐标系下 +X=左,"
-              "+Y=上,+Z=前。两种描述只是措辞不同，不是真的分歧。",
+        "EN": "Base axis for speed (one of six cardinal axes, not a free direction vector), combined with rotationX/Y/Z to give the final direction. Only meaningful when velocityType=Directional. : 0=left,1=up,2=front,3=right,4=down,5=back — equivalent to the community RE Engine sequel schema's Cartesian AxisType (0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z), since in the game's default coordinate system +X=left, +Y=up, +Z=front. The two descriptions are the same mapping, just phrased differently — not a real disagreement.",
+        "ZH": 'speed 的基准轴（六个基准轴之一，不是自由方向向量），与 rotationX/Y/Z 复合得到最终方向。仅在 velocityType=Directional 时有意义。0=左,1=上,2=前,3=右,4=下,5=后——跟社区 RE Engine 续作 schema 的笛卡尔 AxisType（0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z）是同一套映射，因为游戏默认坐标系下 +X=左,+Y=上,+Z=前。两种描述只是措辞不同，不是真的分歧。',
     },
     ("VELOCITY3D", "rotOrder"): {
-        "EN": "Confirmed (2026-07-26) via a community RE Engine sequel schema as a rotation-order "
-              "enum: 0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX. Not the same numeric mapping as "
-              "TRANSFORM3D's rotation order convention.",
-        "ZH": "已依 2026-07-26 一份社区 RE Engine 续作 schema 确认为旋转顺序枚举："
+        "EN": "A rotation-order enum: 0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX. Not the same numeric mapping as TRANSFORM3D's rotation order convention.",
+        "ZH": "旋转顺序枚举："
               "0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX。跟 TRANSFORM3D 的旋转顺序惯例不是同一套数值映射。",
     },
     ("VELOCITY3D", "speedCoef"): {
-        "EN": "Acceleration coefficient. 1=uniform, >1=accelerate, <1=decelerate until 0. "
-              "(A community schema calls the equivalent field \"drag\" — 1=no drag/constant "
-              "speed, 0=instant stop — conceptually the same force; kept the name acceleration "
-              "per 2026-07-26 decision.)",
-        "ZH": "加速度系数，1为匀速，>1为加速，<1为减速直至0。（社区 schema 里对应字段叫 \"drag\""
-              "(阻力)——1=无阻力/匀速，0=瞬间停止，本质是同一个力；2026-07-26 决定保留 "
-              "acceleration 这个名字不跟随改名。）",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("VELOCITY3D", "velocityType"): {
         "EN": "Decides how the particle's movement DIRECTION is determined (speed always comes "
               "from speed/acceleration; gravity is independent and always applies). "
-              "0=Directional (direction from baseAxis + rotation), 1=DirectionalSpread (confirmed "
-              "2026-07-26 in-game as the Vi=(divergence-1)*spawnPos+velocity, normalized, model — "
+              "0=Directional (direction from baseAxis + rotation), 1=DirectionalSpread (Vi=(divergence-1)*spawnPos+velocity, normalized, model — "
               "formerly mislabeled \"Normal\"), 2=Radial (always moves outward, rotation/velocity/"
               "divergence have no effect), 3=EmitterMotion (inherits the emitter's own movement; "
               "gated by minMovementThreshold; formerly labeled \"Spread\"). ⚠ Our corpus has also "
               "shown values 4/5 (previously documented as ScreenSpace/Unkn) that a community RE "
               "Engine sequel schema's 4-value enum doesn't include — unreconciled, needs re-check "
               "against the corpus before trusting either side fully.",
-        "ZH": "决定粒子运动方向如何确定（速度始终由 speed/acceleration 决定，重力独立于此始终"
-              "生效）。0=Directional(由 baseAxis + rotation 决定方向)，1=DirectionalSpread"
-              "(2026-07-26 实机确认即 Vi=(divergence-1)*生成坐标+velocity 归一化模型，原误"
-              "标为\"Normal\")，2=Radial(始终向外运动，rotation/velocity/divergence 均无效)，"
-              "3=EmitterMotion(继承 emitter 自身移动，受 minMovementThreshold 门控，原标"
-              "为\"Spread\")。⚠ 我们语料还观测到 4/5 取值（旧注释里叫 ScreenSpace/Unkn），"
-              "社区一份 RE Engine 续作 schema 只有 0~3 四态、没有这两个——两边没对上，"
-              "回查语料前不能全信任何一边。",
+        "ZH": '决定粒子运动方向如何确定（速度始终由 speed/acceleration 决定，重力独立于此始终生效）。0=Directional(由 baseAxis + rotation 决定方向)，1=DirectionalSpread(即 Vi=(divergence-1)*生成坐标+velocity 归一化模型，原误标为"Normal")，2=Radial(始终向外运动，rotation/velocity/divergence 均无效)，3=EmitterMotion(继承 emitter 自身移动，受 minMovementThreshold 门控，原标为"Spread")。⚠ 我们语料还观测到 4/5 取值（旧注释里叫 ScreenSpace/Unkn），社区一份 RE Engine 续作 schema 只有 0~3 四态、没有这两个——两边没对上，回查语料前不能全信任何一边。',
     },
     ("VELOCITY3D", "gravity"): {
         "EN": "Gravity. Always applies regardless of velocityType.",
@@ -308,20 +283,20 @@ FIELD_ANNOTATIONS = {
         "ZH": "玩家皮肤",
     },
     ("SHADERSETTINGS", "unknBool0"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("SHADERSETTINGS", "unknBool1"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("SHADERSETTINGS", "unknBool2"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("SHADERSETTINGS", "unknBool3"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("SHADERSETTINGS", "unknEnum3_1"): {
         "EN": "Render layer / billboard mode. "
@@ -366,13 +341,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "轴掩码（bitmask）：bit0=X，bit1=Y，bit2=Z。控制哪些轴参与自旋。",
     },
     ("ROTATEANIM", "rotationModeMask"): {
-        "EN": "Confirmed in-game (2026-07): 0=billboard plane rotation system only (billboardRotation "
-              "+ billboardRotationAccel); 1=same + randomized forward/reverse direction; 2=spin "
-              "velocity system only (spin_velocity + spinAcceleration); 3=same + randomized "
-              "forward/reverse direction (each axis independently randomized).",
-        "ZH": "实机确认(2026-07)：0=仅启用平面旋转系(billboardRotation+billboardRotationAccel)；"
-              "1=同上+随机正反向；2=仅启用自旋速度系(spin_velocity+spinAcceleration)；"
-              "3=同上+随机正反向(每个轴独立随机)。",
+        "EN": ': 0=billboard plane rotation system only (billboardRotation + billboardRotationAccel); 1=same + randomized forward/reverse direction; 2=spin velocity system only (spin_velocity + spinAcceleration); 3=same + randomized forward/reverse direction (each axis independently randomized).',
+        "ZH": '0=仅启用平面旋转系(billboardRotation+billboardRotationAccel)；1=同上+随机正反向；2=仅启用自旋速度系(spin_velocity+spinAcceleration)；3=同上+随机正反向(每个轴独立随机)。',
     },
 
     # ─── ALPHACORRECTION ──────────────────────────────────────────────────────
@@ -386,8 +356,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "对 alpha 做对比度/伽马修正（原字段名 transparentness）。无上限——值越大，低/中 alpha（边缘）越快变透明，高 alpha（核心）保留；可超过 1，过大时几乎全图变透明。",
     },
     ("ALPHACORRECTION", "unkn3"): {
-        "EN": "Unnamed float parameter (BT template mislabels it 'NULL' — it is not a fixed constant). Usually 0 (unset); other values seen roughly in [-3.0, 3.0]. Purpose unconfirmed.",
-        "ZH": "未命名的浮点参数（BT 模板误标为 NULL，实际并非恒定值）。通常为 0（未设置）；其余取值大致落在 [-3.0, 3.0] 之间。具体作用尚未确认。",
+        "EN": "Unnamed float parameter (BT template mislabels it 'NULL' — it is not a fixed constant). Usually 0 (unset); other values seen roughly in [-3.0, 3.0]. Purpose unknown.",
+        "ZH": "未命名的浮点参数（BT 模板误标为 NULL，实际并非恒定值）。通常为 0（未设置）；其余取值大致落在 [-3.0, 3.0] 之间。具体作用未知。",
     },
 
     # ─── TUBELIGHT ────────────────────────────────────────────────────────────
@@ -401,8 +371,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "光柱终点颜色。",
     },
     ("TUBELIGHT", "headColorEpvSlot"): {
-        "EN": "EPV color slot associated with headColor.",
-        "ZH": "起点颜色对应的 EPV 颜色槽。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("TUBELIGHT", "columnLength"): {
         "EN": "Length of the light column (start=headColor, end=tailColor).",
@@ -428,41 +398,49 @@ FIELD_ANNOTATIONS = {
         "EN": "Light intensity.",
         "ZH": "光照强度。",
     },
-    ("TUBELIGHT", "lightIntensityJitter"): {
-        "EN": "Random jitter on the light intensity.",
-        "ZH": "光照强度的随机抖动。",
+    ("TUBELIGHT", "coreIntensity"): {
+        "EN": "Brightness of the core running down the middle of the tube.",
+        "ZH": "光柱中央那条亮芯的亮度。",
+    },
+    ("TUBELIGHT", "coreIntensityJitter"): {
+        "EN": "Random jitter on the core brightness.",
+        "ZH": "亮芯亮度的随机抖动。",
     },
     ("TUBELIGHT", "tailGlowSpread"): {
         "EN": "Makes the tail glow longer with softer/blurrier edges.",
         "ZH": "让尾光变得更长、边缘更虚。",
     },
-    ("TUBELIGHT", "frontFaceTintMode"): {
-        "EN": "0=emission-facing direction unaffected by the tube's own light. 1=surrounding glow brightens, facing direction tinted by tailColor.",
-        "ZH": "0=发射面朝向方向不受自身光影响；1=发光区域四周变亮，朝向方向受 tailColor 染色。",
+    ("TUBELIGHT", "headEffectiveRadius"): {
+        "EN": "How far the light reaches around the head end of the tube. Raising it brightens the surrounding glow and spreads the headColor tint further.",
+        "ZH": "光柱起点端的光照覆盖半径。调大会让四周的辉光更亮、起点色染得更远。",
     },
-    ("TUBELIGHT", "backFaceTintMode"): {
-        "EN": "Same as frontFaceTintMode but inverted — controls whether the region opposite the facing direction is tinted by headColor.",
-        "ZH": "跟 frontFaceTintMode 一样但反过来——控制发射面反向区域是否受 headColor 染色。",
+    ("TUBELIGHT", "tailEffectiveRadius"): {
+        "EN": "Same as headEffectiveRadius but for the tail end.",
+        "ZH": "同 headEffectiveRadius，作用在光柱终点端。",
     },
     ("TUBELIGHT", "tailPlaneOffset"): {
         "EN": "Front-back position of the tailColor emitting plane.",
         "ZH": "tailColor 发光平面的前后位置。",
     },
     ("TUBELIGHT", "unkn6b_1"): {
-        "EN": "Possibly related to the brightness/glow halo of the emission — not confirmed.",
-        "ZH": "可能跟发光的明暗光圈相关，尚未确认。",
+        "EN": "Possibly related to the brightness/glow halo of the emission",
+        "ZH": "可能跟发光的明暗光圈相关，未知。",
     },
     ("TUBELIGHT", "unknFixed5_0"): {
         "EN": "Always 24 in the sample data — likely just a common default value.",
         "ZH": "语料里恒为 24，可能只是常见的默认值。",
     },
     ("TUBELIGHT", "unkn1_0"): {
-        "EN": "Possibly texture scroll speed.",
-        "ZH": "可能为纹理滚动速度。",
+        "EN": "Related to whether the light from the head/tail ends spills onto the surroundings. Exact behaviour unknown.",
+        "ZH": "与起点/终点的光是否照亮周围环境有关，具体行为未知。",
     },
-    ("TUBELIGHT", "unkn1_8"): {
-        "EN": "Possibly core brightness.",
-        "ZH": "可能为核心亮度。",
+    ("TUBELIGHT", "textureScrollSpeed"): {
+        "EN": "How fast the tube's texture scrolls along its length.",
+        "ZH": "光柱贴图沿长度方向滚动的速度。",
+    },
+    ("TUBELIGHT", "effectiveRadius"): {
+        "EN": "Overall reach of the light this tube casts on its surroundings.",
+        "ZH": "本光柱对周围环境的整体光照半径。",
     },
     ("TUBELIGHT", "unkn1_10"): {
         "EN": "Possibly related to the light column's length; relation to columnLength/columnLengthModifier not yet determined.",
@@ -500,12 +478,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "火焰色时序参数（淡入 / 持续 / 淡出）。",
     },
     ("RGBFIRE", "fireColorParam_lifeType"): {
-        "EN": "Usually 0. Values 1 and 2 also occur, meaning unconfirmed.",
+        "EN": "Usually 0. Values 1 and 2 also occur, meaning unknown.",
         "ZH": "通常为 0。另有取值 1 和 2，含义未确认。",
     },
     ("RGBFIRE", "fireColorParam_unkn9"): {
-        "EN": "Setting to 1 kills the fire color. Values 2/8/9 also occur, meaning "
-              "unconfirmed.",
+        "EN": 'Setting to 1 kills the fire color. Values 2/8/9 also occur, meaning unknown.',
         "ZH": "设为 1 会消除火焰色。另有取值 2/8/9，含义未确认。",
     },
     ("RGBFIRE", "smokeColorParam_useLife"): {
@@ -513,12 +490,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "烟雾色时序参数（淡入 / 持续 / 淡出）。注意：即使持续时间很短，也可能对常驻特效造成持久染色。",
     },
     ("RGBFIRE", "smokeColorParam_lifeType"): {
-        "EN": "Usually 0. Values 1 and 2 also occur, meaning unconfirmed.",
+        "EN": "Usually 0. Values 1 and 2 also occur, meaning unknown.",
         "ZH": "通常为 0。另有取值 1 和 2，含义未确认。",
     },
     ("RGBFIRE", "smokeColorParam_unkn9"): {
-        "EN": "Setting to 1 kills the smoke color. Values 2/7/8/9 also occur, meaning "
-              "unconfirmed.",
+        "EN": 'Setting to 1 kills the smoke color. Values 2/7/8/9 also occur, meaning unknown.',
         "ZH": "设为 1 会消除烟雾色。另有取值 2/7/8/9，含义未确认。",
     },
 
@@ -669,8 +645,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "每秒对速度做乘法（UV2）",
     },
     ("UVCONTROL", "flowmapStrengthCoef"): {
-        "EN": "Flowmap strength acceleration. Part of the flowmap octet. Formerly opacityAcceleration.",
-        "ZH": "流动贴图强度加速度。属于 flowmap 八件套之一。原名 opacityAcceleration。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
 
     # ─── EMITTERSHAPE2D ───────────────────────────────────────────────────────
@@ -679,8 +655,12 @@ FIELD_ANNOTATIONS = {
     # ─── RAYCAST ──────────────────────────────────────────────────────────────
     # RayCast (EFX_Subtypes.bt)
     ("RAYCAST", "direction"): {
-        "EN": "0=Left, 1=Down, 2=Forward, 3=Right, 4=Up, 5=Backward",
-        "ZH": "0=左, 1=下, 2=前, 3=右, 4=上, 5=后",
+        "EN": "Ray direction. Same AxisDirection6 enum as VELOCITY3D/RIBBON/RIBBONBLADE: "
+              "0=Left, 1=Up, 2=Front, 3=Right, 4=Down, 5=Back. Casting downward to find "
+              "the ground is the most common use (4 alone is 36% of all RAYCAST blocks).",
+        "ZH": "射线方向。与 VELOCITY3D/RIBBON/RIBBONBLADE 同一套 AxisDirection6 枚举："
+              "0=左, 1=上, 2=前, 3=右, 4=下, 5=后。朝下探地面是最常见的用法"
+              "（光是 4 就占全部 RAYCAST 块的 36%）。",
     },
     ("RAYCAST", "unknownEnum1"): {
         "EN": "Usually -1; occasionally 0",
@@ -697,8 +677,7 @@ FIELD_ANNOTATIONS = {
     # 调查过程记在 docs/ATTRIBUTE_BEHAVIOR_NOTES.md。
     # typeFlag/section_length/spacer 是大部分 attribute 都有的头部字段，见下方通用说明。
     ("HOMING", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
-              "marker rather than a tunable value. Exact value semantics unconfirmed.",
+        "EN": 'Header field present in most attribute types, likely a type/category marker rather than a tunable value. Exact value semantics unknown.',
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数，具体数值"
               "语义未确认。",
     },
@@ -982,15 +961,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "生效范围：镜头进入这个范围内才会触发生效。",
     },
     ("TONEMAPFILTER", "unknFixed0_1"): {
-        "EN": "Meaning unconfirmed. Only 1 official sample observed (value 16); doesn't "
-              "cleanly match the path length (32), the path length without its trailing "
-              "null (31), or the fixed header size (24), so a possible \"byte length "
-              "excluding the path\" reading isn't supported by this single data point.",
+        "EN": 'Meaning unknown. Only 1 official sample observed (value 16); doesn\'t cleanly match the path length (32), the path length without its trailing null (31), or the fixed header size (24), so a possible "byte length excluding the path" reading isn\'t supported by this single data point.',
         "ZH": "含义未确认。官方语料仅 1 例（取值 16）：跟路径长度（32）、去掉末尾 null 的路径长度"
               "（31）、固定头部大小（24）都对不上，单个样本不支持\"路径之外的字节长\"这个猜测。",
     },
     ("TONEMAPFILTER", "unknFixed2_2"): {
-        "EN": "Meaning unconfirmed.",
+        "EN": "Meaning unknown.",
         "ZH": "含义未确认。",
     },
     ("LAYOUT", "typeFlag"): {
@@ -1204,40 +1180,40 @@ FIELD_ANNOTATIONS = {
               "useEmissiveColorRange 各自的开关状态。",
     },
     ("MESH", "unknFlag_cm2_3"): {
-        "EN": "Fourth colorize_material2 toggle. Purpose unconfirmed.",
-        "ZH": "colorize_material2 的第四个开关。作用尚未确认。",
+        "EN": "Fourth colorize_material2 toggle. Purpose unknown.",
+        "ZH": "colorize_material2 的第四个开关。作用未知。",
     },
     ("MESH", "unknBool0"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("MESH", "unknBool1"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("MESH", "unknBool2"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("MESH", "unknBool3"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("MESH", "unknBool4"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("MESH", "unknBool5"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("MESH", "shadowCastBitflag"): {
         "EN": "Shadow casting bitflag",
         "ZH": "投影位标志",
     },
     ("MESH", "affectedByLight"): {
-        "EN": "Which lights affect the mesh. Per-bit meaning unconfirmed.",
-        "ZH": "哪些光照会影响该模型。各位含义尚未确认。",
+        "EN": "Which lights affect the mesh. Per-bit meaning unknown.",
+        "ZH": "哪些光照会影响该模型。各位含义未知。",
     },
 
     # ─── RIBBON (fixed part fields) ───────────────────────────────────────────
@@ -1252,36 +1228,36 @@ FIELD_ANNOTATIONS = {
               "四边形。",
     },
     ("RIBBON", "unknBool16_2_0"): {
-        "EN": "Purpose unconfirmed. Turning it off stops the ribbon from facing the camera.",
-        "ZH": "作用尚未确认。关闭后将无法朝向摄像机。",
+        "EN": "Purpose unknown. Turning it off stops the ribbon from facing the camera.",
+        "ZH": "作用未知。关闭后将无法朝向摄像机。",
     },
     ("RIBBON", "unknBool16_2_1"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBON", "unknBool1"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBON", "unknBool3a"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBON", "unknBool3b"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBON", "unknBool5"): {
         "EN": "Hides the back half of the ribbon — only the front half renders.",
         "ZH": "隐藏条带的后半部分，只显示前半部分。",
     },
     ("RIBBON", "unknBool7"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBON", "unknBool8"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBON", "flowmapPlayOnce"): {
         "EN": "Plays the flowmap scroll once instead of looping.",
@@ -1322,16 +1298,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "下面三个全局力字段的总开关。",
     },
     ("RIBBON", "unknBool28_2"): {
-        "EN": "Purpose unconfirmed — appears to layer on top of the global force switch.",
-        "ZH": "作用尚未确认——似乎是叠加在全局力开关之上的。",
+        "EN": "Purpose unknown — appears to layer on top of the global force switch.",
+        "ZH": "作用未知——似乎是叠加在全局力开关之上的。",
     },
     ("RIBBON", "unknGlobalForceX"): {
-        "EN": "Force applied to the ribbon from its tail end, along a fixed axis. The three "
-              "force axes are orthogonal and their directions never change — they follow "
-              "neither the local rotation nor the TRANSFORM3D rotation. Which way each axis "
-              "points is unconfirmed.",
-        "ZH": "自尾端施加到条带上的力，沿一个固定轴向。三个力的轴向互相正交、方向恒定不变"
-              "——既不跟随局部旋转，也不跟随 TRANSFORM3D 的旋转。各轴具体指向哪一侧尚未确认。",
+        "EN": 'Force applied to the ribbon from its tail end, along a fixed axis. The three force axes are orthogonal and their directions never change — they follow neither the local rotation nor the TRANSFORM3D rotation. Which way each axis points is unknown.',
+        "ZH": '自尾端施加到条带上的力，沿一个固定轴向。三个力的轴向互相正交、方向恒定不变——既不跟随局部旋转，也不跟随 TRANSFORM3D 的旋转。各轴具体指向哪一侧未知。',
     },
     ("RIBBON", "unknGlobalForceY"): {
         "EN": "Force along the vertical axis. A negative value behaves much like gravity. "
@@ -1370,11 +1342,8 @@ FIELD_ANNOTATIONS = {
 
     # ─── BILLBOARD3D (fixed part fields) ──────────────────────────────────────
     ("BILLBOARD3D", "applicationRule"): {
-        "EN": "Packed flags edited via the popup: two mixable toggles (enable flowmap / "
-              "play once then freeze) plus a 3-way application mode (default / mode 1 / "
-              "mode 2). Mode meaning not yet confirmed in-game.",
-        "ZH": "打包标志，用弹窗编辑：两个可混合开关（启用流动贴图／播一次后冻结）加一个"
-              "三选一应用模式（默认／模式1／模式2）。模式具体含义尚未实机确认。",
+        "EN": 'Packed flags edited via the popup: two mixable toggles (enable flowmap / play once then freeze) plus a 3-way application mode (default / mode 1 / mode 2).',
+        "ZH": '打包标志，用弹窗编辑：两个可混合开关（启用流动贴图／播一次后冻结）加一个三选一应用模式（默认／模式1／模式2）。模式具体含义未知。',
     },
     ("BILLBOARD3D", "brightness"): {
         "EN": "Brightness",
@@ -1395,11 +1364,8 @@ FIELD_ANNOTATIONS = {
 
     # ─── PLANE (fixed part fields — same layout as BILLBOARD3D dds_data) ──────
     ("PLANE", "applicationRule"): {
-        "EN": "Packed flags edited via the popup: two mixable toggles (enable flowmap / "
-              "play once then freeze) plus a 3-way application mode (default / mode 1 / "
-              "mode 2). Mode meaning not yet confirmed in-game.",
-        "ZH": "打包标志，用弹窗编辑：两个可混合开关（启用流动贴图／播一次后冻结）加一个"
-              "三选一应用模式（默认／模式1／模式2）。模式具体含义尚未实机确认。",
+        "EN": 'Packed flags edited via the popup: two mixable toggles (enable flowmap / play once then freeze) plus a 3-way application mode (default / mode 1 / mode 2).',
+        "ZH": '打包标志，用弹窗编辑：两个可混合开关（启用流动贴图／播一次后冻结）加一个三选一应用模式（默认／模式1／模式2）。模式具体含义未知。',
     },
     ("PLANE", "brightness"): {
         "EN": "Brightness",
@@ -1485,12 +1451,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "布尔型取值（全语料 0/1）。用途尚未确定。",
     },
     ("RIBBONBLADE", "head.unkn18_1"): {
-        "EN": "Always 0xCD across the whole corpus on the head side (the tailEnd-side "
-              "counterpart is a real 0/1 boolean). Exposed for in-game testing on the "
-              "precedent that flowmap jitter fields were also always 0 in the corpus yet "
-              "confirmed functional in-game.",
-        "ZH": "头部侧全语料恒为 0xCD（尾部侧同名字段是真实的 0/1 布尔）。参照 flowmap jitter "
-              "字段的先例（语料恒 0 但实机确认有效）暴露出来供实机测试。",
+        "EN": 'Always 0xCD across the whole corpus on the head side (the tailEnd-side counterpart is a real 0/1 boolean).',
+        "ZH": '头部侧全语料恒为 0xCD（尾部侧同名字段是真实的 0/1 布尔）。参照 flowmap jitter 字段的先例暴露出来供。',
     },
 
     # ─── TURBULENCE (fixed part fields) ───────────────────────────────────────
@@ -1501,8 +1463,7 @@ FIELD_ANNOTATIONS = {
 
     # ─── STRAINRIBBON（拔刀链条，社区注释 EFX_Crimson.bt）─────────────────────
     ("STRAINRIBBON", "unknFixed00_2"): {
-        "EN": "Flag byte extracted from what was treated as padding; always 0 in "
-              "official data so far (to be confirmed)",
+        "EN": 'Flag byte extracted from what was treated as padding; always 0 in official data so far',
         "ZH": "从原视为占位的字节中拆出的标志位；官方语料中恒为 0（待确认）",
     },
     ("STRAINRIBBON", "color"): {
@@ -1559,7 +1520,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "链条整体宽度，越大越粗；配合开始/结束宽度做粗细变化",
     },
     ("STRAINRIBBON", "widthJitter"): {
-        "EN": "Width random jitter (to be confirmed)",
+        "EN": "Width random jitter",
         "ZH": "宽度随机偏差（待确认）",
     },
     ("STRAINRIBBON", "length"): {
@@ -1570,7 +1531,7 @@ FIELD_ANNOTATIONS = {
               "配合细分计数控制弯折形态",
     },
     ("STRAINRIBBON", "lengthJitter"): {
-        "EN": "Length random jitter (to be confirmed)",
+        "EN": "Length random jitter",
         "ZH": "长度随机偏差（待确认）",
     },
     ("STRAINRIBBON", "startWidth"): {
@@ -1637,9 +1598,13 @@ FIELD_ANNOTATIONS = {
               "covered weapon-region extent (1=1-1, 3=higher per BT)",
         "ZH": "链条末端绑定骨骼编号，从 1 号骨骼延伸到此骨骼，决定覆盖的武器区域范围（BT：1=1-1，3=更远）",
     },
-    ("STRAINRIBBON", "colorModeFlag"): {
-        "EN": "Color-mode flag (positionalAberration_03). 2=cyan shift, 10+=disappears",
-        "ZH": "颜色模式标志（positionalAberration_03）。2=青色偏移，10+=消失",
+    ("STRAINRIBBON", "epv_color_slot1"): {
+        "EN": "EPV colour slot id for `color`. Non-zero means: take the colour from that slot of the calling .epv instead of the value on this attribute, so editing the local colour has no effect while a slot id is set.",
+        "ZH": "`color` 的 EPV 颜色槽位 id。写非 0 就改用调用方 .epv 里对应槽位的颜色，顶掉本属性上的值——所以槽位 id 非 0 时，在这里改颜色是不生效的。",
+    },
+    ("STRAINRIBBON", "epv_color_slot2"): {
+        "EN": "EPV colour slot id for `colorRange`. Same mechanism as epv_color_slot1.",
+        "ZH": "`colorRange` 的 EPV 颜色槽位 id，机制同 epv_color_slot1。",
     },
     ("STRAINRIBBON", "angleRelated"): {
         "EN": "Angle-related parameter (per BT); always 360.0 across official data "
@@ -1870,14 +1835,13 @@ FIELD_ANNOTATIONS = {
     },
     # SCALEANIM（社区验证语义：初始整体扩散 + 播放过程逐轴 X/Y/Z 速度/加速度）
     ("SCALEANIM", "initialScaleAccel"): {
-        "EN": "Initial expansion acceleration, paired with initialScaleSpeed (the shrink-in "
-              "at animation start; negative = shrinking).",
-        "ZH": "初始扩散加速度，与 initialScaleSpeed 配对（动画刚进来的缩小效果，负值=缩小）。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("SCALEANIM", "initialScaleSpeedJitter"): {
         # 原名 NULL/unknFloat；按位置+取值形态判定为 initialScaleSpeed 的 jitter，未实机确认。
-        "EN": "Jitter paired with initialScaleSpeed. Not yet confirmed in-game.",
-        "ZH": "与初始扩散速度配对的抖动量。尚未实机确认。",
+        "EN": "Jitter paired with initialScaleSpeed.",
+        "ZH": "与初始扩散速度配对的抖动量。未知。",
     },
     ("SCALEANIM", "scaleSpeedX"): {
         "EN": "X-axis scale speed during playback (billboard = X/Y; mesh = X/Y/Z).",
@@ -1959,8 +1923,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "自发光颜色（RGB）+ 整体自发光透明度系数（A）。",
     },
     ("LIGHTNING", "unkn04"): {
-        "EN": "Float (corpus values 0.0/0.4/1.0…100.0); guessed emissive intensity "
-              "multiplier (unconfirmed).",
+        "EN": 'Float (corpus values 0.0/0.4/1.0…100.0); guessed emissive intensity multiplier (unknown).',
         "ZH": "浮点（全语料取值 0.0/0.4/1.0…100.0）；推测是发光强度倍率（未确认）。",
     },
     ("LIGHTNING", "unknEnum05_01"): {
@@ -2050,12 +2013,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "保留字段。测 1/2/3/5/10/100/1000/负数均无明显变化。",
     },
     ("LIGHTNING", "EPVColorSlot1"): {
-        "EN": "EPV color variable slot 1. 0=don't use EPV color, use fixed color1/color2.",
-        "ZH": "EPV 特效颜色变量插槽1。0=不使用 EPV 颜色，用固定 color1/color2。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("LIGHTNING", "EPVColorSlot2"): {
-        "EN": "EPV color variable slot 2. 0=don't use EPV color.",
-        "ZH": "EPV 特效颜色变量插槽2。0=不使用 EPV 颜色。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("LIGHTNING", "unknFixed05_20"): {
         "EN": "⚠ Caution: do NOT set to 0 (possible crash). Guessed memory layout / render "
@@ -2440,12 +2403,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("BILLBOARD2D", "EPVColorSlot1"): {
-        "EN": "Common values: [0, 1, 9].",
-        "ZH": "常见取值为 [0, 1, 9]。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("BILLBOARD2D", "EPVColorSlot2"): {
-        "EN": "Common values: [0, 1, 9].",
-        "ZH": "常见取值为 [0, 1, 9]。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("BILLBOARD2D", "flowmapSpeedJitter"): {
         "EN": "Common range: 0~1.",
@@ -2464,16 +2427,16 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 1, 3]。",
     },
     ("BILLBOARD3D", "EPVColorSlot1"): {
-        "EN": "Common values: [0, 1, 2, 3, 7, 8, 9].",
-        "ZH": "常见取值为 [0, 1, 2, 3, 7, 8, 9]。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("BILLBOARD3D", "SlotOverride1"): {
-        "EN": "Common values: [0, 1, 2, 3, 9].",
-        "ZH": "常见取值为 [0, 1, 2, 3, 9]。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("BILLBOARD3D", "flowmapSpeedCoef"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("BILLBOARD3D", "flowmapSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -2484,8 +2447,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
     ("BILLBOARD3D", "flowmapStrengthCoef"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("BILLBOARD3D", "flowmapStrengthCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -2596,15 +2559,12 @@ FIELD_ANNOTATIONS = {
               "[1, 2, 3, 7, 8, 9, 13]。",
     },
     ("EMITTERSHAPE2D", "shapeType"): {
-        "EN": "Formerly unknFlag20. Confirmed (2026-07) as the 2D counterpart of "
-              "EMITTERSHAPE3D.shapeType: 0=square, 1=circle, 2+=point. Corpus scan (292 samples) "
-              "has only observed 0/1 so far — the 2+ case is unconfirmed by our data.",
-        "ZH": "原 unknFlag20。已确认(2026-07)对应 EMITTERSHAPE3D.shapeType 同一概念："
-              "0=方形，1=圆形，2及以上=点。全语料 292 例目前只观测到 0/1，2+ 的情况暂无数据佐证。",
+        "EN": 'Formerly unknFlag20. It is the 2D counterpart of EMITTERSHAPE3D.shapeType: 0=square, 1=circle, 2+=point. Corpus scan (292 samples) has only observed 0/1 so far — the 2+ case is unknown by our data.',
+        "ZH": '原 unknFlag20。对应 EMITTERSHAPE3D.shapeType 同一概念：0=方形，1=圆形，2及以上=点。全语料 292 例目前只观测到 0/1，2+ 的情况暂无数据佐证。',
     },
-    ("EMITTERSHAPE2D", "unknEnum22_0"): {
-        "EN": "3 distinct values: 0=94%, 2=4%, 1=2%. Semantics undetermined.",
-        "ZH": "3 种取值：0=94%，2=4%，1=2%。语义待定。",
+    ("EMITTERSHAPE2D", "rangeDivideAxis"): {
+        "EN": "Which axis the square spawn range is subdivided along. 0=Y axis, 1=X axis; the corpus also has 4% with value 2, meaning unknown. 94% of blocks use 0.",
+        "ZH": "方形生成范围沿哪个轴细分。0=Y 轴，1=X 轴；语料里还有 4% 取值 2，含义未知。全语料 94% 用 0。",
     },
     ("EMITTERSHAPE2D", "unknFixed22_1"): {
         "EN": "Always 0 across the entire 292-sample corpus.",
@@ -2692,66 +2652,44 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("FADEBYANGLE", "cutoffConeAngle"): {
-        "EN": "Confirmed: half-angle of the cone (around baseAxis) inside which the effect is "
-              "fully invisible.",
-        "ZH": "已确认：以 baseAxis 为中心的锥角（半角），落在这个角度以内特效完全不可见。",
+        "EN": 'half-angle of the cone (around baseAxis) inside which the effect is fully invisible.',
+        "ZH": "以 baseAxis 为中心的锥角（半角），落在这个角度以内特效完全不可见。",
     },
     ("FADEBYANGLE", "fadeConeAngle"): {
-        "EN": "Confirmed: half-angle of the outer fade boundary — between cutoffConeAngle and "
-              "this angle the effect fades gradually; beyond it, fully visible.",
-        "ZH": "已确认：渐隐过渡区外边界的锥角（半角）——在 cutoffConeAngle 到这个角度之间做渐隐"
-              "过渡，超出则完全可见。",
+        "EN": 'half-angle of the outer fade boundary — between cutoffConeAngle and this angle the effect fades gradually; beyond it, fully visible.',
+        "ZH": '渐隐过渡区外边界的锥角（半角）——在 cutoffConeAngle 到这个角度之间做渐隐过渡，超出则完全可见。',
     },
     ("FADEBYANGLE", "minAlpha"): {
-        "EN": "Confirmed: floor alpha the fade can reach. 1 = never fades out; 0.5 = fades to "
-              "half opacity at most.",
-        "ZH": "已确认：渐隐能达到的最低 alpha。设为 1 时完全不触发消失，设为 0.5 时最多只淡"
-              "到一半透明度。",
+        "EN": 'floor alpha the fade can reach. 1 = never fades out; 0.5 = fades to half opacity at most.',
+        "ZH": '渐隐能达到的最低 alpha。设为 1 时完全不触发消失，设为 0.5 时最多只淡到一半透明度。',
     },
     ("FADEBYANGLE", "baseAxis"): {
-        "EN": "Confirmed (2026-07-29) via in-game rotation testing: same AxisDirection6 enum as "
-              "VELOCITY3D (0=left,1=up,2=front,3=right,4=down,5=back). Combined with "
-              "axisRotationX/Y/Z + rotOrder to give the direction that triggers the fade.",
-        "ZH": "已依 2026-07-29 实机旋转测试确认：与 VELOCITY3D 同一套 AxisDirection6 枚举"
+        "EN": 'The same AxisDirection6 enum as VELOCITY3D (0=left,1=up,2=front,3=right,4=down,5=back). Combined with axisRotationX/Y/Z + rotOrder to give the direction that triggers the fade.',
+        "ZH": "与 VELOCITY3D 同一套 AxisDirection6 枚举"
               "（0=左,1=上,2=前,3=右,4=下,5=后）。与 axisRotationX/Y/Z + rotOrder 复合得到"
               "触发渐隐的朝向。",
     },
     ("FADEBYANGLE", "rotOrder"): {
-        "EN": "Confirmed (2026-07-29) via in-game rotation testing: same rotation-order enum as "
-              "VELOCITY3D (0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX). Composition: "
-              "v' = Ry(axisRotationY)·Rx(axisRotationX)·Rz(axisRotationZ)·baseAxis.",
-        "ZH": "已依 2026-07-29 实机旋转测试确认：与 VELOCITY3D 同一套旋转顺序枚举"
+        "EN": "The same rotation-order enum as VELOCITY3D (0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX). Composition: v' = Ry(axisRotationY)·Rx(axisRotationX)·Rz(axisRotationZ)·baseAxis.",
+        "ZH": "与 VELOCITY3D 同一套旋转顺序枚举"
               "（0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX）。复合公式："
               "v' = Ry(axisRotationY)·Rx(axisRotationX)·Rz(axisRotationZ)·baseAxis。",
     },
     ("FADEBYANGLE", "coneVisibilityFlags"): {
-        "EN": "Confirmed (2026-07-29) via exhaustive in-game testing of all 8 bit combinations. "
-              "bit0 (Enable Double Cone): always mirrors the same rule onto the opposite cone "
-              "(-baseAxis), independent of the other bits. bit1 (Exclude Cone): always swaps "
-              "inside/outside visibility, independent of the other bits. bit2: alone it also "
-              "swaps visibility, but is silently overridden (no effect) whenever bit0 is set — "
-              "overall inversion = bit1 OR (bit2 AND NOT bit0). bit2's exact purpose is still "
-              "unconfirmed.",
-        "ZH": "已依 2026-07-29 实机穷举全部 8 种位组合确认。bit0（启用双锥）：恒定生效，把同一"
-              "条规则镜像到对立角（-baseAxis），不受其他位影响。bit1（排除锥体）：恒定生效，"
-              "互换锥角内/外的可见性，不受其他位影响。bit2：单独置位时也会反转可见性，但只要"
-              "bit0=1 就完全失效——整体反转 = bit1 OR (bit2 且 bit0 为假)。bit2 具体作用仍未"
-              "确认。",
+        "EN": "All 8 bit combinations behave as follows. bit0 (Enable Double Cone): always mirrors the same rule onto the opposite cone (-baseAxis), independent of the other bits. bit1 (Exclude Cone): always swaps inside/outside visibility, independent of the other bits. bit2: alone it also swaps visibility, but is silently overridden (no effect) whenever bit0 is set — overall inversion = bit1 OR (bit2 AND NOT bit0). bit2's exact purpose is still unknown.",
+        "ZH": '8 种位组合的行为如下。bit0（启用双锥）：恒定生效，把同一条规则镜像到对立角（-baseAxis），不受其他位影响。bit1（排除锥体）：恒定生效，互换锥角内/外的可见性，不受其他位影响。bit2：单独置位时也会反转可见性，但只要bit0=1 就完全失效——整体反转 = bit1 OR (bit2 且 bit0 为假)。bit2 具体作用未知。',
     },
     ("FADEBYOCCLUSION", "occlusionRadius"): {
-        "EN": "Confirmed: detection volume for occlusion — the larger this is, the more "
-              "easily the shrink effect triggers.",
-        "ZH": "已确认：遮挡判定体积——设得越大，越容易触发缩小效果。",
+        "EN": 'detection volume for occlusion — the larger this is, the more easily the shrink effect triggers.',
+        "ZH": "遮挡判定体积——设得越大，越容易触发缩小效果。",
     },
     ("FADEBYOCCLUSION", "minScale"): {
-        "EN": "Confirmed: minimum scale ratio the effect can shrink to. 1 = never shrinks.",
-        "ZH": "已确认：特效被遮挡时允许缩小到的最小比例。设为 1 时完全不缩小。",
+        "EN": "minimum scale ratio the effect can shrink to. 1 = never shrinks.",
+        "ZH": "特效被遮挡时允许缩小到的最小比例。设为 1 时完全不缩小。",
     },
     ("FADEBYOCCLUSION", "minAlpha"): {
-        "EN": "Confirmed: minimum alpha the effect can fade to while shrinking. 1 = shrinks "
-              "only, never fades; 0 = fades out fully while shrinking.",
-        "ZH": "已确认：特效缩小的同时允许淡到的最小透明度。设为 1 时只缩小不渐隐，设为 0 时"
-              "缩小的同时会完全渐隐。",
+        "EN": 'minimum alpha the effect can fade to while shrinking. 1 = shrinks only, never fades; 0 = fades out fully while shrinking.',
+        "ZH": '特效缩小的同时允许淡到的最小透明度。设为 1 时只缩小不渐隐，设为 0 时缩小的同时会完全渐隐。',
     },
     ("FAKEDOF", "unkn4"): {
         "EN": "Common range: 0~1.",
@@ -2895,23 +2833,20 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
     ("MESH", "epv_color_slot1"): {
-        "EN": "Common values: [0, 1, 2, 3, 6, 9].",
-        "ZH": "常见取值为 [0, 1, 2, 3, 6, 9]。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("MESH", "epv_color_slot2"): {
-        "EN": "Common values: [0, 1, 2, 3, 9].",
-        "ZH": "常见取值为 [0, 1, 2, 3, 9]。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("MESH", "global_scale_jitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
     ("MESH", "rotation2"): {
-        "EN": "Formerly unkn5_2. A scalar rotation value distinct from the XYZ 'rotation' "
-              "field above it — angle-like numbers, most commonly -180 or 0 (occasionally "
-              "-360 or other degree values). Exact axis/purpose unconfirmed.",
-        "ZH": "原名 unkn5_2。与上方 XYZ 的 rotation 字段不同，是一个独立的标量旋转值——呈"
-              "角度状数字，最常见为 -180 或 0（偶见 -360 等其他角度）。具体作用的轴向尚未确认。",
+        "EN": "Formerly unkn5_2. A scalar rotation value distinct from the XYZ 'rotation' field above it — angle-like numbers, most commonly -180 or 0 (occasionally -360 or other degree values). Exact axis/purpose unknown.",
+        "ZH": '原名 unkn5_2。与上方 XYZ 的 rotation 字段不同，是一个独立的标量旋转值——呈角度状数字，最常见为 -180 或 0（偶见 -360 等其他角度）。具体作用的轴向未知。',
     },
     ("MESH", "rotation2Jitter"): {
         "EN": "Formerly unkn5_3. Jitter paired with rotation2 — most commonly 360 or 0 "
@@ -2921,13 +2856,8 @@ FIELD_ANNOTATIONS = {
               "「完全随机旋转」，与 rotation2 偶见的 -360 呼应）；偶见其他角度值。",
     },
     ("MESH", "rotationOrder"): {
-        "EN": "Formerly unkn7_2. Exactly 6 observed values (0~5, dominated by 4 at ~88%) — "
-              "same value shape as EMITTERSHAPE3D's rotationOrder (also dominated by 4), "
-              "suggesting they may share the same engine-wide rotation-order enum. "
-              "Exact meaning per value unconfirmed.",
-        "ZH": "原名 unkn7_2。恰好观测到 6 种取值（0~5，4 占约 88%）——与 EMITTERSHAPE3D 的 "
-              "rotationOrder 分布形态相同（同样以 4 为主流值），推测两者可能共用引擎内同一套"
-              "旋转顺序枚举。各取值具体含义尚未确认。",
+        "EN": "Formerly unkn7_2. Exactly 6 observed values (0~5, dominated by 4 at ~88%) — same value shape as EMITTERSHAPE3D's rotationOrder (also dominated by 4), suggesting they may share the same engine-wide rotation-order enum. Exact meaning per value unknown.",
+        "ZH": '原名 unkn7_2。恰好观测到 6 种取值（0~5，4 占约 88%）——与 EMITTERSHAPE3D 的 rotationOrder 分布形态相同（同样以 4 为主流值），推测两者可能共用引擎内同一套旋转顺序枚举。各取值具体含义未知。',
     },
     ("MESH", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -3085,8 +3015,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("PLANE", "EPVColorSlot1"): {
-        "EN": "Common values: [0, 1, 2, 3, 9].",
-        "ZH": "常见取值为 [0, 1, 2, 3, 9]。",
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("PLANE", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -3104,8 +3034,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "rotation2 的随机抖动范围，每次播放特效时随机浮动。",
     },
     ("PLANE", "flowmapSpeedCoef"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("PLANE", "flowmapSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -3116,8 +3046,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~1 之间。",
     },
     ("PLANE", "flowmapStrengthCoef"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("PLANE", "flowmapStrengthCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -3133,19 +3063,16 @@ FIELD_ANNOTATIONS = {
     },
     ("PLANE", "brightnessJitter"): {
         # 原名 randomBrightnessMult；同 BILLBOARD3D 的字段位置，PLANE 上的行为未实机确认。
-        "EN": "Jitter paired with brightness. Exact behavior on PLANE unconfirmed.",
-        "ZH": "与亮度配对的抖动量。在 PLANE 上的具体行为尚未确认。",
+        "EN": "Jitter paired with brightness. Exact behavior on PLANE unknown.",
+        "ZH": "与亮度配对的抖动量。在 PLANE 上的具体行为未知。",
     },
     ("PLANE", "unknBitmask5_0"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 6].",
         "ZH": "常见取值为 [0, 1, 2, 3, 4, 6]。",
     },
     ("PLANE", "unknEnum5_1"): {
-        "EN": "Bitmask (bit0 = master toggle, bits 1/2 sub-modes only meaningful when bit0 is on; "
-              "non-zero values in official data are always odd, e.g. 1/3/5/7). Related to "
-              "orientation relative to the camera; per-bit meaning unconfirmed.",
-        "ZH": "位掩码（bit0 为总开关，bit1/bit2 是仅在 bit0 开启时才有意义的子模式；"
-              "官方语料非零值恒为奇数，如 1/3/5/7）。与朝向-摄像机的关系有关，各 bit 具体含义尚未确认。",
+        "EN": 'Bitmask (bit0 = master toggle, bits 1/2 sub-modes only meaningful when bit0 is on; non-zero values in official data are always odd, e.g. 1/3/5/7). Related to orientation relative to the camera; per-bit meaning unknown.',
+        "ZH": '位掩码（bit0 为总开关，bit1/bit2 是仅在 bit0 开启时才有意义的子模式；官方语料非零值恒为奇数，如 1/3/5/7）。与朝向-摄像机的关系有关，各 bit 具体含义未知。',
     },
     ("PLANE", "baseAxis"): {
         "EN": "Same AxisDirection6 enum as VELOCITY3D/FADEBYANGLE (0=left,1=up,2=front,3=right,"
@@ -3159,11 +3086,8 @@ FIELD_ANNOTATIONS = {
               "官方语料压倒性取值 4(ZXY)，与 MESH.rotationOrder 分布形状一致。",
     },
     ("PLANE", "unknBitmask7_0"): {
-        "EN": "Observed values [0, 1, 2, 3, 4, 8, 32, 33, 36] look like a bitmask "
-              "(1/2/4/8/32 present, plus combinations 33=32+1, 36=32+4). "
-              "Per-bit meaning unconfirmed.",
-        "ZH": "观测取值 [0, 1, 2, 3, 4, 8, 32, 33, 36] 呈现位掩码特征"
-              "（含 1/2/4/8/32 及其组合 33=32+1、36=32+4）。各 bit 含义尚未确认。",
+        "EN": 'Observed values [0, 1, 2, 3, 4, 8, 32, 33, 36] look like a bitmask (1/2/4/8/32 present, plus combinations 33=32+1, 36=32+4). Per-bit meaning unknown.',
+        "ZH": '观测取值 [0, 1, 2, 3, 4, 8, 32, 33, 36] 呈现位掩码特征（含 1/2/4/8/32 及其组合 33=32+1、36=32+4）。各 bit 含义未知。',
     },
     ("PLANE", "unknFlag7_1"): {
         "EN": "Common values: 0/1.",
@@ -3247,17 +3171,8 @@ FIELD_ANNOTATIONS = {
               "里没用到的高 16 位，而非独立取值。",
     },
     ("PTLIFE", "unknFrame0"): {
-        "EN": "Common values: [0, 10, 30, 60, 70, 90, 240, 490] — all multiples of 10, "
-              "consistent with a frame count. No clean match found against the sibling "
-              "LIFE block's fadeInDuration/duration/fadeOutDuration/timeToDeath in the same "
-              "entry, so it isn't simply a copy of one of those. Paired with unknFrame0Jitter "
-              "below, same static/random convention as LIFE.unknFrame/unknFrameJitter; the "
-              "jitter side is 0 in all 8961 known blocks so its effect is unconfirmed.",
-        "ZH": "常见取值为 [0, 10, 30, 60, 70, 90, 240, 490]——全是 10 的倍数，符合帧数特征。"
-              "跟同一 entry 内 LIFE 块的 fadeInDuration/duration/fadeOutDuration/timeToDeath "
-              "都对不上，不是这几个字段的简单复制。与下方 unknFrame0Jitter 配对，同 "
-              "LIFE.unknFrame/unknFrameJitter 一样是 static/random 惯例；随机一侧在全部 8961 "
-              "个已知块里恒为 0，实际效果尚未确认。",
+        "EN": "Common values: [0, 10, 30, 60, 70, 90, 240, 490] — all multiples of 10, consistent with a frame count. No clean match found against the sibling LIFE block's fadeInDuration/duration/fadeOutDuration/timeToDeath in the same entry, so it isn't simply a copy of one of those. Paired with unknFrame0Jitter below, same static/random convention as LIFE.unknFrame/unknFrameJitter; the jitter side is 0 in all 8961 known blocks so its effect is unknown.",
+        "ZH": '常见取值为 [0, 10, 30, 60, 70, 90, 240, 490]——全是 10 的倍数，符合帧数特征。跟同一 entry 内 LIFE 块的 fadeInDuration/duration/fadeOutDuration/timeToDeath 都对不上，不是这几个字段的简单复制。与下方 unknFrame0Jitter 配对，同 LIFE.unknFrame/unknFrameJitter 一样是 static/random 惯例；随机一侧在全部 8961 个已知块里恒为 0，实际效果未知。',
     },
     ("PTLIFE", "unknFrame1"): {
         "EN": "Only 1 non-zero occurrence in the official corpus (value 20, alongside "
@@ -3299,79 +3214,55 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("RGBWATER", "brightnessSlot1"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("RGBWATER", "brightnessSlot2"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("RGBWATER", "brightnessSlotMultiplier1"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("RGBWATER", "brightnessSlotMultiplier2"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("RGBWATER", "emissiveMultiplier"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("RGBWATER", "opacity"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("RGBWATER", "unknEnum2_1"): {
+    ("RGBWATER", "specularColorParam_keepFrameJitter"): {
         "EN": "Common values: [0, 5, 10, 14, 30, 40, 62].",
         "ZH": "常见取值为 [0, 5, 10, 14, 30, 40, 62]。",
     },
-    ("RGBWATER", "unknFlag2_14"): {
+    ("RGBWATER", "sheetColorParam_lighting"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unknEnum2_16"): {
+    ("RGBWATER", "sheetColorParam_unkn9"): {
         "EN": "Common values: [0, 1, 2, 6, 7, 8].",
         "ZH": "常见取值为 [0, 1, 2, 6, 7, 8]。",
     },
-    ("RGBWATER", "unknFlag2_17"): {
+    ("RGBWATER", "waterLerpParam_useLife"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unknEnum2_19"): {
+    ("RGBWATER", "waterLerpParam_appearFrameJitter"): {
         "EN": "Common values: [0, 5].",
         "ZH": "常见取值为 [0, 5]。",
     },
-    ("RGBWATER", "unknFlag2_24"): {
+    ("RGBWATER", "waterLerpParam_lighting"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unknEnum2_3"): {
+    ("RGBWATER", "specularColorParam_vanishFrameJitter"): {
         "EN": "Common values: [0, 5, 10, 14, 20, 24, 25, 30].",
         "ZH": "常见取值为 [0, 5, 10, 14, 20, 24, 25, 30]。",
     },
-    ("RGBWATER", "unknFlag2_4"): {
+    ("RGBWATER", "specularColorParam_lighting"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unknFlag2_5"): {
+    ("RGBWATER", "specularColorParam_lifeType"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unknEnum2_6"): {
+    ("RGBWATER", "specularColorParam_unkn9"): {
         "EN": "Common values: [0, 2].",
         "ZH": "常见取值为 [0, 2]。",
     },
-    ("RGBWATER", "unknFlag2_7"): {
+    ("RGBWATER", "sheetColorParam_useLife"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unknEnum2_8"): {
+    ("RGBWATER", "sheetColorParam_appearFrame"): {
         "EN": "Common values: [0, 5, 10, 15, 25, 40, 50, 60].",
         "ZH": "常见取值为 [0, 5, 10, 15, 25, 40, 50, 60]。",
     },
-    ("RGBWATER", "unknEnum2_9"): {
+    ("RGBWATER", "sheetColorParam_appearFrameJitter"): {
         "EN": "Common values: [0, 25].",
         "ZH": "常见取值为 [0, 25]。",
     },
@@ -3379,15 +3270,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("RGBWATER", "unknownFlagInt_0"): {
+    ("RGBWATER", "specularColorParam_useLife"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "unknownEnumInt_1"): {
+    ("RGBWATER", "specularColorParam_appearFrame"): {
         "EN": "Common values: [0, 10, 16, 20, 25, 30, 60].",
         "ZH": "常见取值为 [0, 10, 16, 20, 25, 30, 60]。",
     },
-    ("RGBWATER", "unknownEnumInt_2"): {
+    ("RGBWATER", "specularColorParam_appearFrameJitter"): {
         "EN": "Common values: [0, 16].",
         "ZH": "常见取值为 [0, 16]。",
     },
@@ -3485,45 +3376,40 @@ FIELD_ANNOTATIONS = {
         "ZH": "前端（前进方向的一端）的宽度乘数。",
     },
     ("RIBBON", "unknFlag16_0_1"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBON", "unknFixed16_1_lo"): {
-        "EN": "Always 1 in observed data. Purpose unconfirmed.",
-        "ZH": "观测样本中恒为 1。作用尚未确认。",
+        "EN": "Always 1 in observed data. Purpose unknown.",
+        "ZH": "观测样本中恒为 1。作用未知。",
     },
     ("RIBBON", "unknBool16_1"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBON", "rotationOrder"): {
         "EN": "Order the rotation axes are applied in.",
         "ZH": "旋转各轴的应用顺序。",
     },
     ("RIBBON", "rotationX"): {
-        "EN": "One of three static rotation components, composed via rotationOrder and "
-              "baseAxis. Which physical axis it maps to is unconfirmed — the ribbon's forced "
-              "camera-facing behavior makes this hard to observe.",
-        "ZH": "三个静态旋转分量之一，与旋转顺序、基准轴复合作用。具体对应哪个物理轴尚未确认"
-              "——条带强制朝向相机的行为让这一点难以观察。",
+        "EN": "One of three static rotation components, composed via rotationOrder and baseAxis. Which physical axis it maps to is unknown — the ribbon's forced camera-facing behavior makes this hard to observe.",
+        "ZH": '三个静态旋转分量之一，与旋转顺序、基准轴复合作用。具体对应哪个物理轴未知——条带强制朝向相机的行为让这一点难以观察。',
     },
     ("RIBBON", "rotationXJitter"): {
         "EN": "Jitter paired with rotationX.",
         "ZH": "与 rotationX 配对的抖动量。",
     },
     ("RIBBON", "rotationY"): {
-        "EN": "One of three static rotation components. Which physical axis it maps to is "
-              "unconfirmed.",
-        "ZH": "三个静态旋转分量之一。具体对应哪个物理轴尚未确认。",
+        "EN": 'One of three static rotation components. Which physical axis it maps to is unknown.',
+        "ZH": "三个静态旋转分量之一。具体对应哪个物理轴未知。",
     },
     ("RIBBON", "rotationYJitter"): {
         "EN": "Jitter paired with rotationY.",
         "ZH": "与 rotationY 配对的抖动量。",
     },
     ("RIBBON", "rotationZ"): {
-        "EN": "One of three static rotation components. Which physical axis it maps to is "
-              "unconfirmed.",
-        "ZH": "三个静态旋转分量之一。具体对应哪个物理轴尚未确认。",
+        "EN": 'One of three static rotation components. Which physical axis it maps to is unknown.',
+        "ZH": "三个静态旋转分量之一。具体对应哪个物理轴未知。",
     },
     ("RIBBON", "rotationZJitter"): {
         "EN": "Jitter paired with rotationZ.",
@@ -3538,12 +3424,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~1 之间。",
     },
     ("RIBBON", "unknBitmask22_1"): {
-        "EN": "Bitmask over bits 0~6. Per-bit meaning unconfirmed.",
-        "ZH": "位 0~6 的位掩码。各位含义尚未确认。",
+        "EN": "Bitmask over bits 0~6. Per-bit meaning unknown.",
+        "ZH": "位 0~6 的位掩码。各位含义未知。",
     },
     ("RIBBON", "unknFlag22_2"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBON", "enableFlowmap"): {
         "EN": "Master switch for the flowmap scroll — the flowmap speed/strength fields and "
@@ -3571,8 +3457,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~1 之间。",
     },
     ("RIBBON", "unknBool15"): {
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("RIBBONBLADE", "NULL9"): {
         "EN": "Common values: [0, 1, 256].",
@@ -3581,11 +3467,11 @@ FIELD_ANNOTATIONS = {
     ("RIBBONBLADE", "widthDirection"): {
         "EN": "Direction the streak's width extends toward. AxisDirection6: 0=Left, 1=Up, "
               "2=Forward, 3=Right, 4=Down, 5=Backwards. Same enum as RIBBON.baseAxis "
-              "and VELOCITY3D.baseAxis (confirmed 2026-07-26 equivalent to the Cartesian "
+              "and VELOCITY3D.baseAxis (equivalent to the Cartesian "
               "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z mapping — in the game's default coordinate system "
               "+X=left, +Y=up, +Z=front). Formerly unkn03.",
         "ZH": "刀光宽度延伸的朝向。AxisDirection6：0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON."
-              "baseAxis、VELOCITY3D.baseAxis 是同一套枚举（2026-07-26 确认等价于笛卡尔 "
+              "baseAxis、VELOCITY3D.baseAxis 是同一套枚举（等价于笛卡尔 "
               "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z 映射——游戏默认坐标系下 +X=左,+Y=上,+Z=前）。"
               "原名 unkn03。",
     },
@@ -3637,51 +3523,47 @@ FIELD_ANNOTATIONS = {
               "（速度/加速度/强度/强度加速度）之一。原名 unkn23。",
     },
     ("RIBBONBLADE", "flowmapSpeedCoef"): {
-        "EN": "Flowmap acceleration. Part of the flowmap quartet. Formerly unkn24.",
-        "ZH": "流光贴图加速度。属于 flowmap 四件套之一。原名 unkn24。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("RIBBONBLADE", "flowmapStrength"): {
-        "EN": "Flowmap strength. Common range: 0~100. Confirmed in-game. Formerly unkn25.",
-        "ZH": "流光贴图强度。常见取值在 0~100 之间。已实机确认。原名 unkn25。",
+        "EN": "Flowmap strength. Common range: 0~100. Formerly unkn25.",
+        "ZH": "流光贴图强度。常见取值在 0~100 之间。已。原名 unkn25。",
     },
     ("RIBBONBLADE", "flowmapStrengthCoef"): {
-        "EN": "Flowmap strength acceleration. Common range: 0~1. Confirmed in-game. Formerly unkn26.",
-        "ZH": "流光贴图强度加速度。常见取值在 0~1 之间。已实机确认。原名 unkn26。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("RIBBONBLADE", "flowmapSpeedJitter"): {
-        "EN": "Jitter for flowmapSpeed. Confirmed float in-game. Formerly NULL5.",
-        "ZH": "flowmapSpeed 的抖动。已实机确认为 float。原名 NULL5。",
+        "EN": "Jitter for flowmapSpeed. Formerly NULL5.",
+        "ZH": "flowmapSpeed 的抖动。已为 float。原名 NULL5。",
     },
     ("RIBBONBLADE", "flowmapSpeedCoefJitter"): {
-        "EN": "Jitter for flowmapAcceleration. Confirmed float in-game. Formerly NULL6.",
-        "ZH": "flowmapAcceleration 的抖动。已实机确认为 float。原名 NULL6。",
+        "EN": "Jitter for flowmapAcceleration. Formerly NULL6.",
+        "ZH": "flowmapAcceleration 的抖动。已为 float。原名 NULL6。",
     },
     ("RIBBONBLADE", "flowmapStrengthJitter"): {
-        "EN": "Jitter for flowmapStrength. Confirmed float in-game. Formerly NULL7.",
-        "ZH": "flowmapStrength 的抖动。已实机确认为 float。原名 NULL7。",
+        "EN": "Jitter for flowmapStrength. Formerly NULL7.",
+        "ZH": "flowmapStrength 的抖动。已为 float。原名 NULL7。",
     },
     ("RIBBONBLADE", "flowmapStrengthCoefJitter"): {
-        "EN": "Jitter for flowmapStrengthAcceleration. Confirmed float in-game. Formerly NULL8.",
-        "ZH": "flowmapStrengthAcceleration 的抖动。已实机确认为 float。原名 NULL8。",
+        "EN": "Jitter for flowmapStrengthAcceleration. Formerly NULL8.",
+        "ZH": "flowmapStrengthAcceleration 的抖动。已为 float。原名 NULL8。",
     },
     ("RIBBONBLADE", "uvRepetition"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
     ("ROTATEANIM", "billboardRotationCoef"): {
-        "EN": "Acceleration of billboardRotation (static value; pairs with "
-              "billboardRotationAccelJitter as the random).",
-        "ZH": "billboardRotation 的加速度（固定值；与 billboardRotationAccelJitter 组成 "
-              "static/random 一组）。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("ROTATEANIM", "billboardRotationCoefJitter"): {
         "EN": "Random component of billboardRotationAccel.",
         "ZH": "billboardRotationAccel 的随机分量。",
     },
     ("ROTATEANIM", "spinSpeedCoefX"): {
-        "EN": "Formerly momentum_retention — corpus scan (2026-07) shows this and the following "
-              "5 fields were shifted one slot off; regrouped into X/Y/Z static+random pairs of "
-              "spin acceleration. Static value mostly 0.9~1.0.",
+        "EN": 'Formerly momentum_retention — corpus scan shows this and the following 5 fields were shifted one slot off; regrouped into X/Y/Z static+random pairs of spin acceleration. Static value mostly 0.9~1.0.',
         "ZH": "原 momentum_retention——2026-07 实测发现原 XYZ 分组整体错位一格，重新按 X/Y/Z 各自"
               "的自旋加速度 static/random 分组。static 值多集中在 0.9~1.0。",
     },
@@ -3764,8 +3646,8 @@ FIELD_ANNOTATIONS = {
               "[1, 2, 3, 4, 5, 6, 7, 10, 11, 12]。",
     },
     ("SHADERSETTINGS", "unknEnum1"): {
-        "EN": "Always 104 in observed data. Purpose unconfirmed.",
-        "ZH": "观测样本中恒为 104。具体作用尚未确认。",
+        "EN": "Always 104 in observed data. Purpose unknown.",
+        "ZH": "观测样本中恒为 104。具体作用未知。",
     },
     ("SHADERSETTINGS", "unknFlag2"): {
         "EN": "Common values: 0/1.",
@@ -3809,9 +3691,8 @@ FIELD_ANNOTATIONS = {
     },
     ("SHADERSETTINGS", "unknEnum4_8"): {
         # 取值中两个非哨兵值匹配 jamcrc("Smoke")/jamcrc("Default")，疑似类别/分组名哈希。
-        "EN": "-1 = unset. Other values look like name hashes, possibly a category or group "
-              "identifier. Purpose unconfirmed.",
-        "ZH": "-1=未设置。其余取值形似名字哈希，可能是某种类别／分组标识。作用尚未确认。",
+        "EN": '-1 = unset. Other values look like name hashes, possibly a category or group identifier. Purpose unknown.',
+        "ZH": "-1=未设置。其余取值形似名字哈希，可能是某种类别／分组标识。作用未知。",
     },
     ("SHADERSETTINGS", "unkn4_9"): {
         "EN": "Usually 0; other common values: [-1000, -500, -200, -100, -50, 20, 50, 100, 200].",
@@ -3826,8 +3707,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "通常为 0；其余常见取值为 [-200, -100, -50, -20, 50, 80, 100, 150, 200]。",
     },
     ("SHADERSETTINGS", "unknFixed4_12"): {
-        "EN": "Always 0.0 in observed data. Purpose unconfirmed.",
-        "ZH": "观测样本中恒为 0.0。具体作用尚未确认。",
+        "EN": "Always 0.0 in observed data. Purpose unknown.",
+        "ZH": "观测样本中恒为 0.0。具体作用未知。",
     },
     ("SHADERSETTINGS", "unkn4_13"): {
         "EN": "Usually 0; other common values: [15, 17, 20, 25, 50, 100, 150, 200, 300].",
@@ -3871,18 +3752,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "叠加到 particleSpawnDelay 上的随机抖动，每个粒子独立抽取。",
     },
     ("SPAWN", "maxParticles"): {
-        "EN": "Soft cap on particles allowed alive at once for this spawner (confirmed "
-              "via testing: concurrent count = burst rate × particle lifespan, i.e. "
-              "duration+fadeOutDuration). Not a lifetime total — bursts are throttled "
-              "once this cap would be exceeded, and resume in full once earlier "
-              "particles die off.",
-        "ZH": "该发射器同时存活粒子数的软上限（实机验证符合：同存数=生成速率×粒子寿命，"
-              "即 duration+fadeOutDuration）。不是终身生成总量——超出上限时本批会被削减，"
-              "等早前粒子死亡腾出空间后又能满额生成。",
+        "EN": 'Soft cap on particles allowed alive at once for this spawner (concurrent count = burst rate × particle lifespan, i.e. duration+fadeOutDuration). Not a lifetime total — bursts are throttled once this cap would be exceeded, and resume in full once earlier particles die off.',
+        "ZH": '该发射器同时存活粒子数的软上限。不是终身生成总量——超出上限时本批会被削减，等早前粒子死亡腾出空间后又能满额生成。',
     },
     ("SPAWN", "unknBitmask31"): {
-        "EN": "Bitmask over bits 0~5, usually 0. Per-bit meaning unconfirmed.",
-        "ZH": "位 0~5 的位掩码，通常为 0。各位含义尚未确认。",
+        "EN": "Bitmask over bits 0~5, usually 0. Per-bit meaning unknown.",
+        "ZH": "位 0~5 的位掩码，通常为 0。各位含义未知。",
     },
     ("SPAWNBYANGLE", "unknEnum3"): {
         "EN": "Common values: [1, 4].",
@@ -3945,8 +3820,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~1 之间。",
     },
     ("STRAINRIBBON", "flowmapSpeedCoef"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("STRAINRIBBON", "flowmapStrength"): {
         "EN": "Common range: 0~100.",
@@ -3957,8 +3832,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("STRAINRIBBON", "flowmapStrengthCoef"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("STRAINRIBBON", "flowmapStrengthCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -3986,8 +3861,8 @@ FIELD_ANNOTATIONS = {
     },
     ("TUBELIGHT", "unknBool0_2"): {
         # 原 unknEnum0_2 int 拆出的唯一真实数据字节；语料样本量小（22 块 / 17 文件）。
-        "EN": "Purpose unconfirmed.",
-        "ZH": "作用尚未确认。",
+        "EN": "Purpose unknown.",
+        "ZH": "作用未知。",
     },
     ("TUBELIGHT", "unkn2_0"): {
         "EN": "Common range: 0~1.",
@@ -4012,10 +3887,8 @@ FIELD_ANNOTATIONS = {
               "原名 extraMaterialInitialPositionJitter。",
     },
     ("UVCONTROL", "flowmapSpeedCoef"): {
-        "EN": "Flowmap acceleration. Part of the flowmap octet. Common range: 0~1. "
-              "Formerly extraMaterialSpeed.",
-        "ZH": "流动贴图加速度。属于 flowmap 八件套之一。常见取值在 0~1 之间。"
-              "原名 extraMaterialSpeed。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("UVCONTROL", "flowmapStrengthJitter"): {
         "EN": "Jitter for flowmapStrength. Part of the flowmap octet. Common range: 0~100. "
@@ -4028,12 +3901,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "流动贴图的总开关。常见取值为 0/1。原名 unknFlag2。",
     },
     ("UVCONTROL", "uv2_enable"): {
-        "EN": "1860-sample corpus scan: clean binary 0/1 distribution — likely uv2 sub-channel on/off switch.",
-        "ZH": "1860 例全语料实测：干净的 0/1 二元分布——疑似 uv2 子通道启用开关。",
+        "EN": "Enables the second UV channel. A mod3 mesh may carry two UV sets; this switches on the uv2 group's own offset/scale/speed controls. (Not vertex-animation related.)",
+        "ZH": '启用第二套 UV。mod3 网格允许同时存在两套 UV，打开后下面的 uv2 组（偏移/缩放/速度）才生效。（与顶点动画无关。）',
     },
     ("UVSEQUENCE", "playSpeedCoef"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("UVSEQUENCE", "playSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -4103,8 +3976,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 1, 3, 4, 5, 10, 20]。原 initialVelocityDelayJitter。",
     },
     ("VELOCITY2D", "speedCoef"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
     ("VELOCITY2D", "speedCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -4119,19 +3992,158 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~1 之间。",
     },
     ("VELOCITY3D", "minMovementThreshold"): {
-        "EN": "Formerly unknFloat/NULL2. Confirmed (2026-07-26) in-game as a threshold: only "
-              "relevant when velocityType=EmitterMotion — the emitter's own velocity must "
-              "exceed this before it's applied to particles. Mostly 0 (~98% of the corpus); "
-              "range 0~40 when non-zero.",
-        "ZH": "原 unknFloat/NULL2。2026-07-26 实机确认为阈值：仅在 velocityType=EmitterMotion 时"
-              "有意义——emitter 自身速度需超过这个阈值才会施加给粒子。语料里多数为 0（约98%）；"
-              "非零时取值范围 0~40。",
+        "EN": "Formerly unknFloat/NULL2. Acts as a threshold: only relevant when velocityType=EmitterMotion — the emitter's own velocity must exceed this before it's applied to particles. Mostly 0 (~98% of the corpus); range 0~40 when non-zero.",
+        "ZH": '原 unknFloat/NULL2。为阈值：仅在 velocityType=EmitterMotion 时有意义——emitter 自身速度需超过这个阈值才会施加给粒子。语料里多数为 0（约98%）；非零时取值范围 0~40。',
     },
     ("VELOCITY3D", "gravity_jitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
 
+    ("PLANE", "EPVColorSlot2"): {
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+    },
+    ("PLEMISSIVE", "epv_color_slot"): {
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+    },
+    ("PLSNOW", "epvcolorslot"): {
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+    },
+    ("RIBBON", "epvcolor_0"): {
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+    },
+    ("RIBBON", "epvcolor_1"): {
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+    },
+    ("BILLBOARD2D", "flowmapPath"): {
+        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
+        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+    },
+    ("BILLBOARD3D", "flowmapPath"): {
+        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
+        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+    },
+    ("LIGHTNING", "flowmapPath"): {
+        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
+        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+    },
+    ("PLANE", "flowmapPath"): {
+        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
+        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+    },
+    ("RIBBONBLADE", "flowmapPath"): {
+        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
+        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+    },
+    ("STRAINRIBBON", "flowmapPath"): {
+        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
+        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+    },
+    ("RIBBON", "flowmapPath"): {
+        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
+        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+    },
+    ("RGBWATER", "colorRate"): {
+        "EN": "Overall colour rate, driven by the ColorRate timeline parameter — animating it only works on the A0 (emitter) axis.",
+        "ZH": '整体颜色比率。对应 ColorRate 时间线参数，动画只在 A0（发射轴）上生效。',
+    },
+    ("RGBWATER", "waterLerpGtoB"): {
+        "EN": "Blends the water colour from green towards blue, driven by WaterLerpGtoB — by far the most animated parameter on this attribute (50 of the 60 RgbWater tracks in the whole corpus).",
+        "ZH": '把水色从绿向蓝插值。对应 WaterLerpGtoB，是本属性最常被做动画的参数（全语料 60 条 RgbWater 轨道里占 50 条）。',
+    },
+    ("RGBWATER", "intensitySheet"): {
+        "EN": "Strength of the water-sheet layer, driven by IntensitySheet.",
+        "ZH": '水膜层的强度。对应 IntensitySheet。',
+    },
+    ("RGBWATER", "colorSpecular"): {
+        "EN": "Specular highlight colour, driven by ColorSpecular.",
+        "ZH": '高光颜色。对应 ColorSpecular。',
+    },
+    ("RGBWATER", "colorSheet"): {
+        "EN": "Water-sheet colour — the colour of the film itself, as opposed to the specular highlight.",
+        "ZH": '水膜颜色——水膜本身的颜色，区别于高光颜色。',
+    },
+    ("RGBWATER", "intensityCubeMap"): {
+        "EN": "Strength of the environment reflection taken from the cube map. Pairs with cubemapPath — it is non-zero in 78% of blocks that set a cube map versus 30% of those that don't.",
+        "ZH": '取自立方贴图的环境反射强度。与 cubemapPath 配套：填了立方贴图的块里它 78% 非零，没填的只有 30%。',
+    },
+    ("RGBWATER", "intensitySpecular"): {
+        "EN": "Strength of the specular highlight layer (colour comes from colorSpecular).",
+        "ZH": '高光层的强度（颜色取自 colorSpecular）。',
+    },
+    ("RGBWATER", "intensityAlpha"): {
+        "EN": "Overall transparency strength of the water surface.",
+        "ZH": '水面的整体透明度强度。',
+    },
+    ("RGBWATER", "unknownFloat"): {
+        "EN": "Unknown. The only header float with no timeline parameter behind it — the engine declares six float parameters and this attribute has seven floats, so exactly one cannot be animated, and this is it. Mode 0.3 (73%), which does not look like an intensity value.",
+        "ZH": '未知。头部唯一一个背后没有时间线参数的 float——引擎只声明了六个 float 参数、本属性有七个 float，恰好有一个不可做动画，就是它。众数 0.3（73%），不像强度量。',
+    },
+    ("UVSEQUENCE", "uvsPath"): {
+        "EN": "Path to the .uvs sequence file — **this is the artwork you actually see**. The .uvs itself is a frame table pointing at a sprite-sheet .tex; playSpeed / patternNo pick which cell plays. Nearly every UVSEQUENCE has one (99% of blocks non-empty).",
+        "ZH": '指向 .uvs 序列文件的路径 —— **真正显色的图就是这张**。.uvs 本身是一张帧表，指向序列帧大图（.tex）；playSpeed / patternNo 决定放哪一格。几乎每个 UVSEQUENCE 都填了（全语料 99% 非空）。',
+    },
+    ("RGBWATER", "cubemapPath"): {
+        "EN": "Cube map path for the water surface's environment reflection. The corpus only ever uses two official maps (cm_cube_000_CM / cm_cube_001_CM); 68% of blocks leave it empty. Pairs with brightnessSlot2 — that field is non-zero in 78% of blocks that have a cube map versus 30% of those that don't.",
+        "ZH": '水面环境反射用的立方贴图。全语料只用过两张官方图（cm_cube_000_CM / cm_cube_001_CM），68% 的块留空。与 brightnessSlot2 配套：填了贴图的块里该字段 78% 非零，没填的只有 30%。',
+    },
+    ("TURBULENCE", "tfaPath"): {
+        "EN": "Path to the .tfa vector-field file that drives the turbulence. Only five are used across the whole corpus — mostly cm_exMap\\turbulance_000_T and curlnoise_000_T. Effectively always filled (100% of blocks).",
+        "ZH": '驱动湍流的 .tfa 向量场文件路径。全语料只用过五张，主要是 cm_exMap\\turbulance_000_T 和 curlnoise_000_T。基本总是填着的（全语料 100%）。',
+    },
+    ("TUBELIGHT", "albedoPath"): {
+        "EN": "Base-colour texture for the light column (*_BM.tex). Always filled.",
+        "ZH": '光柱的基础色贴图（*_BM.tex）。总是填着的。',
+    },
+    ("TONEMAPFILTER", "lutPath"): {
+        "EN": "Colour lookup table (*_LUTM) under light\\LUT\\ — the grading curve this filter applies to the screen.",
+        "ZH": 'light\\LUT\\ 下的颜色查找表（*_LUTM）—— 本滤镜对画面应用的调色曲线。',
+    },
+    ("MESH", "mod3Path"): {
+        "EN": "Path to the .mod3 model this attribute renders (game-relative, no extension). Import can pull the model in and bind it — see the mod3 link option in the N panel.",
+        "ZH": '本属性渲染的 .mod3 模型路径（游戏内相对路径，不带扩展名）。导入时可以连模型一起拉进来并绑定 —— 见 N 面板的 mod3 联动开关。',
+    },
+    ("MESH", "plPath"): {
+        "EN": "Optional .pl placement table: a list of (submesh index, XYZ offset) that shifts individual parts of the model. Rarely used (6% of blocks) and normally sits next to the .mod3 under the same name.",
+        "ZH": '可选的 .pl 摆位表：一张（子网格序号, XYZ 偏移）列表，把模型的各个部件分别挪位。很少用（全语料 6%），且通常与 .mod3 同目录同名。',
+    },
+    ("EMITTERSHAPEMESH", "mod3Path"): {
+        "EN": "Path to the .mod3 whose surface is used as the emitter shape — particles spawn on this mesh rather than on a primitive.",
+        "ZH": '用作发射器形状的 .mod3 路径 —— 粒子从这个网格表面上生成，而不是从基本体上。',
+    },
+    ("BILLBOARD2D", "flowmapSpeedCoef"): {
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+    },
+    ("BILLBOARD2D", "flowmapStrengthCoef"): {
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+    },
+    ("LIGHTNING", "flowmapSpeedCoef"): {
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+    },
+    ("LIGHTNING", "flowmapStrengthCoef"): {
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+    },
+    ("RIBBON", "flowmapSpeedCoef"): {
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+    },
+    ("RIBBON", "flowmapStrengthCoef"): {
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+    },
+    ("UVSEQUENCE", "patternNo"): {
+        "EN": 'Starting frame of the sprite sheet (0 = top-left). Pair it with the Jitter field to randomise the start: an 8x8 sheet has 64 cells, so Jitter=63 picks any cell at spawn.',
+        "ZH": '序列帧的起始帧（0 = 左上第一格）。配旁边的 Jitter 可让每个粒子随机起手：8×8 的图共 64 格，Jitter 给 63 就是全随机抽一格。',
+    },
 }
 
 
