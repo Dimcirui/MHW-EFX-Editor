@@ -3,14 +3,19 @@ blender_efx/file_menu.py  —  外部文件的统一入口层：File > Import / 
 
 本模块不定义任何新的算子逻辑，只把已有的导入/导出算子挂到 Blender 的标准入口上：
 
-  File > Import >  MHW Effect (.efx)        → efx.import_efx
-                   MHW Timeline (.timl)     → efx.import_entry_timl
-                   MHW UV Sequence (.uvs)   → efx.uvs_import
-  File > Export >  同三条 → efx.export_efx / efx.export_entry_timl / efx.uvs_export
+  File > Import >  MHW Effect (.efx)              → efx.import_efx
+                   MHW Timeline (.timl)           → efx.import_entry_timl
+                   MHW UV Sequence (.uvs)         → efx.uvs_import
+                   MHW Effect Provider (.epv3)    → epv.import_epv
+  File > Export >  同四条 → efx.export_efx / efx.export_entry_timl / efx.uvs_export / epv.export_epv
 
-.timl / .uvs 两条仍是「灌进/取自当前选中对象」的语义（TIML 进 entry、UVS 进
-UVSEQUENCE 属性），选中目标不对时菜单项按算子 poll 自动灰显，灰显原因由算子的
-poll_message_set 给出。
+⚠ .epv3 两条的算子在**兄弟包 blender_epv** 里，而它在根 __init__.py 里排在 blender_efx
+之后注册。菜单项只在 draw 时按 bl_idname 解析，正常情况没问题；但为防部分注册状态下
+画出报错的菜单项，这里仍按存在性守卫（_has_epv）。
+
+.timl / .uvs 两条按当前选中对象二选一：选中了合适的宿主（entry / UVSEQUENCE 属性）就灌进去，
+否则**无宿主独立打开**（见 standalone.py），两种情况都在文件浏览器侧栏给出勾选可改。
+故这两条菜单项恒可用，不会灰显。
 
 拖入（FileHandler）：.efx 的拖入在 operators.py 里；本模块补 .timl / .uvs 两个。
 ⚠ 版本守卫：FileHandler 是 Blender 4.1+ API，3.6 上 bpy.types.FileHandler 不存在，
@@ -31,11 +36,22 @@ from .i18n import T
 # 菜单里的算子按各自 poll 自动灰显；.efx 两条无 poll 限制恒可用，
 # .timl / .uvs 需要先选中对应宿主对象。
 
+def _has_epv() -> bool:
+    """blender_epv 的算子是否已注册（它在根 __init__.py 里排在 blender_efx 之后）。
+
+    ⚠ 查的名字是 bl_idname 推导出来的 RNA 名（"epv.import_epv" → EPV_OT_import_epv），
+    **不是** Python 类名（那个叫 EPV_OT_import，查它恒为假）。
+    """
+    return hasattr(bpy.types, "EPV_OT_import_epv")
+
+
 def _menu_func_import(self, context):
     layout = self.layout
     layout.operator("efx.import_efx",        text=T("filemenu.efx"))
     layout.operator("efx.import_entry_timl", text=T("filemenu.timl"))
     layout.operator("efx.uvs_import",        text=T("filemenu.uvs"))
+    if _has_epv():
+        layout.operator("epv.import_epv",    text=T("filemenu.epv"))
 
 
 def _menu_func_export(self, context):
@@ -43,6 +59,8 @@ def _menu_func_export(self, context):
     layout.operator("efx.export_efx",        text=T("filemenu.efx"))
     layout.operator("efx.export_entry_timl", text=T("filemenu.timl"))
     layout.operator("efx.uvs_export",        text=T("filemenu.uvs"))
+    if _has_epv():
+        layout.operator("epv.export_epv",    text=T("filemenu.epv"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -66,7 +84,7 @@ def _drop_area_ok(context) -> bool:
 
 if _HAS_FILEHANDLER:
     class EFX_FH_import_timl(bpy.types.FileHandler):
-        """.timl 拖入 3D 视口 → 写进当前选中 entry 的 TIML 段（弹窗确认）。"""
+        """.timl 拖入 3D 视口 → 写进当前选中 entry，或无宿主时独立打开（弹窗确认）。"""
 
         bl_idname          = "EFX_FH_import_timl"
         bl_label           = "Import TIML"
@@ -75,14 +93,12 @@ if _HAS_FILEHANDLER:
 
         @classmethod
         def poll_drop(cls, context):
-            # 目标不对时不接收拖放（避免落地后算子 poll 失败、看起来"没反应"）
-            if not _drop_area_ok(context):
-                return False
-            from .timl_io import _entry_is_timl_capable, resolve_timl_entry
-            return _entry_is_timl_capable(resolve_timl_entry(context.active_object))
+            # 不再要求先选中 entry：没有合适宿主时算子会走无主打开（standalone.py），
+            # 落地总有结果，故这里只限定可拖放区域。
+            return _drop_area_ok(context)
 
     class EFX_FH_import_uvs(bpy.types.FileHandler):
-        """.uvs 拖入 3D 视口 → 载入当前选中 UVSEQUENCE 属性（弹窗确认）。"""
+        """.uvs 拖入 3D 视口 → 载入当前选中 UVSEQUENCE 属性，或无宿主时独立打开（弹窗确认）。"""
 
         bl_idname          = "EFX_FH_import_uvs"
         bl_label           = "Import UVS"
@@ -91,10 +107,8 @@ if _HAS_FILEHANDLER:
 
         @classmethod
         def poll_drop(cls, context):
-            if not _drop_area_ok(context):
-                return False
-            from .uvs_io import _is_uvsequence_attribute
-            return _is_uvsequence_attribute(context.active_object)
+            # 同上：没有 UVSEQUENCE 宿主时走无主打开。
+            return _drop_area_ok(context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

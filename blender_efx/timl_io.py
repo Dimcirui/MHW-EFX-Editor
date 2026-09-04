@@ -20,7 +20,7 @@ import os
 
 import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
-from bpy.props import CollectionProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, StringProperty
 
 from .i18n import T
 
@@ -38,18 +38,37 @@ def _poll_msg(cls, msg) -> None:
         setter(msg)
 
 
-def resolve_timl_entry(obj):
-    """把活动对象解析成所属 EFX_ENTRY：
+def is_standalone_timl(obj) -> bool:
+    """是否为**无宿主**的 EFX_TIML 句柄（不 parent 到任何 entry，自己就是数据载体）。
 
-    - EFX_TIML 句柄  → 其父 entry（TIML 统一入口）
-    - EFX_ENTRY      → 自身（兼容直接选 entry，如给无 TIML 的 entry 添加）
-    - 其他          → None
+    无主句柄由 standalone.py 的「独立打开 .timl」创建，放在 EFX Standalone 集合下，
+    timl_bytes 直接存在句柄自己身上。它不属于任何 EFX_ROOT 文件集合，故被导出/校验
+    的收集路径天然忽略（那些路径要么按 root_col 的叶子集合收，要么按 `.parent ==
+    某 entry` 过滤，无主句柄两条都不沾）。
+    """
+    return (
+        obj is not None
+        and obj.get("~TYPE") == "EFX_TIML"
+        and obj.parent is None
+    )
+
+
+def resolve_timl_entry(obj):
+    """把活动对象解析成**TIML 字节的载体**：
+
+    - EFX_TIML 句柄（有宿主）→ 其父 entry（TIML 统一入口）
+    - EFX_TIML 句柄（无宿主）→ 自身（无主 TIML：句柄即载体）
+    - EFX_ENTRY              → 自身（兼容直接选 entry，如给无 TIML 的 entry 添加）
+    - 其他                   → None
+
+    下游（timl_edit 的 build_persistent_fcurves / sync_fcurves_to_bytes、本模块的
+    导入导出算子）只把这个返回值当"读写 timl_bytes 的那个对象"用，故两种情况同一套代码。
     """
     if obj is None:
         return None
     t = obj.get("~TYPE")
     if t == "EFX_TIML":
-        return obj.parent
+        return obj.parent if obj.parent is not None else obj
     if t == "EFX_ENTRY":
         return obj
     return None
@@ -62,7 +81,11 @@ def _entry_is_timl_capable(obj) -> bool:
     的头部本来就有 timl_length 字段（0 = 无 TIML，是合法常态，官方 78 文件里
     750/982 个 standard entry 即 timl_length==0）。故"添加 TIML"对这些 entry 都成立。
     """
-    if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
+    if obj is None:
+        return False
+    if is_standalone_timl(obj):
+        return True          # 无主句柄天然可携带 TIML（它就是为此而生的）
+    if obj.get("~TYPE") != "EFX_ENTRY":
         return False
     return str(obj.get("entry_kind", "")) in ("standard", "extended")
 
@@ -166,9 +189,10 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
     bl_idname      = "efx.import_entry_timl"
     bl_label       = "Add / Replace TIML"
     bl_description = (
-        "Read a .timl file and write it into the current EFX_ENTRY's TIML segment "
-        "(adds one if the entry has none, or replaces the existing TIML). "
-        "timl_length is recomputed automatically (variable length supported)."
+        "Read a .timl file. With an EFX entry selected it goes into that entry's TIML "
+        "segment (added if absent, replaced if present); otherwise it opens standalone, "
+        "with no .efx involved. timl_length is recomputed automatically (variable length "
+        "supported)."
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -183,13 +207,22 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
     )
     directory: StringProperty(subtype="DIR_PATH", options={"HIDDEN", "SKIP_SAVE"})
 
-    @classmethod
-    def poll(cls, context):
-        # 放宽到「能携带 TIML 的 entry」：无 TIML 时此算子用于"添加"
-        ok = _entry_is_timl_capable(resolve_timl_entry(context.active_object))
-        if not ok:
-            _poll_msg(cls, "Select a standard/extended EFX entry (or its TIML handle) first")
-        return ok
+    # 无主打开：不写进任何 entry，建一个自带 timl_bytes 的独立句柄（standalone.py）。
+    # 默认值在 invoke 里按"当前有没有可写入的 entry"算，故 SKIP_SAVE（不记忆上次的值）。
+    standalone: BoolProperty(
+        name="Standalone (no .efx)",
+        description="Open the .timl on its own instead of writing it into a selected entry",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
+
+    # poll 恒 True：没有合适的 entry 时走无主打开，此算子总有事可做。
+    def _target_entry(self, context):
+        """本次导入要写进的 entry；无主模式或没有合适目标时返回 None。"""
+        if self.standalone:
+            return None
+        obj = resolve_timl_entry(context.active_object)
+        return obj if _entry_is_timl_capable(obj) else None
 
     def _resolve_path(self) -> str:
         """拖入路径优先用 directory+files，菜单/按钮路径用 ImportHelper 的 filepath。"""
@@ -200,6 +233,8 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
         return self.filepath
 
     def invoke(self, context, event):
+        # 选中了能装 TIML 的 entry 就默认灌进去，否则默认无主打开（File 菜单里的常态）。
+        self.standalone = not _entry_is_timl_capable(resolve_timl_entry(context.active_object))
         # 拖入：整段 TIML 替换是破坏性的，先弹确认框（ImportHelper 默认 invoke 会再开一次
         # 文件浏览器，让拖入看起来"没反应"——同 efx.import_efx 的处理）。
         if self.directory and self.files:
@@ -207,22 +242,21 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
         return ImportHelper.invoke(self, context, event)
 
     def draw(self, context):
-        # 仅拖入确认框用到（文件浏览器侧栏没有可调选项时留空即可）。
+        # 文件浏览器侧栏 / 拖入确认框共用。
         layout = self.layout
         entry = resolve_timl_entry(context.active_object)
+        capable = _entry_is_timl_capable(entry)
         layout.label(text=os.path.basename(self._resolve_path()), icon="ANIM")
-        if entry is not None:
+        row = layout.row()
+        row.enabled = capable          # 没有可写入的 entry 时只能无主打开，不给取消
+        row.prop(self, "standalone")
+        if self.standalone or not capable:
+            layout.label(text="Opens on its own (no .efx)", icon="UNLINKED")
+        else:
             verb = "Replace TIML of" if _entry_has_timl(entry) else "Add TIML to"
             layout.label(text="%s: %s" % (verb, entry.name), icon="OUTLINER_OB_EMPTY")
 
     def execute(self, context):
-        obj = resolve_timl_entry(context.active_object)
-        if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
-            self.report({"ERROR"}, "Select an EFX_ENTRY containing TIML first")
-            return {"CANCELLED"}
-        if str(obj.get("entry_kind", "")) not in ("standard", "extended"):
-            self.report({"ERROR"}, "This entry type does not contain a TIML segment")
-            return {"CANCELLED"}
         path = self._resolve_path()
         if not path:
             self.report({"ERROR"}, "TIML import: no file path specified")
@@ -241,7 +275,19 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
             )
             return {"CANCELLED"}
 
-        old_len = len(_entry_timl_bytes(obj))
+        # ── 目标：写进选中的 entry，还是无主打开 ────────────────────────────────
+        obj = self._target_entry(context)
+        standalone = obj is None
+        if standalone:
+            from . import standalone as _sa
+            base = os.path.splitext(os.path.basename(path))[0] or "timl"
+            obj = _sa.new_timl_host(base, context)
+            obj["efx_raw_label"] = base
+            obj["efx_source_path"] = path
+            old_len = 0
+        else:
+            old_len = len(_entry_timl_bytes(obj))
+
         # grow-only 自动长度：导入 .timl 时把每条动画长度增长到末关键帧（per-entry 开关，默认开）。
         # 原地等长 patch，不改 timl 长度、不碰 byte-perfect。
         if obj.get("efx_timl_auto_grow", True):
@@ -251,12 +297,16 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
             except Exception:
                 pass
         # 咽喉点：写字节 + 建句柄 + 从新字节重建持久 fcurve（替换整段 TIML → 新字节为准）
+        # 无主形态下 obj 自己就是句柄，这条链路完全同构（见 standalone.py 模块文档）。
         from . import timl_edit as _te
         _te.set_entry_timl(obj, data)
-        self.report(
-            {"INFO"},
-            f"TIML reimported: {len(data)} bytes (was {old_len}). timl_length is auto-recomputed on export.",
-        )
+        if standalone:
+            self.report({"INFO"}, f"TIML opened standalone: {os.path.basename(path)} ({len(data)} bytes)")
+        else:
+            self.report(
+                {"INFO"},
+                f"TIML reimported: {len(data)} bytes (was {old_len}). timl_length is auto-recomputed on export.",
+            )
         return {"FINISHED"}
 
 
@@ -357,6 +407,10 @@ class EFX_PT_entry_timl(bpy.types.Panel):
         layout = self.layout
         obj = resolve_timl_entry(context.active_object)
         has = _entry_has_timl(obj)
+
+        # 无主 TIML：标一行"独立文件"并给关闭入口（有宿主时这行不画）
+        from . import standalone as _sa
+        _sa.draw_standalone_header(layout, obj)
 
         # 段状态行
         if has:

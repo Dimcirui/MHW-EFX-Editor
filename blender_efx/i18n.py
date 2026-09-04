@@ -266,6 +266,10 @@ STRINGS = {
                                "ZH": "导出时，如果文件里的 entry 全是 2D 或全是 3D（按 TRANSFORM2D/TRANSFORM3D 判断），"
                                      "自动把 header.is_3d 设为匹配的值（0/1）。2D/3D 混用的情况不会自动改"
                                      "（见校验警告）。如果你是故意测试类型不匹配，取消勾选。"},
+    # ── 无宿主 TIML / UVS（standalone.py）──────────────────────────────────────
+    "standalone.badge":      {"EN": "Standalone file (not part of an .efx)",
+                              "ZH": "独立文件（不属于任何 .efx）"},
+
     # ── File > Import / Export 菜单项（file_menu.py）───────────────────────────
     "filemenu.efx":          {"EN": "MHW Effect (.efx)",
                               "ZH": "MHW 特效 (.efx)"},
@@ -273,6 +277,8 @@ STRINGS = {
                               "ZH": "MHW 时间轴 (.timl)"},
     "filemenu.uvs":          {"EN": "MHW UV Sequence (.uvs)",
                               "ZH": "MHW UV 序列 (.uvs)"},
+    "filemenu.epv":          {"EN": "MHW Effect Provider (.epv3)",
+                              "ZH": "MHW 特效提供器 (.epv3)"},
 
     "export.target_efx":     {"EN": "EFX Collection",
                               "ZH": "EFX 集合"},

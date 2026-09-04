@@ -52,6 +52,7 @@ from . import bitmask_ops    # 通用位掩码弹窗编辑器（typed Field bitm
 from . import color_ops      # Color Editor 全局改色工具（色系偏移 / 直接替换）
 from . import validate      # L2 #4：导出前校验
 from . import session_core  # 会话/预览类公共基础设施：标记式孤儿清理 + 生命周期缓存复位
+from . import standalone   # 无宿主 TIML / UVS：不依赖 .efx 树也能打开编辑
 from . import timl_io       # TIML ↔ .timl 文件互导 + EFX_TIML 句柄解析
 from . import timl_meta_ui  # TIML 头部元字段编辑（Dope Sheet 侧栏 EFX TIML：长度/循环控制）
 from . import timl_edit      # 阶段2b：自建 TIML 通道编辑会话（原生 F 曲线，零 FK）
@@ -91,6 +92,7 @@ __all__ = [
     "add_section_ops",
     "attribute_ops",
     "validate",
+    "standalone",
     "timl_io",
     "timl_meta_ui",
     "timl_tracks",
@@ -185,6 +187,9 @@ def register():
     operators.register()
     panels.register()  # 包含 EFX_PT_entry（父）和所有 L2 子面板
 
+    # ── 无宿主 TIML / UVS：只有算子（关闭无主载体），无面板依赖，先于消费者注册 ──
+    standalone.register()
+
     # ── TIML 互导：面板 bl_parent_id='EFX_PT_entry'，同样在 panels.register() 之后 ─
     timl_io.register()
 
@@ -245,6 +250,7 @@ def unregister():
     timl_edit.unregister()
     timl_meta_ui.unregister()
     timl_io.unregister()
+    standalone.unregister()
     panels.unregister()
     operators.unregister()
 

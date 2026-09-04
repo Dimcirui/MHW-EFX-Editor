@@ -57,9 +57,26 @@ def _get_uvsequence_path(obj) -> str:
     return ""
 
 
+def is_standalone_uvs(obj) -> bool:
+    """是否为**无宿主**的 UVS 载体对象（standalone.py 的「独立打开 .uvs」创建）。
+
+    UVS 数据本来就全在 `obj.efx_uvs`（挂在 Object 上的 PropertyGroup），谁当宿主
+    对编辑逻辑没有区别——无主载体只是一个带 ~TYPE="EFX_UVS" 标记的 Empty，不属于
+    任何 EFX_ROOT 集合，故导出/校验路径不会碰到它。
+    """
+    return obj is not None and obj.get("~TYPE") == "EFX_UVS"
+
+
 def _is_uvsequence_attribute(obj) -> bool:
-    """该对象是否为 UVSEQUENCE 类型的 EFX_ATTRIBUTE。"""
-    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+    """该对象是否为 UVS 编辑的合法宿主：UVSEQUENCE 类型的 EFX_ATTRIBUTE，或无主 UVS 载体。
+
+    UVS 编辑器的十余处门控全部走这一个判据，放宽它即等于整套编辑器对无主 UVS 生效。
+    """
+    if obj is None:
+        return False
+    if is_standalone_uvs(obj):
+        return True
+    if obj.get("~TYPE") != "EFX_ATTRIBUTE":
         return False
     try:
         from ..efx_format.hashes import UVSEQUENCE
@@ -286,6 +303,10 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
 
     bl_idname = "efx.uvs_import"
     bl_label = "Import UVS"
+    bl_description = (
+        "Read a .uvs file. With a UVSEQUENCE attribute selected it loads into that "
+        "attribute; otherwise it opens standalone, with no .efx involved"
+    )
     bl_options = {"REGISTER", "UNDO"}
 
     filename_ext = ".uvs"
@@ -298,12 +319,22 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
     )
     directory: StringProperty(subtype="DIR_PATH", options={"HIDDEN", "SKIP_SAVE"})
 
-    @classmethod
-    def poll(cls, context):
-        ok = _is_uvsequence_attribute(context.active_object)
-        if not ok:
-            _poll_msg(cls, "Select a UVSEQUENCE attribute first")
-        return ok
+    # 无主打开：不写进任何属性，建一个自带 efx_uvs 的独立载体（standalone.py）。
+    # 默认值在 invoke 里按"当前有没有 UVSEQUENCE 宿主"算，故 SKIP_SAVE。
+    standalone: BoolProperty(
+        name="Standalone (no .efx)",
+        description="Open the .uvs on its own instead of loading it into a selected attribute",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
+
+    # poll 恒 True：没有宿主时走无主打开，此算子总有事可做。
+    def _target_host(self, context):
+        """本次导入要载入的宿主对象；无主模式或没有宿主时返回 None。"""
+        if self.standalone:
+            return None
+        obj = context.active_object
+        return obj if _is_uvsequence_attribute(obj) else None
 
     def _resolve_path(self) -> str:
         """拖入路径优先用 directory+files，菜单/按钮路径用 ImportHelper 的 filepath。"""
@@ -314,6 +345,8 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
         return self.filepath
 
     def invoke(self, context, event):
+        # 选中了 UVSEQUENCE 宿主就默认载进去，否则默认无主打开（File 菜单里的常态）。
+        self.standalone = not _is_uvsequence_attribute(context.active_object)
         # 拖入：载入会覆盖当前 UVS 编辑内容，先弹确认框（ImportHelper 默认 invoke
         # 会再开一次文件浏览器，让拖入看起来"没反应"）。
         if self.directory and self.files:
@@ -323,13 +356,17 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
     def draw(self, context):
         layout = self.layout
         obj = context.active_object
+        host = _is_uvsequence_attribute(obj)
         layout.label(text=os.path.basename(self._resolve_path()), icon="IMAGE_DATA")
-        if obj is not None:
+        row = layout.row()
+        row.enabled = host             # 没有宿主时只能无主打开，不给取消
+        row.prop(self, "standalone")
+        if self.standalone or not host:
+            layout.label(text="Opens on its own (no .efx)", icon="UNLINKED")
+        else:
             layout.label(text="Load into: %s" % obj.name, icon="OUTLINER_OB_EMPTY")
 
     def execute(self, context):
-        obj = context.active_object
-        props = obj.efx_uvs
         path = self._resolve_path()
         if not path:
             self.report({"ERROR"}, "UVS import: no file path specified")
@@ -337,6 +374,17 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
         try:
             with open(path, "rb") as f:
                 data = f.read()
+        except OSError as e:
+            self.report({"ERROR"}, T("uvs.import_failed").format(e))
+            return {"CANCELLED"}
+
+        # ── 目标：载进选中的 UVSEQUENCE 属性，还是无主打开 ──────────────────────
+        obj = self._target_host(context)
+        if obj is None:
+            from . import standalone as _sa
+            obj = _sa.new_uvs_host(os.path.splitext(os.path.basename(path))[0] or "uvs", context)
+        props = obj.efx_uvs
+        try:
             _populate_props(props, data)
             props.filepath = path
             self.report({"INFO"}, T("uvs.imported").format(os.path.basename(path), len(props.groups)))
@@ -466,6 +514,10 @@ class EFX_PT_uvs_edition(Panel):
         layout = self.layout
         obj    = context.active_object
         props  = obj.efx_uvs
+
+        # 无主 UVS：标一行"独立文件"并给关闭入口（有宿主时这行不画）
+        from . import standalone as _sa
+        _sa.draw_standalone_header(layout, obj)
 
         # ── UVS 游戏路径（只读显示，来自块字段）──────────────────────────────
         game_path = _get_uvsequence_path(obj)

@@ -34,7 +34,11 @@ from ..efx_format import timl as _timl   # 完整解析/序列化（animation �
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _resolve_active_entry(obj):
-    """从活动对象解析所属 EFX_ENTRY：自身是 entry 即取，否则沿 parent 上溯。"""
+    """从活动对象解析出 TIML 字节的载体：无主 TIML 句柄即其自身（standalone.py），
+    否则自身是 entry 即取、再否则沿 parent 上溯找 EFX_ENTRY。"""
+    from .timl_io import is_standalone_timl
+    if is_standalone_timl(obj):
+        return obj
     cur = obj
     while cur is not None:
         if cur.get("~TYPE") == "EFX_ENTRY":

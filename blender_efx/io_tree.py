@@ -92,9 +92,15 @@ def _new_empty(name: str, collection: bpy.types.Collection) -> bpy.types.Object:
 # 的类型过滤天然忽略）。所有面板/算子经 resolve_timl_entry() 把句柄解析回父 body 后操作。
 
 def find_timl_handle(entry_obj: bpy.types.Object):
-    """返回 body 下的 EFX_TIML 句柄对象，无则 None。"""
+    """返回 body 下的 EFX_TIML 句柄对象，无则 None。
+
+    entry_obj 本身就是无主 EFX_TIML 句柄时返回它自己——无主 TIML（standalone.py）
+    把句柄同时当数据载体，故 resolve_timl_entry 与本函数在那条路径上是同一个对象。
+    """
     if entry_obj is None:
         return None
+    if entry_obj.get("~TYPE") == "EFX_TIML":
+        return entry_obj
     for c in bpy.data.objects:
         if c.parent == entry_obj and c.get("~TYPE") == "EFX_TIML":
             return c
