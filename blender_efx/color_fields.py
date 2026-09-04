@@ -44,9 +44,10 @@ _COLOR_ADJACENT_NAMES = frozenset({
     "colorScaler",
     # 颜色范围 / 颜色相关开关 / 模式
     "useColorRange", "useEmissiveColor", "useEmissiveColorRange",
-    "disableAllColorRange", "colorModeFlag", "colourTransitionPoint",
-    # 染色开关（TUBELIGHT：发射面是否受 headColor/tailColor 染色）
-    "backFaceTintMode", "frontFaceTintMode",
+    "disableAllColorRange", "colourTransitionPoint",
+    # ⚠ 2026-09-04 移除三项：STRAINRIBBON.colorModeFlag 查明是 EPV 颜色槽（已改名
+    #   epv_color_slot1，下面 EPV 那组已收）；TUBELIGHT 的 backFace/frontFaceTintMode
+    #   实为光照有效半径（已改名 tail/headEffectiveRadius），与颜色无关。
     # EPV 颜色槽（含 EPVColorSlot 嵌套字段的 "head.epvColorSlot" 等，按末段匹配）
     "epv_color_slot", "epvcolorslot", "epv_color_slot1", "epv_color_slot2",
     "EPVColorSlot1", "EPVColorSlot2", "epvColorSlot",
@@ -72,7 +73,7 @@ _PACKED_INT_COLOR_FIELDS = frozenset({
 # 可整体乘算的"亮度/强度"浮点字段（_COLOR_ADJACENT_NAMES 的严格子集）：
 # 只收真正表示亮度/发光强度、乘一个系数语义成立的**浮点标量**。刻意排除——
 #   · 开关/布尔：enable*/use*/disableAllColorRange
-#   · 枚举/模式：colorModeFlag / backFaceTintMode / frontFaceTintMode
+#   · 枚举/模式：colourTransitionPoint 一类
 #   · 位置/占比：colourTransitionPoint（0-1 过渡点，乘会越界）
 #   · 槽位索引：epv*Slot / brightnessSlot1/2（是槽编号不是强度值，含义不明保守排除）
 #   · 饱和度：emissive_saturation*（是饱和不是亮度）

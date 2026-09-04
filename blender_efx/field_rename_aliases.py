@@ -488,4 +488,21 @@ FIELD_RENAME_ALIASES = {
 
     # ── EMITTERSHAPE2D（2026-09-03，按与 3D 同构推定为细分轴向）──
     ("EMITTERSHAPE2D", "unknEnum22_0"): "rangeDivideAxis",
+
+    # ── TUBELIGHT（2026-09-04）──────────────────────────────────────────────
+    # ⚠ 这里有一次**名字复用**：老名 lightIntensity（off20）现在叫 coreThickness，
+    #   而 off16 拿走了 lightIntensity 这个名字。本表只在"按当前 schema 查不到"时才
+    #   兜底，老 .blend 里的 lightIntensity 会**直接匹配上新的 off16 字段**，轮不到
+    #   这条别名 → 含 TUBELIGHT 的旧 .blend 必须重新导入。这条留着是为了记录事实，
+    #   不要指望它能救。
+    ("TUBELIGHT", "lightIntensity"): "coreThickness",
+    ("TUBELIGHT", "lightIntensityJitter"): "coreThicknessJitter",
+    ("TUBELIGHT", "unknFixed1_1"): "lightIntensity",
+    ("TUBELIGHT", "unkn1_8"): "effectiveRadius",
+    ("TUBELIGHT", "backFaceTintMode"): "tailEffectiveRadius",
+    ("TUBELIGHT", "frontFaceTintMode"): "headEffectiveRadius",
+
+    # ── STRAINRIBBON（2026-09-04）──────────────────────────────────────────
+    ("STRAINRIBBON", "colorModeFlag"): "epv_color_slot1",
+    ("STRAINRIBBON", "positionalAberration_04"): "epv_color_slot2",
 }

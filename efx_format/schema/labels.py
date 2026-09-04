@@ -94,6 +94,10 @@ _LABELS_GLOBAL = {
     'loopingPad': '保留',
     # applicationRule/loopingMode 现为 Bitmask 字段（label 在 Field.label_zh），拆分子字段已退休。
 
+    # EPV 颜色槽（MESH / STRAINRIBBON 共用同名字段，此前两边都没有中文标签）
+    'epv_color_slot1': 'EPV 颜色槽 1',
+    'epv_color_slot2': 'EPV 颜色槽 2',
+
     # ── 路径槽（2026-09-03 由统一的 path / path1 / path2 改成按内容命名）──────
     # 名字在 blender_efx/fields.py::_PATH_ITEM_NAMES 里定义（路径不在 schema，
     # codec 按位置存取），每个名字全项目唯一，故一律进 GLOBAL 表。

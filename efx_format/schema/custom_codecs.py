@@ -1036,8 +1036,11 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('endBoneID',              'i'),        # 链条末端绑定骨骼 ID（有效）
     ('positionalAberration_01','i'),
     ('positionalAberration_02','i'),
-    ('colorModeFlag',          'i'),        # positionalAberration_03（有效：2=青色偏移,10+=消失）
-    ('positionalAberration_04','i'),
+    # EPV 颜色槽：写非 0 就用 .epv 对应槽位的颜色顶掉本属性上的值（同 RIBBON.epvcolor
+    # 那套机制）。slot1 管 color、slot2 管 colorRange。原名 colorModeFlag（"2=青色偏移、
+    # 10+=消失"其实就是取到了不同槽位的颜色）/ positionalAberration_04。
+    ('epv_color_slot1',        'i'),        # 原 colorModeFlag / positionalAberration_03
+    ('epv_color_slot2',        'i'),        # 原 positionalAberration_04
     ('positionalAberration_05','i'),
     ('displacement',           ('XYZ', 0)), # MT 遗留，24B
     ('displacementToggle',     'i'),
@@ -1787,14 +1790,20 @@ TUBELIGHT_ATTR = Attribute(size=124, fields=[
     Byte("unknFixed0_2_cd"),                           # off10 恒 0xCD，未初始化占位
     Byte("unknFixed0_2b"),                              # off11 恒 0x00
     Float("unkn1_0"),                                  # off12 可能为纹理滚动速度
-    Float("unknFixed1_1"),                             # off16 含义不明
-    Float("lightIntensity", label_zh="光照强度"),      # off20
-    Float("lightIntensityJitter", label_zh="光照强度抖动"),  # off24
+    # ⚠ off16/off20 是一次**交换式改名**（用户 2026-09-04 逐条建 TIML 轨道测出来的）：
+    # 原先叫 lightIntensity 的 off20 其实由 DT CoreThickness 驱动，真正的 DT LightIntensity
+    # 落在 off16（原 unknFixed1_1）。名字互换后 `lightIntensity` 这个 identifier 指向了
+    # **另一个偏移**——老 .blend 里的同名 item 会被当前 schema 直接按名字匹配上，
+    # field_rename_aliases 只在查不到时才兜底，帮不上忙 → 含 TUBELIGHT 的旧 .blend 必须
+    # 重新导入，否则该字段的编辑会写到错误偏移。（全语料 TUBELIGHT 仅 22 块，影响面很小。）
+    Float("lightIntensity", label_zh="光照强度"),      # off16 原 unknFixed1_1，DT LightIntensity
+    Float("coreThickness", label_zh="核心粗细"),       # off20 原 lightIntensity，DT CoreThickness
+    Float("coreThicknessJitter", label_zh="核心粗细抖动"),  # off24 原 lightIntensityJitter
     Float("columnLengthModifier", label_zh="光柱长度修正"),  # off28
     Float("columnRadius", label_zh="光柱半径"),        # off32
     Float("columnRadiusJitter", label_zh="光柱半径抖动"),    # off36
     Float("columnEdgeSoftness", label_zh="光柱边缘柔化"),    # off40
-    Float("unkn1_8"),                                  # off44 可能为核心亮度
+    Float("effectiveRadius", label_zh="光照有效半径"),  # off44 原 unkn1_8，DT EffectiveRadius
     Float("unknFixed1_9"),                             # off48 含义不明
     Float("unkn1_10"),                                 # off52 可能与光柱长度有关
     Float("unkn2_0"),                                  # off56
@@ -1806,14 +1815,14 @@ TUBELIGHT_ATTR = Attribute(size=124, fields=[
     Int("headColor", label_zh="光柱起点颜色"),          # off80 打包 RGBA int
     Float("columnLength", label_zh="光柱长度"),         # off84 起点 headColor→终点 tailColor
     Float("tailGlowSpread", label_zh="尾光扩散(变长+边缘虚化)"),  # off88 一参两效
-    Float("backFaceTintMode", label_zh="反向区域受起点色染色"),   # off92 与 front 镜像
+    Float("tailEffectiveRadius", label_zh="终点有效半径"),  # off92 原 backFaceTintMode
     Int("unknFixed5_0"),                               # off96  通常为 24
     Int("unkn5_1"),                                    # off100 恒 0xCDCDCDCD 未初始化标记
     Int("unknFixed6a_0"),                              # off104
     Int("tailColor", label_zh="光柱终点颜色"),          # off108 打包 RGBA int
     Float("tailPlaneOffset", label_zh="终点发光面前后位置"),  # off112
     Float("unkn6b_1"),                                 # off116 可能与发光光圈相关
-    Float("frontFaceTintMode", label_zh="朝向区域受终点色染色"),  # off120 0=不受影响 1=受影响
+    Float("headEffectiveRadius", label_zh="起点有效半径"),  # off120 原 frontFaceTintMode
 ])
 _TUBELIGHT_FIXED_SCHEMA = TUBELIGHT_ATTR.schema
 assert _schema_size(_TUBELIGHT_FIXED_SCHEMA) == 124, \

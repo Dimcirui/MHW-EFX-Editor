@@ -510,6 +510,15 @@ FIELD_TO_DT = {
     ("VELOCITY2D", "gravity"):       [(0x6A5FE3C4, 2)],
     ("STRAINRIBBON", "color"):       [(0x58689812, 3)],
     ("STRAINRIBBON", "colorRange"):  [(0xC216C23D, 3)],
+    ("STRAINRIBBON", "emissionStrength"): [(0x9F1E012E, 2)],   # DT ColorRate
+    # displacement 是 XYZ type 0（FLOAT6），背板按游戏序逐轴成对交错
+    # [staticX,randomX, staticY,randomY, staticZ,randomZ]；官方名的 Min/Max 就是
+    # 我们的 static/random，与 EMITTERSHAPE3D.rangeXYZ 同一套读法，故挂 6 条。
+    ("STRAINRIBBON", "displacement"): [
+        (0x760F3D43, 2), (0x6484D92C, 2),   # RangeMinX(static X), RangeMaxX(random X)
+        (0x01080DD5, 2), (0x1383E9BA, 2),   # RangeMinY / RangeMaxY
+        (0x98015C6F, 2), (0x8A8AB800, 2),   # RangeMinZ / RangeMaxZ
+    ],
     # startPosition 是 XYZ type 3，同 endPosition 那条：背板按游戏分量序逐轴排，挂 3 条
     ("STRAINRIBBON", "startPosition"): [
         (0xE66B06CD, 2), (0x916C365B, 2), (0x086567E1, 2),  # InitialPosition X / Y / Z
@@ -579,8 +588,13 @@ FIELD_TO_DT = {
     ],
     # RIBBON：color ↔ Color（XYZ type 2 = RGBA），该块 361 条轨道里 136 条是它
     ("RIBBON", "color"):          [(0x58689812, 3)],
-    # TUBELIGHT：lightIntensity 与 DT 名精确一致
-    ("TUBELIGHT", "lightIntensity"): [(0x085BC9D5, 2)],
+    # ── TUBELIGHT（2026-09-04 用户实机逐条测出；⚠ 此前把 DT LightIntensity 挂在
+    # off20 那个字段上是错的，那一格实际由 CoreThickness 驱动，见 custom_codecs 注释）
+    ("TUBELIGHT", "lightIntensity"):      [(0x085BC9D5, 2)],   # off16，原 unknFixed1_1
+    ("TUBELIGHT", "coreThickness"):       [(0x316D89C5, 2)],   # off20，原 lightIntensity
+    ("TUBELIGHT", "effectiveRadius"):     [(0x435F3054, 2)],   # off44，原 unkn1_8
+    ("TUBELIGHT", "tailEffectiveRadius"): [(0x7D0FD331, 2)],   # off92，原 backFaceTintMode
+    ("TUBELIGHT", "headEffectiveRadius"): [(0x102FFF8B, 2)],   # off120，原 frontFaceTintMode
     # STRAINRIBBON：endPosition(XYZ type 3) ↔ TerminatePosition X/Y/Z，游戏分量序
     ("STRAINRIBBON", "endPosition"): [(0x6458334F, 2), (0x135F03D9, 2), (0x8A565263, 2)],
     # ROTATEANIM：官方名里的 "Add" 是**速度**不是加速度，按语料量级判定（2026-08）——
@@ -626,6 +640,20 @@ DT_NO_EFFECT = {
     # 改它看不到变化。要么是死槽位，要么宿主字段还没被我们解出来。
     ("EMITTERSHAPE2D", 0x7516AA5D): "LocalRotation",
 }
+
+# ── ⚠ 2026-09-04：STRAINRIBBON.SizeScalar 推翻了"DT 必有对应字段"的默认假设 ──────
+# 用户实测：给 SizeScalar 建轨道，关键帧写 0 无变化、写 >0 有变化——**这条 DT 确实生效**。
+# 但把该块字段表里所有为 0 的浮点都改成 1，游戏里看不到任何对应变化。
+#
+# 也就是说：**这条 DT 操纵的量根本不在我们解出来的字段里**。可能是块里还没被识别出来的
+# 位，也可能是引擎侧的运行时量（压根不存在于 efx 字节里）。
+#
+# 这动摇了两条一直在用的默认前提：
+#   ① "每条 DT 都对应某个静态字段" —— 不成立，至少有反例。
+#   ② "改 DT 没看到变化 = 这条 DT 是死的" —— 也可能是**某个开关没开**，而开关不一定
+#      在字段里。DT_NO_EFFECT 里的 Emission 三件套因此不能直接判死：先在字段里找相关性
+#      （哪个开关一开、Emission 就有反应），找不到才谈废弃。
+# 保留 SizeScalar 在待测清单里，不进 DT_NO_EFFECT——它是**有效果**的，只是宿主未知。
 
 
 FIELD_TO_DT_UNRESOLVED = {
