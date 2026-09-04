@@ -2123,8 +2123,32 @@ def ptbehavior_param_dt(param_name: str):
 
 
 def timeline_param_name(h: int) -> str:
-    """timelineParameterHash → 名称，未知回退 0x 十六进制。"""
-    return TLP_NAMES.get(h & 0xFFFFFFFF, "0x%08X" % (h & 0xFFFFFFFF))
+    """timelineParameterHash → 短显示名，未知回退 0x 十六进制。
+
+    两张表分工：`TLP_NAMES` 是**短名覆盖**（沿用多年的社区叫法，如 Billboard3D 而非
+    官方的 TypeBillboard3D）；`TLP_FULLNAMES` 是官方 dump 的全限定类名。查不到短名
+    就取全名的末段——⚠ 漏了这条回退会让 119 个**已经有名字**的 TLP 在下拉里显示成
+    十六进制，看着像"没破解"，其实只是没接上显示层。
+    """
+    h &= 0xFFFFFFFF
+    nm = TLP_NAMES.get(h)
+    if nm:
+        return nm
+    full = TLP_FULLNAMES.get(h)
+    if full:
+        return full.rsplit("::", 1)[-1]
+    return "0x%08X" % h
+
+
+def timeline_param_fullname(h: int) -> str:
+    """timelineParameterHash → 官方全限定类名（含命名空间）；没有则退短名/十六进制。
+
+    命名空间本身是有效信息——`nDraw::MaterialAnimation::` 打材质、
+    `nTimelineParam::nWwiseTimeline::` 打音频、`nEffect::nTimelineParam::` 才是特效。
+    列表里位置紧张只显示短名，全名放进 tooltip / description。
+    """
+    h &= 0xFFFFFFFF
+    return TLP_FULLNAMES.get(h) or timeline_param_name(h)
 
 
 def datatype_name(h: int) -> str:

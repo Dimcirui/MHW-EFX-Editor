@@ -22,7 +22,8 @@ from ..efx_format import timl as _timl
 from ..efx_format.timl.names import (
     BLOCK_TO_TLP, FIELD_TO_DT, DT_PALETTE,
     TLP_NAMES, DT_NAMES, DT_TRANSFORM,
-    timeline_param_name, datatype_name, channel_label, block_native_axis,
+    timeline_param_name, timeline_param_fullname,
+    datatype_name, channel_label, block_native_axis,
 )
 
 
@@ -665,7 +666,8 @@ def _tlp_enum_items(self, context):
     if open_all or body is None:
         # 显示 DT_PALETTE 全部 TLP，按名称字母序
         items = sorted(
-            [("%08X" % h, timeline_param_name(h), "0x%08X" % h)
+            [("%08X" % h, timeline_param_name(h),
+              "%s  ·  0x%08X" % (timeline_param_fullname(h), h))
              for h in DT_PALETTE],
             key=lambda x: x[1],
         )
@@ -685,7 +687,8 @@ def _tlp_enum_items(self, context):
             pass
         # 只保留 DT_PALETTE 中有数据的
         items = sorted(
-            [("%08X" % h, timeline_param_name(h), "0x%08X" % h)
+            [("%08X" % h, timeline_param_name(h),
+              "%s  ·  0x%08X" % (timeline_param_fullname(h), h))
              for h in allowed if h in DT_PALETTE],
             key=lambda x: x[1],
         )
