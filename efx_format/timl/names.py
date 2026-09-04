@@ -17,6 +17,8 @@ TIML 通道名由两段 hash 组成：
 # hash 公式：jamcrc("nEffect::nTimelineParam::<DTI短名>") & 0x7FFFFFFF
 # 已验证：
 TLP_NAMES = {
+    # 材质 timl 用（bow023.timl 实例），不出现在 efx 语料里
+    0x3AC1EACA: "Uber_Mt",
     # ── 已确认 ──
     0x65004e2a: "MhEffectDecalBehavior",
     0x6da6e5d1: "MhPointLightBehavior",
@@ -53,21 +55,193 @@ TLP_NAMES = {
     0x13a0f54f: "TonemapFilter",
     0x096cabc4: "ColorCorrectFilter",
     # ── 未知（语料出现，但不清楚名称；括号为共现推断，低置信度）──
-    0x399db6a9: "0x399DB6A9",        # 384次，无强信号
-    0x598272e1: "0x598272E1",        # 278次，PARENTEMISSIVE/PLEMISSIVE 共现(3.5x)
-    0x66c62149: "0x66C62149",        # 76次，无强信号
-    0x5e8d9ee9: "0x5E8D9EE9",        # 72次，EMITTERSHAPEMESH 共现(8.1x)
-    0x2c78b827: "0x2C78B827",        # 66次，无强信号
-    0x4e64d91c: "0x4E64D91C",        # 59次，PLANE 共现(1.4x)
-    0x09c466dc: "0x09C466DC",        # 59次，PTCOLLISION 共现(2.1x)
-    0x5752ed69: "0x5752ED69",        # 51次，无强信号
-    0x0b8924da: "0x0B8924DA",        # 43次，PTTRIGGER 共现(6.9x)
-    0x70c7b1f1: "0x70C7B1F1",        # 12次，无强信号
-    0x3e880466: "0x3E880466",        # 9次，无强信号
-    0x17359e0c: "0x17359E0C",        # 6次，UVCONTROL 共现(1.2x)
-    0x465acf70: "0x465ACF70",        # 3次，无强信号
-    0x7e51f5bd: "0x7E51F5BD",        # 2次，EMITTERBOUNDARY 共现(2.9x)
-    0x0fe12549: "0x0FE12549",        # 1次，EXTERNREFERENCE 共现(1.8x)
+    0x399db6a9: "VFX_Flood_Mt",        # 384次，无强信号
+    0x598272e1: "PlEmissive",        # 278次，PARENTEMISSIVE/PLEMISSIVE 共现(3.5x)
+    0x66c62149: "VFX_Ice_Mt",        # 76次，无强信号
+    0x5e8d9ee9: "VFX_EmissiveFog_Mt",        # 72次，EMITTERSHAPEMESH 共现(8.1x)
+    0x2c78b827: "VFX_Tornado_Mt",        # 66次，无强信号
+    0x4e64d91c: "Burn_Mt",        # 59次，PLANE 共现(1.4x)
+    0x09c466dc: "Standard_Mt",        # 59次，PTCOLLISION 共现(2.1x)
+    0x5752ed69: "VFX_DispWave_Mt",        # 51次，无强信号
+    0x0b8924da: "EM106_Mt",        # 43次，PTTRIGGER 共现(6.9x)
+    0x70c7b1f1: "VFX_SandFall_Mt",        # 12次，无强信号
+    0x3e880466: "VFX_Water_Mt",        # 9次，无强信号
+    0x17359e0c: "VFX_Aurora_Mt",        # 6次，UVCONTROL 共现(1.2x)
+    0x465acf70: "VFX_DistDisp_Mt",        # 3次，无强信号
+    0x7e51f5bd: "LightTimelineParam",        # 2次，EMITTERBOUNDARY 共现(2.9x)
+    0x0fe12549: "VFX_VATDist_Mt",        # 1次，EXTERNREFERENCE 共现(1.8x)
+}
+
+# ── TLP_FULLNAMES：官方 TimelineParam 类全名（157 条）────────────────────────
+# 来源：官方 dump（十进制哈希 → 全限定类名）。**157/157 逐条验证**
+#   jamcrc(全名) & 0x7FFFFFFF == 哈希
+# 命名空间有四种，这也是此前反查一直失败的原因（只试了 nEffect:: 一种）：
+#   nTimelineParam::                 68   动作 / 事件 / 系统
+#   nDraw::MaterialAnimation::       49   **材质动画** —— TLP 就是「主材质类型」
+#   nEffect::nTimelineParam::        22   特效（我们原有的那批）
+#   nTimelineParam::nWwiseTimeline:: 17   音频事件
+#   nMhEffect::nTimelineParam::       1   PlEmissive
+# 材质那 49 条坐实了「没有独立属性块的 TLP 打的是材质」——bow023.timl 的
+# 0x3AC1EACA 正是 nDraw::MaterialAnimation::Uber_Mt，而 bow023.mrl3 的主材质
+# 类型就是 Uber_Mt，闭环。
+TLP_FULLNAMES = {
+    0x01739779: 'nTimelineParam::nWwiseTimeline::GameParameter',
+    0x03CE7F12: 'nTimelineParam::Em110Motion',
+    0x04EBB38D: 'nDraw::MaterialAnimation::EM102_Mt',
+    0x053CBDDA: 'nTimelineParam::EffectParameter3',
+    0x07758DAF: 'nDraw::MaterialAnimation::EM036_Mt',
+    0x08171AF8: 'nDraw::MaterialAnimation::EM032_Mt',
+    0x09C466DC: 'nDraw::MaterialAnimation::Standard_Mt',
+    0x0A5CFC32: 'nTimelineParam::CollisionSyncUID',
+    0x0AC34102: 'nTimelineParam::Em107Motion',
+    0x0B8924DA: 'nDraw::MaterialAnimation::EM106_Mt',
+    0x0BFA707A: 'nTimelineParam::Em080Motion',
+    0x0CFD985C: 'nTimelineParam::nWwiseTimeline::EventCollision00',
+    0x0D4178F1: 'nTimelineParam::Em120Motion',
+    0x0E556A0F: 'nDraw::MaterialAnimation::EM117_Mt',
+    0x0E6D4A92: 'nTimelineParam::Em045Motion',
+    0x0FE12549: 'nDraw::MaterialAnimation::VFX_VATDist_Mt',
+    0x101C6C94: 'nDraw::MaterialAnimation::EM024_Mt',
+    0x141DAC90: 'nTimelineParam::Em113_01Motion',
+    0x1436E592: 'nEffect::nTimelineParam::TypeRibbon',
+    0x14516E3B: 'nTimelineParam::Em112Motion',
+    0x15C60453: 'nDraw::MaterialAnimation::SZK001_Mt',
+    0x15F4C9E6: 'nTimelineParam::nWwiseTimeline::EventCollision03',
+    0x170FACE6: 'nTimelineParam::AnimalFly',
+    0x17359E0C: 'nDraw::MaterialAnimation::VFX_Aurora_Mt',
+    0x17EAA6E5: 'nTimelineParam::SpeedTreeWindGenerator',
+    0x1830887C: 'nTimelineParam::OtasukeMotion',
+    0x18B27374: 'nTimelineParam::Em118_05Motion',
+    0x193C8B34: 'nDraw::MaterialAnimation::EM105_Mt',
+    0x1A0B3112: 'nDraw::MaterialAnimation::EM080_01_Mt',
+    0x1E83FE5F: 'nTimelineParam::EmCharmMountStepObject',
+    0x1F09850E: 'nEffect::nTimelineParam::TypeStrainRibbon',
+    0x201C7206: 'nTimelineParam::nWwiseTimeline::EventGroup09',
+    0x20FC82E0: 'nTimelineParam::ClawMotionVisual',
+    0x2101C529: 'nEffect::nTimelineParam::RgbWater',
+    0x233BDD27: 'nTimelineParam::NpcCommon',
+    0x24006667: 'nTimelineParam::nWwiseTimeline::EventLoop',
+    0x245CA284: 'nDraw::MaterialAnimation::EM115_Mt',
+    0x255D71CC: 'nTimelineParam::Em013Motion',
+    0x25B974A6: 'nTimelineParam::Em111Motion',
+    0x2643266F: 'nDraw::MaterialAnimation::FakeSphere_Mt',
+    0x29AA3E2D: 'nTimelineParam::nWwiseTimeline::EventGroup05',
+    0x2A62F92E: 'nEffect::nTimelineParam::ScaleAnim',
+    0x2A68E3BD: 'nDraw::MaterialAnimation::SpeedTree_Mt',
+    0x2B3E35D3: 'nDraw::MaterialAnimation::EM111_Mt',
+    0x2B61B0ED: 'nEffect::nTimelineParam::TypeBillboard2D',
+    0x2BD2762F: 'nTimelineParam::Em023Motion',
+    0x2BDA85F5: 'nEffect::nTimelineParam::Velocity2D',
+    0x2C78B827: 'nDraw::MaterialAnimation::VFX_Tornado_Mt',
+    0x2CB44AB6: 'nTimelineParam::Em106Motion',
+    0x2EC7FA34: 'nTimelineParam::nWwiseTimeline::EventGroup01',
+    0x2EE27B06: 'nDraw::MaterialAnimation::EM100_Mt',
+    0x2F9878D5: 'nTimelineParam::Em063Motion',
+    0x30213175: 'nTimelineParam::Em118Motion',
+    0x30891F6A: 'nDraw::MaterialAnimation::EM057_Mt',
+    0x30A36F97: 'nTimelineParam::nWwiseTimeline::EventGroup06',
+    0x327A81AC: 'nEffect::nTimelineParam::TypeBillboard3D',
+    0x32C1B4B4: 'nEffect::nTimelineParam::Velocity3D',
+    0x32FA69E8: 'nTimelineParam::AnimalSeasonEvent',
+    0x33185295: 'nEffect::nTimelineParam::EmitterShape3D',
+    0x33C620F4: 'nDraw::MaterialAnimation::FakeRefraction_Mt',
+    0x3481666B: 'nEffect::nTimelineParam::TypePlane',
+    0x37CEAB8E: 'nTimelineParam::nWwiseTimeline::EventGroup02',
+    0x38FF82EA: 'nTimelineParam::CollisionTimelineObject',
+    0x399DB6A9: 'nDraw::MaterialAnimation::VFX_Flood_Mt',
+    0x39C68FB4: 'nEffect::nTimelineParam::TubeLight',
+    0x3AC1EACA: 'nDraw::MaterialAnimation::Uber_Mt',
+    0x3B2B5B9F: 'nTimelineParam::Em104Motion',
+    0x3BF74053: 'nDraw::MaterialAnimation::BTK001_Mt',
+    0x3C57D4E8: 'nDraw::MaterialAnimation::EM103_Mt',
+    0x3CA9626C: 'nTimelineParam::Em123Motion',
+    0x3E6BDB12: 'nTimelineParam::ModelPartsCtrl',
+    0x3E880466: 'nDraw::MaterialAnimation::VFX_Water_Mt',
+    0x3F207E3C: 'nDraw::MaterialAnimation::FakeInnerEmit_Mt',
+    0x40793BDC: 'nDraw::MaterialAnimation::TMG001_Mt',
+    0x40C99B18: 'nTimelineParam::nWwiseTimeline::EventGroup03',
+    0x40DBFBE3: 'nTimelineParam::nWwiseTimeline::EventGroup10',
+    0x42E48DDE: 'nEffect::nTimelineParam::PointLightBehavior',
+    0x45CB6C2B: 'nTimelineParam::Ems005_01Motion',
+    0x460700DC: 'nDraw::MaterialAnimation::SKM001_Mt',
+    0x465ACF70: 'nDraw::MaterialAnimation::VFX_DistDisp_Mt',
+    0x4669419C: 'nTimelineParam::Em117Motion',
+    0x46F3E901: 'nTimelineParam::PlMotionVisual',
+    0x47A45F01: 'nTimelineParam::nWwiseTimeline::EventGroup07',
+    0x48067636: 'nDraw::MaterialAnimation::GenericMaterial',
+    0x48D6114F: 'nTimelineParam::PlMotionCommon',
+    0x48E6467F: 'nTimelineParam::Em127Motion',
+    0x49DFD557: 'nTimelineParam::PugeeMotion',
+    0x4BCA741C: 'nTimelineParam::Em042Motion',
+    0x4C119332: 'nTimelineParam::cCharaMotion',
+    0x4D111433: 'nEffect::nTimelineParam::Transform3D',
+    0x4E64D91C: 'nDraw::MaterialAnimation::Burn_Mt',
+    0x4FB76028: 'nDraw::MaterialAnimation::EM002_Mt',
+    0x4FF9141E: 'nDraw::MaterialAnimation::EM_Mt',
+    0x52CCD16F: 'nTimelineParam::Em063_05Motion',
+    0x538AF627: 'nEffect::nTimelineParam::TypeMesh',
+    0x53EA348C: 'nDraw::MaterialAnimation::EM109_Mt',
+    0x540A2572: 'nEffect::nTimelineParam::Transform2D',
+    0x54800017: 'nTimelineParam::EmCreateGmMotion',
+    0x55585B25: 'nTimelineParam::Em057Motion',
+    0x55CEE362: 'nDraw::MaterialAnimation::EM080_Mt',
+    0x56367A59: 'nDraw::MaterialAnimation::EM118_Mt',
+    0x563C8065: 'nEffect::nTimelineParam::RotateAnim',
+    0x566DF526: 'nDraw::MaterialAnimation::Flow_Dir_Mt',
+    0x571B4290: 'nTimelineParam::nWwiseTimeline::EventGroup08',
+    0x5752ED69: 'nDraw::MaterialAnimation::VFX_DispWave_Mt',
+    0x575E6887: 'nTimelineParam::OtomoMotion',
+    0x582BA062: 'nEffect::nTimelineParam::RadialBlurFilterBehavior',
+    0x58FB6EA5: 'nTimelineParam::Em102Motion',
+    0x598272E1: 'nMhEffect::nTimelineParam::PlEmissive',
+    0x59C0CAA2: 'nTimelineParam::nWwiseTimeline::EventGroup00',
+    0x5AC7FC29: 'nEffect::nTimelineParam::UVSequence',
+    0x5AFC3A5F: 'nTimelineParam::Em109Motion',
+    0x5B40BF31: 'nDraw::MaterialAnimation::EM124_Mt',
+    0x5C648E63: 'nTimelineParam::ShellCreate',
+    0x5E8D9EE9: 'nDraw::MaterialAnimation::VFX_EmissiveFog_Mt',
+    0x5E953EE4: 'nDraw::MaterialAnimation::EM100_01_Mt',
+    0x5EAD0EBB: 'nTimelineParam::nWwiseTimeline::EventGroup04',
+    0x5F02205C: 'nTimelineParam::ShellAnimation',
+    0x5F32B536: 'nDraw::MaterialAnimation::OZK001_Mt',
+    0x5F456B89: 'nDraw::MaterialAnimation::PL_Mt',
+    0x5F795756: 'nTimelineParam::Em125Motion',
+    0x5F9D523C: 'nTimelineParam::Em027Motion',
+    0x601E4A28: 'nTimelineParam::Em116Motion',
+    0x60BA9117: 'nEffect::nTimelineParam::RgbFire',
+    0x62F3F970: 'nTimelineParam::nWwiseTimeline::EventCollision02',
+    0x63FCD854: 'nDraw::MaterialAnimation::EM125_Mt',
+    0x64A758BE: 'nTimelineParam::Em111_05Motion',
+    0x65004E2A: 'nEffect::nTimelineParam::MhEffectDecalBehavior',
+    0x658D8235: 'nTimelineParam::EmClawRejectCollisionObject',
+    0x66C62149: 'nDraw::MaterialAnimation::VFX_Ice_Mt',
+    0x69137438: 'nTimelineParam::Em101Motion',
+    0x6B32DCF6: 'nTimelineParam::EffectParameter1',
+    0x6D4CF8C4: 'nTimelineParam::Em115_05Motion',
+    0x6DA6E5D1: 'nEffect::nTimelineParam::MhPointLightBehavior',
+    0x6DBD7FA8: 'nTimelineParam::Em043Motion',
+    0x6DC8D36C: 'nTimelineParam::MatAnimPlayer',
+    0x6E914DCB: 'nTimelineParam::Em126Motion',
+    0x6FCCD10E: 'nTimelineParam::PlMotionInput',
+    0x70C7B1F1: 'nDraw::MaterialAnimation::VFX_SandFall_Mt',
+    0x723B8D4C: 'nTimelineParam::EffectParameter2',
+    0x75963575: 'nEffect::nTimelineParam::MhSpotLightBehavior',
+    0x76D8344E: 'nDraw::MaterialAnimation::EMS_Mt',
+    0x77519ACB: 'nTimelineParam::EmMotionCommon',
+    0x77815B01: 'nTimelineParam::Em114Motion',
+    0x784BF2ED: 'nDraw::MaterialAnimation::EM063_Mt',
+    0x790E5CE2: 'nTimelineParam::Em124Motion',
+    0x791C240E: 'nTimelineParam::PhotomoCommon',
+    0x79746285: 'nTimelineParam::EmMotionVisual',
+    0x79EA5988: 'nTimelineParam::Em026Motion',
+    0x7BFAA8CA: 'nTimelineParam::nWwiseTimeline::EventCollision01',
+    0x7D3BAE11: 'nDraw::MaterialAnimation::FakeEye_Mt',
+    0x7E51F5BD: 'nTimelineParam::LightTimelineParam',
+    0x7E68607B: 'nTimelineParam::Em001Motion',
+    0x7E8C6511: 'nTimelineParam::Em103Motion',
+    0x7E9DBB98: 'nTimelineParam::ShellMultiCreate',
+    0x7F140A1E: 'nTimelineParam::AnimalCommon',
+    0x7F2A1793: 'nTimelineParam::Em110_01Motion',
 }
 
 import math
@@ -2460,14 +2634,701 @@ DTI_EXTRA_PAIRS = {
     ],
 }
 
+# ── OFFICIAL_TLP_DT：官方 dump 给出的 (TLP → 该 TLP 支持的 DT) 对照表 ──────────
+# 157 个 TLP / 1421 条映射，dataType 取自 DT_DATATYPE。
+#
+# ⚠ **这张表不是「什么能用」的完整清单，别拿它剪枝。** 实测反例：
+#   · FIELD_TO_DT 里 33 条已实机确认可用的映射不在本表内（RGBWATER 的
+#     IntensityAlpha/CubeMap/Specular/ColorSheet、TUBELIGHT 五条、STRAINRIBBON
+#     的 displacement/startPosition、PLANE.SizeX、TRANSFORM2D.rot …）。
+#   · 反向倒是很准：DT_NO_EFFECT 里实测无效的 12 条 Emission 全部不在本表内。
+#   结论：**在表内 → 大概率可用；不在表内 → 说明不了什么**。所以与
+#   CORPUS_PAIRS / DTI_EXTRA_PAIRS 取并集，不做删减。
+OFFICIAL_TLP_DT = {
+    0x01739779: [  # nTimelineParam::nWwiseTimeline::GameParameter
+        (0x24C60AC4, 2), (0x2D7046EF, 2), (0x3C036342, 0), (0x4B0453D4, 0), (0x53C13A52, 2),
+        (0x54ACFE4B, 2), (0xA267F6E1, 0), (0xA50A32F8, 0), (0xBAA29F67, 2), (0xBDCF5B7E, 2),
+        (0xCDA5AFF1, 2), (0xD560C677, 0)
+    ],
+    0x03CE7F12: [  # nTimelineParam::Em110Motion
+        (0x99897C43, 1)
+    ],
+    0x04EBB38D: [  # nDraw::MaterialAnimation::EM102_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x2E710D12, 2), (0x84751FE5, 2), (0x8633A1BC, 2),
+        (0x8F198226, 2), (0xA01B7821, 3), (0xAFE95AC0, 3), (0xF134912A, 2), (0xF3722F73, 2),
+        (0xF7C55D41, 2)
+    ],
+    0x053CBDDA: [  # nTimelineParam::EffectParameter3
+        (0x136F8726, 4), (0x3F19C8B3, 1), (0x630573A9, 4), (0x6468B7B0, 4), (0x8A66D69C, 4),
+        (0xD117A99F, 1), (0xD67A6D86, 1)
+    ],
+    0x07758DAF: [  # nDraw::MaterialAnimation::EM036_Mt
+        (0x0426764B, 2), (0x10272A04, 2), (0x2BD52F93, 1), (0x67201A92, 2), (0x744C82C4, 2),
+        (0x80983795, 2), (0x9A42E3E8, 2), (0xED45D37E, 2), (0xFE294B28, 2)
+    ],
+    0x08171AF8: [  # nDraw::MaterialAnimation::EM032_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0xA01B7821, 3)
+    ],
+    0x09C466DC: [  # nDraw::MaterialAnimation::Standard_Mt
+        (0x0BD3D5FB, 2), (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x371BBC04, 2), (0x7CD4E56D, 2),
+        (0x8F198226, 2), (0xA01B7821, 3), (0xAFE95AC0, 3)
+    ],
+    0x0A5CFC32: [  # nTimelineParam::CollisionSyncUID
+        (0x08FD20A6, 1)
+    ],
+    0x0AC34102: [  # nTimelineParam::Em107Motion
+        (0x57F1682F, 2), (0x99897C43, 1)
+    ],
+    0x0B8924DA: [  # nDraw::MaterialAnimation::EM106_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x72A97996, 2), (0xA01B7821, 3), (0xA1ED0144, 3),
+        (0xAFE95AC0, 3)
+    ],
+    0x0BFA707A: [  # nTimelineParam::Em080Motion
+        (0x08FD20A6, 1), (0x53984EE2, 0), (0x99897C43, 1)
+    ],
+    0x0CFD985C: [  # nTimelineParam::nWwiseTimeline::EventCollision00
+        (0x08FD20A6, 1), (0x15EF861B, 1), (0x1C59CA30, 1), (0x344C2BE4, 1), (0x3A8C67F8, 1),
+        (0x3A97A3D6, 1), (0x3DFA67CF, 1), (0x434B1B72, 1), (0x4AFD5759, 1), (0x4D8B576E, 1),
+        (0x4D909340, 1), (0x6B5EFAA6, 1), (0x6C333EBF, 1), (0x823D5F93, 1), (0x85509B8A, 1),
+        (0xA39EF26C, 1), (0xA4F33675, 1), (0xAD457A5E, 1), (0xBCFFC41B, 0), (0xD3F406E3, 1),
+        (0xD48206D4, 1), (0xDA424AC8, 1), (0xF257AB1C, 1), (0xF53A6F05, 1)
+    ],
+    0x0D4178F1: [  # nTimelineParam::Em120Motion
+        (0x08FD20A6, 1), (0x99897C43, 1)
+    ],
+    0x0E556A0F: [  # nDraw::MaterialAnimation::EM117_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0xA01B7821, 3), (0xD3137725, 2), (0xE0341C9D, 2),
+        (0xF7C55D41, 2)
+    ],
+    0x0E6D4A92: [  # nTimelineParam::Em045Motion
+        (0x08FD20A6, 1)
+    ],
+    0x0FE12549: [  # nDraw::MaterialAnimation::VFX_VATDist_Mt
+        (0x09956BA2, 2), (0x2BD52F93, 1)
+    ],
+    0x101C6C94: [  # nDraw::MaterialAnimation::EM024_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x84751FE5, 2), (0x8633A1BC, 2), (0xA01B7821, 3),
+        (0xF134912A, 2), (0xF3722F73, 2)
+    ],
+    0x141DAC90: [  # nTimelineParam::Em113_01Motion
+        (0x99897C43, 1)
+    ],
+    0x1436E592: [  # nEffect::nTimelineParam::TypeRibbon
+        (0x0EBAEC37, 2), (0x58689812, 3), (0x9F1E012E, 2), (0xF0DF339B, 2), (0xF92E647B, 2)
+    ],
+    0x14516E3B: [  # nTimelineParam::Em112Motion
+        (0x08FD20A6, 1), (0x7BE08FA2, 0)
+    ],
+    0x15C60453: [  # nDraw::MaterialAnimation::SZK001_Mt
+        (0x2BD52F93, 1), (0x2E710D12, 2), (0x4EDC6CE0, 2), (0xD0B8F943, 2)
+    ],
+    0x15F4C9E6: [  # nTimelineParam::nWwiseTimeline::EventCollision03
+        (0x08FD20A6, 1), (0x1213267E, 1), (0x1C59CA30, 1), (0x344C2BE4, 1), (0x3A97A3D6, 1),
+        (0x3DFA67CF, 1), (0x4D8B576E, 1), (0x4D909340, 1), (0x6069E6F0, 1), (0x6B5EFAA6, 1),
+        (0x6C333EBF, 1), (0x823D5F93, 1), (0x8B1A77C4, 1), (0xA39EF26C, 1), (0xA4F33675, 1),
+        (0xBCFFC41B, 0), (0xD3F406E3, 1), (0xF257AB1C, 1), (0xF53A6F05, 1), (0xF960B74A, 1)
+    ],
+    0x170FACE6: [  # nTimelineParam::AnimalFly
+        (0x5AFE86CE, 2), (0x6B169C53, 2), (0xFC898D7A, 2)
+    ],
+    0x17359E0C: [  # nDraw::MaterialAnimation::VFX_Aurora_Mt
+        (0x09956BA2, 2), (0x2BD52F93, 1), (0xFD480BC4, 2)
+    ],
+    0x17EAA6E5: [  # nTimelineParam::SpeedTreeWindGenerator
+        (0x0B0F41DD, 0), (0x3C81CEA1, 0), (0x4CEB3A2E, 0), (0x7B65B552, 0), (0x956BD47E, 0),
+        (0x99897C43, 1), (0x9C483C6C, 0), (0xA2E55B02, 0), (0xD5E26B94, 0), (0xE26CE4E8, 0)
+    ],
+    0x1830887C: [  # nTimelineParam::OtasukeMotion
+        (0x08FD20A6, 1), (0x6324C0C4, 1), (0x6459658B, 1), (0x8F79C6AF, 1), (0x99897C43, 1),
+        (0xB0BBDAC4, 0)
+    ],
+    0x18B27374: [  # nTimelineParam::Em118_05Motion
+        (0x08FD20A6, 1), (0x99897C43, 1)
+    ],
+    0x193C8B34: [  # nDraw::MaterialAnimation::EM105_Mt
+        (0x0426764B, 2), (0x10272A04, 2), (0x1BB0EB80, 2), (0x1C32DCCF, 2), (0x2BD52F93, 1),
+        (0x67201A92, 2), (0x744C82C4, 2), (0x80983795, 2), (0x84751FE5, 2), (0x8633A1BC, 2),
+        (0x9A42E3E8, 2), (0xA01B7821, 3), (0xADD4B2B7, 2), (0xB858DE36, 2), (0xED45D37E, 2),
+        (0xF134912A, 2), (0xF3722F73, 2), (0xFE294B28, 2), (0xFF5207BD, 2)
+    ],
+    0x1A0B3112: [  # nDraw::MaterialAnimation::EM080_01_Mt
+        (0x2BD52F93, 1), (0x2E710D12, 2), (0x7C692062, 2), (0xF9120603, 2)
+    ],
+    0x1E83FE5F: [  # nTimelineParam::EmCharmMountStepObject
+        (0x11E90F5A, 0), (0x91BA4212, 2)
+    ],
+    0x1F09850E: [  # nEffect::nTimelineParam::TypeStrainRibbon
+        (0x0718D2B3, 2), (0x135F03D9, 2), (0x6458334F, 2), (0x8A565263, 2), (0x9F1E012E, 2),
+        (0xF0DF339B, 2), (0xF92E647B, 2)
+    ],
+    0x201C7206: [  # nTimelineParam::nWwiseTimeline::EventGroup09
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0x9F91C19A, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x20FC82E0: [  # nTimelineParam::ClawMotionVisual
+        (0x99897C43, 1)
+    ],
+    0x2101C529: [  # nEffect::nTimelineParam::RgbWater
+        (0x4E00491F, 2), (0x60D69856, 3), (0x9F1E012E, 2), (0xA7EDA21C, 2)
+    ],
+    0x233BDD27: [  # nTimelineParam::NpcCommon
+        (0x08FD20A6, 1), (0x0B001AA6, 2), (0x256C8A54, 2), (0x2845C079, 0), (0x3F3D39AE, 2),
+        (0x483A0938, 2), (0x4A6DD631, 0), (0x5376E770, 0), (0x5CE43CEA, 1), (0x614085F2, 0),
+        (0x665699CA, 2), (0x785BB4B3, 0), (0x7C072A30, 2), (0x819DDA91, 0), (0x87A41BA7, 1),
+        (0x8858F8E6, 2), (0x89582088, 0), (0x979BE3E1, 0), (0x9886EBD0, 0), (0x99897C43, 1),
+        (0xA275734B, 0), (0xA6346814, 2), (0xAAB08952, 0), (0xAB1D2239, 1), (0xB3ABB813, 0),
+        (0xBB6E420A, 0), (0xBC65DBEE, 2), (0xCB62EB78, 2), (0xE1C4FA93, 0), (0xE50E7B8A, 2),
+        (0xFF5FC870, 2)
+    ],
+    0x24006667: [  # nTimelineParam::nWwiseTimeline::EventLoop
+        (0x08431812, 1), (0x08FD20A6, 1), (0x0AD9C602, 1), (0x0DB4021B, 1), (0x0F2EDC0B, 1),
+        (0x7829EC9D, 1), (0x7AB3328D, 1), (0x7DDEF694, 1), (0x7F442884, 1), (0x94BD53A1, 1),
+        (0x96278DB1, 1), (0x9D0B1F8A, 1), (0x9F91C19A, 1), (0xBCFFC41B, 0), (0xE120BD27, 1),
+        (0xE3BA6337, 1), (0xE4D7A72E, 1), (0xE64D793E, 1)
+    ],
+    0x245CA284: [  # nDraw::MaterialAnimation::EM115_Mt
+        (0x0426764B, 2), (0x078C319A, 2), (0x10272A04, 2), (0x1BB0EB80, 2), (0x2BD52F93, 1),
+        (0x4EDC6CE0, 2), (0x67201A92, 2), (0x708B010C, 2), (0x744C82C4, 2), (0x80983795, 2),
+        (0x9A42E3E8, 2), (0x9E856020, 2), (0xA01B7821, 3), (0xD0B8F943, 2), (0xE0341C9D, 2),
+        (0xED45D37E, 2), (0xFE294B28, 2)
+    ],
+    0x255D71CC: [  # nTimelineParam::Em013Motion
+        (0x036D877F, 2), (0x08FD20A6, 1), (0x2DDB0D26, 2), (0x33A4D9DC, 0), (0x5C5DA290, 2),
+        (0x6600C6AB, 1), (0x736F4F29, 2), (0x77E68312, 1), (0x99897C43, 1), (0xBFD77429, 2),
+        (0xD25D5A7B, 2)
+    ],
+    0x25B974A6: [  # nTimelineParam::Em111Motion
+        (0x08FD20A6, 1), (0x99897C43, 1)
+    ],
+    0x2643266F: [  # nDraw::MaterialAnimation::FakeSphere_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0xA01B7821, 3)
+    ],
+    0x29AA3E2D: [  # nTimelineParam::nWwiseTimeline::EventGroup05
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0x9F91C19A, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x2A62F92E: [  # nEffect::nTimelineParam::ScaleAnim
+        (0x2822A722, 2), (0x3A9708CC, 2), (0x909EC047, 2), (0xC24DF97C, 2)
+    ],
+    0x2A68E3BD: [  # nDraw::MaterialAnimation::SpeedTree_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0xA01B7821, 3)
+    ],
+    0x2B3E35D3: [  # nDraw::MaterialAnimation::EM111_Mt
+        (0x0426764B, 2), (0x10272A04, 2), (0x2BD52F93, 1), (0x67201A92, 2), (0x744C82C4, 2),
+        (0x9A42E3E8, 2), (0xED45D37E, 2)
+    ],
+    0x2B61B0ED: [  # nEffect::nTimelineParam::TypeBillboard2D
+        (0x241CAED2, 2), (0x531B9E44, 2)
+    ],
+    0x2BD2762F: [  # nTimelineParam::Em023Motion
+        (0x08FD20A6, 1), (0x99897C43, 1), (0xC56C2A11, 2)
+    ],
+    0x2BDA85F5: [  # nEffect::nTimelineParam::Velocity2D
+        (0x31182E0D, 2)
+    ],
+    0x2C78B827: [  # nDraw::MaterialAnimation::VFX_Tornado_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x4313B645, 2), (0x53B6808F, 2), (0x67D78EA5, 2),
+        (0x840FFF51, 2), (0x9F326571, 2), (0xA01B7821, 3), (0xA19FD528, 2), (0xFA223F53, 2),
+        (0xFD480BC4, 2)
+    ],
+    0x2CB44AB6: [  # nTimelineParam::Em106Motion
+        (0x08FD20A6, 1), (0x99897C43, 1)
+    ],
+    0x2EC7FA34: [  # nTimelineParam::nWwiseTimeline::EventGroup01
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0x9F91C19A, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x2EE27B06: [  # nDraw::MaterialAnimation::EM100_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x84751FE5, 2), (0x8633A1BC, 2), (0xA01B7821, 3),
+        (0xF134912A, 2), (0xF3722F73, 2)
+    ],
+    0x2F9878D5: [  # nTimelineParam::Em063Motion
+        (0x08FD20A6, 1), (0x504F8D1C, 2), (0x99897C43, 1)
+    ],
+    0x30213175: [  # nTimelineParam::Em118Motion
+        (0x99897C43, 1)
+    ],
+    0x30891F6A: [  # nDraw::MaterialAnimation::EM057_Mt
+        (0x0426764B, 2), (0x1BB0EB80, 2), (0x241F9852, 2), (0x2BD52F93, 1), (0x9A42E3E8, 2),
+        (0xA01B7821, 3), (0xBD16C9E8, 2), (0xF9120603, 2)
+    ],
+    0x30A36F97: [  # nTimelineParam::nWwiseTimeline::EventGroup06
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0x9F91C19A, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x327A81AC: [  # nEffect::nTimelineParam::TypeBillboard3D
+        (0x0EBAEC37, 2), (0x241CAED2, 2), (0x2FF50558, 2), (0x531B9E44, 2), (0x58689812, 3),
+        (0x9F1E012E, 2), (0xC216C23D, 3)
+    ],
+    0x32C1B4B4: [  # nEffect::nTimelineParam::Velocity3D
+        (0x31182E0D, 2), (0x6A5FE3C4, 2)
+    ],
+    0x32FA69E8: [  # nTimelineParam::AnimalSeasonEvent
+        (0x08FD20A6, 1)
+    ],
+    0x33185295: [  # nEffect::nTimelineParam::EmitterShape3D
+        (0x01080DD5, 2), (0x0718D2B3, 2), (0x1383E9BA, 2), (0x6484D92C, 2), (0x760F3D43, 2),
+        (0x8A8AB800, 2), (0x98015C6F, 2), (0x9E118309, 2)
+    ],
+    0x33C620F4: [  # nDraw::MaterialAnimation::FakeRefraction_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0xA01B7821, 3)
+    ],
+    0x3481666B: [  # nEffect::nTimelineParam::TypePlane
+        (0x0EBAEC37, 2), (0x531B9E44, 2), (0x58689812, 3), (0x9F1E012E, 2)
+    ],
+    0x37CEAB8E: [  # nTimelineParam::nWwiseTimeline::EventGroup02
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0x9F91C19A, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x38FF82EA: [  # nTimelineParam::CollisionTimelineObject
+        (0x08FD20A6, 1), (0x80A0A8E4, 1), (0x8DA66231, 1), (0x8F2A4EA9, 0), (0x94BD5370, 1),
+        (0x96317FE8, 0), (0x99897C43, 1), (0x99BB99A5, 1), (0xA4071D6A, 0), (0xA68B31F2, 1),
+        (0xAB8DFB27, 1), (0xB296CA66, 1), (0xBD1C2C2B, 0), (0xBF9000B3, 1), (0xC06BD86E, 0),
+        (0xC2E7F4F6, 1), (0xCFE13E23, 1), (0xD6FA0F62, 1), (0xD970E92F, 0), (0xDBFCC5B7, 1),
+        (0xE4CC6DE0, 1), (0xEB468BAD, 0), (0xF0D19674, 1), (0xF25DBAEC, 0), (0xFDD75CA1, 1)
+    ],
+    0x399DB6A9: [  # nDraw::MaterialAnimation::VFX_Flood_Mt
+        (0x09956BA2, 2), (0x0BD3D5FB, 2), (0x2BD52F93, 1), (0x634D2DC4, 2), (0x71BCF0AA, 2),
+        (0x7F503103, 2), (0x8F198226, 2), (0x915E502F, 2), (0xC207B8B4, 2), (0xFA223F53, 2),
+        (0xFD480BC4, 2)
+    ],
+    0x39C68FB4: [  # nEffect::nTimelineParam::TubeLight
+        (0x085BC9D5, 2), (0x2AA40DE9, 3), (0x316D89C5, 2), (0x3BA67E7C, 3), (0xB6C0BDF8, 2)
+    ],
+    0x3AC1EACA: [  # nDraw::MaterialAnimation::Uber_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x66DAFF30, 3), (0x8F198226, 2), (0xA01B7821, 3),
+        (0xAFE95AC0, 3)
+    ],
+    0x3B2B5B9F: [  # nTimelineParam::Em104Motion
+        (0x08FD20A6, 1), (0x6600C6AB, 1), (0x736F4F29, 2), (0x99897C43, 1), (0xD25D5A7B, 2)
+    ],
+    0x3BF74053: [  # nDraw::MaterialAnimation::BTK001_Mt
+        (0x0426764B, 2), (0x10272A04, 2), (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x2E710D12, 2),
+        (0x67201A92, 2), (0x744C82C4, 2), (0x8F198226, 2), (0x9A42E3E8, 2), (0xAFE95AC0, 3),
+        (0xED45D37E, 2)
+    ],
+    0x3C57D4E8: [  # nDraw::MaterialAnimation::EM103_Mt
+        (0x02571B8D, 2), (0x0426764B, 2), (0x10272A04, 2), (0x1D1A7784, 2), (0x2BD52F93, 1),
+        (0x2E710D12, 2), (0x48EF8D8E, 2), (0x63AB0B39, 2), (0x67201A92, 2), (0x744C82C4, 2),
+        (0x80983795, 2), (0x8413263E, 2), (0x9A42E3E8, 2), (0xAFE95AC0, 3), (0xC9C0F038, 2),
+        (0xE35A3690, 3), (0xED45D37E, 2), (0xF31416A8, 2), (0xF9120603, 2), (0xFE294B28, 2)
+    ],
+    0x3CA9626C: [  # nTimelineParam::Em123Motion
+        (0x08FD20A6, 1), (0x890766C1, 2), (0x99897C43, 1)
+    ],
+    0x3E6BDB12: [  # nTimelineParam::ModelPartsCtrl
+        (0x0297CFC9, 0), (0x05FA0BD0, 0), (0x08FD20A6, 1), (0x671F5908, 0), (0x72FD3B46, 0),
+        (0x7590FF5F, 0), (0x89113824, 0), (0x8E7CFC3D, 0), (0xEBF46AFC, 0), (0xF97BCCAB, 0),
+        (0xFE1608B2, 0)
+    ],
+    0x3E880466: [  # nDraw::MaterialAnimation::VFX_Water_Mt
+        (0x0FF5554F, 3), (0x2BD52F93, 1), (0x56B7B840, 2), (0xFA223F53, 2)
+    ],
+    0x3F207E3C: [  # nDraw::MaterialAnimation::FakeInnerEmit_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0xA01B7821, 3)
+    ],
+    0x40793BDC: [  # nDraw::MaterialAnimation::TMG001_Mt
+        (0x2BD52F93, 1), (0x84751FE5, 2), (0x8633A1BC, 2), (0xF134912A, 2), (0xF3722F73, 2)
+    ],
+    0x40C99B18: [  # nTimelineParam::nWwiseTimeline::EventGroup03
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0x9F91C19A, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x40DBFBE3: [  # nTimelineParam::nWwiseTimeline::EventGroup10
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x42E48DDE: [  # nEffect::nTimelineParam::PointLightBehavior
+        (0x435F3054, 2), (0x58689812, 3), (0x94BCC5CE, 2), (0xC32F9493, 2)
+    ],
+    0x45CB6C2B: [  # nTimelineParam::Ems005_01Motion
+        (0x08FD20A6, 1)
+    ],
+    0x460700DC: [  # nDraw::MaterialAnimation::SKM001_Mt
+        (0x0426764B, 2), (0x0E424A70, 2), (0x10272A04, 2), (0x1BB0EB80, 2), (0x2BD52F93, 1),
+        (0x2F5A867F, 2), (0x67201A92, 2), (0x80983795, 2), (0x84751FE5, 2), (0x8633A1BC, 2),
+        (0x9A42E3E8, 2), (0xA01B7821, 3), (0xC8D913CA, 2), (0xE540C280, 2), (0xF134912A, 2),
+        (0xF3722F73, 2), (0xF7C55D41, 2), (0xFE294B28, 2)
+    ],
+    0x465ACF70: [  # nDraw::MaterialAnimation::VFX_DistDisp_Mt
+        (0x15EC38EA, 2), (0x2BD52F93, 1), (0x56B7B840, 2), (0x952B4933, 2), (0xC2F1EB55, 2),
+        (0xF3D25004, 2)
+    ],
+    0x4669419C: [  # nTimelineParam::Em117Motion
+        (0x08FD20A6, 1), (0x0CB6228E, 2), (0x1892CC87, 2), (0x2A83ABD7, 0), (0x3FC9E0B8, 0),
+        (0x69D119C8, 2), (0x99897C43, 1), (0x9DE5F095, 2), (0xA31F6F44, 2), (0xC6785402, 2),
+        (0xCD9E0D40, 0), (0xD8D4462F, 0)
+    ],
+    0x46F3E901: [  # nTimelineParam::PlMotionVisual
+        (0x08FD20A6, 1), (0x0CFE3227, 2), (0x7BF902B1, 2), (0x99897C43, 1), (0xAB3C8B55, 0),
+        (0xC29F20E0, 2)
+    ],
+    0x47A45F01: [  # nTimelineParam::nWwiseTimeline::EventGroup07
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0x9F91C19A, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x48067636: [  # nDraw::MaterialAnimation::GenericMaterial
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x8F198226, 2), (0xA01B7821, 3), (0xAFE95AC0, 3)
+    ],
+    0x48D6114F: [  # nTimelineParam::PlMotionCommon
+        (0x00D534F9, 1), (0x03840ECE, 1), (0x06A9B550, 2), (0x08FD20A6, 1), (0x0EA20FED, 0),
+        (0x11E4E7B1, 0), (0x13495749, 2), (0x1D7D5399, 2), (0x1E090F48, 1), (0x1E73EAB4, 0),
+        (0x252961CD, 0), (0x254ECDBF, 2), (0x274D4F11, 2), (0x2AC902E3, 2), (0x2B078267, 2),
+        (0x2BF81C73, 2), (0x2C07B96F, 2), (0x2CFC1613, 0), (0x3033C6D8, 0), (0x416522B1, 2),
+        (0x41E07A9B, 2), (0x4258D1A6, 0), (0x444D2CFC, 2), (0x4BD36121, 0), (0x4DA1831A, 1),
+        (0x4F4B4BA4, 2), (0x5B0089F9, 2), (0x5C00B2F1, 2), (0x5E6EC814, 2), (0x6159A4F6, 2),
+        (0x648CADCE, 0), (0x67921A5E, 0), (0x6DD60D01, 0), (0x6E63FBC7, 1), (0x71AE85C6, 2),
+        (0x75B22732, 2), (0x7747F0BC, 2), (0x806D9AEB, 1), (0x84745897, 0), (0x859AB9C4, 0),
+        (0x85A14934, 1), (0x86859DBE, 0), (0x86C1A86E, 2), (0x8F57C5DA, 2), (0x9748E46B, 2),
+        (0x99897C43, 1), (0x9D58B92F, 2), (0x9F7B1E77, 2), (0xA26628EB, 0), (0xADC3C03B, 2),
+        (0xAEDA6B35, 0), (0xB2AE1E00, 2), (0xB3371B60, 0), (0xB458B56D, 2), (0xB50EE8D5, 2),
+        (0xB83FEC3D, 2), (0xBA3F398C, 2), (0xC4774EC6, 2), (0xC865FF9E, 2), (0xD1053969, 0),
+        (0xD326A335, 0), (0xD48D47B0, 0), (0xE8A7D47C, 2), (0xEEDF77D0, 0), (0xF3DA8324, 2),
+        (0xF4031A77, 2), (0xF4D12F36, 0), (0xF76AAA7D, 1), (0xF81DE7F9, 0), (0xF850F54C, 2)
+    ],
+    0x48E6467F: [  # nTimelineParam::Em127Motion
+        (0x08FD20A6, 1), (0x8A3D617C, 1), (0x91B8DFC5, 2), (0x99897C43, 1)
+    ],
+    0x49DFD557: [  # nTimelineParam::PugeeMotion
+        (0x08FD20A6, 1)
+    ],
+    0x4BCA741C: [  # nTimelineParam::Em042Motion
+        (0x08FD20A6, 1)
+    ],
+    0x4C119332: [  # nTimelineParam::cCharaMotion
+        (0x08FD20A6, 1)
+    ],
+    0x4D111433: [  # nEffect::nTimelineParam::Transform3D
+        (0x1F0BDACF, 2), (0x60849F2A, 2), (0x7A88BE0F, 2), (0x86028B75, 2), (0x8E8AFE06, 2),
+        (0x9486DF23, 2), (0xE381EFB5, 2), (0xF105BBE3, 2), (0xF98DCE90, 2)
+    ],
+    0x4E64D91C: [  # nDraw::MaterialAnimation::Burn_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x7154FE35, 2), (0x9F5A9F19, 2), (0xAFE95AC0, 3),
+        (0xE85DAF8F, 2)
+    ],
+    0x4FB76028: [  # nDraw::MaterialAnimation::EM002_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x84751FE5, 2), (0x8633A1BC, 2), (0xA01B7821, 3),
+        (0xF134912A, 2), (0xF3722F73, 2)
+    ],
+    0x4FF9141E: [  # nDraw::MaterialAnimation::EM_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x4EDC6CE0, 2), (0xA01B7821, 3), (0xD0B8F943, 2),
+        (0xF7C55D41, 2)
+    ],
+    0x52CCD16F: [  # nTimelineParam::Em063_05Motion
+        (0x99897C43, 1)
+    ],
+    0x538AF627: [  # nEffect::nTimelineParam::TypeMesh
+        (0x002FF505, 2), (0x0EBAEC37, 2), (0x18C577DE, 2), (0x241CAED2, 2), (0x531B9E44, 2),
+        (0x58689812, 3), (0x608DCF8D, 3), (0x7728C593, 2), (0x9F1E012E, 2), (0xCA12CFFE, 2),
+        (0xEE219429, 2)
+    ],
+    0x53EA348C: [  # nDraw::MaterialAnimation::EM109_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x51EBFAC2, 2), (0xBFE59BEE, 2), (0xDB7DD336, 2),
+        (0xF9120603, 2)
+    ],
+    0x540A2572: [  # nEffect::nTimelineParam::Transform2D
+        (0x8E8AFE06, 2), (0x9486DF23, 2), (0xE381EFB5, 2), (0xF98DCE90, 2)
+    ],
+    0x54800017: [  # nTimelineParam::EmCreateGmMotion
+        (0x825101E5, 2), (0x99897C43, 1)
+    ],
+    0x55585B25: [  # nTimelineParam::Em057Motion
+        (0x08FD20A6, 1), (0x99897C43, 1)
+    ],
+    0x55CEE362: [  # nDraw::MaterialAnimation::EM080_Mt
+        (0x0426764B, 2), (0x10272A04, 2), (0x2BD52F93, 1), (0x2E710D12, 2), (0x67201A92, 2),
+        (0x744C82C4, 2), (0x8F198226, 2), (0x9A42E3E8, 2), (0xAFE95AC0, 3), (0xED45D37E, 2)
+    ],
+    0x56367A59: [  # nDraw::MaterialAnimation::EM118_Mt
+        (0x0426764B, 2), (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x744C82C4, 2), (0x7C692062, 2),
+        (0x84751FE5, 2), (0x8633A1BC, 2), (0x93F18F03, 2), (0x9A42E3E8, 2), (0xA01B7821, 3),
+        (0xC56404BB, 2), (0xD6010C27, 2), (0xE0341C9D, 2), (0xE540C280, 2), (0xED45D37E, 2),
+        (0xF9120603, 2)
+    ],
+    0x563C8065: [  # nEffect::nTimelineParam::RotateAnim
+        (0x2C3187EA, 2), (0xB538D650, 2), (0xC23FE6C6, 2), (0xE81961E4, 2)
+    ],
+    0x566DF526: [  # nDraw::MaterialAnimation::Flow_Dir_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x3CA9C405, 2), (0x8F198226, 2), (0x93315130, 2),
+        (0xA01B7821, 3), (0xAFE95AC0, 3)
+    ],
+    0x571B4290: [  # nTimelineParam::nWwiseTimeline::EventGroup08
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x5752ED69: [  # nDraw::MaterialAnimation::VFX_DispWave_Mt
+        (0x2BD52F93, 1), (0x2FD8A1F4, 2), (0x48EF8D8E, 2), (0xA23E2927, 2), (0xAFE95AC0, 3),
+        (0xC1D6C0D8, 2), (0xE2FD723B, 2), (0xFA223F53, 2)
+    ],
+    0x575E6887: [  # nTimelineParam::OtomoMotion
+        (0x04F09E88, 1), (0x08FD20A6, 1), (0x965A5CA7, 1), (0x99897C43, 1)
+    ],
+    0x582BA062: [  # nEffect::nTimelineParam::RadialBlurFilterBehavior
+        (0x0ECBFA29, 2), (0x0EF6ABF4, 2), (0x1D95BB54, 2), (0x58689812, 3), (0xAB9D6334, 2)
+    ],
+    0x58FB6EA5: [  # nTimelineParam::Em102Motion
+        (0x99897C43, 1)
+    ],
+    0x598272E1: [  # nMhEffect::nTimelineParam::PlEmissive
+        (0x8BF31826, 2), (0x94BCC5CE, 2), (0x95A3A1D3, 2), (0x9B446023, 2), (0xAC635CA9, 2),
+        (0xEC4350B5, 2), (0xF09920EC, 2), (0xFA79B1CD, 3)
+    ],
+    0x59C0CAA2: [  # nTimelineParam::nWwiseTimeline::EventGroup00
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0x9F91C19A, 1), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x5AC7FC29: [  # nEffect::nTimelineParam::UVSequence
+        (0x33A4A86B, 2), (0xE5C92264, 2)
+    ],
+    0x5AFC3A5F: [  # nTimelineParam::Em109Motion
+        (0x526AF201, 0), (0xECC55CED, 0)
+    ],
+    0x5B40BF31: [  # nDraw::MaterialAnimation::EM124_Mt
+        (0x0426764B, 2), (0x10272A04, 2), (0x2BD52F93, 1), (0x67201A92, 2), (0x744C82C4, 2),
+        (0x9A42E3E8, 2), (0xED45D37E, 2)
+    ],
+    0x5C648E63: [  # nTimelineParam::ShellCreate
+        (0x08FD20A6, 1), (0x24579AAB, 1), (0x2E2C1393, 2), (0x99897C43, 1), (0xB7254229, 2),
+        (0xBE4DB7FA, 1)
+    ],
+    0x5E8D9EE9: [  # nDraw::MaterialAnimation::VFX_EmissiveFog_Mt
+        (0x1BB0EB80, 2), (0x2285686D, 2), (0x2BD52F93, 1), (0x4AAAF206, 2), (0x8F1479C1, 2),
+        (0xA01B7821, 3), (0xAFE95AC0, 3), (0xC207B8B4, 2), (0xF73B4573, 2)
+    ],
+    0x5E953EE4: [  # nDraw::MaterialAnimation::EM100_01_Mt
+        (0x01DBBF61, 2), (0x0426764B, 2), (0x10272A04, 2), (0x2BD52F93, 1), (0x67201A92, 2),
+        (0x744C82C4, 2), (0x98D2EEDB, 2), (0x9A42E3E8, 2), (0xB8895311, 2), (0xE87AFFF5, 2),
+        (0xED45D37E, 2)
+    ],
+    0x5EAD0EBB: [  # nTimelineParam::nWwiseTimeline::EventGroup04
+        (0x08431812, 1), (0x0F2EDC0B, 1), (0x7829EC9D, 1), (0x7F442884, 1), (0x96278DB1, 1),
+        (0x99897C43, 1), (0xBCFFC41B, 0), (0xE120BD27, 1), (0xE64D793E, 1)
+    ],
+    0x5F02205C: [  # nTimelineParam::ShellAnimation
+        (0x0074A898, 2), (0x08FD20A6, 1), (0x64264EA4, 2), (0x69A80037, 0), (0x99897C43, 1),
+        (0x9E2973C7, 2), (0xD278F57F, 2)
+    ],
+    0x5F32B536: [  # nDraw::MaterialAnimation::OZK001_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0xA01B7821, 3)
+    ],
+    0x5F456B89: [  # nDraw::MaterialAnimation::PL_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1)
+    ],
+    0x5F795756: [  # nTimelineParam::Em125Motion
+        (0x08FD20A6, 1)
+    ],
+    0x5F9D523C: [  # nTimelineParam::Em027Motion
+        (0x99897C43, 1)
+    ],
+    0x601E4A28: [  # nTimelineParam::Em116Motion
+        (0x08FD20A6, 1), (0x99897C43, 1), (0xCBAF549E, 0)
+    ],
+    0x60BA9117: [  # nEffect::nTimelineParam::RgbFire
+        (0x39A1E557, 3), (0x5A8C6820, 3), (0x9F1E012E, 2)
+    ],
+    0x62F3F970: [  # nTimelineParam::nWwiseTimeline::EventCollision02
+        (0x08FD20A6, 1), (0x15EF861B, 1), (0x1C59CA30, 1), (0x3A97A3D6, 1), (0x3DFA67CF, 1),
+        (0x4AFD5759, 1), (0x4D909340, 1), (0x6B5EFAA6, 1), (0x6C333EBF, 1), (0x823D5F93, 1),
+        (0x85509B8A, 1), (0xA39EF26C, 1), (0xA4F33675, 1), (0xD3F406E3, 1), (0xDA424AC8, 1),
+        (0xF257AB1C, 1), (0xF53A6F05, 1)
+    ],
+    0x63FCD854: [  # nDraw::MaterialAnimation::EM125_Mt
+        (0x02571B8D, 2), (0x164DB124, 3), (0x18CC46B5, 3), (0x2BD52F93, 1), (0x371BBC04, 2),
+        (0x43AC6AB4, 2), (0x48EF8D8E, 2), (0x5297382F, 2), (0x605428A3, 2), (0x708B010C, 2),
+        (0x744C82C4, 2), (0x84751FE5, 2), (0x8633A1BC, 2), (0xA01B7821, 3), (0xA4C789DC, 3),
+        (0xB83AF0BE, 2), (0xBFE81475, 3), (0xC39F54D7, 2), (0xC9C0F038, 2), (0xD3137725, 2),
+        (0xE0341C9D, 2), (0xED45D37E, 2)
+    ],
+    0x64A758BE: [  # nTimelineParam::Em111_05Motion
+        (0x5F8AD46D, 2)
+    ],
+    0x65004E2A: [  # nEffect::nTimelineParam::MhEffectDecalBehavior
+        (0x16814F1C, 2), (0x26BD5CC2, 3), (0x3775827A, 2), (0x4072B2EC, 2), (0x4D41A06B, 2),
+        (0x7D235C30, 2), (0x831B390B, 2), (0xAE7CD3C0, 2), (0xBF160652, 2), (0xCBDB6622, 3)
+    ],
+    0x658D8235: [  # nTimelineParam::EmClawRejectCollisionObject
+        (0x08FD20A6, 1), (0x0CECC08D, 0), (0x27C1934E, 0), (0x3EDAA20F, 0), (0x43AD564A, 0),
+        (0x5AB6670B, 0), (0x68800589, 0), (0x70D64E7E, 0), (0x719B34C8, 0)
+    ],
+    0x66C62149: [  # nDraw::MaterialAnimation::VFX_Ice_Mt
+        (0x08570195, 2), (0x0DDE7E84, 2), (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x637622C1, 3),
+        (0x987DC45A, 2), (0xA01B7821, 3), (0xF1357D01, 2), (0xFD480BC4, 2)
+    ],
+    0x69137438: [  # nTimelineParam::Em101Motion
+        (0x32F86046, 0), (0x99897C43, 1)
+    ],
+    0x6B32DCF6: [  # nTimelineParam::EffectParameter1
+        (0x04AF3E55, 4), (0x0A74B667, 4), (0x0D19727E, 4), (0x0D2FAA31, 1), (0x136F8726, 4),
+        (0x1402433F, 4), (0x1DB40F14, 4), (0x2159E5A4, 4), (0x216F3DEB, 1), (0x2602F9F2, 1),
+        (0x263421BD, 4), (0x2F826D96, 4), (0x3842D4E5, 4), (0x38740CAA, 1), (0x3F19C8B3, 1),
+        (0x481EF825, 1), (0x4F45E473, 4), (0x4F733C3C, 1), (0x5105C964, 1), (0x5133112B, 4),
+        (0x565ED532, 4), (0x56680D7D, 1), (0x58855D00, 4), (0x630573A9, 4), (0x6468B7B0, 4),
+        (0x6AB33F82, 4), (0x73A80EC3, 4), (0x7A1E42E8, 4), (0x7A289AA7, 1), (0x7D7386F1, 4),
+        (0x8A66D69C, 4), (0x8D0B1285, 4), (0x8D3DCACA, 1), (0x934B3F92, 1), (0x937DE7DD, 4),
+        (0x941023C4, 4), (0x9426FB8B, 1), (0x9AFD73B9, 1), (0xA17D5D10, 1), (0xA6109909, 1),
+        (0xA8CB113B, 1), (0xB1D0207A, 1), (0xB850B41E, 4), (0xB8666C51, 1), (0xBF0BA848, 1),
+        (0xC6D710EC, 1), (0xC80C98DE, 1), (0xCF578488, 4), (0xCF615CC7, 1), (0xD117A99F, 1),
+        (0xD67A6D86, 1), (0xDFCC21AD, 1), (0xE3171352, 4), (0xE321CB1D, 1), (0xE44C0F04, 1),
+        (0xE47AD74B, 4), (0xEDFA432F, 1), (0xFA0C2213, 4), (0xFA3AFA5C, 1), (0xFD61E60A, 4)
+    ],
+    0x6D4CF8C4: [  # nTimelineParam::Em115_05Motion
+        (0x08FD20A6, 1)
+    ],
+    0x6DA6E5D1: [  # nEffect::nTimelineParam::MhPointLightBehavior
+        (0x435F3054, 2), (0x58689812, 3), (0x94BCC5CE, 2), (0xC32F9493, 2)
+    ],
+    0x6DBD7FA8: [  # nTimelineParam::Em043Motion
+        (0x08FD20A6, 1), (0x99897C43, 1), (0xD5D93660, 1)
+    ],
+    0x6DC8D36C: [  # nTimelineParam::MatAnimPlayer
+        (0x4625CE84, 0), (0x548DFF15, 0), (0x8D65C9C7, 0), (0x99897C43, 1)
+    ],
+    0x6E914DCB: [  # nTimelineParam::Em126Motion
+        (0x08FD20A6, 1), (0x99897C43, 1)
+    ],
+    0x6FCCD10E: [  # nTimelineParam::PlMotionInput
+        (0x08FD20A6, 1), (0x1E090F48, 1), (0x690E3FDE, 1), (0x6E63FBC7, 1), (0x806D9AEB, 1),
+        (0xF0076E64, 1), (0xF76AAA7D, 1)
+    ],
+    0x70C7B1F1: [  # nDraw::MaterialAnimation::VFX_SandFall_Mt
+        (0x0BD3D5FB, 2), (0x2BD52F93, 1), (0x7CD4E56D, 2), (0x92DA8441, 2), (0xEC6BF8FC, 2),
+        (0xFD480BC4, 2)
+    ],
+    0x723B8D4C: [  # nTimelineParam::EffectParameter2
+        (0x04AF3E55, 4), (0x0A74B667, 4), (0x0D19727E, 4), (0x0D2FAA31, 1), (0x136F8726, 4),
+        (0x1402433F, 4), (0x1DB40F14, 4), (0x2159E5A4, 4), (0x216F3DEB, 1), (0x2602F9F2, 1),
+        (0x38740CAA, 1), (0x3F19C8B3, 1), (0x481EF825, 1), (0x4F733C3C, 1), (0x5105C964, 1),
+        (0x565ED532, 4), (0x56680D7D, 1), (0x630573A9, 4), (0x6468B7B0, 4), (0x6AB33F82, 4),
+        (0x73A80EC3, 4), (0x7A1E42E8, 4), (0x7A289AA7, 1), (0x7D7386F1, 4), (0x8A66D69C, 4),
+        (0x8D0B1285, 4), (0x937DE7DD, 4), (0x941023C4, 4), (0x9426FB8B, 1), (0xA17D5D10, 1),
+        (0xA6109909, 1), (0xA8CB113B, 1), (0xB1D0207A, 1), (0xB850B41E, 4), (0xB8666C51, 1),
+        (0xBF0BA848, 1), (0xC6D710EC, 1), (0xC80C98DE, 1), (0xCF578488, 4), (0xCF615CC7, 1),
+        (0xD117A99F, 1), (0xD67A6D86, 1), (0xDFCC21AD, 1), (0xE3171352, 4), (0xE321CB1D, 1),
+        (0xE47AD74B, 4), (0xFA0C2213, 4), (0xFD61E60A, 4)
+    ],
+    0x75963575: [  # nEffect::nTimelineParam::MhSpotLightBehavior
+        (0x58689812, 3), (0x94BCC5CE, 2)
+    ],
+    0x76D8344E: [  # nDraw::MaterialAnimation::EMS_Mt
+        (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x325FCB10, 3), (0x53A3F45E, 2), (0x9A690877, 2),
+        (0xA01B7821, 3), (0xAFE95AC0, 3), (0xC31CE9CF, 2), (0xE2142A34, 2)
+    ],
+    0x77519ACB: [  # nTimelineParam::EmMotionCommon
+        (0x08FD20A6, 1), (0x2317001E, 0), (0x23EDA9F5, 1), (0x252961CD, 0), (0x26119EDA, 0),
+        (0x2AC902E3, 2), (0x2C426079, 0), (0x2EF52DB5, 0), (0x310FD720, 0), (0x37484700, 2),
+        (0x41E7D172, 1), (0x4D26ED7B, 0), (0x4D6470C6, 0), (0x5009B3C9, 0), (0x570F638E, 2),
+        (0x5782A950, 1), (0x5C5DA290, 2), (0x5C918AD5, 0), (0x5D252E24, 0), (0x6159A4F6, 2),
+        (0x62CEFAB3, 0), (0x670FA57B, 2), (0x6CC0B887, 2), (0x6E63FBC7, 1), (0x787E9FD5, 0),
+        (0x7D6D165D, 0), (0x814568E2, 0), (0x8F57C5DA, 2), (0x94526271, 0), (0x99897C43, 1),
+        (0x9B50DD3B, 1), (0x9BD476A9, 0), (0xA48C272D, 0), (0xB28DA0BE, 2), (0xB2AE1E00, 2),
+        (0xB821F4A8, 2), (0xBBB2C830, 2), (0xBF8F9DFD, 0), (0xDD244F0E, 2), (0xF15CEF67, 2),
+        (0xF850F54C, 2), (0xFCFE68B9, 0)
+    ],
+    0x77815B01: [  # nTimelineParam::Em114Motion
+        (0x08FD20A6, 1)
+    ],
+    0x784BF2ED: [  # nDraw::MaterialAnimation::EM063_Mt
+        (0x0426764B, 2), (0x1308E98E, 2), (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x744C82C4, 2),
+        (0x9A42E3E8, 2), (0xA01B7821, 3), (0xE35A3690, 3), (0xED45D37E, 2)
+    ],
+    0x790E5CE2: [  # nTimelineParam::Em124Motion
+        (0x99897C43, 1), (0xB359AC53, 0), (0xF19AB8A2, 2)
+    ],
+    0x791C240E: [  # nTimelineParam::PhotomoCommon
+        (0x08FD20A6, 1), (0x2FD81AE9, 0), (0x52EC2264, 0), (0x5846C819, 0), (0x5FF25223, 0),
+        (0x99897C43, 1), (0xB9DB9967, 0), (0xC0E5BF09, 0), (0xF3658026, 0)
+    ],
+    0x79746285: [  # nTimelineParam::EmMotionVisual
+        (0x08FD20A6, 1)
+    ],
+    0x79EA5988: [  # nTimelineParam::Em026Motion
+        (0x08FD20A6, 1)
+    ],
+    0x7BFAA8CA: [  # nTimelineParam::nWwiseTimeline::EventCollision01
+        (0x08FD20A6, 1), (0x1213267E, 1), (0x1C59CA30, 1), (0x3A97A3D6, 1), (0x3DFA67CF, 1),
+        (0x4AFD5759, 1), (0x4D909340, 1), (0x6069E6F0, 1), (0x6B5EFAA6, 1), (0x6C333EBF, 1),
+        (0x823D5F93, 1), (0x85509B8A, 1), (0x8B1A77C4, 1), (0xA39EF26C, 1), (0xA4F33675, 1),
+        (0xD3F406E3, 1), (0xF257AB1C, 1), (0xF53A6F05, 1), (0xF960B74A, 1)
+    ],
+    0x7D3BAE11: [  # nDraw::MaterialAnimation::FakeEye_Mt
+        (0x02571B8D, 2), (0x1BB0EB80, 2), (0x2BD52F93, 1), (0x371BBC04, 2), (0x8F198226, 2),
+        (0xA01B7821, 3), (0xAFE95AC0, 3), (0xB8BFBF9E, 2), (0xD245B590, 2)
+    ],
+    0x7E51F5BD: [  # nTimelineParam::LightTimelineParam
+        (0x13804BC9, 2), (0x4279F094, 2), (0x9BE2D228, 3), (0xB52636D6, 2)
+    ],
+    0x7E68607B: [  # nTimelineParam::Em001Motion
+        (0x08FD20A6, 1), (0x69D5D953, 0), (0x97876D34, 0)
+    ],
+    0x7E8C6511: [  # nTimelineParam::Em103Motion
+        (0x99897C43, 1)
+    ],
+    0x7E9DBB98: [  # nTimelineParam::ShellMultiCreate
+        (0x032F9113, 1), (0x03A7C305, 2), (0x03AC6A9E, 2), (0x03D46071, 2), (0x0442550A, 1),
+        (0x04B9A468, 2), (0x04C1AE87, 2), (0x04CA071C, 2), (0x06D97C03, 2), (0x0802F431, 2),
+        (0x08095DAA, 2), (0x08FD20A6, 1), (0x0A3ECD23, 2), (0x0D53093A, 2), (0x0D7C4B37, 2),
+        (0x0F6499B3, 2), (0x0F6F3028, 2), (0x11126CEB, 2), (0x1119C570, 2), (0x1382EC79, 1),
+        (0x1448387B, 2), (0x146CD3ED, 2), (0x16740169, 2), (0x167FA8F2, 2), (0x1A34A052, 1),
+        (0x1AB75BDF, 2), (0x1ABCF244, 2), (0x1D59644B, 1), (0x1DD1365D, 2), (0x1DDA9FC6, 2),
+        (0x1FC9E4D9, 2), (0x20E89CC5, 0), (0x2212F5DA, 2), (0x22195C41, 2), (0x223DB7D7, 2),
+        (0x257F31C3, 2), (0x27D7D87B, 2), (0x290C5049, 2), (0x2B8BFBFC, 2), (0x2BDE22C1, 0),
+        (0x2CB3E6D8, 0), (0x2CE63FE5, 2), (0x2D7DE338, 1), (0x2E619450, 2), (0x30176108, 2),
+        (0x32C51380, 0), (0x330B1660, 1), (0x3466D279, 1), (0x35FD0EA4, 2), (0x377AA511, 2),
+        (0x393BCA4E, 2), (0x39F3AD84, 0), (0x3B026D00, 2), (0x3B09C49B, 2), (0x3C6FA919, 2),
+        (0x3E560E57, 2), (0x3E9E699D, 0), (0x407D9587, 2), (0x42FA3E32, 2), (0x4361E2EF, 1),
+        (0x440C26F6, 1), (0x45C22316, 0), (0x4710519E, 2), (0x49513EC1, 2), (0x4999590B, 0),
+        (0x4B68998F, 2), (0x4C055D96, 2), (0x4C0EF40D, 2), (0x4E3CFAD8, 2), (0x4EF49D12, 0),
+        (0x50D0E8ED, 2), (0x52780155, 2), (0x5515C54C, 2), (0x551E6CD7, 2), (0x553A8741, 2),
+        (0x57EFAC53, 0), (0x5966A4C6, 2), (0x5A7AD3AE, 1), (0x5BB4D64E, 0), (0x5BE10F73, 2),
+        (0x5C8CCB6A, 2), (0x5CD91257, 0), (0x5E0B60DF, 2), (0x617331FF, 2), (0x61789864, 2),
+        (0x634F08ED, 2), (0x636BE37B, 2), (0x6485DCEF, 1), (0x66155C7D, 2), (0x661EF5E6, 2),
+        (0x68CED44F, 2), (0x6A5E54DD, 1), (0x6AD606CB, 2), (0x6ADDAF50, 2), (0x6D3390C4, 1),
+        (0x6DB06B49, 2), (0x6DBBC2D2, 2), (0x6F89CC07, 2), (0x71DE4C95, 2), (0x7345659C, 1),
+        (0x73BE94FE, 2), (0x73C69E11, 2), (0x73CD378A, 2), (0x7428A185, 1), (0x74A0F393, 2),
+        (0x74AB5A08, 2), (0x74D350E7, 2), (0x7863A925, 2), (0x786800BE, 2), (0x7A5439AC, 2),
+        (0x7A7B7BA1, 2), (0x7D39FDB5, 2), (0x7F05C4A7, 2), (0x7F0E6D3C, 2), (0x833DF1E8, 1),
+        (0x83B5A3FE, 2), (0x83BE0A65, 2), (0x845035F1, 1), (0x84D3CE7C, 2), (0x881094CA, 2),
+        (0x881B3D51, 2), (0x8A2CADD8, 2), (0x8D4169C1, 2), (0x8F76F948, 2), (0x91000C10, 2),
+        (0x910BA58B, 2), (0x93379C99, 2), (0x945A5880, 2), (0x96666192, 2), (0x99897C43, 1),
+        (0x9A81D0B2, 2), (0x9AA53B24, 2), (0x9AAE92BF, 2), (0x9ADD31CB, 2), (0x9D4B04B0, 1),
+        (0x9DB0F5D2, 2), (0x9DC356A6, 2), (0xA0FAFC3E, 0), (0xA2009521, 2), (0xA20B3CBA, 2),
+        (0xA3B40BF1, 1), (0xA566F8A3, 2), (0xA56D5138, 2), (0xA75F5FED, 2), (0xA7973827, 0),
+        (0xA91E30B2, 2), (0xAA0247DA, 1), (0xABCC423A, 0), (0xACA18623, 0), (0xACD0B488, 2),
+        (0xACF45F1E, 2), (0xAD6F83C3, 1), (0xAE21740C, 0), (0xB00501F3, 2), (0xB282AA46, 2),
+        (0xB2D7737B, 0), (0xB319769B, 1), (0xB474B282, 1), (0xB5BAB762, 0), (0xB5C02C52, 2),
+        (0xB5EF6E5F, 2), (0xB768C5EA, 2), (0xB9E1CD7F, 0), (0xBB100DFB, 2), (0xBB1BA460, 2),
+        (0xBC0CFB49, 0), (0xBC766079, 2), (0xBC7DC9E2, 2), (0xBE8C0966, 0), (0xC06FF57C, 2),
+        (0xC2BD87F4, 0), (0xC2C71CC4, 2), (0xC2E85EC9, 2), (0xC3738214, 1), (0xC41E460D, 1),
+        (0xC580048C, 2), (0xC5859AD0, 2), (0xC5D043ED, 0), (0xC7023165, 2), (0xC98B39F0, 0),
+        (0xCB0BCBDF, 0), (0xCB7150EF, 2), (0xCB7AF974, 2), (0xCC173D6D, 2), (0xCC1C94F6, 2),
+        (0xCEE6FDE9, 0), (0xD0586F7B, 2), (0xD09008B1, 0), (0xD261C835, 2), (0xD26A61AE, 2),
+        (0xD4B33B67, 1), (0xD507A5B7, 2), (0xD50C0C2C, 2), (0xD7FDCCA8, 0), (0xD926449A, 0),
+        (0xDA68B355, 1), (0xDBA6B6B5, 0), (0xDBD7841E, 2), (0xDCCB72AC, 0), (0xDD05774C, 1),
+        (0xDE190024, 2), (0xE1615104, 2), (0xE35D6816, 2), (0xE430AC0F, 2), (0xE46C4D76, 2),
+        (0xE6073C86, 2), (0xE60C951D, 2), (0xEA4C3426, 1), (0xEAB7C544, 2), (0xEAC46630, 2),
+        (0xED86E024, 2), (0xEDA20BB2, 2), (0xEDA9A229, 2), (0xEDDA015D, 2), (0xF1ED59A4, 2),
+        (0xF3570567, 1), (0xF3D4FEEA, 2), (0xF43AC17E, 1), (0xF4B29368, 2), (0xF4B93AF3, 2),
+        (0xF871C9DE, 2), (0xFA465957, 2), (0xFD2B9D4E, 2), (0xFF17A45C, 2), (0xFF1C0DC7, 2)
+    ],
+    0x7F140A1E: [  # nTimelineParam::AnimalCommon
+        (0x08FD20A6, 1)
+    ],
+    0x7F2A1793: [  # nTimelineParam::Em110_01Motion
+        (0x08FD20A6, 1), (0x99897C43, 1)
+    ],
+}
+
 
 def _merge_pairs():
     """CORPUS_PAIRS ∪ DTI_EXTRA_PAIRS —— UI 调色板用的完整 (TLP → DT 列表)。
 
     语料条目在前、DTI 补充在后，所以下拉里官方用过的排前面。"""
     out = {h: list(v) for h, v in CORPUS_PAIRS.items()}
-    for h, v in DTI_EXTRA_PAIRS.items():
-        out.setdefault(h, []).extend(v)
+    for src in (DTI_EXTRA_PAIRS, OFFICIAL_TLP_DT):
+        for h, v in src.items():
+            cur = out.setdefault(h, [])
+            seen = {x[0] for x in cur}
+            cur.extend(x for x in v if x[0] not in seen)
     return out
 
 
