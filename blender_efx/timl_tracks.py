@@ -22,7 +22,8 @@ from ..efx_format import timl as _timl
 from ..efx_format.timl.names import (
     BLOCK_TO_TLP, FIELD_TO_DT, DT_PALETTE,
     TLP_NAMES, DT_NAMES, DT_TRANSFORM,
-    timeline_param_name, timeline_param_fullname,
+    timeline_param_name, timeline_param_fullname, timeline_param_category,
+    TLP_CATEGORIES,
     datatype_name, channel_label, block_native_axis,
 )
 
@@ -664,11 +665,14 @@ def _tlp_enum_items(self, context):
     body = _active_entry()
 
     if open_all or body is None:
-        # 显示 DT_PALETTE 全部 TLP，按名称字母序
+        # 「开放全部」= 列出所选**分类**下的全部 TLP。162 个里只有 28 个是特效，
+        # 其余是材质 / 动作 / 音频，编特效时全列出来纯属噪声，故按分类收窄。
+        cat = getattr(wm, "efx_timl_tracks_category", "ALL")
         items = sorted(
             [("%08X" % h, timeline_param_name(h),
               "%s  ·  0x%08X" % (timeline_param_fullname(h), h))
-             for h in DT_PALETTE],
+             for h in DT_PALETTE
+             if cat == "ALL" or timeline_param_category(h) == cat],
             key=lambda x: x[1],
         )
     else:
@@ -775,6 +779,11 @@ def _draw_tracks_panel(layout, context):
     layout.separator()
     add_box = layout.box()
 
+    # 分类行：只在「开放全部」时生效，故关掉时灰显——避免"选了分类却没反应"的困惑
+    cat_row = add_box.row(align=True)
+    cat_row.enabled = bool(getattr(wm, "efx_timl_tracks_open_all", False))
+    cat_row.prop(wm, "efx_timl_tracks_category", text="")
+
     # 过滤控制行：[开放全部 toggle] [TLP 下拉]
     sel_row = add_box.row(align=True)
     sel_row.prop(wm, "efx_timl_tracks_open_all", text="", icon="WORLD", toggle=True)
@@ -852,6 +861,18 @@ def register():
         description="开放全部：下拉列出所有 DT_PALETTE TLP，而非只列当前 entry 有对应属性类型的",
         default=False,
     )
+    bpy.types.WindowManager.efx_timl_tracks_category = bpy.props.EnumProperty(
+        name="Category",
+        description="限定「开放全部」列出哪一类 TLP；不开放全部时本项不参与过滤",
+        items=[
+            ("ALL",       "All",       "所有 TLP"),
+            ("EFX",       "EFX",       "特效属性块（nEffect::nTimelineParam::）"),
+            ("MATERIAL",  "Material",  "材质动画（nDraw::MaterialAnimation::），TLP 即主材质类型"),
+            ("ANIMATION", "Animation", "动作 / 碰撞 / 模型部件 / 事件（nTimelineParam::）"),
+            ("AUDIO",     "Audio",     "音频事件（nTimelineParam::nWwiseTimeline::）"),
+        ],
+        default="EFX",
+    )
     bpy.types.WindowManager.efx_timl_tracks_tlp_filter = bpy.props.EnumProperty(
         name="TLP",
         description="选择要添加轨道的目标块类型（TLP）",
@@ -862,7 +883,8 @@ def register():
 def unregister():
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
-    for attr in ("efx_timl_tracks_open_all", "efx_timl_tracks_tlp_filter"):
+    for attr in ("efx_timl_tracks_open_all", "efx_timl_tracks_category",
+                 "efx_timl_tracks_tlp_filter"):
         try:
             delattr(bpy.types.WindowManager, attr)
         except Exception:

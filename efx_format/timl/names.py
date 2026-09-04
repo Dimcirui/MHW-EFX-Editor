@@ -2140,6 +2140,37 @@ def timeline_param_name(h: int) -> str:
     return "0x%08X" % h
 
 
+# ── TLP 分类：按命名空间分，用于 UI 里筛选那 162 个 TLP ────────────────────────
+# 调色板里绝大多数 TLP 跟 efx 特效无关（材质动画 / 怪物玩家动作 / 音频事件），
+# 编特效时全列出来是噪声，故按命名空间分四类。
+#   EFX        nEffect::nTimelineParam::  +  nMhEffect::nTimelineParam::
+#   MATERIAL   nDraw::MaterialAnimation::            —— TLP 就是主材质类型
+#   AUDIO      nTimelineParam::nWwiseTimeline::
+#   ANIMATION  nTimelineParam::（其余）              —— 动作 / 碰撞 / 模型部件 / 事件
+# ⚠ 没有 TLP_FULLNAMES 的那几个是我们自己按公式反推确认的，全部落在
+#   nEffect::nTimelineParam:: 命名空间，故归 EFX。
+TLP_CATEGORIES = ("EFX", "MATERIAL", "ANIMATION", "AUDIO")
+
+_TLP_CATEGORY_PREFIXES = (
+    ("nEffect::nTimelineParam::",       "EFX"),
+    ("nMhEffect::nTimelineParam::",     "EFX"),
+    ("nDraw::MaterialAnimation::",      "MATERIAL"),
+    ("nTimelineParam::nWwiseTimeline::", "AUDIO"),
+    ("nTimelineParam::",                "ANIMATION"),   # 必须排在 Wwise 之后
+)
+
+
+def timeline_param_category(h: int) -> str:
+    """timelineParameterHash → 分类（TLP_CATEGORIES 之一）。未知一律归 EFX。"""
+    full = TLP_FULLNAMES.get(h & 0xFFFFFFFF)
+    if full is None:
+        return "EFX"
+    for prefix, cat in _TLP_CATEGORY_PREFIXES:
+        if full.startswith(prefix):
+            return cat
+    return "EFX"
+
+
 def timeline_param_fullname(h: int) -> str:
     """timelineParameterHash → 官方全限定类名（含命名空间）；没有则退短名/十六进制。
 
