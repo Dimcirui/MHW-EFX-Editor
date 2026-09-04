@@ -1789,7 +1789,9 @@ TUBELIGHT_ATTR = Attribute(size=124, fields=[
     Bool("unknBool0_2", backing='B'),                  # off9  真实数据，含义未知
     Byte("unknFixed0_2_cd"),                           # off10 恒 0xCD，未初始化占位
     Byte("unknFixed0_2b"),                              # off11 恒 0x00
-    Float("unkn1_0"),                                  # off12 可能为纹理滚动速度
+    # off12：与「起点/终点的光是否照亮周围环境」有关，具体形式待进一步测试。
+    # ⚠ 原注释猜它是纹理滚动速度，已证伪——那个是 off60（textureScrollSpeed）。
+    Float("unkn1_0"),                                  # off12
     # ⚠ off16/off20 是一次**交换式改名**（用户 2026-09-04 逐条建 TIML 轨道测出来的）：
     # 原先叫 lightIntensity 的 off20 其实由 DT CoreThickness 驱动，真正的 DT LightIntensity
     # 落在 off16（原 unknFixed1_1）。名字互换后 `lightIntensity` 这个 identifier 指向了
@@ -1797,22 +1799,34 @@ TUBELIGHT_ATTR = Attribute(size=124, fields=[
     # field_rename_aliases 只在查不到时才兜底，帮不上忙 → 含 TUBELIGHT 的旧 .blend 必须
     # 重新导入，否则该字段的编辑会写到错误偏移。（全语料 TUBELIGHT 仅 22 块，影响面很小。）
     Float("lightIntensity", label_zh="光照强度"),      # off16 原 unknFixed1_1，DT LightIntensity
-    Float("coreThickness", label_zh="核心粗细"),       # off20 原 lightIntensity，DT CoreThickness
-    Float("coreThicknessJitter", label_zh="核心粗细抖动"),  # off24 原 lightIntensityJitter
+    # ⚠ off20 上一版（0.6.6）误定成 coreThickness，实为 CoreIntensity；真正由 DT
+    # CoreThickness 驱动的是下面的 columnRadius。
+    Float("coreIntensity", label_zh="核心亮度"),       # off20 原 lightIntensity，DT CoreIntensity
+    Float("coreIntensityJitter", label_zh="核心亮度抖动"),  # off24
     Float("columnLengthModifier", label_zh="光柱长度修正"),  # off28
-    Float("columnRadius", label_zh="光柱半径"),        # off32
+    # columnRadius 由 DT CoreThickness 驱动。**名字保持不动**：这个名字是实机确认过的，
+    # 且「光柱半径」与「核心粗细」本就是同一个量的两种叫法；而且 coreThickness 这个
+    # identifier 刚在 0.6.6 里指过 off20，再复用一次会给旧 .blend 又埋一个错位坑。
+    # 字段名不必与 DT 名一致（PLANE.width↔SizeX、TRANSFORM2D.rotation↔rot 都是先例）。
+    Float("columnRadius", label_zh="光柱半径"),        # off32 DT CoreThickness
     Float("columnRadiusJitter", label_zh="光柱半径抖动"),    # off36
     Float("columnEdgeSoftness", label_zh="光柱边缘柔化"),    # off40
     Float("effectiveRadius", label_zh="光照有效半径"),  # off44 原 unkn1_8，DT EffectiveRadius
     Float("unknFixed1_9"),                             # off48 含义不明
     Float("unkn1_10"),                                 # off52 可能与光柱长度有关
     Float("unkn2_0"),                                  # off56
-    Float("unkn2_1"),                                  # off60 含义不明
+    Float("textureScrollSpeed", label_zh="贴图滚动速度"),  # off60 原 unkn2_1
     Int("unknFixed3_0"),                               # off64
     Int("unknFixed3_1"),                               # off68
     Int("unkn3_2"),                                    # off72
     Int("headColorEpvSlot", label_zh="起点颜色 EPV 颜色槽"),  # off76
     Int("headColor", label_zh="光柱起点颜色"),          # off80 打包 RGBA int
+    # ── ⚠ 头/尾几何四件套：高度对称但对不齐，待进一步探索 ────────────────────────
+    # 用户 2026-09-04 观察：tailPlaneOffset(off112) 像是**起点**的实边位置、unkn6b_1(off116)
+    # 像起点的虚边；columnLength(off84) 像**终点**的实边、tailGlowSpread(off88) 像终点虚边。
+    # 也就是说「实边 / 虚边」× 「起点 / 终点」正好四格，语义位置和表现都高度对称——但
+    # 实测并不完全按这个分法走，而且我们现有的 head/tail 命名可能与实际的头尾**是反的**。
+    # 在测清楚之前四个名字都不动，只记下这条线索。
     Float("columnLength", label_zh="光柱长度"),         # off84 起点 headColor→终点 tailColor
     Float("tailGlowSpread", label_zh="尾光扩散(变长+边缘虚化)"),  # off88 一参两效
     Float("tailEffectiveRadius", label_zh="终点有效半径"),  # off92 原 backFaceTintMode

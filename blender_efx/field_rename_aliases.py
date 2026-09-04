@@ -495,8 +495,12 @@ FIELD_RENAME_ALIASES = {
     #   兜底，老 .blend 里的 lightIntensity 会**直接匹配上新的 off16 字段**，轮不到
     #   这条别名 → 含 TUBELIGHT 的旧 .blend 必须重新导入。这条留着是为了记录事实，
     #   不要指望它能救。
-    ("TUBELIGHT", "lightIntensity"): "coreThickness",
-    ("TUBELIGHT", "lightIntensityJitter"): "coreThicknessJitter",
+    ("TUBELIGHT", "lightIntensity"): "coreIntensity",
+    ("TUBELIGHT", "lightIntensityJitter"): "coreIntensityJitter",
+    # 0.6.6 那一版把 off20 叫过 coreThickness（错的），也登记一下
+    ("TUBELIGHT", "coreThickness"): "coreIntensity",
+    ("TUBELIGHT", "coreThicknessJitter"): "coreIntensityJitter",
+    ("TUBELIGHT", "unkn2_1"): "textureScrollSpeed",
     ("TUBELIGHT", "unknFixed1_1"): "lightIntensity",
     ("TUBELIGHT", "unkn1_8"): "effectiveRadius",
     ("TUBELIGHT", "backFaceTintMode"): "tailEffectiveRadius",

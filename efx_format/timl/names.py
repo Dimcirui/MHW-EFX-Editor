@@ -591,7 +591,10 @@ FIELD_TO_DT = {
     # ── TUBELIGHT（2026-09-04 用户实机逐条测出；⚠ 此前把 DT LightIntensity 挂在
     # off20 那个字段上是错的，那一格实际由 CoreThickness 驱动，见 custom_codecs 注释）
     ("TUBELIGHT", "lightIntensity"):      [(0x085BC9D5, 2)],   # off16，原 unknFixed1_1
-    ("TUBELIGHT", "coreThickness"):       [(0x316D89C5, 2)],   # off20，原 lightIntensity
+    ("TUBELIGHT", "coreIntensity"):       [(0xB6C0BDF8, 2)],   # off20（0.6.6 曾误定为 CoreThickness）
+    ("TUBELIGHT", "columnRadius"):        [(0x316D89C5, 2)],   # off32，DT CoreThickness
+    ("TUBELIGHT", "columnLengthModifier"):[(0x6ACAAAD7, 2)],   # off28，DT CoreLength
+    ("TUBELIGHT", "textureScrollSpeed"):  [(0x931E7E65, 2)],   # off60，原 unkn2_1
     ("TUBELIGHT", "effectiveRadius"):     [(0x435F3054, 2)],   # off44，原 unkn1_8
     ("TUBELIGHT", "tailEffectiveRadius"): [(0x7D0FD331, 2)],   # off92，原 backFaceTintMode
     ("TUBELIGHT", "headEffectiveRadius"): [(0x102FFF8B, 2)],   # off120，原 frontFaceTintMode

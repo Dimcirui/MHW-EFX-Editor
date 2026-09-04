@@ -676,7 +676,6 @@ ADVANCED_FIELDS = {
         'unkn1_0',
         'unkn1_10',
         'unkn2_0',
-        'unkn2_1',
         'unkn3_2',
         'unkn5_1',
         'unkn6b_1',
