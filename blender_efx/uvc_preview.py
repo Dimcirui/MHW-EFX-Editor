@@ -850,8 +850,9 @@ class EFX_PT_mesh_binding(Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "EFX"
-    bl_label = "Mesh Binding (Preview)"
-    bl_order = 0  # 压在 Attribute Properties（默认顺序）之上
+    bl_label = "Mesh Binding"
+    bl_parent_id = "EFX_PT_efx_preview"   # 预览族父面板（efx_preview.py，注册在前）
+    bl_order = 0
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod

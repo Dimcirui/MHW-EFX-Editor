@@ -20,12 +20,22 @@ import os
 
 import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
-from bpy.props import StringProperty
+from bpy.props import CollectionProperty, StringProperty
 
 from .i18n import T
 
 
 _TIML_MAGIC = b"timl"
+
+
+def _poll_msg(cls, msg) -> None:
+    """给菜单/按钮的灰显状态附一句原因（Blender 3.0+ 有 poll_message_set）。
+
+    ⚠ 这里是类级**方法**检测，可靠；CLAUDE.md §1 规则 5 里不可靠的是类级数据属性。
+    """
+    setter = getattr(cls, "poll_message_set", None)
+    if setter is not None:
+        setter(msg)
 
 
 def resolve_timl_entry(obj):
@@ -97,7 +107,10 @@ class EFX_OT_export_entry_timl(bpy.types.Operator, ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        return _entry_has_timl(resolve_timl_entry(context.active_object))
+        ok = _entry_has_timl(resolve_timl_entry(context.active_object))
+        if not ok:
+            _poll_msg(cls, "Select an EFX entry (or its TIML handle) that has a TIML segment")
+        return ok
 
     def invoke(self, context, event):
         # 用 entry 标签预填默认文件名
@@ -162,10 +175,45 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
     filename_ext = ".timl"
     filter_glob: StringProperty(default="*.timl", options={"HIDDEN"}, maxlen=255)
 
+    # 拖入（FileHandler）调用约定：directory + files，而非 ImportHelper 的 filepath。
+    # 两条路径由同一个 execute 处理，见 _resolve_path。
+    files: CollectionProperty(
+        type=bpy.types.OperatorFileListElement,
+        options={"HIDDEN", "SKIP_SAVE"},
+    )
+    directory: StringProperty(subtype="DIR_PATH", options={"HIDDEN", "SKIP_SAVE"})
+
     @classmethod
     def poll(cls, context):
         # 放宽到「能携带 TIML 的 entry」：无 TIML 时此算子用于"添加"
-        return _entry_is_timl_capable(resolve_timl_entry(context.active_object))
+        ok = _entry_is_timl_capable(resolve_timl_entry(context.active_object))
+        if not ok:
+            _poll_msg(cls, "Select a standard/extended EFX entry (or its TIML handle) first")
+        return ok
+
+    def _resolve_path(self) -> str:
+        """拖入路径优先用 directory+files，菜单/按钮路径用 ImportHelper 的 filepath。"""
+        if self.files and self.directory:
+            for f in self.files:
+                if f.name:
+                    return os.path.join(self.directory, f.name)
+        return self.filepath
+
+    def invoke(self, context, event):
+        # 拖入：整段 TIML 替换是破坏性的，先弹确认框（ImportHelper 默认 invoke 会再开一次
+        # 文件浏览器，让拖入看起来"没反应"——同 efx.import_efx 的处理）。
+        if self.directory and self.files:
+            return context.window_manager.invoke_props_dialog(self)
+        return ImportHelper.invoke(self, context, event)
+
+    def draw(self, context):
+        # 仅拖入确认框用到（文件浏览器侧栏没有可调选项时留空即可）。
+        layout = self.layout
+        entry = resolve_timl_entry(context.active_object)
+        layout.label(text=os.path.basename(self._resolve_path()), icon="ANIM")
+        if entry is not None:
+            verb = "Replace TIML of" if _entry_has_timl(entry) else "Add TIML to"
+            layout.label(text="%s: %s" % (verb, entry.name), icon="OUTLINER_OB_EMPTY")
 
     def execute(self, context):
         obj = resolve_timl_entry(context.active_object)
@@ -175,8 +223,12 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
         if str(obj.get("entry_kind", "")) not in ("standard", "extended"):
             self.report({"ERROR"}, "This entry type does not contain a TIML segment")
             return {"CANCELLED"}
+        path = self._resolve_path()
+        if not path:
+            self.report({"ERROR"}, "TIML import: no file path specified")
+            return {"CANCELLED"}
         try:
-            with open(self.filepath, "rb") as f:
+            with open(path, "rb") as f:
                 data = f.read()
         except OSError as exc:
             self.report({"ERROR"}, f"Failed to read file: {exc}")

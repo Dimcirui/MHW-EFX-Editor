@@ -120,10 +120,18 @@ class EFX_OT_preview_exit(Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_efx_preview(Panel):
+    """预览族的父面板：自身是总开关，四个子面板（Effect / UV Control / Mesh Binding /
+    Mesh Align）通过 bl_parent_id 挂在它下面。
+
+    ⚠ 子面板要求父面板先注册——本模块的 register() 必须排在 uvc_preview / mesh_align
+    之前，unregister() 则相反（见 blender_efx/__init__.py 的注册顺序注释）。
+    """
+
+    bl_idname = "EFX_PT_efx_preview"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "EFX"
-    bl_label = "EFX Preview"
+    bl_label = "Preview"
     bl_order = 2
 
     def draw(self, context):

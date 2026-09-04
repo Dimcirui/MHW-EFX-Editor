@@ -63,6 +63,7 @@ from . import mod3_link        # EFX MESH 块引用的 mod3 自动导入+绑定�
 from . import mesh_align        # 绑定网格随 TRANSFORM3D+MESH 旋转/缩放实时对齐（预览式+可编辑+实例化）
 from . import es3d_preview      # EmitterShape3D 形状预览（透明几何体：立方体/球/环/点，预览式会话）
 from . import efx_preview       # 统一预览面板 EFX Preview（点5：总开关+勾选，编排 uvc/timl/mesh_align/es3d）
+from . import file_menu      # File > Import/Export 菜单项 + .timl/.uvs 拖入（须在各算子注册后挂）
 
 # 对外公开的核心函数
 from .io_tree import import_efx_tree, export_efx_tree, roundtrip_corpus
@@ -97,6 +98,7 @@ __all__ = [
     "uvs_io",
     "uvc_preview",
     "mod3_link",
+    "file_menu",
 ]
 
 
@@ -201,6 +203,11 @@ def register():
     # ── UVS Edition：顶层 N 面板（bl_order=0），独立注册 ──────────────────────
     uvs_io.register()
 
+    # ── 预览族父面板 Preview（编排 uvc/timl/mesh_align/es3d）─────────────────────
+    # ⚠ 必须早于 uvc_preview / mesh_align：那两个模块的预览面板用
+    # bl_parent_id='EFX_PT_efx_preview' 挂在它下面，父面板未注册则子面板注册失败。
+    efx_preview.register()
+
     # ── UVCONTROL UV 预览：顶层 N 面板 + frame handler，独立注册 ───────────────
     uvc_preview.register()
 
@@ -216,19 +223,22 @@ def register():
     # ── EmitterShape3D 形状预览（透明几何体，预览式会话）：顶层入口，独立注册 ─────────
     es3d_preview.register()
 
-    # ── 统一预览面板 EFX Preview（编排 uvc/timl/mesh_align/es3d）──────────────────
-    efx_preview.register()
+    # ── File > Import/Export 菜单项 + .timl/.uvs 拖入 ───────────────────────────
+    # 最后注册：菜单项按 bl_idname 引用上面各模块的算子，必须等它们全部注册完。
+    file_menu.register()
 
 
 def unregister():
     """注销扩展的全部 PropertyGroup、Operator 和 Panel 类。"""
     # ── Operator / Panel（先注销 UI 层）────────────────────────────────────
-    efx_preview.unregister()
+    file_menu.unregister()
     es3d_preview.unregister()
     mesh_align.unregister()
     session_core.unregister()
     mod3_link.unregister()
     uvc_preview.unregister()
+    # 预览族父面板：必须在 uvc_preview / mesh_align 这些子面板之后注销（与注册相反）
+    efx_preview.unregister()
     uvs_io.unregister()
     transform_sync.unregister()
     timl_tracks.unregister()

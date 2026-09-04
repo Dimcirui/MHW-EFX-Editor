@@ -68,6 +68,13 @@ def _is_uvsequence_attribute(obj) -> bool:
         return False
 
 
+def _poll_msg(cls, msg) -> None:
+    """给菜单/按钮的灰显状态附一句原因（Blender 3.0+ 有 poll_message_set）。"""
+    setter = getattr(cls, "poll_message_set", None)
+    if setter is not None:
+        setter(msg)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Type 槎名称下拉（typeN 保留为真实存储的 int；typeN_ui 是绑定的展示/编辑下拉，
 # 靠 update 回调单向写回 typeN——静态 items 列表，不用动态 itemsfunc，规避
@@ -284,14 +291,49 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
     filename_ext = ".uvs"
     filter_glob: StringProperty(default="*.uvs", options={"HIDDEN"})
 
+    # 拖入（FileHandler）调用约定：directory + files，而非 ImportHelper 的 filepath。
+    files: CollectionProperty(
+        type=bpy.types.OperatorFileListElement,
+        options={"HIDDEN", "SKIP_SAVE"},
+    )
+    directory: StringProperty(subtype="DIR_PATH", options={"HIDDEN", "SKIP_SAVE"})
+
     @classmethod
     def poll(cls, context):
-        return _is_uvsequence_attribute(context.active_object)
+        ok = _is_uvsequence_attribute(context.active_object)
+        if not ok:
+            _poll_msg(cls, "Select a UVSEQUENCE attribute first")
+        return ok
+
+    def _resolve_path(self) -> str:
+        """拖入路径优先用 directory+files，菜单/按钮路径用 ImportHelper 的 filepath。"""
+        if self.files and self.directory:
+            for f in self.files:
+                if f.name:
+                    return os.path.join(self.directory, f.name)
+        return self.filepath
+
+    def invoke(self, context, event):
+        # 拖入：载入会覆盖当前 UVS 编辑内容，先弹确认框（ImportHelper 默认 invoke
+        # 会再开一次文件浏览器，让拖入看起来"没反应"）。
+        if self.directory and self.files:
+            return context.window_manager.invoke_props_dialog(self)
+        return ImportHelper.invoke(self, context, event)
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.active_object
+        layout.label(text=os.path.basename(self._resolve_path()), icon="IMAGE_DATA")
+        if obj is not None:
+            layout.label(text="Load into: %s" % obj.name, icon="OUTLINER_OB_EMPTY")
 
     def execute(self, context):
         obj = context.active_object
         props = obj.efx_uvs
-        path = self.filepath
+        path = self._resolve_path()
+        if not path:
+            self.report({"ERROR"}, "UVS import: no file path specified")
+            return {"CANCELLED"}
         try:
             with open(path, "rb") as f:
                 data = f.read()
@@ -321,9 +363,12 @@ class EFX_OT_uvs_export(Operator, ExportHelper):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return _is_uvsequence_attribute(obj) and getattr(
+        ok = _is_uvsequence_attribute(obj) and getattr(
             getattr(obj, "efx_uvs", None), "is_loaded", False
         )
+        if not ok:
+            _poll_msg(cls, "Select a UVSEQUENCE attribute with a loaded .uvs first")
+        return ok
 
     def invoke(self, context, event):
         # 用已知路径预填对话框
