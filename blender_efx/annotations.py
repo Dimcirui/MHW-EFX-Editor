@@ -1235,10 +1235,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Purpose unknown.",
         "ZH": "作用未知。",
     },
-    ("RIBBON", "unknBool1"): {
-        "EN": "Purpose unknown.",
-        "ZH": "作用未知。",
-    },
     ("RIBBON", "unknBool3a"): {
         "EN": "Purpose unknown.",
         "ZH": "作用未知。",
@@ -1901,10 +1897,10 @@ FIELD_ANNOTATIONS = {
         "EN": "Memory-alignment padding (-842150656). Do not edit.",
         "ZH": "内存对齐占位符（-842150656）。请勿编辑。",
     },
-    ("LIGHTNING", "unkn00"): {
-        "EN": "[0]=1 base config flag (untested); [1]=108 guessed max node count / "
-              "subdivision precision (untested).",
-        "ZH": "[0]=1 基础配置标志（待测）；[1]=108 推测为最大节点数 / 细分精度（待测）。",
+    ("LIGHTNING", "unknFixed00_1"): {
+        "EN": "Always 108 across official data. Likely a max node count / subdivision "
+              "precision cap.",
+        "ZH": "官方语料中恒为 108。疑似最大节点数 / 细分精度上限。",
     },
     ("LIGHTNING", "color1"): {
         "EN": "Lightning color 1 (RGBA). color1/color2 are two INDEPENDENT lightning "
@@ -2021,7 +2017,7 @@ FIELD_ANNOTATIONS = {
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("LIGHTNING", "unknFixed05_20"): {
-        "EN": "⚠ Caution: do NOT set to 0 (possible crash). Guessed memory layout / render "
+        "EN": "⚠ Caution: do NOT set to 0 (possible crash). Likely memory layout / render "
               "batch related. Default 96.",
         "ZH": "⚠ 谨慎：不要归0（可能崩溃）。推测与内存布局/渲染批次相关。默认 96。",
     },
@@ -2081,20 +2077,22 @@ FIELD_ANNOTATIONS = {
               "与 inflectionPointCount 双层叠加，任一过低都顿挫。",
     },
     ("LIGHTNING", "uInflectionAngleLimit2"): {
-        "EN": "Guessed 2nd-layer U angle limit (default 2, untested).",
-        "ZH": "推测第二层倾角范围（默认 2，待测）。",
+        "EN": "Second-layer U angle limit (default 2). Exact effect unknown.",
+        "ZH": "第二层倾角范围（默认 2）。具体作用未知。",
     },
     ("LIGHTNING", "uInflectionAngleLimitJitter2"): {
-        "EN": "Guessed jitter on uInflectionAngleLimit2 (default 0, untested).",
-        "ZH": "推测 uInflectionAngleLimit2 的抖动（默认 0，待测）。",
+        "EN": "Random component of uInflectionAngleLimit2 (default 0). Exact effect "
+              "unknown.",
+        "ZH": "uInflectionAngleLimit2 的随机分量（默认 0）。具体作用未知。",
     },
     ("LIGHTNING", "vInflectionAngleLimit2"): {
-        "EN": "Guessed 2nd-layer V angle limit (default 0.6, untested).",
-        "ZH": "推测第二层弯曲角范围（默认 0.6，待测）。",
+        "EN": "Second-layer V angle limit (default 0.6). Exact effect unknown.",
+        "ZH": "第二层弯曲角范围（默认 0.6）。具体作用未知。",
     },
     ("LIGHTNING", "vInflectionAngleLimitJitter2"): {
-        "EN": "Guessed jitter on vInflectionAngleLimit2 (default 0, untested).",
-        "ZH": "推测 vInflectionAngleLimit2 的抖动（默认 0，待测）。",
+        "EN": "Random component of vInflectionAngleLimit2 (default 0). Exact effect "
+              "unknown.",
+        "ZH": "vInflectionAngleLimit2 的随机分量（默认 0）。具体作用未知。",
     },
     ("LIGHTNING", "glow"): {
         "EN": "Main-bolt glow (default 0.6). 0=none, larger=stronger halo. Negative=main "
@@ -2176,14 +2174,16 @@ FIELD_ANNOTATIONS = {
         "ZH": "支路闪电数量B（默认 1）。同时影响主/支渲染层级；过高=局部渲染层级异常"
               "（受距离限制，越近影响越大，特定视角偶尔可见）。",
     },
-    ("LIGHTNING", "unkn06"): {
-        "EN": "[0]=branch double-mode flag (branchDoubleModeFlag): 0=1 branch per point, "
-              "non-0=2 per point (switch). [1]=branch complexity & flow mode "
-              "(branchComplexityAndFlowMode, default 3): controls branch inflection count + "
-              "sine freq; larger activates dynamic flow. ⚠ [1] negative crashes.",
-        "ZH": "[0]=支路双倍模式标志：0=每点 1 条分支，非0=每点 2 条（开关）。"
-              "[1]=支路复杂度与流动模式（默认 3）：控制分支拐点数+正弦频率，增大激活动态流光。"
-              "⚠ [1] 负数崩溃。",
+    ("LIGHTNING", "unknBitmask06_0"): {
+        "EN": "Branch double mode: 0 = one branch per point, non-0 = two per point.",
+        "ZH": "支路双倍模式：0=每点 1 条分支，非 0=每点 2 条。",
+    },
+    ("LIGHTNING", "unknBitmask06_1"): {
+        "EN": "Branch complexity and flow mode (default 3). Controls branch inflection "
+              "count plus sine frequency; larger values switch on dynamic flow. "
+              "⚠ Negative values crash the game.",
+        "ZH": "支路复杂度与流动模式（默认 3）。控制分支拐点数与正弦频率，增大则激活动态流光。"
+              "⚠ 负数会导致游戏崩溃。",
     },
     ("LIGHTNING", "radiusLimit"): {
         "EN": "Branch spread max radius (default 5). 0=收束 but not fully gone (other params "
@@ -2322,41 +2322,73 @@ FIELD_ANNOTATIONS = {
         "EN": "Reserved. No visible change across many values (default 0.5).",
         "ZH": "保留字段。测多个数值均无明显变化（默认 0.5）。",
     },
-    ("LIGHTNING", "unkn08"): {
-        "EN": "Reserved/padding array — lightning type does not read it (no effect in "
-              "exhaustive testing).",
-        "ZH": "保留/填充数组——lightning 类型未读取（地毯式测试无任何效果）。",
+    ("LIGHTNING", "unknFixed08_0"): {
+        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+              "has no effect.",
+        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unkn09"): {
         "EN": "Reserved/padding array (20 floats) — not read by lightning (no effect).",
         "ZH": "保留/填充数组（20 个 float）——lightning 未读取（无效果）。",
     },
-    ("LIGHTNING", "unkn10"): {
-        "EN": "Reserved/padding array — not read by lightning (no effect).",
-        "ZH": "保留/填充数组——lightning 未读取（无效果）。",
+    ("LIGHTNING", "unkn10_0"): {
+        "EN": "Lightning does not read it — changing it has no effect.",
+        "ZH": "lightning 未读取——改动无效果。",
     },
-    ("LIGHTNING", "unkn11"): {
-        "EN": "Reserved/padding array (all-zero, expansion slots) — no effect.",
-        "ZH": "保留/填充数组（全零预留位）——无效果。",
+    ("LIGHTNING", "unknEnum10_1"): {
+        "EN": "Lightning does not read it — changing it has no effect.",
+        "ZH": "lightning 未读取——改动无效果。",
     },
-    ("LIGHTNING", "unkn12"): {
-        "EN": "Reserved/padding array — not read by lightning (no effect).",
-        "ZH": "保留/填充数组——lightning 未读取（无效果）。",
+    ("LIGHTNING", "unknFixed10_3"): {
+        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+              "has no effect.",
+        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
     },
-    ("LIGHTNING", "unkn13"): {
-        "EN": "Reserved/padding array — strongest 'rotation angle' candidate ([0]=360) but "
-              "0/90/180/720 all show no effect. Bolt twist is texture/shader, not this.",
-        "ZH": "保留/填充数组——曾是最强'旋转角度'候选（[0]=360），但 0/90/180/720 均无效果。"
-              "闪电的细微扭转来自贴图/shader，与此无关。",
+    ("LIGHTNING", "unkn11_1"): {
+        "EN": "Expansion slot, 0 in almost all official data — no effect.",
+        "ZH": "预留位，官方语料中绝大多数为 0——无效果。",
     },
-    ("LIGHTNING", "unkn14"): {
-        "EN": "Reserved/padding array — not read by lightning (no effect; [2]=38).",
-        "ZH": "保留/填充数组——lightning 未读取（无效果；[2]=38）。",
+    ("LIGHTNING", "unknFixed12_0"): {
+        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+              "has no effect.",
+        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
     },
-    ("LIGHTNING", "unkn15"): {
-        "EN": "⚠ [0]=-4.3e+08 (0xCD fill pattern, debug-heap uninitialized memory) — DO NOT "
-              "MODIFY. Rest of array is reserved/padding (no effect).",
-        "ZH": "⚠ [0]=-4.3e+08（0xCD 调试堆未初始化内存填充值）——禁止修改。数组其余为保留/填充（无效果）。",
+    ("LIGHTNING", "unknAngle13_0"): {
+        "EN": "Angle value, 360 in almost all official data. The closest thing to a "
+              "'rotation angle' in this block, but 0/90/180/720 all look identical — the "
+              "slight twist of a bolt comes from the texture/shader, not from here.",
+        "ZH": "角度值，官方语料中绝大多数为 360。本块里最像\"旋转角度\"的一项，但 0/90/180/720 "
+              "看上去完全一样——闪电的细微扭转来自贴图/shader，与此无关。",
+    },
+    ("LIGHTNING", "unknFixed13_1"): {
+        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+              "has no effect.",
+        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
+    },
+    ("LIGHTNING", "unknFixed13_2"): {
+        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+              "has no effect.",
+        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
+    },
+    ("LIGHTNING", "unknEnum13_3"): {
+        "EN": "Almost always 0 across official data (rarely 2 or 3). Lightning does not "
+              "read it — changing it has no effect.",
+        "ZH": "官方语料中绝大多数为 0（罕见 2 或 3）。lightning 未读取——改动无效果。",
+    },
+    ("LIGHTNING", "unknFixed13_4"): {
+        "EN": "Always 1 across official data. Lightning does not read it — changing it "
+              "has no effect.",
+        "ZH": "官方语料中恒为 1。lightning 未读取——改动无效果。",
+    },
+    ("LIGHTNING", "unknFixed13_5"): {
+        "EN": "Always 1 across official data. Lightning does not read it — changing it "
+              "has no effect.",
+        "ZH": "官方语料中恒为 1。lightning 未读取——改动无效果。",
+    },
+    ("LIGHTNING", "unknFixed14_2"): {
+        "EN": "Always 38 across official data. Lightning does not read it — changing it "
+              "has no effect.",
+        "ZH": "官方语料中恒为 38。lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknEnum16"): {
         "EN": "Reserved. No change at 1/100/-1.",
@@ -2368,7 +2400,8 @@ FIELD_ANNOTATIONS = {
     # 来源：stats/field_classification.json（confidence>=0.6），仅提示"通常取值"，
     # 不代表字段被锁定为该范围/取值——语料未覆盖到的其他取值同样合法。
     # -----------------------------------------------------------------------
-    ("ALPHACORRECTION", "typeFlag"): {
+    # ALPHACORRECTION 的头部槽位 schema 名仍是 unkn0（其它类型都叫 typeFlag）。
+    ("ALPHACORRECTION", "unkn0"): {
         "EN": "Header field present in most attribute types, likely a type/category "
               "marker rather than a tunable value. Common range: 1~11 (rare outliers up to 45).",
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见范围 "
@@ -2793,28 +2826,40 @@ FIELD_ANNOTATIONS = {
               "[1, 2, 3, 4, 7]。",
     },
     ("LIGHTNING", "unknEnum08_1"): {
-        "EN": "Common values: [0, 1, 2, 3, 5].",
-        "ZH": "常见取值为 [0, 1, 2, 3, 5]。",
+        "EN": "Common values: [0, 1, 2, 3, 5]."
+              " Lightning does not read it — changing it has no effect.",
+        "ZH": "常见取值为 [0, 1, 2, 3, 5]。"
+              "lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknFlag10_2"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "Common values: 0/1."
+              " Lightning does not read it — changing it has no effect.",
+        "ZH": "常见取值为 0/1。"
+              "lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unkn11_0"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+        "EN": "Common range: 0~100."
+              " Expansion slot — no effect.",
+        "ZH": "常见取值在 0~100 之间。"
+              "预留位——无效果。",
     },
     ("LIGHTNING", "unknEnum12_1"): {
-        "EN": "Common values: [0, 4].",
-        "ZH": "常见取值为 [0, 4]。",
+        "EN": "Common values: [0, 4]."
+              " Lightning does not read it — changing it has no effect.",
+        "ZH": "常见取值为 [0, 4]。"
+              "lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknEnum14_0"): {
-        "EN": "Common values: [0, 5].",
-        "ZH": "常见取值为 [0, 5]。",
+        "EN": "Common values: [0, 5]."
+              " Lightning does not read it — changing it has no effect.",
+        "ZH": "常见取值为 [0, 5]。"
+              "lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknFlag14_1"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "Common values: 0/1."
+              " Lightning does not read it — changing it has no effect.",
+        "ZH": "常见取值为 0/1。"
+              "lightning 未读取——改动无效果。",
     },
     ("LINKPARTSVISIBLE", "unknEnum0_2"): {
         "EN": "Common values: [2, 13, 15].",
@@ -3563,9 +3608,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "billboardRotationAccel 的随机分量。",
     },
     ("ROTATEANIM", "spinSpeedCoefX"): {
-        "EN": 'Formerly momentum_retention — corpus scan shows this and the following 5 fields were shifted one slot off; regrouped into X/Y/Z static+random pairs of spin acceleration. Static value mostly 0.9~1.0.',
-        "ZH": "原 momentum_retention——2026-07 实测发现原 XYZ 分组整体错位一格，重新按 X/Y/Z 各自"
-              "的自旋加速度 static/random 分组。static 值多集中在 0.9~1.0。",
+        "EN": "Spin acceleration on X, static value (formerly momentum_retention — this "
+              "and the following 5 fields were regrouped into X/Y/Z static+random pairs). "
+              "Mostly 0.9~1.0.",
+        "ZH": "X 轴自旋加速度，固定值（原 momentum_retention——本字段起 6 个字段已重新按 "
+              "X/Y/Z 的固定/随机配对分组）。多集中在 0.9~1.0。",
     },
     ("ROTATEANIM", "spinSpeedCoefXJitter"): {
         "EN": "Random component of spinAccelerationX. Mostly 0; occasionally a clean small decimal.",
