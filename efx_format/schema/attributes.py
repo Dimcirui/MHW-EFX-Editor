@@ -9,7 +9,8 @@ from .fields_model import (
     Enum, EnumVec3, Bool, Bitmask, Raw,
 )
 from .enums import (
-    ENUM_SHAPE_TYPE3D, ENUM_RANGE_DIVIDE_AXIS, ENUM_ROTATION_CORRECT_TYPE,
+    ENUM_SHAPE_TYPE3D, ENUM_RANGE_DIVIDE_AXIS, ENUM_RANGE_DIVIDE_AXIS_2D,
+    ENUM_ROTATION_CORRECT_TYPE,
     ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_IMPACT_PLAY_TRIGGER_MODE, ENUM_PTLIFE_STATUS,
     ENUM_RAYCAST_DIR, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
     ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
@@ -1559,9 +1560,9 @@ EMITTERSHAPE2D_ATTR = Attribute(size=36, fields=[
     # rangeDivideAxis：原 unknEnum22_0。用户 2026-09-03 按与 EMITTERSHAPE3D 同构推定为
     # 「方形的细分轴向」——2D 版与 3D 版逐字段对应，3D 那边同位置就是 rangeDivideAxis
     # （仅 Box 生效、选沿哪个轴细分）。取值 {0:94%, 1:2%, 2:4%}。
-    # ⚠ 保持 Int 不套 ENUM_RANGE_DIVIDE_AXIS：3D 那张枚举是 0=X/1=Z/2=Y，2D 没有 Z 轴，
-    #   套上去第 1 项就是错的。等实机确认 2D 的取值含义再补专属枚举。
-    Int("rangeDivideAxis", label_zh="细分轴向"),
+    # ⚠ 用 2D 专属枚举：3D 那张是 0=X/1=Z/2=Y，2D 实测是 **0=Y、1=X**，编号不一样。
+    #   语料还有 4% 取值 2，含义未知，未列进枚举（越界值回退显示原整数）。
+    Enum("rangeDivideAxis", ENUM_RANGE_DIVIDE_AXIS_2D, label_zh="细分轴向"),
     # unknFixed22_1：全语料 292 例恒为 0。曾被列为 EmitterShape2D 的 LocalRotation
     # （TIML DT 0x7516AA5D）的候选宿主，但用户 2026-09-03 实机改它看不到变化，未坐实。
     Int("unknFixed22_1"),

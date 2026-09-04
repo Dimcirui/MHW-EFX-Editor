@@ -22,6 +22,13 @@ ENUM_RANGE_DIVIDE_AXIS = EnumDef("RangeDivideAxis", [
     (1, "Z-axis", "Z 轴"),
     (2, "Y-axis", "Y 轴"),
 ])
+# EMITTERSHAPE2D 的同名字段**编号不一样**：用户 2026-09-04 实测 0=Y、1=X（2D 没有 Z 轴，
+# 3D 那张表照搬过来第 1 项就是错的）。语料 292 例取值 {0:94%, 1:2%, 2:4%}，2 的含义未知，
+# 不列进枚举——越界值由 Blender 层回退显示原整数。
+ENUM_RANGE_DIVIDE_AXIS_2D = EnumDef("RangeDivideAxis2D", [
+    (0, "Y-axis", "Y 轴"),
+    (1, "X-axis", "X 轴"),
+])
 # EMITTERSHAPE3D.rotationCorrect：照搬续作(RE Engine) EFXEnums.cs 的 RotationCorrectType。
 # 官方语料取值 [0,1,3,5,7] 不完全落在 0~4 内，越界值由 Blender 层回退显示原整数。
 ENUM_ROTATION_CORRECT_TYPE = EnumDef("RotationCorrectType", [
