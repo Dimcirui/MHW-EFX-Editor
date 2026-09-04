@@ -1556,8 +1556,15 @@ EMITTERSHAPE2D_ATTR = Attribute(size=36, fields=[
     # 它是**等分数量**而非生成个数，与 EMITTERSHAPE3D.rangeDivideHorizontalNum 同一概念的
     # 2D 版本（2D 只有一根横向维度，故没有 Vertical 对应字段）。
     Int("rangeDivideHorizontalNum", label_zh="横向等分数量"),
-    Int("unknEnum22_0"),  # 3种取值{0:94%,1:2%,2:4%}，语义待定
-    Int("unknFixed22_1"),  # 全语料 292 例恒为 0  
+    # rangeDivideAxis：原 unknEnum22_0。用户 2026-09-03 按与 EMITTERSHAPE3D 同构推定为
+    # 「方形的细分轴向」——2D 版与 3D 版逐字段对应，3D 那边同位置就是 rangeDivideAxis
+    # （仅 Box 生效、选沿哪个轴细分）。取值 {0:94%, 1:2%, 2:4%}。
+    # ⚠ 保持 Int 不套 ENUM_RANGE_DIVIDE_AXIS：3D 那张枚举是 0=X/1=Z/2=Y，2D 没有 Z 轴，
+    #   套上去第 1 项就是错的。等实机确认 2D 的取值含义再补专属枚举。
+    Int("rangeDivideAxis", label_zh="细分轴向"),
+    # unknFixed22_1：全语料 292 例恒为 0。曾被列为 EmitterShape2D 的 LocalRotation
+    # （TIML DT 0x7516AA5D）的候选宿主，但用户 2026-09-03 实机改它看不到变化，未坐实。
+    Int("unknFixed22_1"),
 ])
 EMITTERSHAPE2D_SCHEMA = EMITTERSHAPE2D_ATTR.schema
 assert _schema_size(EMITTERSHAPE2D_SCHEMA) == 36, \

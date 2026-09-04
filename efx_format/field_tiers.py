@@ -16,7 +16,7 @@ efx_format/field_tiers.py — 属性字段分档表（常用 / 高级）。
 ⚠ 本文件由 `python tools/gen_field_tiers.py --write` 生成，别手改——
 手改会在下次重跑统计时丢失。要放行某个字段请加进生成脚本的 KEEP_COMMON。
 
-语料：`efx_samples/official/` 10084 文件（2026-09-03 生成）。
+语料：`efx_samples/official/` 10084 文件（2026-09-04 生成）。
 """
 
 # TYPE_NAME -> 该类型下归入「高级」的字段 ori_name 集合
@@ -83,7 +83,6 @@ ADVANCED_FIELDS = {
     }),
     'EMITTERSHAPE2D': frozenset({
         'typeFlag',
-        'unknEnum22_0',
         'unknFixed22_1',
     }),
     'EMITTERSHAPE3D': frozenset({

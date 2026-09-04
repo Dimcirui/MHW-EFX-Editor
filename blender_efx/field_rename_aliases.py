@@ -485,4 +485,7 @@ FIELD_RENAME_ALIASES = {
     ("RGBWATER", "colorParam2_vanishFrameJitter"): "waterLerpParam_vanishFrameJitter",
     ("RGBWATER", "colorParam2_lighting"): "waterLerpParam_lighting",
     ("RGBWATER", "colorParam2_lifeType"): "waterLerpParam_lifeType",
+
+    # ── EMITTERSHAPE2D（2026-09-03，按与 3D 同构推定为细分轴向）──
+    ("EMITTERSHAPE2D", "unknEnum22_0"): "rangeDivideAxis",
 }

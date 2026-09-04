@@ -503,6 +503,24 @@ FIELD_TO_DT = {
     ("RIBBON", "width"):          [(0xF0DF339B, 2)],
     ("RIBBON", "scale"):          [(0x0EBAEC37, 2)],
     ("RIBBON", "length"):         [(0xF92E647B, 2)],
+    # ── 2026-09-03 用户实机逐条确认的一批 ───────────────────────────────────
+    ("RIBBON", "colorRange"):        [(0xC216C23D, 3)],
+    ("PLANE", "width"):              [(0x241CAED2, 2)],   # DT 名 SizeX
+    ("TRANSFORM2D", "rotation"):     [(0xE2C6589E, 2)],   # DT 名 rot（官方就是小写）
+    ("VELOCITY2D", "gravity"):       [(0x6A5FE3C4, 2)],
+    ("STRAINRIBBON", "color"):       [(0x58689812, 3)],
+    ("STRAINRIBBON", "colorRange"):  [(0xC216C23D, 3)],
+    # startPosition 是 XYZ type 3，同 endPosition 那条：背板按游戏分量序逐轴排，挂 3 条
+    ("STRAINRIBBON", "startPosition"): [
+        (0xE66B06CD, 2), (0x916C365B, 2), (0x086567E1, 2),  # InitialPosition X / Y / Z
+    ],
+    # EMITTERSHAPE2D 与 3D 逐字段同构：官方名的 RangeMin/Max 就是我们实测的 offset/size
+    # （Min=offset、Max=size），与 EMITTERSHAPE3D.rangeXYZ 同一套读法。2D 把两轴存成
+    # 四个独立标量（*Jitter 后缀是历史命名，实为 size），故逐个挂。
+    ("EMITTERSHAPE2D", "rangeX"):       [(0x760F3D43, 2)],   # RangeMinX = offsetX
+    ("EMITTERSHAPE2D", "rangeXJitter"): [(0x6484D92C, 2)],   # RangeMaxX = sizeX
+    ("EMITTERSHAPE2D", "rangeY"):       [(0x01080DD5, 2)],   # RangeMinY = offsetY
+    ("EMITTERSHAPE2D", "rangeYJitter"): [(0x1383E9BA, 2)],   # RangeMaxY = sizeY
     ("STRAINRIBBON", "length"):   [(0xF92E647B, 2)],
     ("STRAINRIBBON", "width"):    [(0xF0DF339B, 2)],
     ("VELOCITY3D", "gravity"):    [(0x6A5FE3C4, 2)],
@@ -546,6 +564,7 @@ FIELD_TO_DT = {
     ("VELOCITY2D", "speed"):      [(0x31182E0D, 2)],
     ("VELOCITY3D", "speed"):      [(0x31182E0D, 2)],
     # EMITTERSHAPE3D：localRotationY/Z 与 DT 名精确一致（X 在语料里未出现）
+    ("EMITTERSHAPE3D", "localRotationX"): [(0x701FE225, 2)],
     ("EMITTERSHAPE3D", "localRotationY"): [(0x0718D2B3, 2)],
     ("EMITTERSHAPE3D", "localRotationZ"): [(0x9E118309, 2)],
     # EMITTERSHAPE3D.rangeXYZ ↔ RangeMin/Max XYZ：官方名的 Min/Max 就是我们实测
@@ -580,6 +599,35 @@ FIELD_TO_DT = {
 # 不进 FIELD_TO_DT（+TIML 按钮不显示），登记在此免得反复重新调查。要加进主表
 # 必须先坐实"这条 DT 对应哪个字段"，光看名字像不够——错的映射会让用户以为在给
 # A 字段做动画、实际写进了 B 字段的通道。
+# ── DT_NO_EFFECT：**实机测过、看不出任何变化**的 (块, DT) ─────────────────────
+# 负结果也是结果。不记下来的话，下一轮清点又会把它们当"待测"列出来，白测第二遍。
+#
+# ⚠ 「看不出变化」不等于「一定无效」——可能是效果太细微、需要配合别的开关、或者
+#   测试场景不对。所以只记录"测过、当时没看出来"，不宣称废弃。它们仍留在调色板里
+#   （用户想再试随时能建轨道），只是从未验证清单里挪走。
+DT_NO_EFFECT = {
+    # Emission 三件套：横跨 5 个渲染主体全都有、官方一次没用过。用户 2026-09-03 在
+    # BILLBOARD3D 上逐条测过三条，**都看不到变化**；RIBBON / PLANE / BILLBOARD2D 复测
+    # 情况相同。看着像共用 shader 基类留下的死槽位。
+    # （STRAINRIBBON 也有这三条 + EmissionRate，未测，大概率同理。）
+    ("BILLBOARD3D",  0xEEBD5618): "EmissionRate",
+    ("BILLBOARD3D",  0xCDBCBB7E): "EmissionColorRange",
+    ("BILLBOARD3D",  0xF80CE653): "EmissionColor",
+    ("RIBBON",       0xEEBD5618): "EmissionRate",
+    ("RIBBON",       0xCDBCBB7E): "EmissionColorRange",
+    ("RIBBON",       0xF80CE653): "EmissionColor",
+    ("PLANE",        0xEEBD5618): "EmissionRate",
+    ("PLANE",        0xCDBCBB7E): "EmissionColorRange",
+    ("PLANE",        0xF80CE653): "EmissionColor",
+    ("BILLBOARD2D",  0xEEBD5618): "EmissionRate",
+    ("BILLBOARD2D",  0xCDBCBB7E): "EmissionColorRange",
+    ("BILLBOARD2D",  0xF80CE653): "EmissionColor",
+    # EmitterShape2D 的 LocalRotation：块里只剩 unknFixed22_1（全语料恒 0）能当宿主，
+    # 改它看不到变化。要么是死槽位，要么宿主字段还没被我们解出来。
+    ("EMITTERSHAPE2D", 0x7516AA5D): "LocalRotation",
+}
+
+
 FIELD_TO_DT_UNRESOLVED = {
     # RGBWATER 原在此（4 条全未定）——2026-09-03 用户实机逐条测出归属，已迁进 FIELD_TO_DT。
     # TUBELIGHT：CoreThickness（17 条）候选 columnRadius / columnEdgeSoftness；

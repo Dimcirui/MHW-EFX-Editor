@@ -1061,6 +1061,9 @@ assert _schema_size(_STRAINRIBBON_FIXED_SCHEMA) == 340, \
 # enableFlowmap 渲成勾选框（backing 'B' 与 tuple spec 一致 → 字节等价不受影响）。
 _STRAINRIBBON_OVR = {
     'enableFlowmap': Bool('enableFlowmap', backing='B', label_zh="启用流动贴图"),
+    # 与 enableFlowmap 同为 'B' 开关字节，此前漏了没渲成勾选框（用户 2026-09-03 指出）。
+    'useColorRange': Bool('useColorRange', backing='B', label_zh="启用颜色范围"),
+    'useEmission':   Bool('useEmission',   backing='B', label_zh="启用自发光"),
 }
 STRAINRIBBON_ATTR = attr_from_legacy(
     _schema_size(_STRAINRIBBON_FIXED_SCHEMA), _STRAINRIBBON_FIXED_SCHEMA,
