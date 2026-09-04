@@ -122,6 +122,30 @@ def _resolve_for_edit():
     return (body, timl) if timl is not None else (None, None)
 
 
+def _ensure_timl_segment():
+    """确保当前 entry 有 TIML 段——没有就现建一个空白的，返回 (成功, 是否新建)。
+
+    「加一条轨道」在用户眼里是一个动作，不该要求先手动点一次「新建 TIML」再回来。
+    真正需要显式确认的是**替换/删除**已有 TIML（破坏性），新建空段不丢任何东西。
+    已有段则原样返回，绝不覆盖。
+
+    走 timl_edit.set_entry_timl 这个咽喉点写字节（同 efx.create_entry_timl），空白段的
+    头部常量由 make_blank_timl 统一产出——那些常量有过写错的历史，不在别处另起一份。
+    """
+    if _active_entry() is not None:
+        return True, False                      # 已有非空 TIML，什么都不做
+    body = _timl_capable_entry()
+    if body is None:
+        return False, False
+    if body.get("~TYPE") == "EFX_ENTRY" and \
+            str(body.get("entry_kind", "")) not in ("standard", "extended"):
+        return False, False                     # 该 entry 类型不支持 TIML 段
+    from ..efx_format.timl import make_blank_timl
+    from . import timl_edit as _te
+    _te.set_entry_timl(body, make_blank_timl())
+    return _active_entry() is not None, True
+
+
 def _commit_edit(body, timl):
     """落实结构性改动：经咽喉点存字节 + 从新字节重建持久 fcurve（含新增/删除的轨道）。"""
     from . import timl_edit as _te
@@ -181,7 +205,11 @@ def entry_animated_channels():
 
 def _timl_capable_entry():
     """当前活动对象解析出的 EFX_ENTRY，**不要求它已经有 TIML**（`_active_entry` 要求）。
-    ♫ 按钮据此决定是否可点：还没有 TIML 的 entry 也该能点开，弹窗里给"先建 TIML"。"""
+
+    ♫ 按钮据此决定是否可点：还没有 TIML 的 entry 也该能点开，缺的段由
+    `_ensure_timl_segment()` 在真正加轨道时顺手补上。
+    ⚠ 依赖 `resolve_timl_entry` 认得 EFX_ATTRIBUTE——♫ 只在选中属性时可见，
+    那条以前漏了，导致这个按钮恒灰。"""
     try:
         from .timl_io import resolve_timl_entry, _entry_is_timl_capable
         obj = resolve_timl_entry(bpy.context.active_object)
@@ -340,13 +368,12 @@ class EFX_OT_timl_field_add_menu(Operator):
         layout = self.layout
         layout.label(text=f"{self.block_type} · {self.field_name}", icon="ANIM")
         layout.separator()
-        # 这个 entry 还没有 TIML 段：先给创建入口，不在这里替用户默默建
-        # （空白 TIML 的头部常量有过写错的历史，建段保持为显式动作）。
+        # 这个 entry 还没有 TIML 段：不再要求用户先点一次"新建 TIML"再回来点轴——
+        # 直接照常列出 A0/A1，缺的段由 EFX_OT_timl_add_field_tracks 在建轨道前顺手补上。
+        # 只在这里提示一句会顺带新建，让动作可预期。
         if _active_entry() is None:
-            layout.label(text=T("timl.no_segment_yet"), icon="INFO")
-            layout.operator("efx.create_entry_timl",
-                            text=T("timl.create_blank_btn"), icon="ADD")
-            return
+            layout.label(text=T("timl.will_create_segment"), icon="INFO")
+            layout.separator()
         native = block_native_axis(self.block_type)   # 0=A0 母轴 / 1=A1 母轴 / None=两轴都行
 
         specs = {0: ("+A0  (Emission)", "ANIM"), 1: ("+A1  (Lifetime)", "PARTICLES")}
@@ -401,7 +428,10 @@ class EFX_OT_timl_add_field_tracks(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_entry() is not None
+        # 与 timl_field_add_menu 保持一致：不要求已有 TIML，缺段由 execute 里的
+        # _ensure_timl_segment() 补上。以前这里卡 _active_entry() 会让弹窗里的
+        # +A0/+A1 在无 TIML 的 entry 上仍然点不动。
+        return _timl_capable_entry() is not None
 
     def execute(self, context):
         if self.tlp_hash_hex and self.dt_hash_hex:
@@ -422,6 +452,10 @@ class EFX_OT_timl_add_field_tracks(Operator):
             if tlp_hash is None:
                 self.report({"ERROR"}, f"No TLP mapping for attribute type '{self.block_type}'")
                 return {"CANCELLED"}
+        ok, created = _ensure_timl_segment()   # 没有 TIML 段就现建一个空白的
+        if not ok:
+            self.report({"ERROR"}, "This entry cannot carry a TIML segment")
+            return {"CANCELLED"}
         body, timl = _resolve_for_edit()   # 已 commit 进行中关键帧编辑
         if timl is None:
             self.report({"ERROR"}, "No valid TIML found on active entry")
@@ -443,7 +477,10 @@ class EFX_OT_timl_add_field_tracks(Operator):
 
         _commit_edit(body, timl)
         slot_lbl = _SLOT_LABEL.get(self.slot, str(self.slot))
-        self.report({"INFO"}, f"Added {added} track(s) to {slot_lbl} for {self.block_type}.{self.field_name}")
+        note = " (TIML segment created)" if created else ""
+        self.report({"INFO"},
+                    f"Added {added} track(s) to {slot_lbl} for "
+                    f"{self.block_type}.{self.field_name}{note}")
         return {"FINISHED"}
 
 
@@ -465,7 +502,9 @@ class EFX_OT_timl_add_track(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _active_entry() is not None
+        # 不要求已有 TIML —— 缺段时 execute 会先建（同 add_field_tracks）。
+        # ⚠ 删除/复制轨道不能照抄这条：那两个操作以「已有轨道」为前提。
+        return _timl_capable_entry() is not None
 
     def execute(self, context):
         try:
@@ -473,6 +512,10 @@ class EFX_OT_timl_add_track(Operator):
             dt  = int(self.dt_hash_hex,  16)
         except ValueError:
             self.report({"ERROR"}, "Invalid hash hex value")
+            return {"CANCELLED"}
+        ok, created = _ensure_timl_segment()
+        if not ok:
+            self.report({"ERROR"}, "This entry cannot carry a TIML segment")
             return {"CANCELLED"}
         body, timl = _resolve_for_edit()
         if timl is None:
@@ -487,7 +530,8 @@ class EFX_OT_timl_add_track(Operator):
         _commit_edit(body, timl)
         lbl = channel_label(tlp, dt)
         slot_lbl = _SLOT_LABEL.get(self.slot, str(self.slot))
-        self.report({"INFO"}, f"Added {lbl} → {slot_lbl}")
+        note = " (TIML segment created)" if created else ""
+        self.report({"INFO"}, f"Added {lbl} → {slot_lbl}{note}")
         return {"FINISHED"}
 
 

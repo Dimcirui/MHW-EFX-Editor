@@ -59,7 +59,11 @@ def resolve_timl_entry(obj):
     - EFX_TIML 句柄（有宿主）→ 其父 entry（TIML 统一入口）
     - EFX_TIML 句柄（无宿主）→ 自身（无主 TIML：句柄即载体）
     - EFX_ENTRY              → 自身（兼容直接选 entry，如给无 TIML 的 entry 添加）
+    - EFX_ATTRIBUTE          → 沿 parent 上溯到所属 entry
     - 其他                   → None
+
+    ⚠ EFX_ATTRIBUTE 这条以前漏了，导致字段行上的 ♫ 按钮**恒灰**——它恰恰只在选中属性
+    时才可见，而那时本函数返回 None、算子 poll 直接不过。与 Blender 版本无关。
 
     下游（timl_edit 的 build_persistent_fcurves / sync_fcurves_to_bytes、本模块的
     导入导出算子）只把这个返回值当"读写 timl_bytes 的那个对象"用，故两种情况同一套代码。
@@ -71,6 +75,13 @@ def resolve_timl_entry(obj):
         return obj.parent if obj.parent is not None else obj
     if t == "EFX_ENTRY":
         return obj
+    if t == "EFX_ATTRIBUTE":
+        # 属性挂在 entry 下；留个深度上限防父链成环/异常层级把 UI 拖死。
+        cur, depth = obj.parent, 0
+        while cur is not None and depth < 8:
+            if cur.get("~TYPE") == "EFX_ENTRY":
+                return cur
+            cur, depth = cur.parent, depth + 1
     return None
 
 

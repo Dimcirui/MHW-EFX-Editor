@@ -294,6 +294,8 @@ STRINGS = {
     "attribute.add_to_no_entry":  {"EN": "(select an Entry)",   "ZH": "（请选中 Entry）"},
     "timl.no_segment_yet":       {"EN": "This entry has no TIML segment yet",
                                   "ZH": "本 entry 还没有 TIML 段"},
+    "timl.will_create_segment":  {"EN": "No TIML segment yet — one will be created",
+                                  "ZH": "本 entry 还没有 TIML 段，将一并新建"},
     "inspector.main_module":     {"EN": "Main",                "ZH": "主模块"},
     "attribute.advanced":        {"EN": "Advanced",            "ZH": "高级"},
     "attribute.advanced_hint":   {"EN": "Rarely edited — still fully editable",
