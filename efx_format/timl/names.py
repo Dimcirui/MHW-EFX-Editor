@@ -84,7 +84,7 @@ DT_NAMES = {
     0x5A8C6820: "SmokeColor",              # cnt=122  Color[RGBA]      TLP:RgbFire
     0x39A1E557: "FireColor",               # cnt=87   Color[RGBA]      TLP:RgbFire
     0xCBDB6622: "EmissiveMapFactorColor",  # cnt=228  Color[RGBA]      TLP:MhEffectDecalBehavior
-    0xAFE95AC0: "ColorBase",              # cnt=157  Color[RGBA]      TLP:unknown
+    0xAFE95AC0: "mBaseMapFactor",              # cnt=157  Color[RGBA]      TLP:unknown
     0x26BD5CC2: "BlendFactor",             # cnt=20   Color[RGBA]      TLP:MhEffectDecalBehavior
     0xFA79B1CD: "Emissive",               # cnt=7    Color[RGBA]      TLP:0x598272E1
     0x608DCF8D: "EmissiveColor",          # cnt=13   Color[RGBA]      TLP:Mesh
@@ -263,6 +263,1542 @@ DT_NAMES = {
     0xE7DF422D: "NearClipDistance",          # cnt=0    Float
     0xEEBD5618: "EmissionRate",              # cnt=0    Float
     0xF80CE653: "EmissionColor",             # cnt=0    Color[RGBA]
+    # ══ 以下 722 条来自官方 TIML datatype dump（哈希 / 名字 / dataType 三列，797 条）══
+    # 我们原有 75 条与该表逐条比对：74 条完全一致，1 条冲突（0xAFE95AC0 原记 ColorBase，
+    # 表作 mBaseMapFactor，已按表订正——表的 m 前缀惯例自洽，且配对的
+    # mBaseMapFactorIntensity(0x8F198226) 也在表内）。
+    # 这批名字绝大多数是**材质/着色器参数**（mBaseMapFactor / mOpacityFactor / RimWidth /
+    # UVTransformA_* / BurnControl_* / WaveAxis_* …），进一步印证语料里那些「没有独立属性
+    # 块的未知 TLP」打的是材质而非特效。
+    # 名字**原样保留**，含日文条目（如「バンク[0]」）——那是 dump 里的原文，不臆改。
+    0x0074A898: 'HomingRate',                      # dataType 2
+    0x00D534F9: 'mAttackAdjustAngleIndex',         # dataType 1
+    0x01DBBF61: 'Vpivot_z',                        # dataType 2
+    0x02571B8D: 'mMetalic',                        # dataType 2
+    0x0297CFC9: 'Group 4',                         # dataType 0
+    0x032F9113: 'ListIndex 15',                    # dataType 1
+    0x036D877F: 'ステージめり込み対応距離（レイ判定の長さ）',           # dataType 2
+    0x03840ECE: 'mDamageHitNo',                    # dataType 1
+    0x03A7C305: 'TargetOfsPosY 00',                # dataType 2
+    0x03AC6A9E: 'OfsPosY 11',                      # dataType 2
+    0x03D46071: 'mOfsGravity 06',                  # dataType 2
+    0x0426764B: 'mPartsMaskD',                     # dataType 2
+    0x0442550A: 'ListIndex 11',                    # dataType 1
+    0x04AF3E55: 'KeyFrame19',                      # dataType 4
+    0x04B9A468: 'mOfsGravity 02',                  # dataType 2
+    0x04C1AE87: 'OfsPosY 15',                      # dataType 2
+    0x04CA071C: 'TargetOfsPosY 04',                # dataType 2
+    0x04F09E88: 'mRaftPartsIndex',                 # dataType 1
+    0x05FA0BD0: 'Group 0',                         # dataType 0
+    0x06A9B550: 'mWpSnowShovelScaleX',             # dataType 2
+    0x06D97C03: 'OfsPosZ 09',                      # dataType 2
+    0x078C319A: 'FlowControl_y',                   # dataType 2
+    0x0802F431: 'OfsPosZ 01',                      # dataType 2
+    0x08095DAA: 'TargetOfsPosZ 10',                # dataType 2
+    0x08431812: 'ReqNo C',                         # dataType 1
+    0x08570195: 'UVTransformC_y',                  # dataType 2
+    0x08FD20A6: 'mFlag',                           # dataType 1
+    0x09956BA2: 'UVTransformB_y',                  # dataType 2
+    0x0A3ECD23: 'ShootOfsDegY 06',                 # dataType 2
+    0x0A74B667: 'KeyFrame11',                      # dataType 4
+    0x0AD9C602: 'ReleaseTime C',                   # dataType 1
+    0x0B001AA6: 'ChangeRightAngX',                 # dataType 2
+    0x0B0F41DD: 'JointNo4',                        # dataType 0
+    0x0BD3D5FB: 'UVTransformA_y',                  # dataType 2
+    0x0CB6228E: '213262990',                       # dataType 2
+    0x0CECC08D: 'コンスト部位ID[6]',                     # dataType 0
+    0x0CFE3227: 'WeaponEfcValue_1',                # dataType 2
+    0x0D19727E: 'KeyFrame15',                      # dataType 4
+    0x0D2FAA31: 'WorkNo22',                        # dataType 1
+    0x0D53093A: 'ShootOfsDegY 02',                 # dataType 2
+    0x0D7C4B37: 'TargetOfsPosY 08',                # dataType 2
+    0x0DB4021B: 'ReleaseTime G',                   # dataType 1
+    0x0DDE7E84: 'mFakeLightIntensity',             # dataType 2
+    0x0E424A70: 'mFilmBlend',                      # dataType 2
+    0x0EA20FED: 'mSlingerShellAttach',             # dataType 0
+    0x0F2EDC0B: 'ReqNo G',                         # dataType 1
+    0x0F6499B3: 'TargetOfsPosZ 14',                # dataType 2
+    0x0F6F3028: 'OfsPosZ 05',                      # dataType 2
+    0x10272A04: 'mPartsMaskX',                     # dataType 2
+    0x11126CEB: 'TargetOfsPosZ 00',                # dataType 2
+    0x1119C570: 'OfsPosZ 11',                      # dataType 2
+    0x11E4E7B1: 'mLookAtParam',                    # dataType 0
+    0x11E90F5A: 'mFootStep',                       # dataType 0
+    0x1213267E: 'ReqNo(Loop) R',                   # dataType 1
+    0x1308E98E: 'mBlendBaseMapFactorIntensity',    # dataType 2
+    0x13495749: 'mCamMarginEndItpTime',            # dataType 2
+    0x136F8726: 'KeyFrame01',                      # dataType 4
+    0x1382EC79: 'ListIndex 09',                    # dataType 1
+    0x1402433F: 'KeyFrame05',                      # dataType 4
+    0x1448387B: 'ShootOfsDegY 12',                 # dataType 2
+    0x146CD3ED: 'OfsPosY 09',                      # dataType 2
+    0x15EC38EA: 'mFlow_Strength',                  # dataType 2
+    0x15EF861B: 'ReqNo(On) H',                     # dataType 1
+    0x164DB124: 'mFinColor',                       # dataType 3
+    0x16740169: 'OfsPosZ 15',                      # dataType 2
+    0x167FA8F2: 'TargetOfsPosZ 04',                # dataType 2
+    0x1892CC87: '412273799',                       # dataType 2
+    0x18CC46B5: 'mFlowColor',                      # dataType 3
+    0x1A34A052: 'ListIndex 05',                    # dataType 1
+    0x1AB75BDF: 'OfsPosY 01',                      # dataType 2
+    0x1ABCF244: 'TargetOfsPosY 10',                # dataType 2
+    0x1C32DCCF: 'mVPushSpeed',                     # dataType 2
+    0x1C59CA30: 'ReqNo(On) D',                     # dataType 1
+    0x1D1A7784: 'BlendMatFactor_z',                # dataType 2
+    0x1D59644B: 'ListIndex 01',                    # dataType 1
+    0x1D7D5399: 'mCameraResetAngle',               # dataType 2
+    0x1DB40F14: 'KeyFrame09',                      # dataType 4
+    0x1DD1365D: 'TargetOfsPosY 14',                # dataType 2
+    0x1DDA9FC6: 'OfsPosY 05',                      # dataType 2
+    0x1E090F48: 'mFlag4',                          # dataType 1
+    0x1E73EAB4: 'mViewParamPage',                  # dataType 0
+    0x1F0BDACF: 'rot:z',                           # dataType 2
+    0x1FC9E4D9: 'TargetOfsPosZ 08',                # dataType 2
+    0x20E89CC5: 'JointNo 12',                      # dataType 0
+    0x2159E5A4: 'KeyFrame21',                      # dataType 4
+    0x216F3DEB: 'WorkNo16',                        # dataType 1
+    0x2212F5DA: 'TargetOfsPosX 03',                # dataType 2
+    0x22195C41: 'OfsPosX 12',                      # dataType 2
+    0x223DB7D7: 'ShootOfsDegX 09',                 # dataType 2
+    0x2285686D: 'mDotOpacity',                     # dataType 2
+    0x2317001E: 'mBankType',                       # dataType 0
+    0x23EDA9F5: '痕跡の種類',                           # dataType 1
+    0x241F9852: 'KinkControl_y',                   # dataType 2
+    0x24579AAB: 'ListIndex',                       # dataType 1
+    0x24C60AC4: 'GameParam D',                     # dataType 2
+    0x252961CD: 'mCameraShakeIndex',               # dataType 0
+    0x254ECDBF: 'mStaminaRecoveryRate',            # dataType 2
+    0x256C8A54: 'ChangeRightOfsZ',                 # dataType 2
+    0x257F31C3: 'TargetOfsPosX 07',                # dataType 2
+    0x2602F9F2: 'WorkNo12',                        # dataType 1
+    0x26119EDA: '乗りぶつけダメージ方向',                     # dataType 0
+    0x263421BD: 'KeyFrame25',                      # dataType 4
+    0x274D4F11: 'mAttackAdjustGroundSpeedRate',    # dataType 2
+    0x27C1934E: 'コンスト部位ID[5]',                     # dataType 0
+    0x27D7D87B: 'mOfsSpeed 08',                    # dataType 2
+    0x2845C079: 'ChangeRightType',                 # dataType 0
+    0x290C5049: 'mOfsSpeed 00',                    # dataType 2
+    0x2A83ABD7: '713272279',                       # dataType 0
+    0x2AC902E3: 'mMotionSpeed',                    # dataType 2
+    0x2B078267: 'mLookAtOfsAngleY',                # dataType 2
+    0x2B8BFBFC: 'ShootOfsDegX 05',                 # dataType 2
+    0x2BD52F93: 'mId',                             # dataType 1
+    0x2BDE22C1: 'UIDの同期ID 03',                     # dataType 0
+    0x2BF81C73: 'mCameraResetTime',                # dataType 2
+    0x2C07B96F: 'mPowderScaleY',                   # dataType 2
+    0x2C426079: 'mViewParamNo',                    # dataType 0
+    0x2CB3E6D8: 'UIDの同期ID 07',                     # dataType 0
+    0x2CE63FE5: 'ShootOfsDegX 01',                 # dataType 2
+    0x2CFC1613: 'mCamBasePosOffsetNo',             # dataType 0
+    0x2D7046EF: 'GameParam H',                     # dataType 2
+    0x2D7DE338: 'Index 12',                        # dataType 1
+    0x2DDB0D26: '押当たり補間（秒）',                       # dataType 2
+    0x2E2C1393: 'OfsPosY',                         # dataType 2
+    0x2E619450: 'mOfsSpeed 04',                    # dataType 2
+    0x2E710D12: 'mAlbedoBlend',                    # dataType 2
+    0x2EF52DB5: 'mTurnBaseDir',                    # dataType 0
+    0x2F5A867F: 'DisplaceControl_w',               # dataType 2
+    0x2F826D96: 'KeyFrame29',                      # dataType 4
+    0x2FD81AE9: '持ち物２のMotionNo',                   # dataType 0
+    0x2FD8A1F4: 'WaveAxis_z',                      # dataType 2
+    0x30176108: 'mOfsSpeed 10',                    # dataType 2
+    0x3033C6D8: 'mFingerMotionType',               # dataType 0
+    0x310FD720: '特殊採取のタイプ',                        # dataType 0
+    0x325FCB10: 'mMummyColor',                     # dataType 3
+    0x32C51380: 'UIDの同期ID 13',                     # dataType 0
+    0x32F86046: 'イベクエ落し物関節番号',                     # dataType 0
+    0x330B1660: 'Index 06',                        # dataType 1
+    0x33A4D9DC: '押当たり種類',                          # dataType 0
+    0x344C2BE4: 'SkipTime J',                      # dataType 1
+    0x3466D279: 'Index 02',                        # dataType 1
+    0x35FD0EA4: 'ShootOfsDegX 11',                 # dataType 2
+    0x37484700: 'mCharmMountCamSpring',            # dataType 2
+    0x377AA511: 'mOfsSpeed 14',                    # dataType 2
+    0x3842D4E5: 'KeyFrame31',                      # dataType 4
+    0x38740CAA: 'WorkNo06',                        # dataType 1
+    0x393BCA4E: 'PosRotateY 05',                   # dataType 2
+    0x39F3AD84: 'JointNo 02',                      # dataType 0
+    0x3A8C67F8: 'ReqNo(Off) K',                    # dataType 1
+    0x3A97A3D6: 'SkipTime B',                      # dataType 1
+    0x3B026D00: 'OfsPosX 02',                      # dataType 2
+    0x3B09C49B: 'TargetOfsPosX 13',                # dataType 2
+    0x3C036342: 'TargetReqNo B',                   # dataType 0
+    0x3C6FA919: 'OfsPosX 06',                      # dataType 2
+    0x3C81CEA1: 'mParamType4',                     # dataType 0
+    0x3CA9C405: 'mFlowDirUVPhaseShift',            # dataType 2
+    0x3DFA67CF: 'SkipTime F',                      # dataType 1
+    0x3E560E57: 'PosRotateY 01',                   # dataType 2
+    0x3E9E699D: 'JointNo 06',                      # dataType 0
+    0x3EDAA20F: 'コンスト部位ID[4]',                     # dataType 0
+    0x3F19C8B3: 'WorkNo02',                        # dataType 1
+    0x3F3D39AE: 'ChangeLeftOfsY',                  # dataType 2
+    0x3FC9E0B8: '1070194872',                      # dataType 0
+    0x407D9587: 'mOfsSpeed 15',                    # dataType 2
+    0x416522B1: 'mWeaponMotionStartFrame',         # dataType 2
+    0x41E07A9B: 'mOtRideMuteRotRate',              # dataType 2
+    0x41E7D172: 'NULL傾き固定時の回転完了するまでのフレーム数',        # dataType 1
+    0x4258D1A6: 'mActionPhaseSub',                 # dataType 0
+    0x42FA3E32: 'ShootOfsDegX 10',                 # dataType 2
+    0x4313B645: 'mOpacityPow',                     # dataType 2
+    0x434B1B72: 'SkipTime K',                      # dataType 1
+    0x4361E2EF: 'Index 03',                        # dataType 1
+    0x43AC6AB4: 'FlowMatControl_w',                # dataType 2
+    0x43AD564A: 'コンスト部位ID[1]',                     # dataType 0
+    0x440C26F6: 'Index 07',                        # dataType 1
+    0x444D2CFC: 'mWeaponMotionSpeed',              # dataType 2
+    0x45C22316: 'UIDの同期ID 12',                     # dataType 0
+    0x4625CE84: 'AnimNo A',                        # dataType 0
+    0x4710519E: 'mOfsSpeed 11',                    # dataType 2
+    0x481EF825: 'WorkNo03',                        # dataType 1
+    0x483A0938: 'ChangeLeftOfsX',                  # dataType 2
+    0x48EF8D8E: 'mTranslucency',                   # dataType 2
+    0x49513EC1: 'PosRotateY 00',                   # dataType 2
+    0x4999590B: 'JointNo 07',                      # dataType 0
+    0x4A6DD631: 'LeftPartsNo[2]',                  # dataType 0
+    0x4AAAF206: 'mToneAlpha',                      # dataType 2
+    0x4AFD5759: 'SkipTime G',                      # dataType 1
+    0x4B0453D4: 'TargetReqNo C',                   # dataType 0
+    0x4B68998F: 'OfsPosX 07',                      # dataType 2
+    0x4BD36121: 'mCameraShakePage',                # dataType 0
+    0x4C055D96: 'OfsPosX 03',                      # dataType 2
+    0x4C0EF40D: 'TargetOfsPosX 12',                # dataType 2
+    0x4CEB3A2E: 'mParamType1',                     # dataType 0
+    0x4D26ED7B: 'シェーダーのタイプ',                       # dataType 0
+    0x4D6470C6: '対象ダメージ部位',                        # dataType 0
+    0x4D8B576E: 'ReqNo(Off) J',                    # dataType 1
+    0x4D909340: 'SkipTime C',                      # dataType 1
+    0x4DA1831A: 'mOtRideAlphaFootOffsetIndex',     # dataType 1
+    0x4E3CFAD8: 'PosRotateY 04',                   # dataType 2
+    0x4EDC6CE0: 'mAddNormalMaskD',                 # dataType 2
+    0x4EF49D12: 'JointNo 03',                      # dataType 0
+    0x4F45E473: 'KeyFrame30',                      # dataType 4
+    0x4F4B4BA4: 'mWeaponMotionInterpolationTime',  # dataType 2
+    0x4F733C3C: 'WorkNo07',                        # dataType 1
+    0x5009B3C9: '対象の乗り部位',                         # dataType 0
+    0x504F8D1C: 'mFungusDamageRate',               # dataType 2
+    0x50D0E8ED: 'mOfsSpeed 09',                    # dataType 2
+    0x5105C964: 'WorkNo13',                        # dataType 1
+    0x5133112B: 'KeyFrame24',                      # dataType 4
+    0x51EBFAC2: 'DisplaceControl_z',               # dataType 2
+    0x526AF201: 'トゲ(頭)状態',                         # dataType 0
+    0x52780155: 'TargetOfsPosX 06',                # dataType 2
+    0x5297382F: 'mFlowTile',                       # dataType 2
+    0x52EC2264: '持ち物２のBankNo',                     # dataType 0
+    0x5376E770: 'LeftPartsNo[3]',                  # dataType 0
+    0x53984EE2: '使用する当たり',                         # dataType 0
+    0x53A3F45E: 'MummyMatControl_w',               # dataType 2
+    0x53B6808F: 'mVerticalOpacityPowInv',          # dataType 2
+    0x53C13A52: 'GameParam E',                     # dataType 2
+    0x548DFF15: 'SlotNo A',                        # dataType 0
+    0x54ACFE4B: 'GameParam A',                     # dataType 2
+    0x5515C54C: 'TargetOfsPosX 02',                # dataType 2
+    0x551E6CD7: 'OfsPosX 13',                      # dataType 2
+    0x553A8741: 'ShootOfsDegX 08',                 # dataType 2
+    0x565ED532: 'KeyFrame20',                      # dataType 4
+    0x56680D7D: 'WorkNo17',                        # dataType 1
+    0x56B7B840: 'mDistortionFactorIntensity',      # dataType 2
+    0x570F638E: 'mTransAdjustDist',                # dataType 2
+    0x5782A950: 'ギミックの生成確率(%)',                    # dataType 1
+    0x57EFAC53: 'JointNo 13',                      # dataType 0
+    0x57F1682F: '(新)スケール指定(0～1)',                  # dataType 2
+    0x5846C819: '持ち物１のMotionNo',                   # dataType 0
+    0x58855D00: 'KeyFrame28',                      # dataType 4
+    0x5966A4C6: 'mOfsSpeed 05',                    # dataType 2
+    0x5A7AD3AE: 'Index 13',                        # dataType 1
+    0x5AB6670B: 'コンスト部位ID[0]',                     # dataType 0
+    0x5AFE86CE: 'Y座標',                             # dataType 2
+    0x5B0089F9: 'mPowderScaleX',                   # dataType 2
+    0x5BB4D64E: 'UIDの同期ID 06',                     # dataType 0
+    0x5BE10F73: 'ShootOfsDegX 00',                 # dataType 2
+    0x5C00B2F1: 'mLookAtOfsAngleX',                # dataType 2
+    0x5C5DA290: 'mTurnAng',                        # dataType 2
+    0x5C8CCB6A: 'ShootOfsDegX 04',                 # dataType 2
+    0x5C918AD5: '痕跡の生成位置',                         # dataType 0
+    0x5CD91257: 'UIDの同期ID 02',                     # dataType 0
+    0x5CE43CEA: 'RightObjMotNo',                   # dataType 1
+    0x5D252E24: '部位制御条件',                          # dataType 0
+    0x5E0B60DF: 'mOfsSpeed 01',                    # dataType 2
+    0x5E6EC814: 'mAngleInterpolationProgress',     # dataType 2
+    0x5F8AD46D: 'mPreyShotTiming',                 # dataType 2
+    0x5FF25223: '持ち物４のBankNo',                     # dataType 0
+    0x605428A3: 'mAddNormalBlend',                 # dataType 2
+    0x6069E6F0: 'ReleaseTime R',                   # dataType 1
+    0x60849F2A: 'pos:z',                           # dataType 2
+    0x614085F2: 'LeftPartsNo[1]',                  # dataType 0
+    0x6159A4F6: 'mMotionTransRateZ',               # dataType 2
+    0x617331FF: 'OfsPosZ 14',                      # dataType 2
+    0x61789864: 'TargetOfsPosZ 05',                # dataType 2
+    0x62CEFAB3: '痕跡の生成向き',                         # dataType 0
+    0x630573A9: 'KeyFrame04',                      # dataType 4
+    0x6324C0C4: 'mEpvIndex',                       # dataType 1
+    0x634D2DC4: 'mHeat',                           # dataType 2
+    0x634F08ED: 'ShootOfsDegY 13',                 # dataType 2
+    0x636BE37B: 'OfsPosY 08',                      # dataType 2
+    0x637622C1: 'mFakeLightColor',                 # dataType 3
+    0x63AB0B39: 'BlendMatFactor_w',                # dataType 2
+    0x64264EA4: 'SpeedRateV',                      # dataType 2
+    0x6459658B: 'mEfcElementID',                   # dataType 1
+    0x6468B7B0: 'KeyFrame00',                      # dataType 4
+    0x6485DCEF: 'ListIndex 08',                    # dataType 1
+    0x648CADCE: 'mCamMarginEndEaseType',           # dataType 0
+    0x6600C6AB: '首補正の計算軸一律設定',                     # dataType 1
+    0x66155C7D: 'TargetOfsPosZ 01',                # dataType 2
+    0x661EF5E6: 'OfsPosZ 10',                      # dataType 2
+    0x665699CA: 'ChangeLeftAngZ',                  # dataType 2
+    0x66DAFF30: 'mAddColorA',                      # dataType 3
+    0x670FA57B: 'NULL傾き固定時の回転する最大角度',              # dataType 2
+    0x671F5908: 'Tag 2',                           # dataType 0
+    0x67201A92: 'mPartsMaskY',                     # dataType 2
+    0x67921A5E: 'mWeaponMotionNo',                 # dataType 0
+    0x67D78EA5: 'mTotalOpacity',                   # dataType 2
+    0x68800589: 'コンスト部位ID[2]',                     # dataType 0
+    0x68CED44F: 'TargetOfsPosZ 09',                # dataType 2
+    0x690E3FDE: 'mFlag5',                          # dataType 1
+    0x69A80037: 'HitIndex',                        # dataType 0
+    0x69D119C8: '1775311304',                      # dataType 2
+    0x69D5D953: 'ブレスチャージ状態',                       # dataType 0
+    0x6A5E54DD: 'ListIndex 00',                    # dataType 1
+    0x6AB33F82: 'KeyFrame08',                      # dataType 4
+    0x6AD606CB: 'TargetOfsPosY 15',                # dataType 2
+    0x6ADDAF50: 'OfsPosY 04',                      # dataType 2
+    0x6B169C53: 'Z座標',                             # dataType 2
+    0x6B5EFAA6: 'ReqNo(On) E',                     # dataType 1
+    0x6C333EBF: 'ReqNo(On) A',                     # dataType 1
+    0x6CC0B887: 'シェーダーのかけ具合(0.0~1.0)',             # dataType 2
+    0x6D3390C4: 'ListIndex 04',                    # dataType 1
+    0x6DB06B49: 'OfsPosY 00',                      # dataType 2
+    0x6DBBC2D2: 'TargetOfsPosY 11',                # dataType 2
+    0x6DD60D01: 'mMotionCameraCutNo',              # dataType 0
+    0x6E63FBC7: 'mFlag1',                          # dataType 1
+    0x6F89CC07: 'PosRotateX 07',                   # dataType 2
+    0x708B010C: 'FlowControl_x',                   # dataType 2
+    0x70D64E7E: 'コリジョンユニークID',                     # dataType 0
+    0x7154FE35: 'BurnControl_z',                   # dataType 2
+    0x719B34C8: 'コンスト部位ID[3]',                     # dataType 0
+    0x71AE85C6: 'mWpSnowShovelScaleY',             # dataType 2
+    0x71DE4C95: 'OfsPosZ 08',                      # dataType 2
+    0x72A97996: 'mDetailA_ColorIntensity',         # dataType 2
+    0x72FD3B46: 'Group 1',                         # dataType 0
+    0x7345659C: 'ListIndex 10',                    # dataType 1
+    0x736F4F29: '首補正のブレンド率',                       # dataType 2
+    0x73A80EC3: 'KeyFrame18',                      # dataType 4
+    0x73BE94FE: 'mOfsGravity 03',                  # dataType 2
+    0x73C69E11: 'OfsPosY 14',                      # dataType 2
+    0x73CD378A: 'TargetOfsPosY 05',                # dataType 2
+    0x7428A185: 'ListIndex 14',                    # dataType 1
+    0x744C82C4: 'mPartsMaskA',                     # dataType 2
+    0x74A0F393: 'TargetOfsPosY 01',                # dataType 2
+    0x74AB5A08: 'OfsPosY 10',                      # dataType 2
+    0x74D350E7: 'mOfsGravity 07',                  # dataType 2
+    0x7590FF5F: 'Group 5',                         # dataType 0
+    0x75B22732: 'mPosInterpolationProgress',       # dataType 2
+    0x7747F0BC: 'mHyperArmorTime',                 # dataType 2
+    0x77E68312: '首補正のブレス関節',                       # dataType 1
+    0x7829EC9D: 'ReqNo F',                         # dataType 1
+    0x785BB4B3: 'LeftPartsNo[0]',                  # dataType 0
+    0x7863A925: 'TargetOfsPosZ 15',                # dataType 2
+    0x786800BE: 'OfsPosZ 04',                      # dataType 2
+    0x787E9FD5: 'mCameraPhase',                    # dataType 0
+    0x7A1E42E8: 'KeyFrame14',                      # dataType 4
+    0x7A289AA7: 'WorkNo23',                        # dataType 1
+    0x7A5439AC: 'ShootOfsDegY 03',                 # dataType 2
+    0x7A7B7BA1: 'TargetOfsPosY 09',                # dataType 2
+    0x7A88BE0F: 'scl:z',                           # dataType 2
+    0x7AB3328D: 'ReleaseTime F',                   # dataType 1
+    0x7B65B552: 'JointNo1',                        # dataType 0
+    0x7BE08FA2: 'エラ状態',                            # dataType 0
+    0x7BF902B1: 'WeaponEfcValue_0',                # dataType 2
+    0x7C072A30: 'ChangeRightAngY',                 # dataType 2
+    0x7C692062: 'mAlphaTestControl',               # dataType 2
+    0x7CD4E56D: 'UVTransformA_x',                  # dataType 2
+    0x7D39FDB5: 'ShootOfsDegY 07',                 # dataType 2
+    0x7D6D165D: '部位に対する処理',                        # dataType 0
+    0x7D7386F1: 'KeyFrame10',                      # dataType 4
+    0x7DDEF694: 'ReleaseTime B',                   # dataType 1
+    0x7F05C4A7: 'OfsPosZ 00',                      # dataType 2
+    0x7F0E6D3C: 'TargetOfsPosZ 11',                # dataType 2
+    0x7F442884: 'ReqNo B',                         # dataType 1
+    0x7F503103: 'UVTransformC_x',                  # dataType 2
+    0x806D9AEB: 'mFlag3',                          # dataType 1
+    0x80983795: 'mPartsMaskW',                     # dataType 2
+    0x80A0A8E4: 'ノードID[2]',                        # dataType 1
+    0x814568E2: 'ギミックの生成位置',                       # dataType 0
+    0x819DDA91: 'RightPartsNo[1]',                 # dataType 0
+    0x823D5F93: 'ReqNo(On) C',                     # dataType 1
+    0x825101E5: 'mEmbankmentScale',                # dataType 2
+    0x833DF1E8: 'ListIndex 06',                    # dataType 1
+    0x83B5A3FE: 'TargetOfsPosY 13',                # dataType 2
+    0x83BE0A65: 'OfsPosY 02',                      # dataType 2
+    0x840FFF51: 'mVerticalOpacityPow',             # dataType 2
+    0x8413263E: 'BlendMatFactor_y',                # dataType 2
+    0x845035F1: 'ListIndex 02',                    # dataType 1
+    0x84745897: 'mActionPhase',                    # dataType 0
+    0x84751FE5: 'MaskBlend_B_x',                   # dataType 2
+    0x84D3CE7C: 'OfsPosY 06',                      # dataType 2
+    0x85509B8A: 'ReqNo(On) G',                     # dataType 1
+    0x859AB9C4: 'mLinkMotionPhase',                # dataType 0
+    0x85A14934: 'mStaminaParamIndex',              # dataType 1
+    0x86028B75: 'rot:y',                           # dataType 2
+    0x8633A1BC: 'MaskBlend_A_x',                   # dataType 2
+    0x86859DBE: 'mNoSetWeaponMotionNo',            # dataType 0
+    0x86C1A86E: 'mCameraSmoothTime',               # dataType 2
+    0x87A41BA7: 'LeftObjMotNo',                    # dataType 1
+    0x881094CA: 'OfsPosZ 12',                      # dataType 2
+    0x881B3D51: 'TargetOfsPosZ 03',                # dataType 2
+    0x8858F8E6: 'ChangeLeftAngX',                  # dataType 2
+    0x890766C1: '突進シェルの回転速度',                      # dataType 2
+    0x89113824: 'Tag 0',                           # dataType 0
+    0x89582088: 'PartsNo[2]',                      # dataType 0
+    0x8A2CADD8: 'ShootOfsDegY 15',                 # dataType 2
+    0x8A3D617C: '斜面補正フレーム',                        # dataType 1
+    0x8A66D69C: 'KeyFrame02',                      # dataType 4
+    0x8B1A77C4: 'ReqNo(Loop) Q',                   # dataType 1
+    0x8BF31826: 'RimPower',                        # dataType 2
+    0x8D0B1285: 'KeyFrame06',                      # dataType 4
+    0x8D3DCACA: 'WorkNo31',                        # dataType 1
+    0x8D4169C1: 'ShootOfsDegY 11',                 # dataType 2
+    0x8D65C9C7: 'MatID A',                         # dataType 0
+    0x8DA66231: 'バンク[2]',                          # dataType 1
+    0x8E7CFC3D: 'Tag 4',                           # dataType 0
+    0x8E8AFE06: 'pos:x',                           # dataType 2
+    0x8F1479C1: 'mToneEdge',                       # dataType 2
+    0x8F198226: 'mBaseMapFactorIntensity',         # dataType 2
+    0x8F2A4EA9: 'UIDの同期ID[6]',                     # dataType 0
+    0x8F57C5DA: 'mMotionTransRateX',               # dataType 2
+    0x8F76F948: 'TargetOfsPosZ 07',                # dataType 2
+    0x8F79C6AF: 'mEfcIndexID',                     # dataType 1
+    0x91000C10: 'TargetOfsPosZ 13',                # dataType 2
+    0x910BA58B: 'OfsPosZ 02',                      # dataType 2
+    0x915E502F: 'UVTransformC_z',                  # dataType 2
+    0x91B8DFC5: '斜面補正最大角度',                        # dataType 2
+    0x91BA4212: 'mNextFootStepFrame',              # dataType 2
+    0x92DA8441: 'UVTransformA_z',                  # dataType 2
+    0x93315130: 'mFlowDirFlowSpeed',               # dataType 2
+    0x93379C99: 'ShootOfsDegY 05',                 # dataType 2
+    0x934B3F92: 'WorkNo25',                        # dataType 1
+    0x937DE7DD: 'KeyFrame12',                      # dataType 4
+    0x93F18F03: 'mDetailEmitIntensity',            # dataType 2
+    0x941023C4: 'KeyFrame16',                      # dataType 4
+    0x9426FB8B: 'WorkNo21',                        # dataType 1
+    0x94526271: '拘束リリースタイプ',                       # dataType 0
+    0x945A5880: 'ShootOfsDegY 01',                 # dataType 2
+    0x9486DF23: 'scl:x',                           # dataType 2
+    0x94BD5370: 'バンク[3]',                          # dataType 1
+    0x94BD53A1: 'ReleaseTime D',                   # dataType 1
+    0x952B4933: 'mDisplacementFactor',             # dataType 2
+    0x956BD47E: 'JointNo3',                        # dataType 0
+    0x95A3A1D3: 'Blend',                           # dataType 2
+    0x96278DB1: 'ReqNo D',                         # dataType 1
+    0x96317FE8: 'UIDの同期ID[7]',                     # dataType 0
+    0x965A5CA7: 'mActionState',                    # dataType 1
+    0x96666192: 'OfsPosZ 06',                      # dataType 2
+    0x9748E46B: 'mMotionCameraMoveAngle',          # dataType 2
+    0x97876D34: 'ヒレ状態',                            # dataType 0
+    0x979BE3E1: 'ChangeRightJntNo',                # dataType 0
+    0x987DC45A: 'mFakeLightColorIntensity',        # dataType 2
+    0x9886EBD0: 'RightPartsNo[0]',                 # dataType 0
+    0x98D2EEDB: 'Vpivot_y',                        # dataType 2
+    0x99897C43: 'mTrigger',                        # dataType 1
+    0x99BB99A5: 'ノードID[3]',                        # dataType 1
+    0x9A42E3E8: 'mPartsMaskC',                     # dataType 2
+    0x9A690877: 'mMummyColorIntensity',            # dataType 2
+    0x9A81D0B2: 'ShootOfsDegY 09',                 # dataType 2
+    0x9AA53B24: 'OfsPosY 12',                      # dataType 2
+    0x9AAE92BF: 'TargetOfsPosY 03',                # dataType 2
+    0x9ADD31CB: 'mOfsGravity 05',                  # dataType 2
+    0x9AFD73B9: 'WorkNo29',                        # dataType 1
+    0x9B446023: 'Mask1',                           # dataType 2
+    0x9B50DD3B: '痕跡の生成確率(%)',                      # dataType 1
+    0x9BD476A9: 'mRidingState',                    # dataType 0
+    0x9BE2D228: 'mColor',                          # dataType 3
+    0x9C483C6C: 'AngleY1',                         # dataType 0
+    0x9D0B1F8A: 'ReleaseTime H',                   # dataType 1
+    0x9D4B04B0: 'ListIndex 12',                    # dataType 1
+    0x9D58B92F: 'mNoHitTime',                      # dataType 2
+    0x9DB0F5D2: 'mOfsGravity 01',                  # dataType 2
+    0x9DC356A6: 'TargetOfsPosY 07',                # dataType 2
+    0x9DE5F095: '2649092245',                      # dataType 2
+    0x9E2973C7: 'SpeedRateH',                      # dataType 2
+    0x9E856020: 'FlowControl_z',                   # dataType 2
+    0x9F326571: 'mAngleFade',                      # dataType 2
+    0x9F5A9F19: 'BurnControl_x',                   # dataType 2
+    0x9F7B1E77: 'mGimmickWaitCamMoveAngle',        # dataType 2
+    0x9F91C19A: 'ReqNo H',                         # dataType 1
+    0xA0FAFC3E: 'JointNo 01',                      # dataType 0
+    0xA17D5D10: 'WorkNo05',                        # dataType 1
+    0xA19FD528: 'mInnerOffsetScale',               # dataType 2
+    0xA1ED0144: 'mDetailA_Color',                  # dataType 3
+    0xA2009521: 'TargetOfsPosX 10',                # dataType 2
+    0xA20B3CBA: 'OfsPosX 01',                      # dataType 2
+    0xA23E2927: 'mDetailDisplacement',             # dataType 2
+    0xA26628EB: 'mWeaponGaugeIndex',               # dataType 0
+    0xA267F6E1: 'TargetReqNo E',                   # dataType 0
+    0xA275734B: 'PartsNo[1]',                      # dataType 0
+    0xA2E55B02: 'mParamType3',                     # dataType 0
+    0xA31F6F44: '2736746308',                      # dataType 2
+    0xA39EF26C: 'SkipTime A',                      # dataType 1
+    0xA3B40BF1: 'Index 09',                        # dataType 1
+    0xA4071D6A: 'UIDの同期ID[5]',                     # dataType 0
+    0xA48C272D: 'mRideReduceStaminaLv',            # dataType 0
+    0xA4C789DC: 'mFinColorB',                      # dataType 3
+    0xA4F33675: 'SkipTime E',                      # dataType 1
+    0xA50A32F8: 'TargetReqNo A',                   # dataType 0
+    0xA566F8A3: 'OfsPosX 05',                      # dataType 2
+    0xA56D5138: 'TargetOfsPosX 14',                # dataType 2
+    0xA6109909: 'WorkNo01',                        # dataType 1
+    0xA6346814: 'ChangeLeftOfsZ',                  # dataType 2
+    0xA68B31F2: 'バンク[1]',                          # dataType 1
+    0xA75F5FED: 'PosRotateY 02',                   # dataType 2
+    0xA7973827: 'JointNo 05',                      # dataType 0
+    0xA8CB113B: 'WorkNo09',                        # dataType 1
+    0xA91E30B2: 'mOfsSpeed 13',                    # dataType 2
+    0xAA0247DA: 'Index 05',                        # dataType 1
+    0xAAB08952: 'RightPartsNo[2]',                 # dataType 0
+    0xAB1D2239: 'ChangeLeftType',                  # dataType 1
+    0xAB3C8B55: 'WeaponEfcType_0',                 # dataType 0
+    0xAB8DFB27: 'ノードID[1]',                        # dataType 1
+    0xABCC423A: 'UIDの同期ID 10',                     # dataType 0
+    0xAC635CA9: 'RimWidth',                        # dataType 2
+    0xACA18623: 'UIDの同期ID 14',                     # dataType 0
+    0xACD0B488: 'OfsPosX 09',                      # dataType 2
+    0xACF45F1E: 'ShootOfsDegX 12',                 # dataType 2
+    0xAD457A5E: 'SkipTime I',                      # dataType 1
+    0xAD6F83C3: 'Index 01',                        # dataType 1
+    0xADC3C03B: 'mOtRideBustUseItemBlendRate',     # dataType 2
+    0xADD4B2B7: 'mVPushWave',                      # dataType 2
+    0xAE21740C: 'JointNo 09',                      # dataType 0
+    0xAEDA6B35: 'mMoveBankType',                   # dataType 0
+    0xB00501F3: 'mOfsSpeed 03',                    # dataType 2
+    0xB0BBDAC4: 'mEfcJointNo',                     # dataType 0
+    0xB1D0207A: 'WorkNo19',                        # dataType 1
+    0xB282AA46: 'ShootOfsDegX 06',                 # dataType 2
+    0xB28DA0BE: '部位制御値（最大値の割合）',                   # dataType 2
+    0xB296CA66: 'ノードID[0]',                        # dataType 1
+    0xB2AE1E00: 'mTurnSpeed',                      # dataType 2
+    0xB2D7737B: 'UIDの同期ID 00',                     # dataType 0
+    0xB319769B: 'Index 15',                        # dataType 1
+    0xB3371B60: 'mAimViewParamId',                 # dataType 0
+    0xB359AC53: '氷塊シェルNo',                         # dataType 0
+    0xB3ABB813: 'RightPartsNo[3]',                 # dataType 0
+    0xB458B56D: 'mCamMarginDist',                  # dataType 2
+    0xB474B282: 'Index 11',                        # dataType 1
+    0xB50EE8D5: 'mPowderScaleZ',                   # dataType 2
+    0xB52636D6: 'mIntensity',                      # dataType 2
+    0xB5BAB762: 'UIDの同期ID 04',                     # dataType 0
+    0xB5C02C52: 'TargetOfsPosX 08',                # dataType 2
+    0xB5EF6E5F: 'ShootOfsDegX 02',                 # dataType 2
+    0xB7254229: 'OfsPosZ',                         # dataType 2
+    0xB768C5EA: 'mOfsSpeed 07',                    # dataType 2
+    0xB821F4A8: 'mTransAdjustEndDist',             # dataType 2
+    0xB83AF0BE: 'mFinColorBIntensity',             # dataType 2
+    0xB83FEC3D: 'mDisableIKInterpolationFrame',    # dataType 2
+    0xB850B41E: 'KeyFrame22',                      # dataType 4
+    0xB858DE36: 'mFinColorIntensity',              # dataType 2
+    0xB8666C51: 'WorkNo15',                        # dataType 1
+    0xB8895311: 'mVPushBlend',                     # dataType 2
+    0xB8BFBF9E: 'mUV_Blend',                       # dataType 2
+    0xB9DB9967: '持ち物１のBankNo',                     # dataType 0
+    0xB9E1CD7F: 'JointNo 11',                      # dataType 0
+    0xBA3F398C: 'mLookAtSpeedRate',                # dataType 2
+    0xBAA29F67: 'GameParam C',                     # dataType 2
+    0xBB100DFB: 'OfsPosX 11',                      # dataType 2
+    0xBB1BA460: 'TargetOfsPosX 00',                # dataType 2
+    0xBB6E420A: 'PartsNo[0]',                      # dataType 0
+    0xBBB2C830: '乗りぶつけ蓄積値',                        # dataType 2
+    0xBC0CFB49: 'UIDの同期ID 08',                     # dataType 0
+    0xBC65DBEE: 'ChangeRightOfsY',                 # dataType 2
+    0xBC766079: 'TargetOfsPosX 04',                # dataType 2
+    0xBC7DC9E2: 'OfsPosX 15',                      # dataType 2
+    0xBCFFC41B: 'TargetUnitNo',                    # dataType 0
+    0xBD16C9E8: 'KinkControl_z',                   # dataType 2
+    0xBD1C2C2B: 'UIDの同期ID[4]',                     # dataType 0
+    0xBDCF5B7E: 'GameParam G',                     # dataType 2
+    0xBE4DB7FA: 'Index',                           # dataType 1
+    0xBE8C0966: 'JointNo 15',                      # dataType 0
+    0xBF0BA848: 'WorkNo11',                        # dataType 1
+    0xBF8F9DFD: 'ギミックの種類',                         # dataType 0
+    0xBF9000B3: 'バンク[0]',                          # dataType 1
+    0xBFD77429: 'ステージめり込み対応の移動速度（1秒/距離）',          # dataType 2
+    0xBFE59BEE: 'DisplaceControl_x',               # dataType 2
+    0xBFE81475: 'mSaturationColor',                # dataType 3
+    0xC06BD86E: 'UIDの同期ID[1]',                     # dataType 0
+    0xC06FF57C: 'mOfsSpeed 06',                    # dataType 2
+    0xC0E5BF09: '持ち物４のMotionNo',                   # dataType 0
+    0xC1D6C0D8: 'WaveAxis_x',                      # dataType 2
+    0xC29F20E0: 'WeaponExternValue',               # dataType 2
+    0xC2BD87F4: 'UIDの同期ID 05',                     # dataType 0
+    0xC2C71CC4: 'TargetOfsPosX 09',                # dataType 2
+    0xC2E7F4F6: 'バンク[5]',                          # dataType 1
+    0xC2E85EC9: 'ShootOfsDegX 03',                 # dataType 2
+    0xC2F1EB55: 'mVolumeBlend',                    # dataType 2
+    0xC31CE9CF: 'MummyMatControl_x',               # dataType 2
+    0xC3738214: 'Index 10',                        # dataType 1
+    0xC39F54D7: 'mBaseColorSaturation',            # dataType 2
+    0xC41E460D: 'Index 14',                        # dataType 1
+    0xC4774EC6: 'mSuperArmorTime',                 # dataType 2
+    0xC56404BB: 'mEmitBlend',                      # dataType 2
+    0xC56C2A11: '高い壁ジャンプ(15m以上)時のY方向のスピード倍率(0.0~1.0)', # dataType 2
+    0xC580048C: 'PosRotateZ 07',                   # dataType 2
+    0xC5859AD0: 'ShootOfsDegX 07',                 # dataType 2
+    0xC5D043ED: 'UIDの同期ID 01',                     # dataType 0
+    0xC6785402: '3329774594',                      # dataType 2
+    0xC6D710EC: 'WorkNo18',                        # dataType 1
+    0xC7023165: 'mOfsSpeed 02',                    # dataType 2
+    0xC80C98DE: 'WorkNo10',                        # dataType 1
+    0xC865FF9E: 'mTurnSpeed2',                     # dataType 2
+    0xC8D913CA: 'mFilmBlendB',                     # dataType 2
+    0xC98B39F0: 'JointNo 14',                      # dataType 0
+    0xC9C0F038: 'mFilmThickness',                  # dataType 2
+    0xCB0BCBDF: 'UIDの同期ID 09',                     # dataType 0
+    0xCB62EB78: 'ChangeRightOfsX',                 # dataType 2
+    0xCB7150EF: 'TargetOfsPosX 05',                # dataType 2
+    0xCB7AF974: 'OfsPosX 14',                      # dataType 2
+    0xCBAF549E: '鉱石変更数',                           # dataType 0
+    0xCC173D6D: 'OfsPosX 10',                      # dataType 2
+    0xCC1C94F6: 'TargetOfsPosX 01',                # dataType 2
+    0xCD9E0D40: '3449687360',                      # dataType 0
+    0xCDA5AFF1: 'GameParam B',                     # dataType 2
+    0xCEE6FDE9: 'JointNo 10',                      # dataType 0
+    0xCF578488: 'KeyFrame23',                      # dataType 4
+    0xCF615CC7: 'WorkNo14',                        # dataType 1
+    0xCFE13E23: 'ノードID[5]',                        # dataType 1
+    0xD0586F7B: 'PosRotateY 03',                   # dataType 2
+    0xD09008B1: 'JointNo 04',                      # dataType 0
+    0xD0B8F943: 'mAddNormalMaskC',                 # dataType 2
+    0xD1053969: 'mViewParamIdCamColAdj',           # dataType 0
+    0xD117A99F: 'WorkNo00',                        # dataType 1
+    0xD245B590: 'mParallaxFactor',                 # dataType 2
+    0xD25D5A7B: '首補正の高さオフセット',                     # dataType 2
+    0xD261C835: 'OfsPosX 04',                      # dataType 2
+    0xD26A61AE: 'TargetOfsPosX 15',                # dataType 2
+    0xD278F57F: 'Scale',                           # dataType 2
+    0xD3137725: 'FlowMatControl_x',                # dataType 2
+    0xD326A335: 'mAimViewParamPage',               # dataType 0
+    0xD3F406E3: 'SkipTime D',                      # dataType 1
+    0xD48206D4: 'ReqNo(Off) I',                    # dataType 1
+    0xD48D47B0: 'mClawGimmickState',               # dataType 0
+    0xD4B33B67: 'Index 08',                        # dataType 1
+    0xD507A5B7: 'TargetOfsPosX 11',                # dataType 2
+    0xD50C0C2C: 'OfsPosX 00',                      # dataType 2
+    0xD560C677: 'TargetReqNo D',                   # dataType 0
+    0xD5D93660: '敵拘束中ダメージ種類',                      # dataType 1
+    0xD5E26B94: 'mParamType2',                     # dataType 0
+    0xD6010C27: 'mEmitControl',                    # dataType 2
+    0xD67A6D86: 'WorkNo04',                        # dataType 1
+    0xD6FA0F62: 'ノードID[4]',                        # dataType 1
+    0xD7FDCCA8: 'JointNo 00',                      # dataType 0
+    0xD8D4462F: '3637790255',                      # dataType 0
+    0xD926449A: 'JointNo 08',                      # dataType 0
+    0xD970E92F: 'UIDの同期ID[0]',                     # dataType 0
+    0xDA424AC8: 'SkipTime H',                      # dataType 1
+    0xDA68B355: 'Index 00',                        # dataType 1
+    0xDB7DD336: 'mVAnimPosScale',                  # dataType 2
+    0xDBA6B6B5: 'UIDの同期ID 15',                     # dataType 0
+    0xDBD7841E: 'OfsPosX 08',                      # dataType 2
+    0xDBFCC5B7: 'バンク[4]',                          # dataType 1
+    0xDCCB72AC: 'UIDの同期ID 11',                     # dataType 0
+    0xDD05774C: 'Index 04',                        # dataType 1
+    0xDD244F0E: 'mTurnAngFixed',                   # dataType 2
+    0xDE190024: 'mOfsSpeed 12',                    # dataType 2
+    0xDFCC21AD: 'WorkNo08',                        # dataType 1
+    0xE0341C9D: 'FlowControl_w',                   # dataType 2
+    0xE120BD27: 'ReqNo E',                         # dataType 1
+    0xE1615104: 'OfsPosZ 07',                      # dataType 2
+    0xE1C4FA93: 'ChangeLeftJntNo',                 # dataType 0
+    0xE2142A34: 'MummyBlend_y',                    # dataType 2
+    0xE26CE4E8: 'JointNo2',                        # dataType 0
+    0xE2FD723B: 'mWaveAngle',                      # dataType 2
+    0xE3171352: 'KeyFrame17',                      # dataType 4
+    0xE321CB1D: 'WorkNo20',                        # dataType 1
+    0xE35A3690: 'mBlendBaseMapFactor',             # dataType 3
+    0xE35D6816: 'ShootOfsDegY 00',                 # dataType 2
+    0xE381EFB5: 'scl:y',                           # dataType 2
+    0xE3BA6337: 'ReleaseTime E',                   # dataType 1
+    0xE430AC0F: 'ShootOfsDegY 04',                 # dataType 2
+    0xE44C0F04: 'WorkNo24',                        # dataType 1
+    0xE46C4D76: 'mOfsGravity 08',                  # dataType 2
+    0xE47AD74B: 'KeyFrame13',                      # dataType 4
+    0xE4CC6DE0: 'ノードID[6]',                        # dataType 1
+    0xE4D7A72E: 'ReleaseTime A',                   # dataType 1
+    0xE50E7B8A: 'ChangeRightAngZ',                 # dataType 2
+    0xE540C280: 'mAnimEmitMin',                    # dataType 2
+    0xE6073C86: 'TargetOfsPosZ 12',                # dataType 2
+    0xE60C951D: 'OfsPosZ 03',                      # dataType 2
+    0xE64D793E: 'ReqNo A',                         # dataType 1
+    0xE85DAF8F: 'BurnControl_y',                   # dataType 2
+    0xE87AFFF5: 'VPushRatio_x',                    # dataType 2
+    0xE8A7D47C: 'mWpSnowShovelScaleZ',             # dataType 2
+    0xEA4C3426: 'ListIndex 13',                    # dataType 1
+    0xEAB7C544: 'mOfsGravity 00',                  # dataType 2
+    0xEAC46630: 'TargetOfsPosY 06',                # dataType 2
+    0xEB468BAD: 'UIDの同期ID[2]',                     # dataType 0
+    0xEBF46AFC: 'Group 2',                         # dataType 0
+    0xEC4350B5: 'Mask0',                           # dataType 2
+    0xEC6BF8FC: 'UVTransformA_w',                  # dataType 2
+    0xECC55CED: 'トゲ(尻尾)状態',                        # dataType 0
+    0xED45D37E: 'mPartsMaskB',                     # dataType 2
+    0xED86E024: 'ShootOfsDegY 08',                 # dataType 2
+    0xEDA20BB2: 'OfsPosY 13',                      # dataType 2
+    0xEDA9A229: 'TargetOfsPosY 02',                # dataType 2
+    0xEDDA015D: 'mOfsGravity 04',                  # dataType 2
+    0xEDFA432F: 'WorkNo28',                        # dataType 1
+    0xEEDF77D0: 'mCamViewState',                   # dataType 0
+    0xF0076E64: 'mFlag6',                          # dataType 1
+    0xF09920EC: 'RimAlpha',                        # dataType 2
+    0xF0D19674: 'バンク[7]',                          # dataType 1
+    0xF105BBE3: 'rot:x',                           # dataType 2
+    0xF134912A: 'MaskBlend_A_y',                   # dataType 2
+    0xF1357D01: 'FakeLightPosition_y',             # dataType 2
+    0xF15CEF67: 'mHeightCtrlDist',                 # dataType 2
+    0xF19AB8A2: '氷塊を落とす高さ',                        # dataType 2
+    0xF1ED59A4: 'PosRotateX 00',                   # dataType 2
+    0xF257AB1C: 'ReqNo(On) F',                     # dataType 1
+    0xF25DBAEC: 'UIDの同期ID[3]',                     # dataType 0
+    0xF31416A8: 'BlendMatFactor_x',                # dataType 2
+    0xF3570567: 'ListIndex 03',                    # dataType 1
+    0xF3658026: '持ち物１のPartsNo',                    # dataType 0
+    0xF3722F73: 'MaskBlend_B_y',                   # dataType 2
+    0xF3D25004: 'mFlow_Speed',                     # dataType 2
+    0xF3D4FEEA: 'OfsPosY 07',                      # dataType 2
+    0xF3DA8324: 'mWpSnowShovelCurvePower',         # dataType 2
+    0xF4031A77: 'mCamSpring',                      # dataType 2
+    0xF43AC17E: 'ListIndex 07',                    # dataType 1
+    0xF4B29368: 'TargetOfsPosY 12',                # dataType 2
+    0xF4B93AF3: 'OfsPosY 03',                      # dataType 2
+    0xF4D12F36: 'mViewParamId',                    # dataType 0
+    0xF53A6F05: 'ReqNo(On) B',                     # dataType 1
+    0xF73B4573: 'mLerpAlpha_BMtoEM',               # dataType 2
+    0xF76AAA7D: 'mFlag2',                          # dataType 1
+    0xF7C55D41: 'mSubSurfaceBlend',                # dataType 2
+    0xF81DE7F9: 'mRopeHoldState',                  # dataType 0
+    0xF850F54C: 'mMotionTransRateY',               # dataType 2
+    0xF871C9DE: 'TargetOfsPosZ 06',                # dataType 2
+    0xF9120603: 'mVAnimV',                         # dataType 2
+    0xF960B74A: 'ReleaseTime Q',                   # dataType 1
+    0xF97BCCAB: 'Tag 5',                           # dataType 0
+    0xF98DCE90: 'pos:y',                           # dataType 2
+    0xFA0C2213: 'KeyFrame07',                      # dataType 4
+    0xFA223F53: 'mOpacityFactor',                  # dataType 2
+    0xFA3AFA5C: 'WorkNo30',                        # dataType 1
+    0xFA465957: 'ShootOfsDegY 10',                 # dataType 2
+    0xFC898D7A: 'X座標',                             # dataType 2
+    0xFCFE68B9: 'mHeightCtrlType',                 # dataType 0
+    0xFD2B9D4E: 'ShootOfsDegY 14',                 # dataType 2
+    0xFD480BC4: 'mDispFactor',                     # dataType 2
+    0xFD61E60A: 'KeyFrame03',                      # dataType 4
+    0xFDD75CA1: 'ノードID[7]',                        # dataType 1
+    0xFE1608B2: 'Tag 1',                           # dataType 0
+    0xFE294B28: 'mPartsMaskZ',                     # dataType 2
+    0xFF17A45C: 'OfsPosZ 13',                      # dataType 2
+    0xFF1C0DC7: 'TargetOfsPosZ 02',                # dataType 2
+    0xFF5207BD: 'mVPushScale',                     # dataType 2
+    0xFF5FC870: 'ChangeLeftAngY',                  # dataType 2
+}
+
+# ── DT_DATATYPE：官方 dump 给出的每条 DT 的 dataType ──────────────────────────
+# 0=int(s32) / 1=uint(u32) / 2=float / 3=color[RGBA] / 4=uint(flag)。
+# 有了这张表就不用再靠语料反推 dataType——此前正是因为无法标定，DTI 里 44 条
+# u32/bool/vector 字段只能整批跳过不进调色板（见 DTI_EXTRA_PAIRS 注释）。
+# 与 DTI 类型的对应（拿两表共有条目校准）：
+#   color → 3 (n=27) · f32 → 2 (n=192) · s32 → 0 (n=95) · u32 → 1 (n=235，另 2 例落在 0)
+DT_DATATYPE = {
+    0x002FF505: 2,   # RotationX
+    0x0074A898: 2,   # HomingRate
+    0x00D534F9: 1,   # mAttackAdjustAngleIndex
+    0x01080DD5: 2,   # RangeMinY
+    0x01DBBF61: 2,   # Vpivot_z
+    0x02571B8D: 2,   # mMetalic
+    0x0297CFC9: 0,   # Group 4
+    0x032F9113: 1,   # ListIndex 15
+    0x036D877F: 2,   # ステージめり込み対応距離（レイ判定の長さ）
+    0x03840ECE: 1,   # mDamageHitNo
+    0x03A7C305: 2,   # TargetOfsPosY 00
+    0x03AC6A9E: 2,   # OfsPosY 11
+    0x03D46071: 2,   # mOfsGravity 06
+    0x0426764B: 2,   # mPartsMaskD
+    0x0442550A: 1,   # ListIndex 11
+    0x04AF3E55: 4,   # KeyFrame19
+    0x04B9A468: 2,   # mOfsGravity 02
+    0x04C1AE87: 2,   # OfsPosY 15
+    0x04CA071C: 2,   # TargetOfsPosY 04
+    0x04F09E88: 1,   # mRaftPartsIndex
+    0x05FA0BD0: 0,   # Group 0
+    0x06A9B550: 2,   # mWpSnowShovelScaleX
+    0x06D97C03: 2,   # OfsPosZ 09
+    0x0718D2B3: 2,   # LocalRotationY
+    0x078C319A: 2,   # FlowControl_y
+    0x0802F431: 2,   # OfsPosZ 01
+    0x08095DAA: 2,   # TargetOfsPosZ 10
+    0x08431812: 1,   # ReqNo C
+    0x08570195: 2,   # UVTransformC_y
+    0x085BC9D5: 2,   # LightIntensity
+    0x08FD20A6: 1,   # mFlag
+    0x09956BA2: 2,   # UVTransformB_y
+    0x0A3ECD23: 2,   # ShootOfsDegY 06
+    0x0A74B667: 4,   # KeyFrame11
+    0x0AD9C602: 1,   # ReleaseTime C
+    0x0B001AA6: 2,   # ChangeRightAngX
+    0x0B0F41DD: 0,   # JointNo4
+    0x0BD3D5FB: 2,   # UVTransformA_y
+    0x0CB6228E: 2,   # 213262990
+    0x0CECC08D: 0,   # コンスト部位ID[6]
+    0x0CFE3227: 2,   # WeaponEfcValue_1
+    0x0D19727E: 4,   # KeyFrame15
+    0x0D2FAA31: 1,   # WorkNo22
+    0x0D53093A: 2,   # ShootOfsDegY 02
+    0x0D7C4B37: 2,   # TargetOfsPosY 08
+    0x0DB4021B: 1,   # ReleaseTime G
+    0x0DDE7E84: 2,   # mFakeLightIntensity
+    0x0E424A70: 2,   # mFilmBlend
+    0x0EA20FED: 0,   # mSlingerShellAttach
+    0x0EBAEC37: 2,   # SizeScalar
+    0x0ECBFA29: 2,   # BrightThreshold
+    0x0EF6ABF4: 2,   # BlurStart
+    0x0F2EDC0B: 1,   # ReqNo G
+    0x0F6499B3: 2,   # TargetOfsPosZ 14
+    0x0F6F3028: 2,   # OfsPosZ 05
+    0x0FF5554F: 3,   # mDistortionFactor
+    0x10272A04: 2,   # mPartsMaskX
+    0x11126CEB: 2,   # TargetOfsPosZ 00
+    0x1119C570: 2,   # OfsPosZ 11
+    0x11E4E7B1: 0,   # mLookAtParam
+    0x11E90F5A: 0,   # mFootStep
+    0x1213267E: 1,   # ReqNo(Loop) R
+    0x1308E98E: 2,   # mBlendBaseMapFactorIntensity
+    0x13495749: 2,   # mCamMarginEndItpTime
+    0x135F03D9: 2,   # TerminatePositionY
+    0x136F8726: 4,   # KeyFrame01
+    0x13804BC9: 2,   # mMinIntensityRate
+    0x1382EC79: 1,   # ListIndex 09
+    0x1383E9BA: 2,   # RangeMaxY
+    0x1402433F: 4,   # KeyFrame05
+    0x1448387B: 2,   # ShootOfsDegY 12
+    0x146CD3ED: 2,   # OfsPosY 09
+    0x15EC38EA: 2,   # mFlow_Strength
+    0x15EF861B: 1,   # ReqNo(On) H
+    0x164DB124: 3,   # mFinColor
+    0x16740169: 2,   # OfsPosZ 15
+    0x167FA8F2: 2,   # TargetOfsPosZ 04
+    0x16814F1C: 2,   # Roughness
+    0x1892CC87: 2,   # 412273799
+    0x18C577DE: 2,   # EmissiveColorRate
+    0x18CC46B5: 3,   # mFlowColor
+    0x1A34A052: 1,   # ListIndex 05
+    0x1AB75BDF: 2,   # OfsPosY 01
+    0x1ABCF244: 2,   # TargetOfsPosY 10
+    0x1BB0EB80: 2,   # mEmissiveMapFactorIntensity
+    0x1C32DCCF: 2,   # mVPushSpeed
+    0x1C59CA30: 1,   # ReqNo(On) D
+    0x1D1A7784: 2,   # BlendMatFactor_z
+    0x1D59644B: 1,   # ListIndex 01
+    0x1D7D5399: 2,   # mCameraResetAngle
+    0x1D95BB54: 2,   # BlurWidth
+    0x1DB40F14: 4,   # KeyFrame09
+    0x1DD1365D: 2,   # TargetOfsPosY 14
+    0x1DDA9FC6: 2,   # OfsPosY 05
+    0x1E090F48: 1,   # mFlag4
+    0x1E73EAB4: 0,   # mViewParamPage
+    0x1F0BDACF: 2,   # rot:z
+    0x1FC9E4D9: 2,   # TargetOfsPosZ 08
+    0x20E89CC5: 0,   # JointNo 12
+    0x2159E5A4: 4,   # KeyFrame21
+    0x216F3DEB: 1,   # WorkNo16
+    0x2212F5DA: 2,   # TargetOfsPosX 03
+    0x22195C41: 2,   # OfsPosX 12
+    0x223DB7D7: 2,   # ShootOfsDegX 09
+    0x2285686D: 2,   # mDotOpacity
+    0x2317001E: 0,   # mBankType
+    0x23EDA9F5: 1,   # 痕跡の種類
+    0x241CAED2: 2,   # SizeX
+    0x241F9852: 2,   # KinkControl_y
+    0x24579AAB: 1,   # ListIndex
+    0x24C60AC4: 2,   # GameParam D
+    0x252961CD: 0,   # mCameraShakeIndex
+    0x254ECDBF: 2,   # mStaminaRecoveryRate
+    0x256C8A54: 2,   # ChangeRightOfsZ
+    0x257F31C3: 2,   # TargetOfsPosX 07
+    0x2602F9F2: 1,   # WorkNo12
+    0x26119EDA: 0,   # 乗りぶつけダメージ方向
+    0x263421BD: 4,   # KeyFrame25
+    0x26BD5CC2: 3,   # BlendFactor
+    0x274D4F11: 2,   # mAttackAdjustGroundSpeedRate
+    0x27C1934E: 0,   # コンスト部位ID[5]
+    0x27D7D87B: 2,   # mOfsSpeed 08
+    0x2822A722: 2,   # SizeYAdd
+    0x2845C079: 0,   # ChangeRightType
+    0x290C5049: 2,   # mOfsSpeed 00
+    0x2A83ABD7: 0,   # 713272279
+    0x2AA40DE9: 3,   # TailColor
+    0x2AC902E3: 2,   # mMotionSpeed
+    0x2B078267: 2,   # mLookAtOfsAngleY
+    0x2B8BFBFC: 2,   # ShootOfsDegX 05
+    0x2BD52F93: 1,   # mId
+    0x2BDE22C1: 0,   # UIDの同期ID 03
+    0x2BF81C73: 2,   # mCameraResetTime
+    0x2C07B96F: 2,   # mPowderScaleY
+    0x2C3187EA: 2,   # RotationAddZ
+    0x2C426079: 0,   # mViewParamNo
+    0x2CB3E6D8: 0,   # UIDの同期ID 07
+    0x2CE63FE5: 2,   # ShootOfsDegX 01
+    0x2CFC1613: 0,   # mCamBasePosOffsetNo
+    0x2D7046EF: 2,   # GameParam H
+    0x2D7DE338: 1,   # Index 12
+    0x2DDB0D26: 2,   # 押当たり補間（秒）
+    0x2E2C1393: 2,   # OfsPosY
+    0x2E619450: 2,   # mOfsSpeed 04
+    0x2E710D12: 2,   # mAlbedoBlend
+    0x2EF52DB5: 0,   # mTurnBaseDir
+    0x2F5A867F: 2,   # DisplaceControl_w
+    0x2F826D96: 4,   # KeyFrame29
+    0x2FD81AE9: 0,   # 持ち物２のMotionNo
+    0x2FD8A1F4: 2,   # WaveAxis_z
+    0x2FF50558: 2,   # Rotation
+    0x30176108: 2,   # mOfsSpeed 10
+    0x3033C6D8: 0,   # mFingerMotionType
+    0x310FD720: 0,   # 特殊採取のタイプ
+    0x31182E0D: 2,   # Speed
+    0x316D89C5: 2,   # CoreThickness
+    0x325FCB10: 3,   # mMummyColor
+    0x32C51380: 0,   # UIDの同期ID 13
+    0x32F86046: 0,   # イベクエ落し物関節番号
+    0x330B1660: 1,   # Index 06
+    0x33A4A86B: 2,   # PlaySpeedCoef
+    0x33A4D9DC: 0,   # 押当たり種類
+    0x344C2BE4: 1,   # SkipTime J
+    0x3466D279: 1,   # Index 02
+    0x35FD0EA4: 2,   # ShootOfsDegX 11
+    0x371BBC04: 2,   # mRoughness
+    0x37484700: 2,   # mCharmMountCamSpring
+    0x3775827A: 2,   # RangeY
+    0x377AA511: 2,   # mOfsSpeed 14
+    0x3842D4E5: 4,   # KeyFrame31
+    0x38740CAA: 1,   # WorkNo06
+    0x393BCA4E: 2,   # PosRotateY 05
+    0x39A1E557: 3,   # FireColor
+    0x39F3AD84: 0,   # JointNo 02
+    0x3A8C67F8: 1,   # ReqNo(Off) K
+    0x3A9708CC: 2,   # SizeZAdd
+    0x3A97A3D6: 1,   # SkipTime B
+    0x3B026D00: 2,   # OfsPosX 02
+    0x3B09C49B: 2,   # TargetOfsPosX 13
+    0x3BA67E7C: 3,   # HeadColor
+    0x3C036342: 0,   # TargetReqNo B
+    0x3C6FA919: 2,   # OfsPosX 06
+    0x3C81CEA1: 0,   # mParamType4
+    0x3CA9C405: 2,   # mFlowDirUVPhaseShift
+    0x3DFA67CF: 1,   # SkipTime F
+    0x3E560E57: 2,   # PosRotateY 01
+    0x3E9E699D: 0,   # JointNo 06
+    0x3EDAA20F: 0,   # コンスト部位ID[4]
+    0x3F19C8B3: 1,   # WorkNo02
+    0x3F3D39AE: 2,   # ChangeLeftOfsY
+    0x3FC9E0B8: 0,   # 1070194872
+    0x4072B2EC: 2,   # RangeX
+    0x407D9587: 2,   # mOfsSpeed 15
+    0x416522B1: 2,   # mWeaponMotionStartFrame
+    0x41E07A9B: 2,   # mOtRideMuteRotRate
+    0x41E7D172: 1,   # NULL傾き固定時の回転完了するまでのフレーム数
+    0x4258D1A6: 0,   # mActionPhaseSub
+    0x4279F094: 2,   # mMaxIntensityRate
+    0x42FA3E32: 2,   # ShootOfsDegX 10
+    0x4313B645: 2,   # mOpacityPow
+    0x434B1B72: 1,   # SkipTime K
+    0x435F3054: 2,   # EffectiveRadius
+    0x4361E2EF: 1,   # Index 03
+    0x43AC6AB4: 2,   # FlowMatControl_w
+    0x43AD564A: 0,   # コンスト部位ID[1]
+    0x440C26F6: 1,   # Index 07
+    0x444D2CFC: 2,   # mWeaponMotionSpeed
+    0x45C22316: 0,   # UIDの同期ID 12
+    0x4625CE84: 0,   # AnimNo A
+    0x4710519E: 2,   # mOfsSpeed 11
+    0x481EF825: 1,   # WorkNo03
+    0x483A0938: 2,   # ChangeLeftOfsX
+    0x48EF8D8E: 2,   # mTranslucency
+    0x49513EC1: 2,   # PosRotateY 00
+    0x4999590B: 0,   # JointNo 07
+    0x4A6DD631: 0,   # LeftPartsNo[2]
+    0x4AAAF206: 2,   # mToneAlpha
+    0x4AFD5759: 1,   # SkipTime G
+    0x4B0453D4: 0,   # TargetReqNo C
+    0x4B68998F: 2,   # OfsPosX 07
+    0x4BD36121: 0,   # mCameraShakePage
+    0x4C055D96: 2,   # OfsPosX 03
+    0x4C0EF40D: 2,   # TargetOfsPosX 12
+    0x4CEB3A2E: 0,   # mParamType1
+    0x4D26ED7B: 0,   # シェーダーのタイプ
+    0x4D41A06B: 2,   # NormalBlendRate
+    0x4D6470C6: 0,   # 対象ダメージ部位
+    0x4D8B576E: 1,   # ReqNo(Off) J
+    0x4D909340: 1,   # SkipTime C
+    0x4DA1831A: 1,   # mOtRideAlphaFootOffsetIndex
+    0x4E00491F: 2,   # IntensitySheet
+    0x4E3CFAD8: 2,   # PosRotateY 04
+    0x4EDC6CE0: 2,   # mAddNormalMaskD
+    0x4EF49D12: 0,   # JointNo 03
+    0x4F45E473: 4,   # KeyFrame30
+    0x4F4B4BA4: 2,   # mWeaponMotionInterpolationTime
+    0x4F733C3C: 1,   # WorkNo07
+    0x5009B3C9: 0,   # 対象の乗り部位
+    0x504F8D1C: 2,   # mFungusDamageRate
+    0x50D0E8ED: 2,   # mOfsSpeed 09
+    0x5105C964: 1,   # WorkNo13
+    0x5133112B: 4,   # KeyFrame24
+    0x51EBFAC2: 2,   # DisplaceControl_z
+    0x526AF201: 0,   # トゲ(頭)状態
+    0x52780155: 2,   # TargetOfsPosX 06
+    0x5297382F: 2,   # mFlowTile
+    0x52EC2264: 0,   # 持ち物２のBankNo
+    0x531B9E44: 2,   # SizeY
+    0x5376E770: 0,   # LeftPartsNo[3]
+    0x53984EE2: 0,   # 使用する当たり
+    0x53A3F45E: 2,   # MummyMatControl_w
+    0x53B6808F: 2,   # mVerticalOpacityPowInv
+    0x53C13A52: 2,   # GameParam E
+    0x548DFF15: 0,   # SlotNo A
+    0x54ACFE4B: 2,   # GameParam A
+    0x5515C54C: 2,   # TargetOfsPosX 02
+    0x551E6CD7: 2,   # OfsPosX 13
+    0x553A8741: 2,   # ShootOfsDegX 08
+    0x565ED532: 4,   # KeyFrame20
+    0x56680D7D: 1,   # WorkNo17
+    0x56B7B840: 2,   # mDistortionFactorIntensity
+    0x570F638E: 2,   # mTransAdjustDist
+    0x5782A950: 1,   # ギミックの生成確率(%)
+    0x57EFAC53: 0,   # JointNo 13
+    0x57F1682F: 2,   # (新)スケール指定(0～1)
+    0x5846C819: 0,   # 持ち物１のMotionNo
+    0x58689812: 3,   # Color
+    0x58855D00: 4,   # KeyFrame28
+    0x5966A4C6: 2,   # mOfsSpeed 05
+    0x5A7AD3AE: 1,   # Index 13
+    0x5A8C6820: 3,   # SmokeColor
+    0x5AB6670B: 0,   # コンスト部位ID[0]
+    0x5AFE86CE: 2,   # Y座標
+    0x5B0089F9: 2,   # mPowderScaleX
+    0x5BB4D64E: 0,   # UIDの同期ID 06
+    0x5BE10F73: 2,   # ShootOfsDegX 00
+    0x5C00B2F1: 2,   # mLookAtOfsAngleX
+    0x5C5DA290: 2,   # mTurnAng
+    0x5C8CCB6A: 2,   # ShootOfsDegX 04
+    0x5C918AD5: 0,   # 痕跡の生成位置
+    0x5CD91257: 0,   # UIDの同期ID 02
+    0x5CE43CEA: 1,   # RightObjMotNo
+    0x5D252E24: 0,   # 部位制御条件
+    0x5E0B60DF: 2,   # mOfsSpeed 01
+    0x5E6EC814: 2,   # mAngleInterpolationProgress
+    0x5F8AD46D: 2,   # mPreyShotTiming
+    0x5FF25223: 0,   # 持ち物４のBankNo
+    0x605428A3: 2,   # mAddNormalBlend
+    0x6069E6F0: 1,   # ReleaseTime R
+    0x60849F2A: 2,   # pos:z
+    0x608DCF8D: 3,   # EmissiveColor
+    0x60D69856: 3,   # ColorSpecular
+    0x614085F2: 0,   # LeftPartsNo[1]
+    0x6159A4F6: 2,   # mMotionTransRateZ
+    0x617331FF: 2,   # OfsPosZ 14
+    0x61789864: 2,   # TargetOfsPosZ 05
+    0x62CEFAB3: 0,   # 痕跡の生成向き
+    0x630573A9: 4,   # KeyFrame04
+    0x6324C0C4: 1,   # mEpvIndex
+    0x634D2DC4: 2,   # mHeat
+    0x634F08ED: 2,   # ShootOfsDegY 13
+    0x636BE37B: 2,   # OfsPosY 08
+    0x637622C1: 3,   # mFakeLightColor
+    0x63AB0B39: 2,   # BlendMatFactor_w
+    0x64264EA4: 2,   # SpeedRateV
+    0x6458334F: 2,   # TerminatePositionX
+    0x6459658B: 1,   # mEfcElementID
+    0x6468B7B0: 4,   # KeyFrame00
+    0x6484D92C: 2,   # RangeMaxX
+    0x6485DCEF: 1,   # ListIndex 08
+    0x648CADCE: 0,   # mCamMarginEndEaseType
+    0x6600C6AB: 1,   # 首補正の計算軸一律設定
+    0x66155C7D: 2,   # TargetOfsPosZ 01
+    0x661EF5E6: 2,   # OfsPosZ 10
+    0x665699CA: 2,   # ChangeLeftAngZ
+    0x66DAFF30: 3,   # mAddColorA
+    0x670FA57B: 2,   # NULL傾き固定時の回転する最大角度
+    0x671F5908: 0,   # Tag 2
+    0x67201A92: 2,   # mPartsMaskY
+    0x67921A5E: 0,   # mWeaponMotionNo
+    0x67D78EA5: 2,   # mTotalOpacity
+    0x68800589: 0,   # コンスト部位ID[2]
+    0x68CED44F: 2,   # TargetOfsPosZ 09
+    0x690E3FDE: 1,   # mFlag5
+    0x69A80037: 0,   # HitIndex
+    0x69D119C8: 2,   # 1775311304
+    0x69D5D953: 0,   # ブレスチャージ状態
+    0x6A5E54DD: 1,   # ListIndex 00
+    0x6A5FE3C4: 2,   # Gravity
+    0x6AB33F82: 4,   # KeyFrame08
+    0x6AD606CB: 2,   # TargetOfsPosY 15
+    0x6ADDAF50: 2,   # OfsPosY 04
+    0x6B169C53: 2,   # Z座標
+    0x6B5EFAA6: 1,   # ReqNo(On) E
+    0x6C333EBF: 1,   # ReqNo(On) A
+    0x6CC0B887: 2,   # シェーダーのかけ具合(0.0~1.0)
+    0x6D3390C4: 1,   # ListIndex 04
+    0x6DB06B49: 2,   # OfsPosY 00
+    0x6DBBC2D2: 2,   # TargetOfsPosY 11
+    0x6DD60D01: 0,   # mMotionCameraCutNo
+    0x6E63FBC7: 1,   # mFlag1
+    0x6F89CC07: 2,   # PosRotateX 07
+    0x708B010C: 2,   # FlowControl_x
+    0x70D64E7E: 0,   # コリジョンユニークID
+    0x7154FE35: 2,   # BurnControl_z
+    0x719B34C8: 0,   # コンスト部位ID[3]
+    0x71AE85C6: 2,   # mWpSnowShovelScaleY
+    0x71BCF0AA: 2,   # mFlowSpeed
+    0x71DE4C95: 2,   # OfsPosZ 08
+    0x72A97996: 2,   # mDetailA_ColorIntensity
+    0x72FD3B46: 0,   # Group 1
+    0x7345659C: 1,   # ListIndex 10
+    0x736F4F29: 2,   # 首補正のブレンド率
+    0x73A80EC3: 4,   # KeyFrame18
+    0x73BE94FE: 2,   # mOfsGravity 03
+    0x73C69E11: 2,   # OfsPosY 14
+    0x73CD378A: 2,   # TargetOfsPosY 05
+    0x7428A185: 1,   # ListIndex 14
+    0x744C82C4: 2,   # mPartsMaskA
+    0x74A0F393: 2,   # TargetOfsPosY 01
+    0x74AB5A08: 2,   # OfsPosY 10
+    0x74D350E7: 2,   # mOfsGravity 07
+    0x7590FF5F: 0,   # Group 5
+    0x75B22732: 2,   # mPosInterpolationProgress
+    0x760F3D43: 2,   # RangeMinX
+    0x7728C593: 2,   # RotationY
+    0x7747F0BC: 2,   # mHyperArmorTime
+    0x77E68312: 1,   # 首補正のブレス関節
+    0x7829EC9D: 1,   # ReqNo F
+    0x785BB4B3: 0,   # LeftPartsNo[0]
+    0x7863A925: 2,   # TargetOfsPosZ 15
+    0x786800BE: 2,   # OfsPosZ 04
+    0x787E9FD5: 0,   # mCameraPhase
+    0x7A1E42E8: 4,   # KeyFrame14
+    0x7A289AA7: 1,   # WorkNo23
+    0x7A5439AC: 2,   # ShootOfsDegY 03
+    0x7A7B7BA1: 2,   # TargetOfsPosY 09
+    0x7A88BE0F: 2,   # scl:z
+    0x7AB3328D: 1,   # ReleaseTime F
+    0x7B65B552: 0,   # JointNo1
+    0x7BE08FA2: 0,   # エラ状態
+    0x7BF902B1: 2,   # WeaponEfcValue_0
+    0x7C072A30: 2,   # ChangeRightAngY
+    0x7C692062: 2,   # mAlphaTestControl
+    0x7CD4E56D: 2,   # UVTransformA_x
+    0x7D235C30: 2,   # EmissiveMapFactorIntensity
+    0x7D39FDB5: 2,   # ShootOfsDegY 07
+    0x7D6D165D: 0,   # 部位に対する処理
+    0x7D7386F1: 4,   # KeyFrame10
+    0x7DDEF694: 1,   # ReleaseTime B
+    0x7F05C4A7: 2,   # OfsPosZ 00
+    0x7F0E6D3C: 2,   # TargetOfsPosZ 11
+    0x7F442884: 1,   # ReqNo B
+    0x7F503103: 2,   # UVTransformC_x
+    0x806D9AEB: 1,   # mFlag3
+    0x80983795: 2,   # mPartsMaskW
+    0x80A0A8E4: 1,   # ノードID[2]
+    0x814568E2: 0,   # ギミックの生成位置
+    0x819DDA91: 0,   # RightPartsNo[1]
+    0x823D5F93: 1,   # ReqNo(On) C
+    0x825101E5: 2,   # mEmbankmentScale
+    0x831B390B: 2,   # AlphaCorrectionMax
+    0x833DF1E8: 1,   # ListIndex 06
+    0x83B5A3FE: 2,   # TargetOfsPosY 13
+    0x83BE0A65: 2,   # OfsPosY 02
+    0x840FFF51: 2,   # mVerticalOpacityPow
+    0x8413263E: 2,   # BlendMatFactor_y
+    0x845035F1: 1,   # ListIndex 02
+    0x84745897: 0,   # mActionPhase
+    0x84751FE5: 2,   # MaskBlend_B_x
+    0x84D3CE7C: 2,   # OfsPosY 06
+    0x85509B8A: 1,   # ReqNo(On) G
+    0x859AB9C4: 0,   # mLinkMotionPhase
+    0x85A14934: 1,   # mStaminaParamIndex
+    0x86028B75: 2,   # rot:y
+    0x8633A1BC: 2,   # MaskBlend_A_x
+    0x86859DBE: 0,   # mNoSetWeaponMotionNo
+    0x86C1A86E: 2,   # mCameraSmoothTime
+    0x87A41BA7: 1,   # LeftObjMotNo
+    0x881094CA: 2,   # OfsPosZ 12
+    0x881B3D51: 2,   # TargetOfsPosZ 03
+    0x8858F8E6: 2,   # ChangeLeftAngX
+    0x890766C1: 2,   # 突進シェルの回転速度
+    0x89113824: 0,   # Tag 0
+    0x89582088: 0,   # PartsNo[2]
+    0x8A2CADD8: 2,   # ShootOfsDegY 15
+    0x8A3D617C: 1,   # 斜面補正フレーム
+    0x8A565263: 2,   # TerminatePositionZ
+    0x8A66D69C: 4,   # KeyFrame02
+    0x8A8AB800: 2,   # RangeMaxZ
+    0x8B1A77C4: 1,   # ReqNo(Loop) Q
+    0x8BF31826: 2,   # RimPower
+    0x8D0B1285: 4,   # KeyFrame06
+    0x8D3DCACA: 1,   # WorkNo31
+    0x8D4169C1: 2,   # ShootOfsDegY 11
+    0x8D65C9C7: 0,   # MatID A
+    0x8DA66231: 1,   # バンク[2]
+    0x8E7CFC3D: 0,   # Tag 4
+    0x8E8AFE06: 2,   # pos:x
+    0x8F1479C1: 2,   # mToneEdge
+    0x8F198226: 2,   # mBaseMapFactorIntensity
+    0x8F2A4EA9: 0,   # UIDの同期ID[6]
+    0x8F57C5DA: 2,   # mMotionTransRateX
+    0x8F76F948: 2,   # TargetOfsPosZ 07
+    0x8F79C6AF: 1,   # mEfcIndexID
+    0x909EC047: 2,   # SizeXAdd
+    0x91000C10: 2,   # TargetOfsPosZ 13
+    0x910BA58B: 2,   # OfsPosZ 02
+    0x915E502F: 2,   # UVTransformC_z
+    0x91B8DFC5: 2,   # 斜面補正最大角度
+    0x91BA4212: 2,   # mNextFootStepFrame
+    0x92DA8441: 2,   # UVTransformA_z
+    0x93315130: 2,   # mFlowDirFlowSpeed
+    0x93379C99: 2,   # ShootOfsDegY 05
+    0x934B3F92: 1,   # WorkNo25
+    0x937DE7DD: 4,   # KeyFrame12
+    0x93F18F03: 2,   # mDetailEmitIntensity
+    0x941023C4: 4,   # KeyFrame16
+    0x9426FB8B: 1,   # WorkNo21
+    0x94526271: 0,   # 拘束リリースタイプ
+    0x945A5880: 2,   # ShootOfsDegY 01
+    0x9486DF23: 2,   # scl:x
+    0x94BCC5CE: 2,   # Intensity
+    0x94BD5370: 1,   # バンク[3]
+    0x94BD53A1: 1,   # ReleaseTime D
+    0x952B4933: 2,   # mDisplacementFactor
+    0x956BD47E: 0,   # JointNo3
+    0x95A3A1D3: 2,   # Blend
+    0x96278DB1: 1,   # ReqNo D
+    0x96317FE8: 0,   # UIDの同期ID[7]
+    0x965A5CA7: 1,   # mActionState
+    0x96666192: 2,   # OfsPosZ 06
+    0x9748E46B: 2,   # mMotionCameraMoveAngle
+    0x97876D34: 0,   # ヒレ状態
+    0x979BE3E1: 0,   # ChangeRightJntNo
+    0x98015C6F: 2,   # RangeMinZ
+    0x987DC45A: 2,   # mFakeLightColorIntensity
+    0x9886EBD0: 0,   # RightPartsNo[0]
+    0x98D2EEDB: 2,   # Vpivot_y
+    0x99897C43: 1,   # mTrigger
+    0x99BB99A5: 1,   # ノードID[3]
+    0x9A42E3E8: 2,   # mPartsMaskC
+    0x9A690877: 2,   # mMummyColorIntensity
+    0x9A81D0B2: 2,   # ShootOfsDegY 09
+    0x9AA53B24: 2,   # OfsPosY 12
+    0x9AAE92BF: 2,   # TargetOfsPosY 03
+    0x9ADD31CB: 2,   # mOfsGravity 05
+    0x9AFD73B9: 1,   # WorkNo29
+    0x9B446023: 2,   # Mask1
+    0x9B50DD3B: 1,   # 痕跡の生成確率(%)
+    0x9BD476A9: 0,   # mRidingState
+    0x9BE2D228: 3,   # mColor
+    0x9C483C6C: 0,   # AngleY1
+    0x9D0B1F8A: 1,   # ReleaseTime H
+    0x9D4B04B0: 1,   # ListIndex 12
+    0x9D58B92F: 2,   # mNoHitTime
+    0x9DB0F5D2: 2,   # mOfsGravity 01
+    0x9DC356A6: 2,   # TargetOfsPosY 07
+    0x9DE5F095: 2,   # 2649092245
+    0x9E118309: 2,   # LocalRotationZ
+    0x9E2973C7: 2,   # SpeedRateH
+    0x9E856020: 2,   # FlowControl_z
+    0x9F1E012E: 2,   # ColorRate
+    0x9F326571: 2,   # mAngleFade
+    0x9F5A9F19: 2,   # BurnControl_x
+    0x9F7B1E77: 2,   # mGimmickWaitCamMoveAngle
+    0x9F91C19A: 1,   # ReqNo H
+    0xA01B7821: 3,   # mEmissiveMapFactor
+    0xA0FAFC3E: 0,   # JointNo 01
+    0xA17D5D10: 1,   # WorkNo05
+    0xA19FD528: 2,   # mInnerOffsetScale
+    0xA1ED0144: 3,   # mDetailA_Color
+    0xA2009521: 2,   # TargetOfsPosX 10
+    0xA20B3CBA: 2,   # OfsPosX 01
+    0xA23E2927: 2,   # mDetailDisplacement
+    0xA26628EB: 0,   # mWeaponGaugeIndex
+    0xA267F6E1: 0,   # TargetReqNo E
+    0xA275734B: 0,   # PartsNo[1]
+    0xA2E55B02: 0,   # mParamType3
+    0xA31F6F44: 2,   # 2736746308
+    0xA39EF26C: 1,   # SkipTime A
+    0xA3B40BF1: 1,   # Index 09
+    0xA4071D6A: 0,   # UIDの同期ID[5]
+    0xA48C272D: 0,   # mRideReduceStaminaLv
+    0xA4C789DC: 3,   # mFinColorB
+    0xA4F33675: 1,   # SkipTime E
+    0xA50A32F8: 0,   # TargetReqNo A
+    0xA566F8A3: 2,   # OfsPosX 05
+    0xA56D5138: 2,   # TargetOfsPosX 14
+    0xA6109909: 1,   # WorkNo01
+    0xA6346814: 2,   # ChangeLeftOfsZ
+    0xA68B31F2: 1,   # バンク[1]
+    0xA75F5FED: 2,   # PosRotateY 02
+    0xA7973827: 0,   # JointNo 05
+    0xA7EDA21C: 2,   # WaterLerpGtoB
+    0xA8CB113B: 1,   # WorkNo09
+    0xA91E30B2: 2,   # mOfsSpeed 13
+    0xAA0247DA: 1,   # Index 05
+    0xAAB08952: 0,   # RightPartsNo[2]
+    0xAB1D2239: 1,   # ChangeLeftType
+    0xAB3C8B55: 0,   # WeaponEfcType_0
+    0xAB8DFB27: 1,   # ノードID[1]
+    0xAB9D6334: 2,   # ColorIntensity
+    0xABCC423A: 0,   # UIDの同期ID 10
+    0xAC635CA9: 2,   # RimWidth
+    0xACA18623: 0,   # UIDの同期ID 14
+    0xACD0B488: 2,   # OfsPosX 09
+    0xACF45F1E: 2,   # ShootOfsDegX 12
+    0xAD457A5E: 1,   # SkipTime I
+    0xAD6F83C3: 1,   # Index 01
+    0xADC3C03B: 2,   # mOtRideBustUseItemBlendRate
+    0xADD4B2B7: 2,   # mVPushWave
+    0xAE21740C: 0,   # JointNo 09
+    0xAE7CD3C0: 2,   # RangeZ
+    0xAEDA6B35: 0,   # mMoveBankType
+    0xAFE95AC0: 3,   # mBaseMapFactor
+    0xB00501F3: 2,   # mOfsSpeed 03
+    0xB0BBDAC4: 0,   # mEfcJointNo
+    0xB1D0207A: 1,   # WorkNo19
+    0xB282AA46: 2,   # ShootOfsDegX 06
+    0xB28DA0BE: 2,   # 部位制御値（最大値の割合）
+    0xB296CA66: 1,   # ノードID[0]
+    0xB2AE1E00: 2,   # mTurnSpeed
+    0xB2D7737B: 0,   # UIDの同期ID 00
+    0xB319769B: 1,   # Index 15
+    0xB3371B60: 0,   # mAimViewParamId
+    0xB359AC53: 0,   # 氷塊シェルNo
+    0xB3ABB813: 0,   # RightPartsNo[3]
+    0xB458B56D: 2,   # mCamMarginDist
+    0xB474B282: 1,   # Index 11
+    0xB50EE8D5: 2,   # mPowderScaleZ
+    0xB52636D6: 2,   # mIntensity
+    0xB538D650: 2,   # RotationAddY
+    0xB5BAB762: 0,   # UIDの同期ID 04
+    0xB5C02C52: 2,   # TargetOfsPosX 08
+    0xB5EF6E5F: 2,   # ShootOfsDegX 02
+    0xB6C0BDF8: 2,   # CoreIntensity
+    0xB7254229: 2,   # OfsPosZ
+    0xB768C5EA: 2,   # mOfsSpeed 07
+    0xB821F4A8: 2,   # mTransAdjustEndDist
+    0xB83AF0BE: 2,   # mFinColorBIntensity
+    0xB83FEC3D: 2,   # mDisableIKInterpolationFrame
+    0xB850B41E: 4,   # KeyFrame22
+    0xB858DE36: 2,   # mFinColorIntensity
+    0xB8666C51: 1,   # WorkNo15
+    0xB8895311: 2,   # mVPushBlend
+    0xB8BFBF9E: 2,   # mUV_Blend
+    0xB9DB9967: 0,   # 持ち物１のBankNo
+    0xB9E1CD7F: 0,   # JointNo 11
+    0xBA3F398C: 2,   # mLookAtSpeedRate
+    0xBAA29F67: 2,   # GameParam C
+    0xBB100DFB: 2,   # OfsPosX 11
+    0xBB1BA460: 2,   # TargetOfsPosX 00
+    0xBB6E420A: 0,   # PartsNo[0]
+    0xBBB2C830: 2,   # 乗りぶつけ蓄積値
+    0xBC0CFB49: 0,   # UIDの同期ID 08
+    0xBC65DBEE: 2,   # ChangeRightOfsY
+    0xBC766079: 2,   # TargetOfsPosX 04
+    0xBC7DC9E2: 2,   # OfsPosX 15
+    0xBCFFC41B: 0,   # TargetUnitNo
+    0xBD16C9E8: 2,   # KinkControl_z
+    0xBD1C2C2B: 0,   # UIDの同期ID[4]
+    0xBDCF5B7E: 2,   # GameParam G
+    0xBE4DB7FA: 1,   # Index
+    0xBE8C0966: 0,   # JointNo 15
+    0xBF0BA848: 1,   # WorkNo11
+    0xBF160652: 2,   # AlphaCorrectionMin
+    0xBF8F9DFD: 0,   # ギミックの種類
+    0xBF9000B3: 1,   # バンク[0]
+    0xBFD77429: 2,   # ステージめり込み対応の移動速度（1秒/距離）
+    0xBFE59BEE: 2,   # DisplaceControl_x
+    0xBFE81475: 3,   # mSaturationColor
+    0xC06BD86E: 0,   # UIDの同期ID[1]
+    0xC06FF57C: 2,   # mOfsSpeed 06
+    0xC0E5BF09: 0,   # 持ち物４のMotionNo
+    0xC1D6C0D8: 2,   # WaveAxis_x
+    0xC207B8B4: 2,   # mFlowStrength
+    0xC216C23D: 3,   # ColorRange
+    0xC23FE6C6: 2,   # RotationAddX
+    0xC24DF97C: 2,   # SizeScalarAdd
+    0xC29F20E0: 2,   # WeaponExternValue
+    0xC2BD87F4: 0,   # UIDの同期ID 05
+    0xC2C71CC4: 2,   # TargetOfsPosX 09
+    0xC2E7F4F6: 1,   # バンク[5]
+    0xC2E85EC9: 2,   # ShootOfsDegX 03
+    0xC2F1EB55: 2,   # mVolumeBlend
+    0xC31CE9CF: 2,   # MummyMatControl_x
+    0xC32F9493: 2,   # Radius
+    0xC3738214: 1,   # Index 10
+    0xC39F54D7: 2,   # mBaseColorSaturation
+    0xC41E460D: 1,   # Index 14
+    0xC4774EC6: 2,   # mSuperArmorTime
+    0xC56404BB: 2,   # mEmitBlend
+    0xC56C2A11: 2,   # 高い壁ジャンプ(15m以上)時のY方向のスピード倍率(0.0~1.0)
+    0xC580048C: 2,   # PosRotateZ 07
+    0xC5859AD0: 2,   # ShootOfsDegX 07
+    0xC5D043ED: 0,   # UIDの同期ID 01
+    0xC6785402: 2,   # 3329774594
+    0xC6D710EC: 1,   # WorkNo18
+    0xC7023165: 2,   # mOfsSpeed 02
+    0xC80C98DE: 1,   # WorkNo10
+    0xC865FF9E: 2,   # mTurnSpeed2
+    0xC8D913CA: 2,   # mFilmBlendB
+    0xC98B39F0: 0,   # JointNo 14
+    0xC9C0F038: 2,   # mFilmThickness
+    0xCA12CFFE: 2,   # SizeZ
+    0xCB0BCBDF: 0,   # UIDの同期ID 09
+    0xCB62EB78: 2,   # ChangeRightOfsX
+    0xCB7150EF: 2,   # TargetOfsPosX 05
+    0xCB7AF974: 2,   # OfsPosX 14
+    0xCBAF549E: 0,   # 鉱石変更数
+    0xCBDB6622: 3,   # EmissiveMapFactorColor
+    0xCC173D6D: 2,   # OfsPosX 10
+    0xCC1C94F6: 2,   # TargetOfsPosX 01
+    0xCD9E0D40: 0,   # 3449687360
+    0xCDA5AFF1: 2,   # GameParam B
+    0xCEE6FDE9: 0,   # JointNo 10
+    0xCF578488: 4,   # KeyFrame23
+    0xCF615CC7: 1,   # WorkNo14
+    0xCFE13E23: 1,   # ノードID[5]
+    0xD0586F7B: 2,   # PosRotateY 03
+    0xD09008B1: 0,   # JointNo 04
+    0xD0B8F943: 2,   # mAddNormalMaskC
+    0xD1053969: 0,   # mViewParamIdCamColAdj
+    0xD117A99F: 1,   # WorkNo00
+    0xD245B590: 2,   # mParallaxFactor
+    0xD25D5A7B: 2,   # 首補正の高さオフセット
+    0xD261C835: 2,   # OfsPosX 04
+    0xD26A61AE: 2,   # TargetOfsPosX 15
+    0xD278F57F: 2,   # Scale
+    0xD3137725: 2,   # FlowMatControl_x
+    0xD326A335: 0,   # mAimViewParamPage
+    0xD3F406E3: 1,   # SkipTime D
+    0xD48206D4: 1,   # ReqNo(Off) I
+    0xD48D47B0: 0,   # mClawGimmickState
+    0xD4B33B67: 1,   # Index 08
+    0xD507A5B7: 2,   # TargetOfsPosX 11
+    0xD50C0C2C: 2,   # OfsPosX 00
+    0xD560C677: 0,   # TargetReqNo D
+    0xD5D93660: 1,   # 敵拘束中ダメージ種類
+    0xD5E26B94: 0,   # mParamType2
+    0xD6010C27: 2,   # mEmitControl
+    0xD67A6D86: 1,   # WorkNo04
+    0xD6FA0F62: 1,   # ノードID[4]
+    0xD7FDCCA8: 0,   # JointNo 00
+    0xD8D4462F: 0,   # 3637790255
+    0xD926449A: 0,   # JointNo 08
+    0xD970E92F: 0,   # UIDの同期ID[0]
+    0xDA424AC8: 1,   # SkipTime H
+    0xDA68B355: 1,   # Index 00
+    0xDB7DD336: 2,   # mVAnimPosScale
+    0xDBA6B6B5: 0,   # UIDの同期ID 15
+    0xDBD7841E: 2,   # OfsPosX 08
+    0xDBFCC5B7: 1,   # バンク[4]
+    0xDCCB72AC: 0,   # UIDの同期ID 11
+    0xDD05774C: 1,   # Index 04
+    0xDD244F0E: 2,   # mTurnAngFixed
+    0xDE190024: 2,   # mOfsSpeed 12
+    0xDFCC21AD: 1,   # WorkNo08
+    0xE0341C9D: 2,   # FlowControl_w
+    0xE120BD27: 1,   # ReqNo E
+    0xE1615104: 2,   # OfsPosZ 07
+    0xE1C4FA93: 0,   # ChangeLeftJntNo
+    0xE2142A34: 2,   # MummyBlend_y
+    0xE26CE4E8: 0,   # JointNo2
+    0xE2FD723B: 2,   # mWaveAngle
+    0xE3171352: 4,   # KeyFrame17
+    0xE321CB1D: 1,   # WorkNo20
+    0xE35A3690: 3,   # mBlendBaseMapFactor
+    0xE35D6816: 2,   # ShootOfsDegY 00
+    0xE381EFB5: 2,   # scl:y
+    0xE3BA6337: 1,   # ReleaseTime E
+    0xE430AC0F: 2,   # ShootOfsDegY 04
+    0xE44C0F04: 1,   # WorkNo24
+    0xE46C4D76: 2,   # mOfsGravity 08
+    0xE47AD74B: 4,   # KeyFrame13
+    0xE4CC6DE0: 1,   # ノードID[6]
+    0xE4D7A72E: 1,   # ReleaseTime A
+    0xE50E7B8A: 2,   # ChangeRightAngZ
+    0xE540C280: 2,   # mAnimEmitMin
+    0xE5C92264: 2,   # PlaySpeed
+    0xE6073C86: 2,   # TargetOfsPosZ 12
+    0xE60C951D: 2,   # OfsPosZ 03
+    0xE64D793E: 1,   # ReqNo A
+    0xE81961E4: 2,   # RotationAdd
+    0xE85DAF8F: 2,   # BurnControl_y
+    0xE87AFFF5: 2,   # VPushRatio_x
+    0xE8A7D47C: 2,   # mWpSnowShovelScaleZ
+    0xEA4C3426: 1,   # ListIndex 13
+    0xEAB7C544: 2,   # mOfsGravity 00
+    0xEAC46630: 2,   # TargetOfsPosY 06
+    0xEB468BAD: 0,   # UIDの同期ID[2]
+    0xEBF46AFC: 0,   # Group 2
+    0xEC4350B5: 2,   # Mask0
+    0xEC6BF8FC: 2,   # UVTransformA_w
+    0xECC55CED: 0,   # トゲ(尻尾)状態
+    0xED45D37E: 2,   # mPartsMaskB
+    0xED86E024: 2,   # ShootOfsDegY 08
+    0xEDA20BB2: 2,   # OfsPosY 13
+    0xEDA9A229: 2,   # TargetOfsPosY 02
+    0xEDDA015D: 2,   # mOfsGravity 04
+    0xEDFA432F: 1,   # WorkNo28
+    0xEE219429: 2,   # RotationZ
+    0xEEDF77D0: 0,   # mCamViewState
+    0xF0076E64: 1,   # mFlag6
+    0xF09920EC: 2,   # RimAlpha
+    0xF0D19674: 1,   # バンク[7]
+    0xF0DF339B: 2,   # WidthSize
+    0xF105BBE3: 2,   # rot:x
+    0xF134912A: 2,   # MaskBlend_A_y
+    0xF1357D01: 2,   # FakeLightPosition_y
+    0xF15CEF67: 2,   # mHeightCtrlDist
+    0xF19AB8A2: 2,   # 氷塊を落とす高さ
+    0xF1ED59A4: 2,   # PosRotateX 00
+    0xF257AB1C: 1,   # ReqNo(On) F
+    0xF25DBAEC: 0,   # UIDの同期ID[3]
+    0xF31416A8: 2,   # BlendMatFactor_x
+    0xF3570567: 1,   # ListIndex 03
+    0xF3658026: 0,   # 持ち物１のPartsNo
+    0xF3722F73: 2,   # MaskBlend_B_y
+    0xF3D25004: 2,   # mFlow_Speed
+    0xF3D4FEEA: 2,   # OfsPosY 07
+    0xF3DA8324: 2,   # mWpSnowShovelCurvePower
+    0xF4031A77: 2,   # mCamSpring
+    0xF43AC17E: 1,   # ListIndex 07
+    0xF4B29368: 2,   # TargetOfsPosY 12
+    0xF4B93AF3: 2,   # OfsPosY 03
+    0xF4D12F36: 0,   # mViewParamId
+    0xF53A6F05: 1,   # ReqNo(On) B
+    0xF73B4573: 2,   # mLerpAlpha_BMtoEM
+    0xF76AAA7D: 1,   # mFlag2
+    0xF7C55D41: 2,   # mSubSurfaceBlend
+    0xF81DE7F9: 0,   # mRopeHoldState
+    0xF850F54C: 2,   # mMotionTransRateY
+    0xF871C9DE: 2,   # TargetOfsPosZ 06
+    0xF9120603: 2,   # mVAnimV
+    0xF92E647B: 2,   # Length
+    0xF960B74A: 1,   # ReleaseTime Q
+    0xF97BCCAB: 0,   # Tag 5
+    0xF98DCE90: 2,   # pos:y
+    0xFA0C2213: 4,   # KeyFrame07
+    0xFA223F53: 2,   # mOpacityFactor
+    0xFA3AFA5C: 1,   # WorkNo30
+    0xFA465957: 2,   # ShootOfsDegY 10
+    0xFA79B1CD: 3,   # Emissive
+    0xFC898D7A: 2,   # X座標
+    0xFCFE68B9: 0,   # mHeightCtrlType
+    0xFD2B9D4E: 2,   # ShootOfsDegY 14
+    0xFD480BC4: 2,   # mDispFactor
+    0xFD61E60A: 4,   # KeyFrame03
+    0xFDD75CA1: 1,   # ノードID[7]
+    0xFE1608B2: 0,   # Tag 1
+    0xFE294B28: 2,   # mPartsMaskZ
+    0xFF17A45C: 2,   # OfsPosZ 13
+    0xFF1C0DC7: 2,   # TargetOfsPosZ 02
+    0xFF5207BD: 2,   # mVPushScale
+    0xFF5FC870: 2,   # ChangeLeftAngY
 }
 
 # transform 九条 hash（jamcrc）。MHW Y-up → Blender Z-up：游戏 Y↔Z 轴**置换**

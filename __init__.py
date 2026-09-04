@@ -34,7 +34,7 @@ Blender 加载时此目录被视为包 bl_ext.user_default.efx_editor。
 # 版本号常量：与 blender_manifest.toml 的 version 同步改（两处）。
 # ⚠ 单独抽常量的原因：4.2+ 扩展系统加载时会**剥离/忽略模块里的 bl_info**（扩展用 manifest），
 # 故 register() 里绝不能引用 `bl_info` 这个名字（扩展路径下 NameError）——改用本常量。
-_VERSION = (0, 6, 7)
+_VERSION = (0, 6, 8)
 
 # bl_info：仅供 Blender 老式 addon 系统（<4.2，如 3.6）识别。
 # 4.2+ 扩展系统忽略它、改用 blender_manifest.toml。两者并存无冲突。
