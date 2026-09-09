@@ -339,6 +339,12 @@ FIELD_RENAME_ALIASES = {
     ("UVSEQUENCE", "unkn2"): "sequenceNoJitter",        # 覆盖上一轮 unkn2→uvsIndexJitter
     ("UVSEQUENCE", "startingFrame"): "patternNo",
     ("UVSEQUENCE", "startingFrameJitter"): "patternNoJitter",
+    # MESH：emissive_* 前缀查明是错的（emissive_saturation 实为 color 通道强度系数，
+    # 由 enableIntensity2 门控、对发光开关零响应），两对一并改成与 DT 同名
+    ("MESH", "emissive_saturation"): "colorRate",
+    ("MESH", "emissive_saturation_j"): "colorRateJitter",
+    ("MESH", "emissive_brightness"): "emissiveColorRate",
+    ("MESH", "emissive_brightness_j"): "emissiveColorRateJitter",
     ("UVSEQUENCE", "animationSpeed"): "playSpeed",
     ("UVSEQUENCE", "animationSpeedJitter"): "playSpeedJitter",
     ("UVSEQUENCE", "animationAcceleration"): "playSpeedCoef",

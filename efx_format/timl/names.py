@@ -2258,7 +2258,11 @@ FIELD_TO_DT = {
     ("PLANE", "height"):          [(0x531B9E44, 2)],
     ("MESH", "scale"):            [(0x241CAED2, 2), (0x531B9E44, 2), (0xCA12CFFE, 2)],
     ("MESH", "rotation"):         [(0x002FF505, 2), (0x7728C593, 2), (0xEE219429, 2)],
-    ("MESH", "emissive_brightness"): [(0x18C577DE, 2)],
+    ("MESH", "emissiveColorRate"): [(0x18C577DE, 2)],
+    # ColorRate 归属 colorRate（原 emissive_saturation）：该字段由 enableIntensity2
+    # 门控、对发光通道三个开关零响应，是 color 通道的强度系数，详见
+    # custom_codecs.py::_MOD3_PROPERTIES_SCHEMA 注释
+    ("MESH", "colorRate"): [(0x9F1E012E, 2)],
     ("MESH", "color"):               [(0x58689812, 3)],
     ("MESH", "colorRange"):          [(0xC216C23D, 3)],
     ("MESH", "emissiveColor"):       [(0x608DCF8D, 3)],
@@ -2433,9 +2437,6 @@ FIELD_TO_DT_UNRESOLVED = {
     # STRAINRIBBON：ColorRate 候选 emissionStrength（RIBBON 那边是 brightness，
     #   本块没有同名字段）；LocalRotationY 在本块字段表里没有对应项。
     ("STRAINRIBBON", "?"): [(0x9F1E012E, 2), (0x0718D2B3, 2)],
-    # MESH：ColorRate（24 条）—— emissive_brightness 已占 EmissiveColorRate，
-    #   剩下 emissive_saturation 是配对的另一半，不像整体亮度系数。
-    ("MESH", "?ColorRate"): [(0x9F1E012E, 2)],
 }
 
 # ── BLOCK_NATIVE_AXIS：块类型名(大写) → 该块 TIML 动画在真实语料里锁定的轴 slot ──────

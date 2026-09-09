@@ -2873,9 +2873,21 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 2, 4, 12, 16].",
         "ZH": "常见取值为 [0, 1, 2, 4, 12, 16]。",
     },
-    ("MESH", "emissive_saturation_j"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("MESH", "colorRate"): {
+        "EN": "Overall intensity coefficient for the colour channel (the `color` / `colorRange` pair, not the emissive one). 1 = unchanged; 53% of blocks leave it at 1.0, but values well past 100 occur. Driven by the ColorRate timeline parameter on the A1 (lifetime) axis. Among blocks that move it off 1.0, 84% also have enableIntensity2 switched on.",
+        "ZH": '`color` / `colorRange` 那条通道的整体强度系数（不是自发光那条）。1 = 原样，全语料 53% 的块就留在 1.0，但一路到 100 以上都有。对应 ColorRate 时间线参数，走 A1（寿命轴）。把它调离 1.0 的块里，84% 同时开着 enableIntensity2。',
+    },
+    ("MESH", "colorRateJitter"): {
+        "EN": "Random spread for colorRate — the actual value lands somewhere in [colorRate, colorRate + this]. 0 means no spread; 92% of blocks leave it at 0.",
+        "ZH": 'colorRate 的随机量 —— 实际取值落在 [colorRate, colorRate + 本值] 之间。0 = 不随机，全语料 92% 的块留 0。',
+    },
+    ("MESH", "emissiveColorRate"): {
+        "EN": "Intensity coefficient for the emissive channel (the `emissiveColor` / `emissiveColorRange` pair). Neutral value is 0 and 92% of blocks leave it there — it only does anything once non-zero. Every block with useEmissiveColorRange on has it non-zero. Driven by the EmissiveColorRate timeline parameter on the A1 (lifetime) axis.",
+        "ZH": '自发光通道（`emissiveColor` / `emissiveColorRange`）的强度系数。中性值是 0，全语料 92% 的块留 0 —— 只有非 0 才起作用。开了 useEmissiveColorRange 的块 100% 都是非 0。对应 EmissiveColorRate 时间线参数，走 A1（寿命轴）。',
+    },
+    ("MESH", "emissiveColorRateJitter"): {
+        "EN": "Random spread for emissiveColorRate — the actual value lands somewhere in [emissiveColorRate, emissiveColorRate + this]. 98% of blocks leave it at 0.",
+        "ZH": 'emissiveColorRate 的随机量 —— 实际取值落在 [emissiveColorRate, emissiveColorRate + 本值] 之间。全语料 98% 的块留 0。',
     },
     ("MESH", "epv_color_slot1"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',

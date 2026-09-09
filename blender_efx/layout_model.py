@@ -31,10 +31,11 @@ SCALAR_PROP_ATTR = {
 # 不符合 Jitter 后缀约定、但语义上是抖动字段的名称（MESH 的 _j 后缀字段）
 # SPAWN 原 randomizedSpawnsPerFrame/randomizedDelay/randomizedLifespan/occur2 已改名为标准
 # XJitter 后缀（2026-07-26 实机测试后重命名），不再需要在此特例登记。
-NONSTANDARD_JITTER_NAMES = frozenset({
-    "emissive_saturation_j",
-    "emissive_brightness_j",
-})
+# 非标准 jitter 后缀特例（既不是 `Jitter` 也不是 `_jitter`）。目前为空：原先这里的
+# MESH `emissive_saturation_j`/`emissive_brightness_j` 已改名为
+# `colorRateJitter`/`emissiveColorRateJitter`，走标准后缀。`is_matching_jitter` 仍
+# 接受 `_j` 派生名，所以新出现的 `_j` 字段无需登记在此。
+NONSTANDARD_JITTER_NAMES = frozenset()
 
 
 def is_jitter_name(name: str) -> bool:

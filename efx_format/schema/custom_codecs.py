@@ -336,8 +336,8 @@ def pack_billboard2d(values: dict) -> bytes:
 # [null1+1..null2] = path2 (null-terminated, null at null2)
 #
 # Mod3Properties (174 B) fields from BT (counted carefully):
-#   int unkn0[2](8) + long CD1(4) + float emissive_saturation/j(8) +
-#   float emissive_brightness/j(8) + XYZ rotation(0)(24) +
+#   int unkn0[2](8) + long CD1(4) + float colorRate/Jitter(8) +
+#   float emissiveColorRate/Jitter(8) + XYZ rotation(0)(24) +
 #   float rotation2/Jitter(8)（原 unkn5_2/3；实测为角度状数值，rotation2 常见 -180/0，
 #     rotation2Jitter 常见 360/0——360 即"全范围随机"，语义上是 rotation 之外的一对
 #     标量旋转+抖动，具体轴/用途未确认）+
@@ -383,10 +383,17 @@ _MOD3_PROPERTIES_SCHEMA = [
     ('typeFlag', 'i'),   # 原 unkn0_0
     ('unknFixed0_1', 'i'),   # 恒 167，接近但不满足 section_length 公式(174-8=166,差1)，未改名
     ('CD1',                     'i'),
-    ('emissive_saturation',     'f'),
-    ('emissive_saturation_j',   'f'),
-    ('emissive_brightness',     'f'),  # TIML DT 0x18C577DE("EmissiveColorRate") 已确认
-    ('emissive_brightness_j',   'f'),
+    # color 通道的强度系数（原名 emissive_saturation/_j，前缀是错的）：中性值 1.0，
+    # 由 enableIntensity2 门控（关 27.9% / 开 83.7% 被调离 1.0，n=13625），
+    # 对 useEmissiveColor 三个发光开关零响应（47.2% vs 47.3%）——它不在发光侧。
+    # p50=1.0 / p90=5.65 / p99=100 / max=10000，形态是 HDR 强度倍率而非饱和度。
+    ('colorRate',               'f'),  # TIML DT 0x9F1E012E("ColorRate")
+    ('colorRateJitter',         'f'),
+    # emissiveColor 通道的强度系数（原名 emissive_brightness/_j）：中性值 0.0，
+    # 死锁在发光通道上（useEmissiveColor 关 3.1% / 开 82.2%；useEmissiveColorRange
+    # 打开时 100% 非零），对 color 通道开关零响应。
+    ('emissiveColorRate',       'f'),  # TIML DT 0x18C577DE("EmissiveColorRate")
+    ('emissiveColorRateJitter', 'f'),
     ('rotation',                ('XYZ', 0)),
     ('rotation2',               'f'),
     ('rotation2Jitter',         'f'),

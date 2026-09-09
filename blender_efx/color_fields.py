@@ -39,8 +39,8 @@ _COLOR_ADJACENT_NAMES = frozenset({
     "enableIntensity1", "enableIntensity2", "enableEmissiveIntensity",
     "emissiveMultiplier", "emissiveStrength",
     "emissionStrength", "emissionStrengthJitter",
-    "emissive_brightness", "emissive_brightness_j",
-    "emissive_saturation", "emissive_saturation_j",
+    "emissiveColorRate", "emissiveColorRateJitter",
+    "colorRate", "colorRateJitter",
     "colorScaler",
     # 颜色范围 / 颜色相关开关 / 模式
     "useColorRange", "useEmissiveColor", "useEmissiveColorRange",
@@ -76,7 +76,12 @@ _PACKED_INT_COLOR_FIELDS = frozenset({
 #   · 枚举/模式：colourTransitionPoint 一类
 #   · 位置/占比：colourTransitionPoint（0-1 过渡点，乘会越界）
 #   · 槽位索引：epv*Slot / brightnessSlot1/2（是槽编号不是强度值，含义不明保守排除）
-#   · 饱和度：emissive_saturation*（是饱和不是亮度）
+#   （已移除"饱和度"这条排除项：原 emissive_saturation* 查明是 color 通道的强度系数，
+#    详见 custom_codecs.py 的 _MOD3_PROPERTIES_SCHEMA 注释，已改名 colorRate* 并纳入下表。
+#    定为亮度而非饱和度的依据：① 全部 1259 个 schema 字段名里含 satur/hue/chroma 的
+#    是 0 条——格式的静态字段侧没有饱和度旋钮；② 引擎在 DT 命名空间里有
+#    mSaturationColor / mBaseColorSaturation，要表达饱和度会直接写进名字，ColorRate 不是；
+#    ③ 取值 p50=1.0 / p99=100 / max=10000，是 HDR 倍率形态。用户 2026-09-09 定调。）
 # 乘算时另有 data_type=="FLOAT" 的硬门控，双保险：即便名字命中、非浮点也跳过。
 _BRIGHTNESS_NAMES = frozenset({
     "brightness", "brightness1", "brightness2", "brightness3", "brightness4",
@@ -85,7 +90,8 @@ _BRIGHTNESS_NAMES = frozenset({
     "lightIntensity", "lightIntensityJitter",
     "emissiveMultiplier", "emissiveStrength",
     "emissionStrength", "emissionStrengthJitter",
-    "emissive_brightness", "emissive_brightness_j",
+    "colorRate", "colorRateJitter",
+    "emissiveColorRate", "emissiveColorRateJitter",
     "colorScaler",
 })
 
