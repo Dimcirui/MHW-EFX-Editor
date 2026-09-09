@@ -28,7 +28,7 @@ from .hashes import (
     EXTERNREFERENCE,
     # Renderer Body
     BILLBOARD3D, RIBBON, PLANE, LIGHTNING, RIBBONBLADE, STRAINRIBBON, BILLBOARD2D,
-    MESH, DUMMY, TUBELIGHT,
+    MESH, DUMMY,
     # Renderer Modifier
     UVSEQUENCE, RGBFIRE, RGBWATER, ALPHACORRECTION, REFRACTION, BLINK, LUMINANCEBLEED,
     MATERIAL, UVCONTROL,
@@ -44,7 +44,7 @@ from .hashes import (
     # Action Trigger
     PTCOLLISION, PTLIFE,
     # PtBehavior
-    PTBEHAVIOR,
+    PTBEHAVIOR, TUBELIGHT,
     # Misc
     FAKEDOF, TONEMAPFILTER, COLORCORRECTFILTER,
     RANDOMFIX, CHECKPUREATTRIBUTE, LAYOUT, PTTRIGGER, SHOVEL,
@@ -69,7 +69,6 @@ ATTRIBUTE_SUBGROUP_LABELS = {
     "uvs":          {"EN": "UVS System",          "ZH": "UVS系"},
     "mesh":         {"EN": "Mesh System",         "ZH": "Mesh系"},
     "dummy":        {"EN": "Dummy System",        "ZH": "Dummy系"},
-    "special":      {"EN": "Special",             "ZH": "其他"},
     "generic":      {"EN": "Generic",             "ZH": "通用/跨宿主"},
     "motion":       {"EN": "Motion",              "ZH": "运动"},
     "visibility":   {"EN": "Visibility",          "ZH": "可见性判定"},
@@ -99,7 +98,6 @@ ATTRIBUTE_CATEGORY_OF = {
     BILLBOARD2D:       "renderer_body",   # 2D version of BILLBOARD3D
     MESH:              "renderer_body",
     DUMMY:             "renderer_body",   # 无视觉输出的功能性宿主（PTLIFE/SHOVEL/PLEMISSIVE 宿主）
-    TUBELIGHT:         "renderer_body",
 
     # ── Renderer Modifier (attached to Body, stackable; subgroups see ATTRIBUTE_SUBGROUP_OF) ────────────
     UVSEQUENCE:        "renderer_modifier",
@@ -154,6 +152,10 @@ ATTRIBUTE_CATEGORY_OF = {
 
     # ── PtBehavior（independent behavior system） ────────────────
     PTBEHAVIOR:        "pt_behavior",
+    # 自持渲染：唯一 SHADERSETTINGS 共现为 0 的类型（0/22），自带完整光柱渲染、
+    # 绕开共享着色器/材质管线；RAYCAST 共现 95.5% 顶掉发射形状；只与 DUMMY 共存
+    # （3/22），与真渲染主体共现 0 —— 与 PTBEHAVIOR 同一模式，故不列入 renderer_body
+    TUBELIGHT:         "pt_behavior",
 
     # ── Misc ──────────────────────────────
     FAKEDOF:           "misc",
@@ -178,7 +180,6 @@ ATTRIBUTE_SUBGROUP_OF = {
     BILLBOARD2D:  "uvs",
     MESH:         "mesh",
     DUMMY:        "dummy",
-    TUBELIGHT:    "special",
 
     # ── Renderer Modifier Subgroups ────────────────────────────────────────────────
     UVSEQUENCE:      "uvs",
@@ -210,13 +211,15 @@ ATTRIBUTE_SUBGROUP_OF = {
     PATHCHAIN:             "motion",
     VELOCITY2D:            "motion",
     REPEATAREA:            "motion",
+    # 屏幕空间碰撞：与 VELOCITY3D 共现 1224/1224 = 100%，是碰撞反弹（运动），
+    # 不是 alpha 渐隐门控 —— 曾误归 "visibility"
+    SCREENSPACECOLLISION:  "motion",
     FADEBYDEPTH:           "visibility",
     FADEBYANGLE:           "visibility",
     FADEBYEMITTERANGLE:    "visibility",
     FADEBYOCCLUSION:       "visibility",
     MASTERONLY:            "visibility",
     EMITTERBOUNDARY:       "visibility",
-    SCREENSPACECOLLISION:  "visibility",
     LINKPARTSVISIBLE:      "visibility",
 
     # ── Misc Subgroups ────────────────────────────────────────────────────────────────
@@ -234,9 +237,9 @@ ATTRIBUTE_SUBGROUP_OF = {
 SUFFIX_DISPLAY_TYPES = frozenset({
     # Renderer Body
     BILLBOARD3D, RIBBON, PLANE, LIGHTNING, RIBBONBLADE, STRAINRIBBON, BILLBOARD2D,
-    MESH, DUMMY, TUBELIGHT,
+    MESH, DUMMY,
     # PtBehavior
-    PTBEHAVIOR,
+    PTBEHAVIOR, TUBELIGHT,
     # Action Trigger
     PTCOLLISION, PTLIFE,
     # ExternReference
