@@ -228,9 +228,12 @@ FIELD_ANNOTATIONS = {
 
     # ─── VELOCITY3D ───────────────────────────────────────────────────────────
     # ExternVelocity3D (EFX_Subtypes.bt)
+    # baseAxis 的 0~5 与社区 RE Engine 续作 schema 的笛卡尔 AxisType
+    # (0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z) 是同一套映射——游戏默认坐标系下 +X=左/+Y=上/+Z=前，
+    # 两边只是措辞不同，不是分歧。（结论已写进 tooltip，对照过程留在这里。）
     ("VELOCITY3D", "baseAxis"): {
-        "EN": "Base axis for speed (one of six cardinal axes, not a free direction vector), combined with rotationX/Y/Z to give the final direction. Only meaningful when velocityType=Directional. : 0=left,1=up,2=front,3=right,4=down,5=back — equivalent to the community RE Engine sequel schema's Cartesian AxisType (0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z), since in the game's default coordinate system +X=left, +Y=up, +Z=front. The two descriptions are the same mapping, just phrased differently — not a real disagreement.",
-        "ZH": 'speed 的基准轴（六个基准轴之一，不是自由方向向量），与 rotationX/Y/Z 复合得到最终方向。仅在 velocityType=Directional 时有意义。0=左,1=上,2=前,3=右,4=下,5=后——跟社区 RE Engine 续作 schema 的笛卡尔 AxisType（0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z）是同一套映射，因为游戏默认坐标系下 +X=左,+Y=上,+Z=前。两种描述只是措辞不同，不是真的分歧。',
+        "EN": "Base axis for speed (one of six cardinal axes, not a free direction vector), combined with rotationX/Y/Z to give the final direction. Only meaningful when velocityType=Directional. 0=left,1=up,2=front,3=right,4=down,5=back (in the game's default coordinate system +X=left, +Y=up, +Z=front).",
+        "ZH": 'speed 的基准轴（六个基准轴之一，不是自由方向向量），与 rotationX/Y/Z 复合得到最终方向。仅在 velocityType=Directional 时有意义。0=左,1=上,2=前,3=右,4=下,5=后（游戏默认坐标系下 +X=左,+Y=上,+Z=前）。',
     },
     ("VELOCITY3D", "rotOrder"): {
         "EN": "A rotation-order enum: 0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX. Not the same numeric mapping as TRANSFORM3D's rotation order convention.",
@@ -241,17 +244,18 @@ FIELD_ANNOTATIONS = {
         "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
         "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
     },
+    # 枚举命名沿革：1 早期误标为 "Normal"、3 早期误标为 "Spread"，现按实测行为定名。
+    # 4/5 在本项目语料里确有出现（旧注释猜作 ScreenSpace/Unkn），而社区那份 RE Engine
+    # 续作 schema 只有 0~3 四态——两边没对上，未回查语料前不采信任何一边，tooltip 里只写"含义未知"。
     ("VELOCITY3D", "velocityType"): {
         "EN": "Decides how the particle's movement DIRECTION is determined (speed always comes "
               "from speed/acceleration; gravity is independent and always applies). "
-              "0=Directional (direction from baseAxis + rotation), 1=DirectionalSpread (Vi=(divergence-1)*spawnPos+velocity, normalized, model — "
-              "formerly mislabeled \"Normal\"), 2=Radial (always moves outward, rotation/velocity/"
-              "divergence have no effect), 3=EmitterMotion (inherits the emitter's own movement; "
-              "gated by minMovementThreshold; formerly labeled \"Spread\"). ⚠ Our corpus has also "
-              "shown values 4/5 (previously documented as ScreenSpace/Unkn) that a community RE "
-              "Engine sequel schema's 4-value enum doesn't include — unreconciled, needs re-check "
-              "against the corpus before trusting either side fully.",
-        "ZH": '决定粒子运动方向如何确定（速度始终由 speed/acceleration 决定，重力独立于此始终生效）。0=Directional(由 baseAxis + rotation 决定方向)，1=DirectionalSpread(即 Vi=(divergence-1)*生成坐标+velocity 归一化模型，原误标为"Normal")，2=Radial(始终向外运动，rotation/velocity/divergence 均无效)，3=EmitterMotion(继承 emitter 自身移动，受 minMovementThreshold 门控，原标为"Spread")。⚠ 我们语料还观测到 4/5 取值（旧注释里叫 ScreenSpace/Unkn），社区一份 RE Engine 续作 schema 只有 0~3 四态、没有这两个——两边没对上，回查语料前不能全信任何一边。',
+              "0=Directional (direction from baseAxis + rotation), 1=DirectionalSpread "
+              "(Vi=(divergence-1)*spawnPos+velocity, normalized), 2=Radial (always moves outward, "
+              "rotation/velocity/divergence have no effect), 3=EmitterMotion (inherits the "
+              "emitter's own movement, gated by minMovementThreshold). ⚠ Values 4 and 5 also "
+              "occur; their meaning is unknown.",
+        "ZH": '决定粒子运动方向如何确定（速度始终由 speed/acceleration 决定，重力独立于此始终生效）。0=Directional(由 baseAxis + rotation 决定方向)，1=DirectionalSpread(即 Vi=(divergence-1)*生成坐标+velocity 归一化模型)，2=Radial(始终向外运动，rotation/velocity/divergence 均无效)，3=EmitterMotion(继承 emitter 自身移动，受 minMovementThreshold 门控)。⚠ 另有 4/5 两个取值，含义未知。',
     },
     ("VELOCITY3D", "gravity"): {
         "EN": "Gravity. Always applies regardless of velocityType.",
@@ -355,9 +359,10 @@ FIELD_ANNOTATIONS = {
         "EN": "Contrast/gamma correction on alpha (field formerly named 'transparentness'). Unbounded — higher values fade out low/mid alpha (edges) while keeping high alpha (core) intact; values can exceed 1, where almost everything fades to transparent.",
         "ZH": "对 alpha 做对比度/伽马修正（原字段名 transparentness）。无上限——值越大，低/中 alpha（边缘）越快变透明，高 alpha（核心）保留；可超过 1，过大时几乎全图变透明。",
     },
+    # 010 BT 模板把它标成 NULL，实际并非恒定值；tooltip 只写结论。
     ("ALPHACORRECTION", "unkn3"): {
-        "EN": "Unnamed float parameter (BT template mislabels it 'NULL' — it is not a fixed constant). Usually 0 (unset); other values seen roughly in [-3.0, 3.0]. Purpose unknown.",
-        "ZH": "未命名的浮点参数（BT 模板误标为 NULL，实际并非恒定值）。通常为 0（未设置）；其余取值大致落在 [-3.0, 3.0] 之间。具体作用未知。",
+        "EN": "Unnamed float parameter, not a fixed constant. Usually 0 (unset); other values seen roughly in [-3.0, 3.0]. Purpose unknown.",
+        "ZH": "未命名的浮点参数，并非恒定值。通常为 0（未设置）；其余取值大致落在 [-3.0, 3.0] 之间。具体作用未知。",
     },
 
     # ─── TUBELIGHT ────────────────────────────────────────────────────────────
@@ -371,8 +376,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "光柱终点颜色。",
     },
     ("TUBELIGHT", "headColorEpvSlot"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("TUBELIGHT", "columnLength"): {
         "EN": "Length of the light column (start=headColor, end=tailColor).",
@@ -753,7 +758,7 @@ FIELD_ANNOTATIONS = {
               "Official: 0=83%, 1=14%, 2=4%.",
         "ZH": "归航目标 = (homingTarget mod 4)：0=生成点（发射器位置），1=模型/角色原点"
               "（脚下），2/3=世界原点（地图中心）。每 4 循环（4=生成点, 5=模型原点…）。"
-              "运动始终指向目标点的**实时**位置（不是触发时捕获定住）。"
+              "运动始终指向目标点的实时位置（不是触发时捕获定住）。"
               "官方用值：0=83%，1=14%，2=4%。",
     },
     ("HOMING", "vanishMode"): {
@@ -1574,19 +1579,20 @@ FIELD_ANNOTATIONS = {
               "with Alpha scaling for thickness/halo variation",
         "ZH": "贴图宽度方向光照通道缩放。0.1=极细线；1=默认；5=发光纹理宽度大增锯齿感强；与 Alpha 缩放配合做粗细/光晕变化",
     },
+    # 下面两个字段在 BT 模板里被误标成颜色，实为开关；出处不写进 tooltip。
     ("STRAINRIBBON", "endPointScatter"): {
-        "EN": "Endpoint-scatter switch (mislabeled as color in the template). 0=endpoint "
+        "EN": "Endpoint-scatter switch. 0=endpoint "
               "anchored to the end bone; non-zero=endpoint unanchored, multiple bolts "
               "appear at random surrounding positions scattering outward (magnitude has "
               "no effect, 0~255)",
-        "ZH": "终点扩散开关（模板误标为颜色）。0=终点锚定到结束骨骼；非 0=终点不锚定，"
+        "ZH": "终点扩散开关。0=终点锚定到结束骨骼；非 0=终点不锚定，"
               "在四周随机位置出现多条闪电向外扩散（数值大小无影响，0~255）",
     },
     ("STRAINRIBBON", "originReleaseFlag"): {
-        "EN": "Origin-release flag (mislabeled as color in the template). 0=origin "
+        "EN": "Origin-release flag. 0=origin "
               "anchored to bone #1; non-zero=origin released, all chains emit from the "
               "end-bone position toward the map's world center",
-        "ZH": "起点解锁标志（模板误标为颜色）。0=起点锚定到 1 号骨骼；非 0=起点解锁，"
+        "ZH": "起点解锁标志。0=起点锚定到 1 号骨骼；非 0=起点解锁，"
               "所有链条从结束骨骼位置朝地图世界中心方向发射",
     },
     ("STRAINRIBBON", "endBoneID"): {
@@ -1860,11 +1866,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "逐轴缩放动画开始更新的时间（帧）。",
     },
     # ROTATEANIM（含本版新拆分字段）
+    # BT 模板把它标成 int，实为 float，本项目已订正；出处不写进 tooltip。
     ("ROTATEANIM", "billboardRotation"): {
         "EN": "BILLBOARD3D plane rotation (static value; pairs with billboardRotationJitter as "
-              "the random). (Was mistyped as int in the template; corrected to float.)",
-        "ZH": "BILLBOARD3D 平面旋转（固定值；与 billboardRotationJitter 组成 static/random 一组）。"
-              "（原模板误标为 int，已改为 float。）",
+              "the random).",
+        "ZH": "BILLBOARD3D 平面旋转（固定值；与 billboardRotationJitter 组成 static/random 一组）。",
     },
     ("ROTATEANIM", "billboardRotationJitter"): {
         "EN": "Random component of billboardRotation.",
@@ -2009,12 +2015,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "保留字段。测 1/2/3/5/10/100/1000/负数均无明显变化。",
     },
     ("LIGHTNING", "EPVColorSlot1"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("LIGHTNING", "EPVColorSlot2"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("LIGHTNING", "unknFixed05_20"): {
         "EN": "⚠ Caution: do NOT set to 0 (possible crash). Likely memory layout / render "
@@ -2436,12 +2442,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("BILLBOARD2D", "EPVColorSlot1"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("BILLBOARD2D", "EPVColorSlot2"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("BILLBOARD2D", "flowmapSpeedJitter"): {
         "EN": "Common range: 0~1.",
@@ -2460,12 +2466,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 1, 3]。",
     },
     ("BILLBOARD3D", "EPVColorSlot1"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("BILLBOARD3D", "SlotOverride1"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("BILLBOARD3D", "flowmapSpeedCoef"): {
         "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
@@ -2890,12 +2896,12 @@ FIELD_ANNOTATIONS = {
         "ZH": 'emissiveColorRate 的随机量 —— 实际取值落在 [emissiveColorRate, emissiveColorRate + 本值] 之间。全语料 98% 的块留 0。',
     },
     ("MESH", "epv_color_slot1"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("MESH", "epv_color_slot2"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("MESH", "global_scale_jitter"): {
         "EN": "Common range: 0~100.",
@@ -3072,8 +3078,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("PLANE", "EPVColorSlot1"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("PLANE", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -3647,11 +3653,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "spinAccelerationZ 的随机分量。",
     },
     ("ROTATEANIM", "rotateDelayStart"): {
-        "EN": "Formerly the last float of the (mis-shifted) spin_acceleration XYZ group — always "
+        "EN": "Formerly the last float of the spin_acceleration XYZ group — always "
               "reads as 0.0 as float32 (denormal artifact), but as int32 shows clean frame-count "
               "values (5/10/15/20/30/100/512...). Static half of a static/random pair with "
               "rotateDelayStartJitter; likely delay frames before rotation starts.",
-        "ZH": "原 spin_acceleration XYZ 分组(错位)的最后一个 float——按 float32 解读恒为 0.0"
+        "ZH": "原 spin_acceleration XYZ 分组的最后一个 float——按 float32 解读恒为 0.0"
               "（denormal 假象），按 int32 解读呈现干净帧数(5/10/15/20/30/100/512...)。是与 "
               "rotateDelayStartJitter 组成的 static/random 一对，疑似旋转开始前的延迟帧数。",
     },
@@ -4060,52 +4066,53 @@ FIELD_ANNOTATIONS = {
     },
 
     ("PLANE", "EPVColorSlot2"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("PLEMISSIVE", "epv_color_slot"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("PLSNOW", "epvcolorslot"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("RIBBON", "epvcolor_0"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("RIBBON", "epvcolor_1"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. **Non-zero here means: take the attribute from that slot instead of the value on this attribute.** 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。**这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。** 0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
+        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
+    # flowmap 贴图名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图；tooltip 只写"不是法线贴图"这个结论。
     ("BILLBOARD2D", "flowmapPath"): {
-        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
-        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
+        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
     },
     ("BILLBOARD3D", "flowmapPath"): {
-        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
-        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
+        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
     },
     ("LIGHTNING", "flowmapPath"): {
-        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
-        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
+        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
     },
     ("PLANE", "flowmapPath"): {
-        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
-        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
+        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
     },
     ("RIBBONBLADE", "flowmapPath"): {
-        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
-        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
+        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
     },
     ("STRAINRIBBON", "flowmapPath"): {
-        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
-        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
+        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
     },
     ("RIBBON", "flowmapPath"): {
-        "EN": "Flowmap texture path. **This is the flow/distortion map, not the visible artwork** — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex, which is why older docs call it a normal map.)",
-        "ZH": '流动贴图（flowmap）路径。**这是流动/扰动图，不是看得见的画面** —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图。）',
+        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
+        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
     },
     ("RGBWATER", "colorRate"): {
         "EN": "Overall colour rate, driven by the ColorRate timeline parameter — animating it only works on the A0 (emitter) axis.",
@@ -4144,8 +4151,8 @@ FIELD_ANNOTATIONS = {
         "ZH": '未知。头部唯一一个背后没有时间线参数的 float——引擎只声明了六个 float 参数、本属性有七个 float，恰好有一个不可做动画，就是它。众数 0.3（73%），不像强度量。',
     },
     ("UVSEQUENCE", "uvsPath"): {
-        "EN": "Path to the .uvs sequence file — **this is the artwork you actually see**. The .uvs itself is a frame table pointing at a sprite-sheet .tex; playSpeed / patternNo pick which cell plays. Nearly every UVSEQUENCE has one (99% of blocks non-empty).",
-        "ZH": '指向 .uvs 序列文件的路径 —— **真正显色的图就是这张**。.uvs 本身是一张帧表，指向序列帧大图（.tex）；playSpeed / patternNo 决定放哪一格。几乎每个 UVSEQUENCE 都填了（全语料 99% 非空）。',
+        "EN": "Path to the .uvs sequence file — this is the artwork you actually see. The .uvs itself is a frame table pointing at a sprite-sheet .tex; playSpeed / patternNo pick which cell plays. Nearly every UVSEQUENCE has one (99% of blocks non-empty).",
+        "ZH": '指向 .uvs 序列文件的路径 —— 真正显色的图就是这张。.uvs 本身是一张帧表，指向序列帧大图（.tex）；playSpeed / patternNo 决定放哪一格。几乎每个 UVSEQUENCE 都填了（全语料 99% 非空）。',
     },
     ("RGBWATER", "cubemapPath"): {
         "EN": "Cube map path for the water surface's environment reflection. The corpus only ever uses two official maps (cm_cube_000_CM / cm_cube_001_CM); 68% of blocks leave it empty. Pairs with brightnessSlot2 — that field is non-zero in 78% of blocks that have a cube map versus 30% of those that don't.",
