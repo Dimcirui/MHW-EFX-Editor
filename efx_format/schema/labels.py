@@ -114,6 +114,14 @@ _LABELS_GLOBAL = {
 # 类型专属中文名（键 =(TYPE_NAME, field_name)），优先于 _LABELS_GLOBAL。
 # 仅 custom-codec 类型（定长块的 BY_TYPE 已折入各自 Field.label_zh）。
 _LABELS_BY_TYPE = {
+    # ── MESH ──（旋转/缩放这几个原先没中文，面板上跟「旋转」中英混排）
+    ('MESH', 'rotation2'): '附加旋转',
+    ('MESH', 'rotation2Jitter'): '附加旋转抖动',
+    ('MESH', 'scale'): '缩放',
+    ('MESH', 'global_scale'): '整体缩放',
+    ('MESH', 'global_scale_jitter'): '整体缩放抖动',
+    ('MESH', 'visconIndexJitter'): '可见条件索引抖动',
+
     # ── LIGHTNING ──
     ('LIGHTNING', 'unkn05_01'): '实例模式标志',
     ('LIGHTNING', 'sineWaveFreq'): '正弦波频率',

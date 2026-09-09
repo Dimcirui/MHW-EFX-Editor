@@ -40,6 +40,14 @@ FIELD_ORDER_ANCHORS = {
     # 隔了 8 行，中间是 localRotation/scanAngle。挪到 scanAngleVertical 之后
     # 就紧贴着它那两个 Num。⚠ 这条是判断，不是实测；觉得不对删掉即可。
     "EMITTERSHAPE3D": {"rangeDivideAxis": "scanAngleVertical"},
+    # MESH.rotationOrder 落在 rotation 之后 13 行（夹在 color 四件套与 tracking_flags
+    # 之间），tools/scan_field_order.py 的「词缀家族被夹断」候选里能看到。搬到
+    # emissiveColorRateJitter 之后 = 紧贴 rotation 之前，跟 PLANE / VELOCITY3D /
+    # FADEBYANGLE 的 `rotationOrder · rotation` 同序。
+    # ⚠ 锚点选的是 rotation 的**前一行的主字段**，为的是让顺序字段排在旋转值前面。
+    #   必须写 emissiveColorRate（配对主字段）而不是它的 jitter —— 搬动以「行」为单位，
+    #   指向 jitter 从属行时锚点无法解析、不会发生移动（ui_layout_sim 会报「锚点没落位」）。
+    "MESH": {"rotationOrder": "emissiveColorRate"},
 }
 
 
