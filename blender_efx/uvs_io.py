@@ -1350,7 +1350,12 @@ class EFX_OT_uvs_group_add(Operator):
             self.report({"ERROR"}, T("uvs.parse_failed").format(e))
             return {"CANCELLED"}
 
-        insert_at = props.group_index + 1
+        # 插入位置：当前选中项之后。⚠ group_index 是 IntProperty，**一个组都没有时
+        # 它也是 0**，直接 +1 会指到 1 —— 随后 props.groups.add() 只让长度变成 1，
+        # 取 props.groups[1] 就 IndexError（"没有组时新增必崩"的成因）。故按插入前
+        # 的组数夹紧；空表时插到 0。同 EFX_OT_uvs_frame_insert 的既有写法。
+        n_groups = len(uvs.groups)
+        insert_at = min(props.group_index + 1, n_groups) if n_groups else 0
         # 默认 1 帧覆盖整张图（(0,0)-(1,1)），dynamic 默认 4——实测绝大多数游戏
         # 文件里这个值就是 4，参考工具 UI 的 spinbox 默认值也是 4。
         new_g = UVSGroup(
@@ -1845,7 +1850,12 @@ class EFX_OT_uvs_gif_to_png(Operator, ImportHelper):
         except Exception as e:
             return None, str(e)
 
-        insert_at = props.group_index + 1
+        # 插入位置：当前选中项之后。⚠ group_index 是 IntProperty，**一个组都没有时
+        # 它也是 0**，直接 +1 会指到 1 —— 随后 props.groups.add() 只让长度变成 1，
+        # 取 props.groups[1] 就 IndexError（"没有组时新增必崩"的成因）。故按插入前
+        # 的组数夹紧；空表时插到 0。同 EFX_OT_uvs_frame_insert 的既有写法。
+        n_groups = len(uvs.groups)
+        insert_at = min(props.group_index + 1, n_groups) if n_groups else 0
         # 按真实像素位置生成 UV 矩形（不能用 _gen_frames_grid 的均匀网格公式，
         # 见 _gen_frames_pixel_grid 文档串——画布右/下常带 POT 补齐留白，不是
         # 均匀 cols×rows 切分）。

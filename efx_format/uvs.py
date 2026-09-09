@@ -82,6 +82,10 @@ class UVSGroup:
     # preserved from original for byte-perfect roundtrip.
     # new groups default to -1 = use 16-byte alignment heuristic.
     _fi_dat_gap: int = field(default=-1, repr=False)
+    # 空 group（frameCount/frameIndexCount/mapCount 全 0）的三个偏移字段：官方
+    # 数据两种写法都有——多数写当前游标位置，少数写 0。没有规律可循，故原样记下。
+    # True = 原文件写的 0；False = 写游标位置（新建 group 的默认）。
+    _zero_empty_offsets: bool = field(default=False, repr=False)
 
 
 @dataclass
@@ -89,6 +93,11 @@ class UVSString:
     """One entry in the shared string table."""
     path: str
     type: int   # texture slot type (1 = Diffuse, …)
+    # 同一段文本在表里重复出现时，官方文件有时让多个 StringHead **指向同一份**
+    # 字符串副本（多余的副本仍写在文件里，只是没人引用），故文件长度不变、只有
+    # 偏移不同。解析时把这种别名记下来（本条与第 alias_of 条共用副本），序列化
+    # 时照抄——否则重出的文件字节对不上。-1 = 独立副本（新建字符串的默认）。
+    _alias_of: int = field(default=-1, repr=False)
 
 
 @dataclass
@@ -144,6 +153,9 @@ def _parse_groups(data: bytes, grp_off: int, grp_cnt: int) -> List[UVSGroup]:
 
         fi_end = fi_off + fi_cnt * 4
         fi_dat_gap = dat_off - fi_end if fd_cnt != 0 else 0
+        # 空 group：三个偏移原文件写 0 还是写游标位置？原样记下（官方数据两种都有）
+        zero_empty = (fd_cnt == 0 and fi_cnt == 0 and map_cnt == 0
+                      and fd_off == 0 and fi_off == 0 and dat_off == 0)
 
         groups.append(UVSGroup(
             frames=frames,
@@ -154,6 +166,7 @@ def _parse_groups(data: bytes, grp_off: int, grp_cnt: int) -> List[UVSGroup]:
             unkn32_1=u1,
             _frame_indices=fi,
             _fi_dat_gap=fi_dat_gap,
+            _zero_empty_offsets=zero_empty,
         ))
     return groups
 
@@ -174,6 +187,7 @@ def _parse_frames(data: bytes, off: int, cnt: int) -> List[UVSFrame]:
 
 def _parse_strings(data: bytes, str_off: int, str_cnt: int) -> List[UVSString]:
     strings = []
+    seen_offsets = {}      # 绝对偏移 -> 最早引用它的条目下标
     pos = str_off
     for i in range(str_cnt):
         blank, s_off, s_type = struct.unpack_from('<qqi', data, pos)
@@ -183,7 +197,11 @@ def _parse_strings(data: bytes, str_off: int, str_cnt: int) -> List[UVSString]:
 
         end = data.index(b'\x00', s_off)
         path = data[s_off:end].decode('utf-8')
-        strings.append(UVSString(path=path, type=s_type))
+        # 与之前某条共用同一份字符串副本？记下最早那条的下标（见 UVSString._alias_of）
+        alias = seen_offsets.get(s_off, -1)
+        if alias < 0:
+            seen_offsets[s_off] = i
+        strings.append(UVSString(path=path, type=s_type, _alias_of=alias))
     return strings
 
 
@@ -251,7 +269,8 @@ def _serialize(uvs: UVSFile) -> bytes:
     out += IB_SIG
     out += struct.pack('<q', grp_off)
     out += struct.pack('<q', grp_cnt)
-    out += struct.pack('<q', str_head_off)
+    # 字符串表为空时官方文件写 0 而不是游标位置（cm_exMap_000 是唯一样本）
+    out += struct.pack('<q', str_head_off if str_cnt else 0)
     out += struct.pack('<q', str_cnt)
     # pad header to 0x30
     while len(out) < _HDR_PAD:
@@ -260,10 +279,16 @@ def _serialize(uvs: UVSFile) -> bytes:
     # group heads
     for i, g in enumerate(groups):
         n = len(g.frames)
+        # 空 group 的三个偏移：官方数据里写 0 和写游标位置的都有，按解析时记下的
+        # 原样重出（见 UVSGroup._zero_empty_offsets）。非空 group 不受影响。
+        if n == 0 and g.map_count == 0 and g._zero_empty_offsets:
+            fdo = fio = mpo = 0
+        else:
+            fdo, fio, mpo = fd_offsets[i], fi_offsets[i], map_offsets[i]
         out += struct.pack('<qqqqqqffq',
-            fd_offsets[i], n,
-            fi_offsets[i], n,
-            map_offsets[i], g.map_count,
+            fdo, n,
+            fio, n,
+            mpo, g.map_count,
             g.unkn32_0, g.unkn32_1,
             g.dynamic,
         )
@@ -292,8 +317,12 @@ def _serialize(uvs: UVSFile) -> bytes:
             out += struct.pack('<4i', *padded)
 
     # string heads
-    for i, (s, s_off) in enumerate(zip(strings, str_data_offsets)):
-        out += struct.pack('<qqi', 0, s_off, s.type)
+    # 别名条目（_alias_of >= 0）指向被共用的那份副本；它自己那份副本仍写进文件
+    # ——官方文件就是这样：多余副本存在但无人引用，故长度不变、只有偏移不同。
+    for i, (st, s_off) in enumerate(zip(strings, str_data_offsets)):
+        tgt = st._alias_of
+        eff_off = str_data_offsets[tgt] if 0 <= tgt < len(str_data_offsets) else s_off
+        out += struct.pack('<qqi', 0, eff_off, st.type)
         if i < str_cnt - 1:
             out += b'\x00' * _STR_PAD
 
