@@ -1,15 +1,13 @@
 """
 blender_efx/file_menu.py  —  外部文件的统一入口层：File > Import / Export + 拖入
 
-本模块不定义任何新的算子逻辑，只把已有的导入/导出算子挂到 Blender 的标准入口上，
-汇总进一个二级菜单「MHW EFX Editor」（同 MHW Model Editor / RE Mesh Editor 的惯例，
-四条平铺项挂出来会在 File > Export 里跟一堆其他插件的菜单混排，故收进子菜单）：
+本模块不定义任何新的算子逻辑，只把已有的导入/导出算子挂到 Blender 的标准入口上：
 
-  File > Import > MHW EFX Editor >  MHW Effect (.efx)           → efx.import_efx
-                                    MHW Timeline (.timl)        → efx.import_entry_timl
-                                    MHW UV Sequence (.uvs)      → efx.uvs_import
-                                    MHW Effect Provider (.epv3) → epv.import_epv
-  File > Export > MHW EFX Editor >  同四条 → efx.export_efx / efx.export_entry_timl / efx.uvs_export / epv.export_epv
+  File > Import >  MHW Effect (.efx)              → efx.import_efx
+                   MHW Timeline (.timl)           → efx.import_entry_timl
+                   MHW UV Sequence (.uvs)         → efx.uvs_import
+                   MHW Effect Provider (.epv3)    → epv.import_epv
+  File > Export >  同四条 → efx.export_efx / efx.export_entry_timl / efx.uvs_export / epv.export_epv
 
 ⚠ .epv3 两条的算子在**兄弟包 blender_epv** 里，而它在根 __init__.py 里排在 blender_efx
 之后注册。菜单项只在 draw 时按 bl_idname 解析，正常情况没问题；但为防部分注册状态下
@@ -47,42 +45,22 @@ def _has_epv() -> bool:
     return hasattr(bpy.types, "EPV_OT_import_epv")
 
 
-class EFX_MT_file_import(bpy.types.Menu):
-    """File > Import > MHW EFX Editor 子菜单。"""
-
-    bl_idname = "EFX_MT_file_import"
-    bl_label = "MHW EFX Editor"
-
-    def draw(self, context):
-        layout = self.layout
-        layout.operator("efx.import_efx",        text=T("filemenu.efx"))
-        layout.operator("efx.import_entry_timl", text=T("filemenu.timl"))
-        layout.operator("efx.uvs_import",        text=T("filemenu.uvs"))
-        if _has_epv():
-            layout.operator("epv.import_epv",    text=T("filemenu.epv"))
-
-
-class EFX_MT_file_export(bpy.types.Menu):
-    """File > Export > MHW EFX Editor 子菜单。"""
-
-    bl_idname = "EFX_MT_file_export"
-    bl_label = "MHW EFX Editor"
-
-    def draw(self, context):
-        layout = self.layout
-        layout.operator("efx.export_efx",        text=T("filemenu.efx"))
-        layout.operator("efx.export_entry_timl", text=T("filemenu.timl"))
-        layout.operator("efx.uvs_export",        text=T("filemenu.uvs"))
-        if _has_epv():
-            layout.operator("epv.export_epv",    text=T("filemenu.epv"))
-
-
 def _menu_func_import(self, context):
-    self.layout.menu(EFX_MT_file_import.bl_idname, text=T("filemenu.title"), icon="PARTICLES")
+    layout = self.layout
+    layout.operator("efx.import_efx",        text=T("filemenu.efx"))
+    layout.operator("efx.import_entry_timl", text=T("filemenu.timl"))
+    layout.operator("efx.uvs_import",        text=T("filemenu.uvs"))
+    if _has_epv():
+        layout.operator("epv.import_epv",    text=T("filemenu.epv"))
 
 
 def _menu_func_export(self, context):
-    self.layout.menu(EFX_MT_file_export.bl_idname, text=T("filemenu.title"), icon="PARTICLES")
+    layout = self.layout
+    layout.operator("efx.export_efx",        text=T("filemenu.efx"))
+    layout.operator("efx.export_entry_timl", text=T("filemenu.timl"))
+    layout.operator("efx.uvs_export",        text=T("filemenu.uvs"))
+    if _has_epv():
+        layout.operator("epv.export_epv",    text=T("filemenu.epv"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -138,8 +116,6 @@ if _HAS_FILEHANDLER:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def register():
-    bpy.utils.register_class(EFX_MT_file_import)
-    bpy.utils.register_class(EFX_MT_file_export)
     bpy.types.TOPBAR_MT_file_import.append(_menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(_menu_func_export)
     # FileHandler 仅在 4.1+ 注册（老版本无此 API，跳过拖入导入）
@@ -163,13 +139,5 @@ def unregister():
         pass
     try:
         bpy.types.TOPBAR_MT_file_import.remove(_menu_func_import)
-    except Exception:
-        pass
-    try:
-        bpy.utils.unregister_class(EFX_MT_file_export)
-    except Exception:
-        pass
-    try:
-        bpy.utils.unregister_class(EFX_MT_file_import)
     except Exception:
         pass
