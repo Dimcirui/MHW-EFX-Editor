@@ -294,6 +294,7 @@ STRINGS = {
     "attribute.add_section":     {"EN": "Add Attribute",       "ZH": "新增属性"},
     "attribute.add_to_prefix":   {"EN": "Add Attribute to: ",  "ZH": "新增属性到："},
     "attribute.add_to_no_entry":  {"EN": "(select an Entry)",   "ZH": "（请选中 Entry）"},
+    "attribute.add_to_multi":     {"EN": "{n} selected Entries", "ZH": "选中的 {n} 个 Entry"},
     "timl.no_segment_yet":       {"EN": "This entry has no TIML segment yet",
                                   "ZH": "本 entry 还没有 TIML 段"},
     "timl.will_create_segment":  {"EN": "No TIML segment yet — one will be created",

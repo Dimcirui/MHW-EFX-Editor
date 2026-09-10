@@ -1384,9 +1384,17 @@ def _draw_attribute_presets_content(layout, context):
     layout.separator()
 
     # 2. 分类 + 属性预设下拉 + 新增（需选中 EFX_ENTRY，poll 自动灰）
-    obj = context.active_object
-    if obj is not None and obj.get("~TYPE") == "EFX_ENTRY":
-        body_label = obj.get("efx_raw_label", "") or obj.name
+    # 多选多个 entry（或其属性）时，新增/粘贴/建议一次性作用到全部，标题按数量显示。
+    try:
+        from .attribute_ops import _resolve_target_entries
+        _targets = _resolve_target_entries(context)
+    except Exception:
+        _targets = []
+    if len(_targets) > 1:
+        layout.label(text=T("attribute.add_to_prefix")
+                     + T("attribute.add_to_multi").format(n=len(_targets)), icon="PLUS")
+    elif _targets:
+        body_label = _targets[0].get("efx_raw_label", "") or _targets[0].name
         layout.label(text=T("attribute.add_to_prefix") + body_label, icon="PLUS")
     else:
         row_lbl = layout.row()
@@ -1396,11 +1404,7 @@ def _draw_attribute_presets_content(layout, context):
     #     属性，一键补上（插到规范顺序位）。纯建议，不是校验——见
     #     efx_format/categories.py::suggest_missing_attributes。
     #     目标 entry 用与新增算子相同的解析（选中 EFX_ATTRIBUTE 时也算，连续新增免切回）。
-    try:
-        from .attribute_ops import _resolve_target_entry
-        _target = _resolve_target_entry(obj)
-    except Exception:
-        _target = None
+    _target = _targets[0] if _targets else None
     if _target is not None:
         _draw_suggested_attributes(layout, _target)
 

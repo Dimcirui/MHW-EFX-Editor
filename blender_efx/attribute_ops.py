@@ -422,6 +422,74 @@ def _resolve_target_entry(obj):
     return None
 
 
+def _resolve_target_entries(context):
+    """批量新增属性的目标 entry 列表：把选中对象逐个过 _resolve_target_entry，
+    去重并保持稳定顺序（活动对象所属 entry 排第一，便于报告/后续选中）。
+    没有任何选中时退回活动对象；都解析不出返回空列表。
+    """
+    entries = []
+    seen = set()
+
+    def _push(obj):
+        e = _resolve_target_entry(obj)
+        if e is not None and e.name not in seen:
+            seen.add(e.name)
+            entries.append(e)
+
+    _push(getattr(context, "active_object", None))
+    for o in (getattr(context, "selected_objects", None) or []):
+        _push(o)
+    return entries
+
+
+def _load_attribute_preset(path: str) -> dict:
+    """读取属性预设 JSON（批量新增时只读一次，避免每个 entry 都开文件）。"""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        raise ValueError(f"读取预设失败：{exc}")
+
+
+def _add_to_entries(entries, preset: dict):
+    """把同一份预设逐个加到 entries 上。返回 (新建属性对象列表, [(entry名, 错误)])。
+    单个 entry 失败不影响其余（批量时不做全体回滚，报告里点出失败的是哪些）。
+    """
+    added = []
+    failed = []
+    for e in entries:
+        try:
+            added.append(add_attribute_to_entry(e, preset))
+        except Exception as exc:
+            failed.append((e.name, str(exc)))
+    return added, failed
+
+
+def _select_added(context, added):
+    """清空选择并选中所有新建属性，活动对象设为第一个（对应活动 entry 那份）。"""
+    try:
+        for o in context.selected_objects:
+            o.select_set(False)
+        for blk in added:
+            blk.select_set(True)
+        context.view_layer.objects.active = added[0]
+    except Exception:
+        pass
+
+
+def _report_batch(op, verb: str, added, failed, skipped: int = 0):
+    """批量结果报告：单个报名字，多个报计数，有失败/跳过则追加说明。"""
+    if len(added) == 1 and not failed and not skipped:
+        op.report({"INFO"}, f"Attribute {verb}: {added[0].name}")
+        return
+    parts = [f"{len(added)} attributes {verb}"]
+    if skipped:
+        parts.append(f"{skipped} entries already had it")
+    if failed:
+        parts.append(f"{len(failed)} failed: " + ", ".join(n for n, _ in failed[:3]))
+    op.report({"WARNING"} if failed else {"INFO"}, "; ".join(parts))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 内存剪贴板（会话级）
 # ─────────────────────────────────────────────────────────────────────────────
@@ -480,11 +548,11 @@ class EFX_OT_save_attribute_preset(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_add_attribute_from_preset(bpy.types.Operator):
-    """按选中的属性预设，在当前 EFX_ENTRY 末尾新增一个属性"""
+    """按选中的属性预设，给每个选中的 EFX_ENTRY 各新增一个属性（多选即批量）"""
 
     bl_idname      = "efx.add_attribute_from_preset"
     bl_label       = "Add Attribute"
-    bl_description = "Append an attribute to the end of the current EFX_ENTRY from the selected whole-attribute preset (attr_count auto-recomputed)"
+    bl_description = "Add an attribute from the selected whole-attribute preset to every selected EFX_ENTRY (inserted at its canonical position, attr_count auto-recomputed)"
     bl_options     = {"REGISTER", "UNDO"}
 
     preset_path: StringProperty(
@@ -495,11 +563,11 @@ class EFX_OT_add_attribute_from_preset(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return _resolve_target_entry(context.active_object) is not None
+        return bool(_resolve_target_entries(context))
 
     def execute(self, context):
-        entry_obj = _resolve_target_entry(context.active_object)
-        if entry_obj is None:
+        entries = _resolve_target_entries(context)
+        if not entries:
             self.report({"ERROR"}, "Select an EFX_ENTRY (or one of its EFX_ATTRIBUTE) object first")
             return {"CANCELLED"}
         if not self.preset_path:
@@ -508,20 +576,18 @@ class EFX_OT_add_attribute_from_preset(bpy.types.Operator):
 
         actual_path = _decode_path_ident(self.preset_path)
         try:
-            new_blk = add_attribute_to_entry_from_path(entry_obj, actual_path)
+            preset = _load_attribute_preset(actual_path)
         except Exception as exc:
             self.report({"ERROR"}, f"Failed to add attribute: {exc}")
             return {"CANCELLED"}
 
-        try:
-            for o in context.selected_objects:
-                o.select_set(False)
-            new_blk.select_set(True)
-            context.view_layer.objects.active = new_blk
-        except Exception:
-            pass
+        added, failed = _add_to_entries(entries, preset)
+        if not added:
+            self.report({"ERROR"}, f"Failed to add attribute: {failed[0][1]}")
+            return {"CANCELLED"}
 
-        self.report({"INFO"}, f"Attribute added: {new_blk.name}")
+        _select_added(context, added)
+        _report_batch(self, "added", added, failed)
         return {"FINISHED"}
 
 
@@ -629,22 +695,22 @@ def suggested_for_entry(entry_obj, min_rate=40):
 
 
 class EFX_OT_add_suggested_attribute(bpy.types.Operator):
-    """把某个"常用但缺失"的属性按默认预设补进当前 entry（插到规范顺序位）"""
+    """把某个"常用但缺失"的属性按默认预设补进每个选中的 entry（插到规范顺序位，多选即批量）"""
 
     bl_idname      = "efx.add_suggested_attribute"
     bl_label       = "Add Suggested Attribute"
-    bl_description = "Add this commonly-used attribute to the entry, inserted at its canonical position"
+    bl_description = "Add this commonly-used attribute to every selected entry, inserted at its canonical position (entries that already have it are skipped)"
     bl_options     = {"REGISTER", "UNDO"}
 
     type_hash: StringProperty(name="Type Hash", default="")
 
     @classmethod
     def poll(cls, context):
-        return _resolve_target_entry(context.active_object) is not None
+        return bool(_resolve_target_entries(context))
 
     def execute(self, context):
-        entry_obj = _resolve_target_entry(context.active_object)
-        if entry_obj is None:
+        entries = _resolve_target_entries(context)
+        if not entries:
             self.report({"ERROR"}, "Select an EFX_ENTRY (or one of its EFX_ATTRIBUTE) object first")
             return {"CANCELLED"}
         try:
@@ -657,18 +723,25 @@ class EFX_OT_add_suggested_attribute(bpy.types.Operator):
             self.report({"ERROR"}, "No default preset shipped for this attribute type")
             return {"CANCELLED"}
         try:
-            new_blk = add_attribute_to_entry_from_path(entry_obj, path)
+            preset = _load_attribute_preset(path)
         except Exception as exc:
             self.report({"ERROR"}, f"Failed to add attribute: {exc}")
             return {"CANCELLED"}
-        try:
-            for o in context.selected_objects:
-                o.select_set(False)
-            new_blk.select_set(True)
-            context.view_layer.objects.active = new_blk
-        except Exception:
-            pass
-        self.report({"INFO"}, f"Attribute added: {new_blk.name}")
+
+        # 批量时跳过已经有该类型属性的 entry（建议本身就是"常用但缺失"）
+        targets = [e for e in entries
+                   if len(entries) == 1 or h not in entry_present_hashes(e)]
+        if not targets:
+            self.report({"INFO"}, "All selected entries already have this attribute")
+            return {"CANCELLED"}
+
+        added, failed = _add_to_entries(targets, preset)
+        if not added:
+            self.report({"ERROR"}, f"Failed to add attribute: {failed[0][1]}")
+            return {"CANCELLED"}
+
+        _select_added(context, added)
+        _report_batch(self, "added", added, failed, skipped=len(entries) - len(targets))
         return {"FINISHED"}
 
 
@@ -721,38 +794,33 @@ class EFX_OT_copy_attribute(bpy.types.Operator):
 
 
 class EFX_OT_paste_attribute(bpy.types.Operator):
-    """把剪贴板的属性粘贴（新增）到当前 EFX_ENTRY 末尾"""
+    """把剪贴板的属性粘贴（新增）到每个选中的 EFX_ENTRY（多选即批量）"""
 
     bl_idname      = "efx.paste_attribute"
     bl_label       = "Paste Attribute"
-    bl_description = "Append the clipboard attribute to the end of the current EFX_ENTRY (attr_count auto-recomputed)"
+    bl_description = "Add the clipboard attribute to every selected EFX_ENTRY (inserted at its canonical position, attr_count auto-recomputed)"
     bl_options     = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return bool(_ATTRIBUTE_CLIPBOARD) and _resolve_target_entry(context.active_object) is not None
+        return bool(_ATTRIBUTE_CLIPBOARD) and bool(_resolve_target_entries(context))
 
     def execute(self, context):
         if not _ATTRIBUTE_CLIPBOARD:
             self.report({"ERROR"}, "Clipboard is empty (use Copy Attribute first)")
             return {"CANCELLED"}
-        entry_obj = _resolve_target_entry(context.active_object)
-        if entry_obj is None:
+        entries = _resolve_target_entries(context)
+        if not entries:
             self.report({"ERROR"}, "Select an EFX_ENTRY (or one of its EFX_ATTRIBUTE) object first")
             return {"CANCELLED"}
-        try:
-            new_blk = add_attribute_to_entry(entry_obj, _ATTRIBUTE_CLIPBOARD)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Failed to paste attribute: {exc}")
+
+        added, failed = _add_to_entries(entries, _ATTRIBUTE_CLIPBOARD)
+        if not added:
+            self.report({"ERROR"}, f"Failed to paste attribute: {failed[0][1]}")
             return {"CANCELLED"}
-        try:
-            for o in context.selected_objects:
-                o.select_set(False)
-            new_blk.select_set(True)
-            context.view_layer.objects.active = new_blk
-        except Exception:
-            pass
-        self.report({"INFO"}, f"Attribute pasted: {new_blk.name}")
+
+        _select_added(context, added)
+        _report_batch(self, "pasted", added, failed)
         return {"FINISHED"}
 
 
