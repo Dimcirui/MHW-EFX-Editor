@@ -271,6 +271,8 @@ STRINGS = {
                               "ZH": "独立文件（不属于任何 .efx）"},
 
     # ── File > Import / Export 菜单项（file_menu.py）───────────────────────────
+    "filemenu.title":        {"EN": "MHW EFX Editor",
+                              "ZH": "MHW EFX Editor"},
     "filemenu.efx":          {"EN": "MHW Effect (.efx)",
                               "ZH": "MHW 特效 (.efx)"},
     "filemenu.timl":         {"EN": "MHW Timeline (.timl)",
