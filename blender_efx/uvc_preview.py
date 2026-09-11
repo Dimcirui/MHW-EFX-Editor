@@ -162,19 +162,23 @@ def _compute_uv(params, t):
 
 
 def _channel_enabled(uvc_obj, prefix) -> bool:
-    """该通道(uv1/uv2)是否启用：unkn0==1（实测的逐通道启用开关）。"""
-    v = _read_field(uvc_obj, prefix + "_unkn0")
+    """该通道(uv1/uv2)是否启用（实测的逐通道启用开关）。
+
+    字段名两个通道不对称：uv1 是 unknFlag（原 unkn0），uv2 是官方名 enable。
+    """
+    field = prefix + ("_unknFlag" if prefix == "uv1" else "_enable")
+    v = _read_field(uvc_obj, field)
     return int(v) == 1 if v is not None else False
 
 
 def _read_channel(uvc_obj, prefix):
     """读取单通道运动学参数 dict。"""
     return {
-        "init":        _read_field(uvc_obj, prefix + "_initialPosition"),
-        "speed":       _read_field(uvc_obj, prefix + "_speed"),
-        "accel":       _read_field(uvc_obj, prefix + "_acceleration"),
+        "init":        _read_field(uvc_obj, prefix + "_offset"),
+        "speed":       _read_field(uvc_obj, prefix + "_offsetAdd"),
+        "accel":       _read_field(uvc_obj, prefix + "_offsetCoef"),
         "scale":       _read_field(uvc_obj, prefix + "_scale"),
-        "scale_speed": _read_field(uvc_obj, prefix + "_scaleSpeed"),
+        "scale_speed": _read_field(uvc_obj, prefix + "_scaleAdd"),
     }
 
 
