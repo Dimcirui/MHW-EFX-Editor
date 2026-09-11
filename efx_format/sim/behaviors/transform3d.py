@@ -96,7 +96,7 @@ class Transform3D(Behavior):
         em.rotation = rotate.copy()
         em.scale = resize.copy()
         if cfg.t3d_apply_base:
-            em.origin = translate.copy()
+            em.drift = translate.copy()
         else:
             em.note("TRANSFORM3D 静态变换未套用（宿主已摆位；开 t3d_apply_base 可改）")
 
@@ -107,7 +107,7 @@ class Transform3D(Behavior):
 
         v = st["vel"]
         if v.x or v.y or v.z:
-            em.origin += v
+            em.drift += v      # 写 drift 不写 origin：origin 由核心每帧合成
             if st["accel_on"]:
                 m = st["vel_mod"]
                 v.x *= m.x

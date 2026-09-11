@@ -62,6 +62,13 @@ UNKNOWNS = {
         "⚠ blender_efx/es3d_preview.py 目前是第三种读法（前一半当尺寸），三处待统一。",
         ("minmax", "offset_size"), "minmax",
     ),
+    "ribbon_trail_source": (
+        "条带类渲染体（RIBBON 轨迹跟随 / RIBBONBLADE）沿谁的轨迹画。"
+        "annotations 原话是「沿**发射器**实际划过的轨迹」，但带 VELOCITY3D 的条带"
+        "粒子显然各画各的。'auto'=粒子动过就用粒子的、否则退回发射器的，"
+        "两种用法都能覆盖；另两个值可强制。",
+        ("auto", "particle", "emitter"), "auto",
+    ),
     "rot_order_applied": (
         "欧拉角按 rotationOrder 依次旋转时，是「顺序串里先写的先作用于向量」"
         "（'forward'）还是相反（'reverse'）。VELOCITY3D 和 EMITTERSHAPE3D 共用此开关"
@@ -78,9 +85,9 @@ class SimConfig(object):
         "fps", "seed",
         "jitter_mode", "a0_sample", "timl_mode", "timl_interp",
         "life_model", "age_during_delay", "es3d_range_mode",
-        "rot_order_applied", "t3d_apply_base",
+        "rot_order_applied", "ribbon_trail_source", "t3d_apply_base",
         "stage_order", "render_stage_order", "order_override", "disabled",
-        "max_particles_hard", "max_frames", "max_spawn_depth",
+        "max_particles_hard", "max_frames", "max_spawn_depth", "trail_max",
         "strict",
     )
 
@@ -98,6 +105,7 @@ class SimConfig(object):
         self.age_during_delay = False
         self.es3d_range_mode = "minmax"
         self.rot_order_applied = "forward"
+        self.ribbon_trail_source = "auto"
 
         # ── 宿主分工（不是待标定项，是集成选择）────────────────────────────
         # False = TRANSFORM3D 的静态 translate/rotate/resize 由**宿主**负责摆位
@@ -118,6 +126,7 @@ class SimConfig(object):
         self.max_particles_hard = 20000     # 硬上限，防未知语义导致的爆炸
         self.max_frames = 100000            # indefiniteLifespan 的兜底
         self.max_spawn_depth = 4            # Action 递归上限（validate.py 查过 Action loop）
+        self.trail_max = 64                 # 逐粒子位置历史的最大帧数（条带类渲染体用）
 
         # ── 开发期 ───────────────────────────────────────────────────────────
         self.strict = False                 # 逐调用校验 behavior 没越阶段写字段

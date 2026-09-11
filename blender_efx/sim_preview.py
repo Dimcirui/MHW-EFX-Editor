@@ -72,6 +72,8 @@ _P = {
     "timer": None,
     "dirty": False,       # 属性被编辑过 → 下个 tick 重建
     "error": "",
+    "ref_rows": None,     # 播放起点的 entry 世界矩阵（三行），绘制与位移都以它为基准
+    "mesh_cache": {},     # 绑定网格 → 游戏坐标系下的三角顶点（避免逐帧重算）
 }
 
 
@@ -209,6 +211,51 @@ def _to_blender(v):
     return (v.x * _UNIT, -v.z * _UNIT, v.y * _UNIT)
 
 
+def _to_game(bx, by, bz):
+    """_to_blender 的逆。宿主报告发射器位移时用。"""
+    return (bx / _UNIT, bz / _UNIT, -by / _UNIT)
+
+
+def _ref_local(rows, world_pos):
+    """世界坐标点 → 参考系下的局部偏移。
+
+    把参考系当刚体处理（`Rᵀ(p − t)`）：entry empty 上如果有非 1 的缩放，这里会
+    有偏差——语料里 TRANSFORM3D.resize 恒为 1.0，先不为它引入 mathutils 依赖。
+    """
+    dx = world_pos[0] - rows[0][3]
+    dy = world_pos[1] - rows[1][3]
+    dz = world_pos[2] - rows[2][3]
+    return (rows[0][0] * dx + rows[1][0] * dy + rows[2][0] * dz,
+            rows[0][1] * dx + rows[1][1] * dy + rows[2][1] * dz,
+            rows[0][2] * dx + rows[1][2] * dy + rows[2][2] * dz)
+
+
+def _sync_host_origin(scene):
+    """把 entry empty 相对**播放起点**的位移报给模拟器。
+
+    为什么需要：条带类渲染体（RIBBON 轨迹跟随 / RIBBONBLADE 刀光）画的是发射器
+    划过的轨迹。blade_trail 这类原型根本没有 VELOCITY3D——粒子自己不动，整个效果
+    靠 PARENTOPTIONS 把发射器绑在挥动的武器骨骼上。宿主不把这个位移报进去，
+    模拟层就永远看不到运动，刀光永远是空的。
+
+    参考系取**播放开始那一刻**的世界矩阵并固定下来（`_P['ref_rows']`），绘制也
+    用它——这样发射器移动时，已经发出去的粒子会如实留在原地，而不是跟着整体平移。
+    """
+    sim = _P["sim"]
+    entry = bpy.data.objects.get(_P["entry_name"])
+    rows = _P["ref_rows"]
+    if sim is None or entry is None or rows is None:
+        return
+    try:
+        world = entry.matrix_world.translation
+    except Exception:
+        return
+    bx, by, bz = _ref_local(rows, (world[0], world[1], world[2]))
+    gx, gy, gz = _to_game(bx, by, bz)
+    ho = sim.em.host_origin
+    ho.x, ho.y, ho.z = gx, gy, gz
+
+
 def _entry_matrix_rows(entry_obj):
     """entry empty 的世界矩阵，拆成三行纯 float 元组。
 
@@ -273,6 +320,156 @@ def _camera_axes(rv3d):
     return right, up
 
 
+def _view_direction(rv3d):
+    """视图矩阵第三行 = 相机朝向（世界空间）。条带要绕它把宽度撑开。"""
+    vm = rv3d.view_matrix
+    return (vm[2][0], vm[2][1], vm[2][2])
+
+
+def _norm(v):
+    n = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    if n < 1e-9:
+        return None
+    return (v[0] / n, v[1] / n, v[2] / n)
+
+
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0])
+
+
+def _emit_ribbon(verts, colors, item, col, size_mul, world_fn, view_dir):
+    """条带 → 三角形。
+
+    每一段的「横向」取 `段方向 × 视线` 并归一化——这样条带永远把宽面朝向相机，
+    是 Trail Renderer 的标准做法。段方向与视线平行时（正对着看）叉乘退化，
+    这一段就跳过，不画烂三角。
+    """
+    pts = item.points
+    if not pts or len(pts) < 2:
+        return
+    world = [world_fn(q) for q, _hw, _a in pts]
+    sides = []
+    n = len(world)
+    for i in range(n):
+        a = world[max(0, i - 1)]
+        b = world[min(n - 1, i + 1)]
+        seg = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
+        s = _norm(_cross(seg, view_dir))
+        sides.append(s)
+
+    half = [max(1e-5, size_mul * abs(hw) * _UNIT) for _q, hw, _a in pts]
+    alphas = [a for _q, _hw, a in pts]
+
+    for i in range(n - 1):
+        s0, s1 = sides[i], sides[i + 1]
+        if s0 is None or s1 is None:
+            continue
+        p0, p1 = world[i], world[i + 1]
+        h0, h1 = half[i], half[i + 1]
+        a0 = (col[0], col[1], col[2], col[3] * alphas[i])
+        a1 = (col[0], col[1], col[2], col[3] * alphas[i + 1])
+
+        l0 = (p0[0] - s0[0] * h0, p0[1] - s0[1] * h0, p0[2] - s0[2] * h0)
+        r_0 = (p0[0] + s0[0] * h0, p0[1] + s0[1] * h0, p0[2] + s0[2] * h0)
+        l1 = (p1[0] - s1[0] * h1, p1[1] - s1[1] * h1, p1[2] - s1[2] * h1)
+        r_1 = (p1[0] + s1[0] * h1, p1[1] + s1[1] * h1, p1[2] + s1[2] * h1)
+
+        verts.extend((l0, r_0, r_1, l0, r_1, l1))
+        colors.extend((a0, a0, a1, a0, a1, a1))
+
+
+#: MESH 没绑定网格时画的占位：单位立方体的 12 个三角（游戏坐标系，半边长 1）
+_PLACEHOLDER_TRIS = None
+
+
+def _placeholder_cube():
+    global _PLACEHOLDER_TRIS
+    if _PLACEHOLDER_TRIS is not None:
+        return _PLACEHOLDER_TRIS
+    c = [(-1, -1, -1), (1, -1, -1), (1, 1, -1), (-1, 1, -1),
+         (-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1)]
+    faces = [(0, 1, 2), (0, 2, 3), (4, 6, 5), (4, 7, 6),
+             (0, 4, 5), (0, 5, 1), (2, 6, 7), (2, 7, 3),
+             (1, 5, 6), (1, 6, 2), (0, 3, 7), (0, 7, 4)]
+    _PLACEHOLDER_TRIS = [c[i] for f in faces for i in f]
+    return _PLACEHOLDER_TRIS
+
+
+def _mesh_tris_game(mesh_obj):
+    """绑定网格的三角顶点，换算到**游戏坐标系**并缓存。
+
+    换算一次、缓存下来，之后每个粒子只需要旋转/缩放/平移，不必逐帧重做坐标变换。
+    """
+    if mesh_obj is None:
+        return _placeholder_cube()
+    key = mesh_obj.name
+    cached = _P["mesh_cache"].get(key)
+    if cached is not None:
+        return cached
+    try:
+        me = mesh_obj.data
+        me.calc_loop_triangles()
+        verts = me.vertices
+        out = []
+        for tri in me.loop_triangles:
+            for vi in tri.vertices:
+                co = verts[vi].co
+                out.append(_to_game(co[0], co[1], co[2]))
+    except Exception:
+        out = _placeholder_cube()
+    _P["mesh_cache"][key] = out
+    return out
+
+
+def _bound_mesh_for(entry_obj):
+    """entry 下 MESH 属性绑定的网格对象（mod3_link 填的 efx_mesh_target）。"""
+    for blk in _entry_attributes(entry_obj):
+        try:
+            tgt = getattr(blk, "efx_mesh_target", None)
+        except Exception:
+            tgt = None
+        if tgt is not None and getattr(tgt, "type", None) == "MESH":
+            return tgt
+    return None
+
+
+def _emit_mesh(verts, colors, item, col, size_mul, world_fn, entry_obj):
+    """网格 → 三角形。
+
+    几何来自宿主（mod3_link 已经把 mod3 导进来并绑在 MESH 属性上），模拟层只给
+    位置/旋转/缩放/颜色。没绑定就画一个占位立方体——比什么都不画诚实。
+    """
+    from ..efx_format.sim.vecmath import rotate_euler
+    from ..efx_format.sim.state import Vec3
+
+    tris = _mesh_tris_game(_bound_mesh_for(entry_obj))
+    if not tris:
+        return
+
+    rot = item.extra.get("rot")
+    order = item.extra.get("rot_order", "XYZ")
+    sx = size_mul * item.size.x
+    sy = size_mul * item.size.y
+    sz = size_mul * item.size.z
+    px, py, pz = item.pos.x, item.pos.y, item.pos.z
+
+    rx = ry = rz = 0.0
+    if rot is not None:
+        rx, ry, rz = rot.x, rot.y, rot.z
+
+    for (vx, vy, vz) in tris:
+        v = Vec3(vx * sx, vy * sy, vz * sz)
+        if rx or ry or rz:
+            v = rotate_euler(v, rx, ry, rz, order=order)
+        v.x += px
+        v.y += py
+        v.z += pz
+        verts.append(world_fn(v))
+        colors.append(col)
+
+
 def _draw():
     """POST_VIEW draw handler。**不改任何状态**，只画 _P['items']。"""
     if not is_active():
@@ -296,7 +493,10 @@ def _draw():
     entry = bpy.data.objects.get(_P["entry_name"])
     if entry is None:
         return
-    r0, r1, r2 = _entry_matrix_rows(entry)
+    # 用**播放起点**的矩阵，不是当前矩阵：发射器移动的部分已经通过 host_origin
+    # 进了模拟，这里再用当前矩阵就会把同一段位移算两遍。
+    rows = _P["ref_rows"] or _entry_matrix_rows(entry)
+    r0, r1, r2 = rows
 
     size_mul = float(getattr(scene, "efx_sim_particle_size", 1.0))
     draw_mode = getattr(scene, "efx_sim_draw_mode", "QUADS")
@@ -318,23 +518,48 @@ def _draw():
             return buckets.get(it.blend) or buckets["ALPHA"]
         return buckets[blend]
 
-    for it in items:
-        bx, by, bz = _to_blender(it.pos)
-        center = (r0[0] * bx + r0[1] * by + r0[2] * bz + r0[3],
-                  r1[0] * bx + r1[1] * by + r1[2] * bz + r1[3],
-                  r2[0] * bx + r2[1] * by + r2[2] * bz + r2[3])
-        col = (it.color[0], it.color[1], it.color[2], it.color[3])
+    def _world(v):
+        """游戏坐标 → 世界坐标（过参考矩阵）。"""
+        bx, by, bz = _to_blender(v)
+        return (r0[0] * bx + r0[1] * by + r0[2] * bz + r0[3],
+                r1[0] * bx + r1[1] * by + r1[2] * bz + r1[3],
+                r2[0] * bx + r2[1] * by + r2[2] * bz + r2[3])
 
-        if draw_mode in ("QUADS", "BOTH"):
+    def _world_dir(v):
+        """游戏坐标系的**方向**（不含平移）→ 世界方向。"""
+        bx, by, bz = _to_blender(v)
+        return (r0[0] * bx + r0[1] * by + r0[2] * bz,
+                r1[0] * bx + r1[1] * by + r1[2] * bz,
+                r2[0] * bx + r2[1] * by + r2[2] * bz)
+
+    view_dir = _view_direction(rv3d)
+
+    for it in items:
+        center = _world(it.pos)
+        col = (it.color[0], it.color[1], it.color[2], it.color[3])
+        kind = it.kind
+
+        if kind == "RIBBON" and it.points:
+            bv, bc = _bucket_of(it)
+            _emit_ribbon(bv, bc, it, col, size_mul, _world, view_dir)
+        elif kind == "MESH":
+            bv, bc = _bucket_of(it)
+            _emit_mesh(bv, bc, it, col, size_mul, _world, entry)
+        elif draw_mode in ("QUADS", "BOTH"):
             # it.size 是**游戏单位**（BILLBOARD3D 的 width×scale 一类），和位置同一
             # 套换算：÷100。size_mul 只是个人工放大镜，默认 1.0 = 照文件里的尺寸画。
             hw = max(1e-5, size_mul * abs(it.size.x) * _UNIT * 0.5)
             hh = max(1e-5, size_mul * abs(it.size.y) * _UNIT * 0.5)
-            qr, qu = (_spin(right, up, it.rot) if it.rot else (right, up))
+            if it.axis_u is not None and it.axis_v is not None:
+                # PLANE：固定朝向，用属性给的横/纵轴，不朝相机
+                qr, qu = _world_dir(it.axis_u), _world_dir(it.axis_v)
+            else:
+                qr, qu = (_spin(right, up, it.rot) if it.rot else (right, up))
             bv, bc = _bucket_of(it)
             bv.extend(_quad_verts(center, qr, qu, hw, hh))
             bc.extend([col] * 6)
-        if draw_mode in ("POINTS", "BOTH"):
+
+        if draw_mode in ("POINTS", "BOTH") and kind not in ("RIBBON", "MESH"):
             points.append(center)
             point_colors.append(col)
         vel = it.extra.get("vel")
@@ -474,6 +699,7 @@ def _tick(scene):
     sim = _P["sim"]
     if sim is None:
         return
+    _sync_host_origin(scene)
 
     now = time.perf_counter()
     dt = now - _P["last_t"]
@@ -540,6 +766,8 @@ class EFX_OT_sim_play(Operator):
         _P["items"] = []
         _P["dirty"] = False
         _P["playing"] = True
+        _P["ref_rows"] = _entry_matrix_rows(entry)
+        _P["mesh_cache"] = {}
 
         _add_handler()
         wm = context.window_manager
@@ -571,6 +799,7 @@ class EFX_OT_sim_play(Operator):
         _remove_handlers()
         _P["playing"] = False
         _P["items"] = []
+        _P["mesh_cache"] = {}
         _redraw_viewports()
         return {"FINISHED"}
 
@@ -594,6 +823,7 @@ class EFX_OT_sim_stop(Operator):
         _remove_handlers()
         _P["playing"] = False
         _P["items"] = []
+        _P["mesh_cache"] = {}
         _redraw_viewports()
         return {"FINISHED"}
 
@@ -642,6 +872,8 @@ class EFX_OT_sim_restart(Operator):
         _P["last_t"] = time.perf_counter()
         _P["items"] = []
         _P["playing"] = True
+        _P["ref_rows"] = _entry_matrix_rows(entry)
+        _P["mesh_cache"] = {}
         _redraw_viewports()
         return {"FINISHED"}
 
@@ -662,6 +894,7 @@ class EFX_OT_sim_step(Operator):
         if sim is None:
             return {"CANCELLED"}
         _rebuild_if_dirty(context.scene)
+        _sync_host_origin(context.scene)
         sim.step()
         try:
             _P["items"] = sim.build_render()

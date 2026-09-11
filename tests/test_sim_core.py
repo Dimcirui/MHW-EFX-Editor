@@ -21,9 +21,10 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from efx_format.hashes import (BILLBOARD3D, EMITTERSHAPE3D, LIFE,  # noqa: E402
-                               NOISE, ROTATEANIM, SCALEANIM, SPAWN,
-                               TRANSFORM3D, VELOCITY3D)
+from efx_format.hashes import (BILLBOARD3D, DUMMY, EMITTERSHAPE3D,  # noqa: E402
+                               LIFE, MESH, NOISE, PLANE, RIBBON, RIBBONBLADE,
+                               ROTATEANIM, SCALEANIM, SPAWN, TRANSFORM3D,
+                               VELOCITY3D)
 from efx_format.sim import (FORCE, Behavior, SimConfig, Simulator,  # noqa: E402
                             Vec3, from_attr_blocks, register)
 from efx_format.sim import rng as simrng  # noqa: E402
@@ -145,6 +146,77 @@ def billboard_fields(**kw):
          "scale": 1.0, "scaleJitter": 0.0,
          "width": 100.0, "widthJitter": 0.0,
          "height": 100.0, "heightJitter": 0.0}
+    f.update(kw)
+    return f
+
+
+def plane_fields(**kw):
+    f = {"typeFlag": 0, "applicationRule": 0,
+         "color": [255, 255, 255, 255], "colorRange": [255, 255, 255, 255],
+         "useColorRange": 0, "blendMode": 0,
+         "brightness": 1.0, "brightnessJitter": 0.0,
+         "EPVColorSlot1": 0, "EPVColorSlot2": 0,
+         "rotation2": 0.0, "rotation2Jitter": 0.0,
+         "scale": 1.0, "scaleJitter": 0.0,
+         "width": 100.0, "widthJitter": 0.0,
+         "height": 100.0, "heightJitter": 0.0,
+         "baseAxis": 1, "rotationOrder": 4,
+         "rotation": [0.0] * 6}
+    f.update(kw)
+    return f
+
+
+def ribbon_fields(**kw):
+    f = {"typeFlag": 0, "color": [255, 255, 255, 255],
+         "colorRange": [255, 255, 255, 255], "useColorRange": 0, "blendMode": 0,
+         "brightness": 1.0, "brightnessJitter": 0.0,
+         "ribbonMode": 0, "scale": 1.0, "scale_jitter": 0.0,
+         "width": 20.0, "width_jitter": 0.0,
+         "length": 100.0, "length_jitter": 0.0,
+         "subdivisionCount": 5, "baseAxis": 1, "rotationOrder": 4,
+         "rotationX": 0.0, "rotationXJitter": 0.0,
+         "rotationY": 0.0, "rotationYJitter": 0.0,
+         "rotationZ": 0.0, "rotationZJitter": 0.0,
+         "spawnAnchorOffset": 0.0,
+         "restoreStrength": 1.0, "restoreStrengthJitter": 0.0,
+         "inertia": 0.9, "inertiaJitter": 0.0,
+         "springiness": 0.1, "springiness_jitter": 0.0,
+         "epvcolor_0": 0, "epvcolor_1": 0,
+         "base_width_multiplier": 1.0, "tip_width_multiplier": 1.0,
+         "base_opacity": 1.0, "tip_opacity": 1.0,
+         "enableFlap": 0,
+         "flap1Frequency": 0.0, "flap1FrequencyJitter": 0.0,
+         "flap1Amount": 0.0, "flap1AmountJitter": 0.0,
+         "flap2Frequency": 0.0, "flap2FrequencyJitter": 0.0,
+         "flap2Amount": 0.0, "flap2AmountJitter": 0.0}
+    f.update(kw)
+    return f
+
+
+def blade_fields(**kw):
+    white = {"epvColorSlot": 0, "color1": [255, 255, 255, 255]}
+    f = {"typeFlag": 1, "widthDirection": 1, "width": 100.0,
+         "length": 500.0, "lengthMode": 0,
+         "maxLengthLimit": 1500.0, "contractionSpeed": 600.0,
+         "colourTransitionPoint": 0.0, "emissiveStrength": 1.0,
+         "uvRepetition": 1.0, "head": dict(white), "tailEnd": dict(white)}
+    f.update(kw)
+    return f
+
+
+def mesh_fields(**kw):
+    f = {"typeFlag": 1, "colorRate": 1.0, "colorRateJitter": 0.0,
+         "emissiveColorRate": 1.0, "emissiveColorRateJitter": 0.0,
+         "rotation": [0.0] * 6, "rotation2": 0.0, "rotation2Jitter": 0.0,
+         "rotationOrder": 4,
+         "scale": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+         "global_scale": 1.0, "global_scale_jitter": 0.0,
+         "visconIndex": 0, "visconIndexJitter": 0,
+         "color": [255, 255, 255, 255], "colorRange": [255, 255, 255, 255],
+         "emissiveColor": [0, 0, 0, 255], "emissiveColorRange": [0, 0, 0, 255],
+         "useColorRange": 0, "useEmissiveColor": 0, "useEmissiveColorRange": 0,
+         "disableAllColorRange": 0,
+         "epv_color_slot1": 0, "epv_color_slot2": 0}
     f.update(kw)
     return f
 
@@ -1287,6 +1359,469 @@ class TestT2EndToEnd(unittest.TestCase):
             self.assertNotIn(done, names)
 
     def test_every_archetype_still_runs_and_renders(self):
+        for name in sorted(os.listdir(ARCHETYPE_DIR)):
+            if not name.endswith(".json"):
+                continue
+            with self.subTest(archetype=name):
+                blocks, timl = _load_archetype(name)
+                sim = from_attr_blocks(blocks, timl, SimConfig(seed=1, strict=True))
+                for _ in range(120):
+                    sim.step()
+                sim.build_render()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 轨迹工具
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTrailHelpers(unittest.TestCase):
+
+    def setUp(self):
+        from efx_format.sim import trail
+        self.t = trail
+        # 沿 X 每帧走 10：0,10,20,...,100
+        self.line = [Vec3(i * 10.0, 0, 0) for i in range(11)]
+
+    def test_clip_keeps_newest_end(self):
+        out = self.t.clip_by_length(self.line, 25.0)
+        self.assertEqual(out[0], Vec3(100, 0, 0))          # 新→旧
+        self.assertAlmostEqual(out[-1].x, 75.0, places=6)  # 恰好截断 25
+
+    def test_clip_interpolates_the_cut(self):
+        """截断点落在段中间时插值，条带长度才是连续变化的。"""
+        out = self.t.clip_by_length(self.line, 15.0)
+        self.assertAlmostEqual(out[-1].x, 85.0, places=6)
+
+    def test_clip_longer_than_trail_returns_all(self):
+        out = self.t.clip_by_length(self.line, 9999.0)
+        self.assertEqual(len(out), 11)
+
+    def test_resample_is_arc_length_uniform(self):
+        pts = self.t.resample(self.line, 6)
+        self.assertEqual(len(pts), 6)
+        gaps = [(pts[i + 1] - pts[i]).length() for i in range(5)]
+        for g in gaps:
+            self.assertAlmostEqual(g, 20.0, places=4)
+
+    def test_resample_degenerate_does_not_crash(self):
+        self.assertEqual(self.t.resample([], 5), [])
+        same = [Vec3(1, 1, 1)] * 4
+        self.assertEqual(len(self.t.resample(same, 5)), 5)
+
+    def test_straight(self):
+        pts = self.t.straight(Vec3(), Vec3(0, 1, 0), 100.0, 5)
+        self.assertEqual(len(pts), 5)
+        self.assertAlmostEqual(pts[-1].y, 100.0, places=6)
+
+
+class TestTrailRecording(unittest.TestCase):
+
+    def test_not_recorded_unless_requested(self):
+        """没有条带类渲染体就不记轨迹——那是白白的逐帧拷贝。"""
+        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       velocity=velocity_fields(speed=1.0))
+        sim.run(10)
+        self.assertEqual(sim.particles[0].trail, [])
+        self.assertEqual(sim.em.trail, [])
+
+    def test_recorded_when_a_body_needs_it(self):
+        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       velocity=velocity_fields(speed=1.0),
+                       extra=[(RIBBON, ribbon_fields())])
+        sim.run(10)
+        # 两条轨迹都是每帧一个点：跑 10 帧 → 10 个点（粒子在第 0 帧出生）
+        self.assertEqual(len(sim.particles[0].trail), 10)
+        self.assertEqual(len(sim.em.trail), 10)
+
+    def test_trail_is_capped(self):
+        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       velocity=velocity_fields(speed=1.0),
+                       extra=[(RIBBON, ribbon_fields())],
+                       config=SimConfig(trail_max=8))
+        sim.run(40)
+        self.assertEqual(len(sim.particles[0].trail), 8)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DUMMY
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDummy(unittest.TestCase):
+
+    def test_draws_nothing_at_all(self):
+        """DUMMY 是「无视觉输出的功能性宿主」——既不该画，也不该退化成点。"""
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=5, burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       extra=[(DUMMY, {"typeFlag": 1, "section_length": 1})])
+        sim.run(5)
+        self.assertEqual(len(sim.particles), 5)      # 粒子照常存在
+        self.assertEqual(sim.build_render(), [])     # 但什么都不画
+
+    def test_is_not_listed_as_unsupported(self):
+        sim = make_sim(spawn=spawn_fields(), life=life_fields(),
+                       extra=[(DUMMY, {"typeFlag": 1, "section_length": 1})])
+        self.assertNotIn("DUMMY", [n for _h, n in sim.unsupported])
+
+    def test_without_dummy_the_fallback_point_appears(self):
+        """对照组：没有渲染体时才该出现退化点。"""
+        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1))
+        sim.run(3)
+        self.assertEqual([i.kind for i in sim.build_render()], ["POINT"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLANE
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPlane(unittest.TestCase):
+
+    def _item(self, frames=1, **kw):
+        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("life", life_fields(indefiniteLifespan=1))
+        sim = make_sim(extra=[(PLANE, kw.pop("plane"))], **kw)
+        for _ in range(frames):
+            sim.step()
+        return sim.build_render()[0], sim
+
+    def test_kind_and_fixed_orientation(self):
+        """PLANE 给出自己的横/纵轴 → glue 不按相机朝向画。"""
+        it, _ = self._item(plane=plane_fields())
+        self.assertEqual(it.kind, "PLANE")
+        self.assertIsNotNone(it.axis_u)
+        self.assertIsNotNone(it.axis_v)
+
+    def test_axes_are_orthonormal(self):
+        it, _ = self._item(plane=plane_fields(baseAxis=2, rotation=[30, 0, 20, 0, 45, 0]))
+        self.assertAlmostEqual(it.axis_u.length(), 1.0, places=6)
+        self.assertAlmostEqual(it.axis_v.length(), 1.0, places=6)
+        self.assertAlmostEqual(it.axis_u.dot(it.axis_v), 0.0, places=6)
+
+    def test_base_axis_changes_the_plane(self):
+        a, _ = self._item(plane=plane_fields(baseAxis=1))    # 上
+        b, _ = self._item(plane=plane_fields(baseAxis=2))    # 前
+        self.assertGreater((a.axis_u - b.axis_u).length()
+                           + (a.axis_v - b.axis_v).length(), 1e-3)
+
+    def test_rotation2_spins_within_the_plane(self):
+        a, _ = self._item(plane=plane_fields(rotation2=0.0))
+        b, _ = self._item(plane=plane_fields(rotation2=90.0))
+        self.assertGreater((a.axis_u - b.axis_u).length(), 1.0)
+        # 自旋不改变法线：u×v 应当一致
+        na, nb = a.axis_u.cross(a.axis_v), b.axis_u.cross(b.axis_v)
+        self.assertAlmostEqual((na - nb).length(), 0.0, places=5)
+
+    def test_size_follows_billboard_convention(self):
+        it, _ = self._item(plane=plane_fields(width=80.0, height=40.0, scale=0.5))
+        self.assertAlmostEqual(it.size.x, 40.0, places=5)
+        self.assertAlmostEqual(it.size.y, 20.0, places=5)
+
+    def test_blend_and_color(self):
+        it, _ = self._item(plane=plane_fields(blendMode=1, color=[0, 128, 255, 255]))
+        self.assertEqual(it.blend, "ADDITIVE")
+        self.assertAlmostEqual(it.color[2], 1.0, places=6)
+        self.assertAlmostEqual(it.color[0], 0.0, places=6)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RIBBON
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRibbon(unittest.TestCase):
+
+    def _sim(self, ribbon=None, frames=20, **kw):
+        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("life", life_fields(indefiniteLifespan=1))
+        sim = make_sim(extra=[(RIBBON, ribbon or ribbon_fields())], **kw)
+        for _ in range(frames):
+            sim.step()
+        return sim
+
+    def test_kind_and_vertex_count(self):
+        sim = self._sim(ribbon=ribbon_fields(subdivisionCount=5))
+        it = sim.build_render()[0]
+        self.assertEqual(it.kind, "RIBBON")
+        self.assertEqual(len(it.points), 5)
+
+    def test_trail_mode_follows_particle_motion(self):
+        """粒子自己动 → 沿粒子轨迹（pick_trail 的 auto 分支）。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=50.0),
+                        velocity=velocity_fields(speed=10.0))
+        pts = [q for q, _w, _a in sim.build_render()[0].points]
+        span = (pts[-1] - pts[0]).length()
+        self.assertAlmostEqual(span, 50.0, delta=1.0)
+
+    def test_trail_falls_back_to_emitter_when_particle_is_static(self):
+        """blade_trail 那种粒子不动的情形，轨迹得取发射器的。"""
+        sim = self._sim(
+            ribbon=ribbon_fields(ribbonMode=0, length=40.0),
+            transform=transform3d_fields(
+                enableVelocityBitflag=1,
+                translation_velocity=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+        pts = [q for q, _w, _a in sim.build_render()[0].points]
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 40.0, delta=1.0)
+
+    def test_rigid_mode_is_a_straight_fixed_length_strip(self):
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=1))
+        pts = [q for q, _w, _a in sim.build_render()[0].points]
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 60.0, places=4)
+        for q in pts:                                  # baseAxis=1 → 沿 +Y
+            self.assertAlmostEqual(q.x, 0.0, places=6)
+
+    def test_chain_mode_settles_toward_straight(self):
+        """restoreStrength=1 → 柔体链最终归位成平直。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=2, length=60.0,
+                                             restoreStrength=1.0, springiness=0.3,
+                                             inertia=0.5),
+                        frames=120)
+        pts = [q for q, _w, _a in sim.build_render()[0].points]
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 60.0, delta=3.0)
+
+    def test_chain_mode_needs_per_frame_state(self):
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=2), frames=5)
+        from efx_format.sim.behaviors.ribbon import Ribbon as _R
+        self.assertIn("nodes", sim.particles[0].user[_R])
+
+    def test_width_taper(self):
+        sim = self._sim(ribbon=ribbon_fields(width=20.0, base_width_multiplier=0.0,
+                                             tip_width_multiplier=1.0))
+        widths = [w for _q, w, _a in sim.build_render()[0].points]
+        self.assertAlmostEqual(widths[0], 0.0, places=6)
+        self.assertAlmostEqual(widths[-1], 10.0, places=6)     # 半宽 = 20/2
+        self.assertLess(widths[0], widths[-1])
+
+    def test_opacity_taper(self):
+        sim = self._sim(ribbon=ribbon_fields(base_opacity=0.0, tip_opacity=1.0))
+        alphas = [a for _q, _w, a in sim.build_render()[0].points]
+        self.assertAlmostEqual(alphas[0], 0.0, places=6)
+        self.assertAlmostEqual(alphas[-1], 1.0, places=6)
+
+    def test_spawn_anchor_offset_shifts_the_strip(self):
+        a = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=50.0,
+                                           spawnAnchorOffset=0.0))
+        b = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=50.0,
+                                           spawnAnchorOffset=1.0))
+        pa = [q for q, _w, _x in a.build_render()[0].points]
+        pb = [q for q, _w, _x in b.build_render()[0].points]
+        self.assertAlmostEqual((pb[0] - pa[0]).length(), 50.0, places=4)
+
+    def test_flap_displaces_the_strip(self):
+        flat = self._sim(ribbon=ribbon_fields(ribbonMode=1, enableFlap=0))
+        wavy = self._sim(ribbon=ribbon_fields(ribbonMode=1, enableFlap=1,
+                                              flap1Frequency=2.0, flap1Amount=10.0))
+        pf = [q for q, _w, _a in flat.build_render()[0].points]
+        pw = [q for q, _w, _a in wavy.build_render()[0].points]
+        moved = sum((a - b).length() for a, b in zip(pf, pw))
+        self.assertGreater(moved, 1.0)
+
+    def test_flap_is_deterministic(self):
+        r = ribbon_fields(ribbonMode=1, enableFlap=1, flap1Frequency=2.0,
+                          flap1Amount=10.0)
+        a = [q.as_tuple() for q, _w, _x in self._sim(ribbon=r).build_render()[0].points]
+        b = [q.as_tuple() for q, _w, _x in self._sim(ribbon=r).build_render()[0].points]
+        self.assertEqual(a, b)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RIBBONBLADE
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRibbonBlade(unittest.TestCase):
+
+    def _sim(self, blade=None, frames=20, **kw):
+        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("life", life_fields(indefiniteLifespan=1))
+        sim = make_sim(extra=[(RIBBONBLADE, blade or blade_fields())], **kw)
+        for _ in range(frames):
+            sim.step()
+        return sim
+
+    def test_static_emitter_draws_nothing_but_says_why(self):
+        """刀光靠发射器挥动画轨迹；发射器不动就没有拖尾——要说清楚原因。"""
+        sim = self._sim()
+        self.assertEqual(sim.build_render(), [])
+        self.assertTrue(any("发射器" in n for n in sim.notes))
+
+    def test_moving_emitter_grows_the_trail(self):
+        sim = self._sim(
+            transform=transform3d_fields(
+                enableVelocityBitflag=1,
+                translation_velocity=[20.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+        items = sim.build_render()
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].kind, "RIBBON")
+        self.assertGreater(items[0].size.y, 0.0)
+
+    def test_length_is_capped_by_the_limit(self):
+        sim = self._sim(
+            blade=blade_fields(lengthMode=1, maxLengthLimit=100.0),
+            transform=transform3d_fields(
+                enableVelocityBitflag=1,
+                translation_velocity=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            frames=40)
+        self.assertLessEqual(sim.build_render()[0].size.y, 100.0 + 1e-6)
+
+    def test_contraction_only_kicks_in_after_motion_stops(self):
+        """0=驻留、值越大停下后收得越快——回缩是「停下之后」的行为。"""
+        from efx_format.sim.behaviors.ribbonblade import RibbonBlade as _B
+
+        def run(shrink):
+            sim = make_sim(
+                spawn=spawn_fields(burstInterval=1000),
+                life=life_fields(indefiniteLifespan=1),
+                transform=transform3d_fields(
+                    enableVelocityBitflag=1,
+                    translation_velocity=[30.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                extra=[(RIBBONBLADE, blade_fields(lengthMode=1, maxLengthLimit=900.0,
+                                                  contractionSpeed=shrink))])
+            sim.run(20)
+            grown = sim.particles[0].user[_B]["length"]
+            # 让发射器停下来：清掉速度，再跑一段
+            sim.em.user[list(sim.em.user)[0]]["vel"] = Vec3()
+            sim.run(30)
+            return grown, sim.particles[0].user[_B]["length"]
+
+        grown_hold, after_hold = run(0.0)          # 0 = 驻留
+        grown_fast, after_fast = run(1200.0)       # 大 = 停下就收
+        self.assertGreater(grown_hold, 0.0)
+        self.assertAlmostEqual(after_hold, grown_hold, delta=1e-6)
+        self.assertLess(after_fast, grown_fast)
+
+    def test_colour_transition_point(self):
+        """0=立即开始过渡 → 尾端与头端 alpha 明显不同。"""
+        sim = self._sim(
+            blade=blade_fields(colourTransitionPoint=0.0,
+                               head={"epvColorSlot": 0, "color1": [255, 255, 255, 255]},
+                               tailEnd={"epvColorSlot": 0, "color1": [0, 0, 0, 0]}),
+            transform=transform3d_fields(
+                enableVelocityBitflag=1,
+                translation_velocity=[20.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+        alphas = [a for _q, _w, a in sim.build_render()[0].points]
+        self.assertLess(alphas[0], alphas[-1])
+
+    def test_blade_is_additive(self):
+        sim = self._sim(
+            transform=transform3d_fields(
+                enableVelocityBitflag=1,
+                translation_velocity=[20.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+        self.assertEqual(sim.build_render()[0].blend, "ADDITIVE")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MESH
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestMesh(unittest.TestCase):
+
+    def _item(self, mesh=None, frames=1, **kw):
+        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("life", life_fields(indefiniteLifespan=1))
+        sim = make_sim(extra=[(MESH, mesh or mesh_fields())], **kw)
+        for _ in range(frames):
+            sim.step()
+        return sim.build_render()[0], sim
+
+    def test_kind_is_mesh(self):
+        it, _ = self._item()
+        self.assertEqual(it.kind, "MESH")
+
+    def test_geometry_is_left_to_the_host(self):
+        """核心拿不到 mod3 顶点，只给变换 + 颜色，并说明这一点。"""
+        _it, sim = self._item()
+        self.assertTrue(any("mod3" in n for n in sim.notes))
+
+    def test_per_axis_scale_times_global(self):
+        it, _ = self._item(mesh=mesh_fields(
+            scale=[2.0, 0.0, 3.0, 0.0, 4.0, 0.0], global_scale=0.5))
+        self.assertAlmostEqual(it.size.x, 1.0, places=6)
+        self.assertAlmostEqual(it.size.y, 1.5, places=6)
+        self.assertAlmostEqual(it.size.z, 2.0, places=6)
+
+    def test_rotation_is_carried_in_extra(self):
+        it, _ = self._item(mesh=mesh_fields(rotation=[10.0, 0.0, 20.0, 0.0, 30.0, 0.0]))
+        rot = it.extra["rot"]
+        self.assertAlmostEqual(rot.x, 10.0, places=6)
+        self.assertAlmostEqual(rot.y, 20.0, places=6)
+        self.assertAlmostEqual(rot.z, 30.0, places=6)
+        self.assertIn(it.extra["rot_order"], ("XYZ", "YZX", "YXZ", "ZYX", "ZXY", "XZY"))
+
+    def test_rotation2_adds_to_z(self):
+        it, _ = self._item(mesh=mesh_fields(rotation2=45.0))
+        self.assertAlmostEqual(it.extra["rot"].z, 45.0, places=6)
+
+    def test_viscon_index_is_passed_through(self):
+        it, _ = self._item(mesh=mesh_fields(visconIndex=3))
+        self.assertEqual(it.extra["viscon"], 3)
+
+    def test_emissive_off_by_default(self):
+        it, _ = self._item()
+        self.assertEqual(it.extra["emissive"], (0.0, 0.0, 0.0, 0.0))
+
+    def test_emissive_on(self):
+        it, _ = self._item(mesh=mesh_fields(useEmissiveColor=1,
+                                            emissiveColor=[255, 0, 0, 255],
+                                            emissiveColorRate=2.0))
+        self.assertAlmostEqual(it.extra["emissive"][0], 2.0, places=6)
+
+    def test_color_rate_multiplies(self):
+        it, _ = self._item(mesh=mesh_fields(color=[100, 100, 100, 255], colorRate=2.0))
+        self.assertAlmostEqual(it.color[0], 200 / 255.0, places=6)
+
+    def test_disable_all_color_range_wins(self):
+        a, _ = self._item(mesh=mesh_fields(color=[0, 0, 0, 255],
+                                           colorRange=[255, 255, 255, 255],
+                                           useColorRange=1, disableAllColorRange=1))
+        self.assertAlmostEqual(a.color[0], 0.0, places=6)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T3 之后的端到端
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestT3EndToEnd(unittest.TestCase):
+
+    EXPECT = {
+        "floating_particle_fire": "BILLBOARD",
+        "ribbon_particle": "RIBBON",
+        "mesh_debris_collision": "MESH",
+        "mesh_flowing_texture": "MESH",
+    }
+
+    def test_each_archetype_renders_its_own_body(self):
+        for stem, kind in self.EXPECT.items():
+            with self.subTest(archetype=stem):
+                blocks, timl = _load_archetype(stem + ".json")
+                sim = from_attr_blocks(blocks, timl, SimConfig(seed=2))
+                sim.run(40)
+                items = sim.build_render()
+                self.assertTrue(items, "%s 没产出任何渲染项" % stem)
+                self.assertEqual({i.kind for i in items}, {kind})
+
+    def test_dummy_archetypes_render_nothing(self):
+        for stem in ("ground_contact_effect", "invisible_trigger", "player_aura"):
+            with self.subTest(archetype=stem):
+                blocks, timl = _load_archetype(stem + ".json")
+                sim = from_attr_blocks(blocks, timl, SimConfig(seed=2))
+                sim.run(40)
+                self.assertEqual(sim.build_render(), [])
+
+    def test_skipped_bodies_still_fall_back_honestly(self):
+        """STRAINRIBBON / LIGHTNING / BILLBOARD2D 刻意不做 → 退化点 + 如实列出。"""
+        for stem, missing in (("draw_chain", "STRAINRIBBON"),
+                              ("lightning", "LIGHTNING"),
+                              ("2d_entry_basic", "BILLBOARD2D")):
+            with self.subTest(archetype=stem):
+                blocks, timl = _load_archetype(stem + ".json")
+                sim = from_attr_blocks(blocks, timl, SimConfig(seed=2))
+                sim.run(20)
+                self.assertIn(missing, [n for _h, n in sim.unsupported])
+                for it in sim.build_render():
+                    self.assertEqual(it.kind, "POINT")
+
+    def test_all_archetypes_survive_strict_mode(self):
         for name in sorted(os.listdir(ARCHETYPE_DIR)):
             if not name.endswith(".json"):
                 continue

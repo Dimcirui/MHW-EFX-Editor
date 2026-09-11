@@ -163,6 +163,8 @@ class Particle(object):
         "pos", "vel", "spawn_pos",
         # 外观
         "scale", "rot", "color", "alpha",
+        # 轨迹历史（只有需要的 behavior 声明 NEEDS_TRAIL 时才记录，见 simulator）
+        "trail",
         # 扩展
         "rolled", "user",
     )
@@ -185,6 +187,10 @@ class Particle(object):
         self.rot = Vec3()        # 角度制，游戏坐标系
         self.color = [1.0, 1.0, 1.0]
         self.alpha = 1.0
+
+        #: 最近若干帧的位置（旧→新，末尾是当前帧）。条带类渲染体要用；
+        #: 不需要的时候恒为空列表，不占成本。
+        self.trail = []
 
         self.rolled = {}
         self.user = {}
@@ -232,10 +238,13 @@ class RenderItem(object):
     """一个待绘制单元。RENDER_BODY 阶段产出，RENDER_MOD 阶段就地修改。"""
 
     __slots__ = ("kind", "pos", "size", "rot", "color", "uv_rect",
-                 "blend", "tex_key", "extra")
+                 "blend", "tex_key", "extra", "points", "axis_u", "axis_v")
 
     def __init__(self, kind="BILLBOARD", pos=None, size=None, rot=0.0):
-        self.kind = kind                     # 'BILLBOARD' | 'MESH' | 'RIBBON' | 'NONE'
+        #: 'BILLBOARD'（面朝相机的片）| 'PLANE'（固定朝向的片）| 'RIBBON'（条带）
+        #: | 'MESH'（宿主绑定的网格）| 'POINT'（无渲染体时的退化显示）
+        #: | 'NONE'（**显式**不渲染，例如 DUMMY——与「没有渲染体」不是一回事）
+        self.kind = kind
         self.pos = pos or Vec3()
         self.size = size or Vec3(1.0, 1.0, 1.0)
         self.rot = rot                       # 屏幕空间自转（角度制）
@@ -243,6 +252,16 @@ class RenderItem(object):
         self.uv_rect = (0.0, 0.0, 1.0, 1.0)  # (u0, v0, u1, v1)
         self.blend = "ALPHA"                 # 'ALPHA' | 'ADDITIVE' | 'MULTIPLY'
         self.tex_key = None                  # 贴图标识，由 glue 层解释
+
+        #: 条带类（kind='RIBBON'）的顶点串：[(pos, half_width, alpha_mul), ...]，
+        #: 从尾到头。glue 层按相机方向把它撑成三角带。
+        self.points = None
+
+        #: 面片的朝向。为 None 时 glue 层按**面朝相机**画（BILLBOARD3D）；
+        #: 给了就用这一对作为面片的横/纵轴（PLANE 这类固定朝向的渲染体）。
+        self.axis_u = None
+        self.axis_v = None
+
         self.extra = {}
 
     def __repr__(self):

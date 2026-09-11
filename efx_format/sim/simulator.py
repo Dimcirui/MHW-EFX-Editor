@@ -49,9 +49,10 @@ class EmitterState(object):
 
     __slots__ = (
         "frame", "config", "seed",
-        "origin", "velocity", "prev_origin", "rotation", "scale",
+        "origin", "host_origin", "drift", "velocity", "prev_origin",
+        "rotation", "scale",
         "particles", "spawned_total", "spawn_requests",
-        "unsupported", "user", "cycle", "finished",
+        "unsupported", "user", "cycle", "finished", "trail",
         "_resolvers", "_pending_spawn", "_notes",
     )
 
@@ -60,8 +61,14 @@ class EmitterState(object):
         self.config = config
         self.seed = seed
 
-        # 发射器自身的变换。⚠ 默认只含**动态**部分（漂移）——静态 translate 由宿主
-        # 摆位承担，见 behaviors/transform3d.py 的说明；cfg.t3d_apply_base 可改。
+        # 发射器位置拆成两份，每帧合成 origin = host_origin + drift：
+        #   host_origin —— **宿主**报进来的发射器位置（Blender 里就是 entry empty
+        #                  相对播放起点的位移）。宿主不报就恒为 0。
+        #   drift       —— 模拟层自己算出来的漂移（TRANSFORM3D 的 translation_velocity）。
+        # 分开存是因为两者都会动：合并成一个 origin 的话，宿主每帧写一次就把
+        # TRANSFORM3D 累积的漂移冲掉了。
+        self.host_origin = Vec3()
+        self.drift = Vec3()
         self.origin = Vec3()
         self.rotation = Vec3()
         self.scale = Vec3(1.0, 1.0, 1.0)
@@ -75,6 +82,10 @@ class EmitterState(object):
         self.unsupported = []         # [(type_hash, name)]，未模拟的属性
         self.user = {}                # 发射器级的 behavior 私有状态
         self.cycle = 0                # 当前轮次（SPAWN 的「换位置」计数）
+        #: 发射器自己的位置历史（旧→新）。RIBBON 的 annotations 原话是「沿**发射器**
+        #: 实际划过的轨迹绘制」——刀光/条带画的是发射器的路径，不是某个粒子的。
+        #: 与 p.trail 同样受 NEEDS_TRAIL 门控。
+        self.trail = []
         self.finished = False         # 发射器不再生成且粒子清空
 
         self._resolvers = {}
@@ -158,6 +169,7 @@ class Simulator(object):
         self._h_step = []
         self._h_death = []
         self._h_render = []
+        self._record_trail = False
         self.reset()
 
     # ── 生命周期 ─────────────────────────────────────────────────────────────
@@ -184,6 +196,10 @@ class Simulator(object):
         self._h_render.sort(key=lambda b: (cfg.render_stage_order.index(b.stage), b.order,
                                            b.attr_index))
 
+        # 任一 behavior 声明 NEEDS_TRAIL → 全局开启逐帧位置历史（条带类渲染体要用）。
+        # 开销是每粒子每帧一次 Vec3 拷贝 + 一次 pop，只在真需要时付。
+        self._record_trail = any(type(b.behavior).NEEDS_TRAIL for b in self.bound)
+
         init_rng = _rng.particle_rng(em_seed, 0)
         for b in self.bound:
             b.behavior.on_emitter_init(em, init_rng)
@@ -206,20 +222,27 @@ class Simulator(object):
 
         em.prev_origin = em.origin.copy()
 
-        # 1. 发射器时间轴
+        # 1. 发射器时间轴（TRANSFORM3D 在这里更新 em.drift）
         for b in self._h_emitter_step:
             b.behavior.on_emitter_step(em)
 
-        # 2. 发射器这一帧的位移。**必须在生成之前算**——本帧出生的粒子要用它
-        #    （velocityType=3 EmitterMotion 继承发射器移动），放到生成之后就变成
-        #    读到上一帧的值，出生那一帧永远拿到 0。
+        # 2. 合成发射器位置，并算出这一帧的位移。
+        #    **必须在生成之前**——本帧出生的粒子要用它（velocityType=3 继承发射器
+        #    移动；条带类渲染体的轨迹也从这里起头），放到生成之后就变成读上一帧的值。
+        em.origin = em.host_origin + em.drift
         em.velocity = em.origin - em.prev_origin
+        if self._record_trail:
+            em.trail.append(em.origin.copy())
+            if len(em.trail) > cfg.trail_max:
+                del em.trail[0]
 
         # 3. 消化生成队列
         self._consume_spawn(em)
 
-        # 3. 逐粒子 step
+        # 4. 逐粒子 step
         strict = cfg.strict
+        record_trail = self._record_trail
+        trail_max = cfg.trail_max
         for p in em.particles:
             if not p.alive:
                 continue
@@ -234,6 +257,11 @@ class Simulator(object):
                 else:
                     b.behavior.on_particle_step(p, em)
             p.age += 1
+            if record_trail:
+                t = p.trail
+                t.append(p.pos.copy())
+                if len(t) > trail_max:
+                    del t[0]
 
         # 4. 收割
         dead = [p for p in em.particles if not p.alive]
@@ -272,8 +300,10 @@ class Simulator(object):
             item = None
             for b in self._h_render:
                 item = b.behavior.build_render(p, em, view, item)
+            if item is not None and item.kind == "NONE":
+                continue      # 渲染体明说「我不该有视觉输出」（DUMMY），不走退化点
             if item is None:
-                # 这个 entry 没有已实现的 RENDER_BODY（比如渲染体是 RIBBON/MESH）
+                # 这个 entry 没有已实现的 RENDER_BODY（比如渲染体是 LIGHTNING）
                 # → 退化成一个点，至少能看见「有多少、在哪、多大、多亮」。
                 # 尺寸用一个**显示用**的默认值（游戏单位）乘 p.scale：真实尺寸只有
                 # 渲染体属性知道，这里没有，所以不假装知道。

@@ -49,6 +49,11 @@ class Behavior(object):
     #: schema 块名（给 resolve.py 查 TIML 映射用；由 @register 填）
     BLOCK_NAME = ""
 
+    #: 声明「我要逐帧的位置历史」。任一 behavior 打开它，Simulator 就开始给每个
+    #: 粒子记 `p.trail`。条带类渲染体（RIBBON 轨迹跟随 / RIBBONBLADE）要用。
+    #: 默认关，因为绝大多数属性不需要，记录是白白的拷贝开销。
+    NEEDS_TRAIL = False
+
     def __init__(self, type_hash, block_name):
         self.type_hash = type_hash
         self.block_name = block_name
