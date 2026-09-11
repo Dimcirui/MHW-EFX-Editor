@@ -116,12 +116,6 @@ Attribute categories were reworked in 0.4.6, based on UE Niagara System and actu
 |---|---|
 | DUMMY | ✓ |
 
-**Special**
-
-| Attribute Type | Field Editing |
-|---|---|
-| TUBELIGHT | ✓ |
-
 #### IV. Renderer Modifier (attaches to a Renderer Body, can stack)
 
 **UVS System**
@@ -188,6 +182,7 @@ Attribute categories were reworked in 0.4.6, based on UE Niagara System and actu
 | PATHCHAIN | ✓ |
 | VELOCITY2D (2D equivalent) | ✓ |
 | REPEATAREA | ✓ |
+| SCREENSPACECOLLISION | ✓ |
 
 **Visibility**
 
@@ -199,7 +194,6 @@ Attribute categories were reworked in 0.4.6, based on UE Niagara System and actu
 | FADEBYOCCLUSION | ✓ |
 | MASTERONLY | ✓ |
 | EMITTERBOUNDARY | ✓ |
-| SCREENSPACECOLLISION | ✓ |
 | LINKPARTSVISIBLE | ✓ |
 
 #### VII. Action Trigger (fires another Action segment; almost certainly last in entry)
@@ -214,6 +208,7 @@ Attribute categories were reworked in 0.4.6, based on UE Niagara System and actu
 | Attribute Type | Field Editing |
 |---|---|
 | PTBEHAVIOR | ✓ |
+| TUBELIGHT | ✓ |
 
 #### IX. Misc
 
@@ -242,7 +237,7 @@ This plugin was developed based on community documentation and format research, 
 - [UNOWEN-OwO/MHW-EFX-Template](https://github.com/UNOWEN-OwO/MHW-EFX-Template) — The parsing method and initial parameter names used in this plugin are based on these templates.
 - [Monster Hunter World Modding Wiki](https://github.com/Ezekial711/MonsterHunterWorldModding/wiki) — Provided a basic explanation of efx.
 - [REE Lib](https://github.com/kagenocookie/RE-Engine-Lib) — Provides a wealth of valuable information for cross-validation of attributes.
-- Crimson — Provided insights into Attribute categorization and inspiration for many attributes.
+- Crimson — EFX Templates, and provides insights into Attribute categorization and inspiration for many attributes.
 - 冰室菖蒲 — Provides guides on the Attributes for numerous Entries, as well as the structure of efx TIML.
 - 003 — Provides detailed guides on the Attributes for Lightning, StrainRibbon, and Homing.
 - Fexty — Provides detailed guides on the Attributes for Blink, Velocity3D/2D and FadeByEmitterAngle.
