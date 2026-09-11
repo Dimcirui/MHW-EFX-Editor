@@ -241,6 +241,21 @@ def list_attribute_categories() -> list:
     return result
 
 
+def list_all_attribute_presets() -> list:
+    """把 __attributes__/ 下全部预设拍平成一个列表，供全局模糊搜索新增用：
+    [(ident, label, type_name), ...]，按 label 排序（搜索场景不需要分类/子组顺序，
+    好找优先）。同一路径规则的 _preset_display_item 复用两级选择那套。"""
+    root = _attribute_preset_dir()
+    out = []
+    if os.path.isdir(root):
+        for dirpath, _dirs, files in os.walk(root):
+            for fname in files:
+                if fname.lower().endswith(".json"):
+                    out.append(_preset_display_item(os.path.join(dirpath, fname)))
+    out.sort(key=lambda item: item[1].lower())
+    return out
+
+
 def _is_autogen_name(display_name: str, type_name: str) -> bool:
     """display_name 是否为自动生成式（空 / 等于 type_name / 「TYPE（中文）」），而非用户自定义。"""
     if display_name in ("", type_name):
@@ -838,10 +853,17 @@ _attribute_category_dirty = True
 _attribute_category_cache_time = 0.0
 _ATTRIBUTE_CACHE_TTL = 2.0            # 秒
 
+# 全局模糊搜索新增（efx.attribute_add_search，见下方）用的拍平列表，同一套缓存纪律：
+# 脏标志 + TTL，跟分类缓存共享 _invalidate_attribute_preset_cache() 一并失效。
+_attribute_search_items_cache = [("", "(no attribute presets)", "")]
+_attribute_search_dirty = True
+_attribute_search_cache_time = 0.0
+
 
 def _invalidate_attribute_preset_cache():
-    global _attribute_category_dirty
+    global _attribute_category_dirty, _attribute_search_dirty
     _attribute_category_dirty = True
+    _attribute_search_dirty = True
 
 
 def _get_attribute_category_items(self, context):
@@ -856,6 +878,55 @@ def _get_attribute_category_items(self, context):
         _attribute_category_dirty = False
         _attribute_category_cache_time = now
     return _attribute_category_items_cache
+
+
+def _get_attribute_search_items(self, context):
+    """EFX_OT_attribute_add_search 的动态 items 回调（带缓存，同上）。"""
+    global _attribute_search_items_cache, _attribute_search_dirty, _attribute_search_cache_time
+    now = time.monotonic()
+    if _attribute_search_dirty or (now - _attribute_search_cache_time) > _ATTRIBUTE_CACHE_TTL:
+        try:
+            _attribute_search_items_cache = list_all_attribute_presets()
+        except Exception:
+            _attribute_search_items_cache = [("", "(preset load error)", "")]
+        _attribute_search_dirty = False
+        _attribute_search_cache_time = now
+    return _attribute_search_items_cache
+
+
+class EFX_OT_attribute_add_search(bpy.types.Operator):
+    """按名字模糊搜索属性类型并直接新增，不用先猜它归在哪个分类。
+
+    参照 Wilds EFX Editor 的 efx_re.attribute_add_search：走 Blender 原生
+    `WindowManager.invoke_search_popup()`（键盘打字模糊过滤，官方"Enum Search
+    Popup"标准写法）。列表来自 list_all_attribute_presets()（全部 72 个预设拍平，
+    覆盖当前"能新增"的全集——不是所有 169 个已命名类型都有预设，只有 68 个已
+    schema 化的类型能给出有意义的默认字段值，多出来的类型光有名字没有默认值可填，
+    强行加进来对用户没有帮助）。选中之后直接转调既有的 efx.add_attribute_from_preset，
+    同一份新增逻辑只写一次，不重复。"""
+
+    bl_idname      = "efx.attribute_add_search"
+    bl_label       = "Search Attribute Type"
+    bl_description = "Fuzzy-search attribute types by name and add on pick"
+    bl_options     = {"REGISTER", "UNDO"}
+    bl_property    = "preset_path"
+
+    preset_path: EnumProperty(
+        name="Type",
+        description="要新增的属性类型",
+        items=_get_attribute_search_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_resolve_target_entries(context))
+
+    def invoke(self, context, event):
+        context.window_manager.invoke_search_popup(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        return bpy.ops.efx.add_attribute_from_preset(preset_path=self.preset_path)
 
 
 class EFX_MT_attribute_preset_picker(bpy.types.Menu):
@@ -908,6 +979,7 @@ class EFX_MT_attribute_preset_picker(bpy.types.Menu):
 _CLASSES = (
     EFX_OT_save_attribute_preset,
     EFX_OT_add_attribute_from_preset,
+    EFX_OT_attribute_add_search,
     EFX_OT_add_suggested_attribute,
     EFX_OT_open_attribute_preset_folder,
     EFX_OT_copy_attribute,

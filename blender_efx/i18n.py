@@ -307,6 +307,7 @@ STRINGS = {
                                   "ZH": "这个 Entry 还没有任何属性"},
     "attribute.category":        {"EN": "Category",            "ZH": "分类"},
     "attribute.add":             {"EN": "Add",                 "ZH": "新增"},
+    "attribute.search_add":      {"EN": "Search & Add...",     "ZH": "搜索新增…"},
     "attribute.paste":           {"EN": "Paste Attribute",     "ZH": "粘贴属性"},
     "attribute.copy_fields":     {"EN": "Copy Fields",         "ZH": "复制字段"},
     "attribute.paste_fields":    {"EN": "Paste Fields",        "ZH": "粘贴字段"},

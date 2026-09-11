@@ -1408,6 +1408,9 @@ def _draw_attribute_presets_content(layout, context):
     if _target is not None:
         _draw_suggested_attributes(layout, _target)
 
+    # 全局模糊搜索新增：不用先猜类型归在哪个分类，键盘打字过滤全部 72 个预设。
+    layout.operator("efx.attribute_add_search", text=T("attribute.search_add"), icon="VIEWZOOM")
+
     layout.prop(wm, "efx_block_category_enum", text=T("attribute.category"))
     # 第二级"具体预设"用 Menu（按子组分组、灰字标题），点击预设行直接新增，
     # 不再需要单独的下拉选中 + Add 确认两步。
