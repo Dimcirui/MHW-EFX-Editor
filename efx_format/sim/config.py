@@ -78,7 +78,7 @@ class SimConfig(object):
         "fps", "seed",
         "jitter_mode", "a0_sample", "timl_mode", "timl_interp",
         "life_model", "age_during_delay", "es3d_range_mode",
-        "rot_order_applied",
+        "rot_order_applied", "t3d_apply_base",
         "stage_order", "render_stage_order", "order_override", "disabled",
         "max_particles_hard", "max_frames", "max_spawn_depth",
         "strict",
@@ -98,6 +98,13 @@ class SimConfig(object):
         self.age_during_delay = False
         self.es3d_range_mode = "minmax"
         self.rot_order_applied = "forward"
+
+        # ── 宿主分工（不是待标定项，是集成选择）────────────────────────────
+        # False = TRANSFORM3D 的静态 translate/rotate/resize 由**宿主**负责摆位
+        #         （Blender 里 transform_sync.py 已经摆了，再套一次会双份位移）；
+        #         模拟层只贡献漂移（translation_velocity 那组）。
+        # True  = 脱离宿主单独跑时，让模拟层自己套上静态变换。
+        self.t3d_apply_base = False
 
         # ── 阶段顺序（数据不是代码；UI 可拖动重排）──────────────────────────
         self.stage_order = list(_stages.DEFAULT_STAGE_ORDER)

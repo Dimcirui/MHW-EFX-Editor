@@ -35,6 +35,10 @@ from .config import SimConfig
 from .resolve import FieldResolver, FieldView, TimlTracks
 from .state import Particle, RenderItem, Vec3, ViewContext
 
+#: 没有可用渲染体时，退化点的显示尺寸（游戏单位；100 游戏单位 = 1 Blender 单位）。
+#: 纯显示默认值，不来自文件——真实尺寸只有渲染体属性（BILLBOARD3D 等）知道。
+FALLBACK_SIZE = 10.0
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # EmitterState
@@ -45,7 +49,7 @@ class EmitterState(object):
 
     __slots__ = (
         "frame", "config", "seed",
-        "origin", "velocity", "prev_origin",
+        "origin", "velocity", "prev_origin", "rotation", "scale",
         "particles", "spawned_total", "spawn_requests",
         "unsupported", "user", "cycle", "finished",
         "_resolvers", "_pending_spawn", "_notes",
@@ -56,8 +60,12 @@ class EmitterState(object):
         self.config = config
         self.seed = seed
 
-        self.origin = Vec3()          # 发射器世界位置（TRANSFORM3D 将来写这里）
-        self.velocity = Vec3()        # 发射器自身移动速度（velocityType=3 要用）
+        # 发射器自身的变换。⚠ 默认只含**动态**部分（漂移）——静态 translate 由宿主
+        # 摆位承担，见 behaviors/transform3d.py 的说明；cfg.t3d_apply_base 可改。
+        self.origin = Vec3()
+        self.rotation = Vec3()
+        self.scale = Vec3(1.0, 1.0, 1.0)
+        self.velocity = Vec3()        # 每帧位移（velocityType=3 EmitterMotion 要用）
         self.prev_origin = Vec3()
 
         self.particles = []
@@ -202,10 +210,13 @@ class Simulator(object):
         for b in self._h_emitter_step:
             b.behavior.on_emitter_step(em)
 
-        # 2. 消化生成队列
-        self._consume_spawn(em)
-
+        # 2. 发射器这一帧的位移。**必须在生成之前算**——本帧出生的粒子要用它
+        #    （velocityType=3 EmitterMotion 继承发射器移动），放到生成之后就变成
+        #    读到上一帧的值，出生那一帧永远拿到 0。
         em.velocity = em.origin - em.prev_origin
+
+        # 3. 消化生成队列
+        self._consume_spawn(em)
 
         # 3. 逐粒子 step
         strict = cfg.strict
@@ -262,9 +273,12 @@ class Simulator(object):
             for b in self._h_render:
                 item = b.behavior.build_render(p, em, view, item)
             if item is None:
-                # 还没有 RENDER_BODY behavior（T1 阶段）→ 退化成一个点，
-                # 至少能看见「有多少、在哪、多大、多亮」。
-                item = RenderItem(kind="POINT", pos=p.pos.copy(), size=p.scale.copy())
+                # 这个 entry 没有已实现的 RENDER_BODY（比如渲染体是 RIBBON/MESH）
+                # → 退化成一个点，至少能看见「有多少、在哪、多大、多亮」。
+                # 尺寸用一个**显示用**的默认值（游戏单位）乘 p.scale：真实尺寸只有
+                # 渲染体属性知道，这里没有，所以不假装知道。
+                item = RenderItem(kind="POINT", pos=p.pos.copy(),
+                                  size=p.scale * FALLBACK_SIZE)
                 item.color = [p.color[0], p.color[1], p.color[2], p.alpha]
                 # 调试量：没有真渲染体的时候，速度矢量是判断运动对不对的主要抓手
                 item.extra["vel"] = p.vel.copy()
@@ -299,6 +313,9 @@ class Simulator(object):
             idx = em.spawned_total
             em.spawned_total += 1
             p = Particle(idx, _rng.particle_seed(em.seed, idx), em.frame)
+            # 默认出生在发射器原点。EMITTERSHAPE3D 会覆写成「原点 + 形状内采样点」，
+            # 但没有生成方式属性的 entry 也得站在发射器上，不能留在世界原点。
+            p.pos = em.origin.copy()
             prng = _rng.particle_rng(em.seed, idx)
             for b in self._h_spawn:
                 b.behavior.on_particle_spawn(p, em, prng)

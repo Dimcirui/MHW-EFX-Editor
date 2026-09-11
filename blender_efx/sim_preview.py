@@ -40,6 +40,7 @@ bpy 侧的东西必须实机验一遍：
 """
 
 import base64
+import math
 import time
 
 import bpy
@@ -208,13 +209,31 @@ def _to_blender(v):
     return (v.x * _UNIT, -v.z * _UNIT, v.y * _UNIT)
 
 
-def _entry_origin(entry_obj):
-    """entry empty 的世界位置——粒子画在它身上，而不是画在世界原点。"""
+def _entry_matrix_rows(entry_obj):
+    """entry empty 的世界矩阵，拆成三行纯 float 元组。
+
+    用**完整矩阵**而不只是位置：TRANSFORM3D 的 rotate/resize 以及 PARENTOPTIONS 的
+    骨骼绑定都已经由 transform_sync.py 烘进了这个矩阵，乘上去就自动全部继承——
+    模拟层因此完全不必知道骨骼、锚定这些事（见 behaviors/transform3d.py 的分工说明）。
+
+    ⚠ 只有**位置**过这个矩阵，粒子自身的尺寸不跟着 entry 的 scale 缩放。语料里
+    TRANSFORM3D.resize 恒为 1.0，区分不出来；真遇到非 1 的再定。
+    """
     try:
-        return entry_obj.matrix_world.translation.copy()
+        m = entry_obj.matrix_world
+        return ((m[0][0], m[0][1], m[0][2], m[0][3]),
+                (m[1][0], m[1][1], m[1][2], m[1][3]),
+                (m[2][0], m[2][1], m[2][2], m[2][3]))
     except Exception:
-        from mathutils import Vector
-        return Vector((0.0, 0.0, 0.0))
+        return ((1.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 1.0, 0.0))
+
+
+def _spin(right, up, deg):
+    """把相机平面内的右/上向量绕视线转 `deg` 度 —— billboard 的自转。"""
+    a = math.radians(deg)
+    c, s = math.cos(a), math.sin(a)
+    return ((right[0] * c + up[0] * s, right[1] * c + up[1] * s, right[2] * c + up[2] * s),
+            (-right[0] * s + up[0] * c, -right[1] * s + up[1] * c, -right[2] * s + up[2] * c))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -277,32 +296,44 @@ def _draw():
     entry = bpy.data.objects.get(_P["entry_name"])
     if entry is None:
         return
-    ox, oy, oz = _entry_origin(entry)
+    r0, r1, r2 = _entry_matrix_rows(entry)
 
-    size_mul = float(getattr(scene, "efx_sim_particle_size", 0.05))
+    size_mul = float(getattr(scene, "efx_sim_particle_size", 1.0))
     draw_mode = getattr(scene, "efx_sim_draw_mode", "QUADS")
-    blend = getattr(scene, "efx_sim_blend", "ADDITIVE")
+    blend = getattr(scene, "efx_sim_blend", "AUTO")
     show_vel = bool(getattr(scene, "efx_sim_show_velocity", False))
 
     right, up = _camera_axes(rv3d)
 
-    verts = []
-    colors = []
+    # 按混合模式分桶：BILLBOARD3D 的 blendMode 是**逐属性**的（0=Alpha 1=Add），
+    # 同一 entry 内理论上一致，但分桶几乎不要钱，还能让「AUTO」如实反映文件。
+    buckets = {"ALPHA": ([], []), "ADDITIVE": ([], [])}
     points = []
     point_colors = []
     lines = []
     line_colors = []
 
+    def _bucket_of(it):
+        if blend == "AUTO":
+            return buckets.get(it.blend) or buckets["ALPHA"]
+        return buckets[blend]
+
     for it in items:
         bx, by, bz = _to_blender(it.pos)
-        center = (ox + bx, oy + by, oz + bz)
+        center = (r0[0] * bx + r0[1] * by + r0[2] * bz + r0[3],
+                  r1[0] * bx + r1[1] * by + r1[2] * bz + r1[3],
+                  r2[0] * bx + r2[1] * by + r2[2] * bz + r2[3])
         col = (it.color[0], it.color[1], it.color[2], it.color[3])
 
         if draw_mode in ("QUADS", "BOTH"):
-            hw = max(1e-5, size_mul * abs(it.size.x))
-            hh = max(1e-5, size_mul * abs(it.size.y))
-            verts.extend(_quad_verts(center, right, up, hw, hh))
-            colors.extend([col] * 6)
+            # it.size 是**游戏单位**（BILLBOARD3D 的 width×scale 一类），和位置同一
+            # 套换算：÷100。size_mul 只是个人工放大镜，默认 1.0 = 照文件里的尺寸画。
+            hw = max(1e-5, size_mul * abs(it.size.x) * _UNIT * 0.5)
+            hh = max(1e-5, size_mul * abs(it.size.y) * _UNIT * 0.5)
+            qr, qu = (_spin(right, up, it.rot) if it.rot else (right, up))
+            bv, bc = _bucket_of(it)
+            bv.extend(_quad_verts(center, qr, qu, hw, hh))
+            bc.extend([col] * 6)
         if draw_mode in ("POINTS", "BOTH"):
             points.append(center)
             point_colors.append(col)
@@ -320,23 +351,27 @@ def _draw():
     except Exception:
         return
 
-    gpu.state.blend_set("ADDITIVE" if blend == "ADDITIVE" else "ALPHA")
     gpu.state.depth_test_set("LESS_EQUAL")
     gpu.state.depth_mask_set(False)      # 粒子之间不互相遮挡，但仍被场景几何遮挡
     try:
-        if verts:
-            batch = batch_for_shader(shader, "TRIS", {"pos": verts, "color": colors})
-            batch.draw(shader)
+        for mode in ("ALPHA", "ADDITIVE"):
+            bv, bc = buckets[mode]
+            if not bv:
+                continue
+            gpu.state.blend_set(mode)
+            batch_for_shader(shader, "TRIS", {"pos": bv, "color": bc}).draw(shader)
+
+        overlay = "ADDITIVE" if blend == "ADDITIVE" else "ALPHA"
         if points:
+            gpu.state.blend_set(overlay)
             gpu.state.point_size_set(max(1.0, float(
                 getattr(scene, "efx_sim_point_px", 4))))
-            batch = batch_for_shader(shader, "POINTS",
-                                     {"pos": points, "color": point_colors})
-            batch.draw(shader)
+            batch_for_shader(shader, "POINTS",
+                             {"pos": points, "color": point_colors}).draw(shader)
         if lines:
-            batch = batch_for_shader(shader, "LINES",
-                                     {"pos": lines, "color": line_colors})
-            batch.draw(shader)
+            gpu.state.blend_set("ALPHA")     # 速度线是调试叠加层，别被加法混合冲白
+            batch_for_shader(shader, "LINES",
+                             {"pos": lines, "color": line_colors}).draw(shader)
     except Exception:
         pass
     finally:
@@ -804,13 +839,15 @@ def register():
         default="QUADS")
     S.efx_sim_blend = EnumProperty(
         name="Blend",
-        items=[("ADDITIVE", "Additive", "Matches how most EFX particles composite in-game"),
-               ("ALPHA", "Alpha", "Plain alpha blending")],
-        default="ADDITIVE")
+        items=[("AUTO", "From file", "Use each renderer's own blendMode "
+                                     "(BILLBOARD3D: 0=Alpha, 1=Additive)"),
+               ("ADDITIVE", "Force additive", "Override everything to additive"),
+               ("ALPHA", "Force alpha", "Override everything to plain alpha")],
+        default="AUTO")
     S.efx_sim_particle_size = FloatProperty(
-        name="Size", default=0.05, min=0.001, max=5.0, soft_max=0.5,
-        description="Display size multiplier. Until BILLBOARD3D is simulated this is "
-                    "purely a display setting, not a value read from the file")
+        name="Size x", default=1.0, min=0.01, max=20.0, soft_min=0.25, soft_max=4.0,
+        description="Magnifier on top of the size read from the file "
+                    "(BILLBOARD3D width/height x scale, in game units). 1.0 = as authored")
     S.efx_sim_point_px = IntProperty(name="Point px", default=4, min=1, max=32)
     S.efx_sim_show_velocity = BoolProperty(
         name="Velocity lines", default=False,

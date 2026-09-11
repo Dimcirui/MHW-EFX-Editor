@@ -21,8 +21,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from efx_format.hashes import (EMITTERSHAPE3D, LIFE, NOISE, SPAWN,  # noqa: E402
-                               VELOCITY3D)
+from efx_format.hashes import (BILLBOARD3D, EMITTERSHAPE3D, LIFE,  # noqa: E402
+                               NOISE, ROTATEANIM, SCALEANIM, SPAWN,
+                               TRANSFORM3D, VELOCITY3D)
 from efx_format.sim import (FORCE, Behavior, SimConfig, Simulator,  # noqa: E402
                             Vec3, from_attr_blocks, register)
 from efx_format.sim import rng as simrng  # noqa: E402
@@ -95,8 +96,64 @@ def es3d_fields(**kw):
     return f
 
 
-def make_sim(spawn=None, life=None, velocity=None, es3d=None, config=None, extra=()):
+def scaleanim_fields(**kw):
+    f = {"typeFlag": 8,
+         "initialScaleSpeed": 0.0, "initialScaleSpeedJitter": 0.0,
+         "initialScaleAccel": 1.0, "initialScaleAccelJitter": 0.0,
+         "animUpdateStart": 0, "animUpdateStartJitter": 0}
+    for ax in ("X", "Y", "Z"):
+        f["scaleSpeed" + ax] = 0.0
+        f["scaleSpeed" + ax + "Jitter"] = 0.0
+        f["scaleAccel" + ax] = 1.0
+        f["scaleAccel" + ax + "Jitter"] = 0.0
+    f.update(kw)
+    return f
+
+
+def rotateanim_fields(**kw):
+    f = {"spinAxisMask": 0x7, "rotationModeMask": 0,
+         "billboardRotation": 0.0, "billboardRotationJitter": 0.0,
+         "billboardRotationCoef": 1.0, "billboardRotationCoefJitter": 0.0,
+         "spin_velocity": [0.0] * 6,
+         "rotateDelayStart": 0, "rotateDelayStartJitter": 0}
+    for ax in ("X", "Y", "Z"):
+        f["spinSpeedCoef" + ax] = 1.0
+        f["spinSpeedCoef" + ax + "Jitter"] = 0.0
+    f.update(kw)
+    return f
+
+
+def transform3d_fields(**kw):
+    z6 = [0.0] * 6
+    one6 = [1.0, 0.0, 1.0, 0.0, 1.0, 0.0]
+    f = {"typeFlag": 0, "rotationOrder": 4, "enableVelocityBitflag": 0,
+         "translate": list(z6), "rotate": list(z6), "resize": list(one6),
+         "translation_velocity": list(z6), "translation_velocity_modifier": list(one6),
+         "rotation_velocity": list(z6), "rotation_velocity_modifier": list(one6),
+         "scale_velocity": list(z6), "scale_velocity_modifier": list(one6)}
+    f.update(kw)
+    return f
+
+
+def billboard_fields(**kw):
+    f = {"typeFlag": 0, "applicationRule": 0,
+         "color": [255, 255, 255, 255], "colorRange": [255, 255, 255, 255],
+         "useColorRange": 0, "blendMode": 0,
+         "brightness": 1.0, "brightnessJitter": 0.0,
+         "EPVColorSlot1": 0, "SlotOverride1": 0,
+         "rotation": 0.0, "rotationJitter": 0.0,
+         "scale": 1.0, "scaleJitter": 0.0,
+         "width": 100.0, "widthJitter": 0.0,
+         "height": 100.0, "heightJitter": 0.0}
+    f.update(kw)
+    return f
+
+
+def make_sim(spawn=None, life=None, velocity=None, es3d=None, config=None, extra=(),
+             transform=None, scaleanim=None, rotateanim=None, billboard=None):
     blocks = []
+    if transform is not None:
+        blocks.append((TRANSFORM3D, transform))
     if spawn is not None:
         blocks.append((SPAWN, spawn))
     if life is not None:
@@ -105,8 +162,24 @@ def make_sim(spawn=None, life=None, velocity=None, es3d=None, config=None, extra
         blocks.append((EMITTERSHAPE3D, es3d))
     if velocity is not None:
         blocks.append((VELOCITY3D, velocity))
+    if scaleanim is not None:
+        blocks.append((SCALEANIM, scaleanim))
+    if rotateanim is not None:
+        blocks.append((ROTATEANIM, rotateanim))
+    if billboard is not None:
+        blocks.append((BILLBOARD3D, billboard))
     blocks.extend(extra)
     return Simulator(blocks, b"", config or SimConfig())
+
+
+def one_particle(frames=1, **kw):
+    """生一个粒子、跑 `frames` 帧，返回它。"""
+    kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+    kw.setdefault("life", life_fields(indefiniteLifespan=1))
+    sim = make_sim(**kw)
+    for _ in range(frames):
+        sim.step()
+    return sim.particles[0], sim
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -887,6 +960,342 @@ class TestSuggestedDuration(unittest.TestCase):
         sim = make_sim(spawn=spawn_fields(emitterStartDelay=99999),
                        life=life_fields(indefiniteLifespan=1), config=cfg)
         self.assertLessEqual(sim.suggested_duration(), 50)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCALEANIM
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestScaleAnim(unittest.TestCase):
+
+    def test_scale_starts_at_one(self):
+        p, _ = one_particle(scaleanim=scaleanim_fields())
+        self.assertEqual(p.scale, Vec3(1, 1, 1))
+
+    def test_uniform_growth_is_additive_on_all_axes(self):
+        """通道名是 SizeScalarAdd —— 加法，不是乘法。"""
+        p, _ = one_particle(frames=3, scaleanim=scaleanim_fields(initialScaleSpeed=0.1))
+        for v in (p.scale.x, p.scale.y, p.scale.z):
+            self.assertAlmostEqual(v, 1.0 + 0.3, places=6)
+
+    def test_uniform_accel_decays_the_increment(self):
+        """iv=0.02 / ia=0.99 / 60 帧 ≈ +0.91（floating_particle_fire 的实测组合）。"""
+        p, _ = one_particle(frames=60, scaleanim=scaleanim_fields(
+            initialScaleSpeed=0.02, initialScaleAccel=0.99))
+        expect = 1.0 + sum(0.02 * (0.99 ** n) for n in range(60))
+        self.assertAlmostEqual(p.scale.x, expect, places=6)
+        self.assertAlmostEqual(p.scale.x, 1.91, places=2)
+
+    def test_per_axis_is_independent(self):
+        p, _ = one_particle(frames=4, scaleanim=scaleanim_fields(
+            scaleSpeedX=0.5, scaleSpeedY=0.25, scaleSpeedZ=0.0))
+        self.assertAlmostEqual(p.scale.x, 1.0 + 2.0, places=6)
+        self.assertAlmostEqual(p.scale.y, 1.0 + 1.0, places=6)
+        self.assertAlmostEqual(p.scale.z, 1.0, places=6)
+
+    def test_anim_update_start_delays_only_the_per_axis_part(self):
+        """animUpdateStart 门控逐轴那组；整体那组不受影响。"""
+        p, _ = one_particle(frames=5, scaleanim=scaleanim_fields(
+            initialScaleSpeed=0.1, scaleSpeedX=1.0, animUpdateStart=3))
+        self.assertAlmostEqual(p.scale.y, 1.0 + 0.5, places=6)   # 整体：5 帧都算
+        self.assertAlmostEqual(p.scale.x, 1.0 + 0.5 + 2.0, places=6)  # 逐轴：只有 2 帧
+
+    def test_stage_is_xform(self):
+        from efx_format.sim import XFORM
+        sim = make_sim(spawn=spawn_fields(), life=life_fields(),
+                       scaleanim=scaleanim_fields())
+        b = [x for x in sim.bound if x.type_hash == SCALEANIM][0]
+        self.assertEqual(b.stage, XFORM)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ROTATEANIM
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestRotateAnim(unittest.TestCase):
+
+    def test_plane_mode_accumulates_on_z(self):
+        """平面旋转 = 屏幕空间自转，写 Z。"""
+        p, _ = one_particle(frames=4, rotateanim=rotateanim_fields(
+            rotationModeMask=0, billboardRotation=15.0))
+        self.assertAlmostEqual(p.rot.z, 60.0, places=6)
+        self.assertEqual((p.rot.x, p.rot.y), (0.0, 0.0))
+
+    def test_plane_coef_decays_the_speed(self):
+        p, _ = one_particle(frames=5, rotateanim=rotateanim_fields(
+            rotationModeMask=0, billboardRotation=10.0, billboardRotationCoef=0.5))
+        self.assertAlmostEqual(p.rot.z, sum(10.0 * 0.5 ** n for n in range(5)), places=6)
+
+    def test_spin_mode_uses_all_three_axes(self):
+        p, _ = one_particle(frames=3, rotateanim=rotateanim_fields(
+            rotationModeMask=2, spinAxisMask=0x7,
+            spin_velocity=[1.0, 0.0, 2.0, 0.0, 3.0, 0.0]))
+        self.assertAlmostEqual(p.rot.x, 3.0, places=6)
+        self.assertAlmostEqual(p.rot.y, 6.0, places=6)
+        self.assertAlmostEqual(p.rot.z, 9.0, places=6)
+
+    def test_spin_axis_mask_gates_axes(self):
+        """spinAxisMask bit0=X bit1=Y bit2=Z。只开 Y。"""
+        p, _ = one_particle(frames=3, rotateanim=rotateanim_fields(
+            rotationModeMask=2, spinAxisMask=0x2,
+            spin_velocity=[1.0, 0.0, 2.0, 0.0, 3.0, 0.0]))
+        self.assertEqual(p.rot.x, 0.0)
+        self.assertAlmostEqual(p.rot.y, 6.0, places=6)
+        self.assertEqual(p.rot.z, 0.0)
+
+    def test_delay_holds_rotation(self):
+        p, _ = one_particle(frames=3, rotateanim=rotateanim_fields(
+            rotationModeMask=0, billboardRotation=10.0, rotateDelayStart=5))
+        self.assertEqual(p.rot.z, 0.0)
+        p, _ = one_particle(frames=8, rotateanim=rotateanim_fields(
+            rotationModeMask=0, billboardRotation=10.0, rotateDelayStart=5))
+        self.assertAlmostEqual(p.rot.z, 30.0, places=6)   # 第 5..7 帧共 3 次
+
+    def test_random_direction_mode_produces_both_signs(self):
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=60, burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       rotateanim=rotateanim_fields(rotationModeMask=1,
+                                                    billboardRotation=10.0))
+        sim.step()
+        signs = {1 if p.rot.z > 0 else -1 for p in sim.particles}
+        self.assertEqual(signs, {1, -1})
+
+    def test_fixed_direction_mode_is_single_signed(self):
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=60, burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       rotateanim=rotateanim_fields(rotationModeMask=0,
+                                                    billboardRotation=10.0))
+        sim.step()
+        self.assertTrue(all(p.rot.z > 0 for p in sim.particles))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TRANSFORM3D
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTransform3D(unittest.TestCase):
+
+    def test_static_translate_is_skipped_by_default(self):
+        """默认宿主负责摆位——模拟层再加一次就会双份位移。"""
+        sim = make_sim(transform=transform3d_fields(
+                           translate=[10.0, 0.0, 20.0, 0.0, 30.0, 0.0]),
+                       spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1))
+        sim.step()
+        self.assertEqual(sim.em.origin, Vec3())
+        self.assertEqual(sim.particles[0].pos, Vec3())
+        self.assertTrue(any("静态变换未套用" in n for n in sim.notes))
+
+    def test_apply_base_switch_moves_the_emitter(self):
+        sim = make_sim(transform=transform3d_fields(
+                           translate=[10.0, 0.0, 20.0, 0.0, 30.0, 0.0]),
+                       spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       config=SimConfig(t3d_apply_base=True))
+        sim.step()
+        self.assertEqual(sim.em.origin, Vec3(10, 20, 30))
+        self.assertEqual(sim.particles[0].pos, Vec3(10, 20, 30))
+
+    def test_velocity_bitflag_gates_drift(self):
+        base = dict(translation_velocity=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        off = make_sim(transform=transform3d_fields(enableVelocityBitflag=0, **base),
+                       spawn=spawn_fields(burstInterval=1000), life=life_fields())
+        on = make_sim(transform=transform3d_fields(enableVelocityBitflag=1, **base),
+                      spawn=spawn_fields(burstInterval=1000), life=life_fields())
+        off.run(5)
+        on.run(5)
+        self.assertEqual(off.em.origin, Vec3())
+        self.assertAlmostEqual(on.em.origin.x, 5.0, places=6)
+
+    def test_emitter_velocity_feeds_velocity_type_3(self):
+        """velocityType=3 EmitterMotion 继承发射器移动——这是它唯一的来源。"""
+        sim = make_sim(
+            transform=transform3d_fields(
+                enableVelocityBitflag=1,
+                translation_velocity=[2.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            spawn=spawn_fields(burstInterval=1000),
+            life=life_fields(indefiniteLifespan=1),
+            velocity=velocity_fields(velocityType=3, speed=1.0))
+        sim.run(3)
+        self.assertAlmostEqual(sim.em.velocity.x, 2.0, places=6)
+        self.assertGreater(sim.particles[0].vel.x, 0.0)
+
+    def test_emitter_motion_below_threshold_is_gated(self):
+        sim = make_sim(
+            transform=transform3d_fields(
+                enableVelocityBitflag=1,
+                translation_velocity=[0.5, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            spawn=spawn_fields(burstInterval=1000),
+            life=life_fields(indefiniteLifespan=1),
+            velocity=velocity_fields(velocityType=3, speed=1.0,
+                                     minMovementThreshold=10.0))
+        sim.run(3)
+        self.assertEqual(sim.particles[0].vel, Vec3())
+
+    def test_transform3d_runs_before_emittershape(self):
+        """发射器原点必须先定下来，ES3D 才能在它周围采样。"""
+        sim = make_sim(transform=transform3d_fields(), spawn=spawn_fields(),
+                       life=life_fields(), es3d=es3d_fields())
+        order = [b.type_hash for b in sim.bound]
+        self.assertLess(order.index(TRANSFORM3D), order.index(EMITTERSHAPE3D))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BILLBOARD3D
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestBillboard3D(unittest.TestCase):
+
+    def _item(self, frames=1, **kw):
+        kw.setdefault("billboard", billboard_fields())
+        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("life", life_fields(indefiniteLifespan=1))
+        sim = make_sim(**kw)
+        for _ in range(frames):
+            sim.step()
+        items = sim.build_render()
+        return items[0], sim
+
+    def test_kind_is_billboard_not_fallback_point(self):
+        it, _ = self._item()
+        self.assertEqual(it.kind, "BILLBOARD")
+
+    def test_size_is_width_times_scale_in_game_units(self):
+        """SizeScalar 是倍率：width=100, scale=0.4 → 40 游戏单位（0.4 Blender 单位）。"""
+        it, _ = self._item(billboard=billboard_fields(width=100.0, height=50.0, scale=0.4))
+        self.assertAlmostEqual(it.size.x, 40.0, places=5)
+        self.assertAlmostEqual(it.size.y, 20.0, places=5)
+
+    def test_scaleanim_multiplies_the_size(self):
+        it, _ = self._item(frames=10,
+                           billboard=billboard_fields(width=100.0, height=100.0, scale=1.0),
+                           scaleanim=scaleanim_fields(initialScaleSpeed=0.1))
+        self.assertAlmostEqual(it.size.x, 100.0 * 2.0, places=4)
+
+    def test_color_is_ubyte_scaled(self):
+        it, _ = self._item(billboard=billboard_fields(color=[128, 0, 255, 255]))
+        self.assertAlmostEqual(it.color[0], 128 / 255.0, places=6)
+        self.assertAlmostEqual(it.color[1], 0.0, places=6)
+        self.assertAlmostEqual(it.color[2], 1.0, places=6)
+
+    def test_brightness_multiplies_rgb(self):
+        it, _ = self._item(billboard=billboard_fields(color=[100, 100, 100, 255],
+                                                      brightness=2.0))
+        self.assertAlmostEqual(it.color[0], 200 / 255.0, places=6)
+
+    def test_color_range_lerps_per_particle(self):
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=60, burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(color=[0, 0, 0, 255],
+                                                  colorRange=[255, 255, 255, 255],
+                                                  useColorRange=1))
+        sim.step()
+        reds = [i.color[0] for i in sim.build_render()]
+        self.assertGreater(max(reds) - min(reds), 0.5)   # 确实在两端之间铺开
+        self.assertGreaterEqual(min(reds), 0.0)
+        self.assertLessEqual(max(reds), 1.0)
+
+    def test_color_range_off_is_uniform(self):
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=20, burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(color=[0, 0, 0, 255],
+                                                  colorRange=[255, 255, 255, 255],
+                                                  useColorRange=0))
+        sim.step()
+        self.assertEqual({i.color[0] for i in sim.build_render()}, {0.0})
+
+    def test_blend_mode_maps(self):
+        it, _ = self._item(billboard=billboard_fields(blendMode=0))
+        self.assertEqual(it.blend, "ALPHA")
+        it, _ = self._item(billboard=billboard_fields(blendMode=1))
+        self.assertEqual(it.blend, "ADDITIVE")
+
+    def test_alpha_comes_from_life(self):
+        it, _ = self._item(frames=3, billboard=billboard_fields(),
+                           life=life_fields(fadeInDuration=4, duration=20))
+        self.assertAlmostEqual(it.color[3], 0.5, places=6)
+
+    def test_initial_rotation_seeds_rot_z(self):
+        p, _ = one_particle(billboard=billboard_fields(rotation=45.0))
+        self.assertAlmostEqual(p.rot.z, 45.0, places=6)
+
+    def test_rotateanim_accumulates_on_top_of_initial_rotation(self):
+        it, _ = self._item(frames=3,
+                           billboard=billboard_fields(rotation=45.0),
+                           rotateanim=rotateanim_fields(rotationModeMask=0,
+                                                        billboardRotation=10.0))
+        self.assertAlmostEqual(it.rot, 45.0 + 30.0, places=6)
+
+    def test_epv_slot_is_reported(self):
+        _it, sim = self._item(billboard=billboard_fields(EPVColorSlot1=3))
+        self.assertTrue(any("EPV" in n for n in sim.notes))
+
+    def test_render_body_writes_no_particle_state(self):
+        """RENDER_BODY 阶段不许改粒子状态——strict 模式会查。"""
+        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(), scaleanim=scaleanim_fields(),
+                       rotateanim=rotateanim_fields(),
+                       config=SimConfig(strict=True))
+        for _ in range(10):
+            sim.step()
+            sim.build_render()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T2 之后的端到端
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestT2EndToEnd(unittest.TestCase):
+
+    def test_fire_archetype_now_renders_billboards(self):
+        """floating_particle_fire 带 BILLBOARD3D，不该再退化成点。"""
+        blocks, timl = _load_archetype("floating_particle_fire.json")
+        sim = from_attr_blocks(blocks, timl, SimConfig(seed=3))
+        sim.run(20)
+        items = sim.build_render()
+        self.assertTrue(items)
+        for it in items:
+            self.assertEqual(it.kind, "BILLBOARD")
+
+    def test_fire_size_is_physically_sensible(self):
+        """width=height=100、scale=0.4(+0.2 抖动) → 40~60 游戏单位 = 0.4~0.6 Blender 单位。
+        再乘 SCALEANIM 一生最多约 1.9 倍。"""
+        blocks, timl = _load_archetype("floating_particle_fire.json")
+        sim = from_attr_blocks(blocks, timl, SimConfig(seed=3))
+        sim.step()
+        it = sim.build_render()[0]
+        self.assertGreaterEqual(it.size.x, 40.0)
+        self.assertLessEqual(it.size.x, 60.0)
+        sim.run(59)
+        if sim.build_render():
+            self.assertLess(sim.build_render()[0].size.x, 60.0 * 2.0)
+
+    def test_fire_uses_alpha_blend(self):
+        blocks, timl = _load_archetype("floating_particle_fire.json")
+        sim = from_attr_blocks(blocks, timl)
+        sim.step()
+        self.assertEqual(sim.build_render()[0].blend, "ALPHA")   # blendMode=0
+
+    def test_more_attributes_are_simulated_now(self):
+        """T2 之后，fire 原型的未模拟属性应该比 T1 时少。"""
+        blocks, timl = _load_archetype("floating_particle_fire.json")
+        sim = from_attr_blocks(blocks, timl)
+        names = {n for _h, n in sim.unsupported}
+        for done in ("SPAWN", "LIFE", "EMITTERSHAPE3D", "VELOCITY3D",
+                     "TRANSFORM3D", "SCALEANIM", "BILLBOARD3D"):
+            self.assertNotIn(done, names)
+
+    def test_every_archetype_still_runs_and_renders(self):
+        for name in sorted(os.listdir(ARCHETYPE_DIR)):
+            if not name.endswith(".json"):
+                continue
+            with self.subTest(archetype=name):
+                blocks, timl = _load_archetype(name)
+                sim = from_attr_blocks(blocks, timl, SimConfig(seed=1, strict=True))
+                for _ in range(120):
+                    sim.step()
+                sim.build_render()
 
 
 if __name__ == "__main__":

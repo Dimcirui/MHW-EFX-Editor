@@ -147,6 +147,14 @@ class TimlTracks(object):
     def curve(self, axis, tlp_hash, dt_hash):
         return self._curves.get((axis, tlp_hash, dt_hash))
 
+    def has_param(self, tlp_hash):
+        """这个 timelineParameter 下有没有任何曲线。
+
+        绝大多数 entry 根本没有 TIML，逐字段去查 dt 映射纯属浪费——解析器建好时
+        问一次，之后整条 TIML 路径就能短路掉（见 FieldResolver.has_tracks）。
+        """
+        return any(k[1] == tlp_hash for k in self._curves)
+
     def channel_count(self):
         return len(self._curves)
 
@@ -176,7 +184,7 @@ class FieldResolver(object):
     """一个属性块的字段解析：原始 dict + TIML 轨道 + 覆盖表。"""
 
     __slots__ = ("block_name", "raw", "tlp_hash", "tracks", "config",
-                 "extern_overrides", "_dt_cache")
+                 "extern_overrides", "_dt_cache", "has_tracks")
 
     def __init__(self, block_name, raw_fields, tracks, config, extern_overrides=None):
         self.block_name = block_name or ""
@@ -186,6 +194,11 @@ class FieldResolver(object):
         self.config = config
         self.extern_overrides = extern_overrides or {}
         self._dt_cache = {}
+        #: 本块到底有没有 TIML 曲线。没有就整条调制路径短路——这是取值的热路径，
+        #: 而「没有 TIML」是绝大多数 entry 的常态。
+        self.has_tracks = bool(
+            tracks is not None and self.tlp_hash is not None
+            and tracks.has_param(self.tlp_hash))
 
     # ── 原始值 ───────────────────────────────────────────────────────────────
     def raw_value(self, field, default=0.0):
@@ -236,7 +249,7 @@ class FieldResolver(object):
         理由是寿命轴更具体；但「两条轴同时存在时游戏怎么合成」没有实测，如果
         以后测出是相乘/相加，改这一处即可（behavior 全都走这条路径）。
         """
-        if self.tracks is None or self.tlp_hash is None:
+        if not self.has_tracks:
             return None
         dt = self._dt_for(field, comp)
         if dt is None:
@@ -338,6 +351,12 @@ class FieldView(object):
 
     def has(self, field):
         return field in self._r.raw
+
+    @property
+    def has_tracks(self):
+        """本属性块是否挂着 TIML 曲线。没有的话，静态字段的解析结果逐帧恒定，
+        behavior 可以在出生时算一次就缓存（见 behaviors/billboard3d.py）。"""
+        return self._r.has_tracks
 
     def __repr__(self):
         return "<FieldView %s a0=%s age=%s>" % (self._r.block_name, self._a0, self._age)
