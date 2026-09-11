@@ -138,6 +138,16 @@ def _mark_attribute_dirty(self, context):
                     es3d_preview.resync_if_active(obj)
             except Exception:
                 pass
+
+            # 粒子模拟播放中 → 任何属性的任何字段改动都可能影响结果，一律标脏。
+            # 独立 try：上面那条 if/elif 链里任何一支出错都不该让模拟预览跟着失效。
+            # 这里**只置一个标志**（本回调是每改一个字段就触发一次的热路径），真正的
+            # 重建推迟到播放器的下一个定时器 tick。
+            try:
+                from . import sim_preview
+                sim_preview.invalidate_if_active(obj)
+            except Exception:
+                pass
     except Exception:
         pass
 

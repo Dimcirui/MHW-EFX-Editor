@@ -266,6 +266,9 @@ class Simulator(object):
                 # 至少能看见「有多少、在哪、多大、多亮」。
                 item = RenderItem(kind="POINT", pos=p.pos.copy(), size=p.scale.copy())
                 item.color = [p.color[0], p.color[1], p.color[2], p.alpha]
+                # 调试量：没有真渲染体的时候，速度矢量是判断运动对不对的主要抓手
+                item.extra["vel"] = p.vel.copy()
+                item.extra["age"] = p.age
             out.append(item)
         return out
 
