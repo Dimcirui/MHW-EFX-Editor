@@ -189,6 +189,7 @@ class SimConfig(object):
         "stage_order", "render_stage_order", "order_override", "disabled",
         "max_particles_hard", "max_frames", "max_spawn_depth", "trail_max",
         "max_instances", "max_particles_total", "child_cull_grace",
+        "child_pending_grace",
         "strict",
     )
 
@@ -251,7 +252,10 @@ class SimConfig(object):
         # 不设上限必然挂死，所以这三个是安全阀不是调优项。
         self.max_instances = 256            # 同时存在的实例数
         self.max_particles_total = 20000    # 全树粒子总数
-        self.child_cull_grace = 30          # 子实例空转多少帧就回收
+        self.child_cull_grace = 30          # 生成过粒子的子实例，空转多少帧就回收
+        #: 还一个粒子都没吐过的子实例能等多久。SPAWN.emitterStartDelay 可以很长，
+        #: 用 child_cull_grace 那 30 帧去卡它会让子特效「完全不触发」。
+        self.child_pending_grace = 600
         self.trail_max = 64                 # 逐粒子位置历史的最大帧数（条带类渲染体用）
 
         # ── 开发期 ───────────────────────────────────────────────────────────

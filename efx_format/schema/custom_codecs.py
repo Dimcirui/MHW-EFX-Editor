@@ -337,10 +337,7 @@ def pack_billboard2d(values: dict) -> bytes:
 #
 # Mod3Properties (174 B) fields from BT (counted carefully):
 #   int unkn0[2](8) + long CD1(4) + float colorRate/Jitter(8) +
-#   float emissiveColorRate/Jitter(8) + XYZ rotation(0)(24) +
-#   float rotation2/Jitter(8)（原 unkn5_2/3；实测为角度状数值，rotation2 常见 -180/0，
-#     rotation2Jitter 常见 360/0——360 即"全范围随机"，语义上是 rotation 之外的一对
-#     标量旋转+抖动，具体轴/用途未确认）+
+#   float emissiveColorRate/Jitter(8) + float unknFloat0/1(8) + XYZ rotation(0)(24) +
 #   XYZ scale(0)(24) + float global_scale/j(8) +
 #   int visconIndex/Jitter（原 starting/end_model_viscon；2026-08 实机确认是固定/随机配对，
 #     非 start/end：视觉条件（mod3 Visible Condition）索引 + 其随机量）(8) + colour*4(16) + int unkn7_0/1(8) +
@@ -394,9 +391,21 @@ _MOD3_PROPERTIES_SCHEMA = [
     # 打开时 100% 非零），对 color 通道开关零响应。
     ('emissiveColorRate',       'f'),  # TIML DT 0x18C577DE("EmissiveColorRate")
     ('emissiveColorRateJitter', 'f'),
+    # ⚠ 这两个 float 曾被算进 rotation 的头两格（当成 X/XJitter）。全语料 13625 个块：
+    # 它们 99.6% / 99.8% 恒为 0、值域只有 0~1 和 0~3——不是角度。真正的三轴角度在后面。
+    ('unknFloat0',              'f'),
+    ('unknFloat1',              'f'),
+    # 真正的逐轴旋转：(X, XJitter, Y, YJitter, Z, ZJitter)。
+    # 曾切成「rotation(XYZ) + rotation2/Jitter」，整块偏了 8 字节，于是 X 被喂了个非角度
+    # 字段、Y 拿到真 X、Z 拿到真 Y，而 rotation2 其实就是 Z 那一对。
+    # 用户实机逐轴验（静止朝 Blender +X 的网格，四个量各填 90°）：
+    #   填「X」   游戏不转        —— 它是上面那个非角度字段
+    #   填「Y」   绕 game X       —— 沿对称轴，看不出变化
+    #   填「Z」   绕 game Y       —— 转到 Blender +Y
+    #   填「rot2」绕 game Z       —— 转到 Blender +Z
+    # 语料侧同构印证：后六格是三对形态完全一致的「角度+抖动」（角度众数 -180，
+    # 抖动众数 360 = 整圈随机），前两格则完全不是这个形态。
     ('rotation',                ('XYZ', 0)),
-    ('rotation2',               'f'),
-    ('rotation2Jitter',         'f'),
     ('scale',                   ('XYZ', 0)),
     ('global_scale',            'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
     ('global_scale_jitter',     'f'),

@@ -41,6 +41,7 @@ bpy 侧的东西必须实机验一遍：
 
 import base64
 import math
+import os
 import time
 
 import bpy
@@ -50,6 +51,7 @@ from bpy.types import Operator, Panel
 
 from .i18n import T
 from . import root_collection as _rc
+from . import entry_action_ref as _entry_ref
 
 _DRAW_TAG = "~EFX_SIM_PREVIEW"      # draw handler 识别用（跨热重载按名移除）
 
@@ -303,6 +305,131 @@ def _uvs_image_name(entry_obj):
     return name if name in bpy.data.images else ""
 
 
+#: MATERIAL 的贴图槽 → 已载入的图名。键是 (槽位游戏路径)，跨 entry/文件共享——
+#: 同一张 null_white 被几十个 entry 引用是常态，转一次就够。
+_MAT_TEX_CACHE = {}
+
+
+#: 图名 → 这张图的 alpha 通道有没有实际内容。判一次要把整张图读进来，缓存住。
+_TEX_ALPHA_USABLE = {}
+
+
+def _texture_alpha_is_usable(name):
+    """这张贴图的 alpha 通道能不能当遮罩用。
+
+    两类贴图混在一起，**不能按渲染体一刀切**（按 MESH 切会让 aura32a 那种从对的变成错的）：
+
+      - 流动贴图（`_BM` / flow 系）：alpha 恒 1。实测 `zrx_008` 0.9961~1、
+        `zr024` 0.9843~1、`flow_331` 0.9647~1——那点变化是 DDS 压缩噪声，不是内容。
+        照实取 alpha 会把黑底一起画成实心方片，得改用 RGB 的明暗当 alpha。
+      - 真带 alpha 的：`hx_10` alpha 0~1、平均 0.0446（RGB 几乎全白，形状全在 alpha 里），
+        `md_wp11_000_BM` 0~1 平均 0.469。这些必须用自己的 alpha。
+
+    判据取「alpha < 0.5 的像素占比」，两类之间空得很开（0.96 以上 vs 0），
+    用占比而不是最小值是为了不被几个杂散纹素带偏。
+    """
+    if not name:
+        return True
+    got = _TEX_ALPHA_USABLE.get(name)
+    if got is not None:
+        return got
+    img = bpy.data.images.get(name)
+    if img is None:
+        return True
+    usable = True
+    try:
+        import numpy
+        w, h = img.size
+        n = w * h * 4
+        if n > 0 and int(getattr(img, "depth", 32)) >= 32:
+            buf = numpy.empty(n, dtype="f4")
+            img.pixels.foreach_get(buf)
+            a = buf[3::4]
+            usable = float((a < 0.5).mean()) > 0.001
+        else:
+            usable = False      # 没有 alpha 通道
+    except Exception:
+        usable = int(getattr(img, "depth", 32)) >= 32
+    _TEX_ALPHA_USABLE[name] = usable
+    return usable
+
+
+def _clear_material_cache():
+    _MAT_TEX_CACHE.clear()
+
+
+def _material_tex_paths(attr_objs):
+    """entry 的 MATERIAL 属性 → {贴图槽名: 游戏相对路径}。没有 MATERIAL 则 {}。
+
+    MATERIAL 是 mrl3 同源的内联材质覆盖，`sets` 里 `type == 128` 的才是贴图槽，
+    槽位由 `t` 哈希反查（meta.texture_slot_name）。其余 type 是非贴图参数，跳过。
+    一个块里 58 个 set 是常态，但贴图槽只有十来个。
+
+    ⚠ `null_white` / `null_NM` 这类**照常读取**，不特判——它们是游戏里真实存在的
+    占位贴图，作者拿 null_white 当纯白底正是为了让 MESH 的染色不被贴图串色。
+    """
+    from ..efx_format.material.meta import texture_slot_name
+    from ..efx_format.hashes import MATERIAL
+
+    out = {}
+    for blk in attr_objs:
+        pair = _block_fields(blk)
+        if pair is None or pair[0] != MATERIAL:
+            continue
+        for block in (pair[1].get("blocks") or ()):
+            for st in (block.get("sets") or ()):
+                try:
+                    if int(st.get("type", 0)) != 128:
+                        continue
+                    slot = texture_slot_name(int(st.get("t", 0)) & 0xFFFFFFFF)
+                except Exception:
+                    continue
+                if not slot:
+                    continue
+                path = st.get("path") or b""
+                if isinstance(path, bytes):
+                    path = path.decode("ascii", "replace")
+                path = path.rstrip(chr(0)).strip()
+                if path and slot not in out:
+                    out[slot] = path
+    return out
+
+
+def _material_image_name(entry_obj, attr_objs, slot, chunk_root):
+    """MATERIAL 指定的那张贴图 → 已载入的图名；取不到返回 ""。
+
+    走的是 uvs_link 那条现成的链（游戏路径解析 → tex→dds → bpy.data.images），
+    与序列帧大图同一套，不另起炉灶。**在 build_track 里调一次**——这是磁盘 I/O，
+    逐帧做会卡死。
+    """
+    paths = _material_tex_paths(attr_objs)
+    rel = paths.get(slot) or ""
+    if not rel:
+        return ""
+    cached = _MAT_TEX_CACHE.get(rel)
+    if cached is not None:
+        return cached if cached in bpy.data.images else ""
+    try:
+        from . import uvs_link as _ul
+    except Exception:
+        return ""
+    try:
+        efx_dir = _ul.efx_dir_of(entry_obj)
+    except Exception:
+        efx_dir = None
+    name = ""
+    try:
+        abspath = _ul.resolve_game_path(rel, ".tex", chunk_root, efx_dir)
+        if abspath:
+            img = _ul.load_tex_image(abspath, rel)
+            if img is not None:
+                name = img.name
+    except Exception:
+        name = ""
+    _MAT_TEX_CACHE[rel] = name      # 失败也缓存：别每次重建 track 都去磁盘扑空
+    return name
+
+
 def _attributes_by_entry():
     """一次遍历建 {entry 对象 → [属性对象(按 efx_index)]}。
 
@@ -416,10 +543,14 @@ def build_track(entry_obj, scene):
     templates = {}
     resources = {}
     images = {}
+    mesh_images = {}
+    mat_slot = getattr(scene, "efx_sim_material_slot", "tAlbedoMap")
+    chunk_root = getattr(scene, "efx_chunk_root", "") or ""
     root_uvs_info = None
     for name, obj in entries.items():
+        attrs = attrs_by_entry.get(obj, ())
         blocks = []
-        for blk in attrs_by_entry.get(obj, ()):
+        for blk in attrs:
             pair = _block_fields(blk)
             if pair is not None:
                 blocks.append(pair)
@@ -429,6 +560,13 @@ def build_track(entry_obj, scene):
         res, info = _uvs_state(obj)
         resources[name] = res
         images[name] = _uvs_image_name(obj)
+        # MATERIAL 是 MESH 的伴生属性（全语料 5873 个带 MATERIAL 的 entry 全都带
+        # MESH），它指定的贴图应当盖过 mod3 自带材质里那张。解析是磁盘 I/O，
+        # 只在这里做一次。
+        if mat_slot != "none":
+            got = _material_image_name(obj, attrs, mat_slot, chunk_root)
+            if got:
+                mesh_images[name] = got
         if obj is entry_obj:
             root_uvs_info = info
 
@@ -449,6 +587,7 @@ def build_track(entry_obj, scene):
     return {
         "sim": sim,
         "entry_name": entry_obj.name,
+        "order": entry_order(entry_obj),
         # 用**播放起点**的矩阵并固定下来：发射器之后的移动经 host_origin 进模拟，
         # 绘制再用当前矩阵就会把同一段位移算两遍。
         "ref_rows": _entry_matrix_rows(entry_obj),
@@ -457,6 +596,7 @@ def build_track(entry_obj, scene):
         #: entry 名 → 序列帧大图名。一棵树里每个 entry 各有各的图，绘制时按
         #: item.extra['entry_key'] 查（见 _collect_track）。
         "images": images,
+        "mesh_images": mesh_images,
         "uvs": root_uvs_info,          # 帧表来源（真 .uvs / 网格兜底），面板显示用
     }
 
@@ -479,10 +619,47 @@ def rebuild_track(tr, scene, keep_frame=True):
     return True
 
 
-def collect_entries(context):
-    """要模拟哪些 entry：**所有选中对象**各自往上找 entry，去重；空则退回活动对象。
+def _active_root_collection(context):
+    """大纲里当前点中的集合所属的 EFX 文件根集合；不在任何 EFX 文件里则 None。
 
-    多选同时模拟就落在这里——用户选几个 entry（或它们下面的任意属性）就播几个。
+    根集合本身、以及它下面的 Entry / Direct Trigger 这些子集合都算——点进去的任何
+    一层都只可能属于**一个**文件，没有歧义。真正要播单个 entry 的人是去选 entry
+    **对象**的，那条路在 `collect_entries` 里优先级更高。
+    """
+    try:
+        lc = context.view_layer.active_layer_collection
+    except Exception:
+        return None
+    col = getattr(lc, "collection", None)
+    if col is None:
+        return None
+    if _rc.is_root_collection(col):
+        return col
+
+    def contains(parent, target, depth=0):
+        if depth > 8:
+            return False
+        for child in parent.children:
+            if child == target or contains(child, target, depth + 1):
+                return True
+        return False
+
+    for root in bpy.data.collections:
+        if _rc.is_root_collection(root) and contains(root, col):
+            return root
+    return None
+
+
+def collect_entries(context):
+    """要模拟哪些 entry。
+
+    两条路：
+
+      - 大纲里点中**一个 EFX 根集合** → 播整个文件，即它的 **Direct Trigger** 那批 entry。
+        Not Direct Trigger 的不起 track——它们是靠 PtLife → Action 召唤出来的，模拟里
+        已经会作为子实例生出来（见 sim/scene.py），再起一条就会被画两遍。没有任何
+        PtLife 指向的那些则本来就是死的，不该凭空播。
+      - 否则按**选中对象**各自往上找 entry，去重；空则退回活动对象（多选=同时播）。
     """
     out = []
     seen = set()
@@ -491,11 +668,39 @@ def collect_entries(context):
         if e is not None and e.name not in seen:
             seen.add(e.name)
             out.append(e)
-    if not out:
-        e = _resolve_entry(context.active_object)
-        if e is not None:
-            out.append(e)
-    return out
+    if out:
+        return out              # 选了具体的 entry（或它下面的属性）→ 就播这些
+
+    root = _active_root_collection(context)
+    if root is not None:
+        ents = _rc.collect_top_level(root, "EFX_ENTRY")
+        direct = [e for e in ents if _entry_ref.is_entry_in_eof(e)]
+        if direct:
+            return direct
+        return ents        # 没有 eof 分流信息（opaque 模型）→ 只能全播
+
+    e = _resolve_entry(context.active_object)
+    return [e] if e is not None else []
+
+
+def entry_order(entry_obj):
+    """绘制次序的排序键 `(文件, 文件内次序)`。
+
+    **文件内**有权威答案：entry 在 main 段里的次序（`efx_index`）。完全重合的面片
+    谁盖谁就按这个来——我们的粒子不写深度（`depth_mask_set(False)`），所以先后
+    全由绘制顺序决定，这正是实机那套「按 entry 排布定覆盖优先权」的机制。
+
+    **跨文件没有权威答案**：不同 .efx 是各自独立的特效实例，相对先后由引擎在触发时
+    决定，文件里没有这个信息。这里取根集合名——就是大纲里看到的顺序，要调整改个名即可。
+    """
+    if entry_obj is None:
+        return ("", 0)
+    root = _rc.find_root_collection(entry_obj)
+    try:
+        idx = int(entry_obj.get("efx_index", 0) or 0)
+    except Exception:
+        idx = 0
+    return (root.name if root is not None else "", idx)
 
 
 
@@ -538,8 +743,12 @@ def _display_color(c, mode):
     所以 'raw' 下 col 早就被夹成白的了，贴图再乘也救不回来。游戏那边不全白靠的是
     tone map + 自动曝光，我们没有这两样——所以预览必须自己把色相保下来。
 
-      'preserve_hue'（默认）除以最大分量保住色相，超出的倍数折进不透明度。有贴图时
-                     shader 再乘上去，得到 tex × 作者调的那个颜色，亮度正常。
+      'preserve_hue'（默认）除以最大分量保住色相，**alpha 原样不动**。
+                     ⚠ 曾经这里把超出的倍数折进不透明度（`a * m` 再夹 1），理由是
+                     「加法混合下更亮 = 加得更多」——那会**把淡入淡出整条压平**：
+                     `star` 的 brightness=50，alpha 只要 >0.02 就一律顶成 1，LIFE
+                     算得好好的 1.0→0.6 的淡出在屏幕上完全看不出来。宁可整体偏暗
+                     也不能丢掉淡入淡出，那是作者调出来的东西。
       'tonemap'      Reinhard c/(1+c)。⚠ 与实测不符（受控扫描证明是硬夹取），留作对照
       'raw'          直接夹取：与「单个像素」的实机行为一致，但少了 tone map/自动曝光，
                      brightness 一大就整片白
@@ -552,7 +761,7 @@ def _display_color(c, mode):
     m = max(r, g, b)
     if m <= 1.0:
         return (r, g, b, a)
-    return (r / m, g / m, b / m, min(1.0, a * m))
+    return (r / m, g / m, b / m, a)
 
 
 def _to_blender(v):
@@ -936,15 +1145,19 @@ def _mesh_affine(item, size_mul, rows):
     au = [[_UNIT, 0.0, 0.0], [0.0, 0.0, -_UNIT], [0.0, _UNIT, 0.0]]
     m3 = [[r0[0], r0[1], r0[2]], [r1[0], r1[1], r1[2]], [r2[0], r2[1], r2[2]]]
 
-    space = _P.get("mesh_rot_space") or "local"
+    space = _P.get("mesh_rot_space") or "game"
     if turning and space == "game":
-        # 在游戏坐标系里转，再换轴（= M·R·M⁻¹，M=Rx(90°)）
+        # 在游戏坐标系里转，再换轴（= M·R·M⁻¹，M=Rx(90°)）。
+        #
+        # 两条互相独立的实测都指向这一支：
+        #   MOD_aura2 的 ROTATEANIM spin_velocity.z=1 —— 转轴要平行于 Blender Y
+        #     （'game' 给 Y、'local' 给 Z）
+        #   MOD_aura2 的 MESH.rotation 是 game Y=4 —— transform_sync 把它摆成
+        #     Blender Z=4°（'game' 给 Z、'local' 给 Y）
+        # 后一条尤其硬：那是另一条独立写成的代码路径算出来的同一个结论。
         lin = _mat3_mul(m3, _mat3_mul(au, _mat3_mul(rot3(), scl)))
     elif turning:
-        # 'local'：换完轴再在**网格自己的 Blender 局部系**里转。
-        # 判据是实机形态：arrow_base 的 rotation Z=-90 在游戏里是把箭在地面上转个向，
-        # 不是把它立起来。箭身沿游戏 -X，绕游戏 Z（水平轴）转 90° 必然竖起来，
-        # 只有绕竖直轴转才躺得平。
+        # 'local'：换完轴再在网格自己的 Blender 局部系里转。留作对照。
         lin = _mat3_mul(m3, _mat3_mul(rot3(), _mat3_mul(au, scl)))
     else:
         lin = _mat3_mul(m3, _mat3_mul(au, scl))
@@ -1072,7 +1285,10 @@ void main()
 }
 """
 
-#: `alphaFix` = (lowPass, contrast_gamma)，中性值 (0, 1)。ALPHACORRECTION 是**逐纹素**
+#: `alphaFix` = (lowPass, contrast_gamma, lumaAsAlpha)，中性值 (0, 1, 0)。
+#: 第三位把**贴图 RGB 的明暗当成 alpha**：`_BM`/flow 这类贴图是 RGB-only 的，
+#: alpha 通道恒 1，照实取 alpha 画出来会连黑底一起变成不透明的一整片。
+#: ALPHACORRECTION 是**逐纹素**
 #: 改贴图 alpha 的形状（硬阈值裁切 + 伽马），只有在这里做才是对的。
 #: 两层染色（RGBFIRE/RGBWATER）按**贴图亮度**在外缘色与核心色之间插值：笔画核心亮
 #: → 取核心色，边缘暗 → 取外缘色。没有第二层时 col2 == color，mix 自动退化成恒等。
@@ -1082,7 +1298,7 @@ void main()
   vec4 t = texture(image, v_uv);
   float lum = max(t.r, max(t.g, t.b));
   vec3 rgb = mix(v_col.rgb, v_col2.rgb, lum);
-  float a = t.a;
+  float a = mix(t.a, lum, alphaFix.z);
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
   fragColor = vec4(t.rgb * rgb, a * v_col.a);
 }
@@ -1106,7 +1322,7 @@ def _tex_shader():
         iface.smooth("VEC4", "v_col2")
         info = gpu.types.GPUShaderCreateInfo()
         info.push_constant("MAT4", "ModelViewProjectionMatrix")
-        info.push_constant("VEC2", "alphaFix")
+        info.push_constant("VEC3", "alphaFix")
         info.sampler(0, "FLOAT_2D", "image")
         info.vertex_in(0, "VEC3", "pos")
         info.vertex_in(1, "VEC2", "uv")
@@ -1144,6 +1360,7 @@ def _gpu_texture(name):
 
 def _clear_tex_cache():
     _GPU_TEX.clear()
+    _TEX_ALPHA_USABLE.clear()
 
 
 def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
@@ -1168,7 +1385,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     hdr_mode = getattr(scene, "efx_sim_hdr_mode", "preserve_hue")
     # 逐帧读一次存进 _P：`_mesh_affine` 是逐粒子调的，在那里读 Scene 属性等于
     # 每个粒子过一次 RNA
-    _P["mesh_rot_space"] = getattr(scene, "efx_sim_mesh_rot", "local")
+    _P["mesh_rot_space"] = getattr(scene, "efx_sim_mesh_rot_space", "game")
     show_vel = bool(getattr(scene, "efx_sim_show_velocity", False))
     flip_v = bool(getattr(scene, "efx_sim_uv_flip_v", True))
     use_tex = bool(getattr(scene, "efx_sim_textured", True))
@@ -1186,17 +1403,40 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     right, up = _camera_axes(rv3d)
     view_dir = _view_direction(rv3d)
 
+    def _order_of(it):
+        """这一项属于哪个 entry → 绘制次序键。子实例（PtLife → Action）属于别的
+        entry，按**它自己**那个 entry 的次序排。
+
+        ⚠ 游戏里子实例究竟按子 entry 的次序排、还是按父粒子的生成时机排，没有实测
+        依据；这里取前者（与文件内的静态次序一致，至少是可预期的）。
+        """
+        key = it.extra.get("entry_key")
+        if not key:
+            return track_order
+        got = order_memo.get(key)
+        if got is None:
+            got = entry_order(bpy.data.objects.get(key)) if key else track_order
+            order_memo[key] = got
+        return got
+
     def _bucket_for(it, tex):
-        """桶 key = (混合模式, 贴图, alpha 修正)。
+        """桶 key = (绘制次序, 混合模式, 贴图, alpha 修正)。
+
+        次序键放最前面：完全重合的面片谁盖谁由绘制顺序决定（粒子不写深度），而实机
+        是按 entry 在文件里的排布定的，所以桶必须能按它排序，见 `entry_order`。
 
         alpha 修正（ALPHACORRECTION）是 shader 的 push constant，逐 draw 生效，所以
-        必须进 key。它是**逐 entry**的，一个场景里不同取值就那么几种，分桶开销可忽略。
+        也必须进 key。两者都是**逐 entry**的，一个场景里就那么几种取值，分桶开销可忽略。
         """
         mode = it.blend if blend == "AUTO" else blend
         if mode not in ("ALPHA", "ADDITIVE"):
             mode = "ALPHA"
-        fix = it.extra.get("alpha_fix") or (0.0, 1.0)
-        key = (mode, tex, fix)
+        low, gamma = it.extra.get("alpha_fix") or (0.0, 1.0)
+        if luma_mode == "auto":
+            luma = 0.0 if _texture_alpha_is_usable(tex) else 1.0
+        else:
+            luma = 1.0 if luma_mode == "on" else 0.0
+        key = (_order_of(it), mode, tex, (low, gamma, luma))
         b = buckets.get(key)
         if b is None:
             # 第 4 条是双层染色的核心色；和 uv 一样只有走贴图 shader 的桶才需要。
@@ -1210,6 +1450,11 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     #: 前面还要 `bpy.data.objects.get`——逐粒子做就是每个粒子一次小扫描，粒子一多就是
     #: 网格路径的主要固定开销（实测占每粒子 120 µs 里的大半）。一个 entry 只查一次。
     mesh_memo = {}
+    #: entry 名 → 绘制次序键。子实例每帧都要查，缓存一下别逐粒子反查集合
+    order_memo = {}
+    track_order = tr.get("order") or ("", 0)
+    mat_images = tr.get("mesh_images") or {}
+    luma_mode = getattr(scene, "efx_sim_alpha_source", "auto")
 
     def _geom_of(it):
         """(几何, 贴图名)。贴图来自绑定网格自己的材质——reference mesh 那条链已经把
@@ -1226,7 +1471,8 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                 nm = getattr(owner, "name", "") or "?"
                 if nm not in miss:
                     miss.append(nm)
-            name = _mesh_image_name(m) if use_tex else ""
+            # MATERIAL 指定的贴图优先；没有（或没载上）才退回 mod3 自带材质那张
+            name = (mat_images.get(key) or _mesh_image_name(m)) if use_tex else ""
             if name and _gpu_texture(name) is None:
                 name = ""
             got = (_mesh_tris_game(m), name)
@@ -1361,25 +1607,35 @@ def _draw():
     gpu.state.depth_mask_set(False)      # 粒子之间不互相遮挡，但仍被场景几何遮挡
     try:
         # 先 Alpha 再 Add：加法混合的东西通常是最亮的高光，压在最后一层
-        for mode in ("ALPHA", "ADDITIVE"):
-            for (bmode, tex_name, fix), (bv, bc, bu, b2, bnp) in buckets.items():
-                if bmode != mode or not (bv or bnp):
-                    continue
-                if bnp:
-                    bv, bc, bu, b2 = _join_chunks(bv, bc, bu, b2, bnp)
-                gpu.state.blend_set(mode)
-                tex = _gpu_texture(tex_name) if (bu is not None) else None
-                if tex is not None and tex_shader is not None:
-                    tex_shader.bind()
-                    tex_shader.uniform_sampler("image", tex)
-                    # ALPHACORRECTION：(lowPass, contrast_gamma)，中性值 (0, 1)
-                    tex_shader.uniform_float("alphaFix", fix)
-                    batch_for_shader(tex_shader, "TRIS",
-                                     {"pos": bv, "uv": bu, "color": bc,
-                                      "col2": b2}).draw(tex_shader)
-                else:
-                    batch_for_shader(flat, "TRIS",
-                                     {"pos": bv, "color": bc}).draw(flat)
+        # 绘制顺序 = 桶 key 的次序（entry 在文件里的排布），见 `entry_order`。
+        # 'alpha_first' 退回改动前的「先所有 Alpha 再所有 Add」。
+        # ⚠ 两者不等价：加法之间可交换，但**加法与 Alpha 之间不可交换**——一个 Alpha
+        # 面片画在加法之后会把已经加上去的光按 (1-a) 衰减掉。要照实机的覆盖关系来，
+        # 就得让这个启发式让位。
+        if getattr(scene, "efx_sim_draw_order", "entry") == "entry":
+            order = sorted(buckets.keys())
+        else:
+            order = sorted(buckets.keys(), key=lambda k: (k[1] == "ADDITIVE",))
+        for key in order:
+            bv, bc, bu, b2, bnp = buckets[key]
+            if not (bv or bnp):
+                continue
+            _bo, mode, tex_name, fix = key
+            if bnp:
+                bv, bc, bu, b2 = _join_chunks(bv, bc, bu, b2, bnp)
+            gpu.state.blend_set(mode)
+            tex = _gpu_texture(tex_name) if (bu is not None) else None
+            if tex is not None and tex_shader is not None:
+                tex_shader.bind()
+                tex_shader.uniform_sampler("image", tex)
+                # (lowPass, contrast_gamma, lumaAsAlpha)，中性值 (0, 1, 0)
+                tex_shader.uniform_float("alphaFix", fix)
+                batch_for_shader(tex_shader, "TRIS",
+                                 {"pos": bv, "uv": bu, "color": bc,
+                                  "col2": b2}).draw(tex_shader)
+            else:
+                batch_for_shader(flat, "TRIS",
+                                 {"pos": bv, "color": bc}).draw(flat)
 
         overlay = "ADDITIVE" if blend == "ADDITIVE" else "ALPHA"
         if points:
@@ -1455,6 +1711,7 @@ def _rebuild_if_dirty(scene):
         return
     _P["dirty"] = False
     _clear_tex_cache()          # 参考图可能被换了
+    _clear_material_cache()     # MATERIAL 的贴图路径也可能被改过
     alive = []
     for tr in _P["tracks"]:
         if rebuild_track(tr, scene, keep_frame=True):
@@ -1573,7 +1830,11 @@ class EFX_OT_sim_play(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _resolve_entry(context.active_object) is not None and not is_active()
+        # 点中根集合时活动对象未必是 entry（甚至可能没有），那条路照样能播整个文件
+        if is_active():
+            return False
+        return (_resolve_entry(context.active_object) is not None
+                or _active_root_collection(context) is not None)
 
     def invoke(self, context, event):
         entries = collect_entries(context)
@@ -1945,7 +2206,10 @@ class EFX_PT_sim_unknowns(Panel):
         col.prop(scene, "efx_sim_t3d_vel_unit")
         col.prop(scene, "efx_sim_spawn_jitter")
         col.prop(scene, "efx_sim_t3d_rot_sign")
-        col.prop(scene, "efx_sim_mesh_rot")
+        col.prop(scene, "efx_sim_material_slot")
+        col.prop(scene, "efx_sim_alpha_source")
+        col.prop(scene, "efx_sim_draw_order")
+        col.prop(scene, "efx_sim_mesh_rot_space")
         col.prop(scene, "efx_sim_rgb_tint")
         col.prop(scene, "efx_sim_hdr_mode")
         col.prop(scene, "efx_sim_life_model")
@@ -2051,7 +2315,8 @@ def register():
         name="Over-bright colours",
         items=[("preserve_hue", "Keep hue",
                 "Scale colours brighter than white back down so the authored hue "
-                "survives, and fold the extra brightness into opacity"),
+                "and the fade in and out both survive - the sprite reads dimmer "
+                "than it does in game"),
                ("tonemap", "Tone map",
                 "Roll bright colours off towards white, the way bloom does in game"),
                ("raw", "Clip",
@@ -2059,13 +2324,40 @@ def register():
                 "in game, but without its tone mapping a high brightness turns "
                 "the whole sprite white")],
         default="preserve_hue")
-    S.efx_sim_mesh_rot = EnumProperty(
+    S.efx_sim_alpha_source = EnumProperty(
+        name="Opacity from",
+        items=[("auto", "Auto",
+                "Per texture: use its alpha channel where that channel carries "
+                "something, and how bright the texture is where it does not - "
+                "flow and _BM textures have a flat alpha channel"),
+               ("on", "Brightness", "Always use how bright the texture is"),
+               ("off", "Alpha channel", "Always use the texture's alpha channel")],
+        default="auto")
+    S.efx_sim_material_slot = EnumProperty(
+        name="Mesh texture from",
+        items=[("tAlbedoMap", "Material albedo",
+                "Take the mesh texture from the MATERIAL attribute's albedo slot"),
+               ("tEmissiveMap", "Material emissive",
+                "Take it from the emissive slot instead"),
+               ("none", "Mesh material",
+                "Ignore the MATERIAL attribute and use whatever the imported "
+                "mod3's own material points at")],
+        default="tAlbedoMap")
+    S.efx_sim_draw_order = EnumProperty(
+        name="Draw order",
+        items=[("entry", "Entry order",
+                "Draw in the order the entries sit in the file, so fully "
+                "overlapping faces cover each other the way they do in game"),
+               ("alpha_first", "Alpha then additive",
+                "Draw every alpha-blended body first and the additive ones on top")],
+        default="entry")
+    S.efx_sim_mesh_rot_space = EnumProperty(
         name="Mesh rotation space", update=_on_knob_changed,
-        items=[("local", "Mesh local",
-                "Turn the mesh about its own axes after the game-to-Blender swap"),
-               ("game", "Game axes",
-                "Turn it in game space before the swap")],
-        default="local")
+        items=[("game", "Game axes",
+                "Turn the mesh in game space, then swap to Blender axes"),
+               ("local", "Mesh local",
+                "Swap axes first, then turn it about its own Blender axes")],
+        default="game")
     S.efx_sim_rgb_tint = EnumProperty(
         name="RGB tint", update=_on_knob_changed,
         items=[("weighted", "Weighted",
@@ -2205,7 +2497,11 @@ def unregister():
         "efx_sim_uvs_start_wrap", "efx_sim_uvs_grid",
         "efx_sim_textured", "efx_sim_uv_flip_v", "efx_sim_ribbon_length",
         "efx_sim_parent_clock", "efx_sim_color_range", "efx_sim_t3d_vel_unit",
-        "efx_sim_spawn_jitter", "efx_sim_t3d_rot_sign", "efx_sim_rgb_tint", "efx_sim_mesh_rot",
+        "efx_sim_spawn_jitter", "efx_sim_t3d_rot_sign", "efx_sim_rgb_tint", "efx_sim_mesh_rot_space",
+        "efx_sim_mesh_rot",   # 撤掉的旧名（存过 local），留着清场
+        "efx_sim_draw_order", "efx_sim_material_slot",
+        "efx_sim_alpha_source",
+        "efx_sim_luma_alpha",   # 撤掉的旧名（存过 mesh/all），留着清场
         "efx_sim_hdr_mode",
         "efx_sim_hdr",   # 撤掉的旧名（存过已删除的 auto），留着清场
         "efx_sim_fps",   # 已撤掉的开关，留在这里是为了从老场景里清掉

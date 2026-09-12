@@ -257,8 +257,8 @@ def blade_fields(**kw):
 def mesh_fields(**kw):
     f = {"typeFlag": 1, "colorRate": 1.0, "colorRateJitter": 0.0,
          "emissiveColorRate": 1.0, "emissiveColorRateJitter": 0.0,
-         "rotation": [0.0] * 6, "rotation2": 0.0, "rotation2Jitter": 0.0,
-         "rotationOrder": 4,
+         "unknFloat0": 0.0, "unknFloat1": 0.0,
+         "rotation": [0.0] * 6, "rotationOrder": 4,
          "scale": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0],
          "global_scale": 1.0, "global_scale_jitter": 0.0,
          "visconIndex": 0, "visconIndexJitter": 0,
@@ -1945,7 +1945,8 @@ class TestPtLifeActionScene(unittest.TestCase):
     子实例跟着父粒子走，父粒子消亡后失去 parent 就地留下（用户实机）。"""
 
     def _scene(self, ptlife=None, parent_life=None, child_life=None,
-               parent_velocity=None, targets=None, config=None, actions=None):
+               parent_velocity=None, targets=None, config=None, actions=None,
+               child_spawn=None):
         """两个 entry：0 = 父（带 PTLIFE），1 = 子（一个静止的 billboard）。"""
         parent_blocks = [
             (SPAWN, spawn_fields(burstInterval=1000)),
@@ -1956,7 +1957,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         if parent_velocity is not None:
             parent_blocks.append((VELOCITY3D, parent_velocity))
         child_blocks = [
-            (SPAWN, spawn_fields(burstInterval=1000)),
+            (SPAWN, child_spawn or spawn_fields(burstInterval=1000)),
             (LIFE, child_life or life_fields(indefiniteLifespan=1)),
             (BILLBOARD3D, billboard_fields()),
         ]
@@ -2060,12 +2061,57 @@ class TestPtLifeActionScene(unittest.TestCase):
         parent_p = sc.root.sim.em.particles[0]
         self.assertAlmostEqual(child.em.host_origin.y, parent_p.pos.y + 50.0, places=4)
 
-    def test_action_size_scales_the_child_emitter(self):
-        sc = self._scene(ptlife=ptlife_fields(status=0),
-                         parent_life=life_fields(indefiniteLifespan=1),
-                         targets=[ActionTarget(1, size=Vec3(2.0, 2.0, 2.0))])
+    def test_action_size_scales_the_whole_child_effect(self):
+        """PLAYEMITTER 的 Size 是**整体缩放**：位置和尺寸都跟着缩，绕锚点。
+
+        用户原话：Size 0.5 时「和距离相关的都会缩到 0.5 倍」——t3d 平移 +200 在
+        Size 0.5 的 action 下实际就是 +100。
+        ⚠ 旧实现是把 Size 乘进 `em.scale_dynamic`，那只影响 EMITTERSHAPE3D 的生成点，
+        对没有 ES3D 的 entry（wp11_017 里那些 aura 网格）完全不起作用。
+        """
+        def run(size):
+            sc = self._scene(ptlife=ptlife_fields(status=0),
+                             parent_life=life_fields(indefiniteLifespan=1),
+                             child_life=life_fields(indefiniteLifespan=1),
+                             targets=[ActionTarget(1, position=Vec3(0.0, 40.0, 0.0),
+                                                   size=Vec3(size, size, size))])
+            sc.run(3)
+            child = sc.instances[1]
+            it = [i for i in sc.build_render()
+                  if i.extra.get("instance") == child.iid][0]
+            anchor = child.em.host_origin
+            return (it.pos - anchor).length(), it.size.x
+
+        d1, s1 = run(1.0)
+        d2, s2 = run(0.5)
+        self.assertAlmostEqual(s2, s1 * 0.5, places=5)      # 尺寸缩一半
+        self.assertAlmostEqual(d2, d1 * 0.5, places=5)      # 离锚点的距离也缩一半
+
+    def test_child_applies_its_own_static_transform(self):
+        """子实例没有宿主替它摆位 → 它得自己套 TRANSFORM3D 的静态变换。
+
+        根实例照旧不套（Blender 里 transform_sync 已经摆好，再套就是双份位移）。
+        """
+        t = transform3d_fields(translate=[0.0, 0.0, 70.0, 0.0, 0.0, 0.0])
+        blocks = [
+            (TRANSFORM3D, t),
+            (SPAWN, spawn_fields(burstInterval=1000)),
+            (LIFE, life_fields(indefiniteLifespan=1)),
+            (BILLBOARD3D, billboard_fields()),
+        ]
+        parent = [
+            (SPAWN, spawn_fields(burstInterval=1000)),
+            (LIFE, life_fields(indefiniteLifespan=1)),
+            (PTLIFE, ptlife_fields(status=0)),
+            (BILLBOARD3D, billboard_fields()),
+        ]
+        sc = SimScene({0: EntryTemplate(0, parent), 1: EntryTemplate(1, blocks)},
+                      {0: [ActionTarget(1)]}, root_key=0, config=SimConfig(seed=1))
         sc.run(3)
-        self.assertAlmostEqual(sc.instances[1].em.scale_dynamic.x, 2.0, places=5)
+        child = sc.instances[1]
+        self.assertTrue(child.sim.config.t3d_apply_base)
+        self.assertFalse(sc.root.sim.config.t3d_apply_base)
+        self.assertAlmostEqual(child.em.drift.y, 70.0, places=4)
 
     # ── 安全阀 ───────────────────────────────────────────────────────────────
     def test_depth_limit_stops_recursion(self):
@@ -2110,6 +2156,38 @@ class TestPtLifeActionScene(unittest.TestCase):
         self.assertEqual(sc.instance_count, 2)
         sc.run(40)
         self.assertEqual(sc.instance_count, 1)       # 只剩根
+
+    def test_a_child_that_has_not_fired_yet_is_not_culled(self):
+        """SPAWN.emitterStartDelay 比空转宽限还长 → 不能在它开火前就把实例回收了。
+
+        用户的 `wp11_017` 里 `explpt` 就是这样：延迟 60 帧，而空转宽限 30 帧，
+        表现成「这个子特效完全不触发」。判据是**有没有吐过粒子**：一个都没吐过的
+        实例是在等，不是空转。
+        """
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(indefiniteLifespan=1),
+                         child_spawn=spawn_fields(emitterStartDelay=60,
+                                                  burstInterval=1000),
+                         child_life=life_fields(indefiniteLifespan=1),
+                         config=SimConfig(seed=1, child_cull_grace=5))
+        sc.run(40)
+        self.assertEqual(sc.instance_count, 2)      # 还在等，别收
+        sc.run(30)
+        child = [i for i in sc.instances if i.depth > 0][0]
+        self.assertGreater(child.em.spawned_total, 0)   # 第 60 帧确实开火了
+
+    def test_pending_children_do_eventually_time_out(self):
+        """但也不能无限等——一个永远不发的子实例最后还是要收掉。"""
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(indefiniteLifespan=1),
+                         child_spawn=spawn_fields(emitterStartDelay=100000,
+                                                  burstInterval=1000),
+                         config=SimConfig(seed=1, child_cull_grace=5,
+                                          child_pending_grace=20))
+        sc.run(15)
+        self.assertEqual(sc.instance_count, 2)
+        sc.run(20)
+        self.assertEqual(sc.instance_count, 1)
 
     # ── 确定性 ───────────────────────────────────────────────────────────────
     def test_same_seed_same_tree(self):
@@ -2690,9 +2768,28 @@ class TestMesh(unittest.TestCase):
         self.assertAlmostEqual(rot.z, 30.0, places=6)
         self.assertIn(it.extra["rot_order"], ("XYZ", "YZX", "YXZ", "ZYX", "ZXY", "XZY"))
 
-    def test_rotation2_adds_to_z(self):
-        it, _ = self._item(mesh=mesh_fields(rotation2=45.0))
+    def test_rotation_jitter_is_the_second_of_each_pair(self):
+        """rotation 是完整的三轴（固定/随机成对）——没有额外的标量旋转。
+
+        曾经这块字节边界偏了 8 个字节，真正的 Z 被单独当成 `rotation2`；
+        现在 6 个 float 就是 (X, XJitter, Y, YJitter, Z, ZJitter)。
+        """
+        it, _ = self._item(mesh=mesh_fields(
+            rotation=[10.0, 0.0, 20.0, 0.0, 45.0, 0.0]))
         self.assertAlmostEqual(it.extra["rot"].z, 45.0, places=6)
+        self.assertNotIn("rotation2", mesh_fields())
+
+    def test_emitter_rotation_reaches_the_mesh(self):
+        """发射器自己的旋转要转动网格——`em.rot_dynamic` 是宿主没替我们套的那部分。
+
+        wp11_017 的 aura32a/b/c 只差发射器静态 rotate Z 的 0 / ±120°；不算这一项
+        三份会完全重叠画在同一处。
+        """
+        it, sim = self._item(mesh=mesh_fields(rotation=[0.0] * 6))
+        base = it.extra["rot"].z
+        sim.em.rot_dynamic.z += 120.0
+        it2 = sim.build_render()[0]
+        self.assertAlmostEqual(it2.extra["rot"].z, base + 120.0, places=5)
 
     def test_viscon_index_is_passed_through(self):
         it, _ = self._item(mesh=mesh_fields(visconIndex=3))

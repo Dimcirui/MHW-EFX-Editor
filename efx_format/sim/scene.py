@@ -167,14 +167,42 @@ def from_efx_file(efx, root_index=0, config=None, resources=None):
 # 实例
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _scale_item(it, anchor, s):
+    """PLAYEMITTER 的 Size = 这一整个子特效的**整体缩放**，绕它的锚点缩。
+
+    位置和尺寸都要缩：只缩生成区域（原来那种把 Size 乘进 `em.scale_dynamic` 的做法）
+    对**没有 EMITTERSHAPE3D 的 entry 完全不起作用**——`scale_dynamic` 的唯一消费者是
+    ES3D 的生成点，而 wp11_017 里那几个 aura 网格根本没有 ES3D，Size=0.4 等于白写。
+    绕锚点缩位置则连带把生成区域、速度轨迹一起缩了，才是「整体」。
+    """
+    p = it.pos
+    p.x = anchor.x + (p.x - anchor.x) * s.x
+    p.y = anchor.y + (p.y - anchor.y) * s.y
+    p.z = anchor.z + (p.z - anchor.z) * s.z
+    sz = it.size
+    sz.x *= s.x
+    sz.y *= s.y
+    sz.z *= s.z
+    if it.points:
+        # 条带：逐顶点位置 + 半宽。半宽是标量，取 x 那一路——Size 在语料里 94% 是
+        # 等比的，非等比时条带的宽度本来也没有唯一正确的答案。
+        pts = []
+        for q, hw, a in it.points:
+            pts.append((Vec3(anchor.x + (q.x - anchor.x) * s.x,
+                             anchor.y + (q.y - anchor.y) * s.y,
+                             anchor.z + (q.z - anchor.z) * s.z),
+                        hw * s.x, a))
+        it.points = pts
+
+
 class Instance(object):
     """树上的一个节点 = 一个 entry 的一次运行。"""
 
     __slots__ = ("iid", "key", "sim", "depth", "parent_particle", "offset",
-                 "birth_frame", "idle_frames", "detached")
+                 "birth_frame", "idle_frames", "detached", "scale")
 
     def __init__(self, iid, key, sim, depth, parent_particle=None, offset=None,
-                 birth_frame=0):
+                 birth_frame=0, scale=None):
         self.iid = iid
         self.key = key
         self.sim = sim
@@ -182,6 +210,8 @@ class Instance(object):
         #: 发起它的那个粒子（根实例为 None）。粒子死了就断链，见 detached。
         self.parent_particle = parent_particle
         self.offset = offset or Vec3()
+        #: PLAYEMITTER 的 Size —— 这一整个子特效的整体缩放（见 SimScene.build_render）
+        self.scale = scale or Vec3(1.0, 1.0, 1.0)
         self.birth_frame = birth_frame
         self.idle_frames = 0
         #: True = 已经失去 parent（父粒子消亡），不再跟随，就地留下
@@ -222,6 +252,7 @@ class SimScene(object):
         self.root = None
         self._next_iid = 0
         self._notes = []
+        self._child_cfg = None
         self.reset()
 
     # ── 生命周期 ─────────────────────────────────────────────────────────────
@@ -235,6 +266,23 @@ class SimScene(object):
             self.root = self._make_instance(self.root_key, depth=0)
         return self.em
 
+    def _child_config(self):
+        """子实例用的 config：与根共用一切，只把 `t3d_apply_base` 打开。
+
+        SimConfig 是 __slots__ 类，逐槽位拷；列表那几项（stage_order 之类）共享引用
+        没问题——它们只读。
+        """
+        if self._child_cfg is None:
+            c = SimConfig()
+            for name in SimConfig.__slots__:
+                try:
+                    setattr(c, name, getattr(self.config, name))
+                except Exception:
+                    pass
+            c.t3d_apply_base = True
+            self._child_cfg = c
+        return self._child_cfg
+
     def _make_instance(self, key, depth, parent_particle=None, target=None):
         tmpl = self.templates.get(key)
         if tmpl is None:
@@ -246,21 +294,20 @@ class SimScene(object):
                 res = self.resources_for(key) or res
             except Exception:
                 pass
-        sim = Simulator(tmpl.blocks, tmpl.timl_bytes, self.config, res,
+        # ⚠ 子实例要**自己套用** TRANSFORM3D 的静态变换。`t3d_apply_base` 默认关着，
+        # 理由是「Blender 里 entry 的 empty 已经被 transform_sync 摆好了」——那只对
+        # **根** entry 成立。子实例是锚在父粒子上的，没有任何宿主替它摆位，静态
+        # translate/rotate/resize 就这么被整个丢掉了。
+        # 实例：wp11_017 的 aura32a/b/c 只差一个静态 rotate Z（0 / ±120°），丢了之后
+        # 三份完全重叠画在同一处。
+        cfg = self.config if depth == 0 else self._child_config()
+        sim = Simulator(tmpl.blocks, tmpl.timl_bytes, cfg, res,
                         tracks=tmpl.tracks())
         offset = target.position.copy() if target is not None else Vec3()
+        scale = target.size.copy() if target is not None else None
         inst = Instance(self._next_iid, key, sim, depth, parent_particle, offset,
-                        max(0, self.frame))
+                        max(0, self.frame), scale)
         self._next_iid += 1
-
-        if target is not None:
-            # PLAYEMITTER 的 Size：乘进发射器的动态缩放（生成形状会跟着缩放；
-            # 粒子自身尺寸由渲染体属性决定，不受它影响）
-            s = target.size
-            if s.x != 1.0 or s.y != 1.0 or s.z != 1.0:
-                sim.em.scale_dynamic = Vec3(sim.em.scale_dynamic.x * s.x,
-                                            sim.em.scale_dynamic.y * s.y,
-                                            sim.em.scale_dynamic.z * s.z)
         if parent_particle is not None:
             self._follow(inst)
         self.instances.append(inst)
@@ -297,7 +344,13 @@ class SimScene(object):
                 self._consume(inst, reqs)
 
         # 4. 回收：只回收子实例（根实例永远留着，播放器的帧号靠它）
+        #
+        # ⚠ 「一个粒子都还没吐过」和「吐完了没了」是两回事，不能用同一个宽限期：
+        # SPAWN.emitterStartDelay 可以很长（用户的 `explpt` 是 60 帧），而空转宽限只有
+        # 30 帧——按老逻辑它在开火前 30 帧就被回收了，表现成「这个子特效完全不触发」。
+        # 所以还没生成过粒子的实例用一个**宽得多**的等待上限，生成过之后才按 grace 收。
         grace = int(getattr(self.config, "child_cull_grace", 30))
+        pending = int(getattr(self.config, "child_pending_grace", 600))
         keep = []
         for inst in self.instances:
             if inst.depth == 0:
@@ -308,7 +361,8 @@ class SimScene(object):
                 keep.append(inst)
                 continue
             inst.idle_frames += 1
-            if inst.idle_frames < grace:
+            limit = grace if getattr(inst.em, "spawned_total", 0) else pending
+            if inst.idle_frames < limit:
                 keep.append(inst)
         self.instances = keep
         return self.em
@@ -367,11 +421,16 @@ class SimScene(object):
         out = []
         for inst in self.instances:
             items = inst.sim.build_render(view)
+            s = inst.scale
+            scaled = (s.x != 1.0 or s.y != 1.0 or s.z != 1.0)
+            anchor = inst.em.host_origin if scaled else None
             for it in items:
                 # 宿主要按 entry 取各自的序列帧大图（一棵树里每个 entry 一张），
                 # 所以每个渲染项都标出自己出自哪个 entry。
                 it.extra["entry_key"] = inst.key
                 it.extra["instance"] = inst.iid
+                if scaled:
+                    _scale_item(it, anchor, s)
             out.extend(items)
         return out
 

@@ -2928,16 +2928,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("MESH", "rotation2"): {
-        "EN": "Formerly unkn5_2. A scalar rotation value distinct from the XYZ 'rotation' field above it — angle-like numbers, most commonly -180 or 0 (occasionally -360 or other degree values). Exact axis/purpose unknown.",
-        "ZH": '原名 unkn5_2。与上方 XYZ 的 rotation 字段不同，是一个独立的标量旋转值——呈角度状数字，最常见为 -180 或 0（偶见 -360 等其他角度）。具体作用的轴向未知。',
+    ("MESH", "unknFloat0"): {
+        "EN": "Effect unknown. Almost always 0 (99.6% of blocks); the few non-zero "
+              "values sit between 0 and 1.",
+        "ZH": "作用未知。几乎恒为 0（99.6% 的块），少数非零值落在 0~1 之间。",
     },
-    ("MESH", "rotation2Jitter"): {
-        "EN": "Formerly unkn5_3. Jitter paired with rotation2 — most commonly 360 or 0 "
-              "(360 reads as 'fully random rotation', matching rotation2's -360 outlier); "
-              "occasionally other degree values.",
-        "ZH": "原名 unkn5_3。与 rotation2 配对的抖动量——最常见为 360 或 0（360 即"
-              "「完全随机旋转」，与 rotation2 偶见的 -360 呼应）；偶见其他角度值。",
+    ("MESH", "unknFloat1"): {
+        "EN": "Effect unknown. Almost always 0 (99.8% of blocks); the few non-zero "
+              "values are 1 or 3.",
+        "ZH": "作用未知。几乎恒为 0（99.8% 的块），少数非零值是 1 或 3。",
     },
     ("MESH", "rotationOrder"): {
         "EN": "Formerly unkn7_2. Exactly 6 observed values (0~5, dominated by 4 at ~88%) — same value shape as EMITTERSHAPE3D's rotationOrder (also dominated by 4), suggesting they may share the same engine-wide rotation-order enum. Exact meaning per value unknown.",

@@ -9,7 +9,7 @@ mod3 导入并绑在 MESH 属性的 `efx_mesh_target` 上）。所以本 behavio
 「在这个位置、按这个变换、用这个颜色，画那个绑定的网格」，具体怎么画交给 glue：
 
     item.kind = 'MESH'
-    item.pos / item.size(=逐轴缩放) / item.extra['rot'](欧拉角，度)
+    item.pos / item.size(=逐轴缩放) / item.extra['rot'](欧拉角，度；含发射器旋转)
     item.extra['viscon'] = visconIndex   —— 选 mod3 里哪一组网格
     item.extra['emissive'] = (r,g,b,a)   —— 自发光色，glue 可叠加
 
@@ -17,8 +17,10 @@ mod3 导入并绑在 MESH 属性的 `efx_mesh_target` 上）。所以本 behavio
 
 字段
 ----
-    rotation(XYZ0)            逐轴旋转（固定/抖动成对）
-    rotation2(+Jitter)        额外自旋
+    rotation(XYZ0)            逐轴旋转（固定/抖动成对）。⚠ 曾经这一块的字节边界划错了
+                              8 个字节，于是「X」拿到一个非角度字段、「Y」拿到真 X、
+                              「Z」拿到真 Y，而真正的 Z 被单独叫成 rotation2。
+                              现在 rotation 就是完整的三轴，没有额外的标量旋转。
     rotationOrder             _TRANSFORM_ROT_ORDER
     scale(XYZ0)               逐轴缩放
     global_scale(+Jitter)     整体缩放倍率
@@ -64,13 +66,11 @@ class Mesh(Behavior):
             return
         mode = em.config.jitter_mode
 
-        # 逐轴旋转 + 额外自旋
+        # 逐轴旋转（X/Y/Z 各自的固定+随机）
         rb, ra = f.xyz_lo("rotation"), f.xyz_hi("rotation")
-        rot = Vec3(jitter(rb.x, ra.x, rng, mode),
-                   jitter(rb.y, ra.y, rng, mode),
-                   jitter(rb.z, ra.z, rng, mode))
-        rot.z += jitter(f.get("rotation2"), f.get("rotation2Jitter"), rng, mode)
-        p.rolled["me_rot"] = rot
+        p.rolled["me_rot"] = Vec3(jitter(rb.x, ra.x, rng, mode),
+                                  jitter(rb.y, ra.y, rng, mode),
+                                  jitter(rb.z, ra.z, rng, mode))
         p.rolled["me_order"] = rot_order_name(f.i("rotationOrder"), ROT_ORDER_TRANSFORM)
 
         # 逐轴缩放 × 整体缩放
@@ -114,7 +114,14 @@ class Mesh(Behavior):
                       b0 * rate * p.color[2],
                       a0 * p.alpha]
         item.blend = "ALPHA"           # MESH 没有 blendMode 字段；网格按实心处理
-        item.extra["rot"] = rolled["me_rot"] + p.rot     # 属性旋转 + ROTATEANIM 累积
+        # 属性旋转 + ROTATEANIM 累积 + **发射器自己的旋转**。
+        # `em.rot_dynamic` 是「宿主没有替我们套的那部分」：根 entry 上它只含
+        # TRANSFORM3D 的 rotation_velocity 累积（静态部分由宿主摆位），子实例上它还
+        # 含静态 rotate（子实例没有宿主，见 scene.py 的 `_child_config`）。两种情形
+        # 加上去都是对的，所以不设门。
+        # 实例：wp11_017 的 aura32a/b/c 只差发射器静态 rotate Z 的 0 / ±120°，
+        # 不加这一项三份就完全重叠。
+        item.extra["rot"] = rolled["me_rot"] + p.rot + em.rot_dynamic
         item.extra["rot_order"] = rolled["me_order"]
         item.extra["viscon"] = rolled["me_viscon"]
         item.extra["emissive"] = rolled["me_emissive"]
