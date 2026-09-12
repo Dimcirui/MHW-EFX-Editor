@@ -230,8 +230,17 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Int("unknEnum1"),  # 不满足 section_length 公式(99.9%恒104,应为108)，未改名
     Int("spacer"),
     Bool("unknFlag2"),
-    Float("zDepthModifierStart", label_zh="Z 深度修正（起始）"),
-    Float("zDepthModifierEnd", label_zh="Z 深度修正（结束）"),
+    # 深度修正机制（2026-09 实机逐值排查，详见 memory shadersettings-zdepth-modifier-mechanism）：
+    # 官方字段名疑为 LayerNegative/LayerPositive（非"起始/结束"这种时间先后关系）。
+    # 语料 98.5% 遵守 zDepthModifierStart<=0、zDepthModifierEnd>=0 的符号约定，
+    # 两者以 0（特效未经修正时的原始深度）为共同基准，各自独立定义"能往摄像机方向拉近
+    # 多少"和"能往画面深处推远多少"的上限，合起来构成一条以真实场景深度为参照的
+    # 淡出带：真实场景深度越过 start 端时特效开始半透，越过 end 端后才完全不透明
+    # （反之则被真实几何体完全遮挡）——不是两个独立可拆开解读的量，必须合看。
+    # 越界输入（同号、二者相对 0 的符号颠倒、绝对值远超语料常见的 ±500 量级等）
+    # 会导致这条淡出带表现异常（钳制/退化），推测是格式未设计要处理的边界情况。
+    Float("zDepthModifierStart", label_zh="Z 深度修正（拉近上限）"),
+    Float("zDepthModifierEnd", label_zh="Z 深度修正（推远上限）"),
     Int("unknBitmask3_0"),
     # 暂不作 enum：RenderLayerMode 标签尚存疑；controlBitflag 官方语料见 5/7/8/9 等组合值
     # （5=1+4、9=1+8…），实为位掩码而非枚举，待 bitmask 编辑器再定。保持原始整数编辑。
