@@ -39,7 +39,7 @@ unsupported / notes / config / em / suggested_duration()` 都在，所以
 from .config import SimConfig
 from .resolve import TimlTracks
 from .simulator import Simulator
-from .state import ONE, Vec3, ViewContext
+from .state import ONE, RibbonStrip, Vec3, ViewContext
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -186,6 +186,17 @@ def _scale_item(it, anchor, s):
     if it.points:
         # 条带：逐顶点位置 + 半宽。半宽是标量，取 x 那一路——Size 在语料里 94% 是
         # 等比的，非等比时条带的宽度本来也没有唯一正确的答案。
+        pos = getattr(it.points, "pos", None)
+        if pos is not None:
+            # 数组形态（RibbonStrip）：整条一次缩完，别为了缩个尺寸把它物化成
+            # 上百个 Vec3——那正是这个形态要省掉的东西。切片各自独占 Q 的行，
+            # 原地改不会影响别的条带。
+            off = (anchor.x, anchor.y, anchor.z)
+            pos -= off
+            pos *= (s.x, s.y, s.z)
+            pos += off
+            it.points = RibbonStrip(pos, it.points.half * s.x, it.points.alpha)
+            return
         pts = []
         for q, hw, a in it.points:
             pts.append((Vec3(anchor.x + (q.x - anchor.x) * s.x,
@@ -416,6 +427,17 @@ class SimScene(object):
         return self.em
 
     # ── 渲染 ─────────────────────────────────────────────────────────────────
+    def emitter_outline(self, segments=28):
+        """**根发射器**的生成区域线框。
+
+        只画根的：PtLife 子实例各有各的形状，一棵几十个实例的树全画出来就成了
+        一团线，而作者正在编辑的是根那个。
+        """
+        try:
+            return self.root.sim.emitter_outline(segments)
+        except Exception:
+            return []
+
     def build_render(self, view=None):
         view = view or ViewContext()
         out = []

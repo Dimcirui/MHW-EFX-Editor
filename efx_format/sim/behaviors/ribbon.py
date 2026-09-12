@@ -55,7 +55,7 @@ from .. import trail as _trail
 from ..registry import Behavior, register
 from ..rng import jitter
 from ..stages import RENDER_BODY
-from ..state import RenderItem, Vec3
+from ..state import RenderItem, RibbonStrip, Vec3
 from ._common import (axis_normal, blend_name, epv_note, pick_color,
                       pick_trail, roll_rgba)
 
@@ -122,6 +122,9 @@ class Ribbon(Behavior):
 
         ribbon_mode = f.i("ribbonMode")
         n = max(2, f.i("subdivisionCount") or 2)
+        cap = int(getattr(cfg, "ribbon_subdiv_max", 0) or 0)
+        if cap and n > cap:
+            n = max(2, cap)             # 预览降载，见 SimConfig.ribbon_subdiv_max
         st = {"mode": ribbon_mode, "n": n, "dir": direction,
               "restore": jitter(f.get("restoreStrength"), f.get("restoreStrengthJitter"),
                                 rng, mode),
@@ -172,42 +175,182 @@ class Ribbon(Behavior):
             nodes[i] += v
 
     # ── 渲染 ─────────────────────────────────────────────────────────────────
-    def build_render(self, p, em, view, item):
-        rolled = p.rolled
-        st = p.user.get(Ribbon)
-        if st is None or "rb_rgba" not in rolled:
-            return item
-        f = em.f(RIBBON, p)
+    def _dims(self, p, em, st, f):
+        """(尺寸 f, 长度, 宽度, 采样点数)。
 
-        # 挂了 TIML 就逐帧重解尺寸：语料里 RIBBON 的 Length/Width 确实有曲线
-        # （场景里 15 line 那条的 length 静态值 10、曲线给 1），只在出生时取一次
-        # 会把「条带随寿命伸缩」整个丢掉。同 BILLBOARD3D 的 has_tracks 分支
-        # ——那边也是重解时不再叠抖动偏移。
+        挂了 TIML 就逐帧重解尺寸：语料里 RIBBON 的 Length/Width 确实有曲线
+        （场景里 15 line 那条的 length 静态值 10、曲线给 1），只在出生时取一次
+        会把「条带随寿命伸缩」整个丢掉。同 BILLBOARD3D 的 has_tracks 分支
+        ——那边也是重解时不再叠抖动偏移。
+        """
         if self._has_tracks and f is not None:
             scale = f.get("scale", 1.0)
             length = f.get("length", 1.0) * scale
             width = f.get("width", 1.0) * scale
         else:
+            rolled = p.rolled
             scale = rolled["rb_scale"]
             length = rolled["rb_length"] * scale
             width = rolled["rb_width"] * scale
-        n = st["n"]
+        return f, length, width, st["n"]
 
-        pts = self._sample_points(p, em, st, length, n)
-        if len(pts) < 2:
-            # 轨迹跟随 + 发射器静止 → **彻底消失**（实机确认）。返回显式的
-            # kind='NONE' 而不是 None：后者会让 Simulator 退化成调试点，那就
-            # 变成「静止时反而多出一个点」，与实机相反。
-            return RenderItem(kind="NONE", pos=p.pos.copy())
+    def pre_render(self, em, view):
+        """整批做轨迹裁剪 + 重采样 + 粗细/透明度剖面（见 `trail.clip_resample_batch`）。
 
-        anchor = f.get("spawnAnchorOffset") if f is not None else 0.0
-        if anchor:
-            # 生成点在条带长度方向上的位置：0=前端贴住生成点，1=后端贴住
-            shift = (pts[-1] - pts[0]).normalized() * (length * anchor)
-            pts = [q + shift for q in pts]
+        逐粒子走一趟 clip+resample 是渲染 pass 里最贵的一段，而每条带的算式一模
+        一样、只是数据不同——正好整批拉成数组算。结果**留在数组里**交给
+        `RibbonStrip`：条带顶点串在核心层造出来、到 glue 层又被逐个拆回 float，
+        一条 50 细分的条带就是上百个短命对象，上千条时这两趟纯搬运比算术还贵。
 
-        if st["flap"]:
-            self._apply_flap(pts, st, p, em)
+        顺手把尺寸也解出来存着，`build_render` 直接取，`em.f()` 一个粒子一帧只过一次。
+        """
+        numpy = _trail.numpy_backend()
+        pend = []
+        trails = []
+        max_lens = []
+        counts = []
+        per_seg = _per_segment(em)
+        for p in em.particles:
+            if not p.active:
+                continue
+            st = p.user.get(Ribbon)
+            if st is None or "rb_rgba" not in p.rolled:
+                continue
+            f, length, width, n = self._dims(p, em, st, em.f(RIBBON, p))
+            st.pop("_pre", None)
+            st.pop("_flap_pts", None)
+            if st["mode"] != MODE_TRAIL:
+                # 柔体链/刚性矩形不看轨迹，照旧逐粒子算（strip=None, pts=None）
+                st["_pre"] = (f, length, width, n, None, None)
+                continue
+            pend.append((p, st, f, length, width, n))
+            trails.append(pick_trail(p, em))
+            max_lens.append(length * (n - 1) if per_seg else length)
+            counts.append(n)
+        if not pend:
+            return
+
+        # 弧长不到阈值 → 空 = 发射器没动过 → 没有条带（不是画一条直线）
+        got = None if numpy is None else _trail.clip_resample_batch(
+            trails, max_lens, counts, min_arc=_STATIC_ARC_EPS, reverse=True)
+        if got is None:                 # 没有 numpy：退回逐条标量路
+            pts_all = _trail.clip_resample_many(trails, max_lens, counts,
+                                                min_arc=_STATIC_ARC_EPS)
+            for rec, pts in zip(pend, pts_all):
+                rec[1]["_pre"] = (rec[2], rec[3], rec[4], rec[5], None,
+                                  pts[::-1])          # 新→旧 翻成 base→tip
+            return
+
+        Q, starts, sizes = got
+        strips = ([None] * len(pend) if Q is None
+                  else self._build_strips(numpy, Q, starts, sizes, pend))
+        for k, rec in enumerate(pend):
+            strip = strips[k]
+            rec[1]["_pre"] = (rec[2], rec[3], rec[4], rec[5], strip,
+                              None if strip is not None else [])
+
+    @staticmethod
+    def _build_strips(numpy, Q, starts, sizes, pend):
+        """给批量重采样的结果补上锚点平移和粗细/透明度剖面，包成 `RibbonStrip`。
+
+        整批一次算完：Q 的行本来就按 `pend` 的顺序首尾相接，所以逐粒子的标量
+        （半宽基数、两端倍率）用 `repeat` 摊到行上即可。逐条带过 numpy 是不划算的
+        ——每条要二十来次数组调用，调度开销比算术还大。
+        """
+        out = [None] * len(pend)
+        keep = [k for k in range(len(pend)) if starts[k] >= 0]
+        if not keep:
+            return out
+        ns = numpy.array([sizes[k] for k in keep], dtype=numpy.intp)
+        row0 = numpy.array([starts[k] for k in keep], dtype=numpy.intp)
+
+        anchors = []
+        wbases = []
+        base_ws = []
+        dws = []
+        base_as = []
+        das = []
+        flaps = []
+        for k in keep:
+            p, st, f, length, width, n = pend[k]
+            a = (f.get("spawnAnchorOffset") if f is not None else 0.0) or 0.0
+            anchors.append(float(a) * length)
+            wbases.append(0.5 * width * p.scale.x)
+            bw = f.get("base_width_multiplier", 1.0) if f is not None else 1.0
+            tw = f.get("tip_width_multiplier", 1.0) if f is not None else 1.0
+            ba = f.get("base_opacity", 1.0) if f is not None else 1.0
+            ta = f.get("tip_opacity", 1.0) if f is not None else 1.0
+            base_ws.append(bw)
+            dws.append(tw - bw)
+            base_as.append(ba)
+            das.append(ta - ba)
+            flaps.append(bool(st["flap"]))
+
+        arr = lambda seq: numpy.array(seq, dtype="f8")
+        rep = lambda seq: numpy.repeat(arr(seq), ns)
+
+        # 锚点：生成点在条带长度方向上的位置（0=前端贴住生成点，1=后端贴住）
+        amt = arr(anchors)
+        if numpy.any(amt):
+            d = Q[row0 + ns - 1] - Q[row0]
+            nrm = numpy.sqrt((d * d).sum(axis=1))
+            numpy.divide(d, nrm[:, None], out=d, where=(nrm > 1e-12)[:, None])
+            Q += numpy.repeat(d * amt[:, None], ns, axis=0)
+
+        # 沿长度的归一化参数 u（0=base，1=tip），逐行算
+        total = int(ns.sum())
+        run = numpy.zeros(len(ns), dtype=numpy.intp)
+        numpy.cumsum(ns[:-1], out=run[1:])
+        u = ((numpy.arange(total, dtype="f8") - numpy.repeat(run, ns))
+             / numpy.repeat((ns - 1).astype("f8"), ns))
+        half = rep(wbases) * (rep(base_ws) + rep(dws) * u)
+        alpha = rep(base_as) + rep(das) * u
+
+        for j, k in enumerate(keep):
+            s = starts[k]
+            e = s + sizes[k]
+            strip = RibbonStrip(Q[s:e], half[s:e], alpha[s:e])
+            if flaps[j]:
+                # 旗帜摆动是逐点的正弦位移，没有数组写法（而且极少见）：物化成
+                # Vec3 交给纯 Python 路，摆完再逐点拼 points
+                pend[k][1]["_flap_pts"] = strip.vecs()
+            else:
+                out[k] = strip
+        return out
+
+    def build_render(self, p, em, view, item):
+        rolled = p.rolled
+        st = p.user.get(Ribbon)
+        if st is None or "rb_rgba" not in rolled:
+            return item
+
+        # pre_render 算过就取走（pop：别让这一帧的结果留到下一帧）；没算过就
+        # 就地补一趟——behavior 必须能脱离 Simulator 单独调用
+        pre = st.pop("_pre", None)
+        flap_pts = st.pop("_flap_pts", None)
+        if pre is None:
+            f, length, width, n = self._dims(p, em, st, em.f(RIBBON, p))
+            strip, pts = None, None
+        else:
+            f, length, width, n, strip, pts = pre
+        if flap_pts is not None:
+            strip, pts = None, flap_pts
+
+        if strip is not None:
+            # 快路：锚点与剖面都已在 pre_render 里整批算完
+            points = strip
+            tip = strip.vec(-1)
+        else:
+            if pts is None:
+                pts = self._sample_points(p, em, st, length, n)   # base→tip
+            if len(pts) < 2:
+                # 轨迹跟随 + 发射器静止 → **彻底消失**（实机确认）。返回显式的
+                # kind='NONE' 而不是 None：后者会让 Simulator 退化成调试点，那就
+                # 变成「静止时反而多出一个点」，与实机相反。
+                return RenderItem(kind="NONE", pos=p.pos.copy())
+            # 锚点在 _build_strips 里已经批量加过了，物化出来的那条别再加一次
+            points, tip = self._strip_py(p, em, st, f, pts, length, width,
+                                         skip_anchor=flap_pts is not None)
 
         if self._has_tracks and f is not None:
             r0, g0, b0, a0 = pick_color(f, rolled.get("rb_coff"))
@@ -216,21 +359,7 @@ class Ribbon(Behavior):
             r0, g0, b0, a0 = rolled["rb_rgba"]
             bright = rolled["rb_bright"]
 
-        base_w = f.get("base_width_multiplier", 1.0) if f is not None else 1.0
-        tip_w = f.get("tip_width_multiplier", 1.0) if f is not None else 1.0
-        base_a = f.get("base_opacity", 1.0) if f is not None else 1.0
-        tip_a = f.get("tip_opacity", 1.0) if f is not None else 1.0
-
-        # pts 是 base→tip（index 0 = 后端 = 远离前进方向的一端）
-        last = len(pts) - 1
-        points = []
-        for i, q in enumerate(pts):
-            u = i / float(last)
-            hw = 0.5 * width * (base_w + (tip_w - base_w) * u) * p.scale.x
-            am = base_a + (tip_a - base_a) * u
-            points.append((q, hw, am))
-
-        item = RenderItem(kind="RIBBON", pos=pts[-1].copy())
+        item = RenderItem(kind="RIBBON", pos=tip)
         item.points = points
         item.size = Vec3(width, length, 1.0)
         item.color = [r0 * bright * p.color[0],
@@ -242,20 +371,64 @@ class Ribbon(Behavior):
         item.extra["age"] = p.age
         return item
 
+    def _strip_py(self, p, em, st, f, pts, length, width, skip_anchor=False):
+        """纯 Python 的条带成形（没有 numpy、柔体链/刚性矩形、或旗帜摆动时走）。
+
+        返回 `([(Vec3, 半宽, alpha), …], 末点)`。
+        """
+        anchor = 0.0 if skip_anchor else (
+            (f.get("spawnAnchorOffset") if f is not None else 0.0) or 0.0)
+        if anchor:
+            # 生成点在条带长度方向上的位置：0=前端贴住生成点，1=后端贴住。
+            # 原地平移——pts 是这一趟新造的，可以随便改；写成
+            # `[q + shift for q in pts]` 会再造一整串 Vec3，上千条带就是每帧几万
+            # 个临时对象。
+            shift = (pts[-1] - pts[0]).normalized() * (length * anchor)
+            sx, sy, sz = shift.x, shift.y, shift.z
+            for q in pts:
+                q.x += sx
+                q.y += sy
+                q.z += sz
+
+        if st["flap"]:
+            self._apply_flap(pts, st, p, em)
+
+        base_w = f.get("base_width_multiplier", 1.0) if f is not None else 1.0
+        tip_w = f.get("tip_width_multiplier", 1.0) if f is not None else 1.0
+        base_a = f.get("base_opacity", 1.0) if f is not None else 1.0
+        tip_a = f.get("tip_opacity", 1.0) if f is not None else 1.0
+
+        # pts 是 base→tip（index 0 = 后端 = 远离前进方向的一端）
+        wbase = 0.5 * width * p.scale.x
+        dw = tip_w - base_w
+        da = tip_a - base_a
+        if dw == 0.0 and da == 0.0:
+            # 宽度与不透明度沿长度不变（语料里的常态）：整条一组数，不必逐点算 u
+            hw = wbase * base_w
+            points = [(q, hw, base_a) for q in pts]
+        else:
+            inv = 1.0 / (len(pts) - 1)
+            points = [(q, wbase * (base_w + dw * (i * inv)),
+                       base_a + da * (i * inv))
+                      for i, q in enumerate(pts)]
+        return points, pts[-1].copy()
+
     # ── 三种取点方式 ─────────────────────────────────────────────────────────
     def _sample_points(self, p, em, st, length, n):
         """返回 base→tip 顺序的顶点串（index 0 = 后端）；**空列表 = 不该画**。"""
         mode = st["mode"]
 
         if mode == MODE_CHAIN:
-            return list(st["nodes"])        # 首节点在粒子身上 = base
+            # 复制一份：节点是模拟状态（`on_particle_step` 每帧就地改），而调用方
+            # 会把返回的点当自己的（锚点平移是原地改的）
+            return [q.copy() for q in st["nodes"]]   # 首节点在粒子身上 = base
 
         if mode == MODE_TRAIL:
             total = length * (n - 1) if _per_segment(em) else length
-            poly = _trail.clip_by_length(pick_trail(p, em), total)   # 新→旧
-            if len(poly) < 2 or _trail.polyline_length(poly) <= _STATIC_ARC_EPS:
-                return []            # 发射器没动过 → 没有条带（不是画一条直线）
-            pts = _trail.resample(poly, n)                  # 仍是 新→旧
+            # 裁剪+重采样合并成一趟（见 trail.clip_resample）：弧长不到阈值就
+            # 提前返回空 = 发射器没动过 → 没有条带（不是画一条直线）
+            pts, _arc = _trail.clip_resample(pick_trail(p, em), total, n,
+                                             min_arc=_STATIC_ARC_EPS)  # 新→旧
             return pts[::-1]                                # 翻成 base→tip
 
         # MODE_RIGID：刚性矩形，沿基准方向伸出去

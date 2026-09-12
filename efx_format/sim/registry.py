@@ -75,6 +75,16 @@ class Behavior(object):
         """粒子死亡。返回 `[SpawnRequest]` 或 None（PTLIFE 将来住这儿）。"""
         return None
 
+    def pre_render(self, em, view):
+        """渲染 pass 开始前一次，**在逐粒子循环之外**。
+
+        用来做「每个粒子算式一样、只是数据不同」的整批预计算——典型是条带的轨迹
+        重采样：逐粒子一趟是纯 Python 热循环，整批拉成数组过 numpy 能快一个量级
+        （见 `behaviors/ribbon.py::Ribbon.pre_render`）。算完的东西自己存进
+        `p.user[本类]`，`build_render` 再取走。
+
+        ⚠ 不许改模拟状态——渲染 pass 必须可重复调用且不影响推进。"""
+
     def build_render(self, p, em, view, item):
         """渲染 pass。RENDER_BODY 阶段 `item` 为 None、负责产出；
         RENDER_MOD 阶段 `item` 是上游产物、就地改。返回 item（或 None 表示不渲染）。"""

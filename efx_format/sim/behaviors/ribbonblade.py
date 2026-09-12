@@ -145,10 +145,15 @@ class RibbonBlade(Behavior):
                         "发射器静止时没有拖尾可画——拖动特效体或播放骨骼动画即可看到")
             return RenderItem(kind="NONE")
 
-        poly = _trail.clip_by_length(pick_trail(p, em), length)    # 新→旧
-        if len(poly) < 2:
+        # 新→旧；裁剪+重采样一趟做完（见 trail.clip_resample）
+        seg_n = self._segments
+        cap = int(getattr(em.config, "ribbon_subdiv_max", 0) or 0)
+        if cap and seg_n > cap:
+            seg_n = max(2, cap)         # 预览降载，见 SimConfig.ribbon_subdiv_max
+        pts, _arc = _trail.clip_resample(pick_trail(p, em), length, seg_n)
+        if not pts:
             return RenderItem(kind="NONE")
-        pts = _trail.resample(poly, self._segments)[::-1]   # 翻成 tail→head
+        pts = pts[::-1]                                     # 翻成 tail→head
 
         half_w = 0.5 * f.get("width", 1.0) * p.scale.x
         emissive = f.get("emissiveStrength", 1.0) or 1.0

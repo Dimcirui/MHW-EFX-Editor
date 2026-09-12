@@ -49,6 +49,7 @@ from ..registry import Behavior, register
 from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
+from . import _flowmap
 from ._common import pick_color, roll_rgba
 
 BLEND_ALPHA = 0
@@ -105,6 +106,8 @@ class Billboard3D(Behavior):
         # TIML 才会逐帧变——没挂就直接用缓存，挂了才重解。
         p.rolled["bb_blend"] = ("ADDITIVE" if f.i("blendMode") == BLEND_ADDITIVE
                                 else "ALPHA")
+
+        _flowmap.roll(p, f, rng, mode)          # 流动贴图八件套（见 _flowmap.py）
 
     @staticmethod
     def _size(p, em, scale, width, height):
@@ -168,4 +171,4 @@ class Billboard3D(Behavior):
         item.blend = rolled.get("bb_blend", "ALPHA")
         item.extra["vel"] = p.vel
         item.extra["age"] = p.age
-        return item
+        return _flowmap.apply(p, em, item)       # 流动贴图（见 _flowmap.py）

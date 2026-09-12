@@ -80,7 +80,37 @@ _P = {
     "error": "",
     "mesh_cache": {},     # 绑定网格 → 游戏坐标系下的三角顶点（按网格名，全局共享）
     "cam_fwd": None,      # 上一帧的视线方向（Blender 世界系），由 _draw 缓存
+    "gen": 0,             # 渲染项的版本号：每次重建 items +1，绘制缓存据此失效
+    "needs_items": False, # 下个 tick 无论走没走帧都要重建一次 items
+    "draw_cache": {},     # id(region_data) → (签名, 绘制负载)，见 _draw
+    "gc_was_on": None,    # 播放期间关掉的 GC 原状态（见 _gc_hold）
+    "skipped": 0,         # 距上次重建画面攒了几帧（efx_sim_render_every）
 }
+
+
+def _gc_hold(on):
+    """播放期间关掉分代 GC，停止时恢复并补一次回收。
+
+    模拟每帧要造几万个 Vec3/元组，而场景里长期活着的对象有二十多万个（光是
+    `tr["items"]` 里上千条条带的顶点就占了一大半）。分代 GC 一到 gen2 就要把这
+    二十多万个全遍历一遍——实测 `build_render` 因此在 105 ms 和 265 ms 之间反复
+    跳，那一下就是肉眼可见的卡顿。
+
+    关掉是安全的：这里造的垃圾（Vec3、元组、RenderItem）都不成环，引用计数当场
+    就回收了，GC 只负责环。停止/暂停时恢复并 `collect()` 一次收尾。
+    """
+    import gc
+    if on:
+        if _P["gc_was_on"] is None:
+            _P["gc_was_on"] = gc.isenabled()
+            gc.disable()
+    else:
+        was = _P["gc_was_on"]
+        _P["gc_was_on"] = None
+        if was:
+            gc.enable()
+        if was is not None:
+            gc.collect()
 
 
 def tracks():
@@ -256,7 +286,16 @@ def _config_from_scene(scene):
         uvs_start_wrap=getattr(scene, "efx_sim_uvs_start_wrap", "wrap"),
         uvs_grid_h=int(getattr(scene, "efx_sim_uvs_grid", (8, 8))[0]),
         uvs_grid_v=int(getattr(scene, "efx_sim_uvs_grid", (8, 8))[1]),
-    )
+        flowmap_speed_unit=getattr(scene, "efx_sim_flowmap_speed_unit", "per_second"),
+        flowmap_phase=getattr(scene, "efx_sim_flowmap_phase", "cycle"),
+        ribbon_subdiv_max=int(getattr(scene, "efx_sim_ribbon_subdiv_max", 0)),
+        **_budget_kw(scene))
+
+
+def _budget_kw(scene):
+    """粒子预算：0 = 用 SimConfig 自己的默认上限，不覆盖。"""
+    n = int(getattr(scene, "efx_sim_particle_budget", 0))
+    return {"max_particles_total": n} if n > 0 else {}
 
 
 def build_simulator(entry_obj, scene, out=None):
@@ -354,6 +393,10 @@ def _texture_alpha_is_usable(name):
     return usable
 
 
+def _clear_flow_cache():
+    _FLOW_TEX_CACHE.clear()
+
+
 def _clear_material_cache():
     _MAT_TEX_CACHE.clear()
 
@@ -427,6 +470,65 @@ def _material_image_name(entry_obj, attr_objs, slot, chunk_root):
     except Exception:
         name = ""
     _MAT_TEX_CACHE[rel] = name      # 失败也缓存：别每次重建 track 都去磁盘扑空
+    return name
+
+
+#: 游戏路径 → 已载入的 flowmap 图名（""=找不到）。11 张共享图，全局缓存一次够用。
+_FLOW_TEX_CACHE = {}
+
+
+def _flowmap_path(attr_objs):
+    """entry 的渲染体属性里那条 flowmap 贴图路径；没启用/没配就 ""。
+
+    八件套挂在 BILLBOARD3D / PLANE / BILLBOARD2D 自己身上（不是独立属性类型），
+    路径也存在同一个块里。`applicationRule` 的 bit 0x04 才是「启用」——语料里有
+    9663 个块备了路径但没开位，那些不该画。
+    """
+    from ..efx_format.hashes import BILLBOARD3D, BILLBOARD2D, PLANE
+    from ..efx_format.sim.behaviors._flowmap import BIT_ENABLE
+
+    for blk in attr_objs:
+        pair = _block_fields(blk)
+        if pair is None or pair[0] not in (BILLBOARD3D, BILLBOARD2D, PLANE):
+            continue
+        d = pair[1]
+        if not (int(d.get("applicationRule", 0) or 0) & BIT_ENABLE):
+            continue
+        raw = d.get("path") or b""
+        if isinstance(raw, bytes):
+            raw = raw.split(b"\x00")[0].decode("ascii", "replace")
+        raw = str(raw).rstrip(chr(0)).strip()
+        if raw:
+            return raw
+    return ""
+
+
+def _flowmap_image_name(entry_obj, attr_objs, chunk_root):
+    """flowmap 贴图 → 已载入的图名；取不到返回 ""。链路同 `_material_image_name`。"""
+    rel = _flowmap_path(attr_objs)
+    if not rel:
+        return ""
+    cached = _FLOW_TEX_CACHE.get(rel)
+    if cached is not None:
+        return cached if cached in bpy.data.images else ""
+    try:
+        from . import uvs_link as _ul
+    except Exception:
+        return ""
+    try:
+        efx_dir = _ul.efx_dir_of(entry_obj)
+    except Exception:
+        efx_dir = None
+    name = ""
+    try:
+        abspath = _ul.resolve_game_path(rel, ".tex", chunk_root, efx_dir)
+        if abspath:
+            img = _ul.load_tex_image(abspath, rel)
+            if img is not None:
+                name = img.name
+    except Exception:
+        name = ""
+    _FLOW_TEX_CACHE[rel] = name
     return name
 
 
@@ -544,6 +646,7 @@ def build_track(entry_obj, scene):
     resources = {}
     images = {}
     mesh_images = {}
+    flow_images = {}
     mat_slot = getattr(scene, "efx_sim_material_slot", "tAlbedoMap")
     chunk_root = getattr(scene, "efx_chunk_root", "") or ""
     root_uvs_info = None
@@ -567,6 +670,9 @@ def build_track(entry_obj, scene):
             got = _material_image_name(obj, attrs, mat_slot, chunk_root)
             if got:
                 mesh_images[name] = got
+        got = _flowmap_image_name(obj, attrs, chunk_root)
+        if got:
+            flow_images[name] = got
         if obj is entry_obj:
             root_uvs_info = info
 
@@ -597,6 +703,8 @@ def build_track(entry_obj, scene):
         #: item.extra['entry_key'] 查（见 _collect_track）。
         "images": images,
         "mesh_images": mesh_images,
+        #: entry 名 → flowmap 贴图名（启用了才有）。见 `_flowmap_image_name`。
+        "flow_images": flow_images,
         "uvs": root_uvs_info,          # 帧表来源（真 .uvs / 网格兜底），面板显示用
     }
 
@@ -762,6 +870,27 @@ def _display_color(c, mode):
     if m <= 1.0:
         return (r, g, b, a)
     return (r / m, g / m, b / m, a)
+
+
+def _multiply_tint(c, gain=1.0):
+    """折射（乘法通道）的源色：按覆盖度在「无操作(1,1,1)」和「颜色×brightness」之间插值。
+
+    定点管线的 MULTIPLY 是 `dst × src`，`src.a` 根本不参与 RGB 的结果——所以粒子的
+    alpha（LIFE 的淡入淡出、颜色自带的 a）必须在这里折进 RGB，否则折射层会在出生
+    和死亡的瞬间硬闪。折到 1 而不是 0：乘 1 等于不改变背景，这才是「淡出」。
+
+    贴图那一档还会再按纹素 alpha 混一次，两次朝同一个端点插值可以复合
+    （`mix(1, mix(1,C,α), t) == mix(1, C, α·t)`），所以两边都对。
+    """
+    a = c[3] * gain
+    if a == 1.0:
+        return (c[0], c[1], c[2], 1.0)
+    if a <= 0.0:
+        return (1.0, 1.0, 1.0, 1.0)
+    return (1.0 + (c[0] - 1.0) * a,
+            1.0 + (c[1] - 1.0) * a,
+            1.0 + (c[2] - 1.0) * a,
+            1.0)
 
 
 def _to_blender(v):
@@ -939,8 +1068,204 @@ def _quad_uvs(corners):
     return tuple(corners[i] for i in _QUAD_UV_ORDER)
 
 
-def _lerp2(a, b, t):
-    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+#: 面片的**局部** UV（0..1 铺满这一格），顶点序同 `_quad_verts`。flowmap 要按它
+#: 采流动贴图——流动图是整张独立的图，不该跟着序列帧的子格走。
+_QUAD_LUV = tuple(((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))[i]
+                  for i in _QUAD_UV_ORDER)
+
+
+def _ribbon_affine(rows):
+    """把「游戏坐标 → Blender 世界」压成一个 3×3 + 平移。
+
+    `_world` 是 `rows · _to_blender(v)` 两步，逐顶点调等于每个顶点两次函数调用；
+    条带一帧有几十万个顶点，合并成一个矩阵之后 numpy 一次点乘就完事。
+
+    `_to_blender` 是 (x, y, z) → (x, -z, y) × _UNIT，代进去并按 (x, y, z) 重新
+    收系数即可（同 `_mesh_affine` 里那处合并）。
+    """
+    u = _UNIT
+    lin = []
+    t = []
+    for r in rows:
+        lin.append((u * r[0], u * r[2], -u * r[1]))
+        t.append(r[3])
+    return lin, t
+
+
+def _ribbon_np_ctx(rows, view_dir):
+    """条带 numpy 快路径的逐 track 常量：(numpy, 3×3, 平移, 视线)。拿不到 numpy 返回 None。"""
+    try:
+        import numpy
+    except Exception:
+        return None
+    lin, t = _ribbon_affine(rows)
+    return (numpy,
+            numpy.array(lin, dtype="f4"),
+            numpy.array(t, dtype="f4"),
+            numpy.array(view_dir, dtype="f4"))
+
+
+#: 条带展开成三角的下标表：n → (顶点下标, alpha 下标, 纵向参数列)。
+#: 只跟顶点数有关，一个文件里就那么一两种，算一次全场复用。
+_RIBBON_IDX = {}
+
+
+def _ribbon_idx(numpy, n):
+    got = _RIBBON_IDX.get(n)
+    if got is not None:
+        return got
+    m = n - 1
+    i = numpy.arange(m)
+    # 每段六个顶点 = (l0, r0, r1, l0, r1, l1)；左右两侧拼成一个 (2n, …) 再按下标取，
+    # 六次分量赋值就压成一次高级索引
+    vidx = numpy.empty((m, 6), dtype=numpy.intp)
+    vidx[:, 0] = i
+    vidx[:, 1] = n + i
+    vidx[:, 2] = n + i + 1
+    vidx[:, 3] = i
+    vidx[:, 4] = n + i + 1
+    vidx[:, 5] = i + 1
+    aidx = numpy.empty((m, 6), dtype=numpy.intp)
+    aidx[:, 0] = i
+    aidx[:, 1] = i
+    aidx[:, 2] = i + 1
+    aidx[:, 3] = i
+    aidx[:, 4] = i + 1
+    aidx[:, 5] = i + 1
+    ucol = numpy.linspace(0.0, 1.0, n, dtype="f4").reshape(n, 1)
+    got = (vidx.reshape(-1), aidx.reshape(-1), ucol)
+    _RIBBON_IDX[n] = got
+    return got
+
+
+def _emit_ribbons_np(chunks, group, size_mul, ctx):
+    """**一批**条带 → numpy 分块。按顶点数分组，同组的一次算完。
+
+    为什么要成批：单条带走 numpy 也要二十来次 numpy 调用，每次约 2 µs 的调度开销
+    ——上千条带就是 60 ms，而且这笔开销**不随细分数下降**（降细分只让数组变短，
+    调用次数一个不少）。整组拉成 `(K, n, …)` 之后，同样二十来次调用把一万条带
+    全算完，降细分才真的降得动。
+
+    中途出错不会留下半截数据：分块先攒在本地，整组算完才并进桶里，调用方可以
+    整组退回纯 Python。
+    """
+    numpy, lin, tr, vdir = ctx
+    # 分组键带上「是不是数组形态」：核心层大多数条带已经是 RibbonStrip
+    # （见 efx_format/sim/state.py），这种整组 stack 就完了；老的元组列表
+    # （柔体链/刚性矩形/没有 numpy 时的兜底）还得逐顶点拉平。
+    by_n = {}
+    for rec in group:
+        pts = rec[0].points
+        n = len(pts)
+        if n < 2:
+            continue
+        key = (n, getattr(pts, "pos", None) is not None)
+        g = by_n.get(key)
+        if g is None:
+            g = by_n[key] = []
+        g.append(rec)
+
+    out = []
+    for (n, is_strip), recs in by_n.items():
+        vidx, aidx, ucol = _ribbon_idx(numpy, n)
+        k = len(recs)
+        m = n - 1
+        six = m * 6
+
+        if is_strip:
+            # 数组形态：三次 stack 就位，Python 侧一个顶点都不用碰
+            pos = numpy.stack([r[0].points.pos for r in recs]).astype("f4")
+            half = numpy.stack([r[0].points.half for r in recs]).astype("f4")
+            alpha = numpy.stack([r[0].points.alpha for r in recs]).astype("f4")
+        else:
+            # (K, n, 5) = [x, y, z, 半宽, alpha]，逐顶点拉平
+            flat = []
+            ex = flat.extend
+            for it, _col, _core, _cn in recs:
+                for q, h, a in it.points:
+                    ex((q.x, q.y, q.z, h, a))
+            raw = numpy.array(flat, dtype="f4").reshape(k, n, 5)
+            pos = numpy.ascontiguousarray(raw[:, :, :3])
+            half = raw[:, :, 3]
+            alpha = raw[:, :, 4]
+
+        W = pos.dot(lin.T)
+        W += tr
+
+        # 每个顶点的「前后方向」：首尾各用自己那一段
+        seg = numpy.empty_like(W)
+        seg[:, 1:-1] = W[:, 2:]
+        seg[:, 1:-1] -= W[:, :-2]
+        seg[:, 0] = W[:, 1] - W[:, 0]
+        seg[:, -1] = W[:, -1] - W[:, -2]
+
+        # 横向 = 段方向 × 视线。`numpy.cross` 的 Python 外壳（moveaxis 一类）比
+        # 算式本身还贵，直接按分量写。
+        sx = seg[:, :, 0]
+        sy = seg[:, :, 1]
+        sz = seg[:, :, 2]
+        vx = float(vdir[0])
+        vy = float(vdir[1])
+        vz = float(vdir[2])
+        side = numpy.empty_like(W)
+        side[:, :, 0] = sy * vz - sz * vy
+        side[:, :, 1] = sz * vx - sx * vz
+        side[:, :, 2] = sx * vy - sy * vx
+
+        nrm = numpy.sqrt((side * side).sum(axis=2))          # (K, n)
+        good = nrm > 1e-9
+        hw = numpy.abs(half) * (size_mul * _UNIT)
+        numpy.maximum(hw, 1e-5, out=hw)
+        numpy.divide(hw, nrm, out=hw, where=good)            # 归一化与半宽合成一步
+        side *= hw[:, :, None]
+
+        lr = numpy.empty((k, n * 2, 3), dtype="f4")
+        numpy.subtract(W, side, out=lr[:, :n])
+        numpy.add(W, side, out=lr[:, n:])
+        V = lr[:, vidx]                                      # (K, 6m, 3)
+
+        cols = numpy.array([r[1] for r in recs], dtype="f4")  # (K, 4)
+        av = alpha * cols[:, 3:4]
+        C = numpy.empty((k, six, 4), dtype="f4")
+        C[:] = cols[:, None, :]
+        C[:, :, 3] = av[:, aidx]
+
+        cn0 = recs[0][3]
+        if cn0:
+            cn = numpy.array([r[3] for r in recs], dtype="f4")   # (K, 4, 2)
+            uvlr = numpy.empty((k, n * 2, 2), dtype="f4")
+            bl = cn[:, 0:1, :]
+            br = cn[:, 1:2, :]
+            uvlr[:, :n] = bl + (cn[:, 3:4, :] - bl) * ucol       # 左：BL → TL
+            uvlr[:, n:] = br + (cn[:, 2:3, :] - br) * ucol       # 右：BR → TR
+            U = uvlr[:, vidx]
+            cores = numpy.array([(r[2] if r[2] is not None else r[1])
+                                 for r in recs], dtype="f4")
+            C2 = numpy.empty((k, six, 4), dtype="f4")
+            C2[:] = cores[:, None, :]
+            C2[:, :, 3] = C[:, :, 3]
+        else:
+            U = C2 = None
+
+        V = V.reshape(-1, 3)
+        C = C.reshape(-1, 4)
+        if U is not None:
+            U = U.reshape(-1, 2)
+            C2 = C2.reshape(-1, 4)
+
+        # 段方向与视线平行时叉乘退化，那一段不画（两端有一端退化就整段丢）
+        if not good.all():
+            keep = numpy.repeat(good[:, :-1] & good[:, 1:], 6, axis=1).reshape(-1)
+            V = V[keep]
+            C = C[keep]
+            if U is not None:
+                U = U[keep]
+                C2 = C2[keep]
+        if not len(V):
+            continue
+        out.append((V, C, None if U is None else (U, C2)))
+
+    chunks.extend(out)
 
 
 def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
@@ -953,61 +1278,78 @@ def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
 
     UV：横向铺满这一格（s: 左 0 → 右 1），纵向沿条带铺满（t: 尾 0 → 头 1），
     四角之间双线性插值——这样序列帧的翻转/90° 旋转对条带同样生效。
+
+    这是 numpy 缺席时的兜底路（有 numpy 走成批的 `_emit_ribbons_np`）。逐行的
+    UV/颜色都**先按顶点行算好再展开成三角**，别在每段里重算一遍——相邻两段共用
+    同一行，照四角逐段插值等于把每行算两遍。
     """
     pts = item.points
     if not pts or len(pts) < 2:
         return
+    n = len(pts)
+
     world = [world_fn(q) for q, _hw, _a in pts]
     sides = []
-    n = len(world)
     for i in range(n):
-        a = world[max(0, i - 1)]
-        b = world[min(n - 1, i + 1)]
-        seg = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
-        s = _norm(_cross(seg, view_dir))
+        a = world[i - 1] if i else world[0]
+        b = world[i + 1] if i < n - 1 else world[n - 1]
+        s = _norm(_cross((b[0] - a[0], b[1] - a[1], b[2] - a[2]), view_dir))
         sides.append(s)
 
-    half = [max(1e-5, size_mul * abs(hw) * _UNIT) for _q, hw, _a in pts]
-    alphas = [a for _q, _hw, a in pts]
+    k = size_mul * _UNIT
+    ca, cb, cc, cd = col[0], col[1], col[2], col[3]
+    core_rgb = core if core is not None else col
+
+    # 逐**顶点行**先算好：左右两侧的世界坐标、颜色、UV。三角只是这些行的排列组合。
+    lo = []
+    hi = []
+    rowc = []
+    for i in range(n):
+        s = sides[i]
+        _q, hw, am = pts[i]
+        if s is None:
+            lo.append(None)
+            hi.append(None)
+        else:
+            w = world[i]
+            h = max(1e-5, abs(hw) * k)
+            lo.append((w[0] - s[0] * h, w[1] - s[1] * h, w[2] - s[2] * h))
+            hi.append((w[0] + s[0] * h, w[1] + s[1] * h, w[2] + s[2] * h))
+        rowc.append((ca, cb, cc, cd * am))
 
     if uvs is not None and corners:
-        bl, br, tr, tl = corners
-        span = max(1, n - 1)
-
-        def _uv(i, right_side):
-            t = i / float(span)
-            lo = _lerp2(bl, br, 1.0 if right_side else 0.0)
-            hi = _lerp2(tl, tr, 1.0 if right_side else 0.0)
-            return _lerp2(lo, hi, t)
+        bl, br, tr_, tl = corners
+        span = float(n - 1)
+        uvl = []
+        uvr = []
+        for i in range(n):
+            t = i / span
+            uvl.append((bl[0] + (tl[0] - bl[0]) * t, bl[1] + (tl[1] - bl[1]) * t))
+            uvr.append((br[0] + (tr_[0] - br[0]) * t, br[1] + (tr_[1] - br[1]) * t))
     else:
-        _uv = None
+        uvl = uvr = None
 
     for i in range(n - 1):
-        s0, s1 = sides[i], sides[i + 1]
-        if s0 is None or s1 is None:
+        l0 = lo[i]
+        l1 = lo[i + 1]
+        if l0 is None or l1 is None:
             continue
-        p0, p1 = world[i], world[i + 1]
-        h0, h1 = half[i], half[i + 1]
-        a0 = (col[0], col[1], col[2], col[3] * alphas[i])
-        a1 = (col[0], col[1], col[2], col[3] * alphas[i + 1])
-
-        l0 = (p0[0] - s0[0] * h0, p0[1] - s0[1] * h0, p0[2] - s0[2] * h0)
-        r_0 = (p0[0] + s0[0] * h0, p0[1] + s0[1] * h0, p0[2] + s0[2] * h0)
-        l1 = (p1[0] - s1[0] * h1, p1[1] - s1[1] * h1, p1[2] - s1[2] * h1)
-        r_1 = (p1[0] + s1[0] * h1, p1[1] + s1[1] * h1, p1[2] + s1[2] * h1)
-
-        verts.extend((l0, r_0, r_1, l0, r_1, l1))
+        r0 = hi[i]
+        r1 = hi[i + 1]
+        a0 = rowc[i]
+        a1 = rowc[i + 1]
+        verts.extend((l0, r0, r1, l0, r1, l1))
         colors.extend((a0, a0, a1, a0, a1, a1))
         if col2s is not None:
-            c = core if core is not None else col
-            b0 = (c[0], c[1], c[2], a0[3])
-            b1 = (c[0], c[1], c[2], a1[3])
+            b0 = (core_rgb[0], core_rgb[1], core_rgb[2], a0[3])
+            b1 = (core_rgb[0], core_rgb[1], core_rgb[2], a1[3])
             col2s.extend((b0, b0, b1, b0, b1, b1))
-        if _uv is not None:
-            u_l0, u_r0 = _uv(i, False), _uv(i, True)
-            u_l1, u_r1 = _uv(i + 1, False), _uv(i + 1, True)
+        if uvl is not None:
+            u_l0 = uvl[i]
+            u_r0 = uvr[i]
+            u_l1 = uvl[i + 1]
+            u_r1 = uvr[i + 1]
             uvs.extend((u_l0, u_r0, u_r1, u_l0, u_r1, u_l1))
-
 
 
 #: MESH 没绑定网格时画的占位：单位立方体的 12 个三角（游戏坐标系，半边长 1）
@@ -1305,6 +1647,144 @@ void main()
 """
 
 
+#: 折射的贴图 shader（pos + uv + color + sampler2D）。语义同 `_REFR_FRAG_SRC`。
+_REFR_SHADER = None
+_REFR_SHADER_KEEP = []
+
+_REFR_VERT_SRC = """
+void main()
+{
+  v_uv = uv;
+  v_col = color;
+  gl_Position = ModelViewProjectionMatrix * vec4(pos, 1.0);
+}
+"""
+
+#: 乘法通道 + 贴图：源色 = 贴图 RGB × 渲染体颜色 × brightness，按覆盖度混向
+#: 「无操作(1,1,1)」——贴图之外和淡出的时候都不改变背景。
+#:
+#: 覆盖度沿用整条管线那一套（`alphaFix`，见 `_FRAG_SRC`）：`_BM`/flow 这类
+#: RGB-only 贴图用亮度当 alpha，ALPHACORRECTION 的阈值/伽马也照样生效。
+#:
+#: ⚠ 贴图 RGB 当颜色乘是**推断**：实测的那个样本没有 UVSEQUENCE，所以只坐实了
+#: 「颜色 × brightness」那一半。而带折射的官方 entry 100% 挂 UVSEQUENCE，其中
+#: `cm_smoke_905_BM` 在不透明区的通道形态（B 恒高 0.63~0.94、G 跨 0.5 两侧）
+#: 更像切线空间法线图而不是颜色——真是法线的话这里就该拿去算位移而不是相乘。
+#: 等 pixelNormalOffset 那一档实测了再回来改。
+#: `refrParam` = (贴图 RGB 的参与度, 预览放大倍数)，见 `efx_sim_refraction_tex`
+#: 与 `efx_sim_refraction_gain`。参与度 0 = 贴图只当遮罩、RGB 不进源色。
+_REFR_FRAG_SRC = """
+void main()
+{
+  vec4 t = texture(image, v_uv);
+  float lum = max(t.r, max(t.g, t.b));
+  float a = mix(t.a, lum, alphaFix.z);
+  a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
+  a *= clamp(v_col.a, 0.0, 1.0) * refrParam.y;
+  vec3 src = mix(vec3(1.0), t.rgb, refrParam.x) * v_col.rgb;
+  fragColor = vec4(mix(vec3(1.0), src, a), 1.0);
+}
+"""
+
+
+def _refraction_shader():
+    """折射的贴图 shader；建不出来返回 None（调用方退回纯色乘法）。"""
+    global _REFR_SHADER
+    if _REFR_SHADER is not None:
+        return _REFR_SHADER or None
+    try:
+        import gpu
+        iface = gpu.types.GPUStageInterfaceInfo("efx_refr_iface")
+        iface.smooth("VEC2", "v_uv")
+        iface.smooth("VEC4", "v_col")
+        info = gpu.types.GPUShaderCreateInfo()
+        info.push_constant("MAT4", "ModelViewProjectionMatrix")
+        info.push_constant("VEC3", "alphaFix")
+        info.push_constant("VEC2", "refrParam")
+        info.sampler(0, "FLOAT_2D", "image")
+        info.vertex_in(0, "VEC3", "pos")
+        info.vertex_in(1, "VEC2", "uv")
+        info.vertex_in(2, "VEC4", "color")
+        info.vertex_out(iface)
+        info.fragment_out(0, "VEC4", "fragColor")
+        info.vertex_source(_REFR_VERT_SRC)
+        info.fragment_source(_REFR_FRAG_SRC)
+        _REFR_SHADER = gpu.shader.create_from_info(info)
+        _REFR_SHADER_KEEP[:] = [iface, info]
+    except Exception:
+        _REFR_SHADER = False
+    return _REFR_SHADER or None
+
+
+#: flowmap shader：在 `_tex_shader` 基础上，先按流动贴图把 UV 推一下再采样。
+_FLOW_SHADER = None
+_FLOW_SHADER_KEEP = []
+
+_FLOW_VERT_SRC = """
+void main()
+{
+  v_uv = uv;
+  v_col = color;
+  v_col2 = col2;
+  v_luv = luv;
+  v_flowoff = flowoff;
+  gl_Position = ModelViewProjectionMatrix * vec4(pos, 1.0);
+}
+"""
+
+#: 流动贴图是切线空间法线图（语料里那 11 张全叫 `_NM`，实测 R 居中 0.5、B 恒高
+#: 0.82~1.0），`rg × 2 − 1` 就是二维流动方向。按**局部** UV 采它——它是整张独立
+#: 的图，不跟着序列帧的子格走；推出来的位移量已经在 CPU 侧乘过格子尺寸。
+#: 其余（双层染色、alpha 修正）与 `_FRAG_SRC` 完全一致，只是采样点变了。
+_FLOW_FRAG_SRC = """
+void main()
+{
+  vec2 f = texture(flowTex, v_luv).rg * 2.0 - 1.0;
+  vec4 t = texture(image, v_uv + f * v_flowoff);
+  float lum = max(t.r, max(t.g, t.b));
+  vec3 rgb = mix(v_col.rgb, v_col2.rgb, lum);
+  float a = mix(t.a, lum, alphaFix.z);
+  a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
+  fragColor = vec4(t.rgb * rgb, a * v_col.a);
+}
+"""
+
+
+def _flow_shader():
+    """带流动贴图的 shader；建不出来返回 None（调用方退回普通贴图 shader）。"""
+    global _FLOW_SHADER
+    if _FLOW_SHADER is not None:
+        return _FLOW_SHADER or None
+    try:
+        import gpu
+        iface = gpu.types.GPUStageInterfaceInfo("efx_flow_iface")
+        iface.smooth("VEC2", "v_uv")
+        iface.smooth("VEC4", "v_col")
+        iface.smooth("VEC4", "v_col2")
+        iface.smooth("VEC2", "v_luv")
+        iface.smooth("VEC2", "v_flowoff")
+        info = gpu.types.GPUShaderCreateInfo()
+        info.push_constant("MAT4", "ModelViewProjectionMatrix")
+        info.push_constant("VEC3", "alphaFix")
+        info.sampler(0, "FLOAT_2D", "image")
+        info.sampler(1, "FLOAT_2D", "flowTex")
+        info.vertex_in(0, "VEC3", "pos")
+        info.vertex_in(1, "VEC2", "uv")
+        info.vertex_in(2, "VEC4", "color")
+        info.vertex_in(3, "VEC4", "col2")
+        info.vertex_in(4, "VEC2", "luv")
+        info.vertex_in(5, "VEC2", "flowoff")
+        info.vertex_out(iface)
+        info.fragment_out(0, "VEC4", "fragColor")
+        info.vertex_source(_FLOW_VERT_SRC)
+        info.fragment_source(_FLOW_FRAG_SRC)
+        _FLOW_SHADER = gpu.shader.create_from_info(info)
+        _FLOW_SHADER_KEEP[:] = [iface, info]
+    except Exception:
+        _FLOW_SHADER = False
+    return _FLOW_SHADER or None
+
+
 def _tex_shader():
     """带贴图的 shader；建不出来返回 None（调用方退回纯色）。
 
@@ -1358,6 +1838,14 @@ def _gpu_texture(name):
     return tex
 
 
+def _clear_refraction_shader():
+    global _REFR_SHADER, _FLOW_SHADER
+    _REFR_SHADER = None
+    _REFR_SHADER_KEEP[:] = []
+    _FLOW_SHADER = None
+    _FLOW_SHADER_KEEP[:] = []
+
+
 def _clear_tex_cache():
     _GPU_TEX.clear()
     _TEX_ALPHA_USABLE.clear()
@@ -1371,13 +1859,14 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     按图分桶就能一次 batch 画完同一张图的所有片，不必逐粒子换绑定。
     """
     items = tr.get("items") or ()
-    if not items:
-        return
     rows = tr.get("ref_rows")
     entry = bpy.data.objects.get(tr["entry_name"])
     if rows is None or entry is None:
         return
     r0, r1, r2 = rows
+    show_shape = bool(getattr(scene, "efx_sim_show_shape", False))
+    if not items and not show_shape:
+        return          # 没粒子也没要画形状 → 后面那一堆准备工作全省了
 
     size_mul = float(getattr(scene, "efx_sim_particle_size", 1.0))
     draw_mode = getattr(scene, "efx_sim_draw_mode", "QUADS")
@@ -1402,6 +1891,9 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
 
     right, up = _camera_axes(rv3d)
     view_dir = _view_direction(rv3d)
+    #: 条带的 numpy 快路径常量（仿射矩阵 + 视线）。拿不到 numpy 就是 None，
+    #: `_emit_ribbon` 自动退回纯 Python。
+    np_ctx = _ribbon_np_ctx(rows, view_dir)
 
     def _order_of(it):
         """这一项属于哪个 entry → 绘制次序键。子实例（PtLife → Action）属于别的
@@ -1419,8 +1911,23 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             order_memo[key] = got
         return got
 
-    def _bucket_for(it, tex):
-        """桶 key = (绘制次序, 混合模式, 贴图, alpha 修正)。
+    def _flow_of(it, tex):
+        """这一项的 (flowmap 贴图名, 位移量)；不该走 flowmap 就 ("", 0.0)。
+
+        没有序列帧贴图就没有可推的 UV，直接不走——`use_tex` 关掉时同理。
+        """
+        if not tex or not flow_images:
+            return "", 0.0
+        amt = it.extra.get("flowmap")
+        if not amt:
+            return "", 0.0
+        name = flow_images.get(it.extra.get("entry_key"), root_flow)
+        if not name or _gpu_texture(name) is None:
+            return "", 0.0
+        return name, float(amt) * flow_gain
+
+    def _bucket_for(it, tex, flow_tex=""):
+        """返回 `(桶 key, 桶)`。key = (绘制次序, 混合模式, 贴图, alpha 修正, 流动贴图)。
 
         次序键放最前面：完全重合的面片谁盖谁由绘制顺序决定（粒子不写深度），而实机
         是按 entry 在文件里的排布定的，所以桶必须能按它排序，见 `entry_order`。
@@ -1428,23 +1935,31 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         alpha 修正（ALPHACORRECTION）是 shader 的 push constant，逐 draw 生效，所以
         也必须进 key。两者都是**逐 entry**的，一个场景里就那么几种取值，分桶开销可忽略。
         """
-        mode = it.blend if blend == "AUTO" else blend
-        if mode not in ("ALPHA", "ADDITIVE"):
+        mode = it.blend
+        if mode == "MULTIPLY":
+            # 折射是整条通道的性质（REFRACTION 覆盖渲染体自己的 blendMode，实机
+            # 确认），不该被「强制混合模式」那个调试开关顶掉
+            pass
+        elif blend != "AUTO":
+            mode = blend
+        if mode not in ("ALPHA", "ADDITIVE", "MULTIPLY"):
             mode = "ALPHA"
         low, gamma = it.extra.get("alpha_fix") or (0.0, 1.0)
         if luma_mode == "auto":
             luma = 0.0 if _texture_alpha_is_usable(tex) else 1.0
         else:
             luma = 1.0 if luma_mode == "on" else 0.0
-        key = (_order_of(it), mode, tex, (low, gamma, luma))
+        key = (_order_of(it), mode, tex, (low, gamma, luma), flow_tex)
         b = buckets.get(key)
         if b is None:
             # 第 4 条是双层染色的核心色；和 uv 一样只有走贴图 shader 的桶才需要。
             # 第 5 条是网格的 numpy 分块 [(顶点, 颜色), …]：静态网格整块过同一个矩阵，
             # 留在 numpy 里到画之前才拼，省掉 tolist（51200 面时那一步占六成时间）。
-            b = [[], [], ([] if tex else None), ([] if tex else None), []]
+            # 第 6/7 条是 flowmap 的局部 UV 与逐粒子位移量，只有流动桶才有。
+            b = [[], [], ([] if tex else None), ([] if tex else None), [],
+                 ([] if flow_tex else None), ([] if flow_tex else None)]
             buckets[key] = b
-        return b
+        return key, b
 
     #: 这一趟里「entry → 网格三角」的记忆。`_bound_mesh_for` 要遍历 entry 的属性列表、
     #: 前面还要 `bpy.data.objects.get`——逐粒子做就是每个粒子一次小扫描，粒子一多就是
@@ -1454,7 +1969,13 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     order_memo = {}
     track_order = tr.get("order") or ("", 0)
     mat_images = tr.get("mesh_images") or {}
+    flow_images = (tr.get("flow_images") or {}) if use_tex else {}
+    root_flow = flow_images.get(tr["entry_name"], "")
+    flow_gain = float(getattr(scene, "efx_sim_flowmap_gain", 1.0))
     luma_mode = getattr(scene, "efx_sim_alpha_source", "auto")
+    #: 折射的预览放大倍数（见 `efx_sim_refraction_gain`）。没贴图那条路在 CPU 侧
+    #: 折进源色，有贴图那条交给 shader，两边都是「乘在混合系数上」。
+    refr_gain = float(getattr(scene, "efx_sim_refraction_gain", 1.0))
 
     def _geom_of(it):
         """(几何, 贴图名)。贴图来自绑定网格自己的材质——reference mesh 那条链已经把
@@ -1488,8 +2009,20 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         su, sv, ou, ov = xf
         return tuple((u * su + ou, v * sv + ov) for (u, v) in c)
 
-    def _layers_of(it, col):
-        """(外缘色, 核心色)：没挂双层染色就两边都用 col，shader 里 mix 退化成恒等。"""
+    def _layers_of(it, col, tex=""):
+        """(外缘色, 核心色)：没挂双层染色就两边都用 col，shader 里 mix 退化成恒等。
+
+        折射（乘法）不走双层染色那套——它是给加法/Alpha 的显示变换，套进来会把
+        brightness 归一化掉。折射的源色按有没有贴图分两条：
+
+        * **有贴图** → 原样传，逐纹素的遮罩和淡出都交给 `_refraction_shader`
+          （`mix(1, 贴图×颜色, 覆盖度×alpha)`）。
+        * **没贴图** → 走 FLAT_COLOR，shader 里没法混，只能在这里把 alpha 折进
+          RGB，见 `_multiply_tint`。
+        """
+        if it.blend == "MULTIPLY":
+            c = col if tex else _multiply_tint(col, refr_gain)
+            return c, c
         lay = it.extra.get("layers")
         if not lay:
             return col, col
@@ -1516,24 +2049,58 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
              r2[0] * bx + r2[1] * by + r2[2] * bz)
         return _norm(d) or d
 
+    #: 桶 key → (桶, [(渲染项, 外缘色, 核心色, UV 四角), …])。条带不当场展开，
+    #: 攒到这一趟走完再整批过 numpy，见 `_emit_ribbons_np`。
+    ribbon_pend = {}
+
+    if show_shape:
+        # 生成区域的线框。用的是**模拟器自己**那份读法（见
+        # behaviors/emittershape3d.py::outline），所以框和粒子真正的落点必然一致
+        # ——两边各算一遍迟早会走样。并进速度线那条现成的 LINES 叠加层。
+        try:
+            pts = tr["sim"].emitter_outline()
+        except Exception:
+            pts = ()
+        col_shape = (0.35, 0.75, 1.0, 0.55)
+        for i in range(0, len(pts) - 1, 2):
+            lines.append(_world(pts[i]))
+            lines.append(_world(pts[i + 1]))
+            line_colors.append(col_shape)
+            line_colors.append(col_shape)
+
     for it in items:
         center = _world(it.pos)
         tex_name = _tex_of(it)
-        col = _display_color(it.color, hdr_mode)
+        if it.blend == "MULTIPLY":
+            # 折射走乘法：输出 = 背后画面 × (贴图 × 颜色 × brightness)。
+            # ⚠ 这里**不能**过 `_display_color` —— 那是给加法/Alpha 用的 HDR 压缩，
+            #   会把 brightness 归一化掉，而乘法通道正要靠它（实机：白色
+            #   brightness=10 明显提亮背景、改成 1 则面片完全消失）。
+            col = tuple(it.color)
+        else:
+            col = _display_color(it.color, hdr_mode)
         kind = it.kind
 
         if kind == "RIBBON" and it.points:
-            bv, bc, bu, b2, _np = _bucket_for(it, tex_name)
-            edge, core = _layers_of(it, col)
-            _emit_ribbon(bv, bc, bu, it, edge, size_mul, _world, view_dir,
-                         _corners_of(it, tex_name), col2s=b2, core=core)
+            key, b = _bucket_for(it, tex_name)
+            edge, core = _layers_of(it, col, tex_name)
+            corners = _corners_of(it, tex_name)
+            if np_ctx is not None:
+                # 攒着，等这一趟走完再按桶成批算（见 `_emit_ribbons_np`）
+                pend = ribbon_pend.get(key)
+                if pend is None:
+                    pend = ribbon_pend[key] = (b, [])
+                pend[1].append((it, edge, core, corners))
+            else:
+                _emit_ribbon(b[0], b[1], b[2], it, edge, size_mul, _world,
+                             view_dir, corners, col2s=b[3], core=core)
         elif kind == "MESH":
             # 网格用自己的 UV（来自 mod3），我们没收集 → 始终走纯色桶。
             # ⚠ 绑定网格要按**这一项所属的 entry**查：子实例是别的 entry，
             # 拿根 entry 的绑定会让所有子特效都画成根的那个网格。
             geom, tex_name = _geom_of(it)
-            bv, bc, bu, b2, bnp = _bucket_for(it, tex_name)
-            edge, core = _layers_of(it, col)
+            _key, (bv, bc, bu, b2, bnp, _lu, _fo) = _bucket_for(it, tex_name)
+            edge, core = _layers_of(it, col, tex_name)
             _emit_mesh(bv, bc, bnp, it, edge, size_mul, rows, geom,
                        uvs=bu, col2s=b2, core=core)
         elif draw_mode in ("QUADS", "BOTH"):
@@ -1546,14 +2113,25 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                 qr, qu = _world_dir(it.axis_u), _world_dir(it.axis_v)
             else:
                 qr, qu = (_spin(right, up, it.rot) if it.rot else (right, up))
-            bv, bc, bu, b2, _np = _bucket_for(it, tex_name)
-            edge, core = _layers_of(it, col)
+            flow_tex, flow_amt = _flow_of(it, tex_name)
+            _key, (bv, bc, bu, b2, _np, blu, bfo) = _bucket_for(it, tex_name, flow_tex)
+            edge, core = _layers_of(it, col, tex_name)
             bv.extend(_quad_verts(center, qr, qu, hw, hh))
             bc.extend([edge] * 6)
             if b2 is not None:
                 b2.extend([(core[0], core[1], core[2], edge[3])] * 6)
+            corners = _corners_of(it, tex_name) if bu is not None else None
             if bu is not None:
-                bu.extend(_quad_uvs(_corners_of(it, tex_name)))
+                bu.extend(_quad_uvs(corners))
+            if blu is not None:
+                # 位移量是**相对这一格**的：strength 0.2 若按整张大图算，一步就跨过
+                # 一格半；按格子算才是「在自己这一帧里推一点点」
+                us = [c[0] for c in corners]
+                vs = [c[1] for c in corners]
+                off = (flow_amt * (max(us) - min(us)),
+                       flow_amt * (max(vs) - min(vs)))
+                blu.extend(_QUAD_LUV)
+                bfo.extend([off] * 6)
 
         if draw_mode in ("POINTS", "BOTH") and kind not in ("RIBBON", "MESH"):
             points.append(center)
@@ -1567,6 +2145,125 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             lines.append((center[0] + vx * k, center[1] + vy * k, center[2] + vz * k))
             line_colors.extend([col, (col[0], col[1], col[2], 0.0)])
 
+    for b, group in ribbon_pend.values():
+        try:
+            _emit_ribbons_np(b[4], group, size_mul, np_ctx)
+        except Exception:
+            # numpy 那条整组失败就整组退回纯 Python（`_emit_ribbons_np` 保证
+            # 失败时一个分块都没并进桶，不会画出半截）
+            for it, edge, core, corners in group:
+                _emit_ribbon(b[0], b[1], b[2], it, edge, size_mul, _world,
+                             view_dir, corners, col2s=b[3], core=core)
+
+
+#: 参与绘制缓存签名的 Scene 旋钮：任一变了就得重新装配顶点。
+_DRAW_KNOBS = ("efx_sim_particle_size", "efx_sim_draw_mode", "efx_sim_blend",
+               "efx_sim_hdr_mode", "efx_sim_mesh_rot_space",
+               "efx_sim_show_velocity", "efx_sim_uv_flip_v", "efx_sim_textured",
+               "efx_sim_alpha_source", "efx_sim_draw_order", "efx_sim_point_px",
+               "efx_sim_ribbon_subdiv_max",
+               "efx_sim_refraction_tex", "efx_sim_refraction_gain",
+               "efx_sim_flowmap_gain", "efx_sim_show_shape")
+
+
+def _draw_signature(scene, rv3d, trs):
+    """「这一次画的东西和上次一模一样吗」的判据。
+
+    顶点装配只依赖这四样：渲染项的版本号、视角（面片朝相机）、这些旋钮、
+    各 track 的参考矩阵。全都没变就直接重画上次烘好的 batch。
+    """
+    vm = rv3d.view_matrix
+    return (_P["gen"],
+            tuple(vm[i][j] for i in range(4) for j in range(4)),
+            tuple(getattr(scene, k, None) for k in _DRAW_KNOBS),
+            tuple(t.get("ref_rows") for t in trs))
+
+
+def _build_payload(scene, rv3d, trs):
+    """收集顶点并**当场烘成 GPUBatch**，返回可反复画的负载。
+
+    烘成 batch 而不是留着顶点列表：`batch_for_shader` 本身在几十万顶点时也要十几
+    毫秒，而视口一帧里可能被重绘好几次（鼠标划过、叠加层刷新），没理由每次都重传。
+    """
+    from gpu_extras.batch import batch_for_shader
+
+    buckets = {}          # (次序, 混合模式, 贴图名, alpha 修正) -> [顶点, 颜色, UV|None, 核心色|None, numpy 分块]
+    points, point_colors, lines, line_colors = [], [], [], []
+    for tr in trs:
+        _collect_track(tr, scene, rv3d, buckets, points, point_colors,
+                       lines, line_colors)
+    try:
+        flat = _builtin("FLAT_COLOR")
+    except Exception:
+        return None
+    tex_shader = _tex_shader()
+    flow_shader = _flow_shader()
+
+    # 先 Alpha 再 Add：加法混合的东西通常是最亮的高光，压在最后一层
+    # 绘制顺序 = 桶 key 的次序（entry 在文件里的排布），见 `entry_order`。
+    # 'alpha_first' 退回改动前的「先所有 Alpha 再所有 Add」。
+    # ⚠ 两者不等价：加法之间可交换，但**加法与 Alpha 之间不可交换**——一个 Alpha
+    # 面片画在加法之后会把已经加上去的光按 (1-a) 衰减掉。要照实机的覆盖关系来，
+    # 就得让这个启发式让位。
+    if getattr(scene, "efx_sim_draw_order", "entry") == "entry":
+        order = sorted(buckets.keys())
+    else:
+        order = sorted(buckets.keys(), key=lambda k: (k[1] == "ADDITIVE",))
+
+    refr_shader = _refraction_shader()
+    refr_param = (0.0 if getattr(scene, "efx_sim_refraction_tex", "color") == "mask"
+                  else 1.0,
+                  float(getattr(scene, "efx_sim_refraction_gain", 1.0)))
+    tris = []
+    for key in order:
+        bv, bc, bu, b2, bnp, blu, bfo = buckets[key]
+        if not (bv or bnp):
+            continue
+        _bo, mode, tex_name, fix, flow_name = key
+        if bnp:
+            bv, bc, bu, b2 = _join_chunks(bv, bc, bu, b2, bnp)
+        tex = _gpu_texture(tex_name) if (bu is not None) else None
+        # ⚠ 折射排在 flowmap 前面：折射换掉的是整条输出通道，flowmap 只推 UV，
+        # 两者撞车时丢掉后者损失小。语料里同时有这两样的 entry 只占 3.4%，
+        # 核心层会在那些 entry 上如实记一条 note。
+        ftex = (_gpu_texture(flow_name)
+                if (flow_name and blu is not None and mode != "MULTIPLY") else None)
+        if ftex is not None and tex is not None and flow_shader is not None:
+            tris.append((mode, flow_shader, (tex, ftex), fix,
+                         batch_for_shader(flow_shader, "TRIS",
+                                          {"pos": bv, "uv": bu, "color": bc,
+                                           "col2": b2, "luv": blu,
+                                           "flowoff": bfo})))
+            continue
+        if mode == "MULTIPLY":
+            # 折射：源色已经在 `_multiply_tint` 里折好了，shader 只负责遮罩。
+            # 没贴图（或 shader 建不出来）就整片乘——实测样本正是这一档。
+            if tex is not None and refr_shader is not None:
+                tris.append((mode, refr_shader, tex, (fix, refr_param),
+                             batch_for_shader(refr_shader, "TRIS",
+                                              {"pos": bv, "uv": bu, "color": bc})))
+            else:
+                tris.append((mode, flat, None, None,
+                             batch_for_shader(flat, "TRIS",
+                                              {"pos": bv, "color": bc})))
+        elif tex is not None and tex_shader is not None:
+            tris.append((mode, tex_shader, tex, fix,
+                         batch_for_shader(tex_shader, "TRIS",
+                                          {"pos": bv, "uv": bu, "color": bc,
+                                           "col2": b2})))
+        else:
+            tris.append((mode, flat, None, None,
+                         batch_for_shader(flat, "TRIS",
+                                          {"pos": bv, "color": bc})))
+
+    pt = (batch_for_shader(flat, "POINTS",
+                           {"pos": points, "color": point_colors})
+          if points else None)
+    ln = (batch_for_shader(flat, "LINES",
+                           {"pos": lines, "color": line_colors})
+          if lines else None)
+    return (tris, flat, pt, ln)
+
 
 def _draw():
     """POST_VIEW draw handler。**不改任何状态**，只画各 track 的 items。"""
@@ -1578,7 +2275,6 @@ def _draw():
 
     try:
         import gpu
-        from gpu_extras.batch import batch_for_shader
     except ImportError:
         return
 
@@ -1590,64 +2286,59 @@ def _draw():
         return
     scene = context.scene
 
-    buckets = {}          # (混合模式, 贴图名) -> [verts, colors, uvs|None]
-    points, point_colors, lines, line_colors = [], [], [], []
-    for tr in trs:
-        _collect_track(tr, scene, rv3d, buckets, points, point_colors,
-                       lines, line_colors)
-
+    # 逐 region 缓存：分屏时两个视口视角不同，各存各的。
+    # ⚠ 键要用 `as_pointer()`（底层 C 地址）——`id()` 拿到的是这一次访问临时生成的
+    # Python 包装对象，每次都不一样，缓存永远命中不了。
     try:
-        flat = _builtin("FLAT_COLOR")
+        ck = rv3d.as_pointer()
     except Exception:
-        return
-    tex_shader = _tex_shader()
+        ck = id(rv3d)
+    sig = _draw_signature(scene, rv3d, trs)
+    got = _P["draw_cache"].get(ck)
+    if got is None or got[0] != sig:
+        payload = _build_payload(scene, rv3d, trs)
+        if payload is None:
+            return
+        if len(_P["draw_cache"]) > 4:
+            _P["draw_cache"].clear()    # 换布局会留下死 region，别无限长
+        _P["draw_cache"][ck] = (sig, payload)
+    else:
+        payload = got[1]
+
+    tris, flat, pt, ln = payload
     blend = getattr(scene, "efx_sim_blend", "AUTO")
 
     gpu.state.depth_test_set("LESS_EQUAL")
     gpu.state.depth_mask_set(False)      # 粒子之间不互相遮挡，但仍被场景几何遮挡
     try:
-        # 先 Alpha 再 Add：加法混合的东西通常是最亮的高光，压在最后一层
-        # 绘制顺序 = 桶 key 的次序（entry 在文件里的排布），见 `entry_order`。
-        # 'alpha_first' 退回改动前的「先所有 Alpha 再所有 Add」。
-        # ⚠ 两者不等价：加法之间可交换，但**加法与 Alpha 之间不可交换**——一个 Alpha
-        # 面片画在加法之后会把已经加上去的光按 (1-a) 衰减掉。要照实机的覆盖关系来，
-        # 就得让这个启发式让位。
-        if getattr(scene, "efx_sim_draw_order", "entry") == "entry":
-            order = sorted(buckets.keys())
-        else:
-            order = sorted(buckets.keys(), key=lambda k: (k[1] == "ADDITIVE",))
-        for key in order:
-            bv, bc, bu, b2, bnp = buckets[key]
-            if not (bv or bnp):
-                continue
-            _bo, mode, tex_name, fix = key
-            if bnp:
-                bv, bc, bu, b2 = _join_chunks(bv, bc, bu, b2, bnp)
+        for mode, shader, tex, fix, batch in tris:
             gpu.state.blend_set(mode)
-            tex = _gpu_texture(tex_name) if (bu is not None) else None
-            if tex is not None and tex_shader is not None:
-                tex_shader.bind()
-                tex_shader.uniform_sampler("image", tex)
-                # (lowPass, contrast_gamma, lumaAsAlpha)，中性值 (0, 1, 0)
-                tex_shader.uniform_float("alphaFix", fix)
-                batch_for_shader(tex_shader, "TRIS",
-                                 {"pos": bv, "uv": bu, "color": bc,
-                                  "col2": b2}).draw(tex_shader)
-            else:
-                batch_for_shader(flat, "TRIS",
-                                 {"pos": bv, "color": bc}).draw(flat)
+            if tex is not None:
+                shader.bind()
+                if isinstance(tex, tuple):
+                    # flowmap：主图 + 流动图两个采样器
+                    shader.uniform_sampler("image", tex[0])
+                    shader.uniform_sampler("flowTex", tex[1])
+                else:
+                    shader.uniform_sampler("image", tex)
+                if isinstance(fix, tuple) and len(fix) == 2:
+                    # 折射：(alphaFix, refrParam)
+                    shader.uniform_float("alphaFix", fix[0])
+                    shader.uniform_float("refrParam", fix[1])
+                elif fix is not None:
+                    # (lowPass, contrast_gamma, lumaAsAlpha)，中性值 (0, 1, 0)
+                    shader.uniform_float("alphaFix", fix)
+            batch.draw(shader)
 
         overlay = "ADDITIVE" if blend == "ADDITIVE" else "ALPHA"
-        if points:
+        if pt is not None:
             gpu.state.blend_set(overlay)
             gpu.state.point_size_set(max(1.0, float(
                 getattr(scene, "efx_sim_point_px", 4))))
-            batch_for_shader(flat, "POINTS",
-                             {"pos": points, "color": point_colors}).draw(flat)
-        if lines:
+            pt.draw(flat)
+        if ln is not None:
             gpu.state.blend_set("ALPHA")     # 速度线是调试叠加层，别被加法混合冲白
-            batch_for_shader(flat, "LINES",
-                             {"pos": lines, "color": line_colors}).draw(flat)
+            ln.draw(flat)
     except Exception:
         pass
     finally:
@@ -1664,6 +2355,7 @@ _HANDLERS = []
 
 
 def _remove_handlers():
+    _P["draw_cache"] = {}
     removed = 0
     while _HANDLERS:
         h = _HANDLERS.pop()
@@ -1710,8 +2402,10 @@ def _rebuild_if_dirty(scene):
     if not _P["dirty"]:
         return
     _P["dirty"] = False
+    _P["needs_items"] = True    # 参数变了，即使这一 tick 不走帧也得重画
     _clear_tex_cache()          # 参考图可能被换了
     _clear_material_cache()     # MATERIAL 的贴图路径也可能被改过
+    _clear_flow_cache()         # flowmap 的路径同理
     alive = []
     for tr in _P["tracks"]:
         if rebuild_track(tr, scene, keep_frame=True):
@@ -1773,6 +2467,14 @@ def _build_items(tr):
         tr["items"] = []
 
 
+def _rebuild_items():
+    """重建全部 track 的渲染项，并让绘制缓存失效。"""
+    for tr in _P["tracks"]:
+        _build_items(tr)
+    _P["needs_items"] = False
+    _P["gen"] += 1
+
+
 def _tick(scene):
     """一次定时器滴答：按墙钟推进整数帧（所有 track 共用这一个时钟 → 天然同步）。
 
@@ -1810,10 +2512,23 @@ def _tick(scene):
                 _P["acc"] = 0.0
                 break
             _P["playing"] = False
+            _gc_hold(False)
             break
 
-    for tr in _P["tracks"]:
-        _build_items(tr)
+    # ⚠ 只有真走了帧（或参数被改过）才重建渲染项并请求重绘。定时器是固定
+    # 1/120 s 的高频 tick，倍速低的时候大多数 tick 根本没推进——照旧无脑重建
+    # 等于把最贵的两段（build_render + 顶点装配）白跑四五遍，而画面一模一样。
+    # 这也正是「把倍速调到 0.5 却一点不见变快」的原因。
+    if steps or _P["needs_items"]:
+        # 抽帧显示（efx_sim_render_every）：模拟照样逐帧走，只是攒够 N 帧才重建
+        # 一次画面。重文件里把它开到 2~3，时序仍然精确，肉眼只觉得帧率低一点。
+        # 参数改过 / 暂停中要立刻看到结果，这两种情况不抽。
+        every = max(1, int(getattr(scene, "efx_sim_render_every", 1)))
+        _P["skipped"] = 0 if _P["needs_items"] else _P["skipped"] + steps
+        if _P["needs_items"] or not _P["playing"] or _P["skipped"] >= every:
+            _P["skipped"] = 0
+            _rebuild_items()
+            _redraw_viewports()
 
 
 
@@ -1858,7 +2573,9 @@ class EFX_OT_sim_play(Operator):
         _P["acc"] = 0.0
         _P["last_t"] = time.perf_counter()
         _P["dirty"] = False
+        _P["needs_items"] = True
         _P["playing"] = True
+        _gc_hold(True)
 
         _add_handler()
         wm = context.window_manager
@@ -1879,7 +2596,6 @@ class EFX_OT_sim_play(Operator):
         if event.type == "TIMER":
             if _P["playing"]:
                 _tick(context.scene)
-                _redraw_viewports()
         return {"PASS_THROUGH"}       # 不吞事件：播放时照样能转视角、改参数
 
     def _finish(self, context):
@@ -1895,6 +2611,7 @@ class EFX_OT_sim_play(Operator):
         _P["tracks"] = []
         _P["mesh_cache"] = {}
         _clear_tex_cache()
+        _gc_hold(False)
         _redraw_viewports()
         return {"FINISHED"}
 
@@ -1920,6 +2637,7 @@ class EFX_OT_sim_stop(Operator):
         _P["tracks"] = []
         _P["mesh_cache"] = {}
         _clear_tex_cache()
+        _gc_hold(False)
         _redraw_viewports()
         return {"FINISHED"}
 
@@ -1938,6 +2656,8 @@ class EFX_OT_sim_pause(Operator):
     def execute(self, context):
         _P["playing"] = not _P["playing"]
         _P["last_t"] = time.perf_counter()
+        # 暂停是回收垃圾的好时机：这一下的开销用户感觉不到，继续播时再关掉
+        _gc_hold(_P["playing"])
         return {"FINISHED"}
 
 
@@ -1967,9 +2687,11 @@ class EFX_OT_sim_restart(Operator):
         _P["tracks"] = alive
         _P["duration"] = _resolve_duration(context.scene)
         _P["dirty"] = False
+        _P["needs_items"] = True
         _P["acc"] = 0.0
         _P["last_t"] = time.perf_counter()
         _P["playing"] = True
+        _gc_hold(True)
         _redraw_viewports()
         return {"FINISHED"}
 
@@ -1992,7 +2714,7 @@ class EFX_OT_sim_step(Operator):
         _sync_host_origin(context.scene)
         for tr in _P["tracks"]:
             tr["sim"].step()
-            _build_items(tr)
+        _rebuild_items()
         _redraw_viewports()
         return {"FINISHED"}
 
@@ -2119,10 +2841,23 @@ class EFX_PT_sim(Panel):
         col.prop(scene, "efx_sim_particle_size")
         if getattr(scene, "efx_sim_draw_mode", "QUADS") in ("POINTS", "BOTH"):
             col.prop(scene, "efx_sim_point_px")
+        # 独立叠加层：不用播放、只画选中的那几个（见 es3d_overlay.py）
+        from . import es3d_overlay as _es3do
+        _es3do.draw_button(box, context)
+        col = box.column(align=True)
+        col.prop(scene, "efx_sim_show_shape")
         col.prop(scene, "efx_sim_show_velocity")
         col.prop(scene, "efx_sim_textured")
         if getattr(scene, "efx_sim_textured", True):
             col.prop(scene, "efx_sim_uv_flip_v")
+
+        # ── 性能 ─────────────────────────────────────────────────────────────
+        box = layout.box()
+        box.label(text=T("sim.perf"), icon="SORTTIME")
+        col = box.column(align=True)
+        col.prop(scene, "efx_sim_ribbon_subdiv_max")
+        col.prop(scene, "efx_sim_particle_budget")
+        col.prop(scene, "efx_sim_render_every")
 
         # ── 序列帧：帧表来源 + 现在放到第几格 ────────────────────────────────
         uvs = (trs[0].get("uvs") if trs else None) if active \
@@ -2208,6 +2943,11 @@ class EFX_PT_sim_unknowns(Panel):
         col.prop(scene, "efx_sim_t3d_rot_sign")
         col.prop(scene, "efx_sim_material_slot")
         col.prop(scene, "efx_sim_alpha_source")
+        col.prop(scene, "efx_sim_refraction_tex")
+        col.prop(scene, "efx_sim_refraction_gain")
+        col.prop(scene, "efx_sim_flowmap_speed_unit")
+        col.prop(scene, "efx_sim_flowmap_phase")
+        col.prop(scene, "efx_sim_flowmap_gain")
         col.prop(scene, "efx_sim_draw_order")
         col.prop(scene, "efx_sim_mesh_rot_space")
         col.prop(scene, "efx_sim_rgb_tint")
@@ -2289,6 +3029,34 @@ def register():
         description="Magnifier on top of the size read from the file "
                     "(BILLBOARD3D width/height x scale, in game units). 1.0 = as authored")
     S.efx_sim_point_px = IntProperty(name="Point px", default=4, min=1, max=32)
+
+    # ── 性能（预览降载；只影响画面精细度与刷新率，不碰文件）──────────────────
+    S.efx_sim_ribbon_subdiv_max = IntProperty(
+        name="Ribbon detail cap", default=0, min=0, soft_max=64,
+        update=_on_knob_changed,
+        description="Upper limit on how many points a ribbon is resampled to. "
+                    "0 = use the subdivisionCount stored in the file. A 50-point "
+                    "ribbon costs ~300 vertices per frame, and a PtLife tree can "
+                    "hold thousands of them at once; capping it around 12 keeps "
+                    "the shape and cuts most of the cost. Preview only")
+    S.efx_sim_particle_budget = IntProperty(
+        name="Particle budget", default=0, min=0, soft_max=5000,
+        update=_on_knob_changed,
+        description="Cap on how many particles the whole instance tree may hold at "
+                    "once. 0 = the built-in ceiling (20000). Lowering it keeps a "
+                    "dense PtLife tree from swamping the preview; the panel says so "
+                    "when the cap is reached. Preview only")
+    S.efx_sim_render_every = IntProperty(
+        name="Draw every N frames", default=1, min=1, max=8,
+        description="Rebuild the on-screen geometry only every N simulated frames. "
+                    "The simulation still advances every frame, so timing stays "
+                    "exact; only the picture updates less often")
+    S.efx_sim_show_shape = BoolProperty(
+        name="Emitter shape", default=False,
+        description="Outline the region new particles are placed in "
+                    "(EMITTERSHAPE3D). Drawn from the same reading the simulation "
+                    "samples, so the outline and where particles actually appear "
+                    "always agree. The root emitter only")
     S.efx_sim_show_velocity = BoolProperty(
         name="Velocity lines", default=False,
         description="Draw each particle's per-frame velocity as a fading line")
@@ -2333,6 +3101,44 @@ def register():
                ("on", "Brightness", "Always use how bright the texture is"),
                ("off", "Alpha channel", "Always use the texture's alpha channel")],
         default="auto")
+    S.efx_sim_flowmap_speed_unit = EnumProperty(
+        name="Flowmap speed", update=_on_knob_changed,
+        items=[("per_second", "Per second",
+                "The stored speed is how many flow cycles pass in a second"),
+               ("per_frame", "Per frame",
+                "The stored speed is how many flow cycles pass in a single frame")],
+        default="per_second")
+    S.efx_sim_flowmap_phase = EnumProperty(
+        name="Flowmap travel", update=_on_knob_changed,
+        items=[("cycle", "Cycles",
+                "Sweep back and forth over one flow cycle, so the distortion stays "
+                "bounded however long a particle lives"),
+               ("linear", "Keeps going",
+                "Let the distortion build up with age, so a pixel keeps drifting "
+                "the way the flowmap points")],
+        default="cycle")
+    S.efx_sim_refraction_tex = EnumProperty(
+        name="Refraction sprite",
+        items=[("color", "Tints the background",
+                "Multiply the background by the sprite's own colour, so the sprite "
+                "both shapes and tints the layer"),
+               ("mask", "Shapes it only",
+                "Use the sprite only to decide where the layer covers; its colour "
+                "stays out, so a white renderer colour leaves the background alone")],
+        default="color")
+    S.efx_sim_refraction_gain = FloatProperty(
+        name="Refraction strength x", default=1.0, min=0.0, max=8.0,
+        soft_min=0.0, soft_max=4.0,
+        description="Magnifier on how far the refraction layer pushes the "
+                    "background away from leaving it untouched. 1.0 = as authored; "
+                    "0 = invisible; above 1 exaggerates it so a faint layer is easy "
+                    "to place. Preview only")
+    S.efx_sim_flowmap_gain = FloatProperty(
+        name="Flowmap strength x", default=1.0, min=0.0, max=8.0,
+        soft_min=0.0, soft_max=4.0,
+        description="Magnifier on how far the flowmap pushes the sprite's pixels "
+                    "around. 1.0 = the strength stored in the file; 0 = off, the "
+                    "sprite stays still. Preview only")
     S.efx_sim_material_slot = EnumProperty(
         name="Mesh texture from",
         items=[("tAlbedoMap", "Material albedo",
@@ -2483,12 +3289,13 @@ def unregister():
     _P["tracks"] = []
     _P["mesh_cache"] = {}
     _clear_tex_cache()
+    _gc_hold(False)
     _UVS_HOST_CACHE.clear()
 
     for attr in (
         "efx_sim_mode", "efx_sim_speed", "efx_sim_duration", "efx_sim_seed",
         "efx_sim_draw_mode", "efx_sim_blend", "efx_sim_particle_size",
-        "efx_sim_point_px", "efx_sim_show_velocity",
+        "efx_sim_point_px", "efx_sim_show_velocity", "efx_sim_show_shape",
         "efx_sim_jitter_mode", "efx_sim_es3d_range", "efx_sim_es3d_range_mode",
         "efx_sim_life_model",
         "efx_sim_a0_sample", "efx_sim_timl_mode", "efx_sim_timl_interp",
@@ -2504,6 +3311,10 @@ def unregister():
         "efx_sim_luma_alpha",   # 撤掉的旧名（存过 mesh/all），留着清场
         "efx_sim_hdr_mode",
         "efx_sim_hdr",   # 撤掉的旧名（存过已删除的 auto），留着清场
+        "efx_sim_ribbon_subdiv_max", "efx_sim_render_every",
+        "efx_sim_particle_budget",
+        "efx_sim_refraction_tex", "efx_sim_refraction_gain",
+        "efx_sim_flowmap_gain", "efx_sim_flowmap_speed_unit", "efx_sim_flowmap_phase",
         "efx_sim_fps",   # 已撤掉的开关，留在这里是为了从老场景里清掉
     ):
         if hasattr(bpy.types.Scene, attr):

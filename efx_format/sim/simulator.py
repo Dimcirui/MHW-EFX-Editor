@@ -304,6 +304,23 @@ class Simulator(object):
             self.step()
         return self.em
 
+    def emitter_outline(self, segments=28):
+        """生成区域的线框（成对的点，与粒子同一坐标空间）。没有形状属性就返回 []。
+
+        按「behavior 有没有 outline()」找，不写死 EMITTERSHAPE3D——以后别的形状类
+        属性加上同名方法就自动被画出来。
+        """
+        out = []
+        for b in self.bound:
+            fn = getattr(b.behavior, "outline", None)
+            if fn is None:
+                continue
+            try:
+                out.extend(fn(self.em, segments))
+            except Exception:
+                pass
+        return out
+
     def run(self, frames):
         """从当前状态再推进 `frames` 帧。"""
         for _ in range(int(frames)):
@@ -314,6 +331,10 @@ class Simulator(object):
     def build_render(self, view=None):
         em = self.em
         view = view or ViewContext()
+        # 整批预计算（条带的轨迹重采样一类）。放在逐粒子循环之外，见
+        # Behavior.pre_render。
+        for b in self._h_render:
+            b.behavior.pre_render(em, view)
         out = []
         for p in em.particles:
             if not p.active:

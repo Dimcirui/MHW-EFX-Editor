@@ -105,6 +105,19 @@ UNKNOWNS = {
         "两个颜色本身都留在 p.rolled 里。",
         ("weighted", "mix", "first", "second"), "weighted",
     ),
+    "flowmap_speed_unit": (
+        "flowmapSpeed 的单位。'per_second'=每秒推进这么多相位、逐帧走 speed/fps"
+        "（默认，与 t3d_velocity_unit / uvs_speed_unit 同一结论）；'per_frame'=每帧"
+        "这么多。众数 1.0：按每秒读是一秒走完一轮，按每帧读是一秒走 60 轮。"
+        "⚠ 两个 Coef 不受此开关影响，它们恒是**逐帧**乘一次的衰减率。",
+        ("per_second", "per_frame"), "per_second",
+    ),
+    "flowmap_phase": (
+        "flowmap 的相位怎么映射成 UV 位移。'cycle'=取相位的小数部分映到 −1..1"
+        "（默认；位移有界，粒子活多久都不会越拉越烂）；'linear'=一路累积"
+        "（相位就是位移倍数，短寿命粒子上更像「被吹走」）。",
+        ("cycle", "linear"), "cycle",
+    ),
     "uvc_clock": (
         "UVCONTROL 的 UV 动画按哪个时钟走。'particle_age'=每个粒子从自己出生起算"
         "（默认，与 UVSEQUENCE 一致）；'emitter_frame'=发射器时间轴，全体同步。",
@@ -185,11 +198,13 @@ class SimConfig(object):
         "t3d_rotation_sign", "rgb_tint_mode", "uvc_clock",
         "uvs_speed_unit", "uvs_once_span", "uvs_start_wrap",
         "uvs_grid_h", "uvs_grid_v", "uvs_grid_scan",
+        "flowmap_speed_unit", "flowmap_phase",
         "rot_order_applied", "ribbon_trail_source", "t3d_apply_base",
         "stage_order", "render_stage_order", "order_override", "disabled",
         "max_particles_hard", "max_frames", "max_spawn_depth", "trail_max",
         "max_instances", "max_particles_total", "child_cull_grace",
         "child_pending_grace",
+        "ribbon_subdiv_max",
         "strict",
     )
 
@@ -219,6 +234,8 @@ class SimConfig(object):
         self.t3d_rotation_sign = "flip"
         self.rgb_tint_mode = "weighted"
         self.uvc_clock = "particle_age"
+        self.flowmap_speed_unit = "per_second"
+        self.flowmap_phase = "cycle"
         self.uvs_speed_unit = "per_frame"
         self.uvs_once_span = "to_end"
         self.uvs_start_wrap = "wrap"
@@ -243,6 +260,13 @@ class SimConfig(object):
         self.order_override = {}
         #: 要跳过的 type_hash 集合（UI 上的逐项开关，用来「关掉这条看看差别」）
         self.disabled = set()
+
+        # ── 预览降载（LOD）──────────────────────────────────────────────────
+        #: 条带沿长度方向的重采样点数上限。0 = 照文件里的 subdivisionCount 来。
+        #: 一条 50 细分的条带每帧出 294 个顶点，PtLife 子树里同时活着上千条就是
+        #: 三十多万顶点全在 Python 侧装配；降到十几段形状基本还在，开销少一大截。
+        #: ⚠ 这是**预览**参数，不改文件、不改导出，只影响画面精细度。
+        self.ribbon_subdiv_max = 0
 
         # ── 安全阀 ───────────────────────────────────────────────────────────
         self.max_particles_hard = 20000     # 硬上限，防未知语义导致的爆炸

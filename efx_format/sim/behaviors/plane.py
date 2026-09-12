@@ -26,6 +26,7 @@ from ..registry import Behavior, register
 from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
+from . import _flowmap
 from ._common import (axis_normal, blend_name, epv_note, oriented_basis,
                       pick_color, roll_rgba)
 
@@ -71,6 +72,8 @@ class Plane(Behavior):
         p.rolled["pl_rgba"], p.rolled["pl_coff"] = roll_rgba(f, rng, em.config)
         p.rolled["pl_blend"] = blend_name(f)
 
+        _flowmap.roll(p, f, rng, mode)          # 流动贴图八件套（见 _flowmap.py）
+
     def build_render(self, p, em, view, item):
         rolled = p.rolled
         if "pl_rgba" not in rolled:
@@ -104,4 +107,4 @@ class Plane(Behavior):
         item.blend = rolled["pl_blend"]
         item.extra["vel"] = p.vel
         item.extra["age"] = p.age
-        return item
+        return _flowmap.apply(p, em, item)       # 流动贴图（见 _flowmap.py）

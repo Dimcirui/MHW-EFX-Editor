@@ -24,8 +24,8 @@ if _ROOT not in sys.path:
 from efx_format.hashes import (ALPHACORRECTION, BILLBOARD3D, DUMMY,  # noqa: E402
                                EMITTERSHAPE3D,
                                LIFE, MESH, NOISE, PLANE, RIBBON, RIBBONBLADE,
-                               PARENTOPTIONS, PTLIFE, RGBFIRE, RGBWATER,
-                               ROTATEANIM, SCALEANIM,
+                               PARENTOPTIONS, PTLIFE, REFRACTION, RGBFIRE,
+                               RGBWATER, ROTATEANIM, SCALEANIM,
                                SPAWN, TRANSFORM3D, UVSEQUENCE, VELOCITY3D)
 from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
                             Behavior, SimConfig, SimResources, SimScene,
@@ -34,6 +34,7 @@ from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
 from efx_format.sim import uvs_table as simuvs  # noqa: E402
 from efx_format.sim.behaviors.uvsequence import frame_info  # noqa: E402
 from efx_format.sim import rng as simrng  # noqa: E402
+from efx_format.sim import trail as _trail  # noqa: E402
 from efx_format.sim.vecmath import (ROT_ORDER_TRANSFORM,  # noqa: E402
                                     rot_order_name, rotate_euler)
 
@@ -2086,6 +2087,194 @@ class TestPtLifeActionScene(unittest.TestCase):
         d2, s2 = run(0.5)
         self.assertAlmostEqual(s2, s1 * 0.5, places=5)      # 尺寸缩一半
         self.assertAlmostEqual(d2, d1 * 0.5, places=5)      # 离锚点的距离也缩一半
+
+    def test_emitter_outline_matches_where_particles_land(self):
+        """生成区域线框必须罩得住真正的落点——两边共用 `_region`，不该走样。
+
+        用球形 + 横向扫描 90°（四分之一扇区）：线框的包围盒既要覆盖所有粒子，
+        也要跟着扫描角度只占一个象限（整圈的话 x/z 两侧都会有点）。
+        """
+        blocks = [
+            (SPAWN, {"maxParticles": 200, "particlesPerBurst": 40,
+                     "burstInterval": 1, "burstsPerCycle": 0,
+                     "emitterRepeatCount": 1}),
+            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (EMITTERSHAPE3D, {"shapeType": 1,          # 球
+                              "rangeXYZ": [15.0, 200.0, 15.0, 200.0, 15.0, 200.0],
+                              "scanAngleHorizontal": 90.0,
+                              "scanAngleVertical": 0.0}),
+            (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
+                           "blendMode": 0, "width": 10, "height": 10, "scale": 1}),
+        ]
+        sim = Simulator(blocks, b"", SimConfig())
+        sim.run(6)
+        pts = sim.emitter_outline()
+        self.assertTrue(pts, "球形应当有线框")
+        self.assertEqual(len(pts) % 2, 0, "线框是成对的点")
+
+        def bounds(vs):
+            return (min(v.x for v in vs), max(v.x for v in vs),
+                    min(v.y for v in vs), max(v.y for v in vs),
+                    min(v.z for v in vs), max(v.z for v in vs))
+
+        ox0, ox1, oy0, oy1, oz0, oz1 = bounds(pts)
+        # 外边界 = 偏移 15 + 尺寸 200
+        self.assertAlmostEqual(max(abs(ox0), abs(ox1)), 215.0, delta=1.0)
+        # 扫描 90° → 只占一个象限：横向两轴各只跨「半径」而不是「直径」
+        self.assertLessEqual(ox1 - ox0, 215.0 * 1.1)
+        self.assertLessEqual(oz1 - oz0, 215.0 * 1.1)
+        # 纵向没限制 → 上下都到 ±215
+        self.assertGreaterEqual(oy1 - oy0, 215.0 * 1.5)
+
+        live = [p.pos for p in sim.em.particles]
+        self.assertTrue(live)
+        px0, px1, py0, py1, pz0, pz1 = bounds(live)
+        eps = 1.0
+        self.assertGreaterEqual(px0, ox0 - eps)
+        self.assertLessEqual(px1, ox1 + eps)
+        self.assertGreaterEqual(py0, oy0 - eps)
+        self.assertLessEqual(py1, oy1 + eps)
+        self.assertGreaterEqual(pz0, oz0 - eps)
+        self.assertLessEqual(pz1, oz1 + eps)
+
+    def test_flowmap_amount_is_bounded_and_follows_speed(self):
+        """flowmap：位移量 = 相位映射 × 当前强度，`cycle` 档恒在 ±strength 内。
+
+        众数配置（speed 1.0 / strength 0.2 / 两个 Coef 1.0）下，按每秒读一秒正好
+        扫完一轮；按每帧读则每帧走一整轮，`cycle` 会锯齿成常数——这也是默认取
+        per_second 的理由。
+        """
+        def amounts(unit, phase, frames):
+            blocks = [
+                (SPAWN, {"maxParticles": 1, "particlesPerBurst": 1,
+                         "burstInterval": 0, "burstsPerCycle": 1,
+                         "emitterRepeatCount": 1}),
+                (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+                (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
+                               "blendMode": 0, "width": 100, "height": 100,
+                               "scale": 1, "applicationRule": 0x04,
+                               "flowmapSpeed": 1.0, "flowmapStrength": 0.2,
+                               "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0}),
+            ]
+            sim = Simulator(blocks, b"", SimConfig(flowmap_speed_unit=unit,
+                                                   flowmap_phase=phase))
+            out = []
+            for t in frames:
+                while sim.frame < t:
+                    sim.step()
+                it = sim.build_render()[0]
+                out.append(it.extra.get("flowmap", 0.0))
+            return out
+
+        got = amounts("per_second", "cycle", (1, 15, 30, 45, 59))
+        for v in got:
+            self.assertLessEqual(abs(v), 0.2 + 1e-6)    # 有界
+        self.assertLess(got[0], got[1])                 # 一秒内单调扫过去
+        self.assertLess(got[1], got[2])
+        # 每帧读：相位每帧整好走一轮 → 小数部分恒定，扫不动（默认不取它）
+        flat = amounts("per_frame", "cycle", (1, 5, 9))
+        self.assertAlmostEqual(flat[0], flat[1], places=6)
+        self.assertAlmostEqual(flat[1], flat[2], places=6)
+
+    def test_flowmap_off_leaves_nothing_on_the_item(self):
+        """没开 bit 0x04 就完全不挂——glue 据此决定要不要分流动桶。"""
+        blocks = [
+            (SPAWN, {"maxParticles": 1, "particlesPerBurst": 1, "burstInterval": 0,
+                     "burstsPerCycle": 1, "emitterRepeatCount": 1}),
+            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
+                           "blendMode": 0, "width": 100, "height": 100, "scale": 1,
+                           "applicationRule": 0,           # 位没开
+                           "flowmapSpeed": 1.0, "flowmapStrength": 0.2}),
+        ]
+        sim = Simulator(blocks, b"", SimConfig())
+        sim.run(5)
+        self.assertNotIn("flowmap", sim.build_render()[0].extra)
+
+    def test_refraction_turns_the_body_into_a_multiply_pass(self):
+        """REFRACTION：渲染体改走乘法，源色 = 颜色 × brightness。
+
+        实机对拍（单个 BILLBOARD3D，width=height=100，无 UVSEQUENCE）：
+        白色 brightness=10 明显提亮背景、改成 1 则面片完全消失；换成纯红之后方片内
+        绿蓝通道整个消失——而渲染体自己写的是 blendMode=1(加法)，加法抹不掉背景的
+        绿蓝，所以 REFRACTION 是**覆盖**渲染体的混合模式。
+        """
+        blocks = [
+            (SPAWN, {"maxParticles": 1, "particlesPerBurst": 1, "burstInterval": 0,
+                     "burstsPerCycle": 1, "emitterRepeatCount": 1}),
+            (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
+            (BILLBOARD3D, {"color": [255, 0, 0, 255], "brightness": 10,
+                           "blendMode": 1, "width": 100, "height": 100, "scale": 1}),
+            (REFRACTION, {"typeFlag": 2, "pixelNormalOffset": 0,
+                          "seeThroughBlend": 0.0}),
+        ]
+        sim = Simulator(blocks, b"", SimConfig())
+        sim.run(3)
+        it = sim.build_render()[0]
+        self.assertEqual(it.blend, "MULTIPLY")      # 覆盖了 blendMode=1(加法)
+        self.assertAlmostEqual(it.color[0], 10.0, places=5)   # 红 × brightness
+        self.assertAlmostEqual(it.color[1], 0.0, places=5)
+        self.assertEqual(it.extra["refraction"], (0, 0.0))
+        self.assertFalse([n for n in sim.notes if "REFRACTION" in n])
+
+    def test_refraction_reports_the_parts_it_does_not_draw(self):
+        """没做的那两档要如实说，别让面板显示成「已模拟」就完事。"""
+        def notes(offset, blend):
+            blocks = [
+                (SPAWN, {"maxParticles": 1, "particlesPerBurst": 1,
+                         "burstInterval": 0, "burstsPerCycle": 1,
+                         "emitterRepeatCount": 1}),
+                (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
+                (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
+                               "blendMode": 1, "width": 100, "height": 100,
+                               "scale": 1}),
+                (REFRACTION, {"typeFlag": 2, "pixelNormalOffset": offset,
+                              "seeThroughBlend": blend}),
+            ]
+            sim = Simulator(blocks, b"", SimConfig())
+            sim.run(2)
+            return [n for n in sim.notes if "REFRACTION" in n]
+
+        self.assertEqual(notes(0, 0.0), [])
+        self.assertTrue(any("pixelNormalOffset" in n for n in notes(1, 0.0)))
+        self.assertTrue(any("seeThroughBlend" in n for n in notes(0, 0.35)))
+
+    def test_scale_item_array_path_matches_per_point(self):
+        """条带的数组形态（RibbonStrip）走 `_scale_item` 要和逐点路完全一致。
+
+        ⚠ 这条不靠场景跑出来——语料里 PLAYEMITTER 的 Size 94% 是 1.0，缩放分支
+        平时根本不执行，真错了也要等某个特定文件才暴露。
+        """
+        from efx_format.sim.scene import _scale_item
+        from efx_format.sim.state import RenderItem, RibbonStrip
+        numpy = _trail.numpy_backend()
+        if numpy is None:
+            self.skipTest("环境里没有 numpy，数组形态不会被创建")
+
+        n = 7
+        pos = numpy.array([[i * 1.5, i * -2.0, 3.0 + i] for i in range(n)],
+                          dtype="f8")
+        half = numpy.array([1.0 + 0.1 * i for i in range(n)], dtype="f8")
+        alpha = numpy.array([0.2 + 0.05 * i for i in range(n)], dtype="f8")
+        anchor = Vec3(2.0, -1.0, 0.5)
+        s = Vec3(0.4, 1.7, -0.3)
+
+        arr = RenderItem(kind="RIBBON", pos=Vec3())
+        arr.points = RibbonStrip(pos.copy(), half.copy(), alpha.copy())
+        _scale_item(arr, anchor, s)
+
+        lst = RenderItem(kind="RIBBON", pos=Vec3())
+        lst.points = [(Vec3(pos[i][0], pos[i][1], pos[i][2]),
+                       float(half[i]), float(alpha[i])) for i in range(n)]
+        _scale_item(lst, anchor, s)
+
+        self.assertEqual(len(arr.points), n)
+        for (qa, ha, aa), (qb, hb, ab) in zip(arr.points, lst.points):
+            self.assertAlmostEqual(qa.x, qb.x, places=9)
+            self.assertAlmostEqual(qa.y, qb.y, places=9)
+            self.assertAlmostEqual(qa.z, qb.z, places=9)
+            self.assertAlmostEqual(ha, hb, places=9)
+            self.assertAlmostEqual(aa, ab, places=9)
 
     def test_child_applies_its_own_static_transform(self):
         """子实例没有宿主替它摆位 → 它得自己套 TRANSFORM3D 的静态变换。

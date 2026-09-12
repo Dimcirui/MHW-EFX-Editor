@@ -128,6 +128,65 @@ class Vec3(object):
 
 
 ZERO = Vec3()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RibbonStrip —— 条带顶点串的数组形态
+# ─────────────────────────────────────────────────────────────────────────────
+
+class RibbonStrip(object):
+    """条带的顶点串，对外**表现得像** `[(Vec3, 半宽, alpha), …]`，内部是三条数组。
+
+    为什么要这层：一条 50 细分的条带在 Python 里是 50 个 `Vec3` 加 50 个元组，
+    上千条同时活着就是十几万个对象——而它们在核心层被造出来、到 glue 层又被逐个
+    拆回 float 喂给 GPU，两趟纯搬运。留成数组之后，快路
+    （`sim_preview._emit_ribbons_np`）直接把一批条带 `stack` 起来，两趟都没了。
+
+    老写法（单测、`scene._scale_item`）照旧能 `for q, hw, a in it.points` 迭代，
+    只是走到那儿才物化成对象——正确性不变，慢的只是不走快路的那些地方。
+
+    ⚠ 本模块零第三方依赖：这里只**持有**数组、调它们的方法，不 import numpy。
+    """
+
+    __slots__ = ("pos", "half", "alpha", "_mat")
+
+    def __init__(self, pos, half, alpha):
+        #: (n, 3) 位置（游戏坐标系，base→tip）
+        self.pos = pos
+        #: (n,) 逐顶点半宽
+        self.half = half
+        #: (n,) 逐顶点 alpha 系数
+        self.alpha = alpha
+        self._mat = None
+
+    def _materialize(self):
+        if self._mat is None:
+            hs = self.half.tolist()
+            als = self.alpha.tolist()
+            self._mat = [(Vec3(r[0], r[1], r[2]), hs[i], als[i])
+                         for i, r in enumerate(self.pos.tolist())]
+        return self._mat
+
+    def vec(self, i):
+        """第 i 个顶点的位置，**不触发物化**（`item.pos` 只要末点一个）。"""
+        r = self.pos[i]
+        return Vec3(r[0], r[1], r[2])
+
+    def vecs(self):
+        """位置的 `Vec3` 列表（走不了数组的那些改法用，比如 RIBBON 的旗帜摆动）。"""
+        return [Vec3(r[0], r[1], r[2]) for r in self.pos.tolist()]
+
+    def __len__(self):
+        return len(self.pos)
+
+    def __iter__(self):
+        return iter(self._materialize())
+
+    def __getitem__(self, i):
+        return self._materialize()[i]
+
+    def __repr__(self):
+        return "<RibbonStrip n=%d>" % len(self.pos)
 ONE = Vec3(1.0, 1.0, 1.0)
 
 #: VELOCITY3D.baseAxis 的六个基准轴（游戏坐标系：+X=左 +Y=上 +Z=前）
@@ -264,8 +323,10 @@ class RenderItem(object):
         self.blend = "ALPHA"                 # 'ALPHA' | 'ADDITIVE' | 'MULTIPLY'
         self.tex_key = None                  # 贴图标识，由 glue 层解释
 
-        #: 条带类（kind='RIBBON'）的顶点串：[(pos, half_width, alpha_mul), ...]，
+        #: 条带类（kind='RIBBON'）的顶点串：`[(pos, half_width, alpha_mul), ...]`，
         #: 从尾到头。glue 层按相机方向把它撑成三角带。
+        #: 可能是**普通列表**，也可能是 `RibbonStrip`（数组形态，见那个类）——
+        #: 两者迭代出来的东西一样，消费方不必区分；想走快路的才去看 `.pos`。
         self.points = None
 
         #: 面片的朝向。为 None 时 glue 层按**面朝相机**画（BILLBOARD3D）；

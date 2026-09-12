@@ -214,3 +214,211 @@ class EmitterShape3D(Behavior):
     def _shell_fraction(rng):
         """在「内边界 → 外边界」之间取的比例。尺寸=0 时内外重合，自然退化成表面。"""
         return rng.random()
+
+    # ── 轮廓（给预览画线框用）────────────────────────────────────────────────
+    def outline(self, em, segments=28):
+        """生成区域的线框，返回**成对**的点（p0,p1, p0,p1, …），与粒子同一坐标空间。
+
+        刻意和 `on_particle_spawn` 共用 `_region` 和同一套旋转/摆位——线框和粒子
+        真正落点必须来自同一份读法，否则「看着框在这儿、粒子却生在那儿」比不画
+        还糟。形状分支逐条对应 `_sample_*`，而且画的是**封闭的区域**、不是两条
+        孤立的轮廓：
+
+            立方体   内外两个盒子的 12 棱 + 8 条角对角的径向棱
+            球       内外两层的赤道/极带环 + 经线 + 径向棱；扫描角度切出来的两个
+                     切面由「两端的经线 + 那里的径向棱」封口
+            圆柱     内外两半径的上下底环 + 竖棱 + 上下底的径向棱，半径按
+                     起始/结束半径沿高度锥度插值
+            点       一个小十字
+
+        ⚠ 径向棱不是装饰。这一族形状是「内边界 + 向外延伸的厚度」，只画内外两层
+        却不连起来的话，**壳层这个概念在画面上根本不存在**——看着就是两个互不相干
+        的框，既读不出厚度，扫描角度切出来的切面也没有封口。尺寸=0 时内外重合，
+        径向棱自然退化成零长度，看到的就是一个面/框，符合预期。
+
+        `segments` 是圆/环的分段数，只影响线框精细度。
+        """
+        f = em.f(EMITTERSHAPE3D)
+        if f is None:
+            return []
+        cfg = em.config
+        center, inner, outer = self._region(f, cfg)
+        shape = f.i("shapeType")
+        n = max(6, int(segments))
+
+        if shape == SHAPE_BOX:
+            pts = _box_lines(inner, outer)
+        elif shape == SHAPE_SPHERE:
+            pts = _sphere_lines(inner, outer, f, n)
+        elif shape == SHAPE_CYLINDER:
+            pts = _cylinder_lines(inner, outer, f, n)
+        else:
+            pts = _point_lines(inner)
+
+        rot_order = rot_order_name(f.i("rotationOrder"), ROT_ORDER_TRANSFORM)
+        rx, ry, rz = (f.get("localRotationX"), f.get("localRotationY"),
+                      f.get("localRotationZ"))
+        out = []
+        for v in pts:
+            v = center + v
+            v = rotate_euler(v, rx, ry, rz, order=rot_order,
+                             applied=cfg.rot_order_applied)
+            v = emitter_place(em, v)
+            out.append(em.origin + v)
+        return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 线框构造（纯几何，不抽随机数）
+# ─────────────────────────────────────────────────────────────────────────────
+
+#: 立方体 12 条棱的顶点对（下标进 8 个角）
+_BOX_EDGES = ((0, 1), (1, 3), (3, 2), (2, 0),
+              (4, 5), (5, 7), (7, 6), (6, 4),
+              (0, 4), (1, 5), (2, 6), (3, 7))
+
+
+def _box_corners(h):
+    return [Vec3(x * h.x, y * h.y, z * h.z)
+            for x in (-1.0, 1.0) for y in (-1.0, 1.0) for z in (-1.0, 1.0)]
+
+
+def _hollow(inner):
+    return bool(inner.x or inner.y or inner.z)
+
+
+def _box_lines(inner, outer):
+    """外盒 12 棱；掏空时再加内盒 12 棱 + **8 条角对角的径向棱**。
+
+    那 8 条是「这是个有厚度的壳、不是两个不相干的框」的唯一线索。
+    """
+    out = []
+    co = _box_corners(outer)
+    for a, b in _BOX_EDGES:
+        out.append(co[a])
+        out.append(co[b])
+    if _hollow(inner):
+        ci = _box_corners(inner)
+        for a, b in _BOX_EDGES:
+            out.append(ci[a])
+            out.append(ci[b])
+        for k in range(8):
+            out.append(ci[k])
+            out.append(co[k])
+    return out
+
+
+def _arc_pts(radius, n, frac, y_scale=0.0, elev=0.0):
+    """绕竖轴的一段水平弧（或整圈）上的点列。`elev` 是仰角的 sin 值。"""
+    cy = math.sqrt(max(0.0, 1.0 - elev * elev))
+    yy = elev * y_scale
+    span = 2.0 * math.pi * max(0.0, min(1.0, frac))
+    closed = frac >= 0.999
+    steps = n if closed else max(3, int(n * max(0.08, frac)))
+    out = []
+    for i in range(steps + 1):
+        a = span * (i / float(steps))
+        out.append(Vec3(math.cos(a) * radius.x * cy, yy, math.sin(a) * radius.z * cy))
+    if closed:
+        out[-1] = out[0]        # 收口
+    return out
+
+
+def _strip(pts):
+    """点列 → 首尾相接的线段对。"""
+    out = []
+    for i in range(len(pts) - 1):
+        out.append(pts[i])
+        out.append(pts[i + 1])
+    return out
+
+
+def _azimuths(h_frac, full=4, swept=3):
+    """要在哪几个方位角上画经线/竖棱。扫描不满整圈时**必须包含两个端点**，
+    那两条经线加上径向棱就是切面的封口。"""
+    if h_frac >= 0.999:
+        return [2.0 * math.pi * (k / float(full)) for k in range(full)]
+    span = 2.0 * math.pi * h_frac
+    return [span * (k / float(swept - 1)) for k in range(swept)]
+
+
+def _sphere_lines(inner, outer, f, n):
+    """球壳：内外两层的赤道/极带环 + 经线，再用径向棱把两层连起来。
+
+    扫描角度切出来的两个切面由「两端的经线 + 那里的径向棱」封口。
+    """
+    h_frac = max(0.0, min(1.0, (f.get("scanAngleHorizontal", 360.0) or 360.0) / 360.0))
+    v_keep = max(0.0, 1.0 - min(1.0, (f.get("scanAngleVertical", 0.0) or 0.0) / 360.0))
+    hollow = _hollow(inner)
+    shells = [outer] + ([inner] if hollow else [])
+    azs = _azimuths(h_frac)
+    # 极角上取几个采样：中间 + 两端（纵向扫描把两端从极点收进来）
+    elevs = [0.0] if v_keep <= 0.0 else [-v_keep, 0.0, v_keep]
+
+    out = []
+    for r in shells:
+        for ev in elevs:
+            if abs(abs(ev) - 1.0) < 1e-6:
+                continue                    # 极点上的环退化成一个点
+            out.extend(_strip(_arc_pts(r, n, h_frac, r.y, ev)))
+        if v_keep > 0.0:
+            for a in azs:                   # 经线
+                ca, sa = math.cos(a), math.sin(a)
+                pts = []
+                for i in range(n + 1):
+                    ev = ((i / float(n)) * 2.0 - 1.0) * v_keep
+                    cy = math.sqrt(max(0.0, 1.0 - ev * ev))
+                    pts.append(Vec3(ca * cy * r.x, ev * r.y, sa * cy * r.z))
+                out.extend(_strip(pts))
+
+    if hollow:                              # 径向棱：内 ↔ 外
+        for a in azs:
+            ca, sa = math.cos(a), math.sin(a)
+            for ev in elevs:
+                cy = math.sqrt(max(0.0, 1.0 - ev * ev))
+                out.append(Vec3(ca * cy * inner.x, ev * inner.y, sa * cy * inner.z))
+                out.append(Vec3(ca * cy * outer.x, ev * outer.y, sa * cy * outer.z))
+    return out
+
+
+def _cylinder_lines(inner, outer, f, n):
+    """圆柱/圆台壳：上下底的内外环 + 竖棱，再用径向棱把内外连起来。
+
+    半径按起始/结束半径沿高度锥度插值——底面用起始、顶面用结束，与
+    `_sample_cylinder` 里 `h_t=0 → y_lo` 的对应关系一致。
+    """
+    h_frac = max(0.0, min(1.0, (f.get("scanAngleHorizontal", 360.0) or 360.0) / 360.0))
+    r0 = f.get("radiusOrigin", 1.0)
+    r1 = f.get("radiusEnd", 1.0)
+    size_y = max(0.0, outer.y - inner.y)
+    y_lo, y_hi = inner.y - size_y, inner.y + size_y
+    hollow = bool(inner.x or inner.z)
+    shells = [outer] + ([inner] if hollow else [])
+    azs = _azimuths(h_frac)
+
+    def at(r, taper, y, a):
+        return Vec3(math.cos(a) * r.x * taper, y, math.sin(a) * r.z * taper)
+
+    out = []
+    for r in shells:
+        for y, taper in ((y_lo, r0), (y_hi, r1)):
+            ring = _arc_pts(Vec3(r.x * taper, 0.0, r.z * taper), n, h_frac)
+            out.extend(_strip([Vec3(p.x, y, p.z) for p in ring]))
+        for a in azs:                       # 竖棱
+            out.append(at(r, r0, y_lo, a))
+            out.append(at(r, r1, y_hi, a))
+
+    if hollow:                              # 径向棱：上下底各一圈
+        for a in azs:
+            out.append(at(inner, r0, y_lo, a))
+            out.append(at(outer, r0, y_lo, a))
+            out.append(at(inner, r1, y_hi, a))
+            out.append(at(outer, r1, y_hi, a))
+    return out
+
+
+def _point_lines(at):
+    d = 5.0     # 游戏单位，纯显示尺寸
+    return [Vec3(at.x - d, at.y, at.z), Vec3(at.x + d, at.y, at.z),
+            Vec3(at.x, at.y - d, at.z), Vec3(at.x, at.y + d, at.z),
+            Vec3(at.x, at.y, at.z - d), Vec3(at.x, at.y, at.z + d)]

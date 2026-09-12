@@ -136,6 +136,8 @@ def _mark_attribute_dirty(self, context):
                         "shapeType", "rangeXYZ", "scanAngleHorizontal"):
                     from . import es3d_preview
                     es3d_preview.resync_if_active(obj)
+                    from . import es3d_overlay
+                    es3d_overlay.invalidate()
             except Exception:
                 pass
 

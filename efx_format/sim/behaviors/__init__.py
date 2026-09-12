@@ -15,6 +15,9 @@ T4（绑定关系）    PARENTOPTIONS（只做「跟随发射器」+「停止追
 T4（联动）        PTLIFE（粒子在某个生命阶段触发 ACTION → 子实例，见 sim/scene.py）
 T5（染色）        RGBFIRE / RGBWATER（两层颜色 + 各自的生命期时序块）
 T5（渲染修饰）    ALPHACORRECTION（逐纹素的 alpha 阈值/伽马，真正的处理在 shader）
+T5（渲染修饰）    REFRACTION（折射层 = 对背后画面做乘法；只做 pixelNormalOffset=0 那一档）
+T5（渲染修饰）    flowmap 流动贴图（`_flowmap.py`，**共用函数不是 behavior**——八件套挂在
+                  BILLBOARD3D / PLANE / BILLBOARD2D 自己身上，渲染体各调一次）
 T5（渲染修饰）    UVCONTROL（UV 滚动/缩放，公式与 uvc_preview.py 同一套）
 
 刻意不做：STRAINRIBBON / LIGHTNING —— 用户确认极少用到，且字段语义几乎全未知，
@@ -35,6 +38,7 @@ from . import mesh             # noqa: F401
 from . import parentoptions    # noqa: F401
 from . import plane            # noqa: F401
 from . import ptlife           # noqa: F401
+from . import refraction       # noqa: F401
 from . import rgbfire          # noqa: F401
 from . import rgbwater         # noqa: F401
 from . import ribbon           # noqa: F401
@@ -50,4 +54,5 @@ from . import velocity3d       # noqa: F401
 __all__ = ["spawn", "life", "emittershape3d", "velocity3d",
            "transform3d", "scaleanim", "rotateanim", "billboard3d",
            "dummy", "plane", "ribbon", "ribbonblade", "mesh", "uvsequence",
-           "parentoptions", "ptlife", "rgbfire", "rgbwater", "alphacorrection", "uvcontrol"]
+           "parentoptions", "ptlife", "rgbfire", "rgbwater", "alphacorrection", "uvcontrol",
+           "refraction"]

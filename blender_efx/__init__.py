@@ -64,6 +64,7 @@ from . import mod3_link        # EFX MESH 块引用的 mod3 自动导入+绑定�
 from . import uvs_link         # UVSEQUENCE → .uvs → .tex 链式载入（同 mod3_link 那套路径解析）
 from . import mesh_align        # 绑定网格随 TRANSFORM3D+MESH 旋转/缩放实时对齐（预览式+可编辑+实例化）
 from . import es3d_preview      # EmitterShape3D 形状预览（透明几何体：立方体/球/环/点，预览式会话）
+from . import es3d_overlay      # 生成区域线框（独立叠加层，只画选中的 entry，不依赖播放）
 from . import efx_preview       # 统一预览面板 EFX Preview（点5：总开关+勾选，编排 uvc/timl/mesh_align/es3d）
 from . import sim_preview       # 粒子模拟播放器（modal 时钟 + gpu 绘制，零场景对象）
 from . import file_menu      # File > Import/Export 菜单项 + .timl/.uvs 拖入（须在各算子注册后挂）
@@ -234,6 +235,7 @@ def register():
 
     # ── EmitterShape3D 形状预览（透明几何体，预览式会话）：顶层入口，独立注册 ─────────
     es3d_preview.register()
+    es3d_overlay.register()
 
     # ── 粒子模拟播放器：顶层 N 面板（bl_order=3）+ 一个子面板，独立注册 ───────────
     # 与 efx_preview 那一族无父子关系（那边是「进入/退出会话」模型，这边是播放器
@@ -250,6 +252,7 @@ def unregister():
     # ── Operator / Panel（先注销 UI 层）────────────────────────────────────
     file_menu.unregister()
     sim_preview.unregister()
+    es3d_overlay.unregister()
     es3d_preview.unregister()
     mesh_align.unregister()
     session_core.unregister()
