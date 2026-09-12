@@ -40,14 +40,19 @@ from .registry import Behavior, BoundBehavior, register, registered_hashes
 from .resolve import Curve, FieldResolver, FieldView, TimlTracks
 from .rng import (JITTER_GAUSSIAN, JITTER_ONESIDED, JITTER_SYMMETRIC, jitter,
                   jitter_int, jitter_vec, noise1, noise3)
+from .scene import (ActionTarget, EntryTemplate, SimScene, action_targets,
+                    from_efx_file)
 from .simulator import EmitterState, Simulator
 from .stages import (CONSTRAIN, FORCE, INTEGRATE, RENDER_BODY, RENDER_MOD, SHADE,
                      STAGE_LABELS, STAGE_NAMES, XFORM, stage_name)
 from .state import Particle, RenderItem, SpawnRequest, Vec3, ViewContext
+from .uvs_table import FrameTable, SimResources, grid_table
 
 __all__ = [
     # 顶层
     "Simulator", "SimConfig", "EmitterState", "UNKNOWNS",
+    # 实例树（PTLIFE → ACTION 联动）
+    "SimScene", "EntryTemplate", "ActionTarget", "from_efx_file", "action_targets",
     # 扩展点
     "Behavior", "register", "registered_hashes", "BoundBehavior",
     # 阶段
@@ -55,6 +60,8 @@ __all__ = [
     "RENDER_BODY", "RENDER_MOD", "STAGE_NAMES", "STAGE_LABELS", "stage_name",
     # 数据
     "Particle", "RenderItem", "SpawnRequest", "Vec3", "ViewContext",
+    # 外部资源（序列帧表）
+    "SimResources", "FrameTable", "grid_table",
     # 字段解析
     "FieldResolver", "FieldView", "TimlTracks", "Curve",
     # 随机
@@ -65,7 +72,7 @@ __all__ = [
 ]
 
 
-def from_attr_blocks(attr_blocks, timl_bytes=b"", config=None):
+def from_attr_blocks(attr_blocks, timl_bytes=b"", config=None, resources=None):
     """从 `efxfile.AttrBlock` 列表构造 Simulator（解析好的文件走这条）。
 
     Blender 里的实时预览**不要**走这条——那边应该从正在编辑的属性树直接拼
@@ -80,4 +87,4 @@ def from_attr_blocks(attr_blocks, timl_bytes=b"", config=None):
         if fields is None:
             fields = {}
         blocks.append((blk.type_hash, fields))
-    return Simulator(blocks, timl_bytes, config)
+    return Simulator(blocks, timl_bytes, config, resources)

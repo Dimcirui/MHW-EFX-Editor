@@ -246,6 +246,9 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     root_col_name = f"{file_stem}_color.efx" if color_editor_mode else file_name
     root_col = _rc.new_root_collection(root_col_name, scene_col)
     root_col["color_editor_mode"] = 1 if color_editor_mode else 0
+    # 源文件绝对路径：导入后还想按游戏相对路径去找同 chunk 里的别的文件
+    # （.uvs / .tex / mod3）时，就靠它向上追溯 nativePC。纯辅助信息，导出不读。
+    root_col["src_path"] = os.path.abspath(filepath)
 
     # ── 3. header 全部字段直接存 root_col 自定义属性（不再建 Empty）────────────
     # header 字段：signature/efxr 存 hex；

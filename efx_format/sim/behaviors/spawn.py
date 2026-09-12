@@ -15,15 +15,25 @@ efx_format/sim/behaviors/spawn.py  —  SPAWN（发射节奏）
   - `emitterRepeatCount`：0 = 无论 burstsPerCycle 是什么都永不换位置。无 Jitter 搭档。
   - `particleSpawnDelay`(+Jitter)：唯一的 particle 层字段，逐粒子独立延迟。
 
+`burstInterval` 的抖动每批重抽
+------------------------------
+`SimConfig.spawn_interval_jitter`（默认 `per_burst`）。`particlesPerBurst` 的抖动本来就是
+每批重抽的，间隔没理由是另一套；而且「每批重抽」会让一串粒子的间距参差不齐，这与
+`burstIntervalJitter` 非 0 的特效在游戏里看到的不均匀排布一致。`per_cycle` 保留改动前的
+行为（一轮只抽一次，整轮等距）。
+
 未使用的字段：`instanceCountUnknLimit`(+Jitter) / `unknBitmask31`——schema 注释写明
 「仍未测试」，这里不猜。
 
-⚠ 发射器没有「停」的条件
-------------------------
-三态里没有任何一态会让发射停下来：0 态无限生成，1/≥2 态在最后一批之后换位置、
-重抽 burstsPerCycle、开下一轮——也是无限。所以**「播放一次」的长度不由 SPAWN 决定**，
-得由播放器自己定（见 `Simulator.suggested_duration()`）。如果以后实测发现确实存在
-停止条件（例如 instanceCountUnknLimit 就是终身总量上限），补在 `_begin_cycle` 里。
+发射会停
+--------
+`emitterRepeatCount` 非 0 **且** `burstsPerCycle` 非 0 时，那 `per_cycle + repeat - 1`
+批发完就**不再发了**（`SimConfig.spawn_after_cycle`，默认 `stop`）。这是实机行为：
+用户的 `05 spell` 是 10 批、游戏里就只有 10 个符文，之后再没有新的。
+
+两个「无限」态照旧永不停：`burstsPerCycle == 0`、或 `emitterRepeatCount == 0`
+（后者的「否决权」语义见 schema 注释）。`repeat` 开关值切到 `recycle` 可以退回改动前的
+行为（等一个粒子寿命后换位置、重抽、再开一轮）。
 
 发射器级的随机（每批重抽的数量/间隔）走 `em` 自己的随机流，不占用逐粒子的流，
 见 rng.emitter_stream_rng 的说明。
@@ -59,6 +69,7 @@ class Spawn(Behavior):
             "bursts_left": None,     # None = 本轮不计数（永不换位置，无限生成）
             "burst_index": 0,
             "interval": 0,
+            "done": False,           # 有限轮次跑完 = 这个发射器不再发了
         }
         em.user[Spawn] = st
         self._begin_cycle(em, st)
@@ -74,13 +85,9 @@ class Spawn(Behavior):
                                rng, mode)
         repeat = f.i("emitterRepeatCount")
 
-        if per_cycle == 1:
-            # 三态之二：改用 altBurstInterval 作为节奏
-            interval = jitter_int(f.get("altBurstInterval"), f.get("altBurstIntervalJitter"),
-                                  rng, mode)
-        else:
-            interval = jitter_int(f.get("burstInterval"), f.get("burstIntervalJitter"),
-                                  rng, mode)
+        # 三态之二（per_cycle==1）：节奏改用 altBurstInterval
+        st["interval_field"] = ("altBurstInterval", "altBurstIntervalJitter")             if per_cycle == 1 else ("burstInterval", "burstIntervalJitter")
+        interval = self._roll_interval(em, st)
 
         if per_cycle == 0 or repeat == 0:
             # 三态之一 / emitterRepeatCount=0：永不换位置，按节奏无限生成
@@ -90,6 +97,19 @@ class Spawn(Behavior):
 
         st["interval"] = max(0, interval)
         st["burst_index"] = 0
+
+    def _roll_interval(self, em, st):
+        """抽一次批间隔。`per_burst` 下每批都会重新调用这里（见模块 docstring）。"""
+        f = em.f(SPAWN)
+        key, jkey = st["interval_field"]
+        v = jitter_int(f.get(key), f.get(jkey), st["rng"], em.config.jitter_mode)
+        st["interval"] = max(0, v)
+        return st["interval"]
+
+    def _next_interval(self, em, st):
+        if getattr(em.config, "spawn_interval_jitter", "per_burst") == "per_cycle":
+            return st["interval"]
+        return self._roll_interval(em, st)
 
     def _last_burst_interval(self, em):
         """最后一批之后的等待：按粒子寿命（LIFE.duration + fadeOutDuration）。"""
@@ -101,6 +121,8 @@ class Spawn(Behavior):
     def on_emitter_step(self, em):
         st = em.user.get(Spawn)
         if st is None:
+            return
+        if st["done"]:
             return
         if st["delay"] > 0:
             st["delay"] -= 1
@@ -126,6 +148,9 @@ class Spawn(Behavior):
         # 本轮最后一批 → 按粒子寿命等一段，然后换位置、开下一轮
         # （`bursts_left is None` 就是「永不换位置」那两态，一直按 interval 走）
         if st["bursts_left"] is not None and st["burst_index"] >= st["bursts_left"]:
+            if getattr(cfg, "spawn_after_cycle", "stop") == "stop":
+                st["done"] = True       # 批次发完就收工（见模块 docstring「发射会停」）
+                return
             st["wait"] = self._gap(self._last_burst_interval(em))
             em.cycle += 1
             if em.cycle == 1:
@@ -134,7 +159,7 @@ class Spawn(Behavior):
                 em.note("SPAWN 进入多轮模式（换位置的实际偏移未模拟）")
             self._begin_cycle(em, st)
         else:
-            st["wait"] = self._gap(st["interval"])
+            st["wait"] = self._gap(self._next_interval(em, st))
 
     @staticmethod
     def _gap(interval):

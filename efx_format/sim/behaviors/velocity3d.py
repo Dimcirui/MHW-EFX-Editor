@@ -32,6 +32,7 @@ import math
 
 from ...hashes import VELOCITY3D
 from ..registry import Behavior, register
+from ._common import emitter_rotate
 from ..rng import jitter, jitter_int
 from ..stages import INTEGRATE
 from ..state import BASE_AXES, Vec3
@@ -75,6 +76,8 @@ class Velocity3D(Behavior):
         p.rolled["v_type"] = vtype
 
         direction = self._initial_direction(vtype, f, p, em, rng, cfg)
+        # 发射器自己在转 → 初速度方向跟着转（静态朝向由宿主的 entry 矩阵负责）
+        direction = emitter_rotate(em, direction)
         p.vel = direction * p.rolled["v_speed"]
 
     def _initial_direction(self, vtype, f, p, em, rng, cfg):

@@ -15,7 +15,8 @@ from .enums import (
     ENUM_RAYCAST_DIR, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
     ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE, ENUM_REFRACTION_OFFSET,
-    BITS_ENABLE_VELOCITY, BITS_SPIN_AXIS, BITS_RANDOMFIX_TABLE, BITS_FADEBYANGLE_FLAGS,
+    BITS_ENABLE_VELOCITY, BITS_ROTATEANIM_SPIN_FLAGS, BITS_RANDOMFIX_TABLE,
+    BITS_FADEBYANGLE_FLAGS,
     BITS_SPAWN_UNKN31,
     _AXIS_DIRECTION6, _ROT_ORDER6, _VELOCITY_TYPE, _TRANSFORM_ROT_ORDER,
 )
@@ -701,7 +702,11 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 # ─────────────────────────────────────────────────────────────────────────────
 
 ROTATEANIM_ATTR = Attribute(size=80, fields=[
-    Bitmask("spinAxisMask", BITS_SPIN_AXIS),  # 原 unkn0_0；轴掩码 bitmask：bit0=X, bit1=Y, bit2=Z（已确认，非 typeFlag 候选）
+    # 原 unkn0_0。曾按「bit0=X bit1=Y bit2=Z 的自旋轴掩码」读，语料对不上（见
+    # enums.BITS_ROTATEANIM_SPIN_FLAGS 的注释）：位用到 bit6，且与 spin_velocity
+    # 的非零轴无对应。各位含义未知，UI 按中性位掩码渲染。
+    Bitmask("spinAxisMask", BITS_ROTATEANIM_SPIN_FLAGS,
+            label_en="Spin Flags", label_zh="自旋标志位"),
     # rotationModeMask（原 unknBitmask0_1）：用户实机确认 4 态——0=仅平面旋转系(billboardRotation+
     # billboardRotationCoef)；1=同上+随机正反向；2=仅自旋速度系(spin_velocity+spinSpeedCoef+
     # 已废弃的 momentum_retention 概念)；3=同上+随机正反向(每轴独立随机)。

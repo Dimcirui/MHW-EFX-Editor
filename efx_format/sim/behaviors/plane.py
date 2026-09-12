@@ -26,8 +26,8 @@ from ..registry import Behavior, register
 from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
-from ._common import (axis_normal, blend_name, color_lerp_t, epv_note,
-                      oriented_basis, pick_color)
+from ._common import (axis_normal, blend_name, epv_note, oriented_basis,
+                      pick_color, roll_rgba)
 
 
 @register(PLANE)
@@ -68,9 +68,7 @@ class Plane(Behavior):
         normal = axis_normal(f, em.config, rolled=rolled_rot)
         p.user[Plane] = {"normal": normal}
 
-        t = color_lerp_t(f, rng)
-        p.rolled["pl_color_t"] = t
-        p.rolled["pl_rgba"] = pick_color(f, t)
+        p.rolled["pl_rgba"], p.rolled["pl_coff"] = roll_rgba(f, rng, em.config)
         p.rolled["pl_blend"] = blend_name(f)
 
     def build_render(self, p, em, view, item):
@@ -86,7 +84,7 @@ class Plane(Behavior):
             f = em.f(PLANE, p)
             s = f.get("scale", 1.0)
             w, h = f.get("width", 1.0) * s, f.get("height", 1.0) * s
-            r0, g0, b0, a0 = pick_color(f, rolled.get("pl_color_t", 0.0))
+            r0, g0, b0, a0 = pick_color(f, rolled.get("pl_coff"))
             bright = f.get("brightness", 1.0)
         else:
             s = rolled["pl_scale"]

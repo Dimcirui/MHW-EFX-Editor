@@ -154,7 +154,18 @@ BITS_SPAWN_UNKN31 = [(1 << _i, "Unknown %d" % _i, "未知 %d" % _i) for _i in ra
 # RIBBON.unknBitmask22_1：官方语料(14677 块)穷举，可混合位到 bit6（值 64），bit0 单独占大多数，
 # per-bit 语义待确认。
 BITS_RIBBON_UNKN22_1 = [(1 << _i, "Unknown %d" % _i, "未知 %d" % _i) for _i in range(7)]
-BITS_SPIN_AXIS = [(0x1, "X", "X"), (0x2, "Y", "Y"), (0x4, "Z", "Z")]
+# ROTATEANIM 的 spinAxisMask：**不是** XYZ 轴掩码。原先按 bit0=X/bit1=Y/bit2=Z 读，
+# 与官方语料对不上——31535 个块里用到 bit0~bit6（OR=127，36 种取值，最大 88，0 从未出现），
+# 而 mask 与 spin_velocity 哪几轴非零毫无对应关系（mask=1 配三轴全非零 872 块、mask=3 配
+# 只有 X 非零 887 块…）。按旧读法，自旋模式里 67.6% 的块会有「给了角速度的轴被掩码挡掉」，
+# 作者不会这么写。各位含义未知，故用中性标签（同 BITS_RIBBON_UNKN22_1 的做法）。
+# ⚠ 模拟层（sim/behaviors/rotateanim.py）因此**不看**这个字段，只按 spin_velocity 逐轴取值。
+# 逐位占比：bit0 64.0% / bit1 47.6% / bit2 21.7% / bit3 16.4% / bit4 7.8% / bit5 0.05% / bit6 0.01%
+BITS_ROTATEANIM_SPIN_FLAGS = [
+    (1 << _i, "Bit %d" % _i, "位 %d" % _i) for _i in range(7)
+]
+#: 旧名（曾被当成 XYZ 轴掩码）。保留别名免得外部引用炸掉，新代码用上面那个名字。
+BITS_SPIN_AXIS = BITS_ROTATEANIM_SPIN_FLAGS
 BITS_RANDOMFIX_TABLE = [(1 << _i, "Table %d" % _i, "表 %d" % _i) for _i in range(8)]
 
 # FADEBYANGLE.coneVisibilityFlags：2026-07-29 用户实机全 8 组合穷举确认 bit0/bit1，

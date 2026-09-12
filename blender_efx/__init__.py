@@ -61,6 +61,7 @@ from . import transform_sync # TRANSFORM3D → body empty 视口变换（单向�
 from . import uvs_io        # UVS Edition：UVSEQUENCE 块下 .uvs 文件导入/导出/编辑
 from . import uvc_preview    # UVCONTROL 视口 UV 滚动动画预览（根级单会话，全播）
 from . import mod3_link        # EFX MESH 块引用的 mod3 自动导入+绑定（联动 MHW Model Editor，可勾选）
+from . import uvs_link         # UVSEQUENCE → .uvs → .tex 链式载入（同 mod3_link 那套路径解析）
 from . import mesh_align        # 绑定网格随 TRANSFORM3D+MESH 旋转/缩放实时对齐（预览式+可编辑+实例化）
 from . import es3d_preview      # EmitterShape3D 形状预览（透明几何体：立方体/球/环/点，预览式会话）
 from . import efx_preview       # 统一预览面板 EFX Preview（点5：总开关+勾选，编排 uvc/timl/mesh_align/es3d）
@@ -101,6 +102,7 @@ __all__ = [
     "uvs_io",
     "uvc_preview",
     "mod3_link",
+    "uvs_link",
     "file_menu",
 ]
 
@@ -220,6 +222,10 @@ def register():
     # ── mod3 自动导入联动：注册 Scene.efx_chunk_root（导入算子 draw/execute 用）────
     mod3_link.register()
 
+    # ── UVSEQUENCE → .uvs → .tex 链式载入算子（用 mod3_link 的 Scene.efx_chunk_root，
+    #    故必须排在它后面）───────────────────────────────────────────────────────
+    uvs_link.register()
+
     # ── 会话/预览类公共基础设施（标记式孤儿清理 + load_post 缓存复位）先于消费者注册 ──
     session_core.register()
 
@@ -247,6 +253,7 @@ def unregister():
     es3d_preview.unregister()
     mesh_align.unregister()
     session_core.unregister()
+    uvs_link.unregister()
     mod3_link.unregister()
     uvc_preview.unregister()
     # 预览族父面板：必须在 uvc_preview / mesh_align 这些子面板之后注销（与注册相反）

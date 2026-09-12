@@ -17,16 +17,15 @@ efx_format/sim/behaviors/billboard3d.py  —  BILLBOARD3D（渲染主体：面�
 
 颜色
 ----
-    color / colorRange 是 XYZ type 2（`<4B`：r g b + 第四字节）的 0-255 无符号字节。
-    useColorRange=1 → 在 color 与 colorRange 之间**按粒子**随机取（出生时抽一个
-    插值系数 t，整条通道共用一个 t——比逐通道独立随机更像「颜色范围」这个说法，
-    但没有实测，见下）。
+    color / colorRange 是 XYZ type 2（`<4B`：r g b + 第四字节）的 0-255 无符号字节，
+    两者是 **RGBA 四元组的 static/random 对**：useColorRange=1 时逐通道（含 alpha）
+    各抽一个 [0, colorRange] 的随机量加到 color 上。详见 `_common` 的染色模型说明。
     brightness（通道名 ColorRate）当**乘数**用：实测 floating_particle_fire 的值是
     1.0，不是 annotations 里按全语料统计说的 0~255 量级——两者不矛盾（HDR 亮度可以
     很大），但 1.0 = 中性这个读法能同时解释两者，故取之。
 
-    第四字节在 codec 里叫 pad、在 annotations 里叫 RGBA 的 A。实测样本里恒为 255，
-    两种读法给出相同结果，故一并当 alpha 乘进去——是 pad 的话也是乘 1.0，无害。
+    第四字节在 codec 里叫 pad、在 annotations 里叫 RGBA 的 A，这里当 alpha 用：
+    乘进 item.color[3]，再乘上 LIFE 淡入淡出算出来的 `p.alpha`。
 
 混合模式
 --------
@@ -43,11 +42,14 @@ efx_format/sim/behaviors/billboard3d.py  —  BILLBOARD3D（渲染主体：面�
 约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
 """
 
+import math
+
 from ...hashes import BILLBOARD3D
 from ..registry import Behavior, register
 from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
+from ._common import pick_color, roll_rgba
 
 BLEND_ALPHA = 0
 BLEND_ADDITIVE = 1
@@ -92,8 +94,8 @@ class Billboard3D(Behavior):
         p.rolled["bb_height"] = jitter(f.get("height", 1.0), f.get("heightJitter"), rng, mode)
         p.rolled["bb_bright"] = jitter(f.get("brightness", 1.0), f.get("brightnessJitter"),
                                        rng, mode)
-        # 颜色范围的插值系数：整条通道共用一个 t
-        p.rolled["bb_color_t"] = rng.random() if f.i("useColorRange") else 0.0
+        # 染色：color 是静态 RGBA，colorRange 是**逐通道随机量**（含 alpha）
+        p.rolled["bb_rgba"], p.rolled["bb_coff"] = roll_rgba(f, rng, em.config)
 
         # 初始平面角（ROTATEANIM 的平面旋转在这之上累积）
         p.rot.z += jitter(f.get("rotation"), f.get("rotationJitter"), rng, mode)
@@ -101,21 +103,43 @@ class Billboard3D(Behavior):
         # 外观的静态部分**在出生时解一次就缓存**。build_render 是逐粒子逐帧调用的
         # 热路径（profile 里占了一半时间），而 color/colorRange/blendMode 只有挂了
         # TIML 才会逐帧变——没挂就直接用缓存，挂了才重解。
-        p.rolled["bb_rgba"] = self._resolve_rgba(f, p)
         p.rolled["bb_blend"] = ("ADDITIVE" if f.i("blendMode") == BLEND_ADDITIVE
                                 else "ALPHA")
 
     @staticmethod
-    def _resolve_rgba(f, p):
-        r, g, b, a = _rgba(f.raw("color"))
-        t = p.rolled.get("bb_color_t", 0.0)
-        if t:
-            r1, g1, b1, a1 = _rgba(f.raw("colorRange"))
-            r += (r1 - r) * t
-            g += (g1 - g) * t
-            b += (b1 - b) * t
-            a += (a1 - a) * t
-        return (r, g, b, a)
+    def _size(p, em, scale, width, height):
+        """SCALEANIM 是**加**在尺寸字段上的（SizeScalarAdd 加 scale、SizeXAdd 加 width）。
+
+        用户在 test.efx（scale=30 / width=height=1）上计时：同为 -0.1，逐轴那组 10 帧
+        缩没、整体那组 300 帧——正是 1 与 30 的差距。夹在 0 以上：负尺寸等于把面片翻过来，
+        游戏里是「消失」不是「翻面」。
+        """
+        if getattr(em.config, "scaleanim_add_target", "size") != "size":
+            return Vec3(width * scale * p.scale.x, height * scale * p.scale.y, 1.0)
+        ax = p.rolled.get("sa_axis")
+        s = max(0.0, scale + p.rolled.get("sa_scalar", 0.0))
+        if ax is None:
+            return Vec3(width * s, height * s, 1.0)
+        return Vec3(max(0.0, width + ax[0]) * s, max(0.0, height + ax[1]) * s, 1.0)
+
+    @staticmethod
+    def _spin_on_view(p, em, view):
+        """ROTATEANIM 的自旋里，只有**朝向相机那根轴**的分量会变成屏幕自转。
+
+        用户实机：正方形 billboard 上自旋 X 与平面旋转完全等同、Y/Z 毫无反应——
+        billboard 每帧被摆正朝向相机，绕画面内的轴转看不出来。`p.rot.z` 里已经含了
+        自旋的 Z 分量（那是 PLANE/MESH 用的），所以这里要把它减掉再按视轴加回来。
+        """
+        ang = p.rolled.get("spin_ang")
+        if ang is None:
+            return 0.0
+        if getattr(em.config, "rotateanim_billboard_axis", "view") != "view":
+            return 0.0                      # 'z' = 改动前的行为，只认 p.rot.z
+        n = view.cam_forward
+        d = math.sqrt(n.x * n.x + n.y * n.y + n.z * n.z)
+        if d < 1e-9:
+            return 0.0
+        return (ang[0] * n.x + ang[1] * n.y + ang[2] * n.z) / d - ang[2]
 
     def build_render(self, p, em, view, item):
         rolled = p.rolled
@@ -123,19 +147,17 @@ class Billboard3D(Behavior):
             return item
 
         item = RenderItem(kind="BILLBOARD", pos=p.pos.copy())
-        item.rot = p.rot.z
+        item.rot = p.rot.z + self._spin_on_view(p, em, view)
 
         if self._has_tracks:        # 挂了 TIML → 尺寸/颜色可能逐帧变，重解
             f = em.f(BILLBOARD3D, p)
             s = f.get("scale", 1.0)
-            item.size = Vec3(f.get("width", 1.0) * s * p.scale.x,
-                             f.get("height", 1.0) * s * p.scale.y, 1.0)
-            r0, g0, b0, a0 = self._resolve_rgba(f, p)
+            item.size = self._size(p, em, s, f.get("width", 1.0), f.get("height", 1.0))
+            r0, g0, b0, a0 = pick_color(f, rolled.get("bb_coff"))
             bright = f.get("brightness", 1.0)
         else:
             s = rolled["bb_scale"]
-            item.size = Vec3(rolled["bb_width"] * s * p.scale.x,
-                             rolled["bb_height"] * s * p.scale.y, 1.0)
+            item.size = self._size(p, em, s, rolled["bb_width"], rolled["bb_height"])
             r0, g0, b0, a0 = rolled["bb_rgba"]
             bright = rolled["bb_bright"]
 

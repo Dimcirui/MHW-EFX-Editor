@@ -221,9 +221,13 @@ FIELD_ANNOTATIONS = {
         "ZH": "生成形状的总体旋转。",
     },
     ("EMITTERSHAPE3D", "rangeDivideHorizontalNum"): {
-        "EN": "Number of divisions along the horizontal dimension. Applied to the final "
-              "shape, after the generation range and sweep angles have shaped it.",
-        "ZH": "沿横向维度的等分数量。作用在生成范围与扫描角度定出的最终形状之上。",
+        "EN": "Number of horizontal divisions. Only the sphere and the cylinder use it: on a "
+              "cylinder it slices the shape along its height (as seen from the side), on a "
+              "sphere it splits the shape into that many cone surfaces (two of them degenerate "
+              "to a line, their cone angle being 0). 0 or 1 = no division.",
+        "ZH": "横向等分数量。只有球体和圆柱体用：圆柱体是沿高度把形状切成这么多片（正面"
+              "看过去的切片），球体是把形状拆成这么多个圆锥面（其中两个锥角为 0、退化成"
+              "线段）。0 或 1 = 不等分。",
     },
 
     # ─── VELOCITY3D ───────────────────────────────────────────────────────────
@@ -341,8 +345,14 @@ FIELD_ANNOTATIONS = {
 
     # ─── ROTATEANIM ───────────────────────────────────────────────────────────
     ("ROTATEANIM", "spinAxisMask"): {
-        "EN": "Axis mask (bitmask): bit0=X, bit1=Y, bit2=Z. Controls which axes receive spin.",
-        "ZH": "轴掩码（bitmask）：bit0=X，bit1=Y，bit2=Z。控制哪些轴参与自旋。",
+        "EN": "Packed flags whose per-bit meaning is unknown. It is not the spin-axis "
+              "selector: which axes spin is decided by the Spin Velocity fields (an axis "
+              "with 0 speed does not spin). Bits 0-6 are all used and freely mixed; "
+              "36 distinct values occur, bit0 in 64% of blocks, bit6 in 0.01%, and the "
+              "value 0 never appears.",
+        "ZH": "打包的标志位，各位含义未知。它**不是**自旋轴的选择器——哪些轴自旋由"
+              "「自旋速度」那几个字段决定（某轴速度为 0 就不转）。bit0~bit6 都在用且可"
+              "自由混合，共出现 36 种取值：bit0 占 64%、bit6 占 0.01%，而取值 0 从未出现。",
     },
     ("ROTATEANIM", "rotationModeMask"): {
         "EN": ': 0=billboard plane rotation system only (billboardRotation + billboardRotationAccel); 1=same + randomized forward/reverse direction; 2=spin velocity system only (spin_velocity + spinAcceleration); 3=same + randomized forward/reverse direction (each axis independently randomized).',
@@ -1712,25 +1722,33 @@ FIELD_ANNOTATIONS = {
               "内边界表面上生成。",
     },
     ("EMITTERSHAPE3D", "scanAngleHorizontal"): {
-        "EN": "Horizontal sweep angle.",
-        "ZH": "横向扫描角度。",
+        "EN": "Horizontal sweep angle, used by the sphere and the cylinder. 360 = all round, "
+              "180 = half of it, 90 = a quarter (a watermelon-slice shape).",
+        "ZH": "横向扫描角度，球体和圆柱体使用。360=全向生成，180=只生成一半，"
+              "90=只生成 1/4（西瓜片那样的形状）。",
     },
     ("EMITTERSHAPE3D", "rangeDivideVerticalNum"): {
-        "EN": "Number of divisions along the vertical dimension, 0 = continuous. Applied "
-              "to the final shape, same as rangeDivideHorizontalNum.",
-        "ZH": "沿纵向维度的等分数量，0=连续铺满。跟横向等分数量一样作用在最终形状之上。",
+        "EN": "Number of vertical divisions: fan slices around the upright axis, i.e. what you "
+              "see cut into n pieces when looking straight down. Every shape uses it (box, "
+              "sphere, cylinder) - a sphere sliced this way looks like n leaves from the side. "
+              "0 or 1 = no division.",
+        "ZH": "纵向等分数量：绕竖轴切出的扇形切片，也就是从正上方看下去被分成 n 份。"
+              "立方体、球体、圆柱体都用它——球体这样切，从侧面看就是 n 个叶片。"
+              "0 或 1 = 不等分。",
     },
     ("EMITTERSHAPE3D", "radiusEnd"): {
-        "EN": "Radius at the far end, as a ratio of the generation range. With radiusOrigin "
-              "these form the two ends of the cylinder — set them unequal for a frustum, or "
-              "one to 0 for a cone.",
-        "ZH": "远端半径，取值是生成范围的比例。与起始半径共同构成圆柱体的两端——两者不等"
-              "即为圆台，其中一个为 0 即为圆锥。",
+        "EN": "Radius at the far end, as a ratio of the generation range. The cylinder is the "
+              "only shape that uses it: with radiusOrigin these are the radii of its two ends, "
+              "so 1 and 1 is a plain cylinder, unequal values give a frustum, and 0 gives a cone.",
+        "ZH": "远端半径，取值是生成范围的比例。只有圆柱体用得上：它和起始半径是圆柱两端的"
+              "半径，两者都是 1 就是圆柱，不相等就是圆台，其中一个给 0 就是圆锥。",
     },
     ("EMITTERSHAPE3D", "radiusOrigin"): {
-        "EN": "Radius at the near end, as a ratio of the generation range. Swapping it with "
-              "radiusEnd gives the same shape.",
-        "ZH": "近端半径，取值是生成范围的比例。与结束半径互换取值得到的形状相同。",
+        "EN": "Radius at the near end, as a ratio of the generation range (cylinder only). "
+              "Set it to 0.2 against radiusEnd 1.0 and you get a frustum whose two ends are "
+              "5:1 in diameter.",
+        "ZH": "近端半径，取值是生成范围的比例（只有圆柱体用）。设成 0.2、结束半径留 1.0，"
+              "得到的就是两端直径 5:1 的圆台。",
     },
     # VELOCITY3D
     ("VELOCITY3D", "rotationX"): {
@@ -2625,8 +2643,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "立方体沿哪个轴细分。不受局部旋转影响。",
     },
     ("EMITTERSHAPE3D", "scanAngleVertical"): {
-        "EN": "Vertical sweep angle.",
-        "ZH": "纵向扫描角度。",
+        "EN": "Vertical sweep angle - the sphere only. It works the other way round from the "
+              "horizontal one: 0 = all round, 180 = half of it, 360 = nothing spawns at all. "
+              "Combined with a horizontal limit this is how you carve out a corner of a sphere.",
+        "ZH": "纵向扫描角度，只有球体使用。方向与横向那个相反：0=全向生成，180=生成一半，"
+              "360=完全不生成。配上横向限制就能切出球体的一个角。",
     },
     ("EMITTERSHAPE3D", "unknFlag4"): {
         "EN": "0/1, exact mechanism unclear. Mostly 1.",

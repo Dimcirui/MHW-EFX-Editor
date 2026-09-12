@@ -210,21 +210,27 @@ class Particle(object):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class SpawnRequest(object):
-    """一次子发射请求。现在只占位——顶层 Simulator 收集但不消化。
+    """一次子发射请求。behavior 产出、`sim/scene.py` 的实例树消化。
 
-    ⚠ 消化它的时候记得设递归深度上限：validate.py 已经在查 Action loop，说明
-    循环引用在真实文件里是存在的，模拟器撞上会直接挂死。
+    `kind='action'` 是 PTLIFE 走的那条：`target` 是 ACTION 段的下标（relationIndex），
+    由 scene 查 action 表展开成一组目标 entry。`particle` 是**发起的那个粒子**——
+    子实例要跟着它走，它死了子实例就失去 parent、就地留下（用户实机）。
+
+    ⚠ 消化它必须设递归深度 + 实例数上限：validate.py 已经在查 Action 成环，说明
+    循环引用在真实文件里存在，模拟器撞上会直接挂死。
     """
 
-    __slots__ = ("kind", "target", "pos", "scale", "delay", "source_hash")
+    __slots__ = ("kind", "target", "pos", "scale", "delay", "source_hash", "particle")
 
-    def __init__(self, kind, target, pos=None, scale=None, delay=0, source_hash=0):
-        self.kind = kind            # 'entry'（PLAYEMITTER）| 'efx'（PLAYEFX）
+    def __init__(self, kind, target, pos=None, scale=None, delay=0, source_hash=0,
+                 particle=None):
+        self.kind = kind            # 'action'（PTLIFE）| 'entry' | 'efx'（PLAYEFX，未做）
         self.target = target
         self.pos = pos or Vec3()
         self.scale = scale or Vec3(1.0, 1.0, 1.0)
         self.delay = int(delay)
         self.source_hash = source_hash
+        self.particle = particle
 
     def __repr__(self):
         return "<SpawnRequest %s %r @%s>" % (self.kind, self.target, self.pos)
@@ -237,7 +243,7 @@ class SpawnRequest(object):
 class RenderItem(object):
     """一个待绘制单元。RENDER_BODY 阶段产出，RENDER_MOD 阶段就地修改。"""
 
-    __slots__ = ("kind", "pos", "size", "rot", "color", "uv_rect",
+    __slots__ = ("kind", "pos", "size", "rot", "color", "uv_rect", "uv_corners",
                  "blend", "tex_key", "extra", "points", "axis_u", "axis_v")
 
     def __init__(self, kind="BILLBOARD", pos=None, size=None, rot=0.0):
@@ -249,7 +255,12 @@ class RenderItem(object):
         self.size = size or Vec3(1.0, 1.0, 1.0)
         self.rot = rot                       # 屏幕空间自转（角度制）
         self.color = [1.0, 1.0, 1.0, 1.0]    # RGBA
-        self.uv_rect = (0.0, 0.0, 1.0, 1.0)  # (u0, v0, u1, v1)
+        self.uv_rect = (0.0, 0.0, 1.0, 1.0)  # (u0, v0, u1, v1)，v 向下（同 .uvs）
+
+        #: 四个角的 UV，序为 BL, BR, TR, TL（同 sim_preview._quad_verts 的顶点序）。
+        #: UVSEQUENCE 写它——序列帧的翻转/90° 旋转塞不进一个矩形，只有四个角能表达。
+        #: None = 没有序列帧信息，照 uv_rect 整张图用。
+        self.uv_corners = None
         self.blend = "ALPHA"                 # 'ALPHA' | 'ADDITIVE' | 'MULTIPLY'
         self.tex_key = None                  # 贴图标识，由 glue 层解释
 

@@ -172,6 +172,8 @@ class RibbonBlade(Behavior):
         item = RenderItem(kind="RIBBON", pos=pts[-1].copy())
         item.points = points
         item.size = Vec3(half_w * 2.0, length, 1.0)
+        # 两端颜色的 alpha 已经逐点带进 points 的 alpha_mul 了，这里只出 p.alpha，
+        # 免得同一份 alpha 乘两遍（刀光两端 color1 的 A 字节语料里恒 255）。
         item.color = [(tr + (hr - tr) * mid) * emissive * p.color[0],
                       (tg + (hg - tg) * mid) * emissive * p.color[1],
                       (tb + (hb - tb) * mid) * emissive * p.color[2],

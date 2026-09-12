@@ -17,6 +17,16 @@ efx_format/sim/behaviors/ribbon.py  —  RIBBON（条带）
     length / width          游戏单位；`scale`(+jitter) 是两者共同的倍率（同 BILLBOARD3D
                             的 SizeScalar 约定）
     subdivisionCount        沿长度方向的**切边**数：N 条边分 N-1 段（annotations 原话）
+
+轨迹跟随的总长（`SimConfig.ribbon_length_mode`）
+-----------------------------------------------
+用户实测：跟随条带的长短**跟着细分数走**（宽=长=1、细分=2 是一个矩形）。定长面片
+那边则相反——语料里 mode 1 的 subdiv 90.6% 恒为 2 而 length 被逐个细调，mode 0 的
+length 59% 留在默认 100 不动、变化的是 subdiv。所以两个模式对 length 的用法不同。
+
+默认按「每段定长」：**总长 = length × (subdiv - 1)**，一段一个 length。另一种读法是
+「每段一帧历史」（长度随运动速度变），要改 p.trail 的记录长度才能做，先不实现；
+`ribbon_length_mode='total'` 保留改动前的行为（length 即总长）。
     base_/tip_width_multiplier   后端/前端的宽度乘数（tip = 前进方向那一端）
     base_/tip_opacity            后端/前端的不透明度
     spawnAnchorOffset       生成点落在条带长度方向上的位置，以条带长度为单位
@@ -46,12 +56,21 @@ from ..registry import Behavior, register
 from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
-from ._common import (axis_normal, blend_name, color_lerp_t, epv_note,
-                      pick_color, pick_trail)
+from ._common import (axis_normal, blend_name, epv_note, pick_color,
+                      pick_trail, roll_rgba)
 
 MODE_TRAIL = 0
 MODE_RIGID = 1
 MODE_CHAIN = 2
+
+#: 轨迹弧长低于这个值（游戏单位）就当发射器没动 —— 静止时条带彻底消失（实机确认）。
+#: 不取 0 是因为绑骨的发射器总有一点数值抖动，取 0 会让本该消失的条带留一条丝。
+_STATIC_ARC_EPS = 1e-4
+
+
+def _per_segment(em):
+    """轨迹跟随的 length 是「每段」还是「总长」（见模块 docstring）。"""
+    return getattr(em.config, "ribbon_length_mode", "per_segment") != "total"
 
 
 @register(RIBBON)
@@ -90,9 +109,7 @@ class Ribbon(Behavior):
         p.rolled["rb_bright"] = jitter(f.get("brightness", 1.0), f.get("brightnessJitter"),
                                        rng, mode)
 
-        t = color_lerp_t(f, rng)
-        p.rolled["rb_color_t"] = t
-        p.rolled["rb_rgba"] = pick_color(f, t)
+        p.rolled["rb_rgba"], p.rolled["rb_coff"] = roll_rgba(f, rng, cfg)
         p.rolled["rb_blend"] = blend_name(f)
 
         # 条带的基准伸展方向（定长面片/柔体链的「平直形态」）。
@@ -162,14 +179,26 @@ class Ribbon(Behavior):
             return item
         f = em.f(RIBBON, p)
 
-        scale = rolled["rb_scale"]
-        length = rolled["rb_length"] * scale
-        width = rolled["rb_width"] * scale
+        # 挂了 TIML 就逐帧重解尺寸：语料里 RIBBON 的 Length/Width 确实有曲线
+        # （场景里 15 line 那条的 length 静态值 10、曲线给 1），只在出生时取一次
+        # 会把「条带随寿命伸缩」整个丢掉。同 BILLBOARD3D 的 has_tracks 分支
+        # ——那边也是重解时不再叠抖动偏移。
+        if self._has_tracks and f is not None:
+            scale = f.get("scale", 1.0)
+            length = f.get("length", 1.0) * scale
+            width = f.get("width", 1.0) * scale
+        else:
+            scale = rolled["rb_scale"]
+            length = rolled["rb_length"] * scale
+            width = rolled["rb_width"] * scale
         n = st["n"]
 
         pts = self._sample_points(p, em, st, length, n)
         if len(pts) < 2:
-            return item
+            # 轨迹跟随 + 发射器静止 → **彻底消失**（实机确认）。返回显式的
+            # kind='NONE' 而不是 None：后者会让 Simulator 退化成调试点，那就
+            # 变成「静止时反而多出一个点」，与实机相反。
+            return RenderItem(kind="NONE", pos=p.pos.copy())
 
         anchor = f.get("spawnAnchorOffset") if f is not None else 0.0
         if anchor:
@@ -181,7 +210,7 @@ class Ribbon(Behavior):
             self._apply_flap(pts, st, p, em)
 
         if self._has_tracks and f is not None:
-            r0, g0, b0, a0 = pick_color(f, rolled.get("rb_color_t", 0.0))
+            r0, g0, b0, a0 = pick_color(f, rolled.get("rb_coff"))
             bright = f.get("brightness", 1.0)
         else:
             r0, g0, b0, a0 = rolled["rb_rgba"]
@@ -215,18 +244,17 @@ class Ribbon(Behavior):
 
     # ── 三种取点方式 ─────────────────────────────────────────────────────────
     def _sample_points(self, p, em, st, length, n):
-        """返回 base→tip 顺序的顶点串（index 0 = 后端）。"""
+        """返回 base→tip 顺序的顶点串（index 0 = 后端）；**空列表 = 不该画**。"""
         mode = st["mode"]
 
         if mode == MODE_CHAIN:
             return list(st["nodes"])        # 首节点在粒子身上 = base
 
         if mode == MODE_TRAIL:
-            poly = _trail.clip_by_length(pick_trail(p, em), length)   # 新→旧
-            if len(poly) < 2:
-                # 还没走出轨迹（刚出生/静止）→ 退化成沿基准方向的直线，
-                # 免得第一帧闪一下空条带
-                return _trail.straight(p.pos, -st["dir"], length, n)[::-1]
+            total = length * (n - 1) if _per_segment(em) else length
+            poly = _trail.clip_by_length(pick_trail(p, em), total)   # 新→旧
+            if len(poly) < 2 or _trail.polyline_length(poly) <= _STATIC_ARC_EPS:
+                return []            # 发射器没动过 → 没有条带（不是画一条直线）
             pts = _trail.resample(poly, n)                  # 仍是 新→旧
             return pts[::-1]                                # 翻成 base→tip
 

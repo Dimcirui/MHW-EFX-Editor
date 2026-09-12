@@ -105,6 +105,17 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         options={"SKIP_SAVE"},
     )
 
+    # 可勾选项（默认关）：导入时顺着 UVSEQUENCE 的 uvsPath 把 .uvs 载进属性，并尽量
+    # 把它引用的 .tex 序列帧大图转出来绑成参考图（见 uvs_link.py 的三层引用说明）。
+    # 与 import_meshes 对称：Model Editor 缺席时只影响贴图那一步，.uvs 照样能载。
+    import_uvs: BoolProperty(
+        name="Import referenced .uvs (+ sprite sheets)",
+        description="顺着每个 UVSEQUENCE 属性填的路径载入 .uvs；并按该属性的 sequenceNo 取对应 group 的"
+                    "贴图路径，把序列帧大图（.tex）转出来绑成参考图。提取根同 mod3：默认自动找 nativePC",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
+
     # EFX Color Editor 分支：勾选后整个工具切换成"只管颜色"的傻瓜调色模式——
     # 完整解析+建树完全不变（数据 100% 保留，导出仍是完整合法 .efx），只是把
     # 非颜色内容从 Outliner 隐藏（View Layer 排除，不删数据）。见 io_tree.py
@@ -134,15 +145,18 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         layout.prop(self, "import_only_colors")
         if self.import_only_colors:
             return
-        from . import mod3_link
+        from . import mod3_link, uvs_link
         if mod3_link.model_editor_available():
             layout.prop(self, "import_meshes")
-            if self.import_meshes:
-                box = layout.box()
-                box.label(text="提取根：默认自动找 nativePC；找不到才用下方", icon="FILE_FOLDER")
-                box.prop(context.scene, "efx_chunk_root", text="Chunk Root")
         else:
             layout.label(text="装 MHW Model Editor 后可勾选「一并导入 mod3」", icon="INFO")
+        layout.prop(self, "import_uvs", text=T("uvslink.import_opt"))
+        if self.import_uvs and not uvs_link.tex_loader_available():
+            layout.label(text=T("uvslink.need_editor"), icon="INFO")
+        if self.import_meshes or self.import_uvs:
+            box = layout.box()
+            box.label(text="提取根：默认自动找 nativePC；找不到才用下方", icon="FILE_FOLDER")
+            box.prop(context.scene, "efx_chunk_root", text="Chunk Root")
 
     def execute(self, context):
         import os
@@ -222,6 +236,24 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
                 if all_unresolved:
                     detail = "；".join(f"{n}（{r}）" for n, r in all_unresolved[:6])
                     self.report({"WARNING"}, f"{len(all_unresolved)} 个 mod3 未找到（检查 Chunk Root）：{detail}")
+
+        # ── 可勾选：顺着 UVSEQUENCE 的路径载入 .uvs（+ 序列帧大图）────────────────
+        # 默认关。失败不影响 EFX 导入本身，但**不静默**：未解决的逐条汇总提示。
+        if imported_roots and self.import_uvs and not self.import_only_colors:
+            from . import uvs_link
+            chunk_root = getattr(context.scene, "efx_chunk_root", "") or ""
+            tot_uvs = tot_tex = 0
+            all_problems = []
+            for root_obj, fpath in zip(imported_roots, imported_paths):
+                try:
+                    n_uvs, n_tex, problems = uvs_link.link_root(
+                        root_obj, chunk_root, os.path.dirname(fpath), True)
+                    tot_uvs += n_uvs
+                    tot_tex += n_tex
+                    all_problems.extend(problems)
+                except Exception:
+                    pass
+            uvs_link.report_problems(self, all_problems, tot_uvs, tot_tex)
 
         if imported:
             names = ", ".join(imported)

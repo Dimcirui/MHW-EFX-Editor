@@ -34,6 +34,7 @@ from . import stages as _stages
 from .config import SimConfig
 from .resolve import FieldResolver, FieldView, TimlTracks
 from .state import Particle, RenderItem, Vec3, ViewContext
+from .uvs_table import SimResources
 
 #: 没有可用渲染体时，退化点的显示尺寸（游戏单位；100 游戏单位 = 1 Blender 单位）。
 #: 纯显示默认值，不来自文件——真实尺寸只有渲染体属性（BILLBOARD3D 等）知道。
@@ -50,16 +51,19 @@ class EmitterState(object):
     __slots__ = (
         "frame", "config", "seed",
         "origin", "host_origin", "drift", "velocity", "prev_origin",
-        "rotation", "scale",
+        "rotation", "scale", "rot_dynamic", "scale_dynamic", "rot_order",
         "particles", "spawned_total", "spawn_requests",
-        "unsupported", "user", "cycle", "finished", "trail",
+        "unsupported", "user", "cycle", "finished", "trail", "resources",
         "_resolvers", "_pending_spawn", "_notes",
     )
 
-    def __init__(self, config, seed):
+    def __init__(self, config, seed, resources=None):
         self.frame = -1
         self.config = config
         self.seed = seed
+        #: 宿主塞进来的外部资源（.uvs 字节等，见 uvs_table.SimResources）。
+        #: 恒非 None——behavior 不必到处判空。
+        self.resources = resources if resources is not None else SimResources()
 
         # 发射器位置拆成两份，每帧合成 origin = host_origin + drift：
         #   host_origin —— **宿主**报进来的发射器位置（Blender 里就是 entry empty
@@ -72,6 +76,17 @@ class EmitterState(object):
         self.origin = Vec3()
         self.rotation = Vec3()
         self.scale = Vec3(1.0, 1.0, 1.0)
+
+        # 旋转/缩放也拆成「全量」与「动态」两份，理由同 origin/host_origin：
+        #   rotation / scale         —— 全量，给宿主和调试看
+        #   rot_dynamic / scale_dynamic —— **只有模拟层该自己套的那部分**
+        # Blender 里 entry 的 empty 已经按静态 rotate/resize 摆好了（transform_sync），
+        # 模拟层再套一次就是双份；所以默认动态部分从「无旋转 / 1 倍」起步，只被
+        # rotation_velocity / scale_velocity 推动（t3d_apply_base 打开时才含静态部分）。
+        self.rot_dynamic = Vec3()
+        self.scale_dynamic = Vec3(1.0, 1.0, 1.0)
+        #: TRANSFORM3D.rotationOrder 解析出的顺序串（发射器旋转按它作用）
+        self.rot_order = "XYZ"
         self.velocity = Vec3()        # 每帧位移（velocityType=3 EmitterMotion 要用）
         self.prev_origin = Vec3()
 
@@ -156,11 +171,17 @@ class Simulator(object):
     属性树。glue 层从当前正在编辑的属性树构造它，这样预览反映的是未保存的改动。
     """
 
-    def __init__(self, blocks, timl_bytes=b"", config=None):
+    def __init__(self, blocks, timl_bytes=b"", config=None, resources=None,
+                 tracks=None):
         self.blocks = list(blocks or [])
         self.timl_bytes = bytes(timl_bytes or b"")
         self.config = config or SimConfig()
-        self.tracks = TimlTracks.parse(self.timl_bytes)
+        #: 属性块里没有、必须由宿主给的外部数据（UVSEQUENCE 的 .uvs 帧表）。
+        #: 换资源要重建/reset——帧表在 on_emitter_init 里解一次就缓存。
+        self.resources = resources if resources is not None else SimResources()
+        # `tracks` 给了就复用：同一个 entry 被 PTLIFE 实例化几十次时，没必要把
+        # 同一段 TIML 反复解析（见 sim/scene.py 的 EntryTemplate）。
+        self.tracks = tracks if tracks is not None else TimlTracks.parse(self.timl_bytes)
 
         self.bound = []
         self.em = None
@@ -179,7 +200,7 @@ class Simulator(object):
         self.bound, unsupported = _reg.build_behaviors(self.blocks, cfg)
 
         em_seed = _rng.emitter_seed(cfg.seed, self._randomfix_seeds())
-        em = EmitterState(cfg, em_seed)
+        em = EmitterState(cfg, em_seed, self.resources)
         em.unsupported = list(unsupported)
 
         for b in self.bound:
@@ -302,6 +323,11 @@ class Simulator(object):
                 item = b.behavior.build_render(p, em, view, item)
             if item is not None and item.kind == "NONE":
                 continue      # 渲染体明说「我不该有视觉输出」（DUMMY），不走退化点
+            if item is not None and "layers" in p.rolled:
+                # 双层染色（RGBFIRE/RGBWATER）在 SHADE 阶段算好两层，留在 p.rolled 里。
+                # 渲染体不必认识这些属性，由这里统一转交——有贴图的 glue 会按贴图亮度
+                # 在两层之间插值，没贴图的用 item.color（已经压成一个代表色了）。
+                item.extra.setdefault("layers", p.rolled["layers"])
             if item is None:
                 # 这个 entry 没有已实现的 RENDER_BODY（比如渲染体是 LIGHTNING）
                 # → 退化成一个点，至少能看见「有多少、在哪、多大、多亮」。

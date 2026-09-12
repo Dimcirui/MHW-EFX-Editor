@@ -253,6 +253,15 @@ def _populate_props(props: EFXUVSProps, data: bytes) -> None:
 
     props.is_loaded = True
 
+    # 粒子模拟播放器的序列帧表就是从这份字节来的——换了帧表要让它重建，否则预览
+    # 还在用网格兜底（见 sim_preview._uvs_state）。放在这里而不是各算子里：导入 /
+    # 重载 / uvs_link 链式载入三条路都要通知，漏一条就是"载入了但预览没变"。
+    try:
+        from . import sim_preview as _sim
+        _sim.invalidate_if_active()
+    except Exception:
+        pass
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 从 EFXUVSProps 重建 UVSFile（导出用）
@@ -526,6 +535,24 @@ class EFX_PT_uvs_edition(Panel):
             row = box.row()
             row.label(text=T("uvs.game_path"), icon="FILE")
             row.label(text=game_path)
+
+        # ── 一键载入：按上面那条游戏路径自动找 .uvs（并带上序列帧大图）─────────
+        # 手动一层层找 .efx → .uvs → .tex 太麻烦，这里照 mod3 联动那套做正层级载入。
+        from . import uvs_link as _link
+        box = layout.box()
+        row = box.row(align=True)
+        op = row.operator("efx.uvs_link_load", icon="FILE_REFRESH",
+                          text=T("uvslink.quick_load"))
+        op.scope = "ATTRIBUTE"
+        op = row.operator("efx.uvs_link_load", icon="FILE_FOLDER",
+                          text=T("uvslink.quick_load_all"))
+        op.scope = "ROOT"
+        sub = box.column(align=True)
+        sub.scale_y = 0.7
+        sub.label(text=T("uvslink.hint"))
+        if not _link.tex_loader_available():
+            sub.label(text=T("uvslink.need_editor"), icon="INFO")
+        box.prop(context.scene, "efx_chunk_root", text="Chunk Root")
 
         # ── Import / Export / Reload ──────────────────────────────────────────
         row = layout.row(align=True)

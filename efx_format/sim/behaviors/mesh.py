@@ -41,7 +41,7 @@ from ..rng import jitter, jitter_int
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
 from ..vecmath import ROT_ORDER_TRANSFORM, rot_order_name
-from ._common import epv_note, pick_color
+from ._common import epv_note, roll_rgba
 
 
 @register(MESH)
@@ -83,16 +83,15 @@ class Mesh(Behavior):
         p.rolled["me_viscon"] = jitter_int(f.get("visconIndex"),
                                            f.get("visconIndexJitter"), rng, mode)
 
-        t = 0.0 if f.i("disableAllColorRange") else (
-            rng.random() if f.i("useColorRange") else 0.0)
-        p.rolled["me_rgba"] = pick_color(f, t)
+        p.rolled["me_rgba"], p.rolled["me_coff"] = roll_rgba(
+            f, rng, em.config, disable="disableAllColorRange")
         p.rolled["me_rate"] = jitter(f.get("colorRate", 1.0), f.get("colorRateJitter"),
                                      rng, mode)
 
-        et = rng.random() if (f.i("useEmissiveColorRange")
-                              and not f.i("disableAllColorRange")) else 0.0
         if f.i("useEmissiveColor"):
-            er, eg, eb, ea = pick_color(f, et, "emissiveColor", "emissiveColorRange")
+            (er, eg, eb, ea), _eoff = roll_rgba(
+                f, rng, em.config, "emissiveColor", "emissiveColorRange",
+                gate="useEmissiveColorRange", disable="disableAllColorRange")
             rate = jitter(f.get("emissiveColorRate", 1.0),
                           f.get("emissiveColorRateJitter"), rng, mode)
             p.rolled["me_emissive"] = (er * rate, eg * rate, eb * rate, ea)

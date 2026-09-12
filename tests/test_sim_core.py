@@ -21,14 +21,21 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from efx_format.hashes import (BILLBOARD3D, DUMMY, EMITTERSHAPE3D,  # noqa: E402
+from efx_format.hashes import (ALPHACORRECTION, BILLBOARD3D, DUMMY,  # noqa: E402
+                               EMITTERSHAPE3D,
                                LIFE, MESH, NOISE, PLANE, RIBBON, RIBBONBLADE,
-                               ROTATEANIM, SCALEANIM, SPAWN, TRANSFORM3D,
-                               VELOCITY3D)
-from efx_format.sim import (FORCE, Behavior, SimConfig, Simulator,  # noqa: E402
-                            Vec3, from_attr_blocks, register)
+                               PARENTOPTIONS, PTLIFE, RGBFIRE, RGBWATER,
+                               ROTATEANIM, SCALEANIM,
+                               SPAWN, TRANSFORM3D, UVSEQUENCE, VELOCITY3D)
+from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
+                            Behavior, SimConfig, SimResources, SimScene,
+                            Simulator, Vec3, from_attr_blocks, grid_table,
+                            register)
+from efx_format.sim import uvs_table as simuvs  # noqa: E402
+from efx_format.sim.behaviors.uvsequence import frame_info  # noqa: E402
 from efx_format.sim import rng as simrng  # noqa: E402
-from efx_format.sim.vecmath import rotate_euler  # noqa: E402
+from efx_format.sim.vecmath import (ROT_ORDER_TRANSFORM,  # noqa: E402
+                                    rot_order_name, rotate_euler)
 
 ARCHETYPE_DIR = os.path.join(_ROOT, "presets", "__archetypes__")
 
@@ -107,6 +114,49 @@ def scaleanim_fields(**kw):
         f["scaleSpeed" + ax + "Jitter"] = 0.0
         f["scaleAccel" + ax] = 1.0
         f["scaleAccel" + ax + "Jitter"] = 0.0
+    f.update(kw)
+    return f
+
+
+def rgbfire_fields(**kw):
+    f = {"typeFlag": 1,
+         "fireColor": [255, 0, 0, 255], "smokeColor": [0, 0, 255, 255],
+         "brightness1": 1.0, "brightness2": 1.0,
+         "unkn4": 0.0, "brightness3": 1.0, "brightness4": 1.0}
+    for pre in ("fireColorParam_", "smokeColorParam_"):
+        f[pre + "useLife"] = 0
+        for k in ("appearFrame", "keepFrame", "vanishFrame"):
+            f[pre + k] = 0
+            f[pre + k + "Jitter"] = 0
+        f[pre + "lighting"] = 0
+        f[pre + "lifeType"] = 0
+        f[pre + "unkn9"] = 0
+    f.update(kw)
+    return f
+
+
+def rgbwater_fields(**kw):
+    f = {"typeFlag": 1,
+         "colorSpecular": [255, 0, 0, 255], "colorSheet": [0, 0, 255, 255],
+         "colorRate": 1.0, "waterLerpGtoB": 0.0, "intensityCubeMap": 0.0,
+         "intensitySpecular": 1.0, "intensitySheet": 1.0, "intensityAlpha": 1.0,
+         "unknownFloat": 0.3, "path_len": 0, "path": b""}
+    for pre in ("specularColorParam_", "sheetColorParam_", "waterLerpParam_"):
+        f[pre + "useLife"] = 0
+        for k in ("appearFrame", "keepFrame", "vanishFrame"):
+            f[pre + k] = 0
+            f[pre + k + "Jitter"] = 0
+        f[pre + "lighting"] = 0
+        f[pre + "lifeType"] = 0
+    for pre in ("specularColorParam_", "sheetColorParam_"):
+        f[pre + "unkn9"] = 0
+    f.update(kw)
+    return f
+
+
+def alphacorrection_fields(**kw):
+    f = {"unkn0": 1, "lowPass": 0.0, "contrast_gamma": 1.0,
+         "unkn3": 0.0, "unknFlag2": 0}
     f.update(kw)
     return f
 
@@ -221,8 +271,46 @@ def mesh_fields(**kw):
     return f
 
 
+def parentoptions_fields(**kw):
+    f = {"typeFlag": 0,
+         "relationPos": [0, 0, 0], "relationRot": [0, 0, 0], "relationScl": [0, 0, 0],
+         "particleUseLocal": 0, "unknFlag1": 0,
+         "constRelease": 0, "constReleaseJitter": 0, "jointNo": -1}
+    f.update(kw)
+    return f
+
+
+#: TRANSFORM3D 的速度字段是**每秒**（见 behaviors/transform3d.py），而下面这两个 helper
+#: 的参数写的是「每帧多少」——测试断言按帧数算更直观，所以这里乘上 fps 换过去。
+_FPS = 60.0
+
+
+def drifting_emitter(vx=0.0, vy=0.0, vz=0.0):
+    """一个**每帧**位移 (vx,vy,vz) 的发射器（TRANSFORM3D 的 translation_velocity）。"""
+    return transform3d_fields(
+        enableVelocityBitflag=1,
+        translation_velocity=[vx * _FPS, 0.0, vy * _FPS, 0.0, vz * _FPS, 0.0])
+
+
+def spinning_emitter(ry_per_frame=0.0):
+    """一个**每帧**绕 Y 转 `ry_per_frame` 度的发射器。"""
+    return transform3d_fields(
+        enableVelocityBitflag=1,
+        rotation_velocity=[0.0, 0.0, ry_per_frame * _FPS, 0.0, 0.0, 0.0])
+
+
+def ptlife_fields(**kw):
+    f = {"typeFlag": 0, "unknFixed1": 0, "status": 0, "unknEnum3": 0,
+         "relationIndex": 0, "unknEnum5": 0,
+         "unknFrame0": 0, "unknFrame0Jitter": 0,
+         "unknFrame1": 0, "unknFrame1Jitter": 0}
+    f.update(kw)
+    return f
+
+
 def make_sim(spawn=None, life=None, velocity=None, es3d=None, config=None, extra=(),
-             transform=None, scaleanim=None, rotateanim=None, billboard=None):
+             transform=None, scaleanim=None, rotateanim=None, billboard=None,
+             resources=None):
     blocks = []
     if transform is not None:
         blocks.append((TRANSFORM3D, transform))
@@ -241,7 +329,52 @@ def make_sim(spawn=None, life=None, velocity=None, es3d=None, config=None, extra
     if billboard is not None:
         blocks.append((BILLBOARD3D, billboard))
     blocks.extend(extra)
-    return Simulator(blocks, b"", config or SimConfig())
+    return Simulator(blocks, b"", config or SimConfig(), resources)
+
+
+def uvseq_fields(**kw):
+    f = {"typeFlag": 1, "sequenceNo": 0, "sequenceNoJitter": 0,
+         "patternNo": 0, "patternNoJitter": 0,
+         "playSpeed": 1.0, "playSpeedJitter": 0.0,
+         "playSpeedCoef": 1.0, "playSpeedCoefJitter": 0.0,
+         "loopingMode": 1, "loopingOrientation": 0, "loopingPad": 0,
+         "path_len": 0, "path": b""}
+    f.update(kw)
+    return f
+
+
+def looping_mode(playback=1, flip_h=0, flip_v=0, direction=0):
+    """打包 loopingMode 字节（与 schema/enums.py::BITS_LOOPING_MODE 同一套位段）。"""
+    return ((playback & 3) | ((flip_h & 3) << 2) | ((flip_v & 3) << 4)
+            | ((direction & 3) << 6))
+
+
+def uvs_bytes(frame_rects, extra_groups=0):
+    """造一个最小 .uvs 字节流（走真正的序列化器，不手搓字节）。"""
+    from efx_format.uvs import UVSFile, UVSFrame, UVSGroup, UVSString
+
+    def _grp(rects):
+        frames = [UVSFrame(uv0=(r[0], r[1]), uv1=(r[2], r[3])) for r in rects]
+        return UVSGroup(frames=frames, path_indices=[0], map_count=1, dynamic=4)
+
+    groups = [_grp(frame_rects)]
+    for i in range(extra_groups):
+        groups.append(_grp([(0.0, 0.0, 0.5, 0.5)] * (2 + i)))
+    return UVSFile(groups=groups,
+                   strings=[UVSString(path="sheet.tex", type=1)]).serialize()
+
+
+def uvseq_sim(uv=None, frames=0, config=None, resources=None, **kw):
+    """一个粒子 + UVSEQUENCE（默认配 BILLBOARD3D，这样 build_render 有东西可改）。"""
+    kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+    kw.setdefault("life", life_fields(indefiniteLifespan=1))
+    kw.setdefault("billboard", billboard_fields())
+    extra = list(kw.pop("extra", ()))
+    extra.append((UVSEQUENCE, uvseq_fields(**(uv or {}))))
+    sim = make_sim(config=config, resources=resources, extra=extra, **kw)
+    for _ in range(frames):
+        sim.step()
+    return sim
 
 
 def one_particle(frames=1, **kw):
@@ -367,6 +500,25 @@ class TestSpawn(unittest.TestCase):
                        life=life_fields(indefiniteLifespan=1))
         self.assertEqual(self._birth_frames(sim, 5), [0, 1, 2, 3, 4])
 
+    def test_interval_jitter_is_rolled_per_burst(self):
+        """burstIntervalJitter 每批重抽 → 批间距参差不齐，落在 [v, v+jitter] 里。"""
+        sim = make_sim(spawn=spawn_fields(burstInterval=4, burstIntervalJitter=4),
+                       life=life_fields(indefiniteLifespan=1))
+        frames = self._birth_frames(sim, 200)
+        gaps = {b - a for a, b in zip(frames, frames[1:])}
+        self.assertGreater(len(gaps), 1)                    # 不是整轮等距
+        self.assertGreaterEqual(min(gaps), 4)
+        self.assertLessEqual(max(gaps), 8)
+
+    def test_interval_jitter_per_cycle_is_uniform(self):
+        """'per_cycle'（改动前的行为）：一轮只抽一次，整轮等距。"""
+        sim = make_sim(spawn=spawn_fields(burstInterval=4, burstIntervalJitter=4),
+                       life=life_fields(indefiniteLifespan=1),
+                       config=SimConfig(spawn_interval_jitter="per_cycle"))
+        frames = self._birth_frames(sim, 200)
+        gaps = {b - a for a, b in zip(frames, frames[1:])}
+        self.assertEqual(len(gaps), 1)
+
     def test_emitter_start_delay(self):
         sim = make_sim(spawn=spawn_fields(emitterStartDelay=7, burstInterval=100),
                        life=life_fields(indefiniteLifespan=1))
@@ -412,24 +564,30 @@ class TestSpawn(unittest.TestCase):
         frames = self._birth_frames(sim, 30)
         self.assertGreaterEqual(len(frames), 9)
 
-    def test_bursts_per_cycle_then_life_paced_gap(self):
-        """非 0 时每轮批次数 = burstsPerCycle + emitterRepeatCount - 1，
-        最后一批之后按粒子寿命等一段再换位置开下一轮。
+    def test_finite_cycle_stops_emitting(self):
+        """批次数 = burstsPerCycle + emitterRepeatCount - 1，发完就**不再发**。
 
-        3 + 1 - 1 = 3 批、间隔 2 帧 → 0/2/4；寿命 10 → 下一轮从 14 起。
-        发射器不会停（三态里没有停止条件），所以这里断言的是**节奏**不是总数。
+        3 + 1 - 1 = 3 批、间隔 2 帧 → 只有 0/2/4 三个出生帧，后面一直空着。
         """
         sim = make_sim(
             spawn=spawn_fields(burstsPerCycle=3, emitterRepeatCount=1, burstInterval=2),
             life=life_fields(duration=10, indefiniteLifespan=1))
+        self.assertEqual(self._birth_frames(sim, 200), [0, 2, 4])
+
+    def test_recycle_mode_keeps_going(self):
+        """'recycle'（改动前的行为）：最后一批之后按粒子寿命等一段，换位置再开一轮。"""
+        sim = make_sim(
+            spawn=spawn_fields(burstsPerCycle=3, emitterRepeatCount=1, burstInterval=2),
+            life=life_fields(duration=10, indefiniteLifespan=1),
+            config=SimConfig(spawn_after_cycle="recycle"))
         frames = self._birth_frames(sim, 30)
         self.assertEqual(frames[:6], [0, 2, 4, 14, 16, 18])
         self.assertGreaterEqual(sim.em.cycle, 2)
 
-    def test_emitter_never_stops_so_duration_is_the_players_job(self):
-        """没有任何一态会停 → 「播放一次」的长度得播放器自己定。"""
+    def test_zero_repeat_count_never_stops(self):
+        """emitterRepeatCount=0 是「无限」那一态，不受收工逻辑影响。"""
         sim = make_sim(
-            spawn=spawn_fields(burstsPerCycle=2, emitterRepeatCount=2, burstInterval=3),
+            spawn=spawn_fields(burstsPerCycle=2, emitterRepeatCount=0, burstInterval=3),
             life=life_fields(duration=5))
         sim.run(500)
         self.assertGreater(sim.em.spawned_total, 50)
@@ -509,6 +667,7 @@ class TestLife(unittest.TestCase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestEmitterShape3D(unittest.TestCase):
+    """按作者教程《生成方式》：rangeXYZ = 偏移(内边界) / 尺寸(向外的厚度)。"""
 
     def _spawn_many(self, es3d, n=300, config=None):
         sim = make_sim(spawn=spawn_fields(particlesPerBurst=n, burstInterval=1000),
@@ -517,90 +676,138 @@ class TestEmitterShape3D(unittest.TestCase):
         sim.step()
         return [p.spawn_pos for p in sim.particles]
 
-    def test_box_spans_min_to_max(self):
-        """rangeXYZ = Min/Max 交错（官方通道名 RangeMinX/RangeMaxX/…）：
-        [0,100, 0,0, 0,20] → X∈[0,100]、Y∈[0,0]、Z∈[0,20]。"""
+    # ── 偏移 / 尺寸 ──────────────────────────────────────────────────────────
+    def test_box_offset_zero_fills_the_volume(self):
+        """偏移=0、尺寸=S → 实心盒子，逐轴 ±S。"""
         pts = self._spawn_many(es3d_fields(
             shapeType=0, rangeXYZ=[0.0, 100.0, 0.0, 0.0, 0.0, 20.0]))
-        xs = [p.x for p in pts]
-        ys = [p.y for p in pts]
-        zs = [p.z for p in pts]
-        self.assertGreaterEqual(min(xs), -1e-9)
-        self.assertLessEqual(max(xs), 100.0 + 1e-9)
-        self.assertGreater(max(xs), 80.0)               # 确实铺满
-        self.assertLess(min(xs), 20.0)
-        self.assertEqual(max(abs(v) for v in ys), 0.0)  # Min=Max=0 → 扁平
-        self.assertLessEqual(max(zs), 20.0 + 1e-9)
+        self.assertLessEqual(max(abs(p.x) for p in pts), 100.0 + 1e-9)
+        self.assertGreater(max(abs(p.x) for p in pts), 80.0)
+        self.assertEqual(max(abs(p.y) for p in pts), 0.0)      # 这一轴厚度 0
+        self.assertLessEqual(max(abs(p.z) for p in pts), 20.0 + 1e-9)
 
-    def test_box_negative_min_spans_both_sides(self):
+    def test_box_offset_hollows_the_middle(self):
+        """偏移=10、尺寸=10 → 厚度 10、内部掏空：没有点落在内盒里面。"""
         pts = self._spawn_many(es3d_fields(
-            shapeType=0, rangeXYZ=[-10.0, 10.0, 0.0, 0.0, 0.0, 0.0]))
-        self.assertLess(min(p.x for p in pts), -5.0)
-        self.assertGreater(max(p.x for p in pts), 5.0)
+            shapeType=0, rangeXYZ=[10.0, 10.0, 10.0, 10.0, 10.0, 10.0]), n=400)
         for p in pts:
-            self.assertGreaterEqual(p.x, -10.0 - 1e-9)
-            self.assertLessEqual(p.x, 10.0 + 1e-9)
+            self.assertLessEqual(max(abs(p.x), abs(p.y), abs(p.z)), 20.0 + 1e-9)
+            # 至少一个轴越过内边界 → 不在空腔里
+            self.assertGreaterEqual(max(abs(p.x), abs(p.y), abs(p.z)), 10.0 - 1e-9)
 
-    def test_range_mode_switch_changes_reading(self):
-        """es3d_range_mode 是待标定开关：同一组字节，两种读法给出不同区间。"""
+    def test_sphere_shell_between_offset_and_offset_plus_size(self):
+        """球：半径落在 [偏移, 偏移+尺寸] 之间。"""
+        pts = self._spawn_many(es3d_fields(
+            shapeType=1, rangeXYZ=[10.0, 10.0, 10.0, 10.0, 10.0, 10.0]))
+        radii = [p.length() for p in pts]
+        self.assertGreaterEqual(min(radii), 10.0 - 1e-6)
+        self.assertLessEqual(max(radii), 20.0 + 1e-6)
+        self.assertGreater(max(radii) - min(radii), 3.0)        # 壳层是有厚度的
+
+    def test_sphere_size_zero_is_a_surface(self):
+        """尺寸=0 → 内外边界重合，退化成球面。"""
+        pts = self._spawn_many(es3d_fields(
+            shapeType=1, rangeXYZ=[10.0, 0.0, 10.0, 0.0, 10.0, 0.0]))
+        for p in pts:
+            self.assertAlmostEqual(p.length(), 10.0, places=5)
+
+    def test_minmax_mode_is_still_available(self):
+        """'minmax' 是留作对照的旧读法（RE DTI 官方名那一套）。"""
         fields = es3d_fields(shapeType=0, rangeXYZ=[4.0, 10.0, 0.0, 0.0, 0.0, 0.0])
         mm = self._spawn_many(fields, config=SimConfig(es3d_range_mode="minmax"))
-        os_ = self._spawn_many(fields, config=SimConfig(es3d_range_mode="offset_size"))
-        self.assertGreaterEqual(min(p.x for p in mm), 4.0 - 1e-9)    # [4, 10]
+        self.assertGreaterEqual(min(p.x for p in mm), 4.0 - 1e-9)
         self.assertLessEqual(max(p.x for p in mm), 10.0 + 1e-9)
-        self.assertLess(min(p.x for p in os_), 4.0)                  # 4 ± 5
-        self.assertGreater(max(p.x for p in os_), 6.0)
 
-    def test_sphere_lands_on_the_shell(self):
+    # ── 扫描角度 ─────────────────────────────────────────────────────────────
+    def test_horizontal_scan_angle_restricts_the_sweep(self):
+        """横向扫描角度 90 → 只覆盖四分之一圈（球/圆柱用）。"""
         pts = self._spawn_many(es3d_fields(
-            shapeType=1, rangeXYZ=[-10.0, 10.0, -10.0, 10.0, -10.0, 10.0],
-            radiusOrigin=1.0, radiusEnd=1.0))
-        for p in pts:
-            self.assertAlmostEqual(p.length(), 10.0, places=4)
-
-    def test_sphere_radius_range_fills_a_shell(self):
-        pts = self._spawn_many(es3d_fields(
-            shapeType=1, rangeXYZ=[-10.0, 10.0, -10.0, 10.0, -10.0, 10.0],
-            radiusOrigin=0.5, radiusEnd=1.0))
-        radii = [p.length() for p in pts]
-        self.assertGreaterEqual(min(radii), 4.99)
-        self.assertLessEqual(max(radii), 10.01)
-        self.assertGreater(max(radii) - min(radii), 2.0)
-
-    def test_scan_angle_restricts_the_sweep(self):
-        """scanAngleHorizontal=90 → 只覆盖四分之一圈。"""
-        pts = self._spawn_many(es3d_fields(
-            shapeType=2, rangeXYZ=[-10.0, 10.0, 0.0, 0.0, -10.0, 10.0],
+            shapeType=2, rangeXYZ=[0.0, 10.0, 0.0, 0.0, 0.0, 10.0],
             scanAngleHorizontal=90.0))
         for p in pts:
             ang = math.degrees(math.atan2(p.z, p.x)) % 360.0
             self.assertLessEqual(ang, 91.0)
 
-    def test_range_divide_quantizes(self):
-        """rangeDivideHorizontalNum 是**等分数量**：4 → 只出现 4 个离散方位。"""
-        pts = self._spawn_many(es3d_fields(
-            shapeType=2, rangeXYZ=[-10.0, 10.0, 0.0, 0.0, -10.0, 10.0],
-            rangeDivideHorizontalNum=4))
-        angles = {round(math.degrees(math.atan2(p.z, p.x)) % 360.0, 3) for p in pts}
-        self.assertEqual(len(angles), 4)
+    def test_vertical_scan_angle_shrinks_toward_none(self):
+        """纵向扫描角度只有球用：0=全向、180=一半、360=不生成（越大越窄）。"""
+        def band(v):
+            pts = self._spawn_many(es3d_fields(
+                shapeType=1, rangeXYZ=[0.0, 10.0, 0.0, 10.0, 0.0, 10.0],
+                scanAngleVertical=v), n=200)
+            return max(abs(p.y) for p in pts)
 
+        full, half, none = band(0.0), band(180.0), band(360.0)
+        self.assertGreater(full, 8.0)              # 全向：能到两极附近
+        self.assertLess(half, full * 0.75)         # 一半：明显收窄
+        self.assertLess(none, 1e-6)               # 360：只剩赤道一圈
+        self.assertGreater(half, 1.0)
+
+    # ── 等分数量（纵向=扇形切片，横向=纬度/高度切片）──────────────────────────
+    def test_vertical_divide_cuts_fan_slices(self):
+        """纵向等分数量：绕竖轴切扇形 —— 立方体/球/圆柱都用。4 → 只有 4 个方位。"""
+        for shape in (0, 1, 2):
+            with self.subTest(shape=shape):
+                pts = self._spawn_many(es3d_fields(
+                    shapeType=shape, rangeXYZ=[0.0, 10.0, 0.0, 10.0, 0.0, 10.0],
+                    rangeDivideVerticalNum=4), n=200)
+                angles = {round(math.degrees(math.atan2(p.z, p.x)) % 360.0, 2)
+                          for p in pts if math.hypot(p.x, p.z) > 1e-6}
+                self.assertLessEqual(len(angles), 4)
+                self.assertGreater(len(angles), 1)
+
+    def test_horizontal_divide_slices_the_cylinder_by_height(self):
+        """横向等分数量：圆柱是沿高度的水平切片。"""
+        pts = self._spawn_many(es3d_fields(
+            shapeType=2, rangeXYZ=[0.0, 10.0, 0.0, 10.0, 0.0, 10.0],
+            rangeDivideHorizontalNum=3), n=200)
+        ys = {round(p.y, 4) for p in pts}
+        self.assertLessEqual(len(ys), 3)
+
+    def test_horizontal_divide_makes_cones_on_the_sphere(self):
+        """横向等分数量：球是 n 个圆锥面 → 极角只剩 n 个离散值。"""
+        # 用「偏移=10 尺寸=0」的薄壳（球面）：半径固定，纬度才看得出离散
+        pts = self._spawn_many(es3d_fields(
+            shapeType=1, rangeXYZ=[10.0, 0.0, 10.0, 0.0, 10.0, 0.0],
+            rangeDivideHorizontalNum=6), n=300)
+        ys = {round(p.y, 3) for p in pts}
+        self.assertLessEqual(len(ys), 6)
+        self.assertGreater(len(ys), 1)
+
+    # ── 起始/结束半径 = 锥度（只有圆柱用）────────────────────────────────────
+    def test_radius_taper_makes_a_cone(self):
+        """起始半径 0.2 / 结束 1.0 → 沿高度收窄成圆台：底细顶粗。"""
+        # 同样用薄壳（管壁）：实心圆柱里半径本来就从 0 铺到 R，看不出锥度
+        pts = self._spawn_many(es3d_fields(
+            shapeType=2, rangeXYZ=[10.0, 0.0, 0.0, 10.0, 10.0, 0.0],
+            radiusOrigin=0.2, radiusEnd=1.0), n=400)
+        low = [math.hypot(p.x, p.z) for p in pts if p.y < -5.0]
+        high = [math.hypot(p.x, p.z) for p in pts if p.y > 5.0]
+        self.assertTrue(low and high)
+        self.assertLess(max(low), min(high) + 1e-6)     # 两端半径不重叠
+        self.assertLess(max(low), 4.0)                  # 底部约 0.2 倍
+        self.assertGreater(max(high), 8.0)              # 顶部约 1.0 倍
+
+    def test_radius_default_is_a_plain_cylinder(self):
+        pts = self._spawn_many(es3d_fields(
+            shapeType=2, rangeXYZ=[0.0, 10.0, 0.0, 0.0, 0.0, 10.0]))
+        radii = [math.hypot(p.x, p.z) for p in pts]
+        self.assertGreater(min(radii), 0.0)
+        self.assertLessEqual(max(radii), 10.0 + 1e-6)
+
+    # ── 其余 ─────────────────────────────────────────────────────────────────
     def test_point_shape_is_a_single_spot(self):
         pts = self._spawn_many(es3d_fields(
             shapeType=3, rangeXYZ=[0.0, 2.0, 1.0, 3.0, 2.0, 4.0]))
         for p in pts:
-            self.assertEqual(p, Vec3(1, 2, 3))
+            self.assertEqual(p, Vec3(0, 1, 2))   # 点：恒在偏移处
 
     def test_local_rotation_is_applied(self):
         pts = self._spawn_many(es3d_fields(
-            shapeType=0, rangeXYZ=[-10.0, 10.0, 0.0, 0.0, 0.0, 0.0],
+            shapeType=0, rangeXYZ=[0.0, 10.0, 0.0, 0.0, 0.0, 0.0],
             localRotationZ=90.0), n=50)
         self.assertLess(max(abs(p.x) for p in pts), 1e-6)   # X 轴的盒子被转到 Y 上
         self.assertGreater(max(abs(p.y) for p in pts), 1.0)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# VELOCITY3D
-# ─────────────────────────────────────────────────────────────────────────────
 
 class TestVelocity3D(unittest.TestCase):
 
@@ -649,7 +856,7 @@ class TestVelocity3D(unittest.TestCase):
         self.assertAlmostEqual(p.vel.y, 0.5 ** 3, places=9)
 
     def test_radial_moves_outward(self):
-        es3d = es3d_fields(shapeType=1, rangeXYZ=[-10, 10, -10, 10, -10, 10])
+        es3d = es3d_fields(shapeType=1, rangeXYZ=[0, 10, 0, 10, 0, 10])
         sim = make_sim(spawn=spawn_fields(particlesPerBurst=50, burstInterval=1000),
                        life=life_fields(indefiniteLifespan=1), es3d=es3d,
                        velocity=velocity_fields(velocityType=2, speed=1.0))
@@ -759,7 +966,7 @@ class TestDeterminismAndRender(unittest.TestCase):
             spawn=spawn_fields(particlesPerBurst=3, burstInterval=2,
                                particlesPerBurstJitter=2),
             life=life_fields(duration=8, durationJitter=4),
-            es3d=es3d_fields(shapeType=1, rangeXYZ=[-5, 5, -5, 5, -5, 5]),
+            es3d=es3d_fields(shapeType=1, rangeXYZ=[0, 5, 0, 5, 0, 5]),
             velocity=velocity_fields(speed=1.0, speedJitter=2.0, speedCoef=0.9),
             config=SimConfig(seed=seed))
         out = []
@@ -778,7 +985,7 @@ class TestDeterminismAndRender(unittest.TestCase):
         sim = make_sim(
             spawn=spawn_fields(particlesPerBurst=2, burstInterval=3),
             life=life_fields(duration=6),
-            es3d=es3d_fields(shapeType=1, rangeXYZ=[-5, 5, -5, 5, -5, 5]),
+            es3d=es3d_fields(shapeType=1, rangeXYZ=[0, 5, 0, 5, 0, 5]),
             velocity=velocity_fields(speed=1.0, speedJitter=1.0))
         first = [p.pos.as_tuple() for p in sim.run(20).particles]
         sim.reset()
@@ -1084,36 +1291,193 @@ class TestScaleAnim(unittest.TestCase):
 # ROTATEANIM
 # ─────────────────────────────────────────────────────────────────────────────
 
+class TestScaleAnimTimings(unittest.TestCase):
+    """用户在 test.efx（BILLBOARD3D scale=30 / width=height=1）上的三条计时。
+
+    结论：两组速度都是**每帧加在同名尺寸字段上**——逐轴那组加 width/height，
+    整体那组加 scale。同为 -0.1 差 30 倍，就是 1 与 30 的差距。
+    """
+
+    def _frames_to_vanish(self, scaleanim, limit=600):
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(scale=30.0, width=1.0, height=1.0),
+                       scaleanim=scaleanim)
+        for n in range(1, limit + 1):
+            sim.step()
+            items = sim.build_render()
+            if items and items[0].size.x <= 1e-9:   # 0.1 累加十次会剩个 1e-16
+                return n
+        return None
+
+    def test_axis_speed_adds_to_width(self):
+        """scaleSpeedX=-0.1 → width 1→0，10 帧；-0.01 → 100 帧。"""
+        self.assertEqual(self._frames_to_vanish(
+            scaleanim_fields(scaleSpeedX=-0.1)), 10)
+        self.assertEqual(self._frames_to_vanish(
+            scaleanim_fields(scaleSpeedX=-0.01)), 100)
+
+    def test_initial_speed_adds_to_scale(self):
+        """initialScaleSpeed=-0.1 → scale 30→0，300 帧（= 5 秒 @60fps）。"""
+        self.assertEqual(self._frames_to_vanish(
+            scaleanim_fields(initialScaleSpeed=-0.1)), 300)
+
+    def test_multiplier_mode_is_still_available(self):
+        """'multiplier'（改动前的行为）：两组都按归一化倍率，30 倍的差距就没了。"""
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(scale=30.0, width=1.0, height=1.0),
+                       scaleanim=scaleanim_fields(initialScaleSpeed=-0.1),
+                       config=SimConfig(scaleanim_add_target="multiplier"))
+        for _ in range(10):
+            sim.step()
+        self.assertAlmostEqual(sim.build_render()[0].size.x, 0.0, places=5)
+
+
+class TestRgbColoring(unittest.TestCase):
+    """RGBFIRE / RGBWATER：两层颜色 + 各自的生命期时序块。"""
+
+    def _color(self, block_hash, fields, frames=1, config=None):
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(),
+                       extra=[(block_hash, fields)], config=config)
+        sim.run(frames)
+        return sim.particles[0]
+
+    # ── RGBFIRE ──────────────────────────────────────────────────────────────
+    def test_two_layers_are_weighted_together(self):
+        """两层强度相等 → 取中间色（红 + 蓝 → 半红半蓝）。"""
+        p = self._color(RGBFIRE, rgbfire_fields())
+        self.assertAlmostEqual(p.color[0], 0.5, places=5)
+        self.assertAlmostEqual(p.color[1], 0.0, places=5)
+        self.assertAlmostEqual(p.color[2], 0.5, places=5)
+
+    def test_brightness1_zero_turns_the_fire_layer_off(self):
+        """brightness1=0 → 只剩 smokeColor（语料证据见 behaviors/rgbfire.py）。"""
+        p = self._color(RGBFIRE, rgbfire_fields(brightness1=0.0))
+        self.assertAlmostEqual(p.color[0], 0.0, places=5)
+        self.assertAlmostEqual(p.color[2], 1.0, places=5)
+
+    def test_color_rate_scales_the_tint(self):
+        p = self._color(RGBFIRE, rgbfire_fields(brightness2=2.0))
+        self.assertAlmostEqual(p.color[0], 1.0, places=5)
+        self.assertAlmostEqual(p.color[2], 1.0, places=5)
+
+    def test_tint_mode_can_force_one_layer(self):
+        for mode, want in (("first", (1.0, 0.0)), ("second", (0.0, 1.0))):
+            with self.subTest(mode=mode):
+                p = self._color(RGBFIRE, rgbfire_fields(),
+                                config=SimConfig(rgb_tint_mode=mode))
+                self.assertAlmostEqual(p.color[0], want[0], places=5)
+                self.assertAlmostEqual(p.color[2], want[1], places=5)
+
+    def test_color_param_life_fades_a_layer_out(self):
+        """fire 段 useLife=1、持续 10 帧后 10 帧淡出 → 火焰权重 1 → 0.5 → 0。"""
+        f = rgbfire_fields(fireColorParam_useLife=1, fireColorParam_keepFrame=10,
+                           fireColorParam_vanishFrame=10)
+        red = lambda n: self._color(RGBFIRE, f, frames=n).color[0]
+        self.assertAlmostEqual(red(6), 0.5, places=5)       # age 5：两层等权
+        self.assertAlmostEqual(red(16), 0.5 / 1.5, places=5)  # age 15：火焰权重 0.5
+        self.assertAlmostEqual(red(26), 0.0, places=5)      # age 25：火焰已淡尽
+
+    def test_life_off_means_the_timings_are_inert(self):
+        """useLife=0 时那几个帧数字段不生效（语料里它们常停在 20/40 的默认值上）。"""
+        f = rgbfire_fields(fireColorParam_keepFrame=1, fireColorParam_vanishFrame=1)
+        self.assertAlmostEqual(self._color(RGBFIRE, f, frames=60).color[0], 0.5,
+                               places=5)
+
+    # ── RGBWATER ─────────────────────────────────────────────────────────────
+    def test_water_weights_come_from_named_intensities(self):
+        """intensitySpecular=3 / intensitySheet=1 → 高光色占 3/4。"""
+        p = self._color(RGBWATER, rgbwater_fields(intensitySpecular=3.0))
+        self.assertAlmostEqual(p.color[0], 0.75, places=5)
+        self.assertAlmostEqual(p.color[2], 0.25, places=5)
+
+    def test_intensity_alpha_multiplies_and_clamps(self):
+        p = self._color(RGBWATER, rgbwater_fields(intensityAlpha=2.0))
+        self.assertAlmostEqual(p.alpha, 1.0, places=5)
+        q = self._color(RGBWATER, rgbwater_fields(intensityAlpha=0.25))
+        self.assertAlmostEqual(q.alpha, 0.25, places=5)
+
+
+class TestAlphaCorrection(unittest.TestCase):
+    """只往渲染项上挂参数——逐纹素的处理在 glue 的 fragment shader 里。"""
+
+    def _item(self, **kw):
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(),
+                       extra=[(ALPHACORRECTION, alphacorrection_fields(**kw))])
+        sim.run(2)
+        return sim.build_render()[0]
+
+    def test_params_ride_on_the_render_item(self):
+        it = self._item(lowPass=0.25, contrast_gamma=2.0)
+        self.assertEqual(it.extra["alpha_fix"], (0.25, 2.0))
+
+    def test_neutral_values_attach_nothing(self):
+        """两项都中性 → 不挂，免得 glue 白白多分一个 draw 桶。"""
+        self.assertNotIn("alpha_fix", self._item().extra)
+
+    def test_zero_gamma_is_treated_as_neutral(self):
+        """pow(a, 0) 会把整片贴成全不透明；语料 7488 个块里只有 12 个是 0。"""
+        self.assertNotIn("alpha_fix", self._item(contrast_gamma=0.0).extra)
+        self.assertEqual(self._item(lowPass=0.3, contrast_gamma=0.0).extra["alpha_fix"],
+                         (0.3, 1.0))
+
+    def test_particle_alpha_is_untouched(self):
+        """这是逐纹素的操作，不该整体乘个 alpha。"""
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(),
+                       extra=[(ALPHACORRECTION,
+                               alphacorrection_fields(lowPass=0.9, contrast_gamma=9.0))])
+        sim.run(2)
+        self.assertAlmostEqual(sim.particles[0].alpha, 1.0, places=5)
+
+
 class TestRotateAnim(unittest.TestCase):
+
+    #: 游戏给的角速度写进 p.rot 时取负（实机：z=+5 在 Blender 里是从 -Y 看的顺时针）
+    SIGN = -1.0
 
     def test_plane_mode_accumulates_on_z(self):
         """平面旋转 = 屏幕空间自转，写 Z。"""
         p, _ = one_particle(frames=4, rotateanim=rotateanim_fields(
             rotationModeMask=0, billboardRotation=15.0))
-        self.assertAlmostEqual(p.rot.z, 60.0, places=6)
+        self.assertAlmostEqual(p.rot.z, self.SIGN * 60.0, places=6)
         self.assertEqual((p.rot.x, p.rot.y), (0.0, 0.0))
 
     def test_plane_coef_decays_the_speed(self):
         p, _ = one_particle(frames=5, rotateanim=rotateanim_fields(
             rotationModeMask=0, billboardRotation=10.0, billboardRotationCoef=0.5))
-        self.assertAlmostEqual(p.rot.z, sum(10.0 * 0.5 ** n for n in range(5)), places=6)
+        self.assertAlmostEqual(p.rot.z,
+                               self.SIGN * sum(10.0 * 0.5 ** n for n in range(5)),
+                               places=6)
 
     def test_spin_mode_uses_all_three_axes(self):
         p, _ = one_particle(frames=3, rotateanim=rotateanim_fields(
-            rotationModeMask=2, spinAxisMask=0x7,
-            spin_velocity=[1.0, 0.0, 2.0, 0.0, 3.0, 0.0]))
-        self.assertAlmostEqual(p.rot.x, 3.0, places=6)
-        self.assertAlmostEqual(p.rot.y, 6.0, places=6)
-        self.assertAlmostEqual(p.rot.z, 9.0, places=6)
+            rotationModeMask=2, spin_velocity=[1.0, 0.0, 2.0, 0.0, 3.0, 0.0]))
+        self.assertAlmostEqual(p.rot.x, self.SIGN * 3.0, places=6)
+        self.assertAlmostEqual(p.rot.y, self.SIGN * 6.0, places=6)
+        self.assertAlmostEqual(p.rot.z, self.SIGN * 9.0, places=6)
 
-    def test_spin_axis_mask_gates_axes(self):
-        """spinAxisMask bit0=X bit1=Y bit2=Z。只开 Y。"""
+    def test_axes_without_speed_do_not_spin(self):
+        """转不转只看 spin_velocity 的逐轴取值——**不看 spinAxisMask**
+        （那个字段的位布局与全语料对不上，作用未知，见 behaviors/rotateanim.py）。"""
         p, _ = one_particle(frames=3, rotateanim=rotateanim_fields(
-            rotationModeMask=2, spinAxisMask=0x2,
-            spin_velocity=[1.0, 0.0, 2.0, 0.0, 3.0, 0.0]))
+            rotationModeMask=2, spin_velocity=[0.0, 0.0, 2.0, 0.0, 0.0, 0.0]))
         self.assertEqual(p.rot.x, 0.0)
-        self.assertAlmostEqual(p.rot.y, 6.0, places=6)
+        self.assertAlmostEqual(p.rot.y, self.SIGN * 6.0, places=6)
         self.assertEqual(p.rot.z, 0.0)
+
+    def test_spin_ignores_the_axis_mask(self):
+        """菱形那条的实况：mask=16（旧读法一位都不命中）但 Z 轴确实在转。"""
+        p, _ = one_particle(frames=4, rotateanim=rotateanim_fields(
+            rotationModeMask=2, spinAxisMask=16,
+            spin_velocity=[0.0, 0.0, 0.0, 0.0, 5.0, 0.0]))
+        self.assertAlmostEqual(p.rot.z, self.SIGN * 20.0, places=6)
 
     def test_delay_holds_rotation(self):
         p, _ = one_particle(frames=3, rotateanim=rotateanim_fields(
@@ -1121,7 +1485,7 @@ class TestRotateAnim(unittest.TestCase):
         self.assertEqual(p.rot.z, 0.0)
         p, _ = one_particle(frames=8, rotateanim=rotateanim_fields(
             rotationModeMask=0, billboardRotation=10.0, rotateDelayStart=5))
-        self.assertAlmostEqual(p.rot.z, 30.0, places=6)   # 第 5..7 帧共 3 次
+        self.assertAlmostEqual(p.rot.z, self.SIGN * 30.0, places=6)  # 第 5..7 帧共 3 次
 
     def test_random_direction_mode_produces_both_signs(self):
         sim = make_sim(spawn=spawn_fields(particlesPerBurst=60, burstInterval=1000),
@@ -1138,7 +1502,24 @@ class TestRotateAnim(unittest.TestCase):
                        rotateanim=rotateanim_fields(rotationModeMask=0,
                                                     billboardRotation=10.0))
         sim.step()
-        self.assertTrue(all(p.rot.z > 0 for p in sim.particles))
+        signs = {1 if p.rot.z > 0 else -1 for p in sim.particles}
+        self.assertEqual(len(signs), 1)
+
+    def test_plane_spin_reaches_the_plane_body(self):
+        """PLANE 的横/纵轴要真的跟着转——渲染体不消费 p.rot 的话，改了也看不见。"""
+        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       rotateanim=rotateanim_fields(
+                           rotationModeMask=2, spinAxisMask=16,
+                           spin_velocity=[0.0, 0.0, 0.0, 0.0, 5.0, 0.0]),
+                       extra=[(PLANE, plane_fields(baseAxis=2))])
+        sim.step()
+        u0 = sim.build_render()[0].axis_u.copy()
+        for _ in range(9):
+            sim.step()
+        u1 = sim.build_render()[0].axis_u
+        self.assertGreater((u1 - u0).length(), 0.1)      # 转过去了
+        self.assertAlmostEqual(u1.length(), 1.0, places=5)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1169,7 +1550,8 @@ class TestTransform3D(unittest.TestCase):
         self.assertEqual(sim.particles[0].pos, Vec3(10, 20, 30))
 
     def test_velocity_bitflag_gates_drift(self):
-        base = dict(translation_velocity=[1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        # 60/秒 = 1/帧
+        base = dict(translation_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         off = make_sim(transform=transform3d_fields(enableVelocityBitflag=0, **base),
                        spawn=spawn_fields(burstInterval=1000), life=life_fields())
         on = make_sim(transform=transform3d_fields(enableVelocityBitflag=1, **base),
@@ -1184,7 +1566,7 @@ class TestTransform3D(unittest.TestCase):
         sim = make_sim(
             transform=transform3d_fields(
                 enableVelocityBitflag=1,
-                translation_velocity=[2.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                translation_velocity=[120.0, 0.0, 0.0, 0.0, 0.0, 0.0]),   # 2/帧
             spawn=spawn_fields(burstInterval=1000),
             life=life_fields(indefiniteLifespan=1),
             velocity=velocity_fields(velocityType=3, speed=1.0))
@@ -1196,13 +1578,56 @@ class TestTransform3D(unittest.TestCase):
         sim = make_sim(
             transform=transform3d_fields(
                 enableVelocityBitflag=1,
-                translation_velocity=[0.5, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                translation_velocity=[30.0, 0.0, 0.0, 0.0, 0.0, 0.0]),    # 0.5/帧
             spawn=spawn_fields(burstInterval=1000),
             life=life_fields(indefiniteLifespan=1),
             velocity=velocity_fields(velocityType=3, speed=1.0,
                                      minMovementThreshold=10.0))
         sim.run(3)
         self.assertEqual(sim.particles[0].vel, Vec3())
+
+    def test_rotation_sign_can_be_taken_raw(self):
+        """'raw' = 照字面符号（改动前的行为）。"""
+        t = transform3d_fields(enableVelocityBitflag=1,
+                               rotation_velocity=[0.0, 0.0, 600.0, 0.0, 0.0, 0.0])
+        sim = make_sim(transform=t, spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       config=SimConfig(t3d_rotation_sign="raw"))
+        sim.run(10)
+        self.assertAlmostEqual(sim.em.rot_dynamic.y, 100.0, places=4)
+
+    def test_velocities_are_per_second(self):
+        """三组速度都是每秒（语料证据见 behaviors/transform3d.py）：
+        每秒 60 → 每帧 1；`per_frame` 开关下退回改动前的读法。"""
+        t = transform3d_fields(enableVelocityBitflag=1,
+                               translation_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                               rotation_velocity=[0.0, 0.0, 600.0, 0.0, 0.0, 0.0],
+                               scale_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        kw = dict(spawn=spawn_fields(burstInterval=1000),
+                  life=life_fields(indefiniteLifespan=1))
+        sec = make_sim(transform=t, **kw)
+        sec.run(10)
+        self.assertAlmostEqual(sec.em.origin.x, 10.0, places=5)       # 1/帧 × 10
+        # 10°/帧 × 10；符号取反（见 t3d_rotation_sign，默认 'flip'）
+        self.assertAlmostEqual(sec.em.rot_dynamic.y, -100.0, places=4)
+        self.assertAlmostEqual(sec.em.scale_dynamic.x, 11.0, places=4)  # 1 + 1/帧 × 10
+
+        frm = make_sim(transform=t, config=SimConfig(t3d_velocity_unit="per_frame"),
+                       **kw)
+        frm.run(10)
+        self.assertAlmostEqual(frm.em.origin.x, 600.0, places=3)      # 旧读法快 60 倍
+
+    def test_negative_scale_velocity_stops_at_zero(self):
+        """缩放倍率不能穿过 0 变负——负倍率等于把生成形状镜像翻过去，
+        表现上粒子会从收缩变成朝外飞（05 spell 那条就是这么暴露的）。"""
+        t = transform3d_fields(enableVelocityBitflag=1,
+                               scale_velocity=[-60.0, 0.0, -60.0, 0.0, -60.0, 0.0])
+        sim = make_sim(transform=t, spawn=spawn_fields(burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1))
+        sim.run(30)                                   # 每帧 -1，30 帧远远穿过 0
+        for v in sim.em.scale_dynamic:
+            self.assertGreaterEqual(v, 0.0)
+        self.assertAlmostEqual(sim.em.scale_dynamic.x, 0.0, places=6)
 
     def test_transform3d_runs_before_emittershape(self):
         """发射器原点必须先定下来，ES3D 才能在它周围采样。"""
@@ -1296,7 +1721,8 @@ class TestBillboard3D(unittest.TestCase):
                            billboard=billboard_fields(rotation=45.0),
                            rotateanim=rotateanim_fields(rotationModeMask=0,
                                                         billboardRotation=10.0))
-        self.assertAlmostEqual(it.rot, 45.0 + 30.0, places=6)
+        # 初始角来自 BILLBOARD3D.rotation（原样），ROTATEANIM 的角速度取负叠加
+        self.assertAlmostEqual(it.rot, 45.0 - 30.0, places=6)
 
     def test_epv_slot_is_reported(self):
         _it, sim = self._item(billboard=billboard_fields(EPVColorSlot1=3))
@@ -1373,6 +1799,487 @@ class TestT2EndToEnd(unittest.TestCase):
 # ─────────────────────────────────────────────────────────────────────────────
 # 轨迹工具
 # ─────────────────────────────────────────────────────────────────────────────
+
+class TestColorAndAlpha(unittest.TestCase):
+    """color / colorRange 是 RGBA 四元组的 static/random 对（逐通道独立），
+    第 4 通道当 alpha 用并乘上 LIFE 的淡入淡出。"""
+
+    BLACK = [0, 0, 0, 0]
+    WHITE = [255, 255, 255, 255]
+
+    def _sim(self, n=40, config=None, life=None, **bb):
+        f = billboard_fields(**bb)
+        return make_sim(spawn=spawn_fields(particlesPerBurst=n, burstInterval=1000),
+                        life=life or life_fields(indefiniteLifespan=1),
+                        billboard=f, config=config)
+
+    def _items(self, **kw):
+        sim = self._sim(**kw)
+        sim.step()
+        return sim.build_render()
+
+    def test_range_off_uses_the_static_color(self):
+        items = self._items(color=[128, 64, 32, 255], colorRange=self.WHITE,
+                            useColorRange=0)
+        for it in items:
+            self.assertAlmostEqual(it.color[0], 128 / 255.0, places=5)
+            self.assertAlmostEqual(it.color[1], 64 / 255.0, places=5)
+            self.assertAlmostEqual(it.color[2], 32 / 255.0, places=5)
+
+    def test_each_channel_draws_independently(self):
+        """默认 'channel'：四个通道各自抽，所以同一个粒子的 R/G/B 会不一样。"""
+        items = self._items(color=list(self.BLACK), colorRange=list(self.WHITE),
+                            useColorRange=1)
+        self.assertGreater(len({tuple(it.color) for it in items}), 1)   # 粒子之间不同
+        self.assertTrue(any(abs(it.color[0] - it.color[1]) > 1e-6 for it in items))
+
+    def test_shared_mode_keeps_channels_locked(self):
+        cfg = SimConfig(color_range_mode="shared")
+        items = self._items(color=list(self.BLACK), colorRange=list(self.WHITE),
+                            useColorRange=1, config=cfg)
+        for it in items:                       # 端点三通道相同 + 共用系数 → R=G=B
+            self.assertAlmostEqual(it.color[0], it.color[1], places=6)
+            self.assertAlmostEqual(it.color[1], it.color[2], places=6)
+
+    def test_values_stay_between_the_two_endpoints(self):
+        items = self._items(color=[100, 100, 100, 255], colorRange=[200, 200, 200, 255],
+                            useColorRange=1)
+        for it in items:
+            for c in it.color[:3]:
+                self.assertGreaterEqual(c, 100 / 255.0 - 1e-6)
+                self.assertLessEqual(c, 200 / 255.0 + 1e-6)
+
+    def test_alpha_participates_in_the_draw(self):
+        items = self._items(color=[255, 255, 255, 0],
+                            colorRange=[255, 255, 255, 255], useColorRange=1)
+        alphas = {round(it.color[3], 6) for it in items}
+        self.assertGreater(len(alphas), 1)                     # alpha 真的在随机
+        self.assertTrue(all(0.0 <= a <= 1.0 for a in alphas))
+
+    def test_alpha_is_clamped_to_one(self):
+        cfg = SimConfig(color_range_mode="add")
+        items = self._items(color=list(self.WHITE), colorRange=list(self.WHITE),
+                            useColorRange=1, config=cfg)
+        self.assertTrue(all(it.color[3] <= 1.0 + 1e-9 for it in items))
+
+    def test_add_mode_is_additive(self):
+        cfg = SimConfig(color_range_mode="add")
+        items = self._items(color=[100, 100, 100, 255], colorRange=[100, 100, 100, 0],
+                            useColorRange=1, config=cfg)
+        for it in items:                       # 100/255 起，最多再加 100/255
+            self.assertGreaterEqual(it.color[0], 100 / 255.0 - 1e-6)
+            self.assertLessEqual(it.color[0], 200 / 255.0 + 1e-6)
+
+    def test_life_fade_multiplies_the_colour_alpha(self):
+        """LIFE 的淡入 × 颜色自带的 alpha —— 两者相乘，不是二选一。"""
+        life = life_fields(fadeInDuration=10, duration=50, fadeOutDuration=0)
+        sim = make_sim(spawn=spawn_fields(burstInterval=1000), life=life,
+                       billboard=billboard_fields(color=[255, 255, 255, 128],
+                                                  useColorRange=0))
+        for _ in range(6):
+            sim.step()
+        it = sim.build_render()[0]
+        p = sim.particles[0]
+        self.assertLess(p.alpha, 1.0)                          # 还在淡入
+        self.assertAlmostEqual(it.color[3], (128 / 255.0) * p.alpha, places=5)
+
+    def test_same_seed_same_colours(self):
+        a = [tuple(it.color) for it in self._items(
+            color=list(self.BLACK), colorRange=list(self.WHITE), useColorRange=1,
+            config=SimConfig(seed=3))]
+        b = [tuple(it.color) for it in self._items(
+            color=list(self.BLACK), colorRange=list(self.WHITE), useColorRange=1,
+            config=SimConfig(seed=3))]
+        c = [tuple(it.color) for it in self._items(
+            color=list(self.BLACK), colorRange=list(self.WHITE), useColorRange=1,
+            config=SimConfig(seed=4))]
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, c)
+
+    def test_timl_reread_keeps_the_same_draw(self):
+        """挂了 TIML 的块逐帧重解静态色，但要用出生时那组系数——不能每帧重抽。"""
+        from efx_format.sim.behaviors._common import pick_color
+
+        sim = self._sim(n=4, config=SimConfig(seed=9),
+                        color=list(self.BLACK), colorRange=list(self.WHITE),
+                        useColorRange=1)
+        sim.step()
+        for p, it in zip(sim.particles, sim.build_render()):
+            f = sim.em.f(BILLBOARD3D, p)
+            again = pick_color(f, p.rolled["bb_coff"])
+            bright = p.rolled["bb_bright"]
+            for i in range(3):
+                self.assertAlmostEqual(again[i] * bright, it.color[i], places=6)
+
+    def test_mesh_disable_all_colour_range(self):
+        sim = make_sim(spawn=spawn_fields(particlesPerBurst=8, burstInterval=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       extra=[(MESH, mesh_fields(color=list(self.BLACK),
+                                                 colorRange=list(self.WHITE),
+                                                 useColorRange=1,
+                                                 disableAllColorRange=1))])
+        sim.step()
+        for it in sim.build_render():
+            for c in it.color[:3]:
+                self.assertAlmostEqual(c, 0.0, places=6)
+
+    def test_plane_and_ribbon_share_the_model(self):
+        for tag, hash_, fields in (("plane", PLANE, plane_fields),
+                                   ("ribbon", RIBBON, ribbon_fields)):
+            with self.subTest(body=tag):
+                kw = dict(color=list(self.BLACK), colorRange=list(self.WHITE),
+                          useColorRange=1)
+                if tag == "ribbon":
+                    kw["ribbonMode"] = 1        # 定长面片：静止也画得出来
+                sim = make_sim(
+                    spawn=spawn_fields(particlesPerBurst=30, burstInterval=1000),
+                    life=life_fields(indefiniteLifespan=1),
+                    extra=[(hash_, fields(**kw))])
+                sim.step()
+                cols = {tuple(it.color) for it in sim.build_render()}
+                self.assertGreater(len(cols), 1)
+
+
+class TestPtLifeActionScene(unittest.TestCase):
+    """PTLIFE 在某个生命阶段触发 ACTION → SimScene 建子实例；
+    子实例跟着父粒子走，父粒子消亡后失去 parent 就地留下（用户实机）。"""
+
+    def _scene(self, ptlife=None, parent_life=None, child_life=None,
+               parent_velocity=None, targets=None, config=None, actions=None):
+        """两个 entry：0 = 父（带 PTLIFE），1 = 子（一个静止的 billboard）。"""
+        parent_blocks = [
+            (SPAWN, spawn_fields(burstInterval=1000)),
+            (LIFE, parent_life or life_fields(duration=10)),
+            (PTLIFE, ptlife or ptlife_fields()),
+            (BILLBOARD3D, billboard_fields()),
+        ]
+        if parent_velocity is not None:
+            parent_blocks.append((VELOCITY3D, parent_velocity))
+        child_blocks = [
+            (SPAWN, spawn_fields(burstInterval=1000)),
+            (LIFE, child_life or life_fields(indefiniteLifespan=1)),
+            (BILLBOARD3D, billboard_fields()),
+        ]
+        templates = {0: EntryTemplate(0, parent_blocks),
+                     1: EntryTemplate(1, child_blocks)}
+        if actions is None:
+            actions = {0: list(targets or [ActionTarget(1)])}
+        return SimScene(templates, actions, root_key=0,
+                        config=config or SimConfig(seed=1))
+
+    # ── 基本联动 ─────────────────────────────────────────────────────────────
+    def test_ptlife_is_simulated(self):
+        sc = self._scene()
+        sc.step()
+        self.assertNotIn("PTLIFE", [n for _h, n in sc.unsupported])
+
+    def test_on_spawn_creates_a_child_instance(self):
+        sc = self._scene(ptlife=ptlife_fields(status=0))
+        self.assertEqual(sc.instance_count, 1)       # 只有根
+        sc.step()                                     # 第 0 帧生粒子 → 请求
+        sc.step()                                     # 子实例开始跑
+        self.assertEqual(sc.instance_count, 2)
+        self.assertEqual(sc.instances[1].key, 1)
+
+    def test_relation_index_minus_one_does_nothing(self):
+        sc = self._scene(ptlife=ptlife_fields(relationIndex=-1))
+        sc.run(5)
+        self.assertEqual(sc.instance_count, 1)
+        self.assertTrue(any("-1" in n for n in sc.notes))
+
+    def test_each_particle_triggers_once(self):
+        sc = self._scene(ptlife=ptlife_fields(status=0))
+        sc.run(20)
+        # 一个粒子 → 一个子实例，不会每帧刷一个
+        self.assertEqual(sc.instance_count, 2)
+
+    def test_on_death_fires_at_the_end_of_life(self):
+        sc = self._scene(ptlife=ptlife_fields(status=4),
+                         parent_life=life_fields(duration=5))
+        sc.run(4)
+        self.assertEqual(sc.instance_count, 1)        # 还活着，没触发
+        sc.run(4)
+        self.assertEqual(sc.instance_count, 2)        # 死了 → 触发
+
+    def test_sustain_fires_after_fade_in(self):
+        sc = self._scene(ptlife=ptlife_fields(status=2),
+                         parent_life=life_fields(fadeInDuration=6, duration=40))
+        sc.run(4)
+        self.assertEqual(sc.instance_count, 1)
+        sc.run(6)
+        self.assertEqual(sc.instance_count, 2)
+
+    # ── 跟随 / 断链（用户实机确认的那条）──────────────────────────────────────
+    def test_child_follows_the_parent_particle(self):
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(indefiniteLifespan=1),
+                         parent_velocity=velocity_fields(baseAxis=1, speed=4.0))
+        sc.run(12)
+        child = sc.instances[1]
+        parent_p = sc.root.sim.em.particles[0]
+        self.assertFalse(child.detached)
+        self.assertAlmostEqual(child.em.host_origin.y, parent_p.pos.y, places=4)
+        self.assertGreater(parent_p.pos.y, 10.0)      # 父粒子确实在动
+
+    def test_child_detaches_when_the_parent_dies(self):
+        """父粒子消亡 → 子实例继续存在，但不再跟随，就地留下。"""
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(duration=8),
+                         parent_velocity=velocity_fields(baseAxis=1, speed=4.0),
+                         child_life=life_fields(indefiniteLifespan=1))
+        sc.run(6)
+        child = sc.instances[1]
+        self.assertFalse(child.detached)               # 父粒子还活着 → 还在跟
+        self.assertGreater(child.em.host_origin.y, 0.0)
+
+        while not child.detached and sc.frame < 60:     # 跑到父粒子消亡
+            sc.run(1)
+        self.assertTrue(child.detached)
+        frozen_at = child.em.host_origin.copy()
+
+        sc.run(20)                                     # 断链之后再跑一段
+        self.assertIn(child, sc.instances)             # 子实例还在
+        self.assertAlmostEqual(child.em.host_origin.y, frozen_at.y, places=4)
+        self.assertTrue(child.em.particles)            # 自己的粒子照常演
+
+    def test_child_particles_show_up_in_render(self):
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(indefiniteLifespan=1),
+                         child_life=life_fields(indefiniteLifespan=1))
+        sc.run(10)
+        self.assertGreaterEqual(len(sc.build_render()), 2)   # 父 1 + 子 1
+        self.assertGreaterEqual(len(sc.particles), 2)
+
+    # ── Action 的 Size / Position ────────────────────────────────────────────
+    def test_action_position_offsets_the_child(self):
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(indefiniteLifespan=1),
+                         targets=[ActionTarget(1, position=Vec3(0.0, 50.0, 0.0))])
+        sc.run(4)
+        child = sc.instances[1]
+        parent_p = sc.root.sim.em.particles[0]
+        self.assertAlmostEqual(child.em.host_origin.y, parent_p.pos.y + 50.0, places=4)
+
+    def test_action_size_scales_the_child_emitter(self):
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(indefiniteLifespan=1),
+                         targets=[ActionTarget(1, size=Vec3(2.0, 2.0, 2.0))])
+        sc.run(3)
+        self.assertAlmostEqual(sc.instances[1].em.scale_dynamic.x, 2.0, places=5)
+
+    # ── 安全阀 ───────────────────────────────────────────────────────────────
+    def test_depth_limit_stops_recursion(self):
+        """自指的 action（entry 0 触发指向自己的 action）→ 靠深度上限收住。"""
+        blocks = [
+            (SPAWN, spawn_fields(burstInterval=1000)),
+            (LIFE, life_fields(indefiniteLifespan=1)),
+            (PTLIFE, ptlife_fields(status=0)),
+            (BILLBOARD3D, billboard_fields()),
+        ]
+        sc = SimScene({0: EntryTemplate(0, blocks)}, {0: [ActionTarget(0)]},
+                      root_key=0, config=SimConfig(seed=1, max_spawn_depth=2))
+        sc.run(30)
+        self.assertLessEqual(max(i.depth for i in sc.instances), 2)
+        self.assertTrue(any("max_spawn_depth" in n for n in sc.notes))
+
+    def test_instance_budget(self):
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(indefiniteLifespan=1),
+                         child_life=life_fields(indefiniteLifespan=1),
+                         config=SimConfig(seed=1, max_instances=3),
+                         actions={0: [ActionTarget(1), ActionTarget(1),
+                                      ActionTarget(1), ActionTarget(1)]})
+        sc.run(6)
+        self.assertLessEqual(sc.instance_count, 3)
+        self.assertTrue(any("max_instances" in n for n in sc.notes))
+
+    def test_missing_target_entry_is_reported(self):
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         targets=[ActionTarget(99)])
+        sc.run(4)
+        self.assertEqual(sc.instance_count, 1)
+        self.assertTrue(any("99" in n for n in sc.notes))
+
+    def test_idle_children_get_culled(self):
+        """子实例的粒子演完 → 空转一段时间后回收，别无限堆着。"""
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(indefiniteLifespan=1),
+                         child_life=life_fields(duration=3),
+                         config=SimConfig(seed=1, child_cull_grace=5))
+        sc.run(6)
+        self.assertEqual(sc.instance_count, 2)
+        sc.run(40)
+        self.assertEqual(sc.instance_count, 1)       # 只剩根
+
+    # ── 确定性 ───────────────────────────────────────────────────────────────
+    def test_same_seed_same_tree(self):
+        def run(seed):
+            sc = self._scene(ptlife=ptlife_fields(status=0),
+                             parent_life=life_fields(indefiniteLifespan=1),
+                             child_life=life_fields(indefiniteLifespan=1),
+                             config=SimConfig(seed=seed))
+            sc.run(15)
+            return [(i.key, i.depth, round(i.em.host_origin.y, 5))
+                    for i in sc.instances]
+
+        self.assertEqual(run(5), run(5))
+
+    def test_reset_rebuilds_from_scratch(self):
+        sc = self._scene(ptlife=ptlife_fields(status=0),
+                         parent_life=life_fields(indefiniteLifespan=1))
+        sc.run(10)
+        self.assertEqual(sc.instance_count, 2)
+        sc.reset()
+        self.assertEqual(sc.instance_count, 1)
+        self.assertEqual(sc.frame, -1)
+
+
+class TestParentOptions(unittest.TestCase):
+    """跟随发射器 + 停止追踪帧数（其余字段刻意未实现，只 note）。"""
+
+    def _sim(self, parent=None, frames=10, drift=(0.0, 0.0, 0.0), **kw):
+        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("life", life_fields(indefiniteLifespan=1))
+        kw.setdefault("transform", drifting_emitter(*drift))
+        extra = list(kw.pop("extra", ()))
+        extra.append((PARENTOPTIONS, parent or parentoptions_fields()))
+        sim = make_sim(extra=extra, **kw)
+        for _ in range(frames):
+            sim.step()
+        return sim
+
+    def test_parentoptions_is_simulated(self):
+        sim = self._sim()
+        self.assertNotIn("PARENTOPTIONS", [n for _h, n in sim.unsupported])
+
+    def test_without_follow_particles_keep_their_birth_origin(self):
+        """关着「跟随发射器」→ 粒子只认出生那一刻的原点。"""
+        sim = self._sim(parent=parentoptions_fields(particleUseLocal=0),
+                        drift=(5.0, 0.0, 0.0), frames=10)
+        p = sim.particles[0]
+        # 第 0 帧发射器已经走了一步（5），粒子就生在那儿，之后再也不动
+        self.assertAlmostEqual(p.pos.x, 5.0, places=5)
+        self.assertGreater(sim.em.origin.x, 40.0)           # 发射器确实走了
+
+    def test_follow_carries_existing_particles(self):
+        sim = self._sim(parent=parentoptions_fields(particleUseLocal=1),
+                        drift=(5.0, 0.0, 0.0), frames=10)
+        p = sim.particles[0]
+        self.assertAlmostEqual(p.pos.x, sim.em.origin.x, places=4)
+
+    def test_follow_adds_on_top_of_the_particles_own_motion(self):
+        """跟随是**加增量**，不是每帧重置到发射器身上——粒子自己的速度要保住。"""
+        sim = self._sim(parent=parentoptions_fields(particleUseLocal=1),
+                        drift=(5.0, 0.0, 0.0), frames=10,
+                        velocity=velocity_fields(baseAxis=1, speed=3.0))  # 自己朝 +Y 飞
+        p = sim.particles[0]
+        self.assertAlmostEqual(p.pos.x, sim.em.origin.x, places=4)   # 跟着发射器横移
+        self.assertGreater(p.pos.y, 20.0)                            # 自己的运动没丢
+
+    def test_const_release_stops_the_tracking(self):
+        """停止追踪帧数 = 5 → 只跟 5 帧，之后就地锁定。"""
+        sim = self._sim(parent=parentoptions_fields(particleUseLocal=1,
+                                                    constRelease=5),
+                        drift=(5.0, 0.0, 0.0), frames=20)
+        p = sim.particles[0]
+        self.assertAlmostEqual(p.pos.x, 25.0, delta=5.1)     # 5 帧 × 5/帧
+        self.assertLess(p.pos.x, sim.em.origin.x - 40.0)     # 发射器早就跑远了
+
+    def test_const_release_zero_means_always(self):
+        sim = self._sim(parent=parentoptions_fields(particleUseLocal=1,
+                                                    constRelease=0),
+                        drift=(5.0, 0.0, 0.0), frames=20)
+        self.assertAlmostEqual(sim.particles[0].pos.x, sim.em.origin.x, places=4)
+
+    def test_release_clock_can_follow_the_emitter_timeline(self):
+        cfg = SimConfig(parent_release_clock="emitter_frame")
+        sim = self._sim(parent=parentoptions_fields(particleUseLocal=1,
+                                                    constRelease=5),
+                        drift=(5.0, 0.0, 0.0), frames=20, config=cfg)
+        self.assertAlmostEqual(sim.particles[0].pos.x, 25.0, delta=5.1)
+
+    def test_unhandled_tracking_modes_are_reported(self):
+        sim = self._sim(parent=parentoptions_fields(relationPos=[1, 0, 0]))
+        self.assertTrue(any("relationPos" in n for n in sim.notes))
+
+
+class TestEmitterRotationReachesParticles(unittest.TestCase):
+    """TRANSFORM3D 的 rotation_velocity / scale_velocity 要真的作用到发出去的东西上
+    （在这之前 em.rotation/em.scale 只是累积着没人用）。"""
+
+    def _spawn_at(self, transform, frames=4, es3d=None, velocity=None):
+        sim = make_sim(spawn=spawn_fields(burstInterval=1000, emitterStartDelay=3),
+                       life=life_fields(indefiniteLifespan=1),
+                       transform=transform,
+                       es3d=es3d, velocity=velocity)
+        for _ in range(frames):
+            sim.step()
+        return sim
+
+    #: 一个定点生成方式：rangeXYZ 的 min==max → 采样点恒为 (10,0,0)
+    #: 一个定点生成方式：偏移 X=10、尺寸全 0 → 采样点恒在 (±10, 0, 0) 的球壳退化点上
+    FIXED_POINT = dict(shapeType=1, rangeXYZ=[10.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+
+    def test_spawn_offset_follows_emitter_rotation(self):
+        """发射器的动态旋转要作用到「它发出去的东西」上。
+
+        直接驱动 `_common.emitter_place`（生成方式的采样点就是过它落地的），
+        而不是借某个形状的随机采样——那样断言会被形状的随机性糊掉。
+        """
+        from efx_format.sim.behaviors._common import emitter_place
+
+        still = self._spawn_at(spinning_emitter(0.0))
+        spun = self._spawn_at(spinning_emitter(30.0))
+        v = Vec3(10.0, 0.0, 0.0)
+        a = emitter_place(still.em, v)
+        b = emitter_place(spun.em, v)
+        self.assertAlmostEqual(a.x, 10.0, places=4)
+        self.assertAlmostEqual(a.length(), b.length(), places=4)   # 只转不缩
+        self.assertGreater((a - b).length(), 1.0)                  # 真的转了
+
+        order = rot_order_name(4, ROT_ORDER_TRANSFORM)
+        expect = rotate_euler(v, 0.0, spun.em.rot_dynamic.y, 0.0, order=order)
+        self.assertAlmostEqual(b.x, expect.x, places=3)
+        self.assertAlmostEqual(b.z, expect.z, places=3)
+
+    def test_initial_velocity_follows_emitter_rotation(self):
+        vel = velocity_fields(baseAxis=1, speed=5.0)               # 自身朝 +Y
+        still = self._spawn_at(spinning_emitter(0.0), velocity=vel)
+        spun = self._spawn_at(spinning_emitter(30.0), velocity=vel)
+        a = still.particles[0].vel
+        b = spun.particles[0].vel
+        self.assertAlmostEqual(a.length(), b.length(), places=4)
+        # 绕 Y 转不动 +Y 本身 —— 换成朝 +X 的初速度才看得出差别
+        vel_x = velocity_fields(baseAxis=0, speed=5.0)
+        a2 = self._spawn_at(spinning_emitter(0.0), velocity=vel_x).particles[0].vel
+        b2 = self._spawn_at(spinning_emitter(30.0), velocity=vel_x).particles[0].vel
+        self.assertGreater((a2 - b2).length(), 1.0)
+
+    def test_static_rotation_is_left_to_the_host(self):
+        """t3d_apply_base 关着（默认）→ 静态 rotate 不进 rot_dynamic，
+        否则 Blender 里会和 entry 矩阵双份旋转。"""
+        from efx_format.sim.behaviors._common import emitter_place
+
+        t = transform3d_fields(rotate=[90.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        sim = self._spawn_at(t)
+        self.assertAlmostEqual(sim.em.rot_dynamic.x, 0.0, places=6)
+        # 动态部分为零 → 生成点原样不动（静态旋转由宿主的 entry 矩阵负责）
+        placed = emitter_place(sim.em, Vec3(10.0, 0.0, 0.0))
+        self.assertAlmostEqual(placed.x, 10.0, places=4)
+        self.assertAlmostEqual(placed.length(), 10.0, places=4)
+
+    def test_scale_velocity_scales_the_spawn_offset(self):
+        from efx_format.sim.behaviors._common import emitter_place
+
+        t = transform3d_fields(enableVelocityBitflag=1,
+                               scale_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # +1/帧
+        sim = self._spawn_at(t)
+        # 每帧 +1 → x 方向倍率 1+N
+        expect = 10.0 * sim.em.scale_dynamic.x
+        self.assertGreater(sim.em.scale_dynamic.x, 1.0)
+        self.assertAlmostEqual(emitter_place(sim.em, Vec3(10.0, 0.0, 0.0)).x,
+                               expect, places=4)
+
 
 class TestTrailHelpers(unittest.TestCase):
 
@@ -1541,18 +2448,50 @@ class TestRibbon(unittest.TestCase):
         return sim
 
     def test_kind_and_vertex_count(self):
-        sim = self._sim(ribbon=ribbon_fields(subdivisionCount=5))
+        # 轨迹跟随要有轨迹才画得出来（静止 → 彻底消失，见下面那条）
+        sim = self._sim(ribbon=ribbon_fields(subdivisionCount=5),
+                        velocity=velocity_fields(speed=10.0))
         it = sim.build_render()[0]
         self.assertEqual(it.kind, "RIBBON")
         self.assertEqual(len(it.points), 5)
 
+    def test_static_trail_ribbon_draws_nothing(self):
+        """静止时条带**彻底消失**（用户实机确认）——不是退化成一条直线，
+        也不能退化成 Simulator 的调试点（那会变成「静止时反而多一个点」）。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=50.0))
+        self.assertEqual(sim.build_render(), [])
+
+    def test_trail_length_scales_with_subdivision(self):
+        """长度跟着细分数走：总长 = length × (细分数-1)。"""
+        spans = {}
+        for n in (2, 5):
+            sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=10.0,
+                                                 subdivisionCount=n),
+                            velocity=velocity_fields(speed=10.0), frames=40)
+            pts = [q for q, _w, _a in sim.build_render()[0].points]
+            spans[n] = (pts[-1] - pts[0]).length()
+        self.assertAlmostEqual(spans[2], 10.0, delta=0.5)      # 1 段
+        self.assertAlmostEqual(spans[5], 40.0, delta=0.5)      # 4 段
+
     def test_trail_mode_follows_particle_motion(self):
-        """粒子自己动 → 沿粒子轨迹（pick_trail 的 auto 分支）。"""
+        """粒子自己动 → 沿粒子轨迹（pick_trail 的 auto 分支）。
+
+        默认 subdiv=5 → 总长上限 = 50 × 4 = 200；20 帧 × 10/帧只走了 190，
+        还没到上限，所以条带就是这 190。
+        """
         sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=50.0),
                         velocity=velocity_fields(speed=10.0))
         pts = [q for q, _w, _a in sim.build_render()[0].points]
         span = (pts[-1] - pts[0]).length()
-        self.assertAlmostEqual(span, 50.0, delta=1.0)
+        self.assertAlmostEqual(span, 190.0, delta=1.0)
+
+    def test_trail_length_mode_total_caps_at_length(self):
+        """`ribbon_length_mode='total'` = 改动前的读法：length 就是总长。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=50.0),
+                        velocity=velocity_fields(speed=10.0),
+                        config=SimConfig(ribbon_length_mode="total"))
+        pts = [q for q, _w, _a in sim.build_render()[0].points]
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 50.0, delta=1.0)
 
     def test_trail_falls_back_to_emitter_when_particle_is_static(self):
         """blade_trail 那种粒子不动的情形，轨迹得取发射器的。"""
@@ -1560,9 +2499,10 @@ class TestRibbon(unittest.TestCase):
             ribbon=ribbon_fields(ribbonMode=0, length=40.0),
             transform=transform3d_fields(
                 enableVelocityBitflag=1,
-                translation_velocity=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+                translation_velocity=[300.0, 0.0, 0.0, 0.0, 0.0, 0.0]))   # 5/帧
         pts = [q for q, _w, _a in sim.build_render()[0].points]
-        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 40.0, delta=1.0)
+        # 发射器 20 帧 × 5/帧 = 95（默认 subdiv=5 → 上限 40×4=160，没到）
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 95.0, delta=1.0)
 
     def test_rigid_mode_is_a_straight_fixed_length_strip(self):
         sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=1))
@@ -1586,7 +2526,8 @@ class TestRibbon(unittest.TestCase):
         self.assertIn("nodes", sim.particles[0].user[_R])
 
     def test_width_taper(self):
-        sim = self._sim(ribbon=ribbon_fields(width=20.0, base_width_multiplier=0.0,
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, width=20.0,
+                                             base_width_multiplier=0.0,
                                              tip_width_multiplier=1.0))
         widths = [w for _q, w, _a in sim.build_render()[0].points]
         self.assertAlmostEqual(widths[0], 0.0, places=6)
@@ -1594,7 +2535,8 @@ class TestRibbon(unittest.TestCase):
         self.assertLess(widths[0], widths[-1])
 
     def test_opacity_taper(self):
-        sim = self._sim(ribbon=ribbon_fields(base_opacity=0.0, tip_opacity=1.0))
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, base_opacity=0.0,
+                                             tip_opacity=1.0))
         alphas = [a for _q, _w, a in sim.build_render()[0].points]
         self.assertAlmostEqual(alphas[0], 0.0, places=6)
         self.assertAlmostEqual(alphas[-1], 1.0, places=6)
@@ -1795,7 +2737,9 @@ class TestT3EndToEnd(unittest.TestCase):
             with self.subTest(archetype=stem):
                 blocks, timl = _load_archetype(stem + ".json")
                 sim = from_attr_blocks(blocks, timl, SimConfig(seed=2))
-                sim.run(40)
+                # 10 帧：ribbon_particle 只发一批（burstsPerCycle=1/repeat=1）、
+                # 寿命 1+15 帧，跑到 40 帧那一批早没了
+                sim.run(10)
                 items = sim.build_render()
                 self.assertTrue(items, "%s 没产出任何渲染项" % stem)
                 self.assertEqual({i.kind for i in items}, {kind})
@@ -1831,6 +2775,212 @@ class TestT3EndToEnd(unittest.TestCase):
                 for _ in range(120):
                     sim.step()
                 sim.build_render()
+
+
+# -----------------------------------------------------------------------------
+# UVSEQUENCE（序列帧）
+# -----------------------------------------------------------------------------
+
+class TestUvsFrameTable(unittest.TestCase):
+    """帧表本身：网格兜底 / 真 .uvs / 角点变换。"""
+
+    def test_grid_default_is_8x8(self):
+        t = grid_table()
+        self.assertEqual(len(t), 64)
+        self.assertEqual(t.source, "grid")
+        self.assertEqual(t.grid, (8, 8))
+
+    def test_grid_lr_tb_starts_at_top_row(self):
+        # LR_TB = 左→右 上→下；v 向下，所以第一格在 v 最大的那行
+        # （公式与 blender_efx/uvs_io.py::_gen_frames_grid 同源）
+        t = grid_table(2, 2, "LR_TB")
+        self.assertEqual(t.rect(0), (0.0, 0.5, 0.5, 1.0))
+        self.assertEqual(t.rect(1), (0.5, 0.5, 1.0, 1.0))
+        self.assertEqual(t.rect(2), (0.0, 0.0, 0.5, 0.5))
+
+    def test_grid_lr_bt_is_the_mirror(self):
+        t = grid_table(2, 2, "LR_BT")
+        self.assertEqual(t.rect(0), (0.0, 0.0, 0.5, 0.5))
+
+    def test_index_wraps_or_clamps(self):
+        t = grid_table(2, 2)
+        self.assertEqual(t.index(5, wrap=True), 1)
+        self.assertEqual(t.index(5, wrap=False), 3)
+        self.assertEqual(t.index(-1, wrap=True), 3)
+        self.assertEqual(t.index(-1, wrap=False), 0)
+
+    def test_parse_real_uvs_bytes(self):
+        data = uvs_bytes([(0.0, 0.0, 0.25, 0.5), (0.25, 0.0, 0.5, 0.5)])
+        t = simuvs.from_uvs_bytes(data, 0)
+        self.assertIsNotNone(t)
+        self.assertEqual(len(t), 2)
+        self.assertEqual(t.source, "uvs")
+        self.assertEqual(t.rect(0), (0.0, 0.0, 0.25, 0.5))
+        self.assertEqual(t.tex_paths, ("sheet.tex",))
+
+    def test_sequence_no_selects_the_group(self):
+        # 用户确认：sequenceNo 就是 .uvs 里的 group 下标
+        data = uvs_bytes([(0.0, 0.0, 1.0, 1.0)], extra_groups=2)
+        self.assertEqual(len(simuvs.from_uvs_bytes(data, 0)), 1)
+        self.assertEqual(len(simuvs.from_uvs_bytes(data, 1)), 2)
+        self.assertEqual(len(simuvs.from_uvs_bytes(data, 2)), 3)
+        self.assertIsNone(simuvs.from_uvs_bytes(data, 9))
+
+    def test_corners_order_and_flips(self):
+        t = simuvs.FrameTable([(0.1, 0.2, 0.3, 0.4)])
+        bl, br, tr, tl = t.corners(0)
+        self.assertEqual(bl, (0.1, 0.4))      # 左下：v 大 = 底
+        self.assertEqual(br, (0.3, 0.4))
+        self.assertEqual(tr, (0.3, 0.2))
+        self.assertEqual(tl, (0.1, 0.2))
+        # 水平翻转 = 左右两列 u 互换
+        fbl, fbr = t.corners(0, flip_u=True)[:2]
+        self.assertEqual((fbl[0], fbr[0]), (0.3, 0.1))
+        # 垂直翻转 = 上下两行 v 互换
+        vc = t.corners(0, flip_v=True)
+        self.assertEqual((vc[0][1], vc[3][1]), (0.2, 0.4))
+
+    def test_corners_turns_rotate_the_assignment(self):
+        t = simuvs.FrameTable([(0.0, 0.0, 1.0, 1.0)])
+        base = t.corners(0)
+        self.assertEqual(t.corners(0, turns=1), base[1:] + base[:1])
+        self.assertEqual(t.corners(0, turns=4), base)
+
+    def test_resources_fall_back_to_grid(self):
+        res = SimResources()
+        table, fell_back = res.uvs_table(0, SimConfig())
+        self.assertTrue(fell_back)
+        self.assertEqual(len(table), 64)
+        # 真表在就不兜底
+        res2 = SimResources(uvs_bytes([(0.0, 0.0, 1.0, 1.0)] * 3))
+        table2, fell_back2 = res2.uvs_table(0, SimConfig())
+        self.assertFalse(fell_back2)
+        self.assertEqual(len(table2), 3)
+
+
+class TestUvSequence(unittest.TestCase):
+    """behavior：帧推进 / 四种播放模式 / 翻转朝向 / 写进 RenderItem。"""
+
+    def _res(self, n=4):
+        w = 1.0 / n
+        return SimResources(uvs_bytes([(i * w, 0.0, (i + 1) * w, 1.0)
+                                       for i in range(n)]))
+
+    def test_loop_advances_one_frame_per_frame(self):
+        sim = uvseq_sim(resources=self._res(4), frames=1)
+        p = sim.particles[0]
+        seen = [frame_info(p)[0]]
+        for _ in range(5):
+            sim.step()
+            seen.append(frame_info(p)[0])
+        # playSpeed=1 → 每帧一格，走到末尾回绕
+        self.assertEqual(seen, [1, 2, 3, 0, 1, 2])
+
+    def test_half_speed_takes_two_frames_per_cell(self):
+        sim = uvseq_sim(uv={"playSpeed": 0.5}, resources=self._res(8), frames=1)
+        p = sim.particles[0]
+        seen = [frame_info(p)[0]]
+        for _ in range(5):
+            sim.step()
+            seen.append(frame_info(p)[0])
+        self.assertEqual(seen, [0, 1, 1, 2, 2, 3])
+
+    def test_per_second_unit_divides_by_fps(self):
+        cfg = SimConfig(uvs_speed_unit="per_second", fps=60)
+        sim = uvseq_sim(uv={"playSpeed": 60.0}, resources=self._res(8),
+                        config=cfg, frames=3)
+        # 60 格/秒 ÷ 60 fps = 每帧一格
+        self.assertEqual(frame_info(sim.particles[0])[0], 3)
+
+    def test_start_frame_only_never_advances(self):
+        sim = uvseq_sim(uv={"loopingMode": looping_mode(playback=0),
+                            "patternNo": 2, "playSpeed": 0.0},
+                        resources=self._res(4), frames=10)
+        self.assertEqual(frame_info(sim.particles[0])[0], 2)
+
+    def test_play_once_then_hold_clamps_at_last_frame(self):
+        sim = uvseq_sim(uv={"loopingMode": looping_mode(playback=3)},
+                        resources=self._res(4), frames=20)
+        p = sim.particles[0]
+        self.assertTrue(p.alive)
+        self.assertEqual(frame_info(p)[0], 3)
+
+    def test_play_once_then_vanish_kills_the_particle(self):
+        sim = uvseq_sim(uv={"loopingMode": looping_mode(playback=2)},
+                        resources=self._res(4), frames=3)
+        self.assertEqual(len(sim.particles), 1)      # 还在放
+        sim.run(4)
+        self.assertEqual(len(sim.particles), 0)      # 放完就没了
+
+    def test_vanish_span_respects_start_frame(self):
+        # to_end：起始帧越靠后，这一轮越短
+        sim = uvseq_sim(uv={"loopingMode": looping_mode(playback=2),
+                            "patternNo": 3},
+                        resources=self._res(4), frames=2)
+        self.assertEqual(len(sim.particles), 0)
+
+    def test_reverse_direction_counts_down(self):
+        sim = uvseq_sim(uv={"loopingMode": looping_mode(playback=1, direction=1),
+                            "patternNo": 3},
+                        resources=self._res(4), frames=1)
+        p = sim.particles[0]
+        seen = [frame_info(p)[0]]
+        for _ in range(3):
+            sim.step()
+            seen.append(frame_info(p)[0])
+        self.assertEqual(seen, [2, 1, 0, 3])
+
+    def test_always_flip_swaps_u(self):
+        sim = uvseq_sim(uv={"loopingMode": looping_mode(playback=0, flip_h=1),
+                            "playSpeed": 0.0},
+                        resources=self._res(4), frames=1)
+        item = sim.build_render()[0]
+        bl, br = item.uv_corners[0], item.uv_corners[1]
+        self.assertGreater(bl[0], br[0])         # 翻过来了：左角的 u 更大
+
+    def test_random_flip_is_deterministic_per_seed(self):
+        uv = {"loopingMode": looping_mode(playback=1, flip_h=2, flip_v=2),
+              "loopingOrientation": 3}
+        spawn = spawn_fields(particlesPerBurst=24, burstInterval=1000)
+
+        def run(seed):
+            sim = uvseq_sim(uv=uv, spawn=spawn, resources=self._res(4),
+                            config=SimConfig(seed=seed), frames=2)
+            return [it.uv_corners for it in sim.build_render()]
+
+        a, b = run(7), run(7)
+        self.assertEqual(a, b)
+        self.assertNotEqual(a, run(8))
+        # 随机档确实把粒子分成了不同形态，不是全体一致
+        self.assertGreater(len(set(a)), 1)
+
+    def test_render_item_carries_frame_debug_info(self):
+        sim = uvseq_sim(resources=self._res(4), frames=2)
+        item = sim.build_render()[0]
+        self.assertEqual(item.extra["uvs_frame"], 2)
+        self.assertEqual(item.extra["uvs_n"], 4)
+        self.assertEqual(item.extra["uvs_source"], "uvs")
+        self.assertEqual(item.uv_rect, (0.5, 0.0, 0.75, 1.0))
+
+    def test_grid_fallback_notes_the_guess(self):
+        sim = uvseq_sim(frames=2)      # 不给 resources
+        self.assertTrue(any(".uvs" in n for n in sim.notes))
+        item = sim.build_render()[0]
+        self.assertEqual(item.extra["uvs_source"], "grid")
+        self.assertEqual(item.extra["uvs_n"], 64)
+
+    def test_runs_in_strict_mode(self):
+        # RENDER_MOD 阶段只许写 p.user —— strict 会逐帧核对
+        sim = uvseq_sim(resources=self._res(4),
+                        config=SimConfig(strict=True), frames=30)
+        sim.build_render()
+
+    def test_no_render_body_stays_a_point(self):
+        sim = uvseq_sim(billboard=None, resources=self._res(4), frames=2)
+        item = sim.build_render()[0]
+        self.assertEqual(item.kind, "POINT")
+        self.assertIsNone(item.uv_corners)
+
 
 
 if __name__ == "__main__":
