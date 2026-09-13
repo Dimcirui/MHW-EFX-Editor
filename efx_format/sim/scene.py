@@ -209,17 +209,21 @@ def _scale_item(it, anchor, s):
 class Instance(object):
     """树上的一个节点 = 一个 entry 的一次运行。"""
 
-    __slots__ = ("iid", "key", "sim", "depth", "parent_particle", "offset",
-                 "birth_frame", "idle_frames", "detached", "scale")
+    __slots__ = ("iid", "key", "sim", "depth", "parent_particle", "parent_em",
+                 "offset", "birth_frame", "idle_frames", "detached", "scale")
 
     def __init__(self, iid, key, sim, depth, parent_particle=None, offset=None,
-                 birth_frame=0, scale=None):
+                 birth_frame=0, scale=None, parent_em=None):
         self.iid = iid
         self.key = key
         self.sim = sim
         self.depth = depth
         #: 发起它的那个粒子（根实例为 None）。粒子死了就断链，见 detached。
         self.parent_particle = parent_particle
+        #: 发起它的那个**实例**的 EmitterState（根实例为 None）。跟 parent_particle
+        #: 分开存是因为旋转是发射器级的量，不挂在某个粒子上——`_follow` 用它逐帧
+        #: 刷新 `self.em.host_rotation`（见模块 docstring「父子关系」）。
+        self.parent_em = parent_em
         self.offset = offset or Vec3()
         #: PLAYEMITTER 的 Size —— 这一整个子特效的整体缩放（见 SimScene.build_render）
         self.scale = scale or Vec3(1.0, 1.0, 1.0)
@@ -294,7 +298,7 @@ class SimScene(object):
             self._child_cfg = c
         return self._child_cfg
 
-    def _make_instance(self, key, depth, parent_particle=None, target=None):
+    def _make_instance(self, key, depth, parent_particle=None, target=None, parent_em=None):
         tmpl = self.templates.get(key)
         if tmpl is None:
             self.note("Action 指向的 entry %r 不在本次模拟里，已跳过" % (key,))
@@ -317,7 +321,7 @@ class SimScene(object):
         offset = target.position.copy() if target is not None else Vec3()
         scale = target.size.copy() if target is not None else None
         inst = Instance(self._next_iid, key, sim, depth, parent_particle, offset,
-                        max(0, self.frame), scale)
+                        max(0, self.frame), scale, parent_em=parent_em)
         self._next_iid += 1
         if parent_particle is not None:
             self._follow(inst)
@@ -385,6 +389,17 @@ class SimScene(object):
         ho.y = p.pos.y + inst.offset.y
         ho.z = p.pos.z + inst.offset.z
 
+        # 父实例转起来，它召唤出的子实例（生成方式/初速度的朝向）要跟着一起转，
+        # 不然子特效永远只往同一个方向发，看不出父的旋转（见 _common.emitter_rotate）。
+        # 逐帧覆盖而非累加：host_rotation 恒等于「父此刻的总旋转」，父继续转下一帧
+        # 这里跟着更新，父不转就一直是父那份常量，不会自己越滚越大。
+        pem = inst.parent_em
+        if pem is not None:
+            hr = inst.em.host_rotation
+            hr.x = pem.rot_dynamic.x + pem.host_rotation.x
+            hr.y = pem.rot_dynamic.y + pem.host_rotation.y
+            hr.z = pem.rot_dynamic.z + pem.host_rotation.z
+
     def _consume(self, inst, reqs):
         cfg = self.config
         for req in reqs:
@@ -412,7 +427,8 @@ class SimScene(object):
                               % cfg.max_particles_total)
                     return
                 self._make_instance(target.entry_key, inst.depth + 1,
-                                    parent_particle=req.particle, target=target)
+                                    parent_particle=req.particle, target=target,
+                                    parent_em=inst.em)
 
     def run_to(self, frame):
         if frame < self.frame:

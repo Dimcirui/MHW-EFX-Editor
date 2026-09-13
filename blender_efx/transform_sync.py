@@ -2,12 +2,20 @@
 blender_efx/transform_sync.py  —  TRANSFORM3D + PARENTOPTIONS → body empty 视口定位
 
 把每个 body 的基础变换摆到视口做**可视化代理**（单向，不反写、不参与导出）：
-  - 基准 = 该 body 绑定骨骼（PARENTOPTIONS.jointNo）的世界位置；
-    jointNo = -1 / 255 / 找不到对应骨骼 → 以世界原点为基准（=旧行为）。
-  - 在基准之上叠加 TRANSFORM3D 的 translate/rotate/resize（基础值）。
-  - 一次性烘焙到 body empty 的 matrix_world（不建父子约束，不跟随骨架 pose）。
+  - 骨骼绑定（PARENTOPTIONS.jointNo 有效）：挂一个 Copy Location 约束实时跟随该
+    骨骼的**当前 pose**（不是 rest）——骨架播动作/被摆 pose 时 entry 位置跟着动，
+    不需要每帧手工重算。约束只管 Location，不碰 Rotation/Scale（原因见下）。
+  - jointNo = -1 / 255 / 找不到对应骨骼 → 摘掉约束，退回世界原点基准（=旧行为）。
+  - 在基准之上叠加 TRANSFORM3D 的 translate/rotate/resize（基础值）：写入 entry 自身
+    的 matrix_basis（即约束生效前的"自身"变换），约束用 use_offset 把骨骼世界位置
+    加到这份自身位置上——两者按 Blender 正常方式相加，本模块不用每帧手工合成矩阵。
+  - 不继承骨骼 rest 朝向：MhBone 默认沿 +Y，其 matrix_local 内嵌 +90°X 伪旋转，
+    整体继承会让 entry 平白多转 90°。旋转统一交给 TRANSFORM3D 的 M 共轭映射
+    （entry 自身 rotation，与无骨骼路径一致）。
 
 ⚠ object transform **不参与导出**（导出只读字段/data_bytes），纯可视、零字节风险。
+⚠ 约束只在骨骼真的播动作（Blender 时间轴推进触发 depsgraph 求值）时才会动——
+  静止骨架和以前一样是静态摆位，不会凭空生成动画。
 
 骨骼映射（用户确认）：
   - MHW_Model_Editor 把骨骼命名为 MhBone_<boneFunction 补零3位>；255 是"无"哨兵。
@@ -177,29 +185,76 @@ def _t3d_local_matrix(t3d_attribute):
     return Matrix.Translation(loc) @ rot @ scl
 
 
-# ── 骨骼基准矩阵 ─────────────────────────────────────────────────────────────
+# ── 骨骼基准 ─────────────────────────────────────────────────────────────────
 
 # 视为"无绑定骨骼 / 原点基准"的 jointNo 哨兵值。
 _BONE_NONE_SENTINELS = (-1, 255)
 
+#: entry 上骨骼跟随约束的固定名字（增/改/删都按这个名字找，避免重复叠加）。
+_BONE_FOLLOW_CONSTRAINT_NAME = "EFX_BoneFollow"
 
-def bone_base_matrix(armature_obj, jointNo):
-    """
-    返回绑定骨骼的世界 rest 矩阵；以下情形返回 None（→ 以世界原点为基准）：
-      - armature_obj 为空 / 非骨架
-      - jointNo 为 None / -1 / 255
-      - 骨架中无名为 MhBone_<jointNo:03d> 的骨骼
+
+def _resolve_bone_name(armature_obj, jointNo):
+    """校验 jointNo 对应的骨骼是否存在，返回骨骼名；否则 None（→ 以世界原点为基准）。
+
+    None 情形：armature_obj 为空/非骨架、jointNo 为 None/-1/255、骨架中无对应骨骼。
     """
     if armature_obj is None or armature_obj.type != "ARMATURE":
         return None
     if jointNo is None or jointNo in _BONE_NONE_SENTINELS or jointNo < 0:
         return None
     bone_name = f"MhBone_{jointNo:03d}"
-    bone = armature_obj.data.bones.get(bone_name)
-    if bone is None:
+    if armature_obj.data.bones.get(bone_name) is None:
         return None
+    return bone_name
+
+
+def bone_base_matrix(armature_obj, jointNo):
+    """
+    返回绑定骨骼的世界 **rest** 矩阵；找不到对应骨骼 / 未绑定时返回 None。
+
+    ⚠ 这是一次性静态快照（rest pose，非当前 pose）——供 uvc_preview.py 等一次性
+    定位场景使用。主 entry 摆位走的是实时跟随，见 `_sync_bone_follow_constraint`。
+    """
+    bone_name = _resolve_bone_name(armature_obj, jointNo)
+    if bone_name is None:
+        return None
+    bone = armature_obj.data.bones[bone_name]
     # rest 位姿下骨骼 head 的世界矩阵（matrix_local 是骨架空间的 rest 矩阵）
     return armature_obj.matrix_world @ bone.matrix_local
+
+
+def _sync_bone_follow_constraint(entry_obj, armature_obj, jointNo) -> bool:
+    """让 entry 的位置实时跟随绑定骨骼的**当前 pose**（Copy Location 约束）。
+
+    只约束 Location，不碰 Rotation/Scale——原因见模块顶部文档串（MhBone rest 朝向
+    的 +90°X 伪旋转）。`use_offset=True` 让约束把骨骼世界位置**加到** entry 自身
+    的 location 上（即 matrix_basis 里的平移分量，由调用方写入 TRANSFORM3D 的本地
+    偏移），而不是整个替换掉——这样本地偏移和骨骼位置按 Blender 常规方式相加，
+    模拟层/本模块都不用每帧手工重算。
+
+    idempotent：每次调用都会按当前 jointNo/armature 增/改/删约束，不会重复叠加，
+    也不会在骨骼绑定失效后留下失效的约束。返回 True＝已挂上（跟随骨骼），
+    False＝已清除或本就没有（调用方应退回世界原点/锚点基准直接写 matrix_world）。
+    """
+    bone_name = _resolve_bone_name(armature_obj, jointNo)
+    con = entry_obj.constraints.get(_BONE_FOLLOW_CONSTRAINT_NAME)
+    if bone_name is None:
+        if con is not None:
+            entry_obj.constraints.remove(con)
+        return False
+    if con is None:
+        con = entry_obj.constraints.new(type="COPY_LOCATION")
+        con.name = _BONE_FOLLOW_CONSTRAINT_NAME
+    con.target = armature_obj
+    con.subtarget = bone_name
+    con.head_tail = 0.0            # 骨骼 head（与旧的一次性烘焙取值一致）
+    con.use_offset = True          # 叠加 entry 自身 location，而非整体替换
+    con.use_x = con.use_y = con.use_z = True
+    con.target_space = "WORLD"
+    con.owner_space = "WORLD"
+    con.influence = 1.0
+    return True
 
 
 # ── 应用到单个 entry ──────────────────────────────────────────────────────────
@@ -207,18 +262,23 @@ def bone_base_matrix(armature_obj, jointNo):
 def apply_entry_transform(entry_obj, armature_obj=None, base_override=None, children_map=None) -> bool:
     """
     按 entry 的 TRANSFORM3D（基础变换）+ PARENTOPTIONS（jointNo 绑定骨骼）
-    计算 entry empty 的 matrix_world 并写入。返回是否成功。
+    计算 entry empty 的位置并写入。返回是否成功。
 
     base_override：锚定机制传入「基点 entry 的 matrix_world」。提供时它**优先于**骨骼
-    （锚定 entry 间接继承基点 entry 的位置）。
+    （锚定 entry 间接继承基点 entry 的位置），且与骨骼跟随约束互斥——若之前挂了
+    约束会先摘掉，退回一次性写 matrix_world（锚点基准是另一个 entry 的完整矩阵，
+    不是骨骼，没法用同一个 Copy Location 约束表达，也没必要——锚点一般不带自己的
+    实时骨骼动画）。
 
-    ⚠ 三类基准都用 **M 共轭的 blender 局部** `_t3d_local_matrix`，局部朝向统一交给
-    M_G2B 轴交换，与无骨骼路径一致 —— 关键是基准只贡献**位置**，不贡献朝向：
-      - 骨骼基准：只取骨骼世界位置(head)，**不继承骨骼 rest 朝向**（与 uvc_preview 同款）。
-        Blender 骨骼默认沿 +Y，指向 +Z 的 MhBone 其 matrix_local 内嵌 +90°X 伪旋转，
-        整体继承会让 entry 平白绕 X 多转 90°（绑定竖直骨骼时尤其明显）。故只取 translation。
-      - 锚定基准：基点是另一个 EFX entry 的 Blender 空间矩阵，同样用 blender 局部叠加。
-      - 无基准：直接 blender 局部（原有行为）。
+    ⚠ 两类基准都只贡献**位置**，不贡献朝向——朝向统一交给 TRANSFORM3D 的本地旋转
+    （M 共轭映射，`_t3d_local_matrix` 里已处理）：
+      - 骨骼基准：Copy Location 约束实时跟随骨骼**当前 pose** 的 head 位置（`_sync_bone_follow_constraint`），
+        不继承骨骼 rest 朝向。TRANSFORM3D 本地偏移写进 entry 自身 matrix_basis，
+        约束用 use_offset 把骨骼位置叠加上去，Blender 每次求值自动重算，不需要
+        本模块每帧手工合成矩阵。
+      - 锚定基准：基点是另一个 EFX entry 的 Blender 空间矩阵，一次性叠加写入 matrix_world
+        （原有行为不变）。
+      - 都没有：直接把本地变换写入 matrix_world（原有行为不变）。
     """
     try:
         t3d = _attribute_of_type(entry_obj, _t3d_hash(), children_map)
@@ -227,15 +287,17 @@ def apply_entry_transform(entry_obj, armature_obj=None, base_override=None, chil
         local = _t3d_local_matrix(t3d)              # 统一：blender 空间（M 共轭）
         if local is None:
             return False
+
         if base_override is not None:
-            base = base_override                    # 锚定：继承基点 entry 的完整矩阵
+            _sync_bone_follow_constraint(entry_obj, None, None)   # 锚定与骨骼跟随互斥，先清约束
+            entry_obj.matrix_world = base_override @ local
+            return True
+
+        jointNo = _entry_joint_no(entry_obj, children_map)
+        if _sync_bone_follow_constraint(entry_obj, armature_obj, jointNo):
+            entry_obj.matrix_basis = local           # 约束负责位置叠加，自身只出本地变换
         else:
-            bone = bone_base_matrix(armature_obj, _entry_joint_no(entry_obj, children_map))
-            if bone is not None:
-                base = Matrix.Translation(bone.to_translation())  # 只取骨骼 head 位置，不继承朝向
-            else:
-                base = None
-        entry_obj.matrix_world = (base @ local) if base is not None else local
+            entry_obj.matrix_world = local
         return True
     except Exception:
         return False
@@ -339,6 +401,8 @@ def place_single_entry(entry_obj, armature_obj=None, use_anchor=True) -> bool:
     满足锚定规则，仍以基点 entry 为基准，而非掉回自身骨骼/原点。
 
     基点 entry 的位置取其当前 matrix_world（编辑的是被锚 entry，自身基点未动 → 有效）。
+    ⚠ 若基点 entry 自己绑了骨骼跟随约束，读取前先 `view_layer.update()` 强制求值一次，
+    否则约束求值可能滞后于本次调用，读到的是上一次的位置（见 `_sync_bone_follow_constraint`）。
     """
     base_override = None
     if use_anchor:
@@ -347,10 +411,15 @@ def place_single_entry(entry_obj, armature_obj=None, use_anchor=True) -> bool:
             try:
                 a = build_anchor_map(root).get(entry_obj)
                 if a is not None:
+                    bpy.context.view_layer.update()
                     base_override = a.matrix_world.copy()
             except Exception:
                 base_override = None
-    return apply_entry_transform(entry_obj, armature_obj, base_override=base_override)
+    ok = apply_entry_transform(entry_obj, armature_obj, base_override=base_override)
+    # 调用方（mesh_align.realign_entry_if_active 等）常紧接着就读 entry.matrix_world；
+    # 骨骼跟随约束/matrix_basis 的改动要等 depsgraph 求值才反映到它，这里强制求值一次。
+    bpy.context.view_layer.update()
+    return ok
 
 
 def sync_all_transform3d(root_obj, armature_obj=None, use_anchor=True) -> int:
@@ -376,10 +445,17 @@ def sync_all_transform3d(root_obj, armature_obj=None, use_anchor=True) -> int:
         base_override = None
         a = anchor.get(body)
         if a is not None and a in seen:
+            # 基点若刚挂/刷新过骨骼跟随约束，强制求值一次才能读到最新位置
+            # （matrix_basis/约束的变更要等 depsgraph 求值才会反映到 matrix_world）。
+            bpy.context.view_layer.update()
             base_override = a.matrix_world.copy()
         if apply_entry_transform(body, armature_obj, base_override=base_override, children_map=children_map):
             n += 1
         seen.add(body)
+    # 收尾强制求值一次：调用方（mesh_align 等）常常紧接着就读 entry.matrix_world，
+    # 这里全部处理完但可能还没经过 depsgraph——不刷新的话最后几个刚挂/改约束的
+    # entry 会读到求值前的旧位置。
+    bpy.context.view_layer.update()
     return n
 
 

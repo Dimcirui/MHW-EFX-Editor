@@ -2109,6 +2109,45 @@ def ptbehavior_tlp_candidates(b_type: str) -> list:
     return out
 
 
+def ptbehavior_param_channels(b_type: str, param_name: str, n_components: int = 1):
+    """PTBEHAVIOR 的某个参数 → (tlp_hash, [(dt_hash, data_type), ...])；不可动画则 None。
+
+    判据不再是「名字算得出 DT 就给按钮」，而是**算出来的 DT 必须在该 TLP 的调色板里**
+    （DT_PALETTE = 语料实测 ∪ DTI 补充 ∪ 官方 dump）。这样标量、颜色、向量都能统一处理，
+    也不会给一个引擎压根不认的哈希开按钮。
+
+    向量参数（vector2/3/4）在 TIML 侧是**逐分量各一条轨道**：mUVRange → UVRangeX/Y/Z/W、
+    mCenter → CenterX/Y/Z/W。所以整名查不到时，再按 X/Y/Z/W 后缀查一遍，
+    全部命中才算数（缺一条说明这个拆法不对，宁可不给按钮）。
+
+    n_components：1=标量/颜色（整名直查），2/3/4=向量（按分量查）。
+    """
+    bare = _ptb_bare_name(param_name)
+    if not bare:
+        return None
+    comps = ("X", "Y", "Z", "W")[:n_components] if n_components > 1 else ()
+    for tlp in ptbehavior_tlp_candidates(b_type):
+        pal = {dt & 0xFFFFFFFF: dtype for dt, dtype in DT_PALETTE.get(tlp, ())}
+        if not pal:
+            continue
+        h = jamcrc(bare.encode()) & 0xFFFFFFFF
+        if h in pal:
+            return tlp, [(h, pal[h])]
+        if comps:
+            hs = [jamcrc((bare + c).encode()) & 0xFFFFFFFF for c in comps]
+            if all(x in pal for x in hs):
+                return tlp, [(x, pal[x]) for x in hs]
+    return None
+
+
+def _ptb_bare_name(param_name: str) -> str:
+    """'mIntensity' → 'Intensity'；未知名（0x 形式）/空 → ''。"""
+    s = (param_name or "").strip()
+    if not s or s.startswith("0x"):
+        return ""
+    return s[1:] if (len(s) > 1 and s[0] == "m" and s[1].isupper()) else s
+
+
 def ptbehavior_param_dt(param_name: str):
     """PTBEHAVIOR 参数名（如 'mIntensity'）→ TIML datatypeHash；名字未知则 None。
 
@@ -3376,11 +3415,14 @@ OFFICIAL_TLP_DT = {
 
 
 def _merge_pairs():
-    """CORPUS_PAIRS ∪ DTI_EXTRA_PAIRS —— UI 调色板用的完整 (TLP → DT 列表)。
+    """CORPUS_PAIRS ∪ DTI_EXTRA_PAIRS ∪ OFFICIAL_TLP_DT ∪ DTI_TLP_EXTRA —— 调色板全表。
 
-    语料条目在前、DTI 补充在后，所以下拉里官方用过的排前面。"""
+    语料条目在前、DTI 补充在后，所以下拉里官方用过的排前面。最后那张
+    `dti_tlp_extra.DTI_TLP_EXTRA` 补的是官方 dump 里被类型筛掉的参数（bool/u32/向量），
+    合进来之后调色板 = 「DTI 认识的全部 TLP 参数」，不再按类型预筛。"""
+    from .dti_tlp_extra import DTI_TLP_EXTRA
     out = {h: list(v) for h, v in CORPUS_PAIRS.items()}
-    for src in (DTI_EXTRA_PAIRS, OFFICIAL_TLP_DT):
+    for src in (DTI_EXTRA_PAIRS, OFFICIAL_TLP_DT, DTI_TLP_EXTRA):
         for h, v in src.items():
             cur = out.setdefault(h, [])
             seen = {x[0] for x in cur}

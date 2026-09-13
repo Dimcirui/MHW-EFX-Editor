@@ -7,7 +7,10 @@ efx_format/sim/behaviors/ribbon.py  —  RIBBON（条带）
     0 轨迹跟随  沿**发射器**实际划过的轨迹绘制     ≈ Unity Trail Renderer / UE Ribbon
                 （粒子自己动过就改用粒子的轨迹，见 _common.pick_trail）
     1 定长面片  刚性矩形，只靠单个轴转动朝相机   ≈ Unity Stretched Billboard
-                （所以相机经过侧边时会整体翻 180°，是该构造的固有表现）
+                （所以相机经过侧边时会整体翻 180°，是该构造的固有表现；伸展方向
+                默认出生时按 baseAxis+rotationX/Y/Z 定死，`SimConfig.ribbon_rigid_dir`
+                calibration 开成 'velocity' 后改为逐帧跟随当前运动方向，见
+                `on_particle_step`）
     2 柔体链    从发射器向外延伸并带弹性         ≈ UE Niagara 的 spring/chain
 
 模式 0 需要逐帧位置历史 → `NEEDS_TRAIL = True`，Simulator 据此开始记 `p.trail`。
@@ -56,8 +59,8 @@ from ..registry import Behavior, register
 from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, RibbonStrip, Vec3
-from ._common import (axis_normal, blend_name, epv_note, pick_color,
-                      pick_trail, roll_rgba)
+from ._common import (axis_normal, blend_name, emitter_rotate, epv_note,
+                      pick_color, pick_trail, roll_rgba)
 
 MODE_TRAIL = 0
 MODE_RIGID = 1
@@ -118,7 +121,15 @@ class Ribbon(Behavior):
         rolled_rot = (jitter(f.get("rotationX"), f.get("rotationXJitter"), rng, mode),
                       jitter(f.get("rotationY"), f.get("rotationYJitter"), rng, mode),
                       jitter(f.get("rotationZ"), f.get("rotationZJitter"), rng, mode))
-        direction = axis_normal(f, cfg, rolled=rolled_rot)
+        # ⚠ axis_normal 是给 PLANE 的「面法线」设计的；RIBBON 借同一套 baseAxis+
+        # rotation 表达「伸展方向」，实机对比发现刚好反一位，取负号（用户实测确认）。
+        direction = -axis_normal(f, cfg, rolled=rolled_rot)
+        # 触发者（PtLife 父实例）自己在转 → 子 entry 的伸展方向要跟着转，只叠加
+        # 这一份**整体**旋转，其余（baseAxis/rotationX-Y-Z 定的本地朝向）不变——
+        # 同 VELOCITY3D 的初速度方向一个套路（见 velocity3d.py::on_particle_spawn）。
+        # 静态朝向（entry 自己的 TRANSFORM3D.rotate）由宿主的 entry 矩阵负责，这里
+        # 不重复处理。
+        direction = emitter_rotate(em, direction)
 
         ribbon_mode = f.i("ribbonMode")
         n = max(2, f.i("subdivisionCount") or 2)
@@ -146,10 +157,23 @@ class Ribbon(Behavior):
             st["seg"] = seg
         p.user[Ribbon] = st
 
-    # ── 逐帧（只有柔体链要算）─────────────────────────────────────────────────
+    # ── 逐帧 ─────────────────────────────────────────────────────────────────
     def on_particle_step(self, p, em):
         st = p.user.get(Ribbon)
-        if st is None or st["mode"] != MODE_CHAIN:
+        if st is None:
+            return
+
+        if st["mode"] == MODE_RIGID:
+            # 定长面片：calibration 选 velocity 时，伸展方向跟着当前运动方向走
+            # （粒子自己速度优先，粒子不动看发射器位移），都为零就保留上一个有效
+            # 方向——不会因为一瞬间静止就弹回出生时的静态朝向。
+            if getattr(em.config, "ribbon_rigid_dir", "static") == "velocity":
+                v = p.vel if p.vel.length() > 1e-6 else em.velocity
+                if v.length() > 1e-6:
+                    st["dir"] = v.normalized()
+            return
+
+        if st["mode"] != MODE_CHAIN:
             return
 
         nodes = st["nodes"]
@@ -182,15 +206,20 @@ class Ribbon(Behavior):
         （场景里 15 line 那条的 length 静态值 10、曲线给 1），只在出生时取一次
         会把「条带随寿命伸缩」整个丢掉。同 BILLBOARD3D 的 has_tracks 分支
         ——那边也是重解时不再叠抖动偏移。
+
+        ⚠ 长度要乘 `p.scale.y`——同 BILLBOARD3D/PLANE 的 X=width/Y=height 约定，
+        RIBBON 是 X=width/Y=length。之前只有宽度那条路乘了 `p.scale.x`
+        （见 `_strip_py`/`_build_strips`），长度这边漏乘，导致 SCALEANIM 只在
+        scaleSpeedX 时才看得出效果、scaleSpeedY（沿长度方向拉伸）完全不生效。
         """
         if self._has_tracks and f is not None:
             scale = f.get("scale", 1.0)
-            length = f.get("length", 1.0) * scale
+            length = f.get("length", 1.0) * scale * p.scale.y
             width = f.get("width", 1.0) * scale
         else:
             rolled = p.rolled
             scale = rolled["rb_scale"]
-            length = rolled["rb_length"] * scale
+            length = rolled["rb_length"] * scale * p.scale.y
             width = rolled["rb_width"] * scale
         return f, length, width, st["n"]
 

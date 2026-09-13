@@ -60,7 +60,9 @@ _SEED_SCALAR = {
     # EMITTERSHAPE3D.rangeXYZ 则是"offset/size"。返回全部 6 个，由
     # _field_seed_values 按该字段挂了几条 DT 决定怎么对齐。
     "FLOAT6": lambda it: [float(v) for v in it.float6_value],
+    "INT2":   lambda it: [float(v) for v in it.int2_value],
     "INT3":   lambda it: [float(v) for v in it.int3_value],
+    "INT4":   lambda it: [float(v) for v in it.int4_value],
     # 颜色两种值槽：COLOUR 已是 0-255 ubyte；COLOR_RGBA 是 picker 的 0-1 float
     "COLOUR":     lambda it: [float(v) for v in it.colour_value],
     "COLOR_RGBA": lambda it: [float(v) * 255.0 for v in it.color_rgba_value],
@@ -232,47 +234,47 @@ def _track_exists(timl_obj, slot: int, tlp_hash: int, dt_hash: int) -> bool:
     return False
 
 
+# 值槽 dtype → 该参数在 TIML 侧拆成几条分量轨道（向量参数逐分量各一条：
+# mUVRange → UVRangeX/Y/Z/W）。颜色是单条，所以 FLOAT4 走 4 分量之前会先试整名，
+# 由 ptbehavior_param_channels 内部处理。
+_PTB_COMPONENTS = {"FLOAT4": 4, "FLOAT3": 3, "FLOAT2": 2,
+                   "INT4": 4, "INT3": 3, "INT2": 2}
+
+
 def _ptbehavior_channel(attr_obj, item):
-    """PTBEHAVIOR 参数行 → (tlp_hash, dt_hash, data_type)；不可动画则 None。
+    """PTBEHAVIOR 参数行 → (tlp_hash, [(dt_hash, data_type), ...])；不可动画则 None。
 
     PTBEHAVIOR 不是普通块：TLP 由它自己的 b_type（DTI 类名字符串）算出，DT 由参数名
     去掉前导 m 后取 jamcrc —— 两条规则都在语料上验证过，故这一整类无需静态映射表
     （详见 efx_format/timl/names.py 的 ptbehavior_* 说明）。
 
-    参数名取 item.hint_name（ori_name 是 'p3' 这样的序号占位）。名字未知（显示成
-    0x%08X）→ 算不出 DT，不给按钮。只放行 FLOAT / COLOR_RGBA 两种值槽：语料里的
-    behavior 轨道全是 data_type 2/3，整型参数（槽位号、枚举等）做动画没有意义。
+    2026-09-12 放宽：不再只放行 FLOAT/COLOR_RGBA。判据改成「算出来的 DT 在该 TLP 的
+    调色板里」（DT_PALETTE 已并入 DTI dump 的全部 TLP 参数），dataType 也直接取调色板的，
+    于是整型/布尔/向量参数一并有了按钮。向量按 X/Y/Z/W 拆成多条轨道。
     """
-    from ..efx_format.timl.names import ptbehavior_tlp_candidates, ptbehavior_param_dt
+    from ..efx_format.timl.names import ptbehavior_param_channels
 
-    # t==0x15 的参数展开成 p{i}_v0..v3 四个子项，共用同一个参数名 —— 若照常给按钮
-    # 会出现 4 个指向同一条轨道的入口；且 4 浮点参数怎么映射到 TIML 通道未知，
-    # 整类跳过。
-    if "_v" in (getattr(item, "ori_name", "") or ""):
+    name = getattr(item, "hint_name", "") if item else ""
+    if not name:
         return None
-
-    dt = ptbehavior_param_dt(getattr(item, "hint_name", "") if item else "")
-    if dt is None:
-        return None
-    if item.data_type == "COLOR_RGBA":
-        data_type = 3
-    elif item.data_type == "FLOAT":
-        data_type = 2
-    else:
-        return None
-
     b_type = ""
     for it in attr_obj.efx_block.field_items:
         if it.ori_name == "b_type":
             b_type = it.string_value
             break
-    cands = ptbehavior_tlp_candidates(b_type)
-    if not cands:
+    if not b_type:
         return None
+
+    n_comp = _PTB_COMPONENTS.get(item.data_type, 1)
+    res = ptbehavior_param_channels(b_type, name, n_comp)
+    if res is None:
+        return None
+    tlp, entries = res
 
     # Mh* 子类可能把轨道挂在自身 TLP 或基类 TLP 下（从不并存）——优先复用该 TIML 里
     # 已经存在的那个，避免把同一属性的轨道拆到两个 TLP。
-    tlp = cands[0]
+    from ..efx_format.timl.names import ptbehavior_tlp_candidates
+    cands = ptbehavior_tlp_candidates(b_type)
     if len(cands) > 1:
         body = _active_entry()
         if body is not None:
@@ -281,12 +283,14 @@ def _ptbehavior_channel(attr_obj, item):
                 present = {ty.timeline_param_hash & 0xFFFFFFFF
                            for a in t.animations if a is not None for ty in a.types}
                 for c in cands:
-                    if c in present:
-                        tlp = c
+                    if c in present and c != tlp:
+                        alt = ptbehavior_param_channels(b_type, name, n_comp)
+                        if alt is not None and alt[0] == c:
+                            tlp, entries = alt
                         break
             except Exception:
                 pass
-    return tlp, dt, data_type
+    return tlp, entries
 
 
 def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
@@ -315,8 +319,12 @@ def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
         ch = _ptbehavior_channel(obj, item)
         if ch is None:
             return
-        tlp_hex, dt_hex, data_type = "%08X" % ch[0], "%08X" % ch[1], ch[2]
-        animated = bool(present) and (ch[0] & 0xFFFFFFFF, ch[1] & 0xFFFFFFFF) in present
+        # 向量参数拆成多条分量轨道，故 dt_hex 编码成 "hash:dataType,hash:dataType"
+        tlp_hex = "%08X" % ch[0]
+        dt_hex = ",".join("%08X:%d" % (dt & 0xFFFFFFFF, dtp) for dt, dtp in ch[1])
+        data_type = ch[1][0][1]
+        animated = bool(present) and any(
+            (ch[0] & 0xFFFFFFFF, dt & 0xFFFFFFFF) in present for dt, _dtp in ch[1])
     else:
         entries = FIELD_TO_DT.get((tname, ori_name))
         if not entries:
@@ -437,10 +445,23 @@ class EFX_OT_timl_add_field_tracks(Operator):
 
     def execute(self, context):
         if self.tlp_hash_hex and self.dt_hash_hex:
-            # PTBEHAVIOR 路径：单条通道，TLP/DT 已由 b_type + 参数名算出
+            # PTBEHAVIOR 路径：TLP/DT 已由 b_type + 参数名算出。dt_hash_hex 是
+            # "hash:dataType[,hash:dataType...]"（向量参数逐分量一条），
+            # 旧式纯 hash 串也照收（dataType 取 dt_data_type）。
             try:
                 tlp_hash = int(self.tlp_hash_hex, 16)
-                entries = [(int(self.dt_hash_hex, 16), int(self.dt_data_type))]
+                entries = []
+                for tok in self.dt_hash_hex.split(","):
+                    tok = tok.strip()
+                    if not tok:
+                        continue
+                    if ":" in tok:
+                        h, dtp = tok.split(":", 1)
+                        entries.append((int(h, 16), int(dtp)))
+                    else:
+                        entries.append((int(tok, 16), int(self.dt_data_type)))
+                if not entries:
+                    raise ValueError
             except ValueError:
                 self.report({"ERROR"}, "Invalid hash hex value")
                 return {"CANCELLED"}

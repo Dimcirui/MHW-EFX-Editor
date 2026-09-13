@@ -55,6 +55,16 @@ class RgbFire(Behavior):
     STAGE = SHADE
     ORDER = 60
 
+    #: fireColor/smokeColor/brightness2 有 FIELD_TO_DT 映射——挂了 TIML 就每帧
+    #: 重解，同 MESH 的模式（见该文件注释：只在出生时采样会把颜色冻结在 age=0）。
+    _has_tracks = False
+
+    def on_emitter_init(self, em, rng):
+        f = em.f(RGBFIRE)
+        if f is None:
+            return
+        self._has_tracks = f.has_tracks
+
     def on_particle_spawn(self, p, em, rng):
         f = em.f(RGBFIRE, p)
         if f is None:
@@ -75,11 +85,19 @@ class RgbFire(Behavior):
         st = p.rolled.get("rgbfire")
         if st is None:
             return
-        wf = st["fire_i"] * color_param_weight(st["fp"], p.age)
+        fire, smoke, fire_i, rate = st["fire"], st["smoke"], st["fire_i"], st["rate"]
+        if self._has_tracks:
+            f = em.f(RGBFIRE, p)
+            if f is not None:
+                fire = _rgb(f.raw("fireColor"))
+                smoke = _rgb(f.raw("smokeColor"))
+                fire_i = max(0.0, float(f.get("brightness1", 1.0) or 0.0))
+                rate = float(f.get("brightness2", 1.0) or 0.0)
+
+        wf = fire_i * color_param_weight(st["fp"], p.age)
         ws = color_param_weight(st["sp"], p.age)
-        tint = blend_two_colors(em.config, st["fire"], wf, st["smoke"], ws)
-        rate = st["rate"]
+        tint = blend_two_colors(em.config, fire, wf, smoke, ws)
         p.color = [tint[0] * rate, tint[1] * rate, tint[2] * rate]
         # fireColor 是外缘的荧光、smokeColor 是内部色 → (外缘, 核心)
-        p.rolled["layers"] = ([c * wf * rate for c in st["fire"]],
-                              [c * ws * rate for c in st["smoke"]])
+        p.rolled["layers"] = ([c * wf * rate for c in fire],
+                              [c * ws * rate for c in smoke])

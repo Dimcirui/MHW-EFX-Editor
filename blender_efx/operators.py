@@ -737,9 +737,12 @@ def _ptb_add_enum_items(self, context):
     items = []
     if _is_ptbehavior_attribute(obj):
         from . import fields as _fields
-        for key, t, label in _fields.ptbehavior_addable_items(obj.efx_block):
+        for key, t, label, dti_only in _fields.ptbehavior_addable_items(obj.efx_block):
             ident = str(key)
             desc = "type=0x{:02X}".format(t)
+            if dti_only:
+                # DTI 补项：引擎认识，但官方文件一次没写过（默认值全 0）
+                desc += "  ·  not used in any official file"
             items.append((ident, label, desc))
     if not items:
         items = [("__none__", "(no addable property)", "")]
@@ -792,6 +795,124 @@ class EFX_OT_ptb_add_override(bpy.types.Operator):
             return {"CANCELLED"}
         bp.efx_dirty = True
         self.report({"INFO"}, "Override added (0x{:08X})".format(key))
+        return {"FINISHED"}
+
+
+class EFX_OT_ptb_add_override_search(bpy.types.Operator):
+    """按名字模糊搜索要添加的覆盖属性（合并目录上百项，下拉翻不动时用这个）。
+
+    走 Blender 原生 `WindowManager.invoke_search_popup()`，跟
+    efx.attribute_add_search 同一套写法；选中后直接转调 efx.ptb_add_override，
+    新增逻辑只有一份。"""
+
+    bl_idname      = "efx.ptb_add_override_search"
+    bl_label       = "Search Property"
+    bl_description = "Fuzzy-search this behavior type's properties by name and add on pick"
+    bl_options     = {"REGISTER", "UNDO"}
+    bl_property    = "key_choice"
+
+    key_choice: EnumProperty(
+        name="Property",
+        description="Property to add (from this behavior type's catalog)",
+        items=_ptb_add_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _is_ptbehavior_attribute(context.active_object)
+
+    def invoke(self, context, event):
+        context.window_manager.invoke_search_popup(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        return bpy.ops.efx.ptb_add_override(key_choice=self.key_choice)
+
+
+# b_type 下拉的 items 回调（同样要保活，见 enum-callback-gc-trap）
+_PTB_BTYPE_ENUM_CACHE = []
+
+
+def _ptb_btype_enum_items(self, context):
+    """b_type 下拉：列出所有已知行为类（语料见过的 + DTI 补的），当前值不在表里也补上。"""
+    global _PTB_BTYPE_ENUM_CACHE
+    from ..efx_format.ptbehavior.edit import known_btypes, catalog_for_btype
+
+    cur = ""
+    obj = context.active_object
+    if _is_ptbehavior_attribute(obj):
+        for it in obj.efx_block.field_items:
+            if it.ori_name == "b_type":
+                cur = it.string_value
+                break
+    names = list(known_btypes())
+    if cur and cur not in names:
+        names.append(cur)
+    items = []
+    for n in names:
+        n_fields = len(catalog_for_btype(n))
+        items.append((n, n.rsplit("::", 1)[-1], "%s  (%d properties)" % (n, n_fields)))
+    if not items:
+        items = [("__none__", "(no behavior type)", "")]
+    _PTB_BTYPE_ENUM_CACHE = items
+    return _PTB_BTYPE_ENUM_CACHE
+
+
+class EFX_OT_ptb_set_btype(bpy.types.Operator):
+    """切换 PTBEHAVIOR 的行为类（b_type）。
+
+    换类等于换了一整张属性表：新表里没有的覆盖项会被丢掉（数量在结果里报出来），
+    保留下来的按新表的规范顺序重排。"""
+
+    bl_idname      = "efx.ptb_set_btype"
+    bl_label       = "Behavior Type"
+    bl_description = "Change this PTBEHAVIOR's behavior class (properties missing from the new class are dropped)"
+    bl_options     = {"REGISTER", "UNDO"}
+
+    b_type_choice: EnumProperty(
+        name="Behavior Type",
+        description="Behavior class for this attribute",
+        items=_ptb_btype_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _is_ptbehavior_attribute(context.active_object)
+
+    def execute(self, context):
+        from . import fields as _fields
+        from ..efx_format.structs import unpack_ptbehavior, pack_ptbehavior
+        from ..efx_format.ptbehavior.edit import catalog_for_btype
+
+        new_bt = self.b_type_choice
+        if not new_bt or new_bt == "__none__":
+            return {"CANCELLED"}
+        bp = context.active_object.efx_block
+        d, _ = unpack_ptbehavior(_fields.ptbehavior_current_bytes(bp))
+        old_bt = d["b_type"].decode("latin-1").rstrip("\x00")
+        if new_bt == old_bt:
+            return {"CANCELLED"}
+
+        order = {k & 0xFFFFFFFF: i for i, (k, _t, _f) in enumerate(catalog_for_btype(new_bt))}
+        kept, dropped = [], 0
+        for prm in d["params"]:
+            if (prm["unkn"] & 0xFFFFFFFF) in order:
+                kept.append(prm)
+            else:
+                dropped += 1
+        kept.sort(key=lambda prm: order[prm["unkn"] & 0xFFFFFFFF])
+        d["params"] = kept
+        d["b_type"] = (new_bt + "\x00").encode("utf-8")
+
+        if not _fields.reinit_ptbehavior_from_bytes(bp, pack_ptbehavior(d)):
+            self.report({"ERROR"}, "Re-init failed after behavior type change")
+            return {"CANCELLED"}
+        bp.efx_dirty = True
+        if dropped:
+            self.report({"WARNING"}, "Behavior type changed; %d propert%s dropped"
+                        % (dropped, "y" if dropped == 1 else "ies"))
+        else:
+            self.report({"INFO"}, "Behavior type changed")
         return {"FINISHED"}
 
 
@@ -1335,6 +1456,8 @@ _CLASSES = (
     EFX_OT_copy_attribute_fields,
     EFX_OT_paste_attribute_fields,
     EFX_OT_ptb_add_override,
+    EFX_OT_ptb_add_override_search,
+    EFX_OT_ptb_set_btype,
     EFX_OT_ptb_remove_override,
     EFX_OT_material_add_block,
     EFX_OT_material_set_shader,

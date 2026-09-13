@@ -5,13 +5,12 @@ PTBEHAVIOR 是类型化稀疏覆盖（见 categories/catalog 与 memory ptbehavi
 每个 b_type 一张固定有序的属性表，实例只存被覆盖的属性子集（保持子序列）。本模块在
 unpack_ptbehavior 产出的 values dict 上做增删覆盖项，再交给 pack_ptbehavior 还原字节。
 
-不变量：params 始终是 PTBEHAVIOR_CATALOG[b_type] 规范顺序的子序列；每个 key 至多一项。
+不变量：params 始终是合并目录（catalog + dti_extra）里该 b_type 顺序的子序列；每个 key 至多一项。
 新增覆盖项按规范顺序插入；const0 取同块现有项（= jamcrc(b_type)），空块时用 jamcrc 算。
 """
 
 import zlib
 
-from .catalog import PTBEHAVIOR_CATALOG
 
 
 def jamcrc(s: str) -> int:
@@ -31,8 +30,24 @@ def _btype_str(values: dict) -> str:
 
 
 def catalog_for(values: dict):
-    """返回该实例 b_type 的属性目录 [(key, t, freq), ...]；未知 b_type 返回 []。"""
-    return PTBEHAVIOR_CATALOG.get(_btype_str(values), [])
+    """返回该实例 b_type 的属性目录 [(key, t, freq), ...]；未知 b_type 返回 []。
+
+    用的是合并表（语料推出的实际用过项 + DTI 补项，见 dti_extra.py），所以"能加什么"
+    比"官方文件里出现过什么"更宽——freq=0 的就是 DTI 补项。
+    """
+    return catalog_for_btype(_btype_str(values))
+
+
+def catalog_for_btype(b_type: str):
+    """按 b_type 字符串取合并后的属性目录；未知 b_type 返回 []。"""
+    from .dti_extra import PTBEHAVIOR_CATALOG_FULL
+    return PTBEHAVIOR_CATALOG_FULL.get(b_type, [])
+
+
+def known_btypes():
+    """所有已知 b_type（语料见过的 + DTI 补的），供 UI 下拉用。"""
+    from .dti_extra import PTBEHAVIOR_CATALOG_FULL
+    return sorted(PTBEHAVIOR_CATALOG_FULL)
 
 
 def _canonical_index(values: dict):
@@ -55,7 +70,7 @@ def addable_catalog(values: dict):
 
 
 # ── 各 value_type t 的默认值（新增覆盖项时填零/空，用户再编辑）─────────────────
-def _default_param_fields(t: int) -> dict:
+def _default_param_fields(t: int, key: int = 0) -> dict:
     if t == 0x03:
         return {'NULL': 0}
     if t == 0x05:
@@ -69,7 +84,11 @@ def _default_param_fields(t: int) -> dict:
     if t == 0x14:
         return {'unkn1': [0.0, 0.0, 0.0]}
     if t == 0x15:
-        return {'unkn0': 0.0, 'unkn1': 0.0, 'unkn2': 0.0, 'unkn3': 0.0}
+        # 颜色型（mColor）第 4 分量是 alpha，全不透明起步；语料里它几乎恒为 1.0，
+        # 给 0 等于新加的覆盖项一上来就全透明。
+        from .names import is_color_param
+        a = 1.0 if is_color_param(key) else 0.0
+        return {'unkn0': 0.0, 'unkn1': 0.0, 'unkn2': 0.0, 'unkn3': a}
     if t == 0x36:
         return {'unkn1': [0, 0]}
     if t == 0x37:
@@ -102,7 +121,7 @@ def add_override(values: dict, key: int) -> bool:
     t = cat[key]
     # unkn/const0 存有符号 int32（与 unpack_ptbehavior 输出、pack 的 '<i' 一致）
     param = {'unkn': _to_signed32(key), 'const0': _to_signed32(_const0_for(values)), 't': t}
-    param.update(_default_param_fields(t))
+    param.update(_default_param_fields(t, key))
 
     # 按规范顺序找插入位置：第一个 canonical_index > key 的现有项之前
     idx = _canonical_index(values)

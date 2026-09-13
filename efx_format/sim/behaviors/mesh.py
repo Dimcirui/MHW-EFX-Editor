@@ -43,7 +43,7 @@ from ..rng import jitter, jitter_int
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
 from ..vecmath import ROT_ORDER_TRANSFORM, rot_order_name
-from ._common import epv_note, roll_rgba
+from ._common import epv_note, pick_color, roll_rgba
 
 
 @register(MESH)
@@ -53,10 +53,16 @@ class Mesh(Behavior):
     STAGE = RENDER_BODY
     ORDER = 100
 
+    #: 本块有没有 TIML 曲线。挂了才在 build_render 逐帧重解 scale/color——同
+    #: BILLBOARD3D/PLANE 的模式。常见的「淡入淡出」用 scale 的 A1 曲线做（age=0
+    #: 起多半是 0），只在出生时采一次样会把网格冻结在 0 缩放上、永久不可见。
+    _has_tracks = False
+
     def on_emitter_init(self, em, rng):
         f = em.f(MESH)
         if f is None:
             return
+        self._has_tracks = f.has_tracks
         epv_note(f, em, "MESH", "epv_color_slot1", "epv_color_slot2")
         em.note("MESH 的几何来自绑定的 mod3；未绑定时预览只画一个占位框")
 
@@ -89,23 +95,43 @@ class Mesh(Behavior):
                                      rng, mode)
 
         if f.i("useEmissiveColor"):
-            (er, eg, eb, ea), _eoff = roll_rgba(
+            (er, eg, eb, ea), eoff = roll_rgba(
                 f, rng, em.config, "emissiveColor", "emissiveColorRange",
                 gate="useEmissiveColorRange", disable="disableAllColorRange")
             rate = jitter(f.get("emissiveColorRate", 1.0),
                           f.get("emissiveColorRateJitter"), rng, mode)
             p.rolled["me_emissive"] = (er * rate, eg * rate, eb * rate, ea)
+            p.rolled["me_ecoff"] = eoff
         else:
             p.rolled["me_emissive"] = (0.0, 0.0, 0.0, 0.0)
+            p.rolled["me_ecoff"] = None
 
     def build_render(self, p, em, view, item):
         rolled = p.rolled
         if "me_rgba" not in rolled:
             return item
 
-        r0, g0, b0, a0 = rolled["me_rgba"]
-        rate = rolled["me_rate"]
-        s = rolled["me_scale"]
+        if self._has_tracks:        # 挂了 TIML → rotation/scale/color 可能逐帧变，重解
+            f = em.f(MESH, p)
+            rot = f.xyz_lo("rotation")
+            sb = f.xyz_lo("scale")
+            g = f.get("global_scale", 1.0)
+            s = Vec3(sb.x * g, sb.y * g, sb.z * g)
+            r0, g0, b0, a0 = pick_color(f, rolled.get("me_coff"))
+            rate = f.get("colorRate", 1.0)
+            if f.i("useEmissiveColor"):
+                er, eg, eb, ea = pick_color(f, rolled.get("me_ecoff"),
+                                            "emissiveColor", "emissiveColorRange")
+                erate = f.get("emissiveColorRate", 1.0)
+                emissive = (er * erate, eg * erate, eb * erate, ea)
+            else:
+                emissive = (0.0, 0.0, 0.0, 0.0)
+        else:
+            rot = rolled["me_rot"]
+            r0, g0, b0, a0 = rolled["me_rgba"]
+            rate = rolled["me_rate"]
+            s = rolled["me_scale"]
+            emissive = rolled["me_emissive"]
 
         item = RenderItem(kind="MESH", pos=p.pos.copy())
         item.size = Vec3(s.x * p.scale.x, s.y * p.scale.y, s.z * p.scale.z)
@@ -114,16 +140,18 @@ class Mesh(Behavior):
                       b0 * rate * p.color[2],
                       a0 * p.alpha]
         item.blend = "ALPHA"           # MESH 没有 blendMode 字段；网格按实心处理
-        # 属性旋转 + ROTATEANIM 累积 + **发射器自己的旋转**。
-        # `em.rot_dynamic` 是「宿主没有替我们套的那部分」：根 entry 上它只含
-        # TRANSFORM3D 的 rotation_velocity 累积（静态部分由宿主摆位），子实例上它还
-        # 含静态 rotate（子实例没有宿主，见 scene.py 的 `_child_config`）。两种情形
-        # 加上去都是对的，所以不设门。
+        # 属性旋转 + ROTATEANIM 累积 + **发射器自己的旋转** + **从 PTLIFE 父实例
+        # 继承的旋转**。`em.rot_dynamic` 是「宿主没有替我们套的那部分」：根 entry
+        # 上它只含 TRANSFORM3D 的 rotation_velocity 累积（静态部分由宿主摆位），
+        # 子实例上它还含静态 rotate（子实例没有宿主，见 scene.py 的 `_child_config`）。
+        # `em.host_rotation` 是父实例转起来时逐帧传下来的那份（见
+        # scene.py::SimScene._follow）——父发射器转，召唤出的子发射器也要跟着转。
+        # 两种情形加上去都是对的，所以不设门。
         # 实例：wp11_017 的 aura32a/b/c 只差发射器静态 rotate Z 的 0 / ±120°，
         # 不加这一项三份就完全重叠。
-        item.extra["rot"] = rolled["me_rot"] + p.rot + em.rot_dynamic
+        item.extra["rot"] = rot + p.rot + em.rot_dynamic + em.host_rotation
         item.extra["rot_order"] = rolled["me_order"]
         item.extra["viscon"] = rolled["me_viscon"]
-        item.extra["emissive"] = rolled["me_emissive"]
+        item.extra["emissive"] = emissive
         item.extra["age"] = p.age
         return item

@@ -7,7 +7,8 @@ efx_format/sim/behaviors/  —  逐属性的模拟行为
 
 已实现
 ------
-T1（生成与运动）  SPAWN / LIFE / EMITTERSHAPE3D / VELOCITY3D
+T1（生成与运动）  SPAWN / LIFE / EMITTERSHAPE3D / VELOCITY3D / HOMING（径直飞向目标→
+                  绕目标转圈，FORCE 阶段只写速度，位移仍由 VELOCITY3D 积分）
 T2（外观与发射器）TRANSFORM3D / SCALEANIM / ROTATEANIM / BILLBOARD3D
 T3（其余渲染主体）DUMMY / PLANE / RIBBON / RIBBONBLADE / MESH
 T3（渲染修饰）    UVSEQUENCE（序列帧；帧表由宿主经 SimResources 提供）
@@ -33,6 +34,7 @@ from . import alphacorrection  # noqa: F401
 from . import billboard3d     # noqa: F401
 from . import dummy            # noqa: F401
 from . import emittershape3d   # noqa: F401
+from . import homing           # noqa: F401
 from . import life             # noqa: F401
 from . import mesh             # noqa: F401
 from . import parentoptions    # noqa: F401
@@ -51,7 +53,7 @@ from . import uvcontrol        # noqa: F401
 from . import uvsequence       # noqa: F401
 from . import velocity3d       # noqa: F401
 
-__all__ = ["spawn", "life", "emittershape3d", "velocity3d",
+__all__ = ["spawn", "life", "emittershape3d", "velocity3d", "homing",
            "transform3d", "scaleanim", "rotateanim", "billboard3d",
            "dummy", "plane", "ribbon", "ribbonblade", "mesh", "uvsequence",
            "parentoptions", "ptlife", "rgbfire", "rgbwater", "alphacorrection", "uvcontrol",

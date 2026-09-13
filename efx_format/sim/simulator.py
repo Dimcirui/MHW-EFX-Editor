@@ -31,6 +31,8 @@ efx_format/sim/simulator.py  —  顶层驱动（EmitterState + Simulator）
 from . import registry as _reg
 from . import rng as _rng
 from . import stages as _stages
+from ..categories import ATTRIBUTE_CATEGORY_OF
+from ..hashes import TUBELIGHT
 from .config import SimConfig
 from .resolve import FieldResolver, FieldView, TimlTracks
 from .state import Particle, RenderItem, Vec3, ViewContext
@@ -39,6 +41,27 @@ from .uvs_table import SimResources
 #: 没有可用渲染体时，退化点的显示尺寸（游戏单位；100 游戏单位 = 1 Blender 单位）。
 #: 纯显示默认值，不来自文件——真实尺寸只有渲染体属性（BILLBOARD3D 等）知道。
 FALLBACK_SIZE = 10.0
+
+#: categories.py 里不属于 "renderer_body" 分类、但自带完整渲染的类型（TUBELIGHT：
+#: 自持光柱渲染，绕开共享渲染管线，见 categories.py 该条注释）——判断「这个 entry
+#: 有没有主体」时要当作有，不能因为它不在 renderer_body 分类里就当成无主体。
+_SELF_RENDERING_EXTRA = frozenset({int(TUBELIGHT)})
+
+
+def _has_renderer_body(blocks):
+    """这个 entry 的属性里有没有「渲染主体」——决定退化点 vs 干脆不画（见 build_render）。
+
+    PTBEHAVIOR 是独立行为系统，语义上与常规渲染/物理互斥（categories.py 原话），
+    真实语料里也从不与 renderer_body 类属性共存——一个只有 PTBEHAVIOR（或者只有
+    SPAWN/LIFE/PTLIFE 这类骨架属性、纯当 Action 召唤枢纽用）的 entry 本来就没有
+    视觉主体，画一个退化点反而是凭空捏造。TUBELIGHT 虽然也归在 pt_behavior 分类，
+    但它自带完整光柱渲染（categories.py 该条注释），排除在外照常给退化点。
+    """
+    for h, _fields in blocks:
+        h = int(h)
+        if h in _SELF_RENDERING_EXTRA or ATTRIBUTE_CATEGORY_OF.get(h) == "renderer_body":
+            return True
+    return False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -52,6 +75,7 @@ class EmitterState(object):
         "frame", "config", "seed",
         "origin", "host_origin", "drift", "velocity", "prev_origin",
         "rotation", "scale", "rot_dynamic", "scale_dynamic", "rot_order",
+        "host_rotation",
         "particles", "spawned_total", "spawn_requests",
         "unsupported", "user", "cycle", "finished", "trail", "resources",
         "_resolvers", "_pending_spawn", "_notes",
@@ -76,6 +100,13 @@ class EmitterState(object):
         self.origin = Vec3()
         self.rotation = Vec3()
         self.scale = Vec3(1.0, 1.0, 1.0)
+
+        #: PTLIFE 子实例从**父实例**继承来的旋转（父的 rot_dynamic + 父自己的
+        #: host_rotation，逐帧由 SimScene._follow 刷新）。根实例上恒为零——它没有
+        #: 父实例。与 rot_dynamic 分开存的理由同 origin/host_origin：子实例自己的
+        #: TRANSFORM3D.rotation_velocity 累积在 rot_dynamic 里，父链传下来的这份
+        #: 不能覆盖它，两者要能相加。见 _common.emitter_rotate。
+        self.host_rotation = Vec3()
 
         # 旋转/缩放也拆成「全量」与「动态」两份，理由同 origin/host_origin：
         #   rotation / scale         —— 全量，给宿主和调试看
@@ -174,6 +205,7 @@ class Simulator(object):
     def __init__(self, blocks, timl_bytes=b"", config=None, resources=None,
                  tracks=None):
         self.blocks = list(blocks or [])
+        self._has_body = _has_renderer_body(self.blocks)
         self.timl_bytes = bytes(timl_bytes or b"")
         self.config = config or SimConfig()
         #: 属性块里没有、必须由宿主给的外部数据（UVSEQUENCE 的 .uvs 帧表）。
@@ -344,13 +376,26 @@ class Simulator(object):
                 item = b.behavior.build_render(p, em, view, item)
             if item is not None and item.kind == "NONE":
                 continue      # 渲染体明说「我不该有视觉输出」（DUMMY），不走退化点
-            if item is not None and "layers" in p.rolled:
+            if item is not None and "layers" in p.rolled and item.kind != "RIBBON":
                 # 双层染色（RGBFIRE/RGBWATER）在 SHADE 阶段算好两层，留在 p.rolled 里。
                 # 渲染体不必认识这些属性，由这里统一转交——有贴图的 glue 会按贴图亮度
                 # 在两层之间插值，没贴图的用 item.color（已经压成一个代表色了）。
+                #
+                # ⚠ RIBBON 排除在外：这套"按贴图亮度在两层间插值"是给 BILLBOARD3D
+                # 那种单张贴图（贴图亮=核心色、暗=外缘色）设计的，RIBBON 的贴图是沿
+                # 长度走的序列帧，没有"亮度=核心"这层语义。RIBBON 自己的 build_render
+                # 已经把 RGBFIRE 的 p.color 正确乘进 item.color 里了（见 ribbon.py），
+                # 这里再叠一层会整个替换掉——RGBFIRE 两层若是白色（无染色意图），
+                # 结果就是贴图原色不受调制地透出来，实测表现为"设的蓝色显示成了贴图
+                # 本身的颜色（比如绿色）"。
                 item.extra.setdefault("layers", p.rolled["layers"])
             if item is None:
-                # 这个 entry 没有已实现的 RENDER_BODY（比如渲染体是 LIGHTNING）
+                if not self._has_body:
+                    # 这个 entry 压根没有「渲染主体」类属性（PTBEHAVIOR / 纯 Action
+                    # 召唤枢纽等）——不是「有主体但没实现」，是本来就不该有画面，
+                    # 同 DUMMY 一样明确不画，不走退化点（见 _has_renderer_body）。
+                    continue
+                # 有渲染主体类属性、只是没实现（比如渲染体是 LIGHTNING）
                 # → 退化成一个点，至少能看见「有多少、在哪、多大、多亮」。
                 # 尺寸用一个**显示用**的默认值（游戏单位）乘 p.scale：真实尺寸只有
                 # 渲染体属性知道，这里没有，所以不假装知道。

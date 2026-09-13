@@ -35,6 +35,16 @@ class RgbWater(Behavior):
     STAGE = SHADE
     ORDER = 61
 
+    #: colorSpecular/colorSheet/intensity*/colorRate 有 FIELD_TO_DT 映射——挂了
+    #: TIML 就每帧重解，同 RGBFIRE/MESH 的模式。
+    _has_tracks = False
+
+    def on_emitter_init(self, em, rng):
+        f = em.f(RGBWATER)
+        if f is None:
+            return
+        self._has_tracks = f.has_tracks
+
     def on_particle_spawn(self, p, em, rng):
         f = em.f(RGBWATER, p)
         if f is None:
@@ -55,13 +65,24 @@ class RgbWater(Behavior):
         st = p.rolled.get("rgbwater")
         if st is None:
             return
-        w0 = st["spec_i"] * color_param_weight(st["sp"], p.age)
-        w1 = st["sheet_i"] * color_param_weight(st["hp"], p.age)
-        tint = blend_two_colors(em.config, st["spec"], w0, st["sheet"], w1)
-        rate = st["rate"]
+        spec, sheet = st["spec"], st["sheet"]
+        spec_i, sheet_i, rate, alpha = st["spec_i"], st["sheet_i"], st["rate"], st["alpha"]
+        if self._has_tracks:
+            f = em.f(RGBWATER, p)
+            if f is not None:
+                spec = _rgb(f.raw("colorSpecular"))
+                sheet = _rgb(f.raw("colorSheet"))
+                spec_i = max(0.0, float(f.get("intensitySpecular", 1.0) or 0.0))
+                sheet_i = max(0.0, float(f.get("intensitySheet", 1.0) or 0.0))
+                rate = float(f.get("colorRate", 1.0) or 0.0)
+                alpha = float(f.get("intensityAlpha", 1.0) or 0.0)
+
+        w0 = spec_i * color_param_weight(st["sp"], p.age)
+        w1 = sheet_i * color_param_weight(st["hp"], p.age)
+        tint = blend_two_colors(em.config, spec, w0, sheet, w1)
         p.color = [tint[0] * rate, tint[1] * rate, tint[2] * rate]
         # (外缘, 核心)，与 RGBFIRE 同一约定。⚠ 水这边哪一层在核心没有实机数据，
         # 暂按「高光在核心」处理（高光本来就是亮处那一层）。
-        p.rolled["layers"] = ([c * w1 * rate for c in st["sheet"]],
-                              [c * w0 * rate for c in st["spec"]])
-        p.alpha = min(1.0, p.alpha * st["alpha"])
+        p.rolled["layers"] = ([c * w1 * rate for c in sheet],
+                              [c * w0 * rate for c in spec])
+        p.alpha = min(1.0, p.alpha * alpha)

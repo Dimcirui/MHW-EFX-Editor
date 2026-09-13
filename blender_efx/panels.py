@@ -146,7 +146,8 @@ def _friendly_name(ori_name: str, type_name: str = "") -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _draw_field_row_buttons(row, type_name: str, ori_name: str,
-                            item=None, timl: bool = True) -> None:
+                            item=None, timl: bool = True,
+                            anno_name: str = "") -> None:
     """字段行末尾的两个附件：ⓘ 注释 + ♫ 动画。
 
     ⓘ：该字段有 BT 注释时才画，悬停显示注释（EFX_OT_field_help）。
@@ -156,11 +157,16 @@ def _draw_field_row_buttons(row, type_name: str, ori_name: str,
 
     timl=False 用于轴组标题行：那里的 ⓘ 借用第一条轴的注释，但 DT 是逐轴的，
     按钮画在每条轴自己的行上才对得上。
+
+    anno_name：只给 ⓘ 用的查表名（默认同 ori_name）。PTBEHAVIOR 的 param 行 ori_name 是
+    'p3' 这样的序号占位，注释得按参数真名（mBrightThreshold 等）查；♫ 那边仍要原
+    ori_name——TIML 播种值是按 ori_name 回查 field_item 的。
     """
     if not type_name:
         return
     from .annotations import get_annotation
-    if get_annotation(type_name, ori_name):
+    _aname = anno_name or ori_name
+    if get_annotation(type_name, _aname):
         op = row.operator(
             "efx.field_help",
             text="",
@@ -168,7 +174,7 @@ def _draw_field_row_buttons(row, type_name: str, ori_name: str,
             emboss=False,
         )
         op.type_name = type_name
-        op.field_name = ori_name
+        op.field_name = _aname
     if timl:
         try:
             from . import timl_tracks as _tt
@@ -380,7 +386,8 @@ def _bitmask_field(type_name: str, ori_name: str):
     return None
 
 
-def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj=None):
+def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj=None,
+                     anno_name: str = ""):
     """
     按 item.data_type 在 layout 上绘制对应控件（L1.5 重设计版）。
 
@@ -404,6 +411,9 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
     手动 index 分量行强制 use_property_split=False，防止 property_split 打乱布局。
     """
     dtype = item.data_type
+    # ⓘ 注释查表用的字段名：默认 ori_name；PTBEHAVIOR 的 param 行 ori_name 是
+    # 'p3' 这样的序号占位，由调用方传参数真名（hint_name）进来。
+    _anno = anno_name or item.ori_name
     # 保留填充字段（0xCD 占位）→ 关闭编辑：把 layout 重指向一个 enabled=False 的子列，
     # 后续所有控件都画进它（只读灰显）。导出时该字段未编辑 → 走原字节，byte-perfect 不变。
     from .field_labels import is_reserved_fill
@@ -423,7 +433,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         split = row.split(factor=0.45)
         split.label(text=fname)
         split.prop(item, "enum_proxy", text="")
-        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
         return
 
     # ── Bool 字段 → 勾选框（纯显示层，值仍存 int 槽）────────────────────────────────
@@ -435,7 +445,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         split = row.split(factor=0.45)
         split.label(text=fname)
         split.prop(item, "bool_proxy", text="")
-        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
         return
 
     # ── Bitmask 字段 → 摘要 + 弹窗编辑按钮（纯显示层，值仍存 int 槽）─────────────────
@@ -455,7 +465,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         op.field = item.ori_name
         if obj is not None:
             op.obj_name = obj.name
-        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
         return
 
     # ── EnumVec3 逐轴枚举（INT3 背板）→ 标题行 + X/Y/Z 三个下拉 ─────────────────────
@@ -465,7 +475,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         title.scale_y = 1.1
         title.use_property_split = False
         title.label(text=fname)
-        _draw_field_row_buttons(title, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(title, type_name, item.ori_name, item=item, anno_name=_anno)
         for axis, prop in (("X", "enum_vec3_x"), ("Y", "enum_vec3_y"), ("Z", "enum_vec3_z")):
             r = layout.row(align=True)
             r.scale_y = 1.1
@@ -483,7 +493,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=(fname + (" [Blender]" if is_b else "")), icon="ORIENTATION_GLOBAL")
-        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item, anno_name=_anno)
 
         # EMITTERSHAPE3D.rangeXYZ 的两个值不是 static+random，而是 offset+size：
         # 内边界=offset、厚度=size、外边界=offset+size。用户 2026-07-30 实机测试确认
@@ -525,7 +535,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
-        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item, anno_name=_anno)
 
         # X/Y/Z 分量行
         comp_row = layout.row(align=True)
@@ -545,7 +555,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=(fname + (" [Blender]" if is_b else "")), icon="ORIENTATION_GLOBAL")
-        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item, anno_name=_anno)
 
         # X/Y/Z 分量行
         comp_row = layout.row(align=True)
@@ -571,7 +581,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         # alpha 数值条，使 alpha 在内联行就可见可编辑
         val_row.prop(item, "color_rgba_value", index=3, text="A", slider=True)
         # ⓘ 注释 + ♫ 动画（♫ 已并进 _draw_field_row_buttons，别再单独调一次）
-        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
         return
 
     # ── FLOAT4（X/Y 各自 Static/Random，2×2 展开）───────────────────────────
@@ -583,7 +593,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
-        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item, anno_name=_anno)
 
         x_row = layout.row(align=True)
         x_row.scale_y = 1.1
@@ -667,7 +677,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
 
     # ⓘ 图标（有注释，且非 OPAQUE 内部提示行）
     if dtype not in ("OPAQUE",) and not item.ori_name.startswith("__"):
-        _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -686,6 +696,56 @@ def _draw_tubelight_int_as_color(layout, item, type_name, label):
     val_row.prop(item, "int_as_color_display", text="")
     val_row.prop(item, "int_as_color_display", index=3, text="A", slider=True)
     _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
+
+
+def _ptb_item_is_color(item) -> bool:
+    """PTBEHAVIOR 的 FLOAT4 param 是不是颜色（名字以 Color 结尾，同 names.is_color_param）。"""
+    nm = getattr(item, "hint_name", "") or ""
+    return nm.endswith("Color")
+
+
+# PTBEHAVIOR 里元素数 ≤4 的数组值槽 → (属性名, 元素数)。通用块那边 FLOAT3 是
+# 「标题行 + XYZ 行」两行、FLOAT4 是 static/random 2×2 四行，那套排版为 XYZ 轴向字段
+# 设计，套在 behavior 的 vector 参数上只是白占地方——这里一律压成一行。
+_PTB_VECTOR_PROPS = {
+    "FLOAT2": ("float2_value", 2),
+    "FLOAT3": ("float3_value", 3),
+    "FLOAT4": ("float4_value", 4),
+    "INT2":   ("int2_value", 2),
+    "INT3":   ("int3_value", 3),
+    "INT4":   ("int4_value", 4),
+}
+
+
+def _draw_ptb_vector_row(layout, item, type_name, label):
+    """PTBEHAVIOR 的非颜色小数组（vector2/3/4、2×int32）：一行画完。"""
+    prop, n = _PTB_VECTOR_PROPS[item.data_type]
+    row = layout.row(align=True)
+    row.scale_y = 1.1
+    row.use_property_split = False
+    split = row.split(factor=0.45)
+    split.label(text=label)
+    val_row = split.row(align=True)
+    for idx in range(n):
+        val_row.prop(item, prop, index=idx, text="")
+    _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=item.hint_name)
+
+
+def _draw_ptb_float4_as_color(layout, item, type_name, label):
+    """PTBEHAVIOR 的 4×float32 颜色参数（mColor）：色块 + A 滑块。
+
+    底层值仍是 float4_value 四个原始 float（非 0-1 归一），色块只是显示层。这类颜色是
+    HDR 倍率，色块属性只设 soft_max=1、不设硬上限，所以能拖/输入到 1 以上。
+    """
+    row = layout.row(align=True)
+    row.scale_y = 1.1
+    row.use_property_split = False
+    split = row.split(factor=0.45)
+    split.label(text=label)
+    val_row = split.row(align=True)
+    val_row.prop(item, "float4_as_color_display", text="")
+    val_row.prop(item, "float4_as_color_display", index=3, text="A", slider=True)
+    _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=item.hint_name)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1132,23 +1192,38 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     _draw_ptcollision_ref_field(_tcol, obj)
                     i += 1
                     continue
+                # PTBEHAVIOR：b_type 画成行为类下拉（原来是裸字符串框，手打类名既难又易错）
+                if _is_ptbehavior and item.ori_name == 'b_type':
+                    _bt_row = _tcol.row(align=True)
+                    _bt_row.scale_y = 1.1
+                    _bt_row.use_property_split = False
+                    _bt_split = _bt_row.split(factor=0.45)
+                    _bt_split.label(text="B type")
+                    _bt_split.operator_menu_enum(
+                        "efx.ptb_set_btype", "b_type_choice",
+                        text=item.string_value.rsplit("::", 1)[-1] or "(none)",
+                    )
+                    i += 1
+                    continue
                 # PTBEHAVIOR：param 行用属性 key 标签（hint_name=已知名/0x%08X）+ 行尾移除按钮
                 if _is_ptbehavior and item.hint_name and item.ori_name.startswith('p'):
-                    _rest = item.ori_name[1:]  # "5" or "5_v2"
                     try:
-                        _pord = int(_rest.split('_')[0])
+                        _pord = int(item.ori_name[1:])
                     except ValueError:
                         _pord = -1
-                    _is_first_sub = ('_v' not in _rest) or _rest.endswith('_v0')
-                    # 0x15 子值加 [vN] 后缀以区分；其余直接用 key 标签
-                    if '_v' in _rest:
-                        _lbl = f"{item.hint_name} [{_rest.split('_v')[1]}]"
-                    else:
-                        _lbl = item.hint_name
+                    _lbl = item.hint_name
                     _prow = _tcol.row(align=True)
                     _fcol = _prow.column(align=True)
-                    _draw_field_item(_fcol, item, type_name=type_name, label_override=_lbl, obj=obj)
-                    if _is_first_sub and _pord >= 0:
+                    # 颜色（vector4，名字以 Color 结尾）画色轮 + A 滑块；
+                    # 其余元素数 ≤4 的数组一律一行画完；标量/字符串走通用渲染。
+                    if item.data_type == 'FLOAT4' and _ptb_item_is_color(item):
+                        _draw_ptb_float4_as_color(_fcol, item, type_name, _lbl)
+                    elif item.data_type in _PTB_VECTOR_PROPS:
+                        _draw_ptb_vector_row(_fcol, item, type_name, _lbl)
+                    else:
+                        _draw_field_item(_fcol, item, type_name=type_name, label_override=_lbl,
+                                         obj=obj, anno_name=item.hint_name)
+                    if _pord >= 0:
                         _bcol = _prow.column(align=True)
                         _op = _bcol.operator("efx.ptb_remove_override", text="", icon="X")
                         _op.param_index = _pord
@@ -1223,7 +1298,9 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     _atip.enabled = False
                     _atip.label(text=T("attribute.advanced_hint"))
 
-            # PTBEHAVIOR：参数列表底部「添加覆盖」下拉（按 b_type 目录列可加属性）
+            # PTBEHAVIOR：参数列表底部「添加覆盖」——左边下拉列全表，右边放大镜按名字搜。
+            # 合并目录动辄上百项（DTI 补项进来之后），纯下拉翻不动，故照 attribute 那边的
+            # efx.attribute_add_search 加一个 invoke_search_popup 入口。
             if _is_ptbehavior:
                 col.separator(factor=0.5)
                 _add_row = col.row(align=True)
@@ -1231,6 +1308,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     "efx.ptb_add_override", "key_choice",
                     text=T("attribute.ptbehavior_add"), icon="ADD",
                 )
+                _add_row.operator("efx.ptb_add_override_search", text="", icon="VIEWZOOM")
 
     else:
         # 不可编辑（_custom / 未知 / 含嵌套结构）

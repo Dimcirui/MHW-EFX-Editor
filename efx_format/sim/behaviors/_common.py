@@ -165,11 +165,20 @@ def axis_normal(f, cfg, axis_field="baseAxis", rot_prefix="rotation",
 
 
 def emitter_rotate(em, v):
-    """按发射器的**动态**旋转转一个方向向量（静态部分由宿主负责，见 transform3d）。"""
-    r = em.rot_dynamic
-    if not (r.x or r.y or r.z):
+    """按发射器的**动态**旋转转一个方向向量（静态部分由宿主负责，见 transform3d）。
+
+    `rot_dynamic` 是这个发射器自己转的量；`host_rotation` 是从 PTLIFE 父实例继承
+    来的那份（见 scene.py::SimScene._follow）——父发射器转起来，它召唤出的子发射器
+    （及其生成方式/初速度）要跟着一起转，否则子特效永远只朝同一个方向发射，'
+    看不出父的旋转。两者按同一套 Euler 顺序相加，不分先后（都是同一个 rot_order）。
+    """
+    hr = em.host_rotation
+    rx = em.rot_dynamic.x + hr.x
+    ry = em.rot_dynamic.y + hr.y
+    rz = em.rot_dynamic.z + hr.z
+    if not (rx or ry or rz):
         return v
-    return rotate_euler(v, r.x, r.y, r.z, order=em.rot_order,
+    return rotate_euler(v, rx, ry, rz, order=em.rot_order,
                         applied=em.config.rot_order_applied)
 
 
