@@ -3405,8 +3405,13 @@ FIELD_ANNOTATIONS = {
         "ZH": "与抖动1频率配对的抖动量。",
     },
     ("RIBBON", "base_opacity"): {
-        "EN": "Opacity at the rear end (away from the direction of travel).",
-        "ZH": "后端（远离前进方向的一端）的不透明度。",
+        "EN": "Opacity right at the rear end (away from the direction of travel). This is an "
+              "endpoint value, not a value for the whole ribbon — the middle stays fully "
+              "opaque and only the rear fades toward this value, over the span set by "
+              "Rear Fade Length. 1 leaves the rear edge hard.",
+        "ZH": "后端（远离前进方向的一端）**端点处**的不透明度。它只管端点，不是整条带子的"
+              "不透明度——中间始终是实心的，只有后端在「后端渐隐长度」那一段里渐变到这个值。"
+              "为 1 则后端是硬边、不渐隐。",
     },
     ("RIBBON", "base_width_multiplier"): {
         "EN": "Width multiplier at the rear end (away from the direction of travel).",
@@ -3474,8 +3479,13 @@ FIELD_ANNOTATIONS = {
         "ZH": "与抖动2频率配对的抖动量。",
     },
     ("RIBBON", "tip_opacity"): {
-        "EN": "Opacity at the front end (in the direction of travel).",
-        "ZH": "前端（前进方向的一端）的不透明度。",
+        "EN": "Opacity right at the front end (in the direction of travel). This is an "
+              "endpoint value, not a value for the whole ribbon — the middle stays fully "
+              "opaque and only the front fades toward this value, over the span set by "
+              "Front Fade Length. 1 leaves the front edge hard.",
+        "ZH": "前端（前进方向的一端）**端点处**的不透明度。它只管端点，不是整条带子的"
+              "不透明度——中间始终是实心的，只有前端在「前端渐隐长度」那一段里渐变到这个值。"
+              "为 1 则前端是硬边、不渐隐。",
     },
     ("RIBBON", "tip_width_multiplier"): {
         "EN": "Width multiplier at the front end (in the direction of travel).",
@@ -3543,13 +3553,19 @@ FIELD_ANNOTATIONS = {
         "ZH": "流动贴图的总开关——下面的流动速度／强度以及只播一次／逆向播放等开关，只有"
               "在它开启时才起作用。",
     },
-    ("RIBBON", "unkn27_0"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("RIBBON", "base_fade_length"): {
+        "EN": "How far the rear fade reaches, as a fraction of the ribbon's total length. "
+              "The rear end sits at Rear Opacity and climbs back to fully opaque across this "
+              "span; 0 makes the rear edge a hard cut. Common range: 0~1, most often 0.3.",
+        "ZH": "后端的渐隐延伸多长，按条带全长的比例算。端点处是「后端不透明度」，在这段"
+              "长度里回到完全不透明；为 0 则后端是硬边。常见取值在 0~1 之间，多数为 0.3。",
     },
-    ("RIBBON", "unkn27_1"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("RIBBON", "tip_fade_length"): {
+        "EN": "How far the front fade reaches, as a fraction of the ribbon's total length. "
+              "The front end sits at Front Opacity and climbs back to fully opaque across "
+              "this span; 0 makes the front edge a hard cut. Common range: 0~1, most often 0.4.",
+        "ZH": "前端的渐隐延伸多长，按条带全长的比例算。端点处是「前端不透明度」，在这段"
+              "长度里回到完全不透明；为 0 则前端是硬边。常见取值在 0~1 之间，多数为 0.4。",
     },
     ("RIBBON", "spawnAnchorOffset"): {
         "EN": "Where along the ribbon's length the spawn point sits, in ribbon-length units. "

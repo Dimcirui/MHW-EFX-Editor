@@ -237,6 +237,7 @@ def ribbon_fields(**kw):
          "epvcolor_0": 0, "epvcolor_1": 0,
          "base_width_multiplier": 1.0, "tip_width_multiplier": 1.0,
          "base_opacity": 1.0, "tip_opacity": 1.0,
+         "base_fade_length": 0.3, "tip_fade_length": 0.4,
          "enableFlap": 0,
          "flap1Frequency": 0.0, "flap1FrequencyJitter": 0.0,
          "flap1Amount": 0.0, "flap1AmountJitter": 0.0,
@@ -3621,12 +3622,44 @@ class TestRibbon(unittest.TestCase):
         self.assertAlmostEqual(widths[-1], 10.0, places=6)     # 半宽 = 20/2
         self.assertLess(widths[0], widths[-1])
 
-    def test_opacity_taper(self):
-        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, base_opacity=0.0,
-                                             tip_opacity=1.0))
+    def test_opacity_is_an_endpoint_fade_not_a_lengthwise_lerp(self):
+        """base_/tip_opacity 是**端点值**，中间恒为实心。
+
+        用户实机：两端都填 0 的条带在游戏里看得见，只是两边渐隐——所以这两个字段
+        不能当成「沿全长从 base 插到 tip」，那会把整条带子算成 alpha=0（0.7.0 之前
+        就是这么算的，suidao1 的三条 trail 在预览里整条消失）。
+        """
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, subdivisionCount=21,
+                                             base_opacity=0.0, tip_opacity=0.0,
+                                             base_fade_length=0.3,
+                                             tip_fade_length=0.4))
         alphas = [a for _q, _w, a in sim.build_render()[0].points]
-        self.assertAlmostEqual(alphas[0], 0.0, places=6)
-        self.assertAlmostEqual(alphas[-1], 1.0, places=6)
+        self.assertAlmostEqual(alphas[0], 0.0, places=6)       # 两个端点透明
+        self.assertAlmostEqual(alphas[-1], 0.0, places=6)
+        self.assertAlmostEqual(max(alphas), 1.0, places=6)     # 中间实心
+        # 渐隐区之外（u ∈ [0.3, 0.6]）整段都是 1
+        for i in range(7, 13):                                 # u = 0.35 ~ 0.60
+            self.assertAlmostEqual(alphas[i], 1.0, places=6)
+        self.assertAlmostEqual(alphas[3], 0.5, places=6)        # u=0.15，后端渐隐过半
+
+    def test_opacity_taper_one_end_only(self):
+        """经典拖尾写法：后端硬边、前端渐隐。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, subdivisionCount=11,
+                                             base_opacity=1.0, tip_opacity=0.0,
+                                             tip_fade_length=0.4))
+        alphas = [a for _q, _w, a in sim.build_render()[0].points]
+        self.assertAlmostEqual(alphas[0], 1.0, places=6)
+        self.assertAlmostEqual(alphas[-1], 0.0, places=6)
+        self.assertAlmostEqual(alphas[5], 1.0, places=6)       # u=0.5 还在渐隐区外
+
+    def test_zero_fade_length_means_a_hard_edge(self):
+        """渐隐长度 0 = 硬边：端点值不起作用，整条恒 1。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, base_opacity=0.0,
+                                             tip_opacity=0.0,
+                                             base_fade_length=0.0,
+                                             tip_fade_length=0.0))
+        alphas = [a for _q, _w, a in sim.build_render()[0].points]
+        self.assertTrue(all(abs(a - 1.0) < 1e-6 for a in alphas), alphas)
 
     def test_spawn_anchor_offset_shifts_the_strip(self):
         a = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=50.0,

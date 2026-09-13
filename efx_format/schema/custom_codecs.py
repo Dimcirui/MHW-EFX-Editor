@@ -514,7 +514,7 @@ def pack_mesh(values: dict) -> bytes:
 #   unkn20[4](16) + unkn21(4) + unkn22[3](12) + tailTiedToBone(4) + unkn23[8](32) +
 #   unkn24(4) + epvcolor[2](8) + spacer7(4) +  
 #   base_width_mult(4) + base_opacity(4) + tip_width_mult(4) + tip_opacity(4) +
-#   spacer8(4) + unkn27[2](8) + short visiblePreview(2) + short spacer9(2) +  
+#   spacer8(4) + base_fade_length(4) + tip_fade_length(4) + short visiblePreview(2) + short spacer9(2) +  
 #   base_flap_freq(8) + base_flap_amount(8) + tip_flap_freq(8) + tip_flap_amount(8) +
 #     [现 flap1Frequency/Amount + flap2Frequency/Amount，各带 Jitter]
 #   byte unkn0(1) + byte flow_enable_a/b(2) + byte reserved[13](13) +  
@@ -668,8 +668,10 @@ _RIBBON_FIXED_SCHEMA = [
     # 原 int spacer8：同 spacer1 模式，低字节真实变化(3.8%非零)。
     ('unknBool8',                'B'),
     ('spacer8',                  ('B', 3)),
-    ('unkn27_0', 'f'),
-    ('unkn27_1', 'f'),
+    # 两端渐隐的长度（占条带全长的比例）：base_/tip_opacity 是端点的不透明度，
+    # 中间恒为 1，这两个字段决定从端点过渡回 1 要走多长。默认 0.3 / 0.4。
+    ('base_fade_length',         'f'),  # 原 unkn27_0
+    ('tip_fade_length',          'f'),  # 原 unkn27_1
     # 原 short visiblePreview：全语料 {0,1,256,257} 均有意义比例出现，实为 2 个独立字节，
     # 2026-07-30 拆分。低字节=已实机确认的"可见性修正"(非0破坏TIML变色+条带消失)；
     # 高字节经实机确认是下面 flap 抖动组的总开关，改名 enableFlap（语料佐证：开关=1 的

@@ -512,8 +512,6 @@ ADVANCED_FIELDS = {
         'unkn20_3',
         'unkn21',
         'unkn22_0',
-        'unkn27_0',
-        'unkn27_1',
         'unknBitmask22_1',
         'unknBool15',
         'unknBool16_1',

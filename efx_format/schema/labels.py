@@ -85,6 +85,14 @@ _LABELS_GLOBAL = {
     'flap2FrequencyJitter': '抖动2 频率抖动',
     'flap2Amount': '抖动2 幅度',
     'flap2AmountJitter': '抖动2 幅度抖动',
+    # RIBBON 两端的宽度收束与渐隐：opacity 是**端点**的不透明度（中间恒为实心），
+    # fade_length 是从端点回到实心所跨的长度（占全长比例）。
+    'base_width_multiplier': '后端宽度乘数',
+    'base_opacity': '后端不透明度',
+    'base_fade_length': '后端渐隐长度',
+    'tip_width_multiplier': '前端宽度乘数',
+    'tip_opacity': '前端不透明度',
+    'tip_fade_length': '前端渐隐长度',
     # RIBBON 自尾端施加的三向全局力（方向恒定，不随旋转变化）。
     'unknGlobalForceEnable': '启用全局力',
     'unknGlobalForceX': '全局力 X',

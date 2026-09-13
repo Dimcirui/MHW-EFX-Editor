@@ -30,8 +30,10 @@ length 59% 留在默认 100 不动、变化的是 subdiv。所以两个模式对
 默认按「每段定长」：**总长 = length × (subdiv - 1)**，一段一个 length。另一种读法是
 「每段一帧历史」（长度随运动速度变），要改 p.trail 的记录长度才能做，先不实现；
 `ribbon_length_mode='total'` 保留改动前的行为（length 即总长）。
-    base_/tip_width_multiplier   后端/前端的宽度乘数（tip = 前进方向那一端）
-    base_/tip_opacity            后端/前端的不透明度
+    base_/tip_width_multiplier   后端/前端的宽度乘数（tip = 前进方向那一端），沿全长
+                            插值——base=1/tip=0 就是一个三角形
+    base_/tip_opacity            后端/前端**端点**的不透明度；中间恒为实心，只有两端
+    base_/tip_fade_length        各自在这段长度（占全长比例）里渐变到端点值
     spawnAnchorOffset       生成点落在条带长度方向上的位置，以条带长度为单位
                             （0=前端贴住生成点，1=后端贴住生成点）
     enableFlap + flap1/flap2(Frequency, Amount)   旗帜式来回摆动，两组叠加
@@ -69,6 +71,26 @@ MODE_CHAIN = 2
 #: 轨迹弧长低于这个值（游戏单位）就当发射器没动 —— 静止时条带彻底消失（实机确认）。
 #: 不取 0 是因为绑骨的发射器总有一点数值抖动，取 0 会让本该消失的条带留一条丝。
 _STATIC_ARC_EPS = 1e-4
+
+#: 两端渐隐长度的缺省值（占全长比例）——语料众数，字段缺失时用。
+_DEF_BASE_FADE = 0.3
+_DEF_TIP_FADE = 0.4
+
+
+def _fade_alpha(u, base_a, tip_a, base_span, tip_span):
+    """两端渐隐剖面：端点取 base_/tip_opacity，**中间恒为 1**。
+
+    ⚠ 不是「沿全长从 base_opacity 插到 tip_opacity」。用户实机：两端都填 0 时中间
+    并不透明，只是两边渐隐——所以这两个字段是**端点值**，不是整条带子的不透明度。
+    宽度那一对才是真的全长插值（base=1/tip=0 得到一个三角形）。
+
+    每一端各自从端点值爬回 1，跨度是 base_/tip_fade_length（占全长比例）。两端取
+    `min` 而不是相乘：跨度不重叠时两者等价，重叠时相乘会把中间也压暗。
+    跨度 <= 0 = 硬边，端点值不起作用。
+    """
+    rb = 1.0 if base_span <= 0.0 else min(1.0, u / base_span)
+    rt = 1.0 if tip_span <= 0.0 else min(1.0, (1.0 - u) / tip_span)
+    return min(base_a + (1.0 - base_a) * rb, tip_a + (1.0 - tip_a) * rt)
 
 
 def _per_segment(em):
@@ -298,7 +320,9 @@ class Ribbon(Behavior):
         base_ws = []
         dws = []
         base_as = []
-        das = []
+        tip_as = []
+        base_spans = []
+        tip_spans = []
         flaps = []
         for k in keep:
             p, st, f, length, width, n = pend[k]
@@ -312,7 +336,11 @@ class Ribbon(Behavior):
             base_ws.append(bw)
             dws.append(tw - bw)
             base_as.append(ba)
-            das.append(ta - ba)
+            tip_as.append(ta)
+            base_spans.append(f.get("base_fade_length", _DEF_BASE_FADE)
+                              if f is not None else _DEF_BASE_FADE)
+            tip_spans.append(f.get("tip_fade_length", _DEF_TIP_FADE)
+                             if f is not None else _DEF_TIP_FADE)
             flaps.append(bool(st["flap"]))
 
         arr = lambda seq: numpy.array(seq, dtype="f8")
@@ -333,7 +361,17 @@ class Ribbon(Behavior):
         u = ((numpy.arange(total, dtype="f8") - numpy.repeat(run, ns))
              / numpy.repeat((ns - 1).astype("f8"), ns))
         half = rep(wbases) * (rep(base_ws) + rep(dws) * u)
-        alpha = rep(base_as) + rep(das) * u
+
+        # 两端渐隐（逐点，见 `_fade_alpha`）：端点取 base_/tip_opacity，中间恒 1。
+        sb = rep(base_spans)
+        stp = rep(tip_spans)
+        rb = numpy.clip(u / numpy.where(sb > 1e-6, sb, 1.0), 0.0, 1.0)
+        rt = numpy.clip((1.0 - u) / numpy.where(stp > 1e-6, stp, 1.0), 0.0, 1.0)
+        rb[sb <= 1e-6] = 1.0            # 跨度 0 = 硬边
+        rt[stp <= 1e-6] = 1.0
+        ba_ = rep(base_as)
+        ta_ = rep(tip_as)
+        alpha = numpy.minimum(ba_ + (1.0 - ba_) * rb, ta_ + (1.0 - ta_) * rt)
 
         for j, k in enumerate(keep):
             s = starts[k]
@@ -426,19 +464,22 @@ class Ribbon(Behavior):
         tip_w = f.get("tip_width_multiplier", 1.0) if f is not None else 1.0
         base_a = f.get("base_opacity", 1.0) if f is not None else 1.0
         tip_a = f.get("tip_opacity", 1.0) if f is not None else 1.0
+        base_span = (f.get("base_fade_length", _DEF_BASE_FADE)
+                     if f is not None else _DEF_BASE_FADE)
+        tip_span = (f.get("tip_fade_length", _DEF_TIP_FADE)
+                    if f is not None else _DEF_TIP_FADE)
 
         # pts 是 base→tip（index 0 = 后端 = 远离前进方向的一端）
         wbase = 0.5 * width * p.scale.x
         dw = tip_w - base_w
-        da = tip_a - base_a
-        if dw == 0.0 and da == 0.0:
-            # 宽度与不透明度沿长度不变（语料里的常态）：整条一组数，不必逐点算 u
+        if dw == 0.0 and base_a == 1.0 and tip_a == 1.0:
+            # 宽度不变、两端也不渐隐（语料里的常态）：整条一组数，不必逐点算 u
             hw = wbase * base_w
-            points = [(q, hw, base_a) for q in pts]
+            points = [(q, hw, 1.0) for q in pts]
         else:
             inv = 1.0 / (len(pts) - 1)
             points = [(q, wbase * (base_w + dw * (i * inv)),
-                       base_a + da * (i * inv))
+                       _fade_alpha(i * inv, base_a, tip_a, base_span, tip_span))
                       for i, q in enumerate(pts)]
         return points, pts[-1].copy()
 

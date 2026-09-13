@@ -128,6 +128,8 @@ FIELD_RENAME_ALIASES = {
     ("RIBBON", "tip_flap_frequency_jitter"): "flap2FrequencyJitter",
     ("RIBBON", "tip_flap_amount"): "flap2Amount",
     ("RIBBON", "tip_flap_amount_jitter"): "flap2AmountJitter",
+    ("RIBBON", "unkn27_0"): "base_fade_length",
+    ("RIBBON", "unkn27_1"): "tip_fade_length",
     ("RIBBON", "ribbon_flow_unkn0"): "unknFixed28_0",
     ("RIBBON", "ribbon_flow_enable_a"): "unknGlobalForceEnable",
     ("RIBBON", "ribbon_flow_enable_b"): "unknBool28_2",
