@@ -997,6 +997,26 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。此字段较特殊，"
               "以 64 位存储（其余大多数 typeFlag 字段为 32 位），但取值分布形态相同（小基数离散）。",
     },
+    # PTBEHAVIOR 的 param 行按参数真名（hint_name，如 mBrightThreshold）查注释，
+    # 不按 ori_name（那是 'p3' 这样的序号占位）。见 panels._draw_field_row_buttons 的 anno_name。
+    ("PTBEHAVIOR", "mBrightThreshold"): {
+        "EN": "Brightness cutoff for the filter's bright pass: screen pixels darker than "
+              "this are dropped before the radial blur, leaving only the brightest parts. "
+              "Raising it crushes dark areas to solid black and lets the bright ones through "
+              "untouched, which on screen reads like a very hard contrast boost. Values sit "
+              "between 0 and 0.5, most often 0 or 0.1.",
+        "ZH": "滤镜取亮部时的亮度门槛：比它暗的画面像素在径向模糊之前就被丢掉，只留下最亮的部分。"
+              "调高会把暗部整块压成纯黑、亮部照常穿过，观感接近一次非常硬的对比度拉伸。"
+              "取值在 0~0.5 之间，最常见是 0 或 0.1。",
+    },
+    ("PTBEHAVIOR", "mColor"): {
+        "EN": "RGBA tint multiplied into the filter's output. Not limited to 0-1 — values go "
+              "up to 20, so it doubles as a strength multiplier; the colour swatch can only "
+              "reach 1, use the raw RGB row below it for anything brighter. Alpha is 1.0 in "
+              "almost every case.",
+        "ZH": "乘进滤镜输出的 RGBA 着色。不限于 0~1——最大可到 20，因此它同时充当强度倍率；"
+              "色块本身只能拖到 1，更亮的值用它下面那行原始 RGB 数值改。Alpha 几乎总是 1.0。",
+    },
     ("PTBEHAVIOR", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
               "marker rather than a tunable value. Not the same field as the "
@@ -1716,10 +1736,13 @@ FIELD_ANNOTATIONS = {
         "EN": "Per-axis spawn range, given as offset + size for every shape. Offset is the "
               "inner boundary (the hollow core), size is the thickness of the shell particles "
               "spawn in, so the outer boundary sits at offset + size. Size 0 spawns particles "
-              "on the inner surface only.",
+              "on the inner surface only. Exception: on the cylinder the Y pair is its height "
+              "and grows one way — offset Y is the base, size Y is how far it rises "
+              "towards +Y.",
         "ZH": "逐轴的生成范围，所有形状都是偏移+尺寸的组合。偏移是内边界（中间的空腔），"
               "尺寸是粒子生成的那层壳的厚度，外边界位于偏移+尺寸处。尺寸为 0 时粒子只在"
-              "内边界表面上生成。",
+              "内边界表面上生成。例外：圆柱体的 Y 那一对是高度，且只朝一个方向长——"
+              "偏移 Y 是底面位置，尺寸 Y 是向 +Y 长出去的高度。",
     },
     ("EMITTERSHAPE3D", "scanAngleHorizontal"): {
         "EN": "Horizontal sweep angle, used by the sphere and the cylinder. 360 = all round, "

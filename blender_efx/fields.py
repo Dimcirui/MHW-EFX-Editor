@@ -64,6 +64,7 @@ L1.3 颜色色轮策略（byte-perfect）：
 """
 
 import base64
+import struct
 import bpy
 from bpy.props import (
     StringProperty,
@@ -131,11 +132,11 @@ def _mark_attribute_dirty(self, context):
                     mesh_align.apply_mesh_rotscale_to_object(obj)
                     if is_entry:
                         mesh_align.realign_entry_if_active(body)
-                # EMITTERSHAPE3D 的形状/尺寸/弧形裁剪字段编辑 → 形状预览会话进行中则重同步
-                elif blk_hash == EMITTERSHAPE3D and self.ori_name in (
-                        "shapeType", "rangeXYZ", "scanAngleHorizontal"):
-                    from . import es3d_preview
-                    es3d_preview.resync_if_active(obj)
+                # EMITTERSHAPE3D：**任何**字段都可能改变生成区域的形状 → 线框叠加层
+                # 一律标脏。⚠ 别在这里列白名单：localRotation*/rotationOrder/
+                # rangeDivide*/radius*/scanAngleVertical 全都进线框，漏一个就是
+                # 「改了参数框不动」（曾经只列了三个字段，localRotation 就漏在外面）。
+                elif blk_hash == EMITTERSHAPE3D:
                     from . import es3d_overlay
                     es3d_overlay.invalidate()
             except Exception:
@@ -339,6 +340,15 @@ def _floats_to_packed_rgba(val) -> int:
                   _float_to_ubyte(v[2]), _float_to_ubyte(v[3]))
     u = r | (g << 8) | (b << 16) | (a << 24)
     return u - 0x100000000 if u >= 0x80000000 else u
+
+
+def _float4_as_color_get(self):
+    """float4_value → 色块显示值（原样，不做 0-1 归一）。"""
+    return tuple(self.float4_value)
+
+
+def _float4_as_color_set(self, val):
+    self.float4_value = tuple(val)
 
 
 def _int_as_color_get(self):
@@ -694,6 +704,20 @@ class EFXFieldItem(PropertyGroup):
         min=0.0, max=1.0,
         get=_int_as_color_get,
         set=_int_as_color_set,
+    )
+
+    # ── PTBEHAVIOR 颜色参数影子属性（t==0x15 的 4×float32，见 _init_ptbehavior_attribute）─
+    # 值槽是 float4_value（原始 float，不归一）；这里只是把它渲成色块 + A 滑块。
+    # 只设 min + soft_max、**不设硬 max**：这类颜色是 HDR 倍率（语料里 mColor 最大到 20），
+    # 卡死 max=1 会让拖一下色块就把原值压掉。写法照抄 MHW_Model_Editor 的 mrl3 color_value。
+    float4_as_color_display: FloatVectorProperty(
+        name="",
+        description="RGBA colour backed by four raw float32 values (HDR, not normalised)",
+        subtype='COLOR',
+        size=4,
+        min=0.0, soft_max=1.0,
+        get=_float4_as_color_get,
+        set=_float4_as_color_set,
     )
 
     # ── 整数向量值槽 ─────────────────────────────────────────────────────────
@@ -1912,12 +1936,32 @@ def _PTBEHAVIOR_HASH_RB() -> int:
 #
 # Items 布局：
 #   'b_type'       STRING — 行为类名（无尾 \0）
-#   'p{i}'         dtype  — 第 i 个 param 的值（t != 0x15 时单 item）
-#   'p{i}_v0..v3'  4 items— t==0x15 时四个子值（全部 FLOAT，2026-07-26 订正 [1]/[3]
-#                            原int32解读有误，实机+全语料确认应为float32）
+#   'p{i}'         dtype  — 第 i 个 param 的值，每个 param 恒一个 item
+#
+# t==0x15（4×float32）统一存 float4_value，一行画完：颜色参数（names.is_color_param）
+# 画色轮 + A 滑块，其余（mUVRange/mCenter 这种向量）画成一行四个数值框。
+# 2026-09-12 之前这里拆成 p{i}_v0.._v3 四个独立 FLOAT item，四行占满屏幕，已废弃。
+# ⚠ 颜色值域不是 0-1（语料 mColor 最大 20，是 HDR 倍率），底层恒存原始 float 不归一。
+#
+# 元素数 ≤4 的数组一律画成一行（见 panels._draw_ptb_vector_row）：
+#   t=0x14 vector3 / t=0x15 vector4 / t=0x36 2×int32 / t=0x37,0x40 2×float32。
+#
+# t==0x40 是 2×float32（vector2/float2），不是 uint64——语料实证：mProjectionScale=(1, 0.7)、
+# mDistanceFadeRange=(0, 0.45)。**codec 仍按 '<q' 原样存取**（任意字节都能无损往返，
+# 不碰 NaN 位型），只在这一层按位重解释成两个 float 显示。
 #
 # 导出重建：unpack 原字节 → 对 edited=True 的 item 覆盖值 → pack_ptbehavior
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _q_to_float2(q: int):
+    """int64 位型 → (float32, float32)（t==0x40 的显示层重解释）。"""
+    return struct.unpack('<2f', struct.pack('<q', q))
+
+
+def _float2_to_q(v) -> int:
+    """(float32, float32) → int64 位型（_q_to_float2 的逆）。"""
+    return struct.unpack('<q', struct.pack('<2f', float(v[0]), float(v[1])))[0]
+
 
 def _ptb_param_dtype(t: int) -> str:
     """把 EFX_Behav.t 类型标签映射到 EFXFieldItem.data_type。"""
@@ -1928,9 +1972,9 @@ def _ptb_param_dtype(t: int) -> str:
         0x0C: 'FLOAT',
         0x0F: 'COLOR_RGBA',
         0x14: 'FLOAT3',
-        0x36: 'INT_PAIR',
+        0x36: 'INT2',     # 2×int32（range），两个数值框（原 INT_PAIR 是逗号字符串）
         0x37: 'FLOAT2',
-        0x40: 'UINT',
+        0x40: 'FLOAT2',   # 2×float32，按位从 int64 重解释（见本节顶部注释）
         0x80: 'STRING',
     }.get(t, 'INT')
 
@@ -1953,12 +1997,12 @@ def _ptb_write_param_item(item, t: int, param: dict) -> None:
         item.float3_value = tuple(float(v) for v in vals[:3])
     elif t == 0x36:
         vals = param.get('unkn1', [0, 0])
-        item.int_pair_str = f"{int(vals[0])},{int(vals[1])}"
+        item.int2_value = (int(vals[0]), int(vals[1]))
     elif t == 0x37:
         vals = param.get('unkn1', [0.0, 0.0])
         item.float2_value = (float(vals[0]), float(vals[1]))
     elif t == 0x40:
-        item.uint_str = str(int(param.get('unkn0', 0)))
+        item.float2_value = _q_to_float2(int(param.get('unkn0', 0)))
     elif t == 0x80:
         path_b = param.get('path', b'')
         item.string_value = path_b.rstrip(b'\x00').decode('utf-8', errors='replace')
@@ -1998,30 +2042,19 @@ def _init_ptbehavior_attribute(blk, bp) -> bool:
         t = param['t']
         # 属性 key 标签：已知名 / 0x%08X（key=jamcrc(属性名)，存于 param['unkn']）
         key_label = _ptb_name_for(param['unkn'])
+        it = bp.field_items.add()
+        it.ori_name = f'p{i}'
+        it.hint_name = key_label
+        it.data_type = 'FLOAT4' if t == 0x15 else _ptb_param_dtype(t)
+        it.edited = False
+        it.read_only = False
+        it.orig_b64 = ''
         if t == 0x15:
-            # 四个子 item：全部 float32（unkn0/unkn1/unkn2/unkn3）
-            for suffix, vk in [
-                ('_v0', 'unkn0'),
-                ('_v1', 'unkn1'),
-                ('_v2', 'unkn2'),
-                ('_v3', 'unkn3'),
-            ]:
-                it = bp.field_items.add()
-                it.ori_name = f'p{i}{suffix}'
-                it.hint_name = key_label
-                it.data_type = 'FLOAT'
-                it.edited = False
-                it.read_only = False
-                it.orig_b64 = ''
-                it.float_value = float(param.get(vk, 0.0))
+            it.float4_value = (
+                float(param.get('unkn0', 0.0)), float(param.get('unkn1', 0.0)),
+                float(param.get('unkn2', 0.0)), float(param.get('unkn3', 0.0)),
+            )
         else:
-            it = bp.field_items.add()
-            it.ori_name = f'p{i}'
-            it.hint_name = key_label
-            it.data_type = _ptb_param_dtype(t)
-            it.edited = False
-            it.read_only = False
-            it.orig_b64 = ''
             _ptb_write_param_item(it, t, param)
 
     # 闸门：rebuild 必须 == 原始字节
@@ -2071,15 +2104,13 @@ def rebuild_ptbehavior_attribute(bp, original_data: bytes = None) -> bytes:
         t = param['t']
 
         if t == 0x15:
-            for suffix, vk in [
-                ('_v0', 'unkn0'),
-                ('_v1', 'unkn1'),
-                ('_v2', 'unkn2'),
-                ('_v3', 'unkn3'),
-            ]:
-                sub = imap.get(f'p{i}{suffix}')
-                if sub and sub.edited and not sub.read_only:
-                    param[vk] = float(sub.float_value)
+            c_item = imap.get(f'p{i}')
+            if c_item is not None and c_item.edited and not c_item.read_only:
+                v = c_item.float4_value
+                param['unkn0'] = float(v[0])
+                param['unkn1'] = float(v[1])
+                param['unkn2'] = float(v[2])
+                param['unkn3'] = float(v[3])
             continue
 
         item = imap.get(f'p{i}')
@@ -2100,12 +2131,11 @@ def rebuild_ptbehavior_attribute(bp, original_data: bytes = None) -> bytes:
         elif t == 0x14:
             param['unkn1'] = list(item.float3_value)
         elif t == 0x36:
-            parts = item.int_pair_str.split(',')
-            param['unkn1'] = [int(parts[0]), int(parts[1])]
+            param['unkn1'] = [int(v) for v in item.int2_value]
         elif t == 0x37:
             param['unkn1'] = [float(v) for v in item.float2_value]
         elif t == 0x40:
-            param['unkn0'] = int(item.uint_str)
+            param['unkn0'] = _float2_to_q(item.float2_value)
         elif t == 0x80:
             new_path = item.string_value
             if param['path'].endswith(b'\x00') and not new_path.endswith('\x00'):
@@ -2151,8 +2181,9 @@ def reinit_ptbehavior_from_bytes(bp, new_bytes: bytes) -> bool:
 
 def ptbehavior_addable_items(bp):
     """
-    返回当前属性可新增的覆盖项 [(key_int, value_type_t, label), ...]（保持规范顺序）。
-    label = 已知名 / 0x%08X。供添加下拉的 EnumProperty 回调使用。
+    返回当前属性可新增的覆盖项 [(key_int, value_type_t, label, dti_only), ...]（保持规范顺序）。
+    label = 已知名 / 0x%08X；dti_only=True 表示这条来自 DTI 补表、官方文件里没出现过。
+    供添加下拉 / 搜索弹窗的 EnumProperty 回调使用。
     """
     from ..efx_format.structs import unpack_ptbehavior
     from ..efx_format.ptbehavior.edit import addable_catalog
@@ -2162,9 +2193,13 @@ def ptbehavior_addable_items(bp):
         d, _ = unpack_ptbehavior(base64.b64decode(bp.raw_b64))
     except Exception:
         return []
+    from ..efx_format.ptbehavior.dti_extra import is_dti_only
+
+    b_type = d['b_type'].decode('latin-1').rstrip('\x00')
     out = []
     for key, t, _freq in addable_catalog(d):
-        out.append((key & 0xFFFFFFFF, t, name_for(key)))
+        k = key & 0xFFFFFFFF
+        out.append((k, t, name_for(key), is_dti_only(b_type, k)))
     return out
 
 

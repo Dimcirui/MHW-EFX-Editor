@@ -855,7 +855,7 @@ class EFX_PT_mesh_binding(Panel):
     bl_region_type = "UI"
     bl_category = "EFX"
     bl_label = "Mesh Binding"
-    bl_parent_id = "EFX_PT_efx_preview"   # 预览族父面板（efx_preview.py，注册在前）
+    bl_parent_id = "EFX_PT_mesh_drive"    # 绑定网格驱动父面板（mesh_drive.py，注册在前）
     bl_order = 0
     bl_options = {"DEFAULT_CLOSED"}
 
@@ -957,7 +957,7 @@ _CLASSES = [
     EFX_OT_uvc_preview_exit,
     EFX_PT_mesh_binding,
     # EFX_PT_uvc_preview / EFX_PT_uvc_preview_entry 已整合进统一「EFX Preview」面板
-    # （efx_preview.py），不再单独注册；算子保留供 EFX Preview 编排调用。
+    # （mesh_drive.py），不再单独注册；算子保留供 Mesh Drive 编排调用。
 ]
 
 

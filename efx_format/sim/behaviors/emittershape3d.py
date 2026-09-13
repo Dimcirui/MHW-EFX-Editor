@@ -31,9 +31,13 @@ Min/Max（`SimConfig.es3d_range_mode='minmax'` 保留旧读法只作对照）。
 圆柱体多一次位置偏移
 --------------------
 原文：「圆柱体…要比单纯的偏移+尺寸更复杂一些，他会在内部掏空的基础上、**再进行
-实际位置的偏移**」。这里实现为：横截面（XZ）是内径=偏移、厚度=尺寸的圆环，竖直方向
-（Y）整体平移偏移量、半高取尺寸。**哪一个轴承担那次平移未经实测**，形态对不上时先
-从这里查。
+实际位置的偏移**」。这里实现为：横截面（XZ）是内径=偏移、厚度=尺寸的圆环；竖直方向
+（Y）**不是对称壳层**——偏移 Y 是底面位置、尺寸 Y 是往 +Y 长出去的高度：
+
+    y ∈ [偏移Y, 偏移Y + 尺寸Y]
+
+即尺寸 Y=20 就是从底面向 +Y 延伸 20，不是上下各 20（用户 2026-09-12 指出）。锥度的
+起始半径在底面（y=偏移Y）、结束半径在顶面。
 
 等分数量：纵向切扇形，横向切纬度/高度
 -------------------------------------
@@ -195,13 +199,16 @@ class EmitterShape3D(Behavior):
         az = sweep_fraction(rng, f.get("scanAngleHorizontal", 360.0),
                             f.i("rangeDivideVerticalNum"))
         a = az * 2.0 * math.pi
-        # 高度：横向等分数量 = 沿高度的水平切片；圆柱在掏空之外还有一次位置偏移
+        # 高度：横向等分数量 = 沿高度的水平切片。
+        # ⚠ 高度是**单向**的：偏移 Y 是底面位置、尺寸 Y 是往 +Y 长出去的高度，
+        # 即 y ∈ [偏移, 偏移+尺寸]。X/Z 那两轴是「内半径 + 厚度」的对称壳层，Y 不是
+        # ——别照着它写成 ±尺寸（用户 2026-09-12 指出：尺寸 Y=20 是向 +Y 延伸 20）。
         h_t = rng.random()
         h_div = f.i("rangeDivideHorizontalNum")
         if h_div > 1:
             h_t = quantize_angle(h_t, h_div)
         size_y = max(0.0, outer.y - inner.y)
-        y = inner.y + (h_t * 2.0 - 1.0) * size_y
+        y = inner.y + h_t * size_y
         # 半径：内径=偏移、厚度=尺寸的圆环，再乘沿高度插值的锥度（起始/结束半径）
         t = self._shell_fraction(rng)
         taper = _lerp(f.get("radiusOrigin", 1.0), f.get("radiusEnd", 1.0),
@@ -391,7 +398,7 @@ def _cylinder_lines(inner, outer, f, n):
     r0 = f.get("radiusOrigin", 1.0)
     r1 = f.get("radiusEnd", 1.0)
     size_y = max(0.0, outer.y - inner.y)
-    y_lo, y_hi = inner.y - size_y, inner.y + size_y
+    y_lo, y_hi = inner.y, inner.y + size_y      # 单向：底面在偏移处，往 +Y 长
     hollow = bool(inner.x or inner.z)
     shells = [outer] + ([inner] if hollow else [])
     azs = _azimuths(h_frac)

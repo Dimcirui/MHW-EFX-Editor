@@ -117,7 +117,7 @@ def remove_collection_named(name):
 # 生命周期缓存复位分发器（load_post；只复位缓存 dict，绝不碰对象/数据块）
 # ─────────────────────────────────────────────────────────────────────────────
 # 设计为"各模块注册一个'清缓存'回调，换文件时统一触发"，但目前没有任何模块接入
-# 这个钩子（mesh_align/es3d_preview/uvc_preview 等改无状态化后走的是标记扫描/
+# 这个钩子（mesh_align/uvc_preview 等改无状态化后走的是标记扫描/
 # reconcile，不经过这里）——_on_load 目前是空列表上的空转。留着骨架，真要接回来
 # 再补 register_cache_reset/unregister_cache_reset 接口。
 

@@ -63,9 +63,8 @@ from . import uvc_preview    # UVCONTROL 视口 UV 滚动动画预览（根级�
 from . import mod3_link        # EFX MESH 块引用的 mod3 自动导入+绑定（联动 MHW Model Editor，可勾选）
 from . import uvs_link         # UVSEQUENCE → .uvs → .tex 链式载入（同 mod3_link 那套路径解析）
 from . import mesh_align        # 绑定网格随 TRANSFORM3D+MESH 旋转/缩放实时对齐（预览式+可编辑+实例化）
-from . import es3d_preview      # EmitterShape3D 形状预览（透明几何体：立方体/球/环/点，预览式会话）
 from . import es3d_overlay      # 生成区域线框（独立叠加层，只画选中的 entry，不依赖播放）
-from . import efx_preview       # 统一预览面板 EFX Preview（点5：总开关+勾选，编排 uvc/timl/mesh_align/es3d）
+from . import mesh_drive        # 绑定网格驱动 Mesh Drive（总开关+勾选，编排 uvc/timl/mesh_align）
 from . import sim_preview       # 粒子模拟播放器（modal 时钟 + gpu 绘制，零场景对象）
 from . import file_menu      # File > Import/Export 菜单项 + .timl/.uvs 拖入（须在各算子注册后挂）
 
@@ -212,10 +211,10 @@ def register():
     # ── UVS Edition：顶层 N 面板（bl_order=0），独立注册 ──────────────────────
     uvs_io.register()
 
-    # ── 预览族父面板 Preview（编排 uvc/timl/mesh_align/es3d）─────────────────────
-    # ⚠ 必须早于 uvc_preview / mesh_align：那两个模块的预览面板用
-    # bl_parent_id='EFX_PT_efx_preview' 挂在它下面，父面板未注册则子面板注册失败。
-    efx_preview.register()
+    # ── 绑定网格驱动父面板 Mesh Drive（编排 uvc/timl/mesh_align）────────────────
+    # ⚠ 必须早于 uvc_preview / mesh_align：那两个模块的面板用
+    # bl_parent_id='EFX_PT_mesh_drive' 挂在它下面，父面板未注册则子面板注册失败。
+    mesh_drive.register()
 
     # ── UVCONTROL UV 预览：顶层 N 面板 + frame handler，独立注册 ───────────────
     uvc_preview.register()
@@ -234,11 +233,10 @@ def register():
     mesh_align.register()
 
     # ── EmitterShape3D 形状预览（透明几何体，预览式会话）：顶层入口，独立注册 ─────────
-    es3d_preview.register()
     es3d_overlay.register()
 
-    # ── 粒子模拟播放器：顶层 N 面板（bl_order=3）+ 一个子面板，独立注册 ───────────
-    # 与 efx_preview 那一族无父子关系（那边是「进入/退出会话」模型，这边是播放器
+    # ── 粒子模拟播放器：顶层 N 面板（bl_order=3）+ 三个子面板，独立注册 ───────────
+    # 与 mesh_drive 那一族无父子关系（那边是给绑定网格挂驱动，这边是播放器
     # 模型）；不建任何场景对象，故也不依赖 session_core。
     sim_preview.register()
 
@@ -253,14 +251,13 @@ def unregister():
     file_menu.unregister()
     sim_preview.unregister()
     es3d_overlay.unregister()
-    es3d_preview.unregister()
     mesh_align.unregister()
     session_core.unregister()
     uvs_link.unregister()
     mod3_link.unregister()
     uvc_preview.unregister()
-    # 预览族父面板：必须在 uvc_preview / mesh_align 这些子面板之后注销（与注册相反）
-    efx_preview.unregister()
+    # 驱动族父面板：必须在 uvc_preview / mesh_align 这些子面板之后注销（与注册相反）
+    mesh_drive.unregister()
     uvs_io.unregister()
     transform_sync.unregister()
     timl_tracks.unregister()

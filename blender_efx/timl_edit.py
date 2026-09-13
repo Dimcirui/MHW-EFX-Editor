@@ -685,7 +685,7 @@ class EFX_OT_timl_edit_exit(Operator):
     bl_label = "Exit TIML Preview"
     bl_options = {"REGISTER"}
 
-    # 兼容旧调用签名（efx_preview 曾传 apply=False）；现忽略——编辑始终持久。
+    # 兼容旧调用签名（统一入口曾传 apply=False）；现忽略——编辑始终持久。
     apply: bpy.props.BoolProperty(default=False, options={"HIDDEN"})
 
     @classmethod

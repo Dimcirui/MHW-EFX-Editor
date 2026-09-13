@@ -289,6 +289,22 @@ def _config_from_scene(scene):
         flowmap_speed_unit=getattr(scene, "efx_sim_flowmap_speed_unit", "per_second"),
         flowmap_phase=getattr(scene, "efx_sim_flowmap_phase", "cycle"),
         ribbon_subdiv_max=int(getattr(scene, "efx_sim_ribbon_subdiv_max", 0)),
+        ribbon_rigid_dir=getattr(scene, "efx_sim_ribbon_rigid_dir", "static"),
+        homing_orbit_axial_falloff=float(
+            getattr(scene, "efx_sim_homing_axial_falloff", 0.0)),
+        homing_orbit_retarget=getattr(scene, "efx_sim_homing_retarget",
+                                      "once"),
+        homing_orbit_lateral_tilt=float(
+            getattr(scene, "efx_sim_homing_lateral_tilt", 0.0)),
+        homing_orbit_axis_update=getattr(scene, "efx_sim_homing_axis_update",
+                                         "frozen"),
+        homing_ff_scale_mode=getattr(scene, "efx_sim_homing_ff_scale",
+                                     "balanced"),
+        homing_ff_recover_frames=float(
+            getattr(scene, "efx_sim_homing_ff_recover", 48.0)),
+        homing_speed_converge=getattr(scene, "efx_sim_homing_converge", "linear"),
+        homing_speed_ramp_turns=float(
+            getattr(scene, "efx_sim_homing_ramp_turns", 4.0)),
         **_budget_kw(scene))
 
 
@@ -954,7 +970,97 @@ def _sync_track_origin(tr):
 
 def _sync_host_origin(scene=None):
     for tr in _P["tracks"]:
+        _apply_swing_preview(tr, scene)
         _sync_track_origin(tr)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# "模拟挥砍"预览开关
+#
+# RIBBON/RIBBONBLADE 这类条带渲染体画的是**宿主**（entry empty）划过的轨迹，
+# 不认粒子自身速度——ribbonblade.py 已实测确认它没有 VELOCITY3D，纯靠 PARENTOPTIONS
+# 把发射器绑在挥动的武器骨骼上。没有骨骼动画可播时，宿主永远静止，轨迹永远是空的。
+# 这里给预览加一个内置的往复摆动量，纯粹为了让轨迹逻辑有东西可画——编出来的摆动
+# 不追求还原游戏内挥砍手感，只用来验证渲染逻辑本身。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _mute_bone_follow(entry):
+    """挥砍预览和骨骼跟随约束二选一：两边都在改 entry 位置会叠出双份位移，
+    这里临时静音 transform_sync 挂的 Copy Location 约束（若有）。"""
+    from . import transform_sync as _tsync
+    con = entry.constraints.get(_tsync._BONE_FOLLOW_CONSTRAINT_NAME)
+    if con is not None:
+        con.mute = True
+
+
+def _restore_bone_follow(entry_name):
+    entry = bpy.data.objects.get(entry_name)
+    if entry is None:
+        return
+    from . import transform_sync as _tsync
+    con = entry.constraints.get(_tsync._BONE_FOLLOW_CONSTRAINT_NAME)
+    if con is not None:
+        con.mute = False
+
+
+def _restore_all_bone_follow():
+    """停止播放 / 插件卸载时兜底：别把静音状态留在场景里。"""
+    for tr in _P["tracks"]:
+        _restore_bone_follow(tr["entry_name"])
+
+
+def _apply_swing_preview(tr, scene):
+    """挥砍开关开着时，把 entry 摆到「参考位置」为圆心的一段往复圆弧上；
+    关着（默认）什么都不做，只确保约束状态复原。
+
+    往复一次 = 去程 + 回程，各占 `efx_sim_swing_duration` 秒，smoothstep 缓入缓出。
+    方向反转的瞬间速度过零——正好把 RIBBONBLADE「停下才回缩」的那一段也一并练到。
+    时间轴用 `tr["sim"].frame`（模拟自己的帧计数），暂停/调速/重播都天然跟着走，
+    不用另起一个时钟。
+    """
+    entry_name = tr["entry_name"]
+    if scene is None or not getattr(scene, "efx_sim_swing_enable", False):
+        _restore_bone_follow(entry_name)
+        return
+
+    entry = bpy.data.objects.get(entry_name)
+    if entry is None:
+        return
+    _mute_bone_follow(entry)
+
+    fps = float(getattr(tr["sim"].config, "fps", 60)) or 60.0
+    t = tr["sim"].frame / fps
+
+    duration = max(0.05, float(getattr(scene, "efx_sim_swing_duration", 0.35)))
+    half_angle = math.radians(float(getattr(scene, "efx_sim_swing_angle", 180.0))) * 0.5
+    axis = getattr(scene, "efx_sim_swing_axis", "Z")
+    radius = max(0.0, float(getattr(scene, "efx_sim_swing_radius", 1.0)))
+
+    cycle = 2.0 * duration
+    phase = (t % cycle) / duration              # 0..2：去程/回程各占一段
+    u = phase if phase <= 1.0 else 2.0 - phase
+    u = u * u * (3.0 - 2.0 * u)                  # smoothstep
+    theta = half_angle * (2.0 * u - 1.0)         # -half..+half
+
+    rows = tr["ref_rows"]
+    rx, ry, rz = rows[0][3], rows[1][3], rows[2][3]
+    s, c = math.sin(theta), math.cos(theta)
+
+    # 圆弧半径 radius，theta=0 时正好落回参考位置（c-1=0, s=0）。
+    if axis == "X":
+        pos = (rx, ry + radius * (c - 1.0), rz + radius * s)
+    elif axis == "Y":
+        pos = (rx + radius * s, ry, rz + radius * (c - 1.0))
+    else:  # "Z"（默认）：弧线在水平面内
+        pos = (rx + radius * (c - 1.0), ry + radius * s, rz)
+
+    # 只改位置，entry 自身的朝向/缩放（TRANSFORM3D 本地旋转/缩放）原样保留。
+    # ⚠ 不能拿一份手搭的嵌套 tuple 直接赋给 matrix_world/matrix_basis——那样赋值
+    # 不会报错，但会被静默当成单位矩阵（实机验证过），朝向/缩放全部丢失。必须
+    # 改在一个真正的 Matrix 实例上（这里就是读出来的 cur 本身）再整个赋回去。
+    cur = entry.matrix_world
+    cur.translation = pos
+    entry.matrix_world = cur
 
 
 
@@ -1634,6 +1740,12 @@ void main()
 #: 改贴图 alpha 的形状（硬阈值裁切 + 伽马），只有在这里做才是对的。
 #: 两层染色（RGBFIRE/RGBWATER）按**贴图亮度**在外缘色与核心色之间插值：笔画核心亮
 #: → 取核心色，边缘暗 → 取外缘色。没有第二层时 col2 == color，mix 自动退化成恒等。
+#:
+#: ⚠ 最终色只乘贴图**亮度**（`lum`），不乘贴图的 RGB 本身——用户实机对拍确认：
+#: RIBBON 设纯饱和蓝，贴图（cm_elec_902_BM，实测不透明区平均 R0.34/G0.62/B0.19，
+#: 明显偏绿）绑着的情况下，游戏里显示的仍是纯蓝，贴图自己的色相完全不参与，只提供
+#: 形状/亮度。之前这里写的是 `t.rgb * rgb`——贴图当"有色贴图"参与调色，蓝乘绿贴图
+#: 蓝通道被摁低、算出来反而绿占主导，这是把 tint 蓝显示成绿的根因。
 _FRAG_SRC = """
 void main()
 {
@@ -1642,7 +1754,7 @@ void main()
   vec3 rgb = mix(v_col.rgb, v_col2.rgb, lum);
   float a = mix(t.a, lum, alphaFix.z);
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
-  fragColor = vec4(t.rgb * rgb, a * v_col.a);
+  fragColor = vec4(lum * rgb, a * v_col.a);
 }
 """
 
@@ -1745,7 +1857,7 @@ void main()
   vec3 rgb = mix(v_col.rgb, v_col2.rgb, lum);
   float a = mix(t.a, lum, alphaFix.z);
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
-  fragColor = vec4(t.rgb * rgb, a * v_col.a);
+  fragColor = vec4(lum * rgb, a * v_col.a);
 }
 """
 
@@ -2596,6 +2708,13 @@ class EFX_OT_sim_play(Operator):
         if event.type == "TIMER":
             if _P["playing"]:
                 _tick(context.scene)
+            elif _P["dirty"]:
+                # 暂停中改字段同样要立刻看到结果。不能直接调 `_tick`——它会按墙钟
+                # 往累加器里加时间，暂停的语义就没了。这里只重建、不走帧。
+                _rebuild_if_dirty(context.scene)
+                _rebuild_items()
+                _redraw_viewports()
+                _P["last_t"] = time.perf_counter()
         return {"PASS_THROUGH"}       # 不吞事件：播放时照样能转视角、改参数
 
     def _finish(self, context):
@@ -2608,6 +2727,7 @@ class EFX_OT_sim_play(Operator):
             _P["timer"] = None
         _remove_handlers()
         _P["playing"] = False
+        _restore_all_bone_follow()
         _P["tracks"] = []
         _P["mesh_cache"] = {}
         _clear_tex_cache()
@@ -2634,6 +2754,7 @@ class EFX_OT_sim_stop(Operator):
         # 只摘 handler：modal 下一个 tick 看到 is_active()==False 就自己收尾
         _remove_handlers()
         _P["playing"] = False
+        _restore_all_bone_follow()
         _P["tracks"] = []
         _P["mesh_cache"] = {}
         _clear_tex_cache()
@@ -2765,7 +2886,7 @@ def _agg_status():
     return (frame, alive, spawned, len(trs), children)
 
 class EFX_PT_sim(Panel):
-    """粒子模拟播放器。独立于 EFX_PT_efx_preview 那一族——那边是「进入/退出会话」
+    """粒子模拟播放器。独立于 EFX_PT_mesh_drive 那一族——那边是「给绑定网格挂驱动」
     模型，这边是「播放器」模型，混在一起只会互相干扰。"""
 
     bl_idname = "EFX_PT_sim"
@@ -2823,67 +2944,6 @@ class EFX_PT_sim(Panel):
             if _P["error"]:
                 col.label(text=_P["error"], icon="ERROR")
 
-        # ── 播放设置 ─────────────────────────────────────────────────────────
-        box = layout.box()
-        box.label(text=T("sim.playback"), icon="PLAY")
-        col = box.column(align=True)
-        col.prop(scene, "efx_sim_mode", text="")
-        col.prop(scene, "efx_sim_speed")
-        col.prop(scene, "efx_sim_duration")
-        col.prop(scene, "efx_sim_seed")
-
-        # ── 显示 ─────────────────────────────────────────────────────────────
-        box = layout.box()
-        box.label(text=T("sim.display"), icon="SHADING_RENDERED")
-        col = box.column(align=True)
-        col.prop(scene, "efx_sim_draw_mode", text="")
-        col.prop(scene, "efx_sim_blend", text="")
-        col.prop(scene, "efx_sim_particle_size")
-        if getattr(scene, "efx_sim_draw_mode", "QUADS") in ("POINTS", "BOTH"):
-            col.prop(scene, "efx_sim_point_px")
-        # 独立叠加层：不用播放、只画选中的那几个（见 es3d_overlay.py）
-        from . import es3d_overlay as _es3do
-        _es3do.draw_button(box, context)
-        col = box.column(align=True)
-        col.prop(scene, "efx_sim_show_shape")
-        col.prop(scene, "efx_sim_show_velocity")
-        col.prop(scene, "efx_sim_textured")
-        if getattr(scene, "efx_sim_textured", True):
-            col.prop(scene, "efx_sim_uv_flip_v")
-
-        # ── 性能 ─────────────────────────────────────────────────────────────
-        box = layout.box()
-        box.label(text=T("sim.perf"), icon="SORTTIME")
-        col = box.column(align=True)
-        col.prop(scene, "efx_sim_ribbon_subdiv_max")
-        col.prop(scene, "efx_sim_particle_budget")
-        col.prop(scene, "efx_sim_render_every")
-
-        # ── 序列帧：帧表来源 + 现在放到第几格 ────────────────────────────────
-        uvs = (trs[0].get("uvs") if trs else None) if active \
-            else _uvs_state_info(entry)
-        if uvs is not None:
-            box = layout.box()
-            box.label(text=T("sim.uvs"), icon="IMAGE_DATA")
-            col = box.column(align=True)
-            col.scale_y = 0.8
-            if uvs["loaded"]:
-                col.label(text=T("sim.uvs_file").format(uvs["file"], uvs["groups"]))
-            else:
-                g = getattr(scene, "efx_sim_uvs_grid", (8, 8))
-                col.label(text=T("sim.uvs_grid").format(int(g[0]), int(g[1])),
-                          icon="ERROR")
-                col.label(text=T("sim.uvs_hint"))
-            cell = _uvs_cell_readout()
-            if cell is not None:
-                col.label(text=T("sim.uvs_cell").format(cell[0] + 1, cell[1], cell[2]))
-            img = trs[0].get("image") if trs else None
-            if active and not img:
-                # 载了 .uvs 但没绑图 → 画出来仍然是纯色片，说清楚为什么
-                col.label(text=T("sim.uvs_noimage"), icon="INFO")
-            if not uvs["loaded"]:
-                box.prop(scene, "efx_sim_uvs_grid")
-
         # ── MESH 没绑 mod3：画的是占位方块，说清楚 ───────────────────────────
         missing = []
         for tr in trs:
@@ -2915,6 +2975,118 @@ class EFX_PT_sim(Panel):
                 col.label(text=T("sim.and_more").format(len(unsup) - 8))
 
 
+class _SimSubPanel(Panel):
+    """播放器的可收起分组。父面板 `EFX_PT_sim` 里只留走带 + 读数 + 诊断，
+    参数按「多久碰一次」分组塞进子面板——Blender 的子面板自带折叠状态记忆，
+    跟 Calibration 用的是同一套（`bl_parent_id` + `bl_options`）。"""
+
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "EFX"
+    bl_parent_id = "EFX_PT_sim"
+
+    @classmethod
+    def poll(cls, context):
+        # 父面板在「没选中 entry 且没在播」时只画一句提示就 return，
+        # 子面板要跟着一起消失，否则会剩下几个空壳标题。
+        return is_active() or _resolve_entry(context.active_object) is not None
+
+
+class EFX_PT_sim_playback(_SimSubPanel):
+    """调得最勤的一组：循环方式/倍速/时长/种子 + 挥砍预览。默认展开。"""
+
+    bl_idname = "EFX_PT_sim_playback"
+    bl_label = "Playback"
+    bl_order = 0
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+
+        col = layout.column(align=True)
+        col.prop(scene, "efx_sim_mode", text="")
+        col.prop(scene, "efx_sim_speed")
+        col.prop(scene, "efx_sim_duration")
+        col.prop(scene, "efx_sim_seed")
+
+        # 挥砍预览：没有骨骼动画时，给 RIBBON/RIBBONBLADE 一点轨迹可画
+        box = layout.box()
+        box.label(text=T("sim.swing"), icon="CON_ROTLIKE")
+        col = box.column(align=True)
+        col.prop(scene, "efx_sim_swing_enable")
+        if getattr(scene, "efx_sim_swing_enable", False):
+            col.prop(scene, "efx_sim_swing_axis", text="Axis")
+            col.prop(scene, "efx_sim_swing_angle")
+            col.prop(scene, "efx_sim_swing_radius")
+            col.prop(scene, "efx_sim_swing_duration")
+
+
+class EFX_PT_sim_display(_SimSubPanel):
+    """设一次就不大动的一组：显示 / 性能 / 序列帧读数。默认收起。"""
+
+    bl_idname = "EFX_PT_sim_display"
+    bl_label = "Display & Performance"
+    bl_order = 1
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+        active = is_active()
+        trs = _P["tracks"]
+        entry = _resolve_entry(context.active_object)
+
+        # ── 显示 ─────────────────────────────────────────────────────────────
+        col = layout.column(align=True)
+        col.prop(scene, "efx_sim_draw_mode", text="")
+        col.prop(scene, "efx_sim_blend", text="")
+        col.prop(scene, "efx_sim_particle_size")
+        if getattr(scene, "efx_sim_draw_mode", "QUADS") in ("POINTS", "BOTH"):
+            col.prop(scene, "efx_sim_point_px")
+        # 独立叠加层：不用播放、只画选中的那几个（见 es3d_overlay.py）
+        from . import es3d_overlay as _es3do
+        _es3do.draw_button(layout, context)
+        col = layout.column(align=True)
+        col.prop(scene, "efx_sim_show_shape")
+        col.prop(scene, "efx_sim_show_velocity")
+        col.prop(scene, "efx_sim_textured")
+        if getattr(scene, "efx_sim_textured", True):
+            col.prop(scene, "efx_sim_uv_flip_v")
+
+        # ── 性能 ─────────────────────────────────────────────────────────────
+        box = layout.box()
+        box.label(text=T("sim.perf"), icon="SORTTIME")
+        col = box.column(align=True)
+        col.prop(scene, "efx_sim_ribbon_subdiv_max")
+        col.prop(scene, "efx_sim_particle_budget")
+        col.prop(scene, "efx_sim_render_every")
+
+        # ── 序列帧：帧表来源 + 现在放到第几格 ────────────────────────────────
+        uvs = (trs[0].get("uvs") if trs else None) if active             else _uvs_state_info(entry)
+        if uvs is None:
+            return
+        box = layout.box()
+        box.label(text=T("sim.uvs"), icon="IMAGE_DATA")
+        col = box.column(align=True)
+        col.scale_y = 0.8
+        if uvs["loaded"]:
+            col.label(text=T("sim.uvs_file").format(uvs["file"], uvs["groups"]))
+        else:
+            g = getattr(scene, "efx_sim_uvs_grid", (8, 8))
+            col.label(text=T("sim.uvs_grid").format(int(g[0]), int(g[1])),
+                      icon="ERROR")
+            col.label(text=T("sim.uvs_hint"))
+        cell = _uvs_cell_readout()
+        if cell is not None:
+            col.label(text=T("sim.uvs_cell").format(cell[0] + 1, cell[1], cell[2]))
+        img = trs[0].get("image") if trs else None
+        if active and not img:
+            # 载了 .uvs 但没绑图 → 画出来仍然是纯色片，说清楚为什么
+            col.label(text=T("sim.uvs_noimage"), icon="INFO")
+        if not uvs["loaded"]:
+            box.prop(scene, "efx_sim_uvs_grid")
+
+
 class EFX_PT_sim_unknowns(Panel):
     """待标定开关。
 
@@ -2929,6 +3101,7 @@ class EFX_PT_sim_unknowns(Panel):
     bl_region_type = "UI"
     bl_category = "EFX"
     bl_label = "Calibration"
+    bl_order = 2
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
@@ -2937,8 +3110,11 @@ class EFX_PT_sim_unknowns(Panel):
         layout.label(text=T("sim.calib_hint"), icon="INFO")
         col = layout.column(align=True)
         col.prop(scene, "efx_sim_jitter_mode")
-        col.prop(scene, "efx_sim_es3d_range")
-        col.prop(scene, "efx_sim_t3d_vel_unit")
+        # efx_sim_es3d_range / efx_sim_t3d_vel_unit：不再列在这里——两条各自的
+        # UNKNOWNS 描述都直接写了「另一个选项与实机对不上」（es3d_range_mode 的
+        # minmax、t3d_velocity_unit 的 per_frame，见 config.py），不是「两个都说得
+        # 通，等实测」那类真正待标定项。开关本身还留着（默认值已经是 shell /
+        # per_second），只是没必要再占 Calibration 面板的位置。
         col.prop(scene, "efx_sim_spawn_jitter")
         col.prop(scene, "efx_sim_t3d_rot_sign")
         col.prop(scene, "efx_sim_material_slot")
@@ -2959,6 +3135,13 @@ class EFX_PT_sim_unknowns(Panel):
         col.prop(scene, "efx_sim_rot_order")
         col.prop(scene, "efx_sim_age_during_delay")
         col.prop(scene, "efx_sim_ribbon_length")
+        col.prop(scene, "efx_sim_ribbon_rigid_dir")
+        # HOMING 的其余开关（转弯重定轴 / 速度爬升曲线与圈数 / 力场倍率读法与
+        # 恢复帧数 / 竖直压扁 axial_falloff）2026-09-12 已逐项拿游戏实拍标定完，
+        # 不再占 Calibration 的位置——Scene 属性与 SimConfig 开关都还在，要对照
+        # 旧行为直接在代码里改默认值即可。这里只留下唯一还没实测的 lateral_tilt。
+        col.prop(scene, "efx_sim_homing_axis_update")
+        col.prop(scene, "efx_sim_homing_lateral_tilt")
         col.prop(scene, "efx_sim_parent_clock")
         col.prop(scene, "efx_sim_color_range")
         col.prop(scene, "efx_sim_uvs_speed_unit")
@@ -2978,6 +3161,8 @@ _CLASSES = (
     EFX_OT_sim_restart,
     EFX_OT_sim_step,
     EFX_PT_sim,
+    EFX_PT_sim_playback,
+    EFX_PT_sim_display,
     EFX_PT_sim_unknowns,
 )
 
@@ -3009,6 +3194,33 @@ def register():
     S.efx_sim_seed = IntProperty(
         name="Seed", default=0, update=_on_knob_changed,
         description="Base random seed; same seed replays identically")
+
+    # ── 挥砍预览：RIBBON/RIBBONBLADE 靠宿主位移画轨迹，没有骨骼动画时用这个代打 ──
+    S.efx_sim_swing_enable = BoolProperty(
+        name="Simulate Swing", default=False,
+        description="Sweep the entry back and forth on a synthetic arc while playing "
+                    "(this does not read any real bone animation). RIBBON/RIBBONBLADE "
+                    "trails are drawn from how far the host itself moved, not from "
+                    "particle velocity, so a still host never shows a trail - this is "
+                    "a stand-in for that motion when there is no rig to play. Preview "
+                    "only; mutes the entry's bone-follow constraint (if any) while active")
+    S.efx_sim_swing_axis = EnumProperty(
+        name="Swing axis",
+        items=[("X", "X", "Arc lies in the Y/Z plane"),
+               ("Y", "Y", "Arc lies in the Z/X plane"),
+               ("Z", "Z", "Arc lies in the X/Y plane")],
+        default="Z")
+    S.efx_sim_swing_angle = FloatProperty(
+        name="Swing angle", default=180.0, min=1.0, max=360.0, soft_max=270.0,
+        description="Total angle swept between the two extremes of the arc, in degrees")
+    S.efx_sim_swing_radius = FloatProperty(
+        name="Swing radius", default=1.0, min=0.0, soft_max=5.0,
+        description="Distance from the entry's rest position to the pivot it swings "
+                    "around, in meters")
+    S.efx_sim_swing_duration = FloatProperty(
+        name="Swing duration", default=0.35, min=0.05, soft_max=2.0,
+        description="Seconds for one sweep from one extreme to the other; the entry "
+                    "keeps swinging back and forth at this pace while enabled")
 
     # ── 显示 ─────────────────────────────────────────────────────────────────
     S.efx_sim_draw_mode = EnumProperty(
@@ -3125,7 +3337,7 @@ def register():
                ("mask", "Shapes it only",
                 "Use the sprite only to decide where the layer covers; its colour "
                 "stays out, so a white renderer colour leaves the background alone")],
-        default="color")
+        default="mask")
     S.efx_sim_refraction_gain = FloatProperty(
         name="Refraction strength x", default=1.0, min=0.0, max=8.0,
         soft_min=0.0, soft_max=4.0,
@@ -3139,6 +3351,82 @@ def register():
         description="Magnifier on how far the flowmap pushes the sprite's pixels "
                     "around. 1.0 = the strength stored in the file; 0 = off, the "
                     "sprite stays still. Preview only")
+    S.efx_sim_homing_converge = EnumProperty(
+        name="Homing spiral",
+        items=[("linear", "Even spacing",
+                "Speed climbs by a fixed step, so the orbit widens by the same "
+                "amount every lap and starts off very tight"),
+               ("per_revolution", "Tightening",
+                "Speed closes a fixed fraction of what is left each lap, so the "
+                "spiral starts wide and the gaps shrink"),
+               ("instant", "No spiral",
+                "Jump straight to the target speed, so the orbit is its final "
+                "size from the first frame")],
+        default="linear")
+    S.efx_sim_homing_ramp_turns = FloatProperty(
+        name="Homing spiral laps", default=4.0, min=0.5, max=16.0,
+        description="How many laps the orbit takes to grow from the starting "
+                    "speed to the target speed. Only used by the even-spacing "
+                    "spiral. Preview only")
+    S.efx_sim_homing_ff_scale = EnumProperty(
+        name="Homing force field",
+        items=[("balanced", "Damped",
+                "The field slows the particle down every frame while a steady pull "
+                "brings its speed back up, so the orbit settles at a size that "
+                "climbs steeply as the scale approaches 1"),
+               ("per_frame", "Compounding",
+                "The force field's speed scale is applied again every frame, so "
+                "the particle keeps slowing down and its orbit tightens"),
+               ("output", "Flat",
+                "The speed scale is a constant slow-motion factor; the particle "
+                "keeps a steady speed while it is in the field")],
+        default="balanced")
+    S.efx_sim_homing_ff_recover = FloatProperty(
+        name="Homing field recovery", default=48.0, min=4.0, max=600.0,
+        description="How many frames it takes a homing particle to pull its speed "
+                    "back up to the target speed after a force field has slowed it. "
+                    "Only used by the damped force field. Preview only")
+    S.efx_sim_homing_axis_update = EnumProperty(
+        name="Homing orbit axis",
+        items=[("frozen", "Locked at arrival",
+                "The orbit keeps the plane it picked when the particle reached its "
+                "target, so every lap retraces the same circle"),
+               ("live", "Follows velocity",
+                "The sideways force is re-aimed from the current velocity every "
+                "frame, so an orbit that is not level slowly tips over the first "
+                "lap and then holds. Level orbits are identical either way")],
+        default="frozen")
+    S.efx_sim_homing_lateral_tilt = FloatProperty(
+        name="Homing lateral tilt", default=0.0, min=0.0, max=2.0,
+        description="How far the sideways force that bends a homing particle into "
+                    "its orbit tilts out of horizontal as the particle comes in "
+                    "closer to straight up or down. 0 = always horizontal, which "
+                    "squashes the swarm into a flat disc at full spread; higher "
+                    "values keep more height. The swarm stays centred on its "
+                    "target at any setting. Preview only")
+    S.efx_sim_homing_retarget = EnumProperty(
+        name="Homing orbit re-aim",
+        items=[("once_more", "Re-aim once",
+                "Turn again after the first full lap, then keep that orbit "
+                "forever. Matches footage: the particle swaps to a second orbit "
+                "of the same size and stays there"),
+               ("once", "Lock at arrival",
+                "Pick the orbit when the particle first reaches its target and "
+                "never change it"),
+               ("every_pass", "Re-aim every lap",
+                "Turn again after every lap. Ends up alternating between two "
+                "orbits forever")],
+        default="once")
+    S.efx_sim_homing_axial_falloff = FloatProperty(
+        name="Homing vertical squash", default=0.0, min=0.0, max=1.0,
+        description="How much of the speed along the vertical axis is dropped when "
+                    "a homing particle turns at its target. 0 = off, every particle "
+                    "orbits at the same radius and the swarm stays a sphere the "
+                    "whole cycle; above 0 shrinks the orbit of particles arriving "
+                    "along the vertical axis, flattening the swarm as it expands. "
+                    "Leave at 0 unless comparing: particles arriving straight down "
+                    "the vertical axis do keep circling in game, and this knob "
+                    "stops them dead at 1. Preview only")
     S.efx_sim_material_slot = EnumProperty(
         name="Mesh texture from",
         items=[("tAlbedoMap", "Material albedo",
@@ -3242,6 +3530,17 @@ def register():
                ("total", "length is the whole strip",
                 "Trail-follow ribbons are 'length' long no matter the subdivision count")],
         default="per_segment")
+    S.efx_sim_ribbon_rigid_dir = EnumProperty(
+        name="Ribbon Length direction", update=_on_knob_changed,
+        items=[("static", "baseAxis + rotation",
+                "Fixed direction set once at spawn from baseAxis/rotationX-Y-Z; "
+                "never changes for the rest of the particle's life"),
+               ("velocity", "Current movement",
+                "Tracks current velocity every frame - the particle's own first, "
+                "falling back to the emitter's movement if the particle itself "
+                "isn't moving, holding the last valid direction if both are still "
+                "(the way Unity's Stretched Billboard works)")],
+        default="static")
     S.efx_sim_color_range = EnumProperty(
         name="Colour range", update=_on_knob_changed,
         items=[("channel", "Per channel", "Every channel (alpha included) draws its own "
@@ -3286,6 +3585,7 @@ def register():
 def unregister():
     _remove_handlers()
     _P["playing"] = False
+    _restore_all_bone_follow()
     _P["tracks"] = []
     _P["mesh_cache"] = {}
     _clear_tex_cache()
@@ -3294,6 +3594,8 @@ def unregister():
 
     for attr in (
         "efx_sim_mode", "efx_sim_speed", "efx_sim_duration", "efx_sim_seed",
+        "efx_sim_swing_enable", "efx_sim_swing_axis", "efx_sim_swing_angle",
+        "efx_sim_swing_radius", "efx_sim_swing_duration",
         "efx_sim_draw_mode", "efx_sim_blend", "efx_sim_particle_size",
         "efx_sim_point_px", "efx_sim_show_velocity", "efx_sim_show_shape",
         "efx_sim_jitter_mode", "efx_sim_es3d_range", "efx_sim_es3d_range_mode",
@@ -3303,6 +3605,7 @@ def unregister():
         "efx_sim_uvs_speed_unit", "efx_sim_uvs_once_span",
         "efx_sim_uvs_start_wrap", "efx_sim_uvs_grid",
         "efx_sim_textured", "efx_sim_uv_flip_v", "efx_sim_ribbon_length",
+        "efx_sim_ribbon_rigid_dir",
         "efx_sim_parent_clock", "efx_sim_color_range", "efx_sim_t3d_vel_unit",
         "efx_sim_spawn_jitter", "efx_sim_t3d_rot_sign", "efx_sim_rgb_tint", "efx_sim_mesh_rot_space",
         "efx_sim_mesh_rot",   # 撤掉的旧名（存过 local），留着清场
@@ -3315,6 +3618,11 @@ def unregister():
         "efx_sim_particle_budget",
         "efx_sim_refraction_tex", "efx_sim_refraction_gain",
         "efx_sim_flowmap_gain", "efx_sim_flowmap_speed_unit", "efx_sim_flowmap_phase",
+        "efx_sim_homing_axial_falloff", "efx_sim_homing_retarget",
+        "efx_sim_homing_lateral_tilt", "efx_sim_homing_axis_update",
+        "efx_sim_homing_ff_scale",
+        "efx_sim_homing_ff_recover", "efx_sim_homing_converge",
+        "efx_sim_homing_ramp_turns",
         "efx_sim_fps",   # 已撤掉的开关，留在这里是为了从老场景里清掉
     ):
         if hasattr(bpy.types.Scene, attr):
