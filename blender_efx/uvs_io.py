@@ -47,7 +47,13 @@ from .i18n import T
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_uvsequence_path(obj) -> str:
-    """返回 UVSEQUENCE 块的 path 字段（game-relative）；找不到时返回空字符串。"""
+    """返回 UVSEQUENCE 块的 path 字段（game-relative）；找不到时返回空字符串。
+
+    `obj` 可以是属性本身，也可以是它外挂的宿主 Empty——字段只存在属性身上，
+    选中宿主时先经 `_uvs_source_attribute` 折回属性（放宽点没什么风险：不是
+    合法属性 `_uvs_source_attribute` 就返回 None，跟原来"找不到"的结果一样）。
+    """
+    obj = _uvs_source_attribute(obj) or obj
     try:
         bp = obj.efx_block
         for item in bp.field_items:
@@ -83,6 +89,25 @@ def _is_uvs_link_host(obj) -> bool:
     这里不用从 uvs_link 顶层 import 常量（会和它 import 本模块循环），直接比字符串。
     """
     return obj is not None and obj.get("~TYPE") == "EFX_UVS_LINK_ITEM"
+
+
+def _uvs_source_attribute(obj):
+    """`obj` 是外挂宿主 Empty 时，跟反向指针（`uvs_link.py::source_attribute_of`）
+    找回它是为哪个 UVSEQUENCE 属性建的；`obj` 本来就是属性就原样返回；无主 UVS
+    没有对应属性，返回 None。
+
+    游戏路径（`uvsPath`）、`sequenceNo` 这些字段只存在属性对象自己身上——直接
+    选中宿主时不经这一步，`_get_uvsequence_path` 之类读 `obj.efx_block` 的地方
+    永远读到空，UVS Edition 面板看起来"选中了但什么有用信息都没有"。
+    """
+    if obj is None:
+        return None
+    if obj.get("~TYPE") == "EFX_ATTRIBUTE":
+        return obj
+    if _is_uvs_link_host(obj):
+        from . import uvs_link as _ul
+        return _ul.source_attribute_of(obj)
+    return None
 
 
 def _is_uvsequence_attribute(obj) -> bool:

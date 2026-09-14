@@ -824,6 +824,25 @@ def _subselect_scope_entries(root, ss_name):
     return out
 
 
+def _selected_entries(context):
+    """当前**选中对象**（不是 `active_object`）各自往上找到的 entry，去重、按选中顺序。
+
+    刻意不用 `context.active_object`：在大纲里点一个集合行只会改
+    `view_layer.active_layer_collection`，不会清掉之前选中物体时留下的
+    `active_object`——用 `active_object` 判断"是不是选中了具体 entry"会在
+    「先选了个 entry，再点集合切到播放范围下拉」这个顺序下误判成"还选着 entry"，
+    导致下拉怎么点都不出现（面板判据必须跟 `collect_entries` 真正的优先级一致）。
+    """
+    out = []
+    seen = set()
+    for obj in list(getattr(context, "selected_objects", None) or ()):
+        e = _resolve_entry(obj)
+        if e is not None and e.name not in seen:
+            seen.add(e.name)
+            out.append(e)
+    return out
+
+
 def collect_entries(context):
     """要模拟哪些 entry。
 
@@ -836,13 +855,7 @@ def collect_entries(context):
         它 members 指向的那些 entry（"这套子选择实际会用到的特效"）。
       - 否则按**选中对象**各自往上找 entry，去重；空则退回活动对象（多选=同时播）。
     """
-    out = []
-    seen = set()
-    for obj in list(getattr(context, "selected_objects", None) or ()):
-        e = _resolve_entry(obj)
-        if e is not None and e.name not in seen:
-            seen.add(e.name)
-            out.append(e)
+    out = _selected_entries(context)
     if out:
         return out              # 选了具体的 entry（或它下面的属性）→ 就播这些
 
@@ -3020,16 +3033,16 @@ class EFX_PT_sim(Panel):
         trs = _P["tracks"]
         sim = trs[0]["sim"] if trs else None
 
-        entry = _resolve_entry(context.active_object)
+        entry = bool(_selected_entries(context))
         root = _active_root_collection(context)
-        if entry is None and root is None and not active:
+        if not entry and root is None and not active:
             layout.label(text=T("sim.pick_entry"), icon="INFO")
             return
 
         # ── 播放范围：点中根集合时才有意义（选了具体 entry 就是播那些，没有"范围"
         # 一说）。"All" = 原行为（Direct Trigger 那批）；否则播指定 Subselect 的
         # members，即"这个装备状态/这套子选择实际会用到的那些特效"。
-        if root is not None and entry is None:
+        if root is not None and not entry:
             row = layout.row()
             row.enabled = not active
             row.prop(scene, "efx_sim_scope", text=T("sim.scope"))

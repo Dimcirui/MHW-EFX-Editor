@@ -66,6 +66,17 @@ def _is_uvsequence(obj):
         return False
 
 
+def _resolve_attribute(obj):
+    """`obj` 本身是 UVSEQUENCE 属性就原样返回；是它外挂的宿主 Empty（选中大纲里
+    那个 `xxx [uvs]`）就跟 `efx_uvs_source` 反向指针找回属性；两者都不是返回
+    None。「单属性」这条 Quick Load 路径（游戏路径/序列号都存在属性身上）必须
+    先做这一步，否则选中宿主时 `obj.efx_block` 是空的，读不到任何路径。"""
+    if _is_uvsequence(obj):
+        return obj
+    src = source_attribute_of(obj)
+    return src if _is_uvsequence(src) else None
+
+
 #: 批量导入/一键载入共用的外部 UVS 载体集合标记（绿色，嵌在其 EFX 根集合内，
 #: 导出/校验天然忽略，见 root_collection.ensure_linked_collection）。
 _UVS_LINK_MARKER = "EFX_UVS_LINK"
@@ -88,15 +99,24 @@ def ensure_host_for_attribute(blk_obj, context=None):
     对象自己身上，而是一个独立 Empty，收进这个 .efx 的绿色 `{efx}_uvs` 子集合——
     同一个 .efx 下批量导入的多个 UVSEQUENCE 共用这一个集合，不是各建各的。
     已有宿主（不管是不是本函数建的）直接返回，不重复建。
+
+    同时在宿主身上写一个反向指针 `efx_uvs_source` 指回这个属性——游戏路径
+    （`uvsPath`/`sequenceNo` 这些字段）只存在属性对象自己身上，直接选中宿主
+    （大纲/视口里点这个外挂 Empty）时,不跟着这根指针找回属性,"游戏路径"
+    这行、以及"一键载入"这个属性专属按钮就都会读到空的（见 uvs_io.py
+    `_uvs_source_attribute`）。
     """
     existing = getattr(blk_obj, "efx_uvs_target", None)
     if existing is not None:
+        if getattr(existing, "efx_uvs_source", None) is None:
+            existing.efx_uvs_source = blk_obj    # 兼容旧场景：老宿主补上反向指针
         return existing
 
     host = bpy.data.objects.new("%s [uvs]" % blk_obj.name, None)
     host.empty_display_type = "PLAIN_AXES"
     host.empty_display_size = 0.1
     host["~TYPE"] = _UVS_LINK_ITEM_MARKER
+    host.efx_uvs_source = blk_obj
 
     root_col = _rc.find_root_collection(blk_obj)
     if root_col is not None:
@@ -109,6 +129,15 @@ def ensure_host_for_attribute(blk_obj, context=None):
 
     blk_obj.efx_uvs_target = host
     return host
+
+
+def source_attribute_of(obj):
+    """宿主 Empty → 它反向指回的 UVSEQUENCE 属性对象；`obj` 本来就是属性、或者
+    是无主 UVS（没有对应属性）时返回 None。uvs_io.py 的 `_uvs_source_attribute`
+    是本函数唯一的门面，外部一律经那边调用。"""
+    if obj is None:
+        return None
+    return getattr(obj, "efx_uvs_source", None)
 
 
 def _uvs_relpath(blk_obj):
@@ -277,7 +306,14 @@ def tex_loader_available():
 
 def _tex_cache_dir(addon_name):
     """转换产物放哪。优先用 Model Editor 自己的贴图缓存目录（用户已经设过了，
-    而且那边转过的图能直接命中缓存）；读不到就用 Blender 的临时目录。"""
+    而且那边转过的图能直接命中缓存）；读不到就用用户目录下的固定缓存文件夹。
+
+    ⚠ 不能退回 `bpy.app.tempdir`——那是 Blender **这一次启动**分配的临时目录
+    （形如 `.../Temp/blender_xxxxxx/`），进程一关就可能被系统/Blender 自己清掉。
+    没装 Model Editor 时全靠这条兜底路径，选临时目录会让每次重开 Blender 转换出
+    的 dds/贴图全部失踪，UVSEQUENCE 参考图跟着丢（表现为"重进 Blender 就没图了"）。
+    改用 `~/.efx_editor`，跨会话稳定存在，找不到时才退回临时目录。
+    """
     if addon_name:
         try:
             prefs = bpy.context.preferences.addons[addon_name].preferences
@@ -286,7 +322,11 @@ def _tex_cache_dir(addon_name):
                 return d
         except Exception:
             pass
-    base = bpy.app.tempdir or os.path.join(os.path.expanduser("~"), ".efx_editor")
+    base = os.path.join(os.path.expanduser("~"), ".efx_editor")
+    try:
+        os.makedirs(base, exist_ok=True)
+    except Exception:
+        base = bpy.app.tempdir or base
     return os.path.join(base, "efx_tex_cache")
 
 
@@ -315,6 +355,22 @@ def _find_converted_sibling(texpath, cache_dir):
             if os.path.isfile(cand):
                 return cand
     return None
+
+
+def _mark_persistent(img):
+    """给载入的图打上 fake user，防止它在 undo/撤销栈重建、或场景保存时因为
+    "0 个真实引用"（`ref_image_name` 只是个字符串自定义属性，Blender 的引用计数
+    认不出这算一次引用）被当成孤立数据清掉——那样的话哪怕缓存目录本身是永久的
+    （见 `_tex_cache_dir`），图还是会在某次 undo 或重新打开 .blend 后消失。
+    不 `.pack()`：不内嵌像素数据，不增加 .blend 体积，下次打开时 Blender 按
+    图片自己记的路径重新读一遍（该路径已经是永久缓存目录，读得到）。
+    """
+    if img is not None:
+        try:
+            img.use_fake_user = True
+        except Exception:
+            pass
+    return img
 
 
 def load_tex_image(texpath, rel_for_cache=None):
@@ -346,14 +402,14 @@ def load_tex_image(texpath, rel_for_cache=None):
                 images = load_tex(texpath, out_path, conv, False, use_dds)
                 for img in images or ():
                     if img is not None:
-                        return img
+                        return _mark_persistent(img)
             except Exception:
                 continue
 
     sib = _find_converted_sibling(texpath, cache_dir)
     if sib:
         try:
-            return bpy.data.images.load(sib, check_existing=True)
+            return _mark_persistent(bpy.data.images.load(sib, check_existing=True))
         except Exception:
             return None
     return None
@@ -515,7 +571,7 @@ class EFX_OT_uvs_link_load(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if _is_uvsequence(obj):
+        if _resolve_attribute(obj) is not None:
             return True
         return _rc.find_root_collection(obj) is not None
 
@@ -523,10 +579,14 @@ class EFX_OT_uvs_link_load(Operator):
         obj = context.active_object
         chunk_root = getattr(context.scene, "efx_chunk_root", "") or ""
 
-        if self.scope == "ATTRIBUTE" and _is_uvsequence(obj):
-            efx_dir = efx_dir_of(obj)
-            r = link_one(obj, chunk_root, efx_dir, self.with_texture, {})
-            problems = [(obj.name, r["rel"], r["reason"])] if r["reason"] else []
+        # 选中的可能是属性本身，也可能是它外挂的宿主 Empty——两者都该走"只重
+        # 载这一个"这条路，`_resolve_attribute` 把两种输入都归一到真正持有
+        # 游戏路径字段的那个属性对象上。
+        attr = _resolve_attribute(obj)
+        if self.scope == "ATTRIBUTE" and attr is not None:
+            efx_dir = efx_dir_of(attr)
+            r = link_one(attr, chunk_root, efx_dir, self.with_texture, {})
+            problems = [(attr.name, r["rel"], r["reason"])] if r["reason"] else []
             report_problems(self, problems, 1 if r["uvs"] else 0, 1 if r["tex"] else 0)
             return {"FINISHED"} if r["uvs"] else {"CANCELLED"}
 
@@ -554,9 +614,19 @@ def register():
         description="External object holding this UVSEQUENCE attribute's UVS data",
         type=bpy.types.Object,
     )
+    # 反向指针：宿主 Empty → 它是为哪个 UVSEQUENCE 属性建的。游戏路径/序列号等
+    # 字段只存在属性对象自己身上，直接选中宿主时没有这条指针就找不回去
+    # （见 `source_attribute_of` / uvs_io.py `_uvs_source_attribute`）。
+    bpy.types.Object.efx_uvs_source = bpy.props.PointerProperty(
+        name="UVS Source Attribute",
+        description="The UVSEQUENCE attribute this external UVS host was created for",
+        type=bpy.types.Object,
+    )
 
 
 def unregister():
+    if hasattr(bpy.types.Object, "efx_uvs_source"):
+        del bpy.types.Object.efx_uvs_source
     if hasattr(bpy.types.Object, "efx_uvs_target"):
         del bpy.types.Object.efx_uvs_target
     for cls in reversed(_CLASSES):
