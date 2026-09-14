@@ -24,7 +24,7 @@ if _ROOT not in sys.path:
 from efx_format.hashes import (ALPHACORRECTION, BILLBOARD3D, DUMMY,  # noqa: E402
                                EMITTERSHAPE3D, HOMING, LIGHTNING,
                                LIFE, MESH, NOISE, PLANE, RIBBON, RIBBONBLADE,
-                               PARENTOPTIONS, PTLIFE, REFRACTION, RGBFIRE,
+                               PARENTOPTIONS, PTCOLLISION, PTLIFE, REFRACTION, RGBFIRE,
                                RGBWATER, ROTATEANIM, SCALEANIM,
                                SPAWN, TRANSFORM3D, UVSEQUENCE, VELOCITY3D)
 from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
@@ -34,6 +34,7 @@ from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
 from efx_format.sim import uvs_table as simuvs  # noqa: E402
 from efx_format.sim.behaviors.homing import (Homing,  # noqa: E402
                                              _orbit_axis, _rotate_axis)
+from efx_format.sim.behaviors.ptcollision import PtCollision  # noqa: E402
 from efx_format.sim.behaviors.uvsequence import frame_info  # noqa: E402
 from efx_format.sim import rng as simrng  # noqa: E402
 from efx_format.sim import trail as _trail  # noqa: E402
@@ -308,6 +309,24 @@ def ptlife_fields(**kw):
          "relationIndex": 0, "unknEnum5": 0,
          "unknFrame0": 0, "unknFrame0Jitter": 0,
          "unknFrame1": 0, "unknFrame1Jitter": 0}
+    f.update(kw)
+    return f
+
+
+def ptcollision_fields(**kw):
+    f = {
+        "typeFlag": 0, "physicsEnum": 0, "unkn02": 0, "unkn03": 0,
+        "unknEnum04": 0, "unknFixed05": 0,
+        "projectionOffset": 0.0, "projectionDist": 0.0,
+        "unkn1_0": 0.0, "unkn1_1": 0.0, "unkn1_2": 0.0,
+        "bounceCount": 0, "bounceCountJitter": 0,
+        "bounceElasticity": 0.0, "bounceElasticityJitter": 0.0,
+        "bounceElasticityMultiplier": 0.0, "horizontalBounce": 0.0,
+        "unkn34": 0.0, "unkn35": 0.0, "unkn36": 0.0, "unkn37": 0.0,
+        "impactPlayTriggerMode": 0, "impactPlayTriggerCount": 0,
+        "impactPlayTriggerCountJitter": 0, "ieIndex": 0,
+        "unknEnum6_0": 0, "unknEnum6_1": 0, "unknFixed6_2": 0,
+    }
     f.update(kw)
     return f
 
@@ -1306,6 +1325,182 @@ class TestHoming(unittest.TestCase):
         d_in = dirs[10]
         cosang = max(-1.0, min(1.0, d_in.dot(center.normalized(fallback=Vec3(0.0, 1.0, 0.0)))))
         self.assertAlmostEqual(math.degrees(math.acos(cosang)), 90.0, delta=5.0)
+
+    # ── 与 VELOCITY3D 的合成（SimConfig.homing_compose）────────────────────
+    # ⚠ 下面几条 _compose_sim 测试钉的是 **'add'** 这个已被排除的对照分支
+    # （见 test_outward_initial_velocity_expands_the_swarm_before_homing_wins）。
+    # 留着是因为它们仍然锁住「V3D 的速度不许被吞掉」这条底线。
+    def _compose_sim(self, compose, velocity, frames=0):
+        cfg = SimConfig()
+        cfg.homing_compose = compose
+        sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0,
+                                      targetSpeed=1.0),
+                        es3d=es3d_fields(shapeType=0,
+                                         rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                        velocity=velocity, config=cfg)
+        sim.step()
+        p = sim.particles[0]
+        track = []
+        for _ in range(frames):
+            sim.step()
+            track.append((p.pos.copy(), p.vel.copy()))
+        return sim, p, track
+
+    def test_outward_initial_velocity_expands_the_swarm_before_homing_wins(self):
+        """2026-09-12 定案判据（用户实机，用他场景里的真实参数复现）：
+        V3D 向外 1（Radial，speedCoef 0.95）+ HOMING init=target=1、turnRate 90。
+
+        实机：整团**先向外扩张**并旋转，之后回归周期运动，最大直径不缩水。
+
+        这一组同时**定量**排除了另外两种读法：
+          · 'override' 直奔目标，从第一帧就在收缩；
+          · 'add' 里向外 1 与向内 1 **恰好抵消**，预言原地不动——这正是它被推翻的
+            地方，不是"差一点"而是差一个定性行为。
+        只有 'pursuit' 给得出扩张：初速度方向朝外，HOMING 只能按 turnRate 把方向
+        慢慢扭回来，扭到对准目标为止。"""
+        def radii(compose):
+            cfg = SimConfig()
+            cfg.homing_compose = compose
+            sim = make_sim(
+                spawn=spawn_fields(particlesPerBurst=60, burstInterval=1000),
+                life=life_fields(indefiniteLifespan=1),
+                es3d=es3d_fields(shapeType=1,
+                                 rangeXYZ=[30.0, 0.0, 30.0, 0.0, 30.0, 0.0]),
+                velocity=velocity_fields(speed=1.0, velocityType=2, speedCoef=0.95),
+                config=cfg,
+                extra=[(HOMING, homing_fields(turnRate=90.0, initialSpeed=1.0,
+                                              targetSpeed=1.0))])
+            sim.step()
+            out = []
+            for _ in range(600):
+                sim.step()
+                act = [q for q in sim.particles if q.active]
+                out.append(sum(q.pos.length() for q in act) / len(act))
+            return out
+
+        pur = radii("pursuit")
+        self.assertGreater(pur[0], 30.0)                 # 第一帧就在向外
+        for a, b in zip(pur[:60], pur[1:61]):
+            self.assertGreater(b, a)                     # 头一秒持续扩张
+        self.assertGreater(max(pur[:150]), 2.0 * 30.0)   # 涨到出生半径两倍以上
+        # 之后回归周期运动，且**最大直径不缩水**（系统无耗散）——注意最小值仍会
+        # 回到 ~0：切圆过目标点，每圈必然穿过一次，这是轨道几何不是衰减。
+        self.assertGreater(max(pur[300:450]), 40.0)
+        self.assertAlmostEqual(max(pur[450:600]), max(pur[300:450]), delta=2.0)
+
+        # 'add' 在这组参数下两股速度恰好抵消 ⇒ 第一帧几乎不动，随后一路收缩
+        add = radii("add")
+        self.assertAlmostEqual(add[0], 30.0, delta=0.2)
+        self.assertLess(add[20], add[0])
+        # 'override' 完全无视 V3D ⇒ 一直以 HOMING 速度收缩（radii 的第一个采样点
+        # 已经是第 2 帧，所以是 30 - 2×speed）
+        ovr = radii("override")
+        self.assertAlmostEqual(ovr[0], 30.0 - 2.0, delta=0.2)
+
+    def test_pursuit_reproduces_the_tangent_circle_without_a_state_machine(self):
+        """纯追踪把「到达处的侧向力」从硬编码变成推论：圆过目标点、与来向相切、
+        半径 r=v/ω、方向处处连续——这些**都没有**在 _pursue 里写出来，是「每帧朝
+        目标转 turnRate」自己长出来的。（弦切角定理：圆过目标点时「指向目标」的
+        方向以 ω/2 旋转，粒子以 ω 追它，每整圈正好回到目标点一次 ⇒ 切圆是不变集。）"""
+        cfg = SimConfig()
+        cfg.homing_compose = "pursuit"
+        sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0,
+                                      targetSpeed=1.0),
+                        es3d=es3d_fields(shapeType=0,
+                                         rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                        config=cfg)
+        sim.step()
+        p = sim.particles[0]
+        dirs, poss = [], []
+        for _ in range(400):
+            sim.step()
+            dirs.append(p.vel.normalized(fallback=Vec3(0.0, 0.0, 1.0)))
+            poss.append(p.pos.copy())
+
+        per_frame = 90.0 / 60.0
+        for a, b in zip(dirs, dirs[1:]):                 # 方向处处连续，无锐角
+            cosang = max(-1.0, min(1.0, a.dot(b)))
+            self.assertLessEqual(math.degrees(math.acos(cosang)), per_frame + 0.1)
+
+        orbit = poss[120:]
+        center = Vec3(*[(max(q[k] for q in orbit) + min(q[k] for q in orbit)) / 2.0
+                        for k in range(3)])
+        expected_r = 1.0 * 60.0 / (math.pi / 2.0)        # v/ω
+        radii = [(q - center).length() for q in orbit]
+        self.assertAlmostEqual(sum(radii) / len(radii), expected_r,
+                               delta=0.1 * expected_r)   # 半径 = v/ω
+        self.assertAlmostEqual(center.length(), expected_r,
+                               delta=0.15 * expected_r)  # 目标在圆上 ⇒ 原点是切点
+
+    def test_v3d_initial_velocity_is_added_not_overridden(self):
+        """2026-09-12 用户实机：开着 HOMING 给 V3D 一个向外的初速度，整团粒子
+        **先向外扩张**——V3D 那份没有被吞掉，两者是**相加**。
+
+        改动前 HOMING 做的是 `p.vel = vel`（覆盖），V3D 的初速度零帧存活，粒子会
+        直奔目标。'override' 留作对照，本测试同时钉住两条分支。
+        径向初速 2 + HOMING 速度 1 ⇒ 相加后净向外 1/帧；覆盖则净向内 1/帧。"""
+        v = velocity_fields(speed=2.0, velocityType=2)      # Radial：沿出生方向向外
+
+        _sim, p, track = self._compose_sim("add", v, frames=30)
+        radial = p.pos.normalized(fallback=Vec3(1.0, 0.0, 0.0))
+        self.assertAlmostEqual(track[-1][1].dot(radial), 1.0, places=5)
+        dists = [q.length() for q, _ in track]
+        for a, b in zip(dists, dists[1:]):
+            self.assertGreater(b, a)                        # 一路向外扩张
+
+        _sim, p, track = self._compose_sim("override", v, frames=15)
+        dists = [q.length() for q, _ in track]
+        for a, b in zip(dists, dists[1:]):
+            self.assertLess(b, a)                           # 覆盖：直奔目标
+
+    def test_composed_turn_angle_converges_to_a_finite_value(self):
+        """用户实机第二条读数：整团在扩张的同时**旋转**，旋转速度逐渐减小并
+        **停在一个固定角度**。
+
+        这正是「HOMING 贡献的是**速度分量**」的签名：速度相加时运动方向朝自由速度
+        那一侧转过去、在 v_total ∥ 径向处停住，累计转角有限。若 HOMING 贡献的是
+        **加速度**，速度会无界增长、转角不收敛——本测试就是这两种读法的判别式。
+        构造：自由速度恒为 +Y（大小 2），出生在 +X 上、HOMING 朝 -X 拉（大小 1）。"""
+        v = velocity_fields(speed=2.0, velocityType=0, baseAxis=1)
+        _sim, _p, track = self._compose_sim("add", v, frames=600)
+        dirs = [vel.normalized(fallback=Vec3(0.0, 0.0, 1.0)) for _q, vel in track]
+
+        def turn(i):
+            c = max(-1.0, min(1.0, dirs[i].dot(dirs[i + 1])))
+            return math.degrees(math.acos(c))
+
+        # ① 每帧转角单调趋零（末段比首段小三个数量级以上）
+        self.assertGreater(turn(0), 0.5)
+        self.assertLess(turn(len(dirs) - 2), 1e-3)
+        # ② 累计转角收敛到有限值——加速度读法下这个和会一直涨
+        total = sum(turn(i) for i in range(len(dirs) - 1))
+        self.assertLess(total, 90.0)
+        # ③ 停住的方向就是自由速度的方向（不动点 v_total ∥ 径向）
+        self.assertAlmostEqual(dirs[-1].y, 1.0, places=3)
+
+    def test_compose_is_a_no_op_when_velocity3d_speed_is_zero(self):
+        """今天之前的全部 HOMING 标定都是在 V3D 速度为 0 下做的——'add' 与
+        'override' 在那个特例里必须**逐帧完全一致**，否则那些标定就被这次改动
+        推翻了。"""
+        v = velocity_fields(speed=0.0)
+        _s1, _p1, t1 = self._compose_sim("add", v, frames=300)
+        _s2, _p2, t2 = self._compose_sim("override", v, frames=300)
+        for (q1, v1), (q2, v2) in zip(t1, t2):
+            self.assertAlmostEqual(q1.x, q2.x, places=9)
+            self.assertAlmostEqual(q1.y, q2.y, places=9)
+            self.assertAlmostEqual(q1.z, q2.z, places=9)
+            self.assertAlmostEqual(v1.x, v2.x, places=9)
+
+    def test_damped_free_velocity_hands_the_particle_back_to_homing(self):
+        """用户实机第三条读数：扩张转完之后**回归 HOMING 的周期运动**，且最大
+        直径不再缩小。自由速度被 speedCoef 啃掉之后 HOMING 重新接管，但粒子已经
+        被带离目标，于是轨道不再过目标点——`|p|` 在一个**非零**下界与上界之间
+        周期振荡，而不是纯 HOMING 那个每周期缩回原点的呼吸。"""
+        v = velocity_fields(speed=2.0, velocityType=0, baseAxis=1, speedCoef=0.97)
+        _sim, _p, track = self._compose_sim("add", v, frames=600)
+        late = [q.length() for q, _v in track[300:]]
+        self.assertGreater(min(late), 1.0)        # 不再缩回目标点
+        self.assertGreater(max(late) - min(late), 5.0)   # 仍在周期性张缩
 
     def test_axial_falloff_leaves_approach_phase_untouched(self):
         """缩放只能在「到达转弯」那一刻施加，approach 段必须按原速直飞——否则各粒子
@@ -3066,6 +3261,100 @@ class TestPtLifeActionScene(unittest.TestCase):
         self.assertEqual(sc.frame, -1)
 
 
+class TestPtCollisionActionScene(unittest.TestCase):
+    """PTCOLLISION 模拟落地即停 + 可选单次触发 ACTION：粒子越过 Y=0（游戏坐标系，
+    对应 Blender Z=0）→ 位置/速度冻结在落地点，且触发一次 ACTION；不做真正反弹。"""
+
+    def _scene(self, ptcollision=None, velocity=None, life=None, config=None):
+        parent_blocks = [
+            (SPAWN, spawn_fields(burstInterval=1000)),
+            (LIFE, life or life_fields(indefiniteLifespan=1)),
+            (VELOCITY3D, velocity or velocity_fields(baseAxis=4, speed=1.0)),
+            (PTCOLLISION, ptcollision or ptcollision_fields()),
+            (BILLBOARD3D, billboard_fields()),
+        ]
+        child_blocks = [
+            (SPAWN, spawn_fields(burstInterval=1000)),
+            (LIFE, life_fields(indefiniteLifespan=1)),
+            (BILLBOARD3D, billboard_fields()),
+        ]
+        templates = {0: EntryTemplate(0, parent_blocks), 1: EntryTemplate(1, child_blocks)}
+        actions = {0: [ActionTarget(1)]}
+        return SimScene(templates, actions, root_key=0, config=config or SimConfig(seed=1))
+
+    def test_ptcollision_is_simulated(self):
+        sc = self._scene()
+        sc.step()
+        self.assertNotIn("PTCOLLISION", [n for _h, n in sc.unsupported])
+
+    def test_ie_index_minus_one_does_nothing(self):
+        sc = self._scene(ptcollision=ptcollision_fields(ieIndex=-1))
+        sc.run(10)
+        self.assertEqual(sc.instance_count, 1)
+        self.assertTrue(any("-1" in n for n in sc.notes))
+
+    def test_landing_freeze_happens_even_without_action(self):
+        """ieIndex=-1 只关掉「触发 ACTION」，落地冻结是独立的物理表现，照常生效。"""
+        sc = self._scene(ptcollision=ptcollision_fields(ieIndex=-1),
+                         velocity=velocity_fields(baseAxis=4, speed=1.0))
+        sc.run(1)
+        parent_p = sc.root.sim.em.particles[0]
+        parent_p.pos.y = 5.0
+        parent_p.user[PtCollision]["prev_y"] = 5.0
+        while parent_p.pos.y > 0.0 and sc.frame < 200:
+            sc.run(1)
+        self.assertEqual(parent_p.pos.y, 0.0)
+        pos_at_landing = parent_p.pos.copy()
+        sc.run(20)
+        self.assertEqual(parent_p.pos, pos_at_landing)    # 没有 ACTION，但照样冻结
+        self.assertEqual(sc.instance_count, 1)            # 且确实没有触发子实例
+
+    def test_crossing_ground_fires_once(self):
+        """默认出生点 Y=0，本 behavior 只关心「越过」——手动把粒子摆到地面上方，
+        再让 baseAxis=4（游戏 -Y，下）的匀速下落把它带过 Y=0，验证那一帧触发。"""
+        sc = self._scene(velocity=velocity_fields(baseAxis=4, speed=1.0))
+        sc.run(1)
+        parent_p = sc.root.sim.em.particles[0]
+        parent_p.pos.y = 5.0
+        parent_p.user[PtCollision]["prev_y"] = 5.0
+
+        while parent_p.pos.y > 0.0 and sc.frame < 200:
+            sc.run(1)
+        sc.run(1)                                        # 让触发请求被 scene 消化
+        self.assertEqual(parent_p.pos.y, 0.0)             # 落地即钉死在 Y=0（不是任意负值）
+        self.assertEqual(sc.instance_count, 2)            # 触发了一次
+
+        frame_at_trigger = sc.frame
+        pos_at_landing = parent_p.pos.copy()
+        sc.run(20)                                        # 继续跑，不应再触发第二次
+        self.assertEqual(sc.instance_count, 2)
+        self.assertGreater(sc.frame, frame_at_trigger)
+        self.assertEqual(parent_p.pos, pos_at_landing)     # 冻结：位置完全不再变化
+
+    def test_landed_particle_freezes_velocity_too(self):
+        """落地后 p.vel 清零——不只是位置被钉住，后续帧也不再有速度可言
+        （避免下游读 vel 的逻辑，如条带/速度线，显示一个仍在下落的假象）。"""
+        sc = self._scene(velocity=velocity_fields(baseAxis=4, speed=1.0))
+        sc.run(1)
+        parent_p = sc.root.sim.em.particles[0]
+        parent_p.pos.y = 5.0
+        parent_p.user[PtCollision]["prev_y"] = 5.0
+        while parent_p.pos.y > 0.0 and sc.frame < 200:
+            sc.run(1)
+        self.assertEqual(parent_p.vel.x, 0.0)
+        self.assertEqual(parent_p.vel.y, 0.0)
+        self.assertEqual(parent_p.vel.z, 0.0)
+
+    def test_spawning_at_ground_never_triggers(self):
+        """边缘情况：粒子一开始就在 Y<=0（这里出生点即 Y=0），不算「越过」，
+        即便之后继续往下（负 Y）走也不该触发——`prev_y` 从没经历过 >0。"""
+        sc = self._scene(velocity=velocity_fields(baseAxis=4, speed=1.0))
+        sc.run(20)
+        parent_p = sc.root.sim.em.particles[0]
+        self.assertLess(parent_p.pos.y, 0.0)              # 确实一路往下走了
+        self.assertEqual(sc.instance_count, 1)            # 但从未触发
+
+
 class TestParentOptions(unittest.TestCase):
     """跟随发射器 + 停止追踪帧数（其余字段刻意未实现，只 note）。"""
 
@@ -3464,6 +3753,28 @@ class TestRibbon(unittest.TestCase):
             spans[n] = (pts[-1] - pts[0]).length()
         self.assertAlmostEqual(spans[2], 10.0, delta=0.5)      # 1 段
         self.assertAlmostEqual(spans[5], 40.0, delta=0.5)      # 4 段
+
+    def test_trail_mode_ignores_spawn_anchor_offset(self):
+        """轨迹跟随模式下 spawnAnchorOffset 不生效：tip 恒等于粒子当前位置。
+
+        试过按"往前甩"（原样照抄 RIGID 的读法）和"往后拖"（在粒子当前位置之外
+        再往身后偏一截）两种解读，都会导致粒子刚出生、历史还没积累够时条带的头
+        被钉死在出生点、追上理论长度才开始动——用户实机核对：从出生起就应该
+        一直贴着发射器走，没有这段"先冻结再追上"的过渡（真实案例：
+        wp11_011.efx 的 08 trail）。故对轨迹跟随模式直接不套用这个字段，
+        跟 anchor=0 时完全一样，不管 anchor 取什么值。"""
+        base = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=10.0,
+                                              subdivisionCount=8, spawnAnchorOffset=0.0),
+                         velocity=velocity_fields(speed=10.0, baseAxis=0))
+        anchored = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=10.0,
+                                                  subdivisionCount=8, spawnAnchorOffset=1.0),
+                             velocity=velocity_fields(speed=10.0, baseAxis=0))
+        pts_base = [q for q, _w, _a in base.build_render()[0].points]
+        pts_anchored = [q for q, _w, _a in anchored.build_render()[0].points]
+        p = anchored.particles[0]
+        self.assertAlmostEqual(pts_anchored[-1].x, p.pos.x, places=3)   # tip = 当前位置
+        for qa, qb in zip(pts_anchored, pts_base):
+            self.assertAlmostEqual(qa.x, qb.x, places=4)                # 跟 anchor=0 一样
 
     def test_trail_mode_follows_particle_motion(self):
         """粒子自己动 → 沿粒子轨迹（pick_trail 的 auto 分支）。

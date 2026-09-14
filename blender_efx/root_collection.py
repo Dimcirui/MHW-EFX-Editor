@@ -105,6 +105,29 @@ def ensure_leaf_collection(name: str, root_col: bpy.types.Collection, type_tag: 
     return new_leaf_collection(name, root_col, type_tag)
 
 
+def ensure_linked_collection(root_col: bpy.types.Collection, marker: str, name: str,
+                              color_tag: str) -> bpy.types.Collection:
+    """find-or-create 一个嵌在 root_col 直接子级下的**旁支资产**集合（非 EFX 叶子集合）。
+
+    供 mod3_link（导入的 mod3 网格，红）、uvs_link（外部化的 UVS 载体，绿）这类
+    "自动导入、镜像这个 .efx 但本身不是 .efx 结构一部分" 的对象使用：marker 不出现
+    在 `_TYPE_TO_MARKER` 里，故 `get_leaf_collection` / `collect_top_level` 天然
+    跳过它——导出/校验对它完全隐形，不需要额外过滤。
+
+    同一 root_col、同一 marker 只会建一份：重复调用（同一个 .efx 里多个属性各自
+    需要一个宿主）直接复用已建好的集合，不会每次都新建一个。
+    """
+    for c in root_col.children:
+        if c.get("~TYPE") == marker:
+            return c
+    col = bpy.data.collections.new(name)
+    root_col.children.link(col)
+    col["~TYPE"] = marker
+    col.color_tag = color_tag
+    col.efx_root_ptr = root_col
+    return col
+
+
 def _get_nested_entry_collection(root_col: bpy.types.Collection, marker: str):
     """只读查找 Entry 叶子集合下、标记为 marker 的嵌套子集合，没有返回 None。"""
     entry_col = get_leaf_collection(root_col, "EFX_ENTRY")

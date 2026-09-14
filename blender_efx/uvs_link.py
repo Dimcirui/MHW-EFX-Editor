@@ -66,6 +66,51 @@ def _is_uvsequence(obj):
         return False
 
 
+#: 批量导入/一键载入共用的外部 UVS 载体集合标记（绿色，嵌在其 EFX 根集合内，
+#: 导出/校验天然忽略，见 root_collection.ensure_linked_collection）。
+_UVS_LINK_MARKER = "EFX_UVS_LINK"
+#: 挂在载体 Empty 自己身上的标记：与 standalone.py 的 "EFX_UVS"（完全无主）区分开，
+#: 否则会被 standalone.is_standalone() 误认成「无主 UVS」而给出关闭入口/丢进
+#: 无 root 的独立场景（那边的判据是纯看 ~TYPE，不看 parent/归属）。
+_UVS_LINK_ITEM_MARKER = "EFX_UVS_LINK_ITEM"
+
+
+def _uvs_link_collection_name(root_col):
+    """外层总集合名：EFX 顶层集合名去掉 .efx 后缀 + "_uvs"（如 em001_000_uvs）。"""
+    name = getattr(root_col, "name", "") or "efx"
+    if name.lower().endswith(".efx"):
+        name = name[:-4]
+    return name + "_uvs"
+
+
+def ensure_host_for_attribute(blk_obj, context=None):
+    """UVSEQUENCE 属性缺外部宿主（`efx_uvs_target`）时新建一个：数据不再存在属性
+    对象自己身上，而是一个独立 Empty，收进这个 .efx 的绿色 `{efx}_uvs` 子集合——
+    同一个 .efx 下批量导入的多个 UVSEQUENCE 共用这一个集合，不是各建各的。
+    已有宿主（不管是不是本函数建的）直接返回，不重复建。
+    """
+    existing = getattr(blk_obj, "efx_uvs_target", None)
+    if existing is not None:
+        return existing
+
+    host = bpy.data.objects.new("%s [uvs]" % blk_obj.name, None)
+    host.empty_display_type = "PLAIN_AXES"
+    host.empty_display_size = 0.1
+    host["~TYPE"] = _UVS_LINK_ITEM_MARKER
+
+    root_col = _rc.find_root_collection(blk_obj)
+    if root_col is not None:
+        col = _rc.ensure_linked_collection(
+            root_col, _UVS_LINK_MARKER, _uvs_link_collection_name(root_col), "COLOR_04")
+        col.objects.link(host)
+    else:
+        # 理论上不会发生（属性必属于某个 EFX_ROOT）——退回场景根，好歹别丢东西
+        (context or bpy.context).scene.collection.objects.link(host)
+
+    blk_obj.efx_uvs_target = host
+    return host
+
+
 def _uvs_relpath(blk_obj):
     """UVSEQUENCE 属性的 .uvs 游戏相对路径（**读的是当前属性树，反映未保存的编辑**）。"""
     return (_uvs_io._get_uvsequence_path(blk_obj) or "").strip()
@@ -345,7 +390,8 @@ def link_one(blk_obj, chunk_root, efx_dir=None, with_texture=True, uvs_cache=Non
         out["reason"] = "uvs_not_found"
         return out
 
-    props = getattr(blk_obj, "efx_uvs", None)
+    host = ensure_host_for_attribute(blk_obj)
+    props = getattr(host, "efx_uvs", None)
     if props is None:
         out["reason"] = "no_props"
         return out
@@ -500,9 +546,19 @@ _CLASSES = (EFX_OT_uvs_link_load,)
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    # UVSEQUENCE 属性 → 外部 UVS 载体（数据不再存在属性对象自己身上，见
+    # ensure_host_for_attribute）。standalone.py 的 `efx_uvs` 本身仍留在 Object 上
+    # 不变，只是现在"谁的 efx_uvs 才算数"要经这层指针。
+    bpy.types.Object.efx_uvs_target = bpy.props.PointerProperty(
+        name="UVS Data Host",
+        description="External object holding this UVSEQUENCE attribute's UVS data",
+        type=bpy.types.Object,
+    )
 
 
 def unregister():
+    if hasattr(bpy.types.Object, "efx_uvs_target"):
+        del bpy.types.Object.efx_uvs_target
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)

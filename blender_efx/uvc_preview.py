@@ -882,6 +882,20 @@ class EFX_PT_mesh_binding(Panel):
                 box.label(text=T("uvc.not_previewable").format(T(reason)), icon="ERROR")
                 box.label(text=T("uvc.need_texture"))
 
+        # mod3_link 按 visconIndex/Jitter 范围自动绑的多网格（同一个 Visible
+        # Condition 组常有好几个 Sub 网格）；只读展示，不在这里手动增删。
+        targets = getattr(obj, "efx_mesh_targets", None)
+        if targets:
+            box = layout.box()
+            groups = sorted({it.viscon for it in targets})
+            box.label(text=T("uvc.viscon_bound").format(len(targets), len(groups)),
+                      icon="MOD_PARTICLE_INSTANCE")
+            col = box.column(align=True)
+            col.scale_y = 0.8
+            for it in targets:
+                nm = it.obj.name if it.obj is not None else "?"
+                col.label(text="  viscon %d: %s" % (it.viscon, nm))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Panel：UVCONTROL 属性 → 预览控制（顶层 N 面板，仅选中 UVCONTROL 属性时显示）

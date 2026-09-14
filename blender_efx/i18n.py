@@ -404,6 +404,12 @@ STRINGS = {
 
     # ── 粒子模拟播放器（sim_preview.py）────────────────────────────────────────
     "sim.play":            {"EN": "Play Simulation", "ZH": "播放模拟"},
+    "sim.scope":           {"EN": "Scope", "ZH": "播放范围"},
+    "sim.scope_all":       {"EN": "All (Direct Trigger)", "ZH": "全部（直接触发）"},
+    "sim.scope_all_tip":   {"EN": "Simulate every Direct-Trigger entry in this EFX (the whole file)",
+                            "ZH": "播放这个 EFX 里全部直接触发的特效体（整个文件）"},
+    "sim.scope_subselect_tip": {"EN": "Simulate only the entries this Subselect table references",
+                                "ZH": "只播放这个 Subselect 表引用的那些特效体"},
     "sim.pause":           {"EN": "Pause", "ZH": "暂停"},
     "sim.resume":          {"EN": "Resume", "ZH": "继续"},
     "sim.playback":        {"EN": "Playback", "ZH": "播放"},
@@ -680,6 +686,8 @@ STRINGS = {
     "uvc.bind_target_hint":  {"EN": "Preview target mesh (your own; a material with base textures is enough)",
                               "ZH": "预览目标网格（用户自备、接好基础贴图的材质即可）"},
     "uvc.previewable":       {"EN": "Previewable ({0})",      "ZH": "可预览（{0}）"},
+    "uvc.viscon_bound":      {"EN": "{0} mesh(es) bound across {1} Visible Condition group(s)",
+                              "ZH": "已按 {1} 个可见条件组绑定 {0} 个网格"},
     "uvc.not_previewable":   {"EN": "Cannot preview: {0}",    "ZH": "无法预览：{0}"},
     "uvc.need_texture":      {"EN": "Material needs an image texture (Mapping auto-connected on preview)",
                               "ZH": "材质需含图像纹理（进入预览时自动接 Mapping 滚动）"},

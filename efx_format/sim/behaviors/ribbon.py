@@ -34,8 +34,10 @@ length 59% 留在默认 100 不动、变化的是 subdiv。所以两个模式对
                             插值——base=1/tip=0 就是一个三角形
     base_/tip_opacity            后端/前端**端点**的不透明度；中间恒为实心，只有两端
     base_/tip_fade_length        各自在这段长度（占全长比例）里渐变到端点值
-    spawnAnchorOffset       生成点落在条带长度方向上的位置，以条带长度为单位
-                            （0=前端贴住生成点，1=后端贴住生成点）
+    spawnAnchorOffset       生成点落在条带长度方向上的位置，以条带自身跨度为单位
+                            （0=前端贴住生成点；越大整条带越往身后拖，柔体链/
+                            刚性矩形没有"历史"这层含义，方向相反——见 `_strip_py`/
+                            `_build_strips` 的 anchor 处理）
     enableFlap + flap1/flap2(Frequency, Amount)   旗帜式来回摆动，两组叠加
 
 柔体链的模型（推断，无实测）
@@ -117,6 +119,9 @@ class Ribbon(Behavior):
         mode = f.i("ribbonMode")
         if mode == MODE_CHAIN:
             em.note("RIBBON 柔体链的弹簧模型是推断的（无实测），形态仅供参考")
+        elif mode == MODE_TRAIL and f.get("spawnAnchorOffset"):
+            em.note("RIBBON 轨迹跟随模式下 spawnAnchorOffset 不生效（本地值仍保留，"
+                    "只是预览不套用）：条带的头恒贴着发射器当前位置")
 
     # ── 出生 ─────────────────────────────────────────────────────────────────
     def on_particle_spawn(self, p, em, rng):
@@ -315,7 +320,6 @@ class Ribbon(Behavior):
         ns = numpy.array([sizes[k] for k in keep], dtype=numpy.intp)
         row0 = numpy.array([starts[k] for k in keep], dtype=numpy.intp)
 
-        anchors = []
         wbases = []
         base_ws = []
         dws = []
@@ -326,8 +330,6 @@ class Ribbon(Behavior):
         flaps = []
         for k in keep:
             p, st, f, length, width, n = pend[k]
-            a = (f.get("spawnAnchorOffset") if f is not None else 0.0) or 0.0
-            anchors.append(float(a) * length)
             wbases.append(0.5 * width * p.scale.x)
             bw = f.get("base_width_multiplier", 1.0) if f is not None else 1.0
             tw = f.get("tip_width_multiplier", 1.0) if f is not None else 1.0
@@ -346,13 +348,13 @@ class Ribbon(Behavior):
         arr = lambda seq: numpy.array(seq, dtype="f8")
         rep = lambda seq: numpy.repeat(arr(seq), ns)
 
-        # 锚点：生成点在条带长度方向上的位置（0=前端贴住生成点，1=后端贴住）
-        amt = arr(anchors)
-        if numpy.any(amt):
-            d = Q[row0 + ns - 1] - Q[row0]
-            nrm = numpy.sqrt((d * d).sum(axis=1))
-            numpy.divide(d, nrm[:, None], out=d, where=(nrm > 1e-12)[:, None])
-            Q += numpy.repeat(d * amt[:, None], ns, axis=0)
+        # ⚠ spawnAnchorOffset 对轨迹跟随模式**不生效**：tip 恒等于粒子当前位置，
+        # 沿首尾方向平移它就必然要么把条带甩到发射器还没到的前方，要么在粒子
+        # 刚出生、历史还没积累够时把 tip 钉死在出生点直到追上理论长度才开始动
+        # （两种都跟实机"从出生起就一直贴着走"矛盾，用户核对过——见
+        # `on_particle_spawn` 里 MODE_TRAIL 分支对该字段的 note）。刚性矩形/
+        # 柔体链没有"历史"这层含义，各自在 `_strip_py`/`on_particle_spawn` 里
+        # 单独处理，不受这条限制。
 
         # 沿长度的归一化参数 u（0=base，1=tip），逐行算
         total = int(ns.sum())
@@ -443,14 +445,19 @@ class Ribbon(Behavior):
 
         返回 `([(Vec3, 半宽, alpha), …], 末点)`。
         """
-        anchor = 0.0 if skip_anchor else (
+        # ⚠ spawnAnchorOffset 对轨迹跟随模式**不生效**：tip 恒等于粒子当前
+        # 位置，沿首尾方向平移它要么把条带甩到发射器还没到的前方，要么在粒子
+        # 刚出生、历史还没积累够时把 tip 钉死在出生点直到追上理论长度才开始动，
+        # 两种都跟实机"从出生起就一直贴着走"矛盾（用户核对过）。只对刚性矩形/
+        # 柔体链生效——它们没有"历史"这层含义，纯粹是沿自身长度方向平移。
+        anchor = 0.0 if (skip_anchor or st["mode"] == MODE_TRAIL) else (
             (f.get("spawnAnchorOffset") if f is not None else 0.0) or 0.0)
         if anchor:
             # 生成点在条带长度方向上的位置：0=前端贴住生成点，1=后端贴住。
-            # 原地平移——pts 是这一趟新造的，可以随便改；写成
-            # `[q + shift for q in pts]` 会再造一整串 Vec3，上千条带就是每帧几万
-            # 个临时对象。
-            shift = (pts[-1] - pts[0]).normalized() * (length * anchor)
+            # 位移量按**这一条实际的首尾跨度**（不归一化、不套配置的 `length`）：
+            # 刚性矩形/柔体链的实际跨度本就等于配置长度，两者应等价。
+            span = pts[-1] - pts[0]
+            shift = span * anchor
             sx, sy, sz = shift.x, shift.y, shift.z
             for q in pts:
                 q.x += sx

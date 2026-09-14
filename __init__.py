@@ -51,7 +51,7 @@ bl_info = {
 
 import bpy
 from bpy.types import AddonPreferences
-from bpy.props import BoolProperty, IntProperty
+from bpy.props import BoolProperty, IntProperty, StringProperty
 
 from . import addon_updater_ops   # CGCookie Blender Add-on Updater（从 Modding-Toolkit 移植）
 from . import blender_efx
@@ -80,6 +80,16 @@ class EFX_Preferences(AddonPreferences):
             "of that neighbourhood"
         ),
         default=False,
+    )
+
+    # 永久默认 Chunk Root（提取根目录）：跨 .blend 文件生效，导入 EFX / 联动 mod3、UVS 贴图时
+    # 若当前场景没单独填 Scene.efx_chunk_root，就用这里的值兜底——不用每个新文件都重选一遍。
+    chunk_root: StringProperty(
+        name="Chunk Root",
+        description="MHW 提取根目录默认值（含 vfx/ 等），跨文件永久生效。"
+                    "场景里的 Chunk Root 留空时用这里的值；填了场景值则场景值优先",
+        subtype="DIR_PATH",
+        default="",
     )
 
     auto_check_update: BoolProperty(
@@ -118,6 +128,17 @@ class EFX_Preferences(AddonPreferences):
         sub.label(text=("关闭时字段按字节序原样显示——字节序本身带语义，逆向字段作用时别开"
                         if zh else
                         "When off, fields keep their raw byte order, which carries meaning"))
+        layout.separator()
+
+        box2 = layout.box()
+        box2.label(text="导入" if zh else "Import", icon="IMPORT")
+        box2.prop(self, "chunk_root",
+                  text=("默认 Chunk Root（提取根目录）" if zh else "Default Chunk Root"))
+        sub2 = box2.row()
+        sub2.enabled = False
+        sub2.label(text=("跨文件永久生效；场景里另填了 Chunk Root 时以场景值为准"
+                          if zh else
+                          "Persists across files; a per-scene Chunk Root overrides this"))
         layout.separator()
         addon_updater_ops.update_settings_ui(self, context)
 

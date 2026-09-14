@@ -11,7 +11,13 @@ UVSEQUENCE 块属性下的 UVS 编辑工具栏。
   - "GIF to PNG Sequence"按钮占位（Phase 4）
 
 数据存储策略：
-  - EFXUVSProps 挂到 Object（efx_uvs），仅 UVSEQUENCE 块对象有意义
+  - EFXUVSProps 挂到 Object（efx_uvs）。谁持有它分两种情况：
+      · 无主 UVS（standalone.py 建的 Empty）：数据就在它自己身上。
+      · UVSEQUENCE 属性：属性自己**不再**存数据，只留一个 `efx_uvs_target`
+        指针指向外部 Empty（uvs_link.py::ensure_host_for_attribute 建的，
+        绿色集合，嵌在其所属 .efx 顶层集合内，导出天然忽略）。本文件所有
+        读写口子一律经 `_uvs_target`/`_uvs_props`（只读）或 `_ensure_uvs_target`
+        （需要时惰性新建）解析，不直接碰 `obj.efx_uvs`。
   - raw_b64：序列化后的完整 UVS 字节，保证 frame data 等不可编辑字段原样往返
   - groups CollectionProperty：可编辑字段（路径、类型、dynamic）
   - 导出时：decode raw_b64 → 用 CollectionProperty 覆写可变字段 → 重序列化
@@ -67,14 +73,28 @@ def is_standalone_uvs(obj) -> bool:
     return obj is not None and obj.get("~TYPE") == "EFX_UVS"
 
 
-def _is_uvsequence_attribute(obj) -> bool:
-    """该对象是否为 UVS 编辑的合法宿主：UVSEQUENCE 类型的 EFX_ATTRIBUTE，或无主 UVS 载体。
+def _is_uvs_link_host(obj) -> bool:
+    """是否为 UVSEQUENCE 属性外挂的 UVS 载体 Empty（`uvs_link.ensure_host_for_attribute`
+    建的，~TYPE="EFX_UVS_LINK_ITEM"，与 `is_standalone_uvs` 的完全无主载体是两码事——
+    这个载体挂在某个 .efx 的绿色 `{efx}_uvs` 子集合里）。
 
-    UVS 编辑器的十余处门控全部走这一个判据，放宽它即等于整套编辑器对无主 UVS 生效。
+    数据同样直接存在它自己的 `efx_uvs` 上（`uvs_link.link_one` 写的就是
+    `host.efx_uvs`），选中它本人时理应和选中无主载体一样能进 UVS 编辑器——
+    这里不用从 uvs_link 顶层 import 常量（会和它 import 本模块循环），直接比字符串。
+    """
+    return obj is not None and obj.get("~TYPE") == "EFX_UVS_LINK_ITEM"
+
+
+def _is_uvsequence_attribute(obj) -> bool:
+    """该对象是否为 UVS 编辑的合法宿主：UVSEQUENCE 类型的 EFX_ATTRIBUTE、
+    它外挂的 UVS 载体 Empty，或完全无主的 UVS 载体。
+
+    UVS 编辑器的十余处门控全部走这一个判据，放宽它即等于整套编辑器对新增的
+    对象类型生效。
     """
     if obj is None:
         return False
-    if is_standalone_uvs(obj):
+    if is_standalone_uvs(obj) or _is_uvs_link_host(obj):
         return True
     if obj.get("~TYPE") != "EFX_ATTRIBUTE":
         return False
@@ -83,6 +103,43 @@ def _is_uvsequence_attribute(obj) -> bool:
         return int(obj.efx_block.type_hash_str) == UVSEQUENCE
     except Exception:
         return False
+
+
+def _uvs_target(obj):
+    """UVSEQUENCE 属性 / 它外挂的 UVS 载体 / 无主 UVS 对象 → 实际持有 `efx_uvs`
+    数据的对象。
+
+    数据不再直接存在属性对象自己身上（见 uvs_link.py 的 `ensure_host_for_attribute`）
+    ——属性只留一个 `efx_uvs_target` 指针指向外部载体；选中载体本人时它自己就是
+    数据持有者，不用再跟指针。这里只读解析，属性尚未建过宿主（还没 Import /
+    Quick Load 过）时返回 None，不产生任何副作用；真正需要"没有就建一个"的地方
+    只有 Import（execute 里落数据的时候才建，见 `_ensure_uvs_target`）。
+    """
+    if obj is None:
+        return None
+    if is_standalone_uvs(obj) or _is_uvs_link_host(obj):
+        return obj
+    if obj.get("~TYPE") != "EFX_ATTRIBUTE":
+        return None
+    return getattr(obj, "efx_uvs_target", None)
+
+
+def _uvs_props(obj):
+    """只读地拿 obj（UVSEQUENCE 属性 / 无主对象）当前的 `EFXUVSProps`；没建宿主时
+    返回 None（面板/poll 用这个判断"还没载入"，不能拿它去写数据）。"""
+    tgt = _uvs_target(obj)
+    return getattr(tgt, "efx_uvs", None) if tgt is not None else None
+
+
+def _ensure_uvs_target(obj, context=None):
+    """UVSEQUENCE 属性缺外部宿主时惰性新建一个（绿色集合，嵌进其 EFX 根，见
+    uvs_link.py）；无主对象 / 外挂载体本人 / 已有宿主直接返回。只在真正要落数据的
+    算子（Import）里调用，draw()/poll() 一律用只读的 `_uvs_target`，不要在绘制时
+    创建数据块。"""
+    if is_standalone_uvs(obj) or _is_uvs_link_host(obj):
+        return obj
+    from . import uvs_link as _ul
+    return _ul.ensure_host_for_attribute(obj, context)
 
 
 def _poll_msg(cls, msg) -> None:
@@ -387,11 +444,13 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
             self.report({"ERROR"}, T("uvs.import_failed").format(e))
             return {"CANCELLED"}
 
-        # ── 目标：载进选中的 UVSEQUENCE 属性，还是无主打开 ──────────────────────
+        # ── 目标：载进选中的 UVSEQUENCE 属性（外部宿主，没有就建），还是无主打开 ──
         obj = self._target_host(context)
         if obj is None:
             from . import standalone as _sa
             obj = _sa.new_uvs_host(os.path.splitext(os.path.basename(path))[0] or "uvs", context)
+        else:
+            obj = _ensure_uvs_target(obj, context)
         props = obj.efx_uvs
         try:
             _populate_props(props, data)
@@ -420,23 +479,21 @@ class EFX_OT_uvs_export(Operator, ExportHelper):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        ok = _is_uvsequence_attribute(obj) and getattr(
-            getattr(obj, "efx_uvs", None), "is_loaded", False
-        )
+        ok = _is_uvsequence_attribute(obj) and getattr(_uvs_props(obj), "is_loaded", False)
         if not ok:
             _poll_msg(cls, "Select a UVSEQUENCE attribute with a loaded .uvs first")
         return ok
 
     def invoke(self, context, event):
         # 用已知路径预填对话框
-        props = context.active_object.efx_uvs
+        props = _uvs_props(context.active_object)
         if props.filepath:
             self.filepath = props.filepath
         return super().invoke(context, event)
 
     def execute(self, context):
         obj = context.active_object
-        props = obj.efx_uvs
+        props = _uvs_props(obj)
         try:
             data = _rebuild_uvs(props)
             with open(self.filepath, "wb") as f:
@@ -463,13 +520,13 @@ class EFX_OT_uvs_reload(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        props = getattr(obj, "efx_uvs", None)
+        props = _uvs_props(obj)
         return (_is_uvsequence_attribute(obj) and props is not None
                 and bool(props.filepath) and os.path.isfile(props.filepath))
 
     def execute(self, context):
         obj = context.active_object
-        props = obj.efx_uvs
+        props = _uvs_props(obj)
         try:
             with open(props.filepath, "rb") as f:
                 data = f.read()
@@ -522,7 +579,7 @@ class EFX_PT_uvs_edition(Panel):
     def draw(self, context):
         layout = self.layout
         obj    = context.active_object
-        props  = obj.efx_uvs
+        props  = _uvs_props(obj)   # 属性还没 Import/Quick Load 过时是 None（还没建外部宿主）
 
         # 无主 UVS：标一行"独立文件"并给关闭入口（有宿主时这行不画）
         from . import standalone as _sa
@@ -557,7 +614,7 @@ class EFX_PT_uvs_edition(Panel):
         # ── Import / Export / Reload ──────────────────────────────────────────
         row = layout.row(align=True)
         row.operator("efx.uvs_import", icon="IMPORT", text="Import")
-        if props.is_loaded:
+        if props is not None and props.is_loaded:
             row.operator("efx.uvs_export", icon="EXPORT", text="Export")
             row.operator("efx.uvs_reload", icon="FILE_REFRESH", text="")
 
@@ -570,7 +627,7 @@ class EFX_PT_uvs_edition(Panel):
             box.label(text=T("uvs.need_pillow"), icon="ERROR")
             box.label(text=T("uvs.pip_install_hint"))
 
-        if not props.is_loaded:
+        if props is None or not props.is_loaded:
             layout.label(text=T("uvs.not_loaded"), icon="INFO")
             return
 
@@ -877,9 +934,7 @@ class EFX_OT_uvs_edit(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return _is_uvsequence_attribute(obj) and getattr(
-            getattr(obj, "efx_uvs", None), "is_loaded", False
-        )
+        return _is_uvsequence_attribute(obj) and getattr(_uvs_props(obj), "is_loaded", False)
 
     def invoke(self, context, event):
         # 已有编辑器在跑 → 检测窗口是否仍存在
@@ -889,8 +944,11 @@ class EFX_OT_uvs_edit(Operator):
                 return {"CANCELLED"}
             _cleanup_edit_state()
 
-        # 记录编辑目标
-        context.window_manager.efx_uvs_edit_obj = context.active_object.name
+        # 记录编辑目标：解析到实际持有数据的对象（属性的外部宿主，或无主对象自己）
+        # ——poll 已经保证 is_loaded，宿主必然存在。下面一整套"编辑器窗口"算子
+        # （frame_edit/insert/delete/move、gen_frames）全部只认这个名字，不碰
+        # active_object，这里改了它们就自动跟着换成新模型，不需要逐个再改。
+        context.window_manager.efx_uvs_edit_obj = _uvs_target(context.active_object).name
 
         # 开新窗口并切换到 Image Editor
         bpy.ops.wm.window_new()
@@ -1361,15 +1419,12 @@ class EFX_OT_uvs_group_add(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return (
-            _is_uvsequence_attribute(obj)
-            and getattr(getattr(obj, "efx_uvs", None), "is_loaded", False)
-        )
+        return _is_uvsequence_attribute(obj) and getattr(_uvs_props(obj), "is_loaded", False)
 
     def execute(self, context):
         from ..efx_format.uvs import UVSFile, UVSGroup, UVSFrame
 
-        props = context.active_object.efx_uvs
+        props = _uvs_props(context.active_object)
         try:
             data = base64.b64decode(props.raw_b64)
             uvs  = UVSFile.parse(data)
@@ -1430,7 +1485,7 @@ class EFX_OT_uvs_group_remove(Operator):
         obj = context.active_object
         if not _is_uvsequence_attribute(obj):
             return False
-        props = getattr(obj, "efx_uvs", None)
+        props = _uvs_props(obj)
         return (
             props is not None
             and props.is_loaded
@@ -1440,7 +1495,7 @@ class EFX_OT_uvs_group_remove(Operator):
     def execute(self, context):
         from ..efx_format.uvs import UVSFile
 
-        props = context.active_object.efx_uvs
+        props = _uvs_props(context.active_object)
         idx   = props.group_index
         if not (0 <= idx < len(props.groups)):
             self.report({"ERROR"}, T("uvs.invalid_group_index"))
@@ -1481,13 +1536,13 @@ class EFX_OT_uvs_group_move(Operator):
         obj = context.active_object
         if not _is_uvsequence_attribute(obj):
             return False
-        props = getattr(obj, "efx_uvs", None)
+        props = _uvs_props(obj)
         return props is not None and props.is_loaded and len(props.groups) > 1
 
     def execute(self, context):
         from ..efx_format.uvs import UVSFile
 
-        props = context.active_object.efx_uvs
+        props = _uvs_props(context.active_object)
         idx = props.group_index
         target = idx - 1 if self.direction == 'UP' else idx + 1
         if not (0 <= target < len(props.groups)):
@@ -1533,7 +1588,7 @@ class EFX_OT_uvs_slot_add(Operator):
         obj = context.active_object
         if not _is_uvsequence_attribute(obj):
             return False
-        props = getattr(obj, "efx_uvs", None)
+        props = _uvs_props(obj)
         if props is None or not props.is_loaded:
             return False
         idx = props.group_index
@@ -1551,7 +1606,7 @@ class EFX_OT_uvs_slot_add(Operator):
         return True
 
     def execute(self, context):
-        props = context.active_object.efx_uvs
+        props = _uvs_props(context.active_object)
         g = props.groups[props.group_index]
         i = g.map_count
         setattr(g, f"path{i}", "")
@@ -1574,7 +1629,7 @@ class EFX_OT_uvs_slot_remove(Operator):
         obj = context.active_object
         if not _is_uvsequence_attribute(obj):
             return False
-        props = getattr(obj, "efx_uvs", None)
+        props = _uvs_props(obj)
         if props is None or not props.is_loaded:
             return False
         idx = props.group_index
@@ -1583,7 +1638,7 @@ class EFX_OT_uvs_slot_remove(Operator):
         return props.groups[idx].map_count > 0
 
     def execute(self, context):
-        props = context.active_object.efx_uvs
+        props = _uvs_props(context.active_object)
         g = props.groups[props.group_index]
         i = g.map_count - 1
         setattr(g, f"path{i}", "")
@@ -1739,15 +1794,12 @@ class EFX_OT_uvs_gif_to_png(Operator, ImportHelper):
                 pass
             return False
         obj = context.active_object
-        return (
-            _is_uvsequence_attribute(obj)
-            and getattr(getattr(obj, "efx_uvs", None), "is_loaded", False)
-        )
+        return _is_uvsequence_attribute(obj) and getattr(_uvs_props(obj), "is_loaded", False)
 
     def invoke(self, context, event):
         # 预填行列数：从当前 group 的 grid_h/grid_v
         obj = context.active_object
-        props = obj.efx_uvs
+        props = _uvs_props(obj)
         idx = props.group_index
         if 0 <= idx < len(props.groups):
             g = props.groups[idx]
@@ -1851,7 +1903,7 @@ class EFX_OT_uvs_gif_to_png(Operator, ImportHelper):
         # ── 新增对应 Group ───────────────────────────────────────────────────
         if self.create_new_group:
             obj = context.active_object
-            props = obj.efx_uvs
+            props = _uvs_props(obj)
             insert_at, err = self._insert_group(props, out_path, cols, rows, n, fw, fh, canvas_w, canvas_h)
             if err:
                 self.report({"WARNING"}, msg + T("uvs.new_group_failed").format(err))

@@ -103,21 +103,32 @@ def _mesh_local_matrix(mesh_attribute):
 
 
 def apply_mesh_rotscale_to_object(mesh_attribute):
-    """把 MESH 属性的 rotation/scale/global_scale 直接作用到其绑定对象（efx_mesh_target）。
+    """把 MESH 属性的 rotation/scale/global_scale 直接作用到其绑定对象。
 
     持久、实时：保留对象当前位置，只覆盖其本地旋转与缩放（= mesh_local）。
-    仅对真正的 MESH 属性生效；非 MESH 属性或未绑定则忽略。
+    仅对真正的 MESH 属性生效；非 MESH 属性或未绑定则忽略。作用到**全部**绑定对象
+    ——mod3_link 按 viscon 范围可能绑了不止一个（efx_mesh_targets），不止旧模型
+    的单体 efx_mesh_target，否则同一属性下没被选中预览的那几个网格摆位不同步。
     """
     if not _is_mesh_attribute(mesh_attribute):
         return
-    obj = getattr(mesh_attribute, "efx_mesh_target", None)
-    if obj is None:
+    targets = []
+    primary = getattr(mesh_attribute, "efx_mesh_target", None)
+    if primary is not None:
+        targets.append(primary)
+    for item in getattr(mesh_attribute, "efx_mesh_targets", ()):
+        obj = item.obj
+        if obj is not None and obj not in targets:
+            targets.append(obj)
+    if not targets:
         return
-    try:
-        loc = obj.matrix_basis.to_translation()   # 保留原位置
-        obj.matrix_basis = Matrix.Translation(loc) @ _mesh_local_matrix(mesh_attribute)
-    except Exception:
-        pass
+    mat_local = _mesh_local_matrix(mesh_attribute)
+    for obj in targets:
+        try:
+            loc = obj.matrix_basis.to_translation()   # 保留原位置
+            obj.matrix_basis = Matrix.Translation(loc) @ mat_local
+        except Exception:
+            pass
 
 
 def _entry_mesh_bindings(entry_obj):

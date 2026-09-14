@@ -194,24 +194,29 @@ _UVS_HOST_CACHE = {}
 
 
 def _uvs_host(entry_obj, use_cache=False):
-    """entry 下的 UVSEQUENCE 属性对象；没有则 None。
+    """entry 下 UVSEQUENCE 属性实际存 `efx_uvs` 数据的对象；没有则 None。
 
     全语料 10084 个官方文件里一个 entry 最多一个 UVSEQUENCE（84106 个有的 entry
     全是 1 个），所以「取第一个」不是将就，就是全部。
+
+    ⚠ uvs_link.py 把数据搬到了属性对象外挂的 `efx_uvs_target`（见
+    `ensure_host_for_attribute`）——属性对象自己的 `efx_uvs` 现在恒空。有外挂宿主
+    就必须跟过去，否则读到的永远是空数据（序列帧贴图静默消失）。老数据/尚未跑过
+    uvs_link 的属性没有 `efx_uvs_target`，退回属性对象自己（兼容旧场景）。
     """
     from ..efx_format.hashes import UVSEQUENCE
 
     if use_cache and entry_obj.name in _UVS_HOST_CACHE:
         name = _UVS_HOST_CACHE[entry_obj.name]
         obj = bpy.data.objects.get(name) if name else None
-        if name == "" or (obj is not None and obj.parent is entry_obj):
+        if name == "" or obj is not None:
             return obj
 
     found = None
     for blk in _entry_attributes(entry_obj):
         try:
             if int(blk.efx_block.type_hash_str) == UVSEQUENCE:
-                found = blk
+                found = getattr(blk, "efx_uvs_target", None) or blk
                 break
         except Exception:
             continue
@@ -290,6 +295,7 @@ def _config_from_scene(scene):
         flowmap_phase=getattr(scene, "efx_sim_flowmap_phase", "cycle"),
         ribbon_subdiv_max=int(getattr(scene, "efx_sim_ribbon_subdiv_max", 0)),
         ribbon_rigid_dir=getattr(scene, "efx_sim_ribbon_rigid_dir", "static"),
+        homing_compose=getattr(scene, "efx_sim_homing_compose", "pursuit"),
         homing_orbit_axial_falloff=float(
             getattr(scene, "efx_sim_homing_axial_falloff", 0.0)),
         homing_orbit_retarget=getattr(scene, "efx_sim_homing_retarget",
@@ -774,15 +780,60 @@ def _active_root_collection(context):
     return None
 
 
+#: "点中根集合" 播放范围下拉的标识前缀：具体 Subselect 用 "SS:" + 对象名，
+#: 区别于固定项 "ALL"（Direct Trigger 那批，原行为）。
+_SIM_SCOPE_SS_PREFIX = "SS:"
+
+#: 全局缓存：防止 Blender EnumProperty 动态回调因 GC 丢引用导致下拉乱码
+#: （见 memory/enum-callback-gc-trap：必须是模块级变量，回调里 global 重新赋值，
+#: 返回这个全局对象本身，不能返回局部 list）。
+_sim_scope_items_cache = [("ALL", "All", "")]
+
+
+def _sim_scope_items(self, context):
+    """播放范围下拉的候选项：固定 "All"（Direct Trigger）+ 当前根集合下的每个
+    Subselect（选中即只播那个 Subselect.members 指向的 entry 集合）。"""
+    global _sim_scope_items_cache
+    items = [("ALL", T("sim.scope_all"), T("sim.scope_all_tip"))]
+    root = _active_root_collection(context) if context is not None else None
+    if root is not None:
+        for ss in _rc.collect_top_level(root, "EFX_SUBSELECT"):
+            items.append((_SIM_SCOPE_SS_PREFIX + ss.name, ss.name, T("sim.scope_subselect_tip")))
+    _sim_scope_items_cache = items
+    return _sim_scope_items_cache
+
+
+def _subselect_scope_entries(root, ss_name):
+    """指定 Subselect 的成员 entry 列表：按 members 原序，去重，跳过悬空指针。
+    ss_name 对不上当前 root 下的任何 Subselect（改名/切到别的文件）时返回空列表
+    ——不悄悄退回全播，播放范围选错了就该看见"没东西可播"而不是播了别的一批。"""
+    ss_obj = bpy.data.objects.get(ss_name)
+    if ss_obj is None or _rc.find_root_collection(ss_obj) is not root:
+        return []
+    try:
+        members = ss_obj.efx_subselect.members
+    except AttributeError:
+        return []
+    out = []
+    seen = set()
+    for m in members:
+        e = m.body_ptr
+        if e is not None and e.name not in seen:
+            seen.add(e.name)
+            out.append(e)
+    return out
+
+
 def collect_entries(context):
     """要模拟哪些 entry。
 
     两条路：
 
-      - 大纲里点中**一个 EFX 根集合** → 播整个文件，即它的 **Direct Trigger** 那批 entry。
-        Not Direct Trigger 的不起 track——它们是靠 PtLife → Action 召唤出来的，模拟里
-        已经会作为子实例生出来（见 sim/scene.py），再起一条就会被画两遍。没有任何
-        PtLife 指向的那些则本来就是死的，不该凭空播。
+      - 大纲里点中**一个 EFX 根集合** → 按播放范围下拉（`Scene.efx_sim_scope`）：
+        "All" 播整个文件的 **Direct Trigger** 那批 entry（原行为，Not Direct Trigger
+        的不起 track——它们是靠 PtLife → Action 召唤出来的，模拟里已经会作为子实例
+        生出来，见 sim/scene.py；再起一条就会被画两遍）；选了具体 Subselect 则只播
+        它 members 指向的那些 entry（"这套子选择实际会用到的特效"）。
       - 否则按**选中对象**各自往上找 entry，去重；空则退回活动对象（多选=同时播）。
     """
     out = []
@@ -797,6 +848,9 @@ def collect_entries(context):
 
     root = _active_root_collection(context)
     if root is not None:
+        scope = getattr(context.scene, "efx_sim_scope", "ALL")
+        if scope.startswith(_SIM_SCOPE_SS_PREFIX):
+            return _subselect_scope_entries(root, scope[len(_SIM_SCOPE_SS_PREFIX):])
         ents = _rc.collect_top_level(root, "EFX_ENTRY")
         direct = [e for e in ents if _entry_ref.is_entry_in_eof(e)]
         if direct:
@@ -1524,6 +1578,44 @@ def _mesh_tris_game(mesh_obj):
     return out
 
 
+def _mesh_tris_game_multi(mesh_objs):
+    """同一 viscon 组常常由好几个 Sub 网格拼成——把它们的三角顶点（各自走
+    `_mesh_tris_game` 换算+缓存）拼成一份，缓存 key 用全部对象名排序后的 tuple。
+
+    UV 要求全体都有才拼（否则贴图坐标对不上、干脆整体退回纯色桶，同单网格没有
+    UV 时的既有降级路径一致）。
+    """
+    objs = [m for m in mesh_objs if m is not None]
+    if not objs:
+        return _mesh_tris_game(None)
+    if len(objs) == 1:
+        return _mesh_tris_game(objs[0])
+
+    key = tuple(sorted(o.name for o in objs))
+    cached = _P["mesh_cache"].get(key)
+    if cached is not None:
+        return cached
+
+    parts = [_mesh_tris_game(o) for o in objs]
+    tris = []
+    for t, _a, _u in parts:
+        tris.extend(t)
+    uvs = None
+    if all(u is not None for _t, _a, u in parts):
+        uvs = []
+        for _t, _a, u in parts:
+            uvs.extend(u)
+    arr = None
+    try:
+        import numpy
+        arr = numpy.array(tris, dtype="f4")
+    except Exception:
+        arr = None
+    out = (tris, arr, uvs)
+    _P["mesh_cache"][key] = out
+    return out
+
+
 def _mesh_image_name(mesh_obj):
     """绑定网格用哪张贴图。
 
@@ -1618,16 +1710,32 @@ def _mesh_affine(item, size_mul, rows):
     return lin, t
 
 
-def _bound_mesh_for(entry_obj):
-    """entry 下 MESH 属性绑定的网格对象（mod3_link 填的 efx_mesh_target）。"""
+def _bound_meshes_for(entry_obj, viscon=None):
+    """entry 下 MESH 属性绑定的网格对象列表，按 viscon（Visible Condition）过滤。
+
+    优先用 `efx_mesh_targets`（mod3_link 按 visconIndex/visconIndexJitter 范围绑的
+    多网格，同一组常有好几个 Sub 网格）；没有精确命中该 viscon 时（超出范围/老
+    数据没有分组信息）退回单体 `efx_mesh_target`，保证预览不会因为一次没打中
+    随机范围就整个不画。
+    """
     for blk in _entry_attributes(entry_obj):
+        try:
+            targets = blk.efx_mesh_targets
+        except Exception:
+            targets = None
+        if targets:
+            matches = [it.obj for it in targets
+                       if it.obj is not None and getattr(it.obj, "type", None) == "MESH"
+                       and (viscon is None or it.viscon == viscon)]
+            if matches:
+                return matches
         try:
             tgt = getattr(blk, "efx_mesh_target", None)
         except Exception:
             tgt = None
         if tgt is not None and getattr(tgt, "type", None) == "MESH":
-            return tgt
-    return None
+            return [tgt]
+    return []
 
 
 def _join_chunks(verts, colors, uvs, col2s, chunks):
@@ -2073,9 +2181,10 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             buckets[key] = b
         return key, b
 
-    #: 这一趟里「entry → 网格三角」的记忆。`_bound_mesh_for` 要遍历 entry 的属性列表、
-    #: 前面还要 `bpy.data.objects.get`——逐粒子做就是每个粒子一次小扫描，粒子一多就是
-    #: 网格路径的主要固定开销（实测占每粒子 120 µs 里的大半）。一个 entry 只查一次。
+    #: 这一趟里「(entry, viscon) → 网格三角」的记忆。`_bound_meshes_for` 要遍历
+    #: entry 的属性列表、前面还要 `bpy.data.objects.get`——逐粒子做就是每个粒子一次
+    #: 小扫描，粒子一多就是网格路径的主要固定开销（实测占每粒子 120 µs 里的大半）。
+    #: 同一 entry + 同一 viscon 只查一次。
     mesh_memo = {}
     #: entry 名 → 绘制次序键。子实例每帧都要查，缓存一下别逐粒子反查集合
     order_memo = {}
@@ -2091,25 +2200,33 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
 
     def _geom_of(it):
         """(几何, 贴图名)。贴图来自绑定网格自己的材质——reference mesh 那条链已经把
-        材质和贴图建好了，我们只取用不解析。`use_tex` 关掉时退回纯色桶。"""
+        材质和贴图建好了，我们只取用不解析。`use_tex` 关掉时退回纯色桶。
+
+        ⚠ 缓存 key 要带上 viscon：同一 entry 下不同粒子可能因 visconIndexJitter
+        各自摇到不同的组（`me_viscon`，见 behaviors/mesh.py），只按 entry 缓存会
+        让后到的粒子沿用第一个粒子摇到的那组网格，"随机换网格"的效果就没了。
+        """
         key = it.extra.get("entry_key") or ""
-        got = mesh_memo.get(key)
+        viscon = it.extra.get("viscon")
+        memo_key = (key, viscon)
+        got = mesh_memo.get(memo_key)
         if got is None:
             owner = bpy.data.objects.get(key) or entry
-            m = _bound_mesh_for(owner)
-            if m is None:
+            meshes = _bound_meshes_for(owner, viscon)
+            if not meshes:
                 # 没绑 mod3 → 画的是占位方块，面板上要说清楚（方块是对称的，
                 # 看不出旋转对不对，容易被误判成「旋转没实现」）
                 miss = tr.setdefault("mesh_missing", [])
                 nm = getattr(owner, "name", "") or "?"
                 if nm not in miss:
                     miss.append(nm)
+            m0 = meshes[0] if meshes else None
             # MATERIAL 指定的贴图优先；没有（或没载上）才退回 mod3 自带材质那张
-            name = (mat_images.get(key) or _mesh_image_name(m)) if use_tex else ""
+            name = (mat_images.get(key) or _mesh_image_name(m0)) if use_tex else ""
             if name and _gpu_texture(name) is None:
                 name = ""
-            got = (_mesh_tris_game(m), name)
-            mesh_memo[key] = got
+            got = (_mesh_tris_game_multi(meshes), name)
+            mesh_memo[memo_key] = got
         return got
 
     def _corners_of(it, tex_name):
@@ -2904,9 +3021,18 @@ class EFX_PT_sim(Panel):
         sim = trs[0]["sim"] if trs else None
 
         entry = _resolve_entry(context.active_object)
-        if entry is None and not active:
+        root = _active_root_collection(context)
+        if entry is None and root is None and not active:
             layout.label(text=T("sim.pick_entry"), icon="INFO")
             return
+
+        # ── 播放范围：点中根集合时才有意义（选了具体 entry 就是播那些，没有"范围"
+        # 一说）。"All" = 原行为（Direct Trigger 那批）；否则播指定 Subselect 的
+        # members，即"这个装备状态/这套子选择实际会用到的那些特效"。
+        if root is not None and entry is None:
+            row = layout.row()
+            row.enabled = not active
+            row.prop(scene, "efx_sim_scope", text=T("sim.scope"))
 
         # ── 走带 ─────────────────────────────────────────────────────────────
         row = layout.row(align=True)
@@ -2987,9 +3113,10 @@ class _SimSubPanel(Panel):
 
     @classmethod
     def poll(cls, context):
-        # 父面板在「没选中 entry 且没在播」时只画一句提示就 return，
+        # 父面板在「没选中 entry、没点中根集合、也没在播」时只画一句提示就 return，
         # 子面板要跟着一起消失，否则会剩下几个空壳标题。
-        return is_active() or _resolve_entry(context.active_object) is not None
+        return (is_active() or _resolve_entry(context.active_object) is not None
+                or _active_root_collection(context) is not None)
 
 
 class EFX_PT_sim_playback(_SimSubPanel):
@@ -3139,8 +3266,12 @@ class EFX_PT_sim_unknowns(Panel):
         # HOMING 的其余开关（转弯重定轴 / 速度爬升曲线与圈数 / 力场倍率读法与
         # 恢复帧数 / 竖直压扁 axial_falloff）2026-09-12 已逐项拿游戏实拍标定完，
         # 不再占 Calibration 的位置——Scene 属性与 SimConfig 开关都还在，要对照
-        # 旧行为直接在代码里改默认值即可。这里只留下唯一还没实测的 lateral_tilt。
-        col.prop(scene, "efx_sim_homing_axis_update")
+        # 旧行为直接在代码里改默认值即可。axis_update / retarget / axial_falloff
+        # 在纯追踪默认下已经**没有意义**（每帧按当前几何重算转向，那几个结构性
+        # 缺口本来就不存在），一并撤出面板。这里只留两项：HOMING 的驱动方式
+        # （compose，默认纯追踪，留 add/override 对照被排除的两种读法），以及
+        # lateral_tilt —— 它现在只管「穿过目标那一瞬间往哪边拐」这个退化点。
+        col.prop(scene, "efx_sim_homing_compose")
         col.prop(scene, "efx_sim_homing_lateral_tilt")
         col.prop(scene, "efx_sim_parent_clock")
         col.prop(scene, "efx_sim_color_range")
@@ -3179,6 +3310,11 @@ def register():
     S = bpy.types.Scene
 
     # ── 播放 ─────────────────────────────────────────────────────────────────
+    S.efx_sim_scope = EnumProperty(
+        name="Scope",
+        description="Which entries to simulate when a root EFX collection (not a specific "
+                    "entry) is selected",
+        items=_sim_scope_items)
     S.efx_sim_mode = EnumProperty(
         name="Mode",
         items=[("ONCE", "Play Once", "Stop at the end of one cycle"),
@@ -3386,6 +3522,20 @@ def register():
         description="How many frames it takes a homing particle to pull its speed "
                     "back up to the target speed after a force field has slowed it. "
                     "Only used by the damped force field. Preview only")
+    S.efx_sim_homing_compose = EnumProperty(
+        name="Homing steering",
+        items=[("pursuit", "Steers the velocity",
+                "Homing turns whichever way the particle is already moving towards "
+                "its target, at the turn rate, and sets the speed. A Velocity 3D "
+                "starting speed throws the particles outwards first and homing "
+                "swings them back around"),
+               ("add", "Adds its own speed",
+                "Homing pulls straight at the target and that pull is added on top "
+                "of whatever else is driving the particle"),
+               ("override", "Replaces other speed",
+                "Homing alone decides the velocity every frame, so a Velocity 3D "
+                "starting speed has no visible effect")],
+        default="pursuit")
     S.efx_sim_homing_axis_update = EnumProperty(
         name="Homing orbit axis",
         items=[("frozen", "Locked at arrival",
@@ -3593,6 +3743,7 @@ def unregister():
     _UVS_HOST_CACHE.clear()
 
     for attr in (
+        "efx_sim_scope",
         "efx_sim_mode", "efx_sim_speed", "efx_sim_duration", "efx_sim_seed",
         "efx_sim_swing_enable", "efx_sim_swing_axis", "efx_sim_swing_angle",
         "efx_sim_swing_radius", "efx_sim_swing_duration",
@@ -3618,6 +3769,7 @@ def unregister():
         "efx_sim_particle_budget",
         "efx_sim_refraction_tex", "efx_sim_refraction_gain",
         "efx_sim_flowmap_gain", "efx_sim_flowmap_speed_unit", "efx_sim_flowmap_phase",
+        "efx_sim_homing_compose",
         "efx_sim_homing_axial_falloff", "efx_sim_homing_retarget",
         "efx_sim_homing_lateral_tilt", "efx_sim_homing_axis_update",
         "efx_sim_homing_ff_scale",

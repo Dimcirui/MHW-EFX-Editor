@@ -219,7 +219,7 @@ class Particle(object):
         # 时间
         "age", "life", "delay_left", "alive",
         # 运动
-        "pos", "vel", "spawn_pos",
+        "pos", "vel", "vel_free", "spawn_pos",
         # 外观
         "scale", "rot", "color", "alpha",
         # 轨迹历史（只有需要的 behavior 声明 NEEDS_TRAIL 时才记录，见 simulator）
@@ -239,7 +239,14 @@ class Particle(object):
         self.alive = True
 
         self.pos = Vec3()
+        #: **总速度**——所有人（渲染体、PARENTOPTIONS、调试导出）读的都是这一份，
+        #: 位移也由它积分。
         self.vel = Vec3()
+        #: 总速度里**不属于 HOMING 的那一份**（V3D 初速度 + 重力累积 + speedCoef 衰减）。
+        #: HOMING 每帧把自己的指令速度**加**在它上面写回 `vel`，于是两者能同时作用
+        #: （2026-09-12 用户实机：开着 HOMING 给 V3D 初速度，整团会先向外扩张）。
+        #: 没有 HOMING 时 `vel_free` 与 `vel` 逐帧完全同步，行为与从前一模一样。
+        self.vel_free = Vec3()
         self.spawn_pos = Vec3()  # 出生位置（相对发射器原点）；velocityType 1/2 要用
 
         self.scale = Vec3(1.0, 1.0, 1.0)

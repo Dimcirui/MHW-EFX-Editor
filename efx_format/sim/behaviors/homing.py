@@ -2,10 +2,34 @@
 """
 efx_format/sim/behaviors/homing.py  —  HOMING（归航：径直飞向目标→绕目标转圈）
 
-运动学模型来自 memory `homing-orbit-kinematics-model`（八角探针 2026-07-30 实测坐实），
-FORCE 阶段：本 behavior 只写 `p.vel`（方向 + 大小），真正的位移仍由 VELOCITY3D 在
-INTEGRATE 阶段用 `p.pos += p.vel` 完成——这也是为什么 HOMING 硬依赖同 entry 的
-VELOCITY3D（哪怕字段全 0）：没有它就没有谁把这份速度积成位移。
+**整个 HOMING 就是一句纯追踪**（2026-09-12 定案，`SimConfig.homing_compose='pursuit'`）：
+
+    速度**方向**每帧朝「指向目标」转 turnRate/fps 度，大小由 initialSpeed→targetSpeed
+    自己决定。
+
+见 `Homing._pursue`。下面那套 approach/orbit 两段状态机、以及「到达那一刻硬塞一记
+侧向力」，**都是这一句的特例展开**，不是独立机制——它们仍然逐条成立（307 条单测在
+纯追踪默认下全绿），只是不再需要被单独编码：
+
+    · V3D 速度为 0 → 起手没有别的速度可转，方向直接指向目标 ⇒ **直线接近**；
+    · 穿过目标     → 「指向目标」瞬间翻 180°，每帧最多转 turnRate ⇒ 方向**连续**
+                    地弯过去，画出半径 **r=v/ω** 的圆，**原点是切点**；
+    · 圆是稳的     → 圆过目标点时弦切角定理给出「指向目标」这个方向**也**在以 ω/2
+                    旋转，粒子以 ω 追它，每整圈正好回到目标点一次 ⇒ 这个切圆是追踪
+                    方程的**不变集**，不是外加约定；
+    · 轨道直径与出生距离无关 ⇒ 速度是被**设定**的，不是积累的（排除「加速度」读法）。
+
+**唯一的退化点**：`cur × goal == 0`，即方向与「指向目标」**反向平行**——正是穿过
+目标那一瞬间。往哪边拐完全由这里的约定决定，`_lateral_dir` 就是这个约定。这解释了
+为什么那条规则当初那么难标：它只在这一个奇点上起作用，而奇点邻域条件数极差（转轴
+由一丁点横向分量决定），用户实测的「只要速度有 Y 分量就进动、Y 分量越小进动越小」
+正是这个病态邻域的签名，不是另有机制。
+
+FORCE 阶段只写 `p.vel`，位移仍由 VELOCITY3D 在 INTEGRATE 阶段用 `p.pos += p.vel`
+完成——这也是为什么 HOMING 硬依赖同 entry 的 VELOCITY3D（哪怕字段全 0）。纯追踪下
+**其它速度来源天然参与合成**：V3D 的初速度决定起手方向，重力逐帧掰弯方向，
+speedCoef 缩放当帧输出。`'add'`/`'override'` 是被排除掉的两种读法，留作对照，
+切过去会退回下面那套两段状态机（见 `SimConfig.homing_compose`）。
 
 单粒子行为（已实测坐实，不是本文件的猜测）
 ------------------------------------------
@@ -188,6 +212,36 @@ def _lateral_dir(d, tilt):
     return (e * math.cos(phi) + b * math.sin(phi)).normalized(fallback=e)
 
 
+def _rotate_toward(cur, goal, max_rad, tilt, handed):
+    """把单位方向 `cur` 朝 `goal` 转，本帧最多 `max_rad` 弧度。纯追踪的全部内容。
+
+    够得着就直接对准（`ang <= max_rad`），够不着就绕 `cur × goal` 转满 `max_rad`。
+
+    ⚠ **退化只有一处**：`cur` 与 `goal` **反向平行**时 `cur × goal == 0`，转轴没有
+    定义——而那恰恰是粒子**穿过目标那一瞬间**的处境（指向目标的方向瞬间翻 180°）。
+    往哪边拐完全由这一处的约定决定，`_lateral_dir` 就是这个约定。这也解释了为什么
+    这条规则当初那么难标：它**只在这一个奇点上起作用**，而奇点附近条件数极差
+    （转轴由一丁点横向分量决定）——用户实测的「只要速度有 Y 分量就出现进动、
+    Y 分量越小进动越小」正是这个病态邻域的签名，不是另有机制。
+    """
+    if max_rad <= 0.0:
+        return cur.copy()
+    c = cur.dot(goal)
+    if c > 1.0:
+        c = 1.0
+    elif c < -1.0:
+        c = -1.0
+    ang = math.acos(c)
+    if ang <= max_rad:
+        return goal.copy()
+    axis = cur.cross(goal)
+    if axis.length() < 1e-9:                  # 反向平行：这一帧正穿过目标
+        n = _lateral_dir(cur, tilt)
+        axis = cur.cross(n) * handed
+    axis = axis.normalized(fallback=_FRONT)
+    return _rotate_axis(cur, axis, math.degrees(max_rad)).normalized(fallback=cur)
+
+
 def _orbit_axis(incoming, mode, handed=1.0, tilt=1.0):
     """orbit 阶段逐帧沿用的那根转轴。
 
@@ -247,7 +301,7 @@ def _orbit_speed_scale(incoming, strength):
 
 @register(HOMING)
 class Homing(Behavior):
-    """FORCE 阶段：只写 p.vel，位移交给 VELOCITY3D 在 INTEGRATE 阶段积分。"""
+    """FORCE 阶段：把自己那份指令速度加进 p.vel，位移交给 VELOCITY3D 积分。"""
 
     STAGE = FORCE
     #: 排在 EMITTERSHAPE3D（FORCE/ORDER=10）之后——出生剔除要看 ES3D 摆好之后的
@@ -345,6 +399,7 @@ class Homing(Behavior):
             "axis_mode": em.config.homing_orbit_axis,
             "lateral_tilt": em.config.homing_orbit_lateral_tilt,
             "axis_update": em.config.homing_orbit_axis_update,
+            "compose": em.config.homing_compose,
         }
 
     def on_particle_step(self, p, em):
@@ -370,6 +425,10 @@ class Homing(Behavior):
         #: 本帧「该被 forceFieldSpeedScale 减速」吗（球内减速 / 球外减速两种模式）
         ff_slow = ((inside_ff and st["ff_mode"] == FF_SLOW_INSIDE)
                    or (not inside_ff and st["ff_mode"] == FF_SLOW_OUTSIDE))
+
+        # 本帧的**自由速度**（V3D 初速度 + 重力累积 + speedCoef 衰减那一份）。
+        # 'add' 下 HOMING 只负责自己那一项，最终 p.vel = free + 指令速度。
+        free = p.vel_free if st["compose"] == "add" else Vec3()
 
         turn_step = st["turn_step"]
         frac = min(1.0, (abs(turn_step) / (2.0 * math.pi)) * _CONVERGE_PER_TURN) \
@@ -430,8 +489,17 @@ class Homing(Behavior):
             damp = min(1.0, damp + 1.0 / st["ff_recover_frames"])
             st["ff_damp"] = damp
 
-        if st["phase"] == "approach":
-            if dist <= max(speed, 1e-6):
+        if st["compose"] == "pursuit":
+            direction = self._pursue(st, p, to_target, dist,
+                                     0.0 if freeze_turn else turn_step)
+        elif st["phase"] == "approach":
+            # 「本帧位移会追上/越过目标」——判据用**合速度朝目标的分量**
+            # （closing），不是 HOMING 自己那份 speed：自由速度把粒子往外推的
+            # 时候 closing 会变小甚至变负，粒子就该一直够不着目标、一路向外
+            # 扩张（2026-09-12 用户实拍正是这样）。free≡0 时 closing 恒等于
+            # speed，与改动前完全一致。
+            closing = speed + free.dot(to_target * (1.0 / dist)) if dist else speed
+            if dist <= max(closing, 1e-6):
                 # 本帧位移会追上/越过目标 —— 到达瞬间转入 orbit。
                 #
                 # ⚠ 别拿这一帧的 to_target / (p.pos-target) 算方向：一旦生成距离恰好是
@@ -503,7 +571,7 @@ class Homing(Behavior):
         vel = direction * (speed * st["orbit_scale"]
                            if st["phase"] == "orbit" else speed)
 
-        if st["phase"] == "orbit" and not freeze_turn:
+        if st["compose"] != "pursuit" and st["phase"] == "orbit" and not freeze_turn:
             # 纯"绕固定轴转"结构上只能触及垂直于轴的两维——轴向分量在到达那一刻定死
             # 之后，绕固定轴转永远碰不到它，粒子沿轴向与 target 的偏移会被冻结、只
             # 随 speed 整体缩放，绝不会收拢回去（2026-09-12 用户实机反馈：某一根轴上
@@ -521,9 +589,61 @@ class Homing(Behavior):
             vel = vel * st["ff_scale"]
         elif st["ff_scale_mode"] == "balanced":
             vel = vel * st["ff_damp"]
-        p.vel = vel
+        # 'add'（默认）：HOMING 贡献的是**速度分量**，叠在自由速度之上——两者同时
+        # 作用。'override' 是改动前的行为（覆盖总速度，V3D 初速度零帧存活），留作
+        # 对照。free≡0 时两者数值完全一致。见 SimConfig.homing_compose。
+        # 'pursuit'：方向已经是把**上一帧总速度**转过来的，其它速度来源的影响已经
+        # 包含在里面（V3D 初速度决定起手方向、重力逐帧掰弯方向），所以这里直接赋值
+        # 就是合成，不需要再加一次。'add' 才需要显式相加。
+        p.vel = free + vel if st["compose"] == "add" else vel
 
     # ── 内部 ─────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _pursue(st, p, to_target, dist, turn_step):
+        """纯追踪：速度方向每帧朝「指向目标」转 turnRate/fps，大小另由 speed 决定。
+
+        整个 HOMING 就是这一句。原来那套 approach/orbit 两段状态机 + 到达那一刻
+        硬塞一记侧向力，是它的**特例展开**：
+
+            · V3D 速度为 0  → 起手没有别的速度可转，方向直接就指向目标 ⇒ 直线接近；
+            · 穿过目标      → 「指向目标」瞬间翻 180°，而每帧最多转 turnRate ⇒
+                              方向连续地弯过去，画出半径 r=v/ω 的圆；
+            · 那个圆稳定    → 圆过目标点时，弦切角定理给出「指向目标」的方向**也**在
+                              以 ω/2 旋转，粒子以 ω 追它，正好每整圈回到目标点一次，
+                              所以这个切圆是追踪方程的**不变集**，不是外加的约定；
+            · 轨道直径与出生距离无关 → 大小是被 targetSpeed **设定**的，不是积累的。
+
+        2026-09-12 定案的判据（用户实机）：V3D 给一个**向外**的初速度时，整团粒子
+        **先向外飞并旋转**、旋转到某个角度停住，之后回归周期运动。速度相加解释不了
+        ——他那组参数里 V3D 向外 1 与 HOMING 向内 1 恰好抵消，相加预言原地不动，
+        实机却在扩张。纯追踪解释得通：初速度方向朝外，HOMING 只能按 turnRate 慢慢
+        把它扭回来，扭到对准目标为止——"旋转"就是这个扭，"停在一个角度"就是扭到头。
+
+        `phase` 只剩两个用途：门住速度爬升（用户数的 4 圈是**轨道上的**圈数）和
+        `orbit_scale`。判据改成「**转向饱和**」——够得着目标时 ang≤turn_step（直线
+        接近段恒为 0），够不着就说明已经越过目标，比原来的距离判据更直接，也不再
+        依赖「生成距离恰好是 speed 整数倍」那种巧合。
+        """
+        goal = to_target * (1.0 / dist) if dist > 1e-9 else None
+        cur = p.vel.normalized(fallback=(goal if goal is not None else _FRONT))
+        if goal is None:
+            goal = -cur          # 正压在目标上：按「刚穿过去」处理，交给退化分支挑边
+        if st["phase"] == "approach":
+            c = cur.dot(goal)
+            if c > 1.0:
+                c = 1.0
+            elif c < -1.0:
+                c = -1.0
+            if math.acos(c) > max(turn_step, 1e-9):
+                st["phase"] = "orbit"
+                st["turns_done"] += 1
+                st["axis"] = cur.cross(goal).normalized(fallback=_FRONT)
+                st["orbit_scale"] = _orbit_speed_scale(cur, st["axial_falloff"])
+        direction = _rotate_toward(cur, goal, turn_step, st["lateral_tilt"],
+                                   st["handed"])
+        st["dir"] = direction
+        return direction
+
     @staticmethod
     def _turn(st, incoming):
         """在目标处开始转圈：按 `incoming` 定轴，返回进入 orbit 那一帧的方向。

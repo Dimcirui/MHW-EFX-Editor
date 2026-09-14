@@ -229,6 +229,24 @@ UNKNOWNS = {
     #     "（约 4 圈/960 帧）是两套独立机制，快约 20 倍。",
     #     (4.0, 600.0), 48.0,
     # ),
+    "homing_compose": (
+        "HOMING 到底是怎么驱动粒子的，也决定它与 VELOCITY3D 等其它速度来源怎么共存。"
+        "'pursuit'（默认）=**纯追踪**：速度**方向**每帧朝「指向目标」转 turnRate/fps、"
+        "大小由自己的 initialSpeed→targetSpeed 决定。approach/orbit 两段状态机与"
+        "「到达那一刻硬塞一记侧向力」都是它的特例展开（详见 homing.py 的 _pursue）。"
+        "'add'=HOMING 把自己的指令速度加在自由速度之上（速度分量读法）；"
+        "'override'=直接覆盖总速度，其它来源零帧存活（最早的行为）。后两个留作对照。"
+        "2026-09-12 定案：用户给 V3D 一个**向外**的初速度，实机是整团粒子**先向外飞"
+        "并旋转**、旋转到某个角度停住，之后回归周期运动。'override' 立刻被排除"
+        "（会直奔目标）；'add' 也被**定量**排除——用户那组参数 V3D 向外 1 与 HOMING "
+        "向内 1 恰好抵消，相加预言原地不动，实机却在扩张。'pursuit' 三条全中："
+        "初速度方向朝外 ⇒ 先向外飞；HOMING 按 turnRate 把方向扭回来 ⇒ 旋转；"
+        "扭到对准目标就没得扭 ⇒ 停在一个角度。"
+        "⚠ 切到 'add'/'override' 会退回那套两段状态机，"
+        "homing_orbit_axis_update / homing_orbit_retarget / homing_orbit_axial_falloff "
+        "只对它们有意义——纯追踪每帧都按当前几何重算转向，那几个结构性缺口本来就不存在。",
+        ("pursuit", "add", "override"), "pursuit",
+    ),
     "homing_orbit_axis": (
         "HOMING 到达目标后转圈用哪根轴——2026-09-12 一天内改判了两次，见 homing.py"
         "模块 docstring「转向轴」一节的完整过程，别只看这条摘要就下结论。"
@@ -346,7 +364,7 @@ class SimConfig(object):
         "rot_order_applied", "ribbon_trail_source", "t3d_apply_base",
         "homing_speed_converge", "homing_speed_ramp_turns", "homing_ff_scale_mode",
         "homing_ff_recover_frames",
-        "homing_orbit_axis",
+        "homing_compose", "homing_orbit_axis",
         "homing_orbit_axial_falloff", "homing_orbit_handed",
         "homing_orbit_lateral_tilt", "homing_orbit_axis_update",
         "homing_orbit_retarget", "ribbon_rigid_dir",
@@ -376,6 +394,7 @@ class SimConfig(object):
         self.homing_speed_ramp_turns = 4.0
         self.homing_ff_scale_mode = "balanced"
         self.homing_ff_recover_frames = 48.0
+        self.homing_compose = "pursuit"
         self.homing_orbit_axis = "lateral_tilt"
         self.homing_orbit_lateral_tilt = 0.0
         self.homing_orbit_axis_update = "frozen"

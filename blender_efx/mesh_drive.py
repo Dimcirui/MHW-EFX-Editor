@@ -143,6 +143,7 @@ class EFX_PT_mesh_drive(Panel):
     bl_category = "EFX"
     bl_label = "Mesh Drive"
     bl_order = 2
+    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
         layout = self.layout

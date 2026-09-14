@@ -166,6 +166,9 @@ class ParentOptions(Behavior):
                                              origin.z + offset.z)
                 p.vel = rotate_euler(p.vel, drx, dry, drz, order=order,
                                      applied=applied)
+                # 自由通道同步转（HOMING 那份下一帧会按新方向重算，不用管）
+                p.vel_free = rotate_euler(p.vel_free, drx, dry, drz, order=order,
+                                          applied=applied)
             st["last_rot"] = total_rot
 
         if self._follow_scale:
@@ -180,4 +183,6 @@ class ParentOptions(Behavior):
                                              origin.y + offset.y * ry,
                                              origin.z + offset.z * rz)
                 p.vel = Vec3(p.vel.x * rx, p.vel.y * ry, p.vel.z * rz)
+                p.vel_free = Vec3(p.vel_free.x * rx, p.vel_free.y * ry,
+                                  p.vel_free.z * rz)
             st["last_scale"] = s.copy()

@@ -3569,10 +3569,10 @@ FIELD_ANNOTATIONS = {
     },
     ("RIBBON", "spawnAnchorOffset"): {
         "EN": "Where along the ribbon's length the spawn point sits, in ribbon-length units. "
-              "0 puts the front tip at the spawn point; 1 shifts forward by one full length "
-              "so the rear end sits there instead.",
+              "0 puts the front tip at the spawn point; higher values drag the whole ribbon "
+              "further behind it.",
         "ZH": "生成点落在条带长度方向上的位置，以条带自身长度为单位。0=前端贴住生成点；"
-              "1=向前偏移一个完整长度，改由后端贴住生成点。",
+              "数值越大，整条带越往身后拖。",
     },
     ("RIBBON", "uv_map_width"): {
         "EN": "Common range: 0~1.",

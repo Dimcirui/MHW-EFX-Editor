@@ -79,6 +79,8 @@ class Velocity3D(Behavior):
         # 发射器自己在转 → 初速度方向跟着转（静态朝向由宿主的 entry 矩阵负责）
         direction = emitter_rotate(em, direction)
         p.vel = direction * p.rolled["v_speed"]
+        # 自由速度通道：HOMING 把自己那份**加**在它上面（见 Particle.vel_free）。
+        p.vel_free = p.vel.copy()
 
     def _initial_direction(self, vtype, f, p, em, rng, cfg):
         if vtype == VT_DIRECTIONAL_SPREAD:
@@ -123,15 +125,24 @@ class Velocity3D(Behavior):
 
     # ── 逐帧 ─────────────────────────────────────────────────────────────────
     def on_particle_step(self, p, em):
-        # 逐帧乘法递推：speedCoef 每帧乘一次（不是 dt 积分）
+        # speedCoef / gravity 对**两条通道同样施加**：
+        #   `vel`      = 总速度（自由那份 + HOMING 本帧的指令速度）
+        #   `vel_free` = 只有自由那份
+        # 对 `vel` 施加 ⇒ speedCoef 乘的是**粒子总速度、HOMING 驱动的速度也照乘**
+        # （memory velocity3d-speedcoef-is-global-damping，2026-09-05 实机确认）；
+        # HOMING 下一帧会重写 `vel`，所以对它那份是「当帧一次性倍率」而非几何累积。
+        # 对 `vel_free` 施加 ⇒ 自由那份该有的**累积**衰减与重力累加照旧。
+        # 没有 HOMING 时两条通道逐帧完全同步，行为与从前逐字节一致。
         coef = p.rolled.get("v_coef", 1.0)
         if coef != 1.0:
             p.vel *= coef
+            p.vel_free *= coef
 
         if p.age >= p.rolled.get("v_grav_delay", 0):
             g = p.rolled.get("v_gravity", 0.0)
             if g:
                 p.vel.y -= g          # 游戏坐标系 +Y = 上
+                p.vel_free.y -= g
 
         if p.age >= p.rolled.get("v_move_delay", 0):
             p.pos += p.vel
