@@ -15,6 +15,13 @@ key = jamcrc(属性名)。来源：RE Engine DTI 属性 dump（dti_prop_dump.h +
 nEffect::nTimelineParam::RadialBlurFilterBehavior 本就列着 BrightThreshold，
 且 timl/names.py 的 0x0ECBFA29 BrightThreshold 轨道只挂在这个 TLP 下。
 该 b_type 仍余 0x5A636C3C（bool，44 次）未爆出。
+
+2026-09-14 补 nEffect::MhEffectDecalBehavior 的 0x3E5CBC12 → mPlayOrder：
+DTI 只列了 mPlayOrderEnum（class，枚举镜像，见 dti_extra.py 顶部说明），跟
+已确认的 mPlayType/mPlayTypeEnum 是同一种"真实字段不带 Enum 后缀"模式——
+jamcrc('mPlayOrder') 精确命中语料里这个 t=0x06(u32)、出现 1408 次的未知 key，
+且位置正落在 mPlaySpeed/mPlaySpeedCoef/mPlayType 这一簇播放参数里，非巧合。
+含义未实机验证，但从命名看很可能是播放顺序（正放/倒放）开关。
 """
 
 PTBEHAVIOR_NAMES = {
@@ -62,6 +69,7 @@ PTBEHAVIOR_NAMES = {
     0x3C3989BF: 'mSpecularVanishFrame',
     0x3CD3E372: 'mEndZ',
     0x3E2F0BF2: 'mSmokeKeepFrame',
+    0x3E5CBC12: 'mPlayOrder',
     0x3F061AAF: 'mSequenceNo',
     0x4205622B: 'mWaterLerpGtoB',
     0x42290949: 'mSpread',
