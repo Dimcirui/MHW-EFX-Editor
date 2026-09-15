@@ -1121,6 +1121,7 @@ class EFX_OT_material_set_name(bpy.types.Operator):
         from . import fields as _fields
         from ..efx_format.structs import unpack_material, pack_material
         from ..efx_format.material import edit as _me
+        from . import material_name_cache as _mnc
 
         name = (self.material_name or "").strip()
         if not name:
@@ -1139,6 +1140,7 @@ class EFX_OT_material_set_name(bpy.types.Operator):
             self.report({"ERROR"}, "Block index out of range")
             return {"CANCELLED"}
         _me.set_block_material_name(d["blocks"][self.block_index], name)
+        _mnc.record(name)  # 顺手记进会话缓存，供别处同哈希复用
         new_bytes = pack_material(d)
         if not _fields.reinit_material_from_bytes(bp, new_bytes):
             self.report({"ERROR"}, "Re-init failed after setting material name")
@@ -1260,6 +1262,8 @@ class EFX_OT_material_pick_mrl3_reference(bpy.types.Operator, ImportHelper):
 
     def execute(self, context):
         from ..efx_format.material.mrl3_reader import read_materials, Mrl3ParseError
+        from ..efx_format.hashes import jamcrc
+        from . import material_name_cache as _mnc
 
         try:
             with open(self.filepath, "rb") as f:
@@ -1273,10 +1277,31 @@ class EFX_OT_material_pick_mrl3_reference(bpy.types.Operator, ImportHelper):
             self.report({"WARNING"}, "No materials found in this .mrl3")
             return {"CANCELLED"}
 
+        # 同目录同名 .mod3 常和这份 .mrl3 是同一个资源导出的一对（如
+        # md_wp11_000.mrl3 + md_wp11_000.mod3）；.mod3 存着真实材质名字符串，
+        # .mrl3 只存 jamcrc 后的哈希——两者按 jamcrc 对上号就能精确复原真名，
+        # 不需要嵌入社区反查表（见 material_name_cache.py 的取舍说明）。
+        n_named = 0
+        mod3_path = os.path.splitext(self.filepath)[0] + ".mod3"
+        if os.path.isfile(mod3_path):
+            from ..efx_format.material.mod3_names import read_material_names, Mod3ParseError
+            try:
+                with open(mod3_path, "rb") as f:
+                    mod3_names = read_material_names(f.read())
+            except (Mod3ParseError, OSError):
+                mod3_names = []
+            name_by_hash = {jamcrc(n) & 0xFFFFFFFF: n for n in mod3_names}
+            for m in materials:
+                name = name_by_hash.get(m['material_name_hash'] & 0xFFFFFFFF)
+                if name:
+                    _mnc.record(name)
+                    n_named += 1
+
         context.scene.efx_material_ref_mrl3_path = self.filepath
+        suffix = f", {n_named} with real names (from sibling .mod3)" if n_named else ""
         self.report(
             {"INFO"},
-            f"Found {len(materials)} material(s) in {os.path.basename(self.filepath)} — use \"Add from .mrl3\" to pick one",
+            f"Found {len(materials)} material(s) in {os.path.basename(self.filepath)}{suffix} — use \"Add from .mrl3\" to pick one",
         )
         return {"FINISHED"}
 
@@ -1317,32 +1342,39 @@ def _read_ref_materials(context):
 
 
 def _material_ref_enum_items(self, context):
-    """参考 mrl3 里每条材质一个选项：[序号] 材质类型名（未知类型显示 hash）+
-    tooltip 带材质名哈希和贴图数，供"从 mrl3 添加材质槽"选择。"""
+    """参考 mrl3 里每条材质一个选项：[序号] 材质类型名（未知类型显示 hash），
+    若这次拾取时靠同名 .mod3 解出了真材质名（见 EFX_OT_material_pick_mrl3_reference）
+    则连同真名一起显示；tooltip 带材质名哈希和贴图/参数数，供"从 mrl3 添加
+    材质槽"选择。"""
     global _MATERIAL_REF_ENUM_CACHE
     from ..efx_format.material import meta as _mm
+    from . import material_name_cache as _mnc
 
     materials = _read_ref_materials(context)
     items = []
     for i, m in enumerate(materials):
         type_name = _mm.material_type_name(m['mmtr_hash'])
-        label = type_name if type_name else f"Hash {m['mmtr_hash']}"
+        type_label = type_name if type_name else f"Hash {m['mmtr_hash']}"
+        real_name = _mnc.lookup(m['material_name_hash'])
+        label = f"[{i}] {type_label} ({real_name})" if real_name else f"[{i}] {type_label}"
         n_tex = len(m['textures'])
-        tip = f"materialNameHash={m['material_name_hash']}, {n_tex} texture(s)"
-        items.append((str(i), f"[{i}] {label}", tip))
+        n_par = len(m['params'])
+        tip = f"materialNameHash={m['material_name_hash']}, {n_tex} texture(s), {n_par} parameter(s)"
+        items.append((str(i), label, tip))
     _MATERIAL_REF_ENUM_CACHE = items  # 保活
     return _MATERIAL_REF_ENUM_CACHE
 
 
 class EFX_OT_material_add_from_mrl3(bpy.types.Operator):
-    """按参考 .mrl3 里选中的具体材质新建材质槽：材质类型/材质名/贴图路径全部照抄"""
+    """按参考 .mrl3 里选中的具体材质新建材质槽：材质类型/材质名/贴图路径/着色器参数全部照抄"""
 
     bl_idname      = "efx.material_add_from_mrl3"
     bl_label       = "Add from .mrl3"
     bl_description = (
-        "Add a material slot copied from a material in the referenced .mrl3 — "
-        "shader type, material name binding, and texture paths are all filled in automatically "
-        "(texture defaults only available for shader types with a known texture-slot schema)"
+        "Add a material slot copied from a material in the referenced .mrl3 — shader type, "
+        "material name binding, texture paths, and shader parameters are all filled in "
+        "automatically from the real values stored in that .mrl3 file "
+        "(only available for shader types with a known schema)"
     )
     bl_options     = {"REGISTER", "UNDO"}
 
@@ -1362,6 +1394,7 @@ class EFX_OT_material_add_from_mrl3(bpy.types.Operator):
         from ..efx_format.structs import unpack_material, pack_material
         from ..efx_format.material import edit as _me
         from ..efx_format.material import meta as _mm
+        from ..efx_format.material import params as _mp
 
         materials = _read_ref_materials(context)
         try:
@@ -1387,12 +1420,26 @@ class EFX_OT_material_add_from_mrl3(bpy.types.Operator):
                 _me.fill_slot_path(block, s['t'], path)
                 n_filled += 1
 
+        # 着色器参数：mrl3 的 resource buffer 里读到真实默认值时才新建（凭空
+        # 编个 0 可能比游戏真实默认值更容易让材质显得"坏了"，见 add_param 文档）。
+        n_params = 0
+        shader_hash = mat['mmtr_hash'] & 0xFFFFFFFF
+        schema = _mp.MATERIAL_SHADER_PARAMS.get(shader_hash, {})
+        for t_hash, (field_name, type_str) in schema.items():
+            if field_name not in mat['params']:
+                continue
+            _me.add_param(block, t_hash, type_str, mat['params'][field_name])
+            n_params += 1
+
         new_bytes = pack_material(d)
         if not _fields.reinit_material_from_bytes(bp, new_bytes):
             self.report({"ERROR"}, "Re-init failed after add")
             return {"CANCELLED"}
         bp.efx_dirty = True
-        self.report({"INFO"}, f"Material slot added, {n_filled} texture path(s) pre-filled")
+        self.report(
+            {"INFO"},
+            f"Material slot added, {n_filled} texture path(s) and {n_params} parameter(s) pre-filled",
+        )
         return {"FINISHED"}
 
 

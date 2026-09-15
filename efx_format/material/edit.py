@@ -244,3 +244,42 @@ def set_param_value(s: dict, type_str: str, value) -> None:
         vals = [float(v) for v in value][:4]
         vals += [0.0] * (4 - len(vals))
         s['unkn'] = [0.0, 0.0] + vals
+
+
+# type_str（material/params.py 的声明类型）→ Tex_Set.type 编码，见
+# material/params.py 头部注释的字节布局表。
+_PARAM_TYPE_CODE = {
+    'bbool': 0x03,
+    'uint': 0x0A,
+    'float': 0x0C,
+}
+
+
+def add_param(block: dict, t_hash: int, type_str: str, value) -> dict:
+    """新建一条着色器参数 Tex_Set，append 到 block['sets']，返回新 set dict。
+
+    只在"参考 mrl3 新建材质槽"（有真实值可抄）时用——手动新建材质槽不调用它，
+    因为凭空发明一个参数默认值（如硬编成 0）可能比游戏真实默认值（很多恒为
+    非零，见 material/params.py 的全量语料统计）更容易让材质看起来"坏了"，
+    不如维持"没有依据就不新建"的一贯原则（同 add_block 对未知 schema 的处理）。
+    """
+    from . import params as mp
+
+    t_hash &= 0xFFFFFFFF
+    type_code = _PARAM_TYPE_CODE.get(type_str, 0x15 if type_str and type_str.startswith('float[') else None)
+    if type_code is None:
+        raise ValueError(f"unknown param type_str: {type_str!r}")
+
+    s = {
+        'set': mp.param_set_tag(t_hash),
+        'unkn0': 0,
+        't': _to_signed32(t_hash),
+        'type': type_code,
+    }
+    if type_code == 0x15:
+        s['unkn'] = [0.0] * 6
+    else:
+        s['NULL'] = [0, 0, 0]
+    set_param_value(s, type_str, value)
+    block['sets'].append(s)
+    return s

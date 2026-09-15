@@ -111,16 +111,49 @@ def _read_texture_list(data: bytes, texture_count: int, texture_offset: int) -> 
     return textures
 
 
-def _read_material_textures(data: bytes, mmtr_hash: int, resource_count: int,
-                             block_offset: int, texture_list: list) -> dict:
-    """解析一条材质的 resource buffer，返回 {贴图裸名: 路径字符串}（按
-    material/resources.py 的编码表匹配；未收录的 shader 类型返回空 dict）。"""
-    from .resources import texture_resource_codes
+def _decode_property(data: bytes, off: int, type_str: str):
+    """按声明类型从绝对偏移 off 解出原始值：bbool→bool，uint→int，float→float，
+    float[N]→4 个 float 的 list（不管声明 N 是多少，统一按 4 读——匹配
+    material/edit.py::get_param_value 的"负载末端固定 4 槽"约定，多出的槽位
+    读 0，供 EFX Tex_Set 的 float[N] 负载直接使用）。"""
+    if type_str == 'bbool':
+        return bool(struct.unpack_from('<I', data, off)[0])
+    if type_str == 'uint':
+        return struct.unpack_from('<I', data, off)[0]
+    if type_str == 'float':
+        return struct.unpack_from('<f', data, off)[0]
+    if type_str and type_str.startswith('float['):
+        n = int(type_str[6:-1])
+        vals = list(struct.unpack_from(f'<{n}f', data, off))
+        vals += [0.0] * (4 - n)
+        return vals
+    return None
 
-    lut = texture_resource_codes(mmtr_hash)
-    if not lut:
-        return {}
+
+def _read_material_resources(data: bytes, mmtr_hash: int, resource_count: int,
+                              block_offset: int, texture_list: list):
+    """解析一条材质的 resource buffer，返回 (textures, params)：
+        textures: {贴图裸名: 路径字符串}
+        params:   {字段名: 值}（bool/int/float/4-float-list，见 _decode_property）
+    未收录 shader 类型的两者均为空 dict。
+
+    复刻 MHW_Model_Editor 的 ReadResourceBuffers/ReadPropertyBuffers 算法：
+    每条 resource 用 resHash>>12 匹配（贴图/CB 编码表分别见 resources.py 的
+    texture_resource_codes/cb_resource_codes），贴图的 resValue 是 1-based 贴图
+    索引，CB 的 resValue 是该 CB 在这条材质自己 resource buffer 里的字节偏移
+    （逐材质从文件读，不用 JSON 声明的默认值）；CB 内部字段偏移用
+    cb_field_layout 的预算表（对齐字段已在生成时计入偏移，见 resources.py
+    头部注释）。
+    """
+    from .resources import texture_resource_codes, cb_resource_codes, cb_field_layout
+
+    tex_lut = texture_resource_codes(mmtr_hash)
+    cb_lut = cb_resource_codes(mmtr_hash)
     textures = {}
+    params = {}
+    if not tex_lut and not cb_lut:
+        return textures, params
+
     n = resource_count // 2
     for k in range(n):
         off = block_offset + k * 16
@@ -128,25 +161,40 @@ def _read_material_textures(data: bytes, mmtr_hash: int, resource_count: int,
             _res_code, res_hash, res_value, _unkn = struct.unpack_from('<4I', data, off)
         except struct.error:
             break
-        name = lut.get(res_hash >> 12)
-        if name is None:
+        key = res_hash >> 12
+
+        tex_name = tex_lut.get(key) if tex_lut else None
+        if tex_name is not None:
+            if 0 < res_value <= len(texture_list):
+                textures[tex_name] = texture_list[res_value - 1]
             continue
-        if 0 < res_value <= len(texture_list):
-            textures[name] = texture_list[res_value - 1]
-    return textures
+
+        cb_name = cb_lut.get(key) if cb_lut else None
+        if cb_name is not None:
+            layout = cb_field_layout(mmtr_hash, cb_name)
+            if not layout:
+                continue
+            for _t_hash, field_name, type_str, field_offset in layout:
+                abs_off = block_offset + res_value + field_offset
+                try:
+                    params[field_name] = _decode_property(data, abs_off, type_str)
+                except struct.error:
+                    continue
+    return textures, params
 
 
 def read_materials(data: bytes) -> list:
     """解析 .mrl3 文件字节，返回文件里每条合法材质：
 
-        [{'material_name_hash': int, 'mmtr_hash': int, 'textures': {name: path}}, ...]
+        [{'material_name_hash': int, 'mmtr_hash': int,
+          'textures': {name: path}, 'params': {field_name: value}}, ...]
 
     `material_name_hash` 直接可用作 EFX MATERIAL 的 mat_name_hash（见
     material/edit.py::set_block_material_name 的绑定原理——两者本就同一个值，
-    不需要再算 jamcrc）；`mmtr_hash` 即 mat_shader。`textures` 只包含按
-    material/resources.py 编码表能解出名字的贴图资源，未收录材质类型时为空 dict
-    （仍返回该材质本身，因为 name_hash/shader 已经足够新建一个绑定正确的材质槽，
-    只是没有贴图默认值可填）。
+    不需要再算 jamcrc）；`mmtr_hash` 即 mat_shader。`textures`/`params` 只包含
+    按 material/resources.py 编码表能解出名字的资源，未收录材质类型时均为空
+    dict（仍返回该材质本身，因为 name_hash/shader 已经足够新建一个绑定正确的
+    材质槽，只是没有贴图/参数默认值可填）。
 
     仅做基本合法性过滤（resourceCount 为偶数，参照原版 Mrl3File.read() 的判据）。
     解析失败（非法 .mrl3 / 损坏文件）抛 Mrl3ParseError；调用方（UI）应捕获后提示
@@ -166,10 +214,11 @@ def read_materials(data: bytes) -> list:
         material_name_hash, mmtr_hash, resource_count, block_offset = _read_material_info(f)
         if resource_count % 2 != 0:
             continue
-        textures = _read_material_textures(data, mmtr_hash, resource_count, block_offset, texture_list)
+        textures, params = _read_material_resources(data, mmtr_hash, resource_count, block_offset, texture_list)
         results.append({
             'material_name_hash': material_name_hash,
             'mmtr_hash': mmtr_hash,
             'textures': textures,
+            'params': params,
         })
     return results

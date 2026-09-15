@@ -461,6 +461,49 @@ def _bool_proxy_set(self, value):
     _enum_backing_write(self, 1 if value else 0)
 
 
+# ── MATERIAL 材质名（matnamehash_{j} UINT 槽）：文本框直接显示/编辑，同
+# MHW_Model_Editor 的 mhw_mrl3_material.materialName 用法（row.prop 一个纯字符串，
+# 打字即改）——解析优先级：能反查到绑定网格上匹配 jamcrc 的真实材质槽名就显示
+# 那个；查不到显示 "Hash N" 占位；哈希是 0（未绑定）显示空字符串。写回时把
+# "Hash N" 占位原样打回（用户没有实际修改）当作无操作，防止误把显示占位字符串
+# 本身的 jamcrc 存回去。────────────────────────────────────────────────────────
+
+def _material_name_proxy_get(self):
+    try:
+        h = int(self.uint_str) if self.uint_str else 0
+    except ValueError:
+        h = 0
+    if h == 0:
+        return ""
+    try:
+        import bpy
+        from . import operators as _ops
+        from . import material_name_cache as _mnc
+        obj = bpy.context.active_object
+        bound = _ops._material_bound_mesh_objects(obj) if obj is not None else ()
+        name = _mnc.resolve(h, bound)
+        if name:
+            return name
+    except Exception:
+        pass
+    return f"Hash {h}"
+
+
+def _material_name_proxy_set(self, value):
+    value = (value or "").strip()
+    if not value:
+        return
+    try:
+        h = int(self.uint_str) if self.uint_str else 0
+    except ValueError:
+        h = 0
+    if value == (f"Hash {h}" if h else ""):
+        return  # 原样打回显示占位符——用户没有实际修改，不当重命名处理
+    from . import material_name_cache as _mnc
+    new_hash = _mnc.record(value)  # 顺手记进会话缓存，供别处同哈希复用
+    self.uint_str = str(new_hash)  # 触发 uint_str 自带的 dirty 回调
+
+
 # ── EnumVec3（逐轴枚举）：底层 ('XYZ',1)=3×int，存 int3_value；每轴一个下拉代理 ──────────
 def _field_enumvec_def(item):
     """返回该 item 的 enum_vec3 字段 EnumDef；非 enum_vec3 返回 None。"""
@@ -575,6 +618,13 @@ class EFXFieldItem(PropertyGroup):
 
     # Bool 勾选代理（转发到 int 背板槽 0/1）。
     bool_proxy: BoolProperty(name="", get=_bool_proxy_get, set=_bool_proxy_set)
+
+    # MATERIAL 材质名代理（matnamehash_{j} 专用，转发到 uint_str）：显示解析出的
+    # 真实材质槽名或 "Hash N" 占位，直接打字即改（同 MHW_Model_Editor 的
+    # mhw_mrl3_material.materialName 用法）。
+    material_name_proxy: StringProperty(
+        name="", get=_material_name_proxy_get, set=_material_name_proxy_set,
+    )
 
     # ── L1.1b：逐字段无损性元数据 ────────────────────────────────────────────
 

@@ -768,11 +768,18 @@ def _param_texture_base(slot_name):
 
 
 def _draw_material_param_row(layout, pit, label) -> None:
-    """画一条着色器参数：FLOAT4 用通用向量单行（不套 XYZ/Static-Random 语义，
-    那套是给位置/速度这类场信息用的）；BOOL/UINT/FLOAT 走 _draw_field_item 的
-    通用单行分支（对这几个 dtype 没有特殊语义分叉，直接复用安全）。"""
+    """画一条着色器参数：FLOAT4 且名字带 "__uiColor" 后缀（mrl3 属性名自带的
+    UI 部件类型提示，同一套还有 __uiUNorm/__uiSNorm/__uiDirection——这些是原版
+    游戏 shader 定义里自带的、不是我们猜的）的画色块（复用 PTBEHAVIOR 的
+    float4_as_color_display，HDR 不做 0-1 硬夹取，同一套值槽/风格）；其余 FLOAT4
+    用通用向量单行（不套 XYZ/Static-Random 语义，那套是给位置/速度这类场信息
+    用的）；BOOL/UINT/FLOAT 走 _draw_field_item 的通用单行分支（对这几个 dtype
+    没有特殊语义分叉，直接复用安全）。"""
     if pit.data_type == "FLOAT4":
-        _draw_ptb_vector_row(layout, pit, "MATERIAL", label)
+        if label.endswith("__uiColor"):
+            _draw_ptb_float4_as_color(layout, pit, "MATERIAL", label)
+        else:
+            _draw_ptb_vector_row(layout, pit, "MATERIAL", label)
     else:
         _draw_field_item(layout, pit, type_name="MATERIAL", label_override=label)
 
@@ -830,25 +837,17 @@ def _draw_material_editor(layout, context, material_groups: dict) -> None:
             val_row = name_split.row(align=True)
             if name_hash == 0:
                 val_row.alert = True
-                val_row.label(text=T("material.name_unbound"), icon="ERROR")
+                val_row.prop(name_item, "material_name_proxy", text="", icon="ERROR")
             else:
-                resolved = None
-                from . import operators as _ops
-                from ..efx_format.hashes import jamcrc as _jamcrc
-                try:
-                    for mobj in _ops._material_bound_mesh_objects(context.active_object):
-                        for mslot in mobj.material_slots:
-                            if mslot.material and (_jamcrc(mslot.material.name) & 0xFFFFFFFF) == name_hash:
-                                resolved = mslot.material.name
-                                break
-                        if resolved:
-                            break
-                except Exception:
-                    resolved = None
-                shown = resolved if resolved else f"Hash {name_hash}"
-                val_row.label(text=shown, icon="LINKED")
-            op_name = name_row.operator("efx.material_set_name", text="", icon="OUTLINER_DATA_FONT")
+                val_row.prop(name_item, "material_name_proxy", text="", icon="LINKED")
+            # 从联动导入绑定的实际网格材质槽名里挑一个（保证不打错字），文本框
+            # 本身也能直接手打任意名字（同 MHW_Model_Editor 材质名字段的用法）。
+            op_name = name_row.operator("efx.material_set_name", text="", icon="DOWNARROW_HLT")
             op_name.block_index = j
+            if name_hash == 0:
+                unbound_row = slot_col.row(align=True)
+                unbound_row.enabled = False
+                unbound_row.label(text=T("material.name_unbound"), icon="BLANK1")
 
             slot_col.separator(factor=0.3)
 
