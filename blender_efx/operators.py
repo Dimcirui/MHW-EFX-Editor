@@ -1049,6 +1049,123 @@ class EFX_OT_material_add_block(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _material_bound_mesh_objects(material_obj):
+    """从同一 EFX_ENTRY 下的 MESH 属性 (efx_mesh_targets) 收集已联动导入绑定的
+    Blender 网格对象；没开「同时导入引用的 mesh」或还没导入时返回空列表
+    （见 blender_efx/mod3_link.py）。"""
+    objs = []
+    parent = getattr(material_obj, "parent", None)
+    if parent is None:
+        return objs
+    try:
+        from ..efx_format.hashes import MESH as _MESH_HASH
+    except ImportError:
+        return objs
+    for sib in parent.children:
+        if sib.get("~TYPE") != "EFX_ATTRIBUTE":
+            continue
+        try:
+            if int(sib.efx_block.type_hash_str) != _MESH_HASH:
+                continue
+        except (AttributeError, ValueError):
+            continue
+        for item in getattr(sib, "efx_mesh_targets", []):
+            if item.obj is not None and item.obj.type == "MESH":
+                objs.append(item.obj)
+    return objs
+
+
+# 动态 EnumProperty items 引用保活（见 memory enum-callback-gc-trap）。
+_MATERIAL_NAME_ENUM_CACHE = []
+
+
+def _material_name_enum_items(self, context):
+    """从这个 MATERIAL 属性绑定的实际网格材质槽收集候选名字（去重排序），供下拉
+    直接选——比手打省事也不会打错字（mat_name_hash = jamcrc(name)，打错一个字符
+    整个覆盖层就悄无声息地失效，见 material/edit.py::set_block_material_name）。
+    没有绑定网格时返回空列表，UI 退化为纯手动输入。"""
+    global _MATERIAL_NAME_ENUM_CACHE
+    names = []
+    seen = set()
+    for obj in _material_bound_mesh_objects(context.active_object):
+        for slot in obj.material_slots:
+            if slot.material and slot.material.name not in seen:
+                seen.add(slot.material.name)
+                names.append(slot.material.name)
+    items = [(n, n, "") for n in sorted(names)]
+    _MATERIAL_NAME_ENUM_CACHE = items
+    return _MATERIAL_NAME_ENUM_CACHE
+
+
+class EFX_OT_material_set_name(bpy.types.Operator):
+    """把材质槽绑定到指定名字的 mrl3 材质槽（mat_name_hash = jamcrc(name)）"""
+
+    bl_idname      = "efx.material_set_name"
+    bl_label       = "Set Material Slot Name"
+    bl_description = (
+        "Bind this material slot to a named material in the mesh's .mrl3 "
+        "(mat_name_hash = jamcrc(name)). Without a matching name, the game "
+        "cannot find which mrl3 material to override and this slot has no effect"
+    )
+    bl_options     = {"REGISTER", "UNDO"}
+
+    block_index: IntProperty(name="Block Index", default=-1, options={'HIDDEN'})
+    material_name: StringProperty(
+        name="Material Name",
+        description="Name of the target material slot, exactly as it appears in the mesh's .mod3/.mrl3 (case-sensitive)",
+    )
+    name_choice: EnumProperty(
+        name="Pick from Bound Mesh",
+        description="Material slot names found on the mesh(es) bound to this entry's MESH attribute",
+        items=_material_name_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _is_material_attribute(context.active_object)
+
+    def invoke(self, context, event):
+        self.material_name = ""
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        col = self.layout.column()
+        if _material_name_enum_items(self, context):
+            col.prop(self, "name_choice")
+            col.separator()
+        col.prop(self, "material_name")
+
+    def execute(self, context):
+        from . import fields as _fields
+        from ..efx_format.structs import unpack_material, pack_material
+        from ..efx_format.material import edit as _me
+
+        name = (self.material_name or "").strip()
+        if not name:
+            try:
+                name = self.name_choice
+            except Exception:
+                name = ""
+        if not name:
+            self.report({"ERROR"}, "Material name is empty")
+            return {"CANCELLED"}
+
+        bp = context.active_object.efx_block
+        cur = _fields.material_current_bytes(bp)   # 烘焙待编辑值
+        d, _ = unpack_material(cur)
+        if not (0 <= self.block_index < len(d["blocks"])):
+            self.report({"ERROR"}, "Block index out of range")
+            return {"CANCELLED"}
+        _me.set_block_material_name(d["blocks"][self.block_index], name)
+        new_bytes = pack_material(d)
+        if not _fields.reinit_material_from_bytes(bp, new_bytes):
+            self.report({"ERROR"}, "Re-init failed after setting material name")
+            return {"CANCELLED"}
+        bp.efx_dirty = True
+        self.report({"INFO"}, f'Bound to material "{name}"')
+        return {"FINISHED"}
+
+
 class EFX_OT_material_set_shader(bpy.types.Operator):
     """修改指定材质槽的材质类型，贴图槽位联动换成新类型的 schema（重合槽位路径保留）"""
 
@@ -1460,6 +1577,7 @@ _CLASSES = (
     EFX_OT_ptb_set_btype,
     EFX_OT_ptb_remove_override,
     EFX_OT_material_add_block,
+    EFX_OT_material_set_name,
     EFX_OT_material_set_shader,
     EFX_OT_material_remove_block,
     EFX_OT_material_import_mrl3_filter,

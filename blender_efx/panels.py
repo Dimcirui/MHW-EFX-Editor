@@ -791,10 +791,54 @@ def _draw_material_editor(layout, context, material_groups: dict) -> None:
                 hint_row.enabled = False
                 hint_row.label(text=T("material.unknown_schema"))
 
+            name_item = info.get("name_item")
+            name_hash = int(name_item.uint_str) if name_item and name_item.uint_str else 0
+            name_row = slot_col.row(align=True)
+            name_row.scale_y = 1.1
+            if name_hash == 0:
+                name_row.alert = True
+                name_row.label(text=T("material.name_unbound"), icon="ERROR")
+            else:
+                resolved = None
+                from . import operators as _ops
+                from ..efx_format.hashes import jamcrc as _jamcrc
+                try:
+                    for mobj in _ops._material_bound_mesh_objects(context.active_object):
+                        for mslot in mobj.material_slots:
+                            if mslot.material and (_jamcrc(mslot.material.name) & 0xFFFFFFFF) == name_hash:
+                                resolved = mslot.material.name
+                                break
+                        if resolved:
+                            break
+                except Exception:
+                    resolved = None
+                shown = resolved if resolved else f"Hash {name_hash}"
+                name_row.label(text=f"{T('material.bound_to')}: {shown}", icon="LINKED")
+            op_name = name_row.operator("efx.material_set_name", text="", icon="OUTLINER_DATA_FONT")
+            op_name.block_index = j
+
             for t, sit in info.get("slots", []):
                 slot_name = _mm.texture_slot_name(t)
                 slot_label = slot_name if slot_name else f"Hash 0x{t:08X}"
                 _draw_field_item(slot_col, sit, type_name="MATERIAL", label_override=slot_label)
+
+            params = info.get("params", [])
+            if params:
+                from ..efx_format.material import params as _mparams
+                slot_col.separator(factor=0.5)
+                for t, pit in params:
+                    hit = _mparams.param_name_type(shader_hash, t)
+                    plabel = hit[0] if hit else f"Hash 0x{t:08X}"
+                    if pit.data_type == "FLOAT4":
+                        # 通用 4 分量向量控件：单行，不套 XYZ/Static-Random 语义
+                        # （那套是给位置/速度这类场信息用的，着色器参数只是普通
+                        # 数组——声明 float[2]/[3] 的属性负载末端也固定是 4 个
+                        # float 槽，见 material/edit.py::get_param_value）。
+                        _draw_ptb_vector_row(slot_col, pit, "MATERIAL", plabel)
+                    else:
+                        # BOOL/UINT/FLOAT：_draw_field_item 的通用单行分支对这几
+                        # 个 dtype 没有特殊语义分叉，直接复用安全。
+                        _draw_field_item(slot_col, pit, type_name="MATERIAL", label_override=plabel)
 
     add_row = layout.row(align=True)
     add_row.operator_menu_enum(
@@ -993,10 +1037,19 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                 if it.ori_name.startswith("matshader_"):
                     j = int(it.ori_name.split("_", 1)[1])
                     _material_groups.setdefault(j, {})["shader_item"] = it
+                elif it.ori_name.startswith("matnamehash_"):
+                    j = int(it.ori_name.split("_", 1)[1])
+                    _material_groups.setdefault(j, {})["name_item"] = it
                 elif it.ori_name.startswith("slotpath_"):
                     _, j_str, t_str = it.ori_name.split("_", 2)
                     j = int(j_str)
                     _material_groups.setdefault(j, {}).setdefault("slots", []).append(
+                        (int(t_str), it)
+                    )
+                elif it.ori_name.startswith("matparam_"):
+                    _, j_str, t_str = it.ori_name.split("_", 2)
+                    j = int(j_str)
+                    _material_groups.setdefault(j, {}).setdefault("params", []).append(
                         (int(t_str), it)
                     )
     except Exception:

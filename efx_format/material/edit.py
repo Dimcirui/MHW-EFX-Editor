@@ -18,12 +18,17 @@ tools/scan_material_slots.py），故本模块的“未触碰字段 verbatim 保
     clear_slot_path），对应 head 字段在 0（空）↔ 606035435（非空）之间切换
     （实测 43063/43071 非空槽为 606035435，8 例为罕见离群值 2013850128，
     未触碰的槽位保留原值不受影响）。
-  - 非路径 set 类型（0x06/0x03/0x0A/0x0C/0x15）当黑盒——不解语义、不做增删，
-    原样保留在 dict 里，pack_material 自动带出。
+  - 非路径 set 类型（0x06/0x03/0x0A/0x0C/0x15）里，能按 material/params.py 的
+    (shader_hash, t) 查到名字+类型的（bbool/uint/float/float[2..4]）可编辑
+    （get_param_value/set_param_value），查不到的（t=0 占位、Sampler State
+    引用 0x06、未收录 shader）继续当黑盒，原样保留，不做增删——跟贴图槽位
+    同一个"没有实测/查表依据就不假设"的原则。
   - shader_hash 的编辑是独立的标量覆盖，不联动改动已有 Tex_Set 列表（改了
     shader 类型不会引发槽位重新生成，用户如故意选一个不匹配的类型，是其
     自主选择，不强制一致性——游戏文件本身也没有强制这层一致性）。
 """
+
+import struct
 
 HEAD_EMPTY = 0
 HEAD_FILLED = 606035435
@@ -35,13 +40,17 @@ def _to_signed32(v: int) -> int:
     return v - 0x100000000 if v >= 0x80000000 else v
 
 
-def add_block(values: dict, shader_hash: int) -> dict:
+def add_block(values: dict, shader_hash: int, material_name: str = "") -> dict:
     """新建一个材质槽（Tex_Block），append 到 values['blocks']，返回新 block dict。
 
     按 material_meta.material_slot_schema(shader_hash) 一次性铺满该材质类型的
     全部已知贴图槽位（初始为空）；无 schema 依据（未实测的 88 种材质类型）则
     新建空材质槽（sets=[]，仅有 shader_hash，用户导入贴图前无槽位可填——
     与"没有实测依据不假设完整性"的原则一致）。
+
+    material_name（可选）：目标 mesh 在其 .mrl3 里的材质槽名——留空时
+    mat_name_hash 写 0（在实机语料里不对应任何真实材质，等于"不绑定"，
+    引擎按名字找不到匹配槽就不会套用这个覆盖层，见 set_block_material_name）。
     """
     from . import meta as mm
 
@@ -65,8 +74,24 @@ def add_block(values: dict, shader_hash: int) -> dict:
         'unkn03': 0,
         'sets': sets,
     }
+    if material_name:
+        set_block_material_name(block, material_name)
     values['blocks'].append(block)
     return block
+
+
+def set_block_material_name(block: dict, name: str) -> None:
+    """把材质槽绑定到指定名字的 mrl3 材质槽：mat_name_hash = jamcrc(name)。
+
+    实测坐实（.mod3 的 materialNameList 字符串 → jamcrc → 与同名 .mrl3 里
+    MaterialInfo.materialNameHash 逐位相同，见 tools/verify_material_bind.py 的
+    交叉验证）：这个字段是 EFX MATERIAL 覆盖层"该套用到 mrl3 里哪个材质槽"的
+    唯一依据，游戏按这个哈希在 mrl3 材质表里查匹配项，查不到就跳过整个
+    Tex_Block（不报错，也不生效）——这正是"新建 Material Attr 不生效"的成因：
+    add_block 此前恒写 0，从不匹配任何真实材质槽。
+    """
+    from ..hashes import jamcrc
+    block['mat_name_hash'] = _to_signed32(jamcrc(name))
 
 
 def remove_block(values: dict, index: int) -> bool:
@@ -178,3 +203,44 @@ def clear_slot_path(block: dict, t: int) -> bool:
 def slot_path_str(s: dict) -> str:
     """Tex_Set(type=0x80) → 当前路径字符串（去尾 \\x00）；供 UI 显示。"""
     return s['path'].split(b'\x00')[0].decode('latin1')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 着色器参数（非贴图 Tex_Set）读写——按 material/params.py 的 (shader_hash, t)
+# 查表拿到声明类型后，在这里解/编码 Tex_Set 的负载（见该模块文档串的字节布局表）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_param_value(s: dict, type_str: str):
+    """按声明类型（material.params 查表得到的 'bbool'/'uint'/'float'/'float[N]'）
+    从 Tex_Set 取出当前值：bool → bool，uint/float → 标量，float[N] → 4 个 float
+    的 list（**不管声明的 N 是 2/3/4，负载末端固定是 4 个 float 槽**——实测坐实
+    float[3] 声明的属性，第 4 槽也可能非零存有实际数据、不是恒零 padding，
+    见 material/params.py 头部注释；按声明 N 截断会把这第 4 槽悄悄清零、丢数据。
+    只有开头 2 个 float 是恒 0 的固定 padding）。
+    """
+    if type_str == 'bbool':
+        return bool(s['NULL'][2])
+    if type_str == 'uint':
+        return s['NULL'][2] & 0xFFFFFFFF
+    if type_str == 'float':
+        return struct.unpack('<f', struct.pack('<i', _to_signed32(s['NULL'][2])))[0]
+    if type_str and type_str.startswith('float['):
+        return list(s['unkn'][2:6])
+    return None
+
+
+def set_param_value(s: dict, type_str: str, value) -> None:
+    """按声明类型把新值写回 Tex_Set；固定前导 padding 字（[0,0,...]）保持不变
+    （见 get_param_value 的负载布局说明：float[N] 的负载末端固定按 4 个 float
+    读写，不按声明 N 截断）。"""
+    if type_str == 'bbool':
+        s['NULL'] = [0, 0, 1 if value else 0]
+    elif type_str == 'uint':
+        s['NULL'] = [0, 0, _to_signed32(int(value) & 0xFFFFFFFF)]
+    elif type_str == 'float':
+        bits = struct.unpack('<i', struct.pack('<f', float(value)))[0]
+        s['NULL'] = [0, 0, bits]
+    elif type_str and type_str.startswith('float['):
+        vals = [float(v) for v in value][:4]
+        vals += [0.0] * (4 - len(vals))
+        s['unkn'] = [0.0, 0.0] + vals

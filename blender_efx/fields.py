@@ -2210,9 +2210,18 @@ def ptbehavior_addable_items(bp):
 # Items 布局（扁平，仿 PTBEHAVIOR 用 f-string 编码结构，无需嵌套 PropertyGroup）：
 #   '__material__'        OPAQUE 哨兵 — 标记本属性已用 Phase C 布局
 #   'matshader_{j}'       UINT   — 第 j 个材质槽（Tex_Block）的 shader_id_hash
+#   'matnamehash_{j}'     UINT   — 第 j 个材质槽的 mat_name_hash（该槽绑定到哪个
+#                                   mrl3 材质槽的依据，jamcrc(材质槽名)，见
+#                                   efx_format/material/edit.py::set_block_material_name）
 #   'slotpath_{j}_{t}'    STRING — 第 j 个材质槽里 t 对应贴图槽（Tex_Set type=0x80）
 #                                   的当前路径（按 block 内出现顺序枚举）
-# 非路径 set（0x06/0x03/0x0A/0x0C/0x15）不建 item，黑盒交给 pack_material 原样带出。
+#   'matparam_{j}_{t}'    BOOL/UINT/FLOAT/FLOAT2/FLOAT3/FLOAT4 — 第 j 个材质槽里
+#                                   t 对应的着色器参数（Tex_Set type 0x03/0x0A/
+#                                   0x0C/0x15），按 material/params.py 查到名字+
+#                                   声明类型时才建 item；查不到（t=0 占位、
+#                                   0x06 Sampler State 引用、shader 未收录）的
+#                                   继续留黑盒，不建 item。
+# 非路径且查不到名字的 set 不建 item，黑盒交给 pack_material 原样带出。
 #
 # 材质槽（block）增删是结构性操作，走 material_current_bytes → unpack_material →
 # material_edit.add_block/remove_block → pack_material → reinit_material_from_bytes
@@ -2228,6 +2237,7 @@ def _init_material_attribute(blk, bp) -> bool:
     """
     from ..efx_format.structs import unpack_material
     from ..efx_format.material import edit as _me
+    from ..efx_format.material import params as _mp
 
     try:
         d, _ = unpack_material(blk.data_bytes)
@@ -2253,17 +2263,53 @@ def _init_material_attribute(blk, bp) -> bool:
         it.orig_b64 = ''
         it.uint_str = str(blk_d['mat_shader'] & 0xFFFFFFFF)
 
+        nit = bp.field_items.add()
+        nit.ori_name = f'matnamehash_{j}'
+        nit.data_type = 'UINT'
+        nit.edited = False
+        nit.read_only = False
+        nit.orig_b64 = ''
+        nit.uint_str = str(blk_d['mat_name_hash'] & 0xFFFFFFFF)
+
+        shader_hash = blk_d['mat_shader'] & 0xFFFFFFFF
         for s in blk_d['sets']:
-            if s['type'] != 0x80:
+            if s['type'] == 0x80:
+                t = s['t'] & 0xFFFFFFFF
+                sit = bp.field_items.add()
+                sit.ori_name = f'slotpath_{j}_{t}'
+                sit.data_type = 'STRING'
+                sit.edited = False
+                sit.read_only = False
+                sit.orig_b64 = ''
+                sit.string_value = _me.slot_path_str(s)
                 continue
+
             t = s['t'] & 0xFFFFFFFF
-            sit = bp.field_items.add()
-            sit.ori_name = f'slotpath_{j}_{t}'
-            sit.data_type = 'STRING'
-            sit.edited = False
-            sit.read_only = False
-            sit.orig_b64 = ''
-            sit.string_value = _me.slot_path_str(s)
+            hit = _mp.param_name_type(shader_hash, t)
+            if hit is None:
+                continue   # 查不到名字/类型（t=0 占位、Sampler State 引用等）：保持黑盒
+            _pname, type_str = hit
+            value = _me.get_param_value(s, type_str)
+            pit = bp.field_items.add()
+            pit.ori_name = f'matparam_{j}_{t}'
+            pit.edited = False
+            pit.read_only = False
+            pit.orig_b64 = ''
+            if type_str == 'bbool':
+                pit.data_type = 'BOOL'
+                pit.bool_value = value
+            elif type_str == 'uint':
+                pit.data_type = 'UINT'
+                pit.uint_str = str(value)
+            elif type_str == 'float':
+                pit.data_type = 'FLOAT'
+                pit.float_value = value
+            elif type_str and type_str.startswith('float['):
+                # 声明 N 只是标签；负载末端固定 4 个 float 槽（见
+                # material/edit.py::get_param_value 的说明），一律按 FLOAT4
+                # 读写，不按声明 N 截断（截断会把可能非零的第 4 槽悄悄清零）。
+                pit.data_type = 'FLOAT4'
+                pit.float4_value = value
 
     # 闸门：rebuild 必须 == 原始字节
     try:
@@ -2290,6 +2336,7 @@ def rebuild_material_attribute(bp, original_data: bytes = None) -> bytes:
     """
     from ..efx_format.structs import unpack_material, pack_material
     from ..efx_format.material import edit as _me
+    from ..efx_format.material import params as _mp
 
     orig = original_data if original_data is not None else base64.b64decode(bp.raw_b64)
     d, _ = unpack_material(orig)
@@ -2299,22 +2346,46 @@ def rebuild_material_attribute(bp, original_data: bytes = None) -> bytes:
         if not item.ori_name.startswith('__'):
             imap[item.ori_name] = item
 
+    _param_getter = {
+        'BOOL':   lambda it: it.bool_value,
+        'UINT':   lambda it: int(it.uint_str),
+        'FLOAT':  lambda it: it.float_value,
+        'FLOAT4': lambda it: list(it.float4_value),
+    }
+
     for j, blk_d in enumerate(d['blocks']):
         sh_item = imap.get(f'matshader_{j}')
         if sh_item and sh_item.edited and not sh_item.read_only:
             blk_d['mat_shader'] = _me._to_signed32(int(sh_item.uint_str))
 
+        nh_item = imap.get(f'matnamehash_{j}')
+        if nh_item and nh_item.edited and not nh_item.read_only:
+            blk_d['mat_name_hash'] = _me._to_signed32(int(nh_item.uint_str))
+
+        shader_hash = blk_d['mat_shader'] & 0xFFFFFFFF
         for s in blk_d['sets']:
-            if s['type'] != 0x80:
-                continue
             t = s['t'] & 0xFFFFFFFF
-            sit = imap.get(f'slotpath_{j}_{t}')
-            if not (sit and sit.edited and not sit.read_only):
+            if s['type'] == 0x80:
+                sit = imap.get(f'slotpath_{j}_{t}')
+                if not (sit and sit.edited and not sit.read_only):
+                    continue
+                if sit.string_value:
+                    _me.fill_slot_path(blk_d, t, sit.string_value)
+                else:
+                    _me.clear_slot_path(blk_d, t)
                 continue
-            if sit.string_value:
-                _me.fill_slot_path(blk_d, t, sit.string_value)
-            else:
-                _me.clear_slot_path(blk_d, t)
+
+            pit = imap.get(f'matparam_{j}_{t}')
+            if not (pit and pit.edited and not pit.read_only):
+                continue
+            hit = _mp.param_name_type(shader_hash, t)
+            if hit is None:
+                continue
+            _pname, type_str = hit
+            getter = _param_getter.get(pit.data_type)
+            if getter is None:
+                continue
+            _me.set_param_value(s, type_str, getter(pit))
 
     return pack_material(d)
 
