@@ -757,16 +757,6 @@ def _draw_ptb_float4_as_color(layout, item, type_name, label):
 # 见 fields._init_material_attribute 的 item 命名约定（matshader_{j} / slotpath_{j}_{t}）。
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _param_texture_base(slot_name):
-    """'tEmissiveMap' -> 'EmissiveMap'，用于按命名约定关联同一贴图槽的参数
-    （tEmissiveMap ~ fEmissiveMapFactor）。纯字符串启发式，不是格式里的真实
-    绑定字段（见与用户讨论：mrl3/EFX 字节格式里没有贴图↔参数的显式引用），
-    只用来把面板上关联的东西摆在一起，不代表游戏真的这样关联。"""
-    if slot_name and slot_name.startswith('t') and len(slot_name) > 1 and slot_name[1].isupper():
-        return slot_name[1:]
-    return None
-
-
 def _draw_material_param_row(layout, pit, label) -> None:
     """画一条着色器参数：FLOAT4 且名字带 "__uiColor" 后缀（mrl3 属性名自带的
     UI 部件类型提示，同一套还有 __uiUNorm/__uiSNorm/__uiDirection——这些是原版
@@ -785,10 +775,11 @@ def _draw_material_param_row(layout, pit, label) -> None:
 
 
 def _draw_material_editor(layout, context, material_groups: dict) -> None:
-    """绘制材质槽列表：每槽一个框（主材质/材质名/更改类型/删除），槽内每条贴图
-    路径右侧一个折叠箭头，展开显示按命名约定关联到该贴图的着色器参数；跟哪个
-    贴图都关联不上的参数落在槽末尾的"其它参数"区。末尾是参考 mrl3 新建材质槽
-    的入口（跟 mesh/Model Editor 完全解耦）。"""
+    """绘制材质槽列表：每槽一个框（主材质/材质名/更改类型/删除），槽内先是贴图
+    路径，再是槽末尾"其它参数"区平铺全部值得展示的着色器参数（曾按命名约定把
+    参数分组挂在对应贴图行下面折叠展开，因分类还不够可靠先退回平铺，见
+    [[material-panel-redesign-and-mrl3-reference-add]]）。末尾是参考 mrl3 新建
+    材质槽的入口（跟 mesh/Model Editor 完全解耦）。"""
     from ..efx_format.material import meta as _mm
     from ..efx_format.material import params as _mparams
 
@@ -851,25 +842,16 @@ def _draw_material_editor(layout, context, material_groups: dict) -> None:
 
             slot_col.separator(factor=0.3)
 
-            # ── 贴图槽：路径 + 关联参数折叠 ──────────────────────────────────
+            # ── 贴图槽：只画路径 ─────────────────────────────────────────────
+            # 曾经按命名约定（tEmissiveMap ~ fEmissiveMapFactor）把参数分组挂在
+            # 贴图行下面折叠展开；用户反馈这套子串匹配还没分类清楚（漏配/错配，
+            # 见 [[material-panel-redesign-and-mrl3-reference-add]]），先退回
+            # 全部参数平铺进"其它参数"区，等分类规则更可靠了再考虑重新分组。
             params_list = info.get("params", [])
-            consumed_t = set()
 
             for t, sit in info.get("slots", []):
                 slot_name = _mm.texture_slot_name(t)
                 slot_label = slot_name if slot_name else f"Hash 0x{t:08X}"
-
-                related = []
-                base = _param_texture_base(slot_name) if slot_name else None
-                if base:
-                    for pt, pit in params_list:
-                        if pt in consumed_t:
-                            continue
-                        hit = _mparams.param_name_type(shader_hash, pt)
-                        if (hit and base in hit[0]
-                                and _mparams.param_is_notable(shader_hash, pt)):
-                            related.append((pt, pit, hit[0]))
-                            consumed_t.add(pt)
 
                 row = slot_col.row(align=True)
                 row.scale_y = 1.1
@@ -878,21 +860,12 @@ def _draw_material_editor(layout, context, material_groups: dict) -> None:
                 split.label(text=slot_label)
                 val_row = split.row(align=True)
                 val_row.prop(sit, "string_value", text="")
-                if related:
-                    icon = 'DOWNARROW_HLT' if sit.ui_expanded else 'RIGHTARROW'
-                    val_row.prop(sit, "ui_expanded", text="", icon=icon, toggle=True)
                 _draw_field_row_buttons(row, "MATERIAL", sit.ori_name, item=sit)
 
-                if related and sit.ui_expanded:
-                    sub_box = slot_col.box()
-                    sub_col = sub_box.column(align=True)
-                    for _pt, pit, pname in related:
-                        _draw_material_param_row(sub_col, pit, pname)
-
-            # ── 其它参数：跟哪个贴图槽都关联不上的可调参数 ───────────────────
+            # ── 其它参数：全部值得展示的可调参数 ─────────────────────────────
             leftover = [
                 (t, pit) for t, pit in params_list
-                if t not in consumed_t and _mparams.param_is_notable(shader_hash, t)
+                if _mparams.param_is_notable(shader_hash, t)
             ]
             if leftover:
                 slot_col.separator(factor=0.3)
