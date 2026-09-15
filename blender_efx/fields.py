@@ -605,6 +605,10 @@ class EFXFieldItem(PropertyGroup):
         default=False,
     )
 
+    # 纯 UI 状态（不参与编码/导出、不置脏）：MATERIAL 贴图槽行右侧"展开关联参数"
+    # 折叠箭头的开合记忆，见 panels.py::_draw_material_editor。
+    ui_expanded: BoolProperty(name="", default=False)
+
     # ── 标量值槽 ─────────────────────────────────────────────────────────────
 
     float_value: FloatProperty(

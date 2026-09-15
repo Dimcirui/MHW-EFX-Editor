@@ -51,6 +51,7 @@ L1.5 属性字段显示重设计：
     手动 index 分量行不开 property_split（row.use_property_split=False）。
 """
 
+import os
 import re
 import bpy
 from .subselect import EFX_PT_subselect, EFX_PT_subselect_data, EFX_PT_subselect_object  # L2 #1a：Subselect 归属面板
@@ -756,10 +757,33 @@ def _draw_ptb_float4_as_color(layout, item, type_name, label):
 # 见 fields._init_material_attribute 的 item 命名约定（matshader_{j} / slotpath_{j}_{t}）。
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _param_texture_base(slot_name):
+    """'tEmissiveMap' -> 'EmissiveMap'，用于按命名约定关联同一贴图槽的参数
+    （tEmissiveMap ~ fEmissiveMapFactor）。纯字符串启发式，不是格式里的真实
+    绑定字段（见与用户讨论：mrl3/EFX 字节格式里没有贴图↔参数的显式引用），
+    只用来把面板上关联的东西摆在一起，不代表游戏真的这样关联。"""
+    if slot_name and slot_name.startswith('t') and len(slot_name) > 1 and slot_name[1].isupper():
+        return slot_name[1:]
+    return None
+
+
+def _draw_material_param_row(layout, pit, label) -> None:
+    """画一条着色器参数：FLOAT4 用通用向量单行（不套 XYZ/Static-Random 语义，
+    那套是给位置/速度这类场信息用的）；BOOL/UINT/FLOAT 走 _draw_field_item 的
+    通用单行分支（对这几个 dtype 没有特殊语义分叉，直接复用安全）。"""
+    if pit.data_type == "FLOAT4":
+        _draw_ptb_vector_row(layout, pit, "MATERIAL", label)
+    else:
+        _draw_field_item(layout, pit, type_name="MATERIAL", label_override=label)
+
+
 def _draw_material_editor(layout, context, material_groups: dict) -> None:
-    """绘制材质槽列表：每槽一个可折叠框（类型 + 更改类型 + 删除），槽内逐条贴图路径；
-    末尾 mrl3 独立过滤器行（导入/清除，跟 mesh/Model Editor 完全解耦）。"""
+    """绘制材质槽列表：每槽一个框（主材质/材质名/更改类型/删除），槽内每条贴图
+    路径右侧一个折叠箭头，展开显示按命名约定关联到该贴图的着色器参数；跟哪个
+    贴图都关联不上的参数落在槽末尾的"其它参数"区。末尾是参考 mrl3 新建材质槽
+    的入口（跟 mesh/Model Editor 完全解耦）。"""
     from ..efx_format.material import meta as _mm
+    from ..efx_format.material import params as _mparams
 
     if not material_groups:
         row = layout.row(align=True)
@@ -776,9 +800,13 @@ def _draw_material_editor(layout, context, material_groups: dict) -> None:
             slot_box = layout.box()
             slot_col = slot_box.column(align=True)
 
+            # ── 标题行：[材质槽 N] 主材质：XXX ──────────────────────────────
             header_row = slot_col.row(align=True)
             header_row.scale_y = 1.1
-            header_row.label(text=f"{T('material.slot')} {j}: {label}", icon="MATERIAL")
+            header_row.label(
+                text=f"[{T('material.slot')} {j}] {T('material.main_type')}: {label}",
+                icon="MATERIAL",
+            )
             op_change = header_row.operator(
                 "efx.material_set_shader", text="", icon="TRIA_DOWN_BAR",
             )
@@ -791,13 +819,18 @@ def _draw_material_editor(layout, context, material_groups: dict) -> None:
                 hint_row.enabled = False
                 hint_row.label(text=T("material.unknown_schema"))
 
+            # ── 材质名行：材质名：XXX（可编辑/绑定）─────────────────────────
             name_item = info.get("name_item")
             name_hash = int(name_item.uint_str) if name_item and name_item.uint_str else 0
             name_row = slot_col.row(align=True)
             name_row.scale_y = 1.1
+            name_row.use_property_split = False
+            name_split = name_row.split(factor=0.45)
+            name_split.label(text=T("material.name_field"))
+            val_row = name_split.row(align=True)
             if name_hash == 0:
-                name_row.alert = True
-                name_row.label(text=T("material.name_unbound"), icon="ERROR")
+                val_row.alert = True
+                val_row.label(text=T("material.name_unbound"), icon="ERROR")
             else:
                 resolved = None
                 from . import operators as _ops
@@ -813,32 +846,64 @@ def _draw_material_editor(layout, context, material_groups: dict) -> None:
                 except Exception:
                     resolved = None
                 shown = resolved if resolved else f"Hash {name_hash}"
-                name_row.label(text=f"{T('material.bound_to')}: {shown}", icon="LINKED")
+                val_row.label(text=shown, icon="LINKED")
             op_name = name_row.operator("efx.material_set_name", text="", icon="OUTLINER_DATA_FONT")
             op_name.block_index = j
+
+            slot_col.separator(factor=0.3)
+
+            # ── 贴图槽：路径 + 关联参数折叠 ──────────────────────────────────
+            params_list = info.get("params", [])
+            consumed_t = set()
 
             for t, sit in info.get("slots", []):
                 slot_name = _mm.texture_slot_name(t)
                 slot_label = slot_name if slot_name else f"Hash 0x{t:08X}"
-                _draw_field_item(slot_col, sit, type_name="MATERIAL", label_override=slot_label)
 
-            params = info.get("params", [])
-            if params:
-                from ..efx_format.material import params as _mparams
-                slot_col.separator(factor=0.5)
-                for t, pit in params:
+                related = []
+                base = _param_texture_base(slot_name) if slot_name else None
+                if base:
+                    for pt, pit in params_list:
+                        if pt in consumed_t:
+                            continue
+                        hit = _mparams.param_name_type(shader_hash, pt)
+                        if (hit and base in hit[0]
+                                and _mparams.param_is_notable(shader_hash, pt)):
+                            related.append((pt, pit, hit[0]))
+                            consumed_t.add(pt)
+
+                row = slot_col.row(align=True)
+                row.scale_y = 1.1
+                row.use_property_split = False
+                split = row.split(factor=0.45)
+                split.label(text=slot_label)
+                val_row = split.row(align=True)
+                val_row.prop(sit, "string_value", text="")
+                if related:
+                    icon = 'DOWNARROW_HLT' if sit.ui_expanded else 'RIGHTARROW'
+                    val_row.prop(sit, "ui_expanded", text="", icon=icon, toggle=True)
+                _draw_field_row_buttons(row, "MATERIAL", sit.ori_name, item=sit)
+
+                if related and sit.ui_expanded:
+                    sub_box = slot_col.box()
+                    sub_col = sub_box.column(align=True)
+                    for _pt, pit, pname in related:
+                        _draw_material_param_row(sub_col, pit, pname)
+
+            # ── 其它参数：跟哪个贴图槽都关联不上的可调参数 ───────────────────
+            leftover = [
+                (t, pit) for t, pit in params_list
+                if t not in consumed_t and _mparams.param_is_notable(shader_hash, t)
+            ]
+            if leftover:
+                slot_col.separator(factor=0.3)
+                other_row = slot_col.row(align=True)
+                other_row.enabled = False
+                other_row.label(text=T("material.other_params"))
+                for t, pit in leftover:
                     hit = _mparams.param_name_type(shader_hash, t)
                     plabel = hit[0] if hit else f"Hash 0x{t:08X}"
-                    if pit.data_type == "FLOAT4":
-                        # 通用 4 分量向量控件：单行，不套 XYZ/Static-Random 语义
-                        # （那套是给位置/速度这类场信息用的，着色器参数只是普通
-                        # 数组——声明 float[2]/[3] 的属性负载末端也固定是 4 个
-                        # float 槽，见 material/edit.py::get_param_value）。
-                        _draw_ptb_vector_row(slot_col, pit, "MATERIAL", plabel)
-                    else:
-                        # BOOL/UINT/FLOAT：_draw_field_item 的通用单行分支对这几
-                        # 个 dtype 没有特殊语义分叉，直接复用安全。
-                        _draw_field_item(slot_col, pit, type_name="MATERIAL", label_override=plabel)
+                    _draw_material_param_row(slot_col, pit, plabel)
 
     add_row = layout.row(align=True)
     add_row.operator_menu_enum(
@@ -846,16 +911,19 @@ def _draw_material_editor(layout, context, material_groups: dict) -> None:
         text=T("material.add_slot"), icon="ADD",
     )
 
-    # mrl3 独立过滤器：narrows 上面 add/change 用到的材质类型下拉，跟本 EFX 文件、
-    # mesh/Model Editor 完全无关（见 efx_format/mrl3_reader.py）。
+    # 参考 mrl3 新建材质槽：选中的具体材质类型/材质名/贴图路径全部照抄，跟本 EFX
+    # 文件、mesh/Model Editor 完全无关，纯读一个独立文件（见 mrl3_reader.py）。
     scene = getattr(context, "scene", None)
+    ref_path = getattr(scene, "efx_material_ref_mrl3_path", "") if scene is not None else ""
     filter_row = layout.row(align=True)
-    filter_row.operator("efx.material_import_mrl3_filter", text=T("material.filter_mrl3"), icon="FILTER")
-    if scene is not None and getattr(scene, "efx_material_filter_enabled", False):
-        n = len([x for x in scene.efx_material_filter_hashes.split(",") if x])
-        src = scene.efx_material_filter_source or "?"
-        filter_row.label(text=T("material.filter_active").format(n=n, src=src))
-        filter_row.operator("efx.material_clear_mrl3_filter", text="", icon="X")
+    filter_row.operator("efx.material_pick_mrl3_reference", text=T("material.pick_mrl3"), icon="FILEBROWSER")
+    if ref_path:
+        filter_row.operator("efx.material_clear_mrl3_reference", text="", icon="X")
+        add_ref_row = layout.row(align=True)
+        add_ref_row.operator_menu_enum(
+            "efx.material_add_from_mrl3", "material_choice",
+            text=T("material.add_from_mrl3").format(src=os.path.basename(ref_path)), icon="ADD",
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

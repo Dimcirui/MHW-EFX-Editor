@@ -1,25 +1,28 @@
 """
-efx_format/mrl3_reader.py — .mrl3 材质文件头部只读解析（纯 Python，零 bpy）
+efx_format/material/mrl3_reader.py — .mrl3 材质文件只读解析（纯 Python，零 bpy）
 
 移植自 MHW_Model_Editor 的 mrl3/file_mrl3.py（Mrl3Header + MaterialInfo + Material +
 Mrl3File.read()），去掉了原版对 bpy（i18n 报错文案）和 mrl3_dicts（材质名反查表，
-原版仅用作可选校验过滤）的依赖——核心字节级解析本就是纯 struct，与 bpy 无关。
+原版仅用作可选校验过滤/显示名，不影响解析本身）的依赖——核心字节级解析本就是
+纯 struct，与 bpy 无关。
 
-用途：EFX MATERIAL 编辑器"导入 mrl3 过滤材质类型"功能——用户单独选一个 .mrl3 文件，
-本模块读出里面实际用到的材质类型哈希集合，拿去过滤材质类型下拉。不需要装 MHW Model
-Editor 插件、不需要把 mrl3 材质导入到场景、不联动任何 mesh（2026-07 与用户确认：
-mrl3 只当独立过滤器用，跟 mod3/mesh 完全解耦）。
+用途：EFX MATERIAL 编辑器"参考 .mrl3 新建材质槽"功能——用户选一个 .mrl3 文件，
+读出里面实际存在的每条材质（材质名哈希 + 材质类型 + 贴图路径默认值），供用户挑一
+条直接新建一个绑定正确、贴图预填好的材质槽（见 blender_efx/operators.py 的
+EFX_OT_material_add_from_mrl3）。不需要装 MHW Model Editor 插件、不需要把 mrl3
+材质导入到场景、不联动任何 mesh（跟 mod3/mesh 完全解耦，纯粹读一个独立文件）。
 
 ⚠ 字段命名坑（实测 confuse.mrl3 173 条材质核对过）：MaterialInfo 里紧跟
-materialNameHash 之后的字段（原版命名 mmtrHash）才是跟 EFX material_meta
+materialNameHash 之后的字段（原版命名 mmtrHash）才是跟 EFX material/meta.py
 .MATERIAL_TYPE_NAMES 同源同键的材质类型哈希；原版再往后一个字段（命名
 shaderHash）实测不落在这 112 种已知类型表内，是另一个更细粒度的哈希，本模块
-不收集它——见 read_material_type_hashes 内的详细说明。
+不收集它。
 
-有意不做：贴图路径 / resource / property 解析——原版这部分依赖
-master_material_dict.json 的逐材质类型 resourceDict schema，本项目没有这份数据
-（其内部对 CB*/SS* 常量缓冲区/采样器同样只给块名字+总字节数，不含参数级语义，
-见与用户核实过的结论），做了也用不上，故只解析到材质类型哈希这一级。
+贴图路径解析（2026-09 新增，此前"有意不做"，现已用 master_material_dict.json
+生成的编码表解决——见 material/resources.py 头部注释）：mrl3 材质的 resource
+buffer 里每条资源用 `resHash >> 12` 匹配该材质类型的贴图资源编码表；命中的贴图
+资源的 value 字段（1-based）索引进文件的贴图字符串表即为实际路径。非贴图资源
+（CB 常量缓冲区 / Sampler State）不需要，不收集。
 """
 
 import io
@@ -27,6 +30,8 @@ import struct
 
 
 _MAGIC = 5001805
+_TEXTURE_ENTRY_SIZE = 272
+_MATERIAL_INFO_SIZE = 56
 
 
 class Mrl3ParseError(Exception):
@@ -62,25 +67,27 @@ def _read_ushort(f) -> int:
 
 
 def _read_header(f):
-    """读 Mrl3Header（40 字节），返回 (material_count, material_offset)。"""
+    """读 Mrl3Header（40 字节），返回
+    (material_count, material_offset, texture_count, texture_offset)。"""
     magic = _read_uint(f)
     if magic != _MAGIC:
         raise Mrl3ParseError("not a MHW .mrl3 file (magic mismatch)")
     _version = _read_uint(f)
     _timestamp = _read_uint64(f)
     material_count = _read_uint(f)
-    _texture_count = _read_uint(f)
-    _texture_offset = _read_uint64(f)
+    texture_count = _read_uint(f)
+    texture_offset = _read_uint64(f)
     material_offset = _read_uint64(f)
-    return material_count, material_offset
+    return material_count, material_offset, texture_count, texture_offset
 
 
 def _read_material_info(f):
-    """读一条 MaterialInfo（56 字节），返回 (mmtr_hash, shader_hash, resource_count)。"""
+    """读一条 MaterialInfo（56 字节），返回
+    (material_name_hash, mmtr_hash, resource_count, block_offset)。"""
     _type_id = _read_uint(f)
-    _material_name_hash = _read_uint(f)
+    material_name_hash = _read_uint(f)
     mmtr_hash = _read_uint(f)
-    shader_hash = _read_uint(f)
+    _shader_hash = _read_uint(f)
     _block_size = _read_uint(f)
     for _ in range(2):
         _read_ubyte(f)
@@ -88,34 +95,81 @@ def _read_material_info(f):
     for _ in range(4):
         _read_ubyte(f)
     f.seek(20, io.SEEK_CUR)
-    _block_offset = _read_uint64(f)
-    return mmtr_hash, shader_hash, resource_count
+    block_offset = _read_uint64(f)
+    return material_name_hash, mmtr_hash, resource_count, block_offset
 
 
-def read_material_type_hashes(data: bytes) -> set:
-    """解析 .mrl3 文件字节，返回其中用到的材质类型哈希集合（uint32）。
+def _read_texture_list(data: bytes, texture_count: int, texture_offset: int) -> list:
+    """贴图字符串表：每条 entry 272 字节，路径字符串从 entry+16 开始、'\\0' 结尾。"""
+    textures = []
+    for i in range(texture_count):
+        base = texture_offset + i * _TEXTURE_ENTRY_SIZE + 16
+        end = data.find(b'\x00', base)
+        if end < 0:
+            end = base
+        textures.append(data[base:end].decode('ascii', errors='replace'))
+    return textures
 
-    实测核对（confuse.mrl3，173 条材质）：MaterialInfo 里紧跟 materialNameHash
-    之后的字段（原版命名 mmtrHash）才是与 EFX material_meta.MATERIAL_TYPE_NAMES /
-    mrl3 master_material_dict.json 同源同键的"材质类型"哈希（如 3019453706 →
-    Uber_Mt）；再往后一个字段（原版命名 shaderHash）实测不落在这 112 种已知类型
-    表内，是另一个更细粒度的哈希，与本功能（按材质类型过滤下拉）无关，本函数
-    不收集它。
 
-    仅做基本合法性过滤（resourceCount 为偶数，参照原版 Mrl3File.read() 的判据）——
-    不依赖材质名反查表。解析失败（非法 .mrl3 / 损坏文件）抛 Mrl3ParseError；
-    调用方（UI）应捕获后提示用户，不静默失败退化成空集合（空集合会被误当作
-    "这个 mrl3 不用任何材质类型"，比报错更容易误导用户）。
+def _read_material_textures(data: bytes, mmtr_hash: int, resource_count: int,
+                             block_offset: int, texture_list: list) -> dict:
+    """解析一条材质的 resource buffer，返回 {贴图裸名: 路径字符串}（按
+    material/resources.py 的编码表匹配；未收录的 shader 类型返回空 dict）。"""
+    from .resources import texture_resource_codes
+
+    lut = texture_resource_codes(mmtr_hash)
+    if not lut:
+        return {}
+    textures = {}
+    n = resource_count // 2
+    for k in range(n):
+        off = block_offset + k * 16
+        try:
+            _res_code, res_hash, res_value, _unkn = struct.unpack_from('<4I', data, off)
+        except struct.error:
+            break
+        name = lut.get(res_hash >> 12)
+        if name is None:
+            continue
+        if 0 < res_value <= len(texture_list):
+            textures[name] = texture_list[res_value - 1]
+    return textures
+
+
+def read_materials(data: bytes) -> list:
+    """解析 .mrl3 文件字节，返回文件里每条合法材质：
+
+        [{'material_name_hash': int, 'mmtr_hash': int, 'textures': {name: path}}, ...]
+
+    `material_name_hash` 直接可用作 EFX MATERIAL 的 mat_name_hash（见
+    material/edit.py::set_block_material_name 的绑定原理——两者本就同一个值，
+    不需要再算 jamcrc）；`mmtr_hash` 即 mat_shader。`textures` 只包含按
+    material/resources.py 编码表能解出名字的贴图资源，未收录材质类型时为空 dict
+    （仍返回该材质本身，因为 name_hash/shader 已经足够新建一个绑定正确的材质槽，
+    只是没有贴图默认值可填）。
+
+    仅做基本合法性过滤（resourceCount 为偶数，参照原版 Mrl3File.read() 的判据）。
+    解析失败（非法 .mrl3 / 损坏文件）抛 Mrl3ParseError；调用方（UI）应捕获后提示
+    用户，不静默失败退化成空列表。
     """
     f = io.BytesIO(data)
-    material_count, material_offset = _read_header(f)
+    material_count, material_offset, texture_count, texture_offset = _read_header(f)
 
-    hashes = set()
-    if material_count and material_offset:
-        f.seek(material_offset)
-        for _ in range(material_count):
-            mmtr_hash, _shader_hash, resource_count = _read_material_info(f)
-            if resource_count % 2 != 0:
-                continue
-            hashes.add(mmtr_hash)
-    return hashes
+    if not material_count or not material_offset:
+        return []
+
+    texture_list = _read_texture_list(data, texture_count, texture_offset) if texture_count and texture_offset else []
+
+    f.seek(material_offset)
+    results = []
+    for _ in range(material_count):
+        material_name_hash, mmtr_hash, resource_count, block_offset = _read_material_info(f)
+        if resource_count % 2 != 0:
+            continue
+        textures = _read_material_textures(data, mmtr_hash, resource_count, block_offset, texture_list)
+        results.append({
+            'material_name_hash': material_name_hash,
+            'mmtr_hash': mmtr_hash,
+            'textures': textures,
+        })
+    return results
