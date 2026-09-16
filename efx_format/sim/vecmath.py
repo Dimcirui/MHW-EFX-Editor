@@ -85,13 +85,33 @@ def quantize_angle(t, divisions):
     return math.floor(t * n) / float(n)
 
 
-def sweep_fraction(rng, sweep_deg, divisions=0, full=360.0):
-    """在 `sweep_deg` 度的扇形内取一个归一化角度 [0,1)，可按 `divisions` 等分量化。
+def slice_fraction(index, divisions):
+    """确定性轮转：第 `index`（粒子出生序号，从 0 开始）颗粒子占 `divisions`
+    个等分槽位里的第 `index % divisions` 个，返回该槽位的归一化角度。
 
+    "等分数量"描述的是槽位要被粒子挨个占满，不是每颗粒子各自独立抽一次落进哪个
+    槽位——粒子数少时随机抽样会撞车（同槽位多个、其他槽位落空），实测复现过。
+    `divisions <= 1` 时返回 None（不量化，调用方应退回随机）。
+    """
+    n = int(divisions)
+    if n <= 1:
+        return None
+    return (int(index) % n) / float(n)
+
+
+def sweep_fraction(rng, sweep_deg, divisions=0, full=360.0, index=None):
+    """在 `sweep_deg` 度的扇形内取一个归一化角度 [0,1)。
+
+    `divisions > 1` 且传了 `index` 时按粒子出生序号轮转分配槽位（等分应有的
+    确定性覆盖）；否则退回随机取值再量化（`divisions <= 1` 时不量化）。
     `sweep_deg >= full` 或 <= 0 → 视为整圈。
     """
-    t = rng.random()
-    t = quantize_angle(t, divisions)
+    n = int(divisions)
+    if n > 1 and index is not None:
+        t = slice_fraction(index, n)
+    else:
+        t = rng.random()
+        t = quantize_angle(t, divisions)
     if sweep_deg <= 0.0 or sweep_deg >= full:
         return t
     return t * (sweep_deg / full)

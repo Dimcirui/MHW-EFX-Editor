@@ -70,8 +70,8 @@ def _lerp(a, b, t):
     return a + (b - a) * t
 
 
-from ..vecmath import (ROT_ORDER_TRANSFORM, quantize_angle, rot_order_name,
-                       rotate_euler, sweep_fraction, unit_from_spherical)
+from ..vecmath import (ROT_ORDER_TRANSFORM, rot_order_name, rotate_euler,
+                       slice_fraction, sweep_fraction, unit_from_spherical)
 
 SHAPE_BOX = 0
 SHAPE_SPHERE = 1
@@ -105,7 +105,7 @@ class EmitterShape3D(Behavior):
 
         center, inner, outer = self._region(f, cfg)
         shape = f.i("shapeType")
-        local = center + self._sample(shape, inner, outer, f, rng)
+        local = center + self._sample(shape, inner, outer, f, rng, p.index)
 
         # 局部旋转（rangeDivideAxis 不受它影响——annotations 里写明了）
         rot_order = rot_order_name(f.i("rotationOrder"), ROT_ORDER_TRANSFORM)
@@ -137,28 +137,23 @@ class EmitterShape3D(Behavior):
         return Vec3(), inner, outer
 
     # ── 各形状在「内边界 → 外边界」的壳层内采样 ──────────────────────────────
-    def _sample(self, shape, inner, outer, f, rng):
+    def _sample(self, shape, inner, outer, f, rng, index):
         if shape == SHAPE_BOX:
-            return self._sample_box(inner, outer, f, rng)
+            return self._sample_box(inner, outer, f, rng, index)
         if shape == SHAPE_SPHERE:
-            return self._sample_sphere(inner, outer, f, rng)
+            return self._sample_sphere(inner, outer, f, rng, index)
         if shape == SHAPE_CYLINDER:
-            return self._sample_cylinder(inner, outer, f, rng)
+            return self._sample_cylinder(inner, outer, f, rng, index)
         # Point（3）及未知值：退化成一个点，落在偏移处。教程说点「严格来讲是一个
         # bug 值，并不能算」，所以这里只求一个确定的退化行为，不追求还原。
         return inner.copy()
 
-    @staticmethod
-    def _fan_slice(t, f):
-        """纵向等分数量：绕竖轴把 [0,1) 的方位角量化成 n 份扇形切片。"""
-        return quantize_angle(t, f.i("rangeDivideVerticalNum"))
-
-    def _sample_box(self, inner, outer, f, rng):
+    def _sample_box(self, inner, outer, f, rng, index):
         """内部掏空的盒子：落在外盒内、且不在内盒内（尺寸=0 时退化成盒子表面/边框）。
 
-        纵向等分（绕竖轴的扇形切片）用**拒绝采样**实现：抽到的点按它的方位角落在
-        哪一份切片上，量化到该切片的角度再按半径投回去——立方体没有半径概念，故
-        这里只把方位角量化，径向长度保持原样。
+        纵向等分（绕竖轴的扇形切片）用**拒绝采样**取径向长度，方位角改按粒子
+        出生序号轮转分配到 n 份切片之一——立方体没有半径概念，故只把方位角
+        换成确定性槽位，径向长度仍来自拒绝采样。
         """
         div_n = f.i("rangeDivideVerticalNum")
         for _ in range(_BOX_TRIES):
@@ -168,22 +163,21 @@ class EmitterShape3D(Behavior):
             if (abs(v.x) >= inner.x or abs(v.y) >= inner.y or abs(v.z) >= inner.z):
                 break
         if div_n > 1:
-            # 绕竖轴（Y）把方位角量化到等分切片上，半径与高度不动
+            # 绕竖轴（Y）按出生序号轮转到等分切片上，半径与高度不动
             r = math.hypot(v.x, v.z)
-            t = (math.atan2(v.z, v.x) / (2.0 * math.pi)) % 1.0
-            a = self._fan_slice(t, f) * 2.0 * math.pi
+            a = slice_fraction(index, div_n) * 2.0 * math.pi
             v = Vec3(math.cos(a) * r, v.y, math.sin(a) * r)
         return v
 
-    def _sample_sphere(self, inner, outer, f, rng):
-        # 方位角：横向扫描角度限制范围，纵向等分数量切扇形
+    def _sample_sphere(self, inner, outer, f, rng, index):
+        # 方位角：横向扫描角度限制范围，纵向等分数量按出生序号轮转分槽
         az = sweep_fraction(rng, f.get("scanAngleHorizontal", 360.0),
-                            f.i("rangeDivideVerticalNum"))
-        # 极角：横向等分数量 = 圆锥面（n 等分把球拆成 n 个圆锥面）
+                            f.i("rangeDivideVerticalNum"), index=index)
+        # 极角：横向等分数量 = 圆锥面（n 等分把球拆成 n 个圆锥面），同样轮转分槽
         pt = rng.random() * 2.0 - 1.0
         h_div = f.i("rangeDivideHorizontalNum")
         if h_div > 1:
-            pt = quantize_angle((pt + 1.0) * 0.5, h_div) * 2.0 - 1.0
+            pt = slice_fraction(index, h_div) * 2.0 - 1.0
         # 纵向扫描角度：0=全向、180=一半、360=不生成 → 保留的极角带 = 1 - v/360
         v_sweep = f.get("scanAngleVertical", 0.0)
         if v_sweep > 0.0:
@@ -194,19 +188,19 @@ class EmitterShape3D(Behavior):
                     d.y * _lerp(inner.y, outer.y, t),
                     d.z * _lerp(inner.z, outer.z, t))
 
-    def _sample_cylinder(self, inner, outer, f, rng):
-        # 方位角：横向扫描角度限制范围，纵向等分数量切扇形
+    def _sample_cylinder(self, inner, outer, f, rng, index):
+        # 方位角：横向扫描角度限制范围，纵向等分数量按出生序号轮转分槽
         az = sweep_fraction(rng, f.get("scanAngleHorizontal", 360.0),
-                            f.i("rangeDivideVerticalNum"))
+                            f.i("rangeDivideVerticalNum"), index=index)
         a = az * 2.0 * math.pi
-        # 高度：横向等分数量 = 沿高度的水平切片。
+        # 高度：横向等分数量 = 沿高度的水平切片，同样按出生序号轮转分槽。
         # ⚠ 高度是**单向**的：偏移 Y 是底面位置、尺寸 Y 是往 +Y 长出去的高度，
         # 即 y ∈ [偏移, 偏移+尺寸]。X/Z 那两轴是「内半径 + 厚度」的对称壳层，Y 不是
         # ——别照着它写成 ±尺寸（用户 2026-09-12 指出：尺寸 Y=20 是向 +Y 延伸 20）。
         h_t = rng.random()
         h_div = f.i("rangeDivideHorizontalNum")
         if h_div > 1:
-            h_t = quantize_angle(h_t, h_div)
+            h_t = slice_fraction(index, h_div)
         size_y = max(0.0, outer.y - inner.y)
         y = inner.y + h_t * size_y
         # 半径：内径=偏移、厚度=尺寸的圆环，再乘沿高度插值的锥度（起始/结束半径）
