@@ -371,9 +371,7 @@ class EFX_PT_timl_meta(Panel):
             _draw_meta_panel(self.layout, context)
         except Exception:
             import traceback
-            self.layout.label(text="EFX TIML panel error (see console):", icon="ERROR")
-            for line in traceback.format_exc().splitlines()[-4:]:
-                self.layout.label(text=line[:80])
+            self.layout.label(text=T("ui.error_console"), icon="ERROR")
             traceback.print_exc()
 
 

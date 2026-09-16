@@ -24,8 +24,8 @@ blender_efx/annotations.py  —  L1.3 BT 注释接入
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RE Engine 官方字段名交叉参考（来自 DTI type dump，refs/dti_effect_fields.json）
-# 键：(TYPE_NAME 大写, schema ori_name)  值：(官方字段名, CRC32 十六进制串, 置信度)
+# RE Engine 字段名交叉参考（来自 DTI type dump，refs/dti_effect_fields.json）
+# 键：(TYPE_NAME 大写, schema ori_name)  值：(字段名, CRC32 十六进制串, 置信度)
 # 置信度："确认"（偏移对齐，铁定）/ "高" / "中" / "低"（语义推断）/ 省略=确认。
 #   UI tip 渲染："确认"不加限定词；高/中/低 显示"X可能为 <名>"。
 #
@@ -49,16 +49,16 @@ FIELD_OFFICIAL_NAMES = {
     ("TRANSFORM3D", "resize"):    ("scl[XYZ]", "0x9486DF23", "确认"),
     # BILLBOARD3D：color = 显示颜色 RGBA（nadao_qian.efx 实测：TIML 从红→蓝紫渐变确认）
     ("BILLBOARD3D", "color"):     ("Color",    "0x58689812", "确认"),
-    # BILLBOARD3D：colorRange，与 color 同源自官方 dump 的 nEffect::nTimelineParam::TypeBillboard3D
+    # BILLBOARD3D：colorRange，与 color 同源自 dump 的 nEffect::nTimelineParam::TypeBillboard3D
     ("BILLBOARD3D", "colorRange"): ("ColorRange", "0xC216C23D", "确认"),
-    # PLANE：与 BILLBOARD3D 同源自官方 dump 的 nEffect::nTimelineParam::TypePlane，实机确认同一套机制
+    # PLANE：与 BILLBOARD3D 同源自 dump 的 nEffect::nTimelineParam::TypePlane，实机确认同一套机制
     ("PLANE", "color"):      ("Color",      "0x58689812", "确认"),
     ("PLANE", "colorRange"): ("ColorRange", "0xC216C23D", "确认"),
     # MESH：scale/rotation → SizeX/Y/Z / RotationX/Y/Z（nadao_qian.efx SizeY 0x531B9E44 实测确认，余轴同理）
     ("MESH", "scale"):            ("SizeX/Y/Z",    "0x241CAED2", "确认"),
     ("MESH", "rotation"):         ("RotationX/Y/Z","0x002FF505",  "确认"),
     # MESH：color/colorRange、emissiveColor/emissiveColorRange 两组 —— 实机组合排除测试确认
-    # (2026-07-06)，与官方 dump 里 nEffect::nTimelineParam::TypeMesh 的字段名逐个对上
+    # (2026-07-06)，与 dump 里 nEffect::nTimelineParam::TypeMesh 的字段名逐个对上
     ("MESH", "color"):               ("Color",              "0x58689812", "确认"),
     ("MESH", "colorRange"):          ("ColorRange",          "0xC216C23D", "确认"),
     ("MESH", "emissiveColor"):       ("EmissiveColor",       "0x608DCF8D", "确认"),
@@ -148,15 +148,15 @@ FIELD_ANNOTATIONS = {
         "ZH": "启用后，所有粒子将会跟随发射器运动。",
     },
     ("PARENTOPTIONS", "constRelease"): {
-        "EN": "Formerly spawnLock. Only meaningful when spawnTrack is enabled — after this "
+        "EN": "Only meaningful when spawnTrack is enabled — after this "
               "many frames, tracking stops and the effect locks to its current position. "
               "0 = always keep tracking.",
-        "ZH": "原名 spawnLock。仅在 spawnTrack 启用时生效——达到该帧数后停止追踪，"
+        "ZH": "仅在 spawnTrack 启用时生效——达到该帧数后停止追踪，"
               "特效锁定在当前位置。0 = 始终追踪。",
     },
     ("PARENTOPTIONS", "constReleaseJitter"): {
-        "EN": "Formerly bleedPos. Jitter paired with lockToPositionFrame.",
-        "ZH": "原名 bleedPos。与 lockToPositionFrame 配对的抖动量。",
+        "EN": "Random variation paired with lockToPositionFrame.",
+        "ZH": "与 lockToPositionFrame 配对的随机偏差。",
     },
     ("PARENTOPTIONS", "jointNo"): {
         "EN": "Bone Limitation. The index/serial number of the bone this is bound to. "
@@ -167,8 +167,8 @@ FIELD_ANNOTATIONS = {
               "骨骼序号是针对特效原本所属模型的，把 entry 复用到别处时通常不通用。",
     },
     ("PARENTOPTIONS", "unknFlag1"): {
-        "EN": "Unknown. Observed: {0:20433, 1:9199}",
-        "ZH": "未知。观测：{0:20433, 1:9199}",
+        "EN": "Unknown. Common values: {0:20433, 1:9199}",
+        "ZH": "未知。常见取值：{0:20433, 1:9199}",
     },
 
     # ─── SPAWN ────────────────────────────────────────────────────────────────
@@ -245,12 +245,12 @@ FIELD_ANNOTATIONS = {
               "0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX。跟 TRANSFORM3D 的旋转顺序惯例不是同一套数值映射。",
     },
     ("VELOCITY3D", "speedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     # 枚举命名沿革：1 早期误标为 "Normal"、3 早期误标为 "Spread"，现按实测行为定名。
-    # 4/5 在本项目语料里确有出现（旧注释猜作 ScreenSpace/Unkn），而社区那份 RE Engine
-    # 续作 schema 只有 0~3 四态——两边没对上，未回查语料前不采信任何一边，tooltip 里只写"含义未知"。
+    # 4/5 在本项目里确有出现（旧注释猜作 ScreenSpace/Unkn），而社区那份 RE Engine
+    # 续作 schema 只有 0~3 四态——两边没对上，未回查前不采信任何一边，tooltip 里只写"含义未知"。
     ("VELOCITY3D", "velocityType"): {
         "EN": "Decides how the particle's movement DIRECTION is determined (speed always comes "
               "from speed/acceleration; gravity is independent and always applies). "
@@ -362,12 +362,12 @@ FIELD_ANNOTATIONS = {
     # ─── ALPHACORRECTION ──────────────────────────────────────────────────────
     # AlphaCorrection (EFX_Subtypes.bt)
     ("ALPHACORRECTION", "lowPass"): {
-        "EN": "Hard alpha clip threshold (like Photoshop's Threshold tool; field formerly named 'alpha_clip_threshold') — alpha below this value is cut to 0. 0 = no clipping.",
-        "ZH": "Alpha 硬裁切阈值（类似 PS 的 Threshold 工具；原字段名 alpha_clip_threshold）——低于此值的 alpha 直接归 0。0 = 不裁切。",
+        "EN": "Hard alpha clip threshold (like Photoshop's Threshold tool) — alpha below this value is cut to 0. 0 = no clipping.",
+        "ZH": "Alpha 硬裁切阈值（类似 PS 的 Threshold 工具）——低于此值的 alpha 直接归 0。0 = 不裁切。",
     },
     ("ALPHACORRECTION", "contrast_gamma"): {
-        "EN": "Contrast/gamma correction on alpha (field formerly named 'transparentness'). Unbounded — higher values fade out low/mid alpha (edges) while keeping high alpha (core) intact; values can exceed 1, where almost everything fades to transparent.",
-        "ZH": "对 alpha 做对比度/伽马修正（原字段名 transparentness）。无上限——值越大，低/中 alpha（边缘）越快变透明，高 alpha（核心）保留；可超过 1，过大时几乎全图变透明。",
+        "EN": "Contrast/gamma correction on alpha. Unbounded — higher values fade out low/mid alpha (edges) while keeping high alpha (core) intact; values can exceed 1, where almost everything fades to transparent.",
+        "ZH": "对 alpha 做对比度/伽马修正。无上限——值越大，低/中 alpha（边缘）越快变透明，高 alpha（核心）保留；可超过 1，过大时几乎全图变透明。",
     },
     # 010 BT 模板把它标成 NULL，实际并非恒定值；tooltip 只写结论。
     ("ALPHACORRECTION", "unkn3"): {
@@ -443,7 +443,7 @@ FIELD_ANNOTATIONS = {
     },
     ("TUBELIGHT", "unknFixed5_0"): {
         "EN": "Always 24 in the sample data — likely just a common default value.",
-        "ZH": "语料里恒为 24，可能只是常见的默认值。",
+        "ZH": "固定为 24，可能只是常用默认值。",
     },
     ("TUBELIGHT", "unkn1_0"): {
         "EN": "Related to whether the light from the head/tail ends spills onto the surroundings. Exact behaviour unknown.",
@@ -494,11 +494,11 @@ FIELD_ANNOTATIONS = {
     },
     ("RGBFIRE", "fireColorParam_lifeType"): {
         "EN": "Usually 0. Values 1 and 2 also occur, meaning unknown.",
-        "ZH": "通常为 0。另有取值 1 和 2，含义未确认。",
+        "ZH": "通常为 0。另有取值 1 和 2，含义未知。",
     },
     ("RGBFIRE", "fireColorParam_unkn9"): {
         "EN": 'Setting to 1 kills the fire color. Values 2/8/9 also occur, meaning unknown.',
-        "ZH": "设为 1 会消除火焰色。另有取值 2/8/9，含义未确认。",
+        "ZH": "设为 1 会消除火焰色。另有取值 2/8/9，含义未知。",
     },
     ("RGBFIRE", "smokeColorParam_useLife"): {
         "EN": "Smoke color timing params (fade-in / duration / fade-out). Note: even a short duration can tint a persistent effect permanently.",
@@ -506,11 +506,11 @@ FIELD_ANNOTATIONS = {
     },
     ("RGBFIRE", "smokeColorParam_lifeType"): {
         "EN": "Usually 0. Values 1 and 2 also occur, meaning unknown.",
-        "ZH": "通常为 0。另有取值 1 和 2，含义未确认。",
+        "ZH": "通常为 0。另有取值 1 和 2，含义未知。",
     },
     ("RGBFIRE", "smokeColorParam_unkn9"): {
         "EN": 'Setting to 1 kills the smoke color. Values 2/7/8/9 also occur, meaning unknown.',
-        "ZH": "设为 1 会消除烟雾色。另有取值 2/7/8/9，含义未确认。",
+        "ZH": "设为 1 会消除烟雾色。另有取值 2/7/8/9，含义未知。",
     },
 
     # ─── GUIDE ────────────────────────────────────────────────────────────────
@@ -660,8 +660,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "每秒对速度做乘法（UV2）",
     },
     ("UVCONTROL", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
 
     # ─── EMITTERSHAPE2D ───────────────────────────────────────────────────────
@@ -682,23 +682,23 @@ FIELD_ANNOTATIONS = {
         "ZH": "通常为 -1；偶尔为 0",
     },
     ("RAYCAST", "unknownBitmask2"): {
-        "EN": "Observed value 256 — may be flag or enum",
-        "ZH": "观测值 256 —— 可能是标志或枚举",
+        "EN": "Value 256 — may be flag or enum",
+        "ZH": "取值为 256，可能是标志或枚举。",
     },
 
     # ─── HOMING ───────────────────────────────────────────────────────────────
-    # 字段语义来自全语料 212 个块统计 + 八角探针系统实测（2026-07-30 定稿）。
+    # 字段语义来自 212 个块统计 + 八角探针系统实测（2026-07-30 定稿）。
     # 运动学模型与改名依据见 efx_format/schema/attributes.py 的 Homing schema 注释；
     # 调查过程记在 docs/ATTRIBUTE_BEHAVIOR_NOTES.md。
     # typeFlag/section_length/spacer 是大部分 attribute 都有的头部字段，见下方通用说明。
     ("HOMING", "typeFlag"): {
         "EN": 'Header field present in most attribute types, likely a type/category marker rather than a tunable value. Exact value semantics unknown.',
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数，具体数值"
-              "语义未确认。",
+              "具体含义未知。",
     },
     ("HOMING", "section_length"): {
-        "EN": "Always 44 across the whole corpus — do not modify",
-        "ZH": "全语料恒为 44，请勿修改",
+        "EN": "Fixed at 44 — do not modify",
+        "ZH": "固定为 44，请勿修改。",
     },
     ("HOMING", "spacer"): {
         "EN": "Always 0xCDCDCD00 — do not modify",
@@ -765,11 +765,11 @@ FIELD_ANNOTATIONS = {
               "1=model/character origin (feet), 2/3=world origin (map center). Cycles "
               "every 4 (4=spawn, 5=model, …). Motion always tracks the target's "
               "real-time position (not captured once at trigger time). "
-              "Official: 0=83%, 1=14%, 2=4%.",
+              "Common values: 0=83%, 1=14%, 2=4%.",
         "ZH": "归航目标 = (homingTarget mod 4)：0=生成点（发射器位置），1=模型/角色原点"
               "（脚下），2/3=世界原点（地图中心）。每 4 循环（4=生成点, 5=模型原点…）。"
               "运动始终指向目标点的实时位置（不是触发时捕获定住）。"
-              "官方用值：0=83%，1=14%，2=4%。",
+              "用值：0=83%，1=14%，2=4%。",
     },
     ("HOMING", "vanishMode"): {
         "EN": "What happens when a particle enters the vanish-check sphere (see vanish "
@@ -801,12 +801,12 @@ FIELD_ANNOTATIONS = {
               "速度，前者作用于球内，后者作用于球外。",
     },
     ("HOMING", "unknownEnum1"): {
-        "EN": "Almost always 0 (97% of official attributes)",
-        "ZH": "几乎恒为 0（官方 97%）",
+        "EN": "Usually 0 (about 97%)",
+        "ZH": "通常为 0（约 97%）。",
     },
 
     # ─── typeFlag/section_length 通用头字段（2026-07-23，19 个类型统一改名）───────
-    # 绝大多数 attribute 类型开头都是这两个 4B 字段：field[0]（typeFlag）语料呈小基数
+    # 绝大多数 attribute 类型开头都是这两个 4B 字段：field[0]（typeFlag）呈小基数
     # 离散分布，疑似类型/分类标记；field[1]（section_length）100% 恒等于「该 attribute
     # 总字节数 - 8」，是引擎自描述的剩余长度标记，不是可调参数（判据见 field_labels.py
     # RESERVED_FILL_FIELDS 注释）。这里补上尚无独立注释的类型。
@@ -822,8 +822,8 @@ FIELD_ANNOTATIONS = {
     },
     ("DUMMY", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
-              "marker rather than a tunable value. Always 1 across official data.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。官方语料恒为 1。",
+              "marker rather than a tunable value. Fixed at 1.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。固定为 1。",
     },
     ("DUMMY", "section_length"): {
         "EN": "Structural remaining-length marker; computed by the engine, not a "
@@ -832,12 +832,12 @@ FIELD_ANNOTATIONS = {
     },
     ("FADEBYEMITTERANGLE", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
-              "marker rather than a tunable value. Always 0 across official data.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。官方语料恒为 0。",
+              "marker rather than a tunable value. Fixed at 0.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。固定为 0。",
     },
     ("FADEBYEMITTERANGLE", "section_length"): {
-        "EN": "Always 20 across the whole corpus — do not modify",
-        "ZH": "全语料恒为 20，请勿修改",
+        "EN": "Fixed at 20 — do not modify",
+        "ZH": "固定为 20，请勿修改。",
     },
     ("RAYCAST", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -845,8 +845,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("RAYCAST", "section_length"): {
-        "EN": "Always 70 across the whole corpus — do not modify",
-        "ZH": "全语料恒为 70，请勿修改",
+        "EN": "Fixed at 70 — do not modify",
+        "ZH": "固定为 70，请勿修改。",
     },
     ("SCREENSPACECOLLISION", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -854,8 +854,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("SCREENSPACECOLLISION", "section_length"): {
-        "EN": "Always 28 across the whole corpus — do not modify",
-        "ZH": "全语料恒为 28，请勿修改",
+        "EN": "Fixed at 28 — do not modify",
+        "ZH": "固定为 28，请勿修改。",
     },
     ("SHOVEL", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -863,8 +863,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("SHOVEL", "section_length"): {
-        "EN": "Always 62 across the whole corpus — do not modify",
-        "ZH": "全语料恒为 62，请勿修改",
+        "EN": "Fixed at 62 — do not modify",
+        "ZH": "固定为 62，请勿修改。",
     },
     ("PTTRIGGER", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -872,8 +872,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("PTTRIGGER", "section_length"): {
-        "EN": "Always 8 across the whole corpus — do not modify",
-        "ZH": "全语料恒为 8，请勿修改",
+        "EN": "Fixed at 8 — do not modify",
+        "ZH": "固定为 8，请勿修改。",
     },
     ("SPAWNBYANGLE", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -881,8 +881,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("SPAWNBYANGLE", "section_length"): {
-        "EN": "Always 14 across the whole corpus — do not modify",
-        "ZH": "全语料恒为 14，请勿修改",
+        "EN": "Fixed at 14 — do not modify",
+        "ZH": "固定为 14，请勿修改。",
     },
     ("CHECKPUREATTRIBUTE", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -890,8 +890,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("CHECKPUREATTRIBUTE", "section_length"): {
-        "EN": "Always 32 across the whole corpus — do not modify",
-        "ZH": "全语料恒为 32，请勿修改",
+        "EN": "Fixed at 32 — do not modify",
+        "ZH": "固定为 32，请勿修改。",
     },
     ("SPAWNBYOCCLUSION", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -899,8 +899,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("SPAWNBYOCCLUSION", "section_length"): {
-        "EN": "Always 12 in the single official sample observed — do not modify",
-        "ZH": "已观测的唯一官方样本中恒为 12——请勿修改",
+        "EN": "Fixed at 12 — do not modify",
+        "ZH": "固定为 12，请勿修改。",
     },
     ("PARENTSNOW", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -908,8 +908,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("PARENTSNOW", "section_length"): {
-        "EN": "Always 72 in the official samples observed — do not modify",
-        "ZH": "已观测的官方样本中恒为 72——请勿修改",
+        "EN": "Fixed at 72 — do not modify",
+        "ZH": "固定为 72，请勿修改。",
     },
     ("OTOMOSNOW", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -917,8 +917,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("OTOMOSNOW", "section_length"): {
-        "EN": "Always 76 in the official samples observed — do not modify",
-        "ZH": "已观测的官方样本中恒为 76——请勿修改",
+        "EN": "Fixed at 76 — do not modify",
+        "ZH": "固定为 76，请勿修改。",
     },
     ("FAKEPLANE", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -926,8 +926,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
     },
     ("FAKEPLANE", "section_length"): {
-        "EN": "Always 52 across the whole corpus — do not modify",
-        "ZH": "全语料恒为 52，请勿修改",
+        "EN": "Fixed at 52 — do not modify",
+        "ZH": "固定为 52，请勿修改。",
     },
     ("FAKEDOF", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -957,15 +957,13 @@ FIELD_ANNOTATIONS = {
     },
     ("TUBELIGHT", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
-              "marker rather than a tunable value. Always 0 in the small sample "
-              "observed (22 instances).",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。已观测的少量"
-              "样本（22 例）中恒为 0。",
+              "marker rather than a tunable value. Fixed at 0.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。固定为 0。",
     },
     ("TONEMAPFILTER", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
-              "marker rather than a tunable value. Only 1 official sample observed.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。官方语料仅 1 例。",
+              "marker rather than a tunable value. Value is 0.",
+        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。取值为 0。",
     },
     ("TONEMAPFILTER", "intensity"): {
         "EN": "Effect intensity.",
@@ -976,13 +974,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "生效范围：镜头进入这个范围内才会触发生效。",
     },
     ("TONEMAPFILTER", "unknFixed0_1"): {
-        "EN": 'Meaning unknown. Only 1 official sample observed (value 16); doesn\'t cleanly match the path length (32), the path length without its trailing null (31), or the fixed header size (24), so a possible "byte length excluding the path" reading isn\'t supported by this single data point.',
-        "ZH": "含义未确认。官方语料仅 1 例（取值 16）：跟路径长度（32）、去掉末尾 null 的路径长度"
-              "（31）、固定头部大小（24）都对不上，单个样本不支持\"路径之外的字节长\"这个猜测。",
+        "EN": 'Meaning unknown. Value 16 does not match the path length (32), the path length without its trailing null (31), or the fixed header size (24).',
+        "ZH": "含义未知。取值 16 与路径长度（32）、去掉末尾 null 的路径长度（31）以及固定头部大小（24）均不对应。",
     },
     ("TONEMAPFILTER", "unknFixed2_2"): {
         "EN": "Meaning unknown.",
-        "ZH": "含义未确认。",
+        "ZH": "含义未知。",
     },
     ("LAYOUT", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -1441,8 +1438,8 @@ FIELD_ANNOTATIONS = {
 
     # ─── RIBBONBLADE (fixed part fields) ──────────────────────────────────────
     ("RIBBONBLADE", "width"): {
-        "EN": "Blade streak's lengthwise edge width. Formerly unkn04.",
-        "ZH": "刀光的纵边宽度。原名 unkn04。",
+        "EN": "Blade streak's lengthwise edge width.",
+        "ZH": "刀光的纵边宽度。",
     },
     ("RIBBONBLADE", "contractionSpeed"): {
         "EN": "0=Lingers,  1=Retracts,  ∞=Retracts instantly",
@@ -1478,12 +1475,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "尾部颜色范围。几乎恒为白色（很少被使用）。",
     },
     ("RIBBONBLADE", "tailEnd.unkn18_1"): {
-        "EN": "Boolean-looking (0/1 across the corpus). Purpose not yet identified.",
-        "ZH": "布尔型取值（全语料 0/1）。用途尚未确定。",
+        "EN": "Boolean-like value (0/1). Purpose unknown.",
+        "ZH": "布尔型取值（0/1）。具体作用未知。",
     },
     ("RIBBONBLADE", "head.unkn18_1"): {
-        "EN": 'Always 0xCD across the whole corpus on the head side (the tailEnd-side counterpart is a real 0/1 boolean).',
-        "ZH": '头部侧全语料恒为 0xCD（尾部侧同名字段是真实的 0/1 布尔）。参照 flowmap jitter 字段的先例暴露出来供。',
+        "EN": "Head-side fixed value (0xCD). This field is not intended for adjustment.",
+        "ZH": "头部侧固定值（0xCD），不建议调整。",
     },
 
     # ─── TURBULENCE (fixed part fields) ───────────────────────────────────────
@@ -1494,8 +1491,8 @@ FIELD_ANNOTATIONS = {
 
     # ─── STRAINRIBBON（拔刀链条，社区注释 EFX_Crimson.bt）─────────────────────
     ("STRAINRIBBON", "unknFixed00_2"): {
-        "EN": 'Flag byte extracted from what was treated as padding; always 0 in official data so far',
-        "ZH": "从原视为占位的字节中拆出的标志位；官方语料中恒为 0（待确认）",
+        "EN": "Flag byte. Usually 0; its effect is unknown.",
+        "ZH": "标志位，通常为 0；具体作用未知。",
     },
     ("STRAINRIBBON", "color"): {
         "EN": "Fixed chain color RGBA (0~255); pairs with Color Range the same way "
@@ -1552,7 +1549,7 @@ FIELD_ANNOTATIONS = {
     },
     ("STRAINRIBBON", "widthJitter"): {
         "EN": "Width random jitter",
-        "ZH": "宽度随机偏差（待确认）",
+        "ZH": "宽度随机偏差。",
     },
     ("STRAINRIBBON", "length"): {
         "EN": "Total chain length. =actual distance between the two bones makes it taut "
@@ -1563,7 +1560,7 @@ FIELD_ANNOTATIONS = {
     },
     ("STRAINRIBBON", "lengthJitter"): {
         "EN": "Length random jitter",
-        "ZH": "长度随机偏差（待确认）",
+        "ZH": "长度随机偏差。",
     },
     ("STRAINRIBBON", "startWidth"): {
         "EN": "Start-end width factor, multiplied with width. 0=contracts to a point; "
@@ -1591,16 +1588,16 @@ FIELD_ANNOTATIONS = {
     },
     ("STRAINRIBBON", "uvRepetition"): {
         "EN": "Number of texture repeats along the chain's length. 0=default (most "
-              "common value in official data); 1=texture covers the whole chain once; "
+              "common value usually); 1=texture covers the whole chain once; "
               "larger=denser tiling that becomes a smooth line",
-        "ZH": "贴图沿链条长度方向重复次数。0=默认（官方语料最常见取值）；1=贴图完整覆盖"
+        "ZH": "贴图沿链条长度方向重复次数。0=默认（最常见取值）；1=贴图完整覆盖"
               "整条；越大锯齿越密变光滑线条",
     },
     ("STRAINRIBBON", "widthwiseUVScalingAlpha"): {
         "EN": "Texture widthwise alpha-channel scaling. 0.1=ultra-thin laser line; "
-              "1=default (most common value in official data); 5=extreme expansion, "
+              "1=default (most common value usually); 5=extreme expansion, "
               "dense texture",
-        "ZH": "贴图宽度方向透明通道缩放。0.1=极细激光线状；1=默认（官方语料最常见取值）；"
+        "ZH": "贴图宽度方向透明通道缩放。0.1=极细激光线状；1=默认（最常见取值）；"
               "5=极度扩张纹理密集",
     },
     ("STRAINRIBBON", "widthwiseUVScalingBML"): {
@@ -1639,14 +1636,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "`colorRange` 的 EPV 颜色槽位 id，机制同 epv_color_slot1。",
     },
     ("STRAINRIBBON", "angleRelated"): {
-        "EN": "Angle-related parameter (per BT); always 360.0 across official data "
-              "(full circle), suggesting an unused default rather than an authored value",
-        "ZH": "角度相关参数（据 BT）；官方语料中恒为 360.0（整圆），疑为未被使用的默认值",
+        "EN": "Angle-related parameter. Fixed at 360.0 (a full circle), likely an unused default.",
+        "ZH": "角度相关参数，固定为 360.0（整圆），可能是未使用的默认值。",
     },
     ("STRAINRIBBON", "angleRelatedJitter"): {
-        "EN": "Jitter for the angle-related parameter (per BT); always 0.0 across "
-              "official data",
-        "ZH": "角度相关参数的随机偏差（据 BT）；官方语料中恒为 0.0",
+        "EN": "Random variation of the angle-related parameter. Fixed at 0.0.",
+        "ZH": "角度相关参数的随机偏差，固定为 0.0。",
     },
     # 链条物理参数（MT Framework，即 MHW 引擎）
     ("STRAINRIBBON", "lengthBreakpoint"): {
@@ -1790,12 +1785,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "旋转 speed 的朝向，绕 Z 轴旋转。仅在 velocityType=Directional 时有意义。",
     },
     ("VELOCITY3D", "speed"): {
-        "EN": "Grants particles their initial velocity. Formerly initialVelocity.",
-        "ZH": "赋予粒子初速度。原 initialVelocity。",
+        "EN": "Grants particles their initial velocity.",
+        "ZH": "赋予粒子初速度。",
     },
     ("VELOCITY3D", "speedJitter"): {
-        "EN": "Random addend on speed. Formerly initialVelocityJitter.",
-        "ZH": "初速度偏差（speed 的随机加数）。原 initialVelocityJitter。",
+        "EN": "Random variation added to the initial speed.",
+        "ZH": "初速度的随机偏差。",
     },
     ("VELOCITY3D", "speedCoefJitter"): {
         "EN": "Random jitter on acceleration (same nature as the velocity jitter).",
@@ -1806,8 +1801,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "gravity 生效前的延迟帧数。",
     },
     ("VELOCITY3D", "movementDelay"): {
-        "EN": "Frames before speed takes effect. Formerly initialVelocityDelay.",
-        "ZH": "speed 生效前的延迟帧数。原 initialVelocityDelay。",
+        "EN": "Frames before speed takes effect.",
+        "ZH": "速度生效前的延迟帧数。",
     },
     ("VELOCITY3D", "velocityX"): {
         "EN": "Each particle's direction is computed per axis as "
@@ -1878,8 +1873,8 @@ FIELD_ANNOTATIONS = {
     },
     # SCALEANIM（社区验证语义：初始整体扩散 + 播放过程逐轴 X/Y/Z 速度/加速度）
     ("SCALEANIM", "initialScaleAccel"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("SCALEANIM", "initialScaleSpeedJitter"): {
         # 原名 NULL/unknFloat；按位置+取值形态判定为 initialScaleSpeed 的 jitter，未实机确认。
@@ -1945,9 +1940,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "内存对齐占位符（-842150656）。请勿编辑。",
     },
     ("LIGHTNING", "unknFixed00_1"): {
-        "EN": "Always 108 across official data. Likely a max node count / subdivision "
+        "EN": "Fixed at 108. Likely a max node count / subdivision "
               "precision cap.",
-        "ZH": "官方语料中恒为 108。疑似最大节点数 / 细分精度上限。",
+        "ZH": "固定为 108，可能是最大节点数 / 细分精度上限。",
     },
     ("LIGHTNING", "color1"): {
         "EN": "Lightning color 1 (RGBA). color1/color2 are two INDEPENDENT lightning "
@@ -1966,8 +1961,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "自发光颜色（RGB）+ 整体自发光透明度系数（A）。",
     },
     ("LIGHTNING", "unkn04"): {
-        "EN": 'Float (corpus values 0.0/0.4/1.0…100.0); guessed emissive intensity multiplier (unknown).',
-        "ZH": "浮点（全语料取值 0.0/0.4/1.0…100.0）；推测是发光强度倍率（未确认）。",
+        "EN": "Float value (commonly 0.0/0.4/1.0…100.0). It may affect emissive intensity; its exact effect is unknown.",
+        "ZH": "浮点值（常见取值 0.0/0.4/1.0…100.0），可能影响发光强度；具体作用未知。",
     },
     ("LIGHTNING", "unknEnum05_01"): {
         "EN": "Instance mode flag (lightningInstanceModeFlag). 1=standard single instance; "
@@ -2005,7 +2000,7 @@ FIELD_ANNOTATIONS = {
               "常用调试：归0 拉开主支线便于单独观察。正负相近。",
     },
     ("LIGHTNING", "unkn05_07"): {
-        "EN": "Reserved. No change observed at 0/3/300/3000/-3000.",
+        "EN": "Reserved field. Values 0/3/300/3000/-3000 have no visible effect.",
         "ZH": "保留字段。测 0/3/300/3000/-3000 均无变化。",
     },
     ("LIGHTNING", "outwardsExpansionSpeed"): {
@@ -2066,7 +2061,7 @@ FIELD_ANNOTATIONS = {
     ("LIGHTNING", "unknFixed05_20"): {
         "EN": "⚠ Caution: do NOT set to 0 (possible crash). Likely memory layout / render "
               "batch related. Default 96.",
-        "ZH": "⚠ 谨慎：不要归0（可能崩溃）。推测与内存布局/渲染批次相关。默认 96。",
+        "ZH": "⚠ 请勿设为 0，可能导致崩溃。建议保留默认值 96。",
     },
     ("LIGHTNING", "unkn05_21"): {
         "EN": "⚠ DO NOT MODIFY. 0xCCCCCD00 = uninitialized-memory fill pattern / engine "
@@ -2334,11 +2329,11 @@ FIELD_ANNOTATIONS = {
     },
     ("LIGHTNING", "unknFixed07_19"): {
         "EN": "⚠ DO NOT MODIFY. Extreme float (~1.3e-43); guessed engine pointer/special flag.",
-        "ZH": "⚠ 禁止修改。极端浮点（约 1.3e-43）；推测引擎内部指针/特殊标志。",
+        "ZH": "⚠ 请勿修改。此值为极端浮点（约 1.3e-43），修改可能破坏特效。",
     },
     ("LIGHTNING", "unkn07_20"): {
         "EN": "⚠ DO NOT MODIFY. Extreme float (~-1.35e+08); guessed engine pointer/flag.",
-        "ZH": "⚠ 禁止修改。极端浮点（约 -1.35e+08）；推测引擎内部指针/标志。",
+        "ZH": "⚠ 请勿修改。此值为极端浮点（约 -1.35e+08），修改可能破坏特效。",
     },
     ("LIGHTNING", "unknEnum07_21"): {
         "EN": "⚠ DO NOT MODIFY. Setting non-0 crashes (alone or with 22/23/26); pointer/"
@@ -2355,7 +2350,7 @@ FIELD_ANNOTATIONS = {
     },
     ("LIGHTNING", "unknBitmask07_24"): {
         "EN": "⚠ DO NOT MODIFY. Extreme float (~4.2e-45); guessed engine pointer.",
-        "ZH": "⚠ 禁止修改。极端浮点（约 4.2e-45）；推测引擎内部指针。",
+        "ZH": "⚠ 请勿修改。此值为极端浮点（约 4.2e-45），修改可能破坏特效。",
     },
     ("LIGHTNING", "unkn07_25"): {
         "EN": "Reserved. No visible change across many values (default 20).",
@@ -2370,9 +2365,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "保留字段。测多个数值均无明显变化（默认 0.5）。",
     },
     ("LIGHTNING", "unknFixed08_0"): {
-        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+        "EN": "Fixed at 0. Lightning does not read it — changing it "
               "has no effect.",
-        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
+        "ZH": "固定为 0。Lightning 不读取此值，改动无效果。",
     },
     ("LIGHTNING", "unkn09"): {
         "EN": "Reserved/padding array (20 floats) — not read by lightning (no effect).",
@@ -2387,55 +2382,55 @@ FIELD_ANNOTATIONS = {
         "ZH": "lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknFixed10_3"): {
-        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+        "EN": "Fixed at 0. Lightning does not read it — changing it "
               "has no effect.",
-        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
+        "ZH": "固定为 0。Lightning 不读取此值，改动无效果。",
     },
     ("LIGHTNING", "unkn11_1"): {
-        "EN": "Expansion slot, 0 in almost all official data — no effect.",
-        "ZH": "预留位，官方语料中绝大多数为 0——无效果。",
+        "EN": "Expansion slot, 0 in almost all common use — no effect.",
+        "ZH": "预留位，中绝大多数为 0——无效果。",
     },
     ("LIGHTNING", "unknFixed12_0"): {
-        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+        "EN": "Fixed at 0. Lightning does not read it — changing it "
               "has no effect.",
-        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
+        "ZH": "固定为 0。Lightning 不读取此值，改动无效果。",
     },
     ("LIGHTNING", "unknAngle13_0"): {
-        "EN": "Angle value, 360 in almost all official data. The closest thing to a "
+        "EN": "Angle value, 360 in almost all common use. The closest thing to a "
               "'rotation angle' in this block, but 0/90/180/720 all look identical — the "
               "slight twist of a bolt comes from the texture/shader, not from here.",
-        "ZH": "角度值，官方语料中绝大多数为 360。本块里最像\"旋转角度\"的一项，但 0/90/180/720 "
+        "ZH": "角度值，中绝大多数为 360。本块里最像\"旋转角度\"的一项，但 0/90/180/720 "
               "看上去完全一样——闪电的细微扭转来自贴图/shader，与此无关。",
     },
     ("LIGHTNING", "unknFixed13_1"): {
-        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+        "EN": "Fixed at 0. Lightning does not read it — changing it "
               "has no effect.",
-        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
+        "ZH": "固定为 0。Lightning 不读取此值，改动无效果。",
     },
     ("LIGHTNING", "unknFixed13_2"): {
-        "EN": "Always 0 across official data. Lightning does not read it — changing it "
+        "EN": "Fixed at 0. Lightning does not read it — changing it "
               "has no effect.",
-        "ZH": "官方语料中恒为 0。lightning 未读取——改动无效果。",
+        "ZH": "固定为 0。Lightning 不读取此值，改动无效果。",
     },
     ("LIGHTNING", "unknEnum13_3"): {
-        "EN": "Almost always 0 across official data (rarely 2 or 3). Lightning does not "
+        "EN": "Almost always 0 across common use (rarely 2 or 3). Lightning does not "
               "read it — changing it has no effect.",
-        "ZH": "官方语料中绝大多数为 0（罕见 2 或 3）。lightning 未读取——改动无效果。",
+        "ZH": "中绝大多数为 0（罕见 2 或 3）。lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknFixed13_4"): {
-        "EN": "Always 1 across official data. Lightning does not read it — changing it "
+        "EN": "Always 1 across common use. Lightning does not read it — changing it "
               "has no effect.",
-        "ZH": "官方语料中恒为 1。lightning 未读取——改动无效果。",
+        "ZH": "中恒为 1。lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknFixed13_5"): {
-        "EN": "Always 1 across official data. Lightning does not read it — changing it "
+        "EN": "Always 1 across common use. Lightning does not read it — changing it "
               "has no effect.",
-        "ZH": "官方语料中恒为 1。lightning 未读取——改动无效果。",
+        "ZH": "中恒为 1。lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknFixed14_2"): {
-        "EN": "Always 38 across official data. Lightning does not read it — changing it "
+        "EN": "Always 38 across common use. Lightning does not read it — changing it "
               "has no effect.",
-        "ZH": "官方语料中恒为 38。lightning 未读取——改动无效果。",
+        "ZH": "中恒为 38。lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknEnum16"): {
         "EN": "Reserved. No change at 1/100/-1.",
@@ -2445,7 +2440,7 @@ FIELD_ANNOTATIONS = {
     # -----------------------------------------------------------------------
     # 批量生成：BOOLEAN/NORMALIZED/PERCENTAGE/ENUM 常见取值提示
     # 来源：stats/field_classification.json（confidence>=0.6），仅提示"通常取值"，
-    # 不代表字段被锁定为该范围/取值——语料未覆盖到的其他取值同样合法。
+    # 不代表字段被锁定为该范围/取值——未覆盖到的其他取值同样合法。
     # -----------------------------------------------------------------------
     # ALPHACORRECTION 的头部槽位 schema 名仍是 unkn0（其它类型都叫 typeFlag）。
     ("ALPHACORRECTION", "unkn0"): {
@@ -2515,8 +2510,8 @@ FIELD_ANNOTATIONS = {
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("BILLBOARD3D", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("BILLBOARD3D", "flowmapSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -2527,8 +2522,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
     ("BILLBOARD3D", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("BILLBOARD3D", "flowmapStrengthCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -2639,16 +2634,16 @@ FIELD_ANNOTATIONS = {
               "[1, 2, 3, 7, 8, 9, 13]。",
     },
     ("EMITTERSHAPE2D", "shapeType"): {
-        "EN": 'Formerly unknFlag20. It is the 2D counterpart of EMITTERSHAPE3D.shapeType: 0=square, 1=circle, 2+=point. Corpus scan (292 samples) has only observed 0/1 so far — the 2+ case is unknown by our data.',
-        "ZH": '原 unknFlag20。对应 EMITTERSHAPE3D.shapeType 同一概念：0=方形，1=圆形，2及以上=点。全语料 292 例目前只观测到 0/1，2+ 的情况暂无数据佐证。',
+        "EN": "2D spawn shape: 0=square, 1=circle. The meaning of values 2 and above is unknown.",
+        "ZH": "二维生成形状：0=方形，1=圆形。取值 2 及以上的含义未知。",
     },
     ("EMITTERSHAPE2D", "rangeDivideAxis"): {
-        "EN": "Which axis the square spawn range is subdivided along. 0=Y axis, 1=X axis; the corpus also has 4% with value 2, meaning unknown. 94% of blocks use 0.",
-        "ZH": "方形生成范围沿哪个轴细分。0=Y 轴，1=X 轴；语料里还有 4% 取值 2，含义未知。全语料 94% 用 0。",
+        "EN": "Which axis the square spawn range is subdivided along. 0=Y axis, 1=X axis; value 2 occurs in about 4% of cases and its meaning is unknown. About 94% use 0.",
+        "ZH": "方形生成范围沿哪个轴细分。0=Y 轴，1=X 轴；约 4% 使用取值 2，其含义未知。约 94% 使用 0。",
     },
     ("EMITTERSHAPE2D", "unknFixed22_1"): {
-        "EN": "Always 0 across the entire 292-sample corpus.",
-        "ZH": "全语料 292 例恒为 0。",
+        "EN": "Fixed at 0.",
+        "ZH": "固定为 0。",
     },
     ("EMITTERSHAPE3D", "rotationOrder"): {
         "EN": "Order the local rotation axes are applied in.",
@@ -2925,19 +2920,19 @@ FIELD_ANNOTATIONS = {
     },
     ("MESH", "colorRate"): {
         "EN": "Overall intensity coefficient for the colour channel (the `color` / `colorRange` pair, not the emissive one). 1 = unchanged; 53% of blocks leave it at 1.0, but values well past 100 occur. Driven by the ColorRate timeline parameter on the A1 (lifetime) axis. Among blocks that move it off 1.0, 84% also have enableIntensity2 switched on.",
-        "ZH": '`color` / `colorRange` 那条通道的整体强度系数（不是自发光那条）。1 = 原样，全语料 53% 的块就留在 1.0，但一路到 100 以上都有。对应 ColorRate 时间线参数，走 A1（寿命轴）。把它调离 1.0 的块里，84% 同时开着 enableIntensity2。',
+        "ZH": '`color` / `colorRange` 那条通道的整体强度系数（不是自发光那条）。1 = 原样，约 53% 使用 1.0，但可超过 100。对应 ColorRate 时间线参数，走 A1（寿命轴）。调离 1.0 时，常同时启用 enableIntensity2。',
     },
     ("MESH", "colorRateJitter"): {
         "EN": "Random spread for colorRate — the actual value lands somewhere in [colorRate, colorRate + this]. 0 means no spread; 92% of blocks leave it at 0.",
-        "ZH": 'colorRate 的随机量 —— 实际取值落在 [colorRate, colorRate + 本值] 之间。0 = 不随机，全语料 92% 的块留 0。',
+        "ZH": 'colorRate 的随机量 —— 实际取值落在 [colorRate, colorRate + 本值] 之间。0 = 不随机，约 92% 使用 0。',
     },
     ("MESH", "emissiveColorRate"): {
         "EN": "Intensity coefficient for the emissive channel (the `emissiveColor` / `emissiveColorRange` pair). Neutral value is 0 and 92% of blocks leave it there — it only does anything once non-zero. Every block with useEmissiveColorRange on has it non-zero. Driven by the EmissiveColorRate timeline parameter on the A1 (lifetime) axis.",
-        "ZH": '自发光通道（`emissiveColor` / `emissiveColorRange`）的强度系数。中性值是 0，全语料 92% 的块留 0 —— 只有非 0 才起作用。开了 useEmissiveColorRange 的块 100% 都是非 0。对应 EmissiveColorRate 时间线参数，走 A1（寿命轴）。',
+        "ZH": '自发光通道（`emissiveColor` / `emissiveColorRange`）的强度系数。中性值是 0，约 92% 使用 0；只有非 0 才起作用。启用 useEmissiveColorRange 时通常为非 0。对应 EmissiveColorRate 时间线参数，走 A1（寿命轴）。',
     },
     ("MESH", "emissiveColorRateJitter"): {
         "EN": "Random spread for emissiveColorRate — the actual value lands somewhere in [emissiveColorRate, emissiveColorRate + this]. 98% of blocks leave it at 0.",
-        "ZH": 'emissiveColorRate 的随机量 —— 实际取值落在 [emissiveColorRate, emissiveColorRate + 本值] 之间。全语料 98% 的块留 0。',
+        "ZH": 'emissiveColorRate 的随机量 —— 实际取值落在 [emissiveColorRate, emissiveColorRate + 本值] 之间。约 98% 使用 0。',
     },
     ("MESH", "epv_color_slot1"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
@@ -2962,8 +2957,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "作用未知。几乎恒为 0（99.8% 的块），少数非零值是 1 或 3。",
     },
     ("MESH", "rotationOrder"): {
-        "EN": "Formerly unkn7_2. Exactly 6 observed values (0~5, dominated by 4 at ~88%) — same value shape as EMITTERSHAPE3D's rotationOrder (also dominated by 4), suggesting they may share the same engine-wide rotation-order enum. Exact meaning per value unknown.",
-        "ZH": '原名 unkn7_2。恰好观测到 6 种取值（0~5，4 占约 88%）——与 EMITTERSHAPE3D 的 rotationOrder 分布形态相同（同样以 4 为主流值），推测两者可能共用引擎内同一套旋转顺序枚举。各取值具体含义未知。',
+        "EN": "Rotation-order setting with values 0~5; 4 is the usual value. The exact meaning of each value is unknown.",
+        "ZH": "旋转顺序设置，取值为 0~5，其中 4 最常见。各取值的具体含义未知。",
     },
     ("MESH", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -2973,21 +2968,21 @@ FIELD_ANNOTATIONS = {
               "[1, 2, 3, 4, 5, 6, 7, 8, 9]。",
     },
     ("MESH", "unknFixed0_1"): {
-        "EN": "Always 167 across all observed samples — likely a fixed format/version "
+        "EN": "Always 167 usually — likely a fixed format/version "
               "marker rather than a tunable parameter.",
-        "ZH": "观测样本中恒为 167——很可能是固定的格式/版本标记，而非可调参数。",
+        "ZH": "恒为 167——很可能是固定的格式/版本标记，而非可调参数。",
     },
     ("MESH", "unknBitmask40"): {
-        "EN": "Observed values: [0, 1, 2, 3, 4, 5]; overwhelmingly 2 (~92%).",
-        "ZH": "观测取值为 [0, 1, 2, 3, 4, 5]；绝大多数为 2（约 92%）。",
+        "EN": "Common values: [0, 1, 2, 3, 4, 5]; overwhelmingly 2 (~92%).",
+        "ZH": "常见取值为 [0, 1, 2, 3, 4, 5]；绝大多数为 2（约 92%）。",
     },
     ("MESH", "unknEnum5"): {
         "EN": "Common values: [0, 2, 6, 7].",
         "ZH": "常见取值为 [0, 2, 6, 7]。",
     },
     ("MESH", "unknFixed6_1"): {
-        "EN": "Always 0 across all observed samples. Likely reserved/unused.",
-        "ZH": "观测样本中恒为 0。可能是保留/未使用字段。",
+        "EN": "Always 0 usually. Likely reserved/unused.",
+        "ZH": "恒为 0。可能是保留/未使用字段。",
     },
     ("MESH", "unknEnum7_0"): {
         "EN": "Common values: [0, 1, 2, 3, 180, 4112].",
@@ -2998,20 +2993,20 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("NOISE", "main_axis_speed_jitter"): {
-        "EN": "Jitter for main_axis_speed. Common range: 0~100. Formerly secondary_axis_speed.",
-        "ZH": "main_axis_speed 的抖动。常见取值在 0~100 之间。原名 secondary_axis_speed。",
+        "EN": "Random variation of main_axis_speed. Common range: 0~100.",
+        "ZH": "main_axis_speed 的随机偏差。常见取值在 0~100 之间。",
     },
     ("NOISE", "main_axis_speed2_jitter"): {
-        "EN": "Jitter for main_axis_speed2. Common range: 0~100. Formerly secondary_axis_speed2.",
-        "ZH": "main_axis_speed2 的抖动。常见取值在 0~100 之间。原名 secondary_axis_speed2。",
+        "EN": "Random variation of main_axis_speed2. Common range: 0~100.",
+        "ZH": "main_axis_speed2 的随机偏差。常见取值在 0~100 之间。",
     },
     ("NOISE", "teleport_radius_jitter"): {
-        "EN": "Jitter for teleport_radius. Formerly smooth_radius_randomized.",
-        "ZH": "teleport_radius 的抖动。原名 smooth_radius_randomized。",
+        "EN": "Random variation of teleport_radius.",
+        "ZH": "teleport_radius 的随机偏差。",
     },
     ("NOISE", "teleport_radius2_jitter"): {
-        "EN": "Jitter for teleport_radius2. Formerly smooth_radius_randomized2.",
-        "ZH": "teleport_radius2 的抖动。原名 smooth_radius_randomized2。",
+        "EN": "Random variation of teleport_radius2.",
+        "ZH": "teleport_radius2 的随机偏差。",
     },
     ("NOISE", "section_length"): {
         "EN": "Common values: [0, 36].",
@@ -3140,8 +3135,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "rotation2 的随机抖动范围，每次播放特效时随机浮动。",
     },
     ("PLANE", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("PLANE", "flowmapSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -3152,8 +3147,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~1 之间。",
     },
     ("PLANE", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("PLANE", "flowmapStrengthCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -3177,8 +3172,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 1, 2, 3, 4, 6]。",
     },
     ("PLANE", "unknEnum5_1"): {
-        "EN": 'Bitmask (bit0 = master toggle, bits 1/2 sub-modes only meaningful when bit0 is on; non-zero values in official data are always odd, e.g. 1/3/5/7). Related to orientation relative to the camera; per-bit meaning unknown.',
-        "ZH": '位掩码（bit0 为总开关，bit1/bit2 是仅在 bit0 开启时才有意义的子模式；官方语料非零值恒为奇数，如 1/3/5/7）。与朝向-摄像机的关系有关，各 bit 具体含义未知。',
+        "EN": 'Bitmask (bit0 = master toggle, bits 1/2 sub-modes only meaningful when bit0 is on; non-zero values usually are always odd, e.g. 1/3/5/7). Related to orientation relative to the camera; per-bit meaning unknown.',
+        "ZH": '位掩码（bit0 为总开关，bit1/bit2 是仅在 bit0 开启时才有意义的子模式；非零值恒为奇数，如 1/3/5/7）。与朝向-摄像机的关系有关，各 bit 具体含义未知。',
     },
     ("PLANE", "baseAxis"): {
         "EN": "Same AxisDirection6 enum as VELOCITY3D/FADEBYANGLE (0=left,1=up,2=front,3=right,"
@@ -3187,13 +3182,13 @@ FIELD_ANNOTATIONS = {
     },
     ("PLANE", "rotationOrder"): {
         "EN": "Same rotation-order enum as MESH.rotationOrder (0=XYZ,1=YZX,2=YXZ,3=ZYX,4=ZXY,"
-              "5=XZY); overwhelmingly 4(ZXY) in official data, same shape as MESH.rotationOrder.",
+              "5=XZY); overwhelmingly 4(ZXY) usually, same shape as MESH.rotationOrder.",
         "ZH": "与 MESH.rotationOrder 同一套旋转顺序枚举（0=XYZ,1=YZX,2=YXZ,3=ZYX,4=ZXY,5=XZY）；"
-              "官方语料压倒性取值 4(ZXY)，与 MESH.rotationOrder 分布形状一致。",
+              "压倒性取值 4(ZXY)，与 MESH.rotationOrder 分布形状一致。",
     },
     ("PLANE", "unknBitmask7_0"): {
-        "EN": 'Observed values [0, 1, 2, 3, 4, 8, 32, 33, 36] look like a bitmask (1/2/4/8/32 present, plus combinations 33=32+1, 36=32+4). Per-bit meaning unknown.',
-        "ZH": '观测取值 [0, 1, 2, 3, 4, 8, 32, 33, 36] 呈现位掩码特征（含 1/2/4/8/32 及其组合 33=32+1、36=32+4）。各 bit 含义未知。',
+        "EN": 'Values [0, 1, 2, 3, 4, 8, 32, 33, 36] look like a bitmask (1/2/4/8/32 present, plus combinations 33=32+1, 36=32+4). Per-bit meaning unknown.',
+        "ZH": '常见取值 [0, 1, 2, 3, 4, 8, 32, 33, 36] 呈现位掩码特征（含 1/2/4/8/32 及其组合 33=32+1、36=32+4）。各 bit 含义未知。',
     },
     ("PLANE", "unknFlag7_1"): {
         "EN": "Common values: 0/1.",
@@ -3264,16 +3259,16 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 2, 3, 4, 5]。",
     },
     ("PTLIFE", "unknFixed1"): {
-        "EN": "Genuinely constant: 0 in all 8904 official blocks.",
-        "ZH": "确实恒定：官方语料 8904 个块全部为 0。",
+        "EN": "Fixed at 0.",
+        "ZH": "固定为 0。",
     },
     ("PTLIFE", "unknEnum5"): {
         "EN": "Always exactly mirrors relationIndex's -1 sentinel (0 whenever relationIndex "
-              "is set, -1 whenever relationIndex is -1; official corpus, 0/8904 mismatches). "
+              "is set, -1 whenever relationIndex is -1; entries, 0/8904 mismatches). "
               "Likely the unused upper half of a 32-bit relationIndex slot rather than an "
               "independent value.",
         "ZH": "恒与 relationIndex 的 -1 哨兵值同步（relationIndex 有值时恒为 0，relationIndex "
-              "为 -1 时恒为 -1；官方语料 8904 例 0 个例外）。更像是 relationIndex 这个 32 位槽位"
+              "为 -1 时恒为 -1； 8904 例 0 个例外）。更像是 relationIndex 这个 32 位槽位"
               "里没用到的高 16 位，而非独立取值。",
     },
     ("PTLIFE", "unknFrame0"): {
@@ -3281,12 +3276,12 @@ FIELD_ANNOTATIONS = {
         "ZH": '常见取值为 [0, 10, 30, 60, 70, 90, 240, 490]——全是 10 的倍数，符合帧数特征。跟同一 entry 内 LIFE 块的 fadeInDuration/duration/fadeOutDuration/timeToDeath 都对不上，不是这几个字段的简单复制。与下方 unknFrame0Jitter 配对，同 LIFE.unknFrame/unknFrameJitter 一样是 static/random 惯例；随机一侧在全部 8961 个已知块里恒为 0，实际效果未知。',
     },
     ("PTLIFE", "unknFrame1"): {
-        "EN": "Only 1 non-zero occurrence in the official corpus (value 20, alongside "
+        "EN": "Only 1 non-zero occurrence in the entries (value 20, alongside "
               "unknFrame0=30 in the same block) — a multiple of 10 like unknFrame0, but too "
               "rare to establish a reliable correlation. Paired with unknFrame1Jitter below, "
               "same static/random convention; the jitter side is 0 in all 8961 known blocks.",
-        "ZH": "官方语料里非零仅 1 例（取值 20，同一块里 unknFrame0=30）——跟 unknFrame0 一样是 "
-              "10 的倍数，但样本太少建立不了可靠关联。与下方 unknFrame1Jitter 配对，同一套 "
+        "ZH": "里非零仅 1 例（取值 20，同一块里 unknFrame0=30）——跟 unknFrame0 一样是 "
+              "10 的倍数，但情况太少建立不了可靠关联。与下方 unknFrame1Jitter 配对，同一套 "
               "static/random 惯例；随机一侧在全部 8961 个已知块里恒为 0。",
     },
     ("PTTRIGGER", "unknEnum2"): {
@@ -3496,8 +3491,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "作用未知。",
     },
     ("RIBBON", "unknFixed16_1_lo"): {
-        "EN": "Always 1 in observed data. Purpose unknown.",
-        "ZH": "观测样本中恒为 1。作用未知。",
+        "EN": "Fixed at 1. Purpose unknown.",
+        "ZH": "固定为 1。作用未知。",
     },
     ("RIBBON", "unknBool16_1"): {
         "EN": "Purpose unknown.",
@@ -3591,17 +3586,17 @@ FIELD_ANNOTATIONS = {
               "2=Forward, 3=Right, 4=Down, 5=Backwards. Same enum as RIBBON.baseAxis "
               "and VELOCITY3D.baseAxis (equivalent to the Cartesian "
               "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z mapping — in the game's default coordinate system "
-              "+X=left, +Y=up, +Z=front). Formerly unkn03.",
+              "+X=left, +Y=up, +Z=front).",
         "ZH": "刀光宽度延伸的朝向。AxisDirection6：0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON."
               "baseAxis、VELOCITY3D.baseAxis 是同一套枚举（等价于笛卡尔 "
               "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z 映射——游戏默认坐标系下 +X=左,+Y=上,+Z=前）。"
-              "原名 unkn03。",
+              "",
     },
     ("RIBBONBLADE", "length"): {
         "EN": "Tail length, only effective when lengthMode=0 (contraction speed is then "
-              "fixed internally). Roughly proportional: higher = longer tail. Formerly unkn05_0.",
+              "fixed internally). Roughly proportional: higher = longer tail.",
         "ZH": "拖尾长度，仅当 lengthMode=0 时生效（此时收缩速度固定内置）。近似成正比："
-              "值越高拖尾越长。原名 unkn05_0。",
+              "值越高拖尾越长。",
     },
     ("RIBBONBLADE", "unknEnum05_1"): {
         "EN": "Common values: [0, 2, 3, 4, 6, 20].",
@@ -3614,11 +3609,10 @@ FIELD_ANNOTATIONS = {
     ("RIBBONBLADE", "lengthMode"): {
         "EN": "Off: tail length is driven by the length field (fixed internal contraction "
               "speed). On: driven by maxLengthLimit + contractionSpeed together "
-              "(contractionSpeed=0 means no active contraction unless maxLengthLimit is hit). "
-              "Formerly unkn07_1.",
+              "(contractionSpeed=0 means no active contraction unless maxLengthLimit is hit).",
         "ZH": "关：拖尾长度由 length 字段决定（收缩速度固定内置）。开：由 "
               "maxLengthLimit + contractionSpeed 共同决定（contractionSpeed=0 时不主动收缩，"
-              "除非到达 maxLengthLimit 上限）。原名 unkn07_1。",
+              "除非到达 maxLengthLimit 上限）。",
     },
     ("RIBBONBLADE", "unknFlag08"): {
         "EN": "Common values: 0/1.",
@@ -3640,56 +3634,53 @@ FIELD_ANNOTATIONS = {
     },
     ("RIBBONBLADE", "flowmapSpeed"): {
         "EN": "Flowmap speed. Common range: 0~1. Part of the flowmap quartet "
-              "(speed/acceleration/strength/strengthAcceleration). Formerly unkn23.",
+              "(speed/acceleration/strength/strengthAcceleration).",
         "ZH": "流光贴图速度。常见取值在 0~1 之间。属于 flowmap 四件套"
-              "（速度/加速度/强度/强度加速度）之一。原名 unkn23。",
+              "（速度/加速度/强度/强度加速度）之一。",
     },
     ("RIBBONBLADE", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("RIBBONBLADE", "flowmapStrength"): {
-        "EN": "Flowmap strength. Common range: 0~100. Formerly unkn25.",
-        "ZH": "流光贴图强度。常见取值在 0~100 之间。已。原名 unkn25。",
+        "EN": "Flowmap strength. Common range: 0~100.",
+        "ZH": "流光贴图强度。常见取值在 0~100 之间。",
     },
     ("RIBBONBLADE", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("RIBBONBLADE", "flowmapSpeedJitter"): {
-        "EN": "Jitter for flowmapSpeed. Formerly NULL5.",
-        "ZH": "flowmapSpeed 的抖动。已为 float。原名 NULL5。",
+        "EN": "Random variation of flowmap speed.",
+        "ZH": "流光贴图速度的随机偏差。",
     },
     ("RIBBONBLADE", "flowmapSpeedCoefJitter"): {
-        "EN": "Jitter for flowmapAcceleration. Formerly NULL6.",
-        "ZH": "flowmapAcceleration 的抖动。已为 float。原名 NULL6。",
+        "EN": "Random variation of the flowmap speed multiplier.",
+        "ZH": "流光贴图速度倍率的随机偏差。",
     },
     ("RIBBONBLADE", "flowmapStrengthJitter"): {
-        "EN": "Jitter for flowmapStrength. Formerly NULL7.",
-        "ZH": "flowmapStrength 的抖动。已为 float。原名 NULL7。",
+        "EN": "Random variation of flowmap strength.",
+        "ZH": "流光贴图强度的随机偏差。",
     },
     ("RIBBONBLADE", "flowmapStrengthCoefJitter"): {
-        "EN": "Jitter for flowmapStrengthAcceleration. Formerly NULL8.",
-        "ZH": "flowmapStrengthAcceleration 的抖动。已为 float。原名 NULL8。",
+        "EN": "Random variation of the flowmap strength multiplier.",
+        "ZH": "流光贴图强度倍率的随机偏差。",
     },
     ("RIBBONBLADE", "uvRepetition"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
     ("ROTATEANIM", "billboardRotationCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("ROTATEANIM", "billboardRotationCoefJitter"): {
         "EN": "Random component of billboardRotationAccel.",
         "ZH": "billboardRotationAccel 的随机分量。",
     },
     ("ROTATEANIM", "spinSpeedCoefX"): {
-        "EN": "Spin acceleration on X, static value (formerly momentum_retention — this "
-              "and the following 5 fields were regrouped into X/Y/Z static+random pairs). "
-              "Mostly 0.9~1.0.",
-        "ZH": "X 轴自旋加速度，固定值（原 momentum_retention——本字段起 6 个字段已重新按 "
-              "X/Y/Z 的固定/随机配对分组）。多集中在 0.9~1.0。",
+        "EN": "X-axis spin acceleration, fixed value. Usually 0.9~1.0.",
+        "ZH": "X 轴自旋加速度的固定值，通常为 0.9~1.0。",
     },
     ("ROTATEANIM", "spinSpeedCoefXJitter"): {
         "EN": "Random component of spinAccelerationX. Mostly 0; occasionally a clean small decimal.",
@@ -3712,18 +3703,13 @@ FIELD_ANNOTATIONS = {
         "ZH": "spinAccelerationZ 的随机分量。",
     },
     ("ROTATEANIM", "rotateDelayStart"): {
-        "EN": "Formerly the last float of the spin_acceleration XYZ group — always "
-              "reads as 0.0 as float32 (denormal artifact), but as int32 shows clean frame-count "
-              "values (5/10/15/20/30/100/512...). Static half of a static/random pair with "
-              "rotateDelayStartJitter; likely delay frames before rotation starts.",
-        "ZH": "原 spin_acceleration XYZ 分组的最后一个 float——按 float32 解读恒为 0.0"
-              "（denormal 假象），按 int32 解读呈现干净帧数(5/10/15/20/30/100/512...)。是与 "
-              "rotateDelayStartJitter 组成的 static/random 一对，疑似旋转开始前的延迟帧数。",
+        "EN": "Likely the fixed delay, in frames, before rotation starts. Common values: 5/10/15/20/30/100/512.",
+        "ZH": "可能是旋转开始前的固定延迟帧数。常见取值为 5/10/15/20/30/100/512。",
     },
     ("ROTATEANIM", "rotateDelayStartJitter"): {
-        "EN": "Formerly unknEnum1_2. Random component of rotateDelayStart; usually 0. Other common "
+        "EN": "Random variation of rotateDelayStart; usually 0. Other common "
               "values: [1, 2, 5, 10, 15, 20, 30, 60, 128].",
-        "ZH": "原 unknEnum1_2。rotateDelayStart 的随机分量；通常为 0；其余常见取值为 "
+        "ZH": "rotateDelayStart 的随机分量；通常为 0；其余常见取值为 "
               "[1, 2, 5, 10, 15, 20, 30, 60, 128]。",
     },
     ("SCALEANIM", "initialScaleAccelJitter"): {
@@ -3770,16 +3756,16 @@ FIELD_ANNOTATIONS = {
               "[1, 2, 3, 4, 5, 6, 7, 10, 11, 12]。",
     },
     ("SHADERSETTINGS", "unknEnum1"): {
-        "EN": "Always 104 in observed data. Purpose unknown.",
-        "ZH": "观测样本中恒为 104。具体作用未知。",
+        "EN": "Fixed at 104. Purpose unknown.",
+        "ZH": "固定为 104。具体作用未知。",
     },
     ("SHADERSETTINGS", "unknFlag2"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
     ("SHADERSETTINGS", "unknBitmask3_0"): {
-        "EN": "Observed values: [0, 1, 2, 3]; most commonly 0 or 1.",
-        "ZH": "观测取值为 [0, 1, 2, 3]；最常见为 0 或 1。",
+        "EN": "Common values: [0, 1, 2, 3]; most commonly 0 or 1.",
+        "ZH": "常见取值为 [0, 1, 2, 3]；最常见为 0 或 1。",
     },
     ("SHADERSETTINGS", "unkn4_0"): {
         "EN": "Common range: 0~1.",
@@ -3831,16 +3817,16 @@ FIELD_ANNOTATIONS = {
         "ZH": "通常为 0；其余常见取值为 [-200, -100, -50, -20, 50, 80, 100, 150, 200]。",
     },
     ("SHADERSETTINGS", "unknFixed4_12"): {
-        "EN": "Always 0.0 in observed data. Purpose unknown.",
-        "ZH": "观测样本中恒为 0.0。具体作用未知。",
+        "EN": "Fixed at 0.0. Purpose unknown.",
+        "ZH": "固定为 0.0。具体作用未知。",
     },
     ("SHADERSETTINGS", "unkn4_13"): {
         "EN": "Usually 0; other common values: [15, 17, 20, 25, 50, 100, 150, 200, 300].",
         "ZH": "通常为 0；其余常见取值为 [15, 17, 20, 25, 50, 100, 150, 200, 300]。",
     },
     ("SHADERSETTINGS", "unknBitmask4_14"): {
-        "EN": "Observed values: [0, 1, 2, 3]; almost always 0.",
-        "ZH": "观测取值为 [0, 1, 2, 3]；绝大多数为 0。",
+        "EN": "Common values: [0, 1, 2, 3]; almost always 0.",
+        "ZH": "常见取值为 [0, 1, 2, 3]；绝大多数为 0。",
     },
     ("SHADERSETTINGS", "unkn4_15"): {
         "EN": "Usually 0; other common values are large round numbers: "
@@ -3852,8 +3838,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 1, 65536, 16777216]。",
     },
     ("SHADERSETTINGS", "unknBitmask5_1"): {
-        "EN": "Observed values: [0, 1, 2, 3, 4, 5, 7, 8, 9] (6 never observed); most commonly 0 or 1.",
-        "ZH": "观测取值为 [0, 1, 2, 3, 4, 5, 7, 8, 9]（从未出现 6）；最常见为 0 或 1。",
+        "EN": "Common values: [0, 1, 2, 3, 4, 5, 7, 8, 9]; most commonly 0 or 1.",
+        "ZH": "常见取值为 [0, 1, 2, 3, 4, 5, 7, 8, 9]；最常见为 0 或 1。",
     },
     ("SPAWN", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -3944,8 +3930,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~1 之间。",
     },
     ("STRAINRIBBON", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("STRAINRIBBON", "flowmapStrength"): {
         "EN": "Common range: 0~100.",
@@ -3956,8 +3942,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("STRAINRIBBON", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("STRAINRIBBON", "flowmapStrengthCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -3984,7 +3970,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "通常为 1.0（不缩放）；偶见 0.5 或 2.0。",
     },
     ("TUBELIGHT", "unknBool0_2"): {
-        # 原 unknEnum0_2 int 拆出的唯一真实数据字节；语料样本量小（22 块 / 17 文件）。
+        # 原 unknEnum0_2 int 拆出的唯一真实数据字节；情况量小（22 块 / 17 文件）。
         "EN": "Purpose unknown.",
         "ZH": "作用未知。",
     },
@@ -4005,32 +3991,28 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("UVCONTROL", "flowmapSpeedJitter"): {
-        "EN": "Jitter for flowmapSpeed. Part of the flowmap octet. Common range: 0~1. "
-              "Formerly extraMaterialInitialPositionJitter.",
-        "ZH": "flowmapSpeed 的抖动。属于 flowmap 八件套之一。常见取值在 0~1 之间。"
-              "原名 extraMaterialInitialPositionJitter。",
+        "EN": "Random variation of flowmap speed. Part of the flowmap octet. Common range: 0~1.",
+        "ZH": "流光贴图速度的随机偏差。属于 flowmap 八件套之一。常见取值在 0~1 之间。",
     },
     ("UVCONTROL", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("UVCONTROL", "flowmapStrengthJitter"): {
-        "EN": "Jitter for flowmapStrength. Part of the flowmap octet. Common range: 0~100. "
-              "Formerly opacityJitter.",
-        "ZH": "flowmapStrength 的抖动。属于 flowmap 八件套之一。常见取值在 0~100 之间。"
-              "原名 opacityJitter。",
+        "EN": "Random variation of flowmap strength. Part of the flowmap octet. Common range: 0~100.",
+        "ZH": "流光贴图强度的随机偏差。属于 flowmap 八件套之一。常见取值在 0~100 之间。",
     },
     ("UVCONTROL", "enableFlowmap"): {
-        "EN": "Master switch for the flowmap scroll. Common values: 0/1. Formerly unknFlag2.",
-        "ZH": "流动贴图的总开关。常见取值为 0/1。原名 unknFlag2。",
+        "EN": "Master switch for the flowmap scroll. Common values: 0/1.",
+        "ZH": "流动贴图的总开关。常见取值为 0/1。",
     },
     ("UVCONTROL", "uv2_enable"): {
         "EN": "Enables the second UV channel. A mod3 mesh may carry two UV sets; this switches on the uv2 group's own offset/scale/speed controls. (Not vertex-animation related.)",
         "ZH": '启用第二套 UV。mod3 网格允许同时存在两套 UV，打开后下面的 uv2 组（偏移/缩放/速度）才生效。（与顶点动画无关。）',
     },
     ("UVSEQUENCE", "playSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("UVSEQUENCE", "playSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -4041,9 +4023,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
     ("UVSEQUENCE", "loopingPad"): {
-        "EN": "Padding byte, always 0 in observed data (part of the loopingEnum "
+        "EN": "Padding byte, fixed at 0 (part of the loopingEnum "
               "byte layout, see playbackMode/flipCode/direction/loopingOrientation).",
-        "ZH": "填充字节，观测样本中恒为 0（属于 loopingEnum 的字节布局，参见 "
+        "ZH": "填充字节，固定为 0（属于 loopingEnum 的字节布局，参见 "
               "playbackMode/flipCode/direction/loopingOrientation）。",
     },
     ("UVSEQUENCE", "typeFlag"): {
@@ -4092,32 +4074,32 @@ FIELD_ANNOTATIONS = {
         "ZH": "见 divergenceX。",
     },
     ("VELOCITY2D", "movementDelay"): {
-        "EN": "Common values: [0, 1, 2, 5, 16, 20]. Formerly initialVelocityDelay.",
-        "ZH": "常见取值为 [0, 1, 2, 5, 16, 20]。原 initialVelocityDelay。",
+        "EN": "Common values: [0, 1, 2, 5, 16, 20].",
+        "ZH": "常见取值为 [0, 1, 2, 5, 16, 20]。",
     },
     ("VELOCITY2D", "movementDelayJitter"): {
-        "EN": "Common values: [0, 1, 3, 4, 5, 10, 20]. Formerly initialVelocityDelayJitter.",
-        "ZH": "常见取值为 [0, 1, 3, 4, 5, 10, 20]。原 initialVelocityDelayJitter。",
+        "EN": "Common values: [0, 1, 3, 4, 5, 10, 20].",
+        "ZH": "常见取值为 [0, 1, 3, 4, 5, 10, 20]。",
     },
     ("VELOCITY2D", "speedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("VELOCITY2D", "speedCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
     ("VELOCITY2D", "speedJitter"): {
-        "EN": "Common range: 0~100. Formerly initialVelocityJitter.",
-        "ZH": "常见取值在 0~100 之间。原 initialVelocityJitter。",
+        "EN": "Common range: 0~100.",
+        "ZH": "常见取值在 0~100 之间。",
     },
     ("VELOCITY2D", "gravityJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
     ("VELOCITY3D", "minMovementThreshold"): {
-        "EN": "Formerly unknFloat/NULL2. Acts as a threshold: only relevant when velocityType=EmitterMotion — the emitter's own velocity must exceed this before it's applied to particles. Mostly 0 (~98% of the corpus); range 0~40 when non-zero.",
-        "ZH": '原 unknFloat/NULL2。为阈值：仅在 velocityType=EmitterMotion 时有意义——emitter 自身速度需超过这个阈值才会施加给粒子。语料里多数为 0（约98%）；非零时取值范围 0~40。',
+        "EN": "Threshold for applying emitter motion to particles. Only relevant when velocityType=EmitterMotion: the emitter's velocity must exceed this value. Usually 0; non-zero values commonly range from 0~40.",
+        "ZH": "将发射器运动施加给粒子的阈值。仅在 velocityType=EmitterMotion 时有意义：发射器速度需超过此值。通常为 0；非零时常见范围为 0~40。",
     },
     ("VELOCITY3D", "gravity_jitter"): {
         "EN": "Common range: 0~100.",
@@ -4178,8 +4160,8 @@ FIELD_ANNOTATIONS = {
         "ZH": '整体颜色比率。对应 ColorRate 时间线参数，动画只在 A0（发射轴）上生效。',
     },
     ("RGBWATER", "waterLerpGtoB"): {
-        "EN": "Blends the water colour from green towards blue, driven by WaterLerpGtoB — by far the most animated parameter on this attribute (50 of the 60 RgbWater tracks in the whole corpus).",
-        "ZH": '把水色从绿向蓝插值。对应 WaterLerpGtoB，是本属性最常被做动画的参数（全语料 60 条 RgbWater 轨道里占 50 条）。',
+        "EN": "Blends the water colour from green towards blue, driven by WaterLerpGtoB. This parameter is often animated.",
+        "ZH": '把水色从绿向蓝插值，对应 WaterLerpGtoB，也是本属性常用于动画的参数。',
     },
     ("RGBWATER", "intensitySheet"): {
         "EN": "Strength of the water-sheet layer, driven by IntensitySheet.",
@@ -4211,15 +4193,15 @@ FIELD_ANNOTATIONS = {
     },
     ("UVSEQUENCE", "uvsPath"): {
         "EN": "Path to the .uvs sequence file — this is the artwork you actually see. The .uvs itself is a frame table pointing at a sprite-sheet .tex; playSpeed / patternNo pick which cell plays. Nearly every UVSEQUENCE has one (99% of blocks non-empty).",
-        "ZH": '指向 .uvs 序列文件的路径 —— 真正显色的图就是这张。.uvs 本身是一张帧表，指向序列帧大图（.tex）；playSpeed / patternNo 决定放哪一格。几乎每个 UVSEQUENCE 都填了（全语料 99% 非空）。',
+        "ZH": '指向 .uvs 序列文件的路径 —— 真正显色的图就是这张。.uvs 本身是一张帧表，指向序列帧大图（.tex）；playSpeed / patternNo 决定放哪一格。通常需要填写。',
     },
     ("RGBWATER", "cubemapPath"): {
-        "EN": "Cube map path for the water surface's environment reflection. The corpus only ever uses two official maps (cm_cube_000_CM / cm_cube_001_CM); 68% of blocks leave it empty. Pairs with brightnessSlot2 — that field is non-zero in 78% of blocks that have a cube map versus 30% of those that don't.",
-        "ZH": '水面环境反射用的立方贴图。全语料只用过两张官方图（cm_cube_000_CM / cm_cube_001_CM），68% 的块留空。与 brightnessSlot2 配套：填了贴图的块里该字段 78% 非零，没填的只有 30%。',
+        "EN": "Cube map path for the water surface's environment reflection. Common paths include cm_cube_000_CM and cm_cube_001_CM. This is often left empty; pairs with brightnessSlot2.",
+        "ZH": '水面环境反射用的立方贴图。常见路径包括 cm_cube_000_CM 和 cm_cube_001_CM，通常可留空；与 brightnessSlot2 配套使用。',
     },
     ("TURBULENCE", "tfaPath"): {
-        "EN": "Path to the .tfa vector-field file that drives the turbulence. Only five are used across the whole corpus — mostly cm_exMap\\turbulance_000_T and curlnoise_000_T. Effectively always filled (100% of blocks).",
-        "ZH": '驱动湍流的 .tfa 向量场文件路径。全语料只用过五张，主要是 cm_exMap\\turbulance_000_T 和 curlnoise_000_T。基本总是填着的（全语料 100%）。',
+        "EN": "Path to the .tfa vector-field file that drives the turbulence. Common paths include cm_exMap\\turbulance_000_T and curlnoise_000_T. Usually required.",
+        "ZH": '驱动湍流的 .tfa 向量场文件路径。常见路径包括 cm_exMap\\turbulance_000_T 和 curlnoise_000_T，通常需要填写。',
     },
     ("TUBELIGHT", "albedoPath"): {
         "EN": "Base-colour texture for the light column (*_BM.tex). Always filled.",
@@ -4235,35 +4217,35 @@ FIELD_ANNOTATIONS = {
     },
     ("MESH", "plPath"): {
         "EN": "Optional .pl placement table: a list of (submesh index, XYZ offset) that shifts individual parts of the model. Rarely used (6% of blocks) and normally sits next to the .mod3 under the same name.",
-        "ZH": '可选的 .pl 摆位表：一张（子网格序号, XYZ 偏移）列表，把模型的各个部件分别挪位。很少用（全语料 6%），且通常与 .mod3 同目录同名。',
+        "ZH": '可选的 .pl 摆位表：一张（子网格序号, XYZ 偏移）列表，把模型的各个部件分别挪位。较少使用，通常与 .mod3 同目录同名。',
     },
     ("EMITTERSHAPEMESH", "mod3Path"): {
         "EN": "Path to the .mod3 whose surface is used as the emitter shape — particles spawn on this mesh rather than on a primitive.",
         "ZH": '用作发射器形状的 .mod3 路径 —— 粒子从这个网格表面上生成，而不是从基本体上。',
     },
     ("BILLBOARD2D", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("BILLBOARD2D", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("LIGHTNING", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("LIGHTNING", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("RIBBON", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("RIBBON", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. Mode is 1.0 across the whole corpus for every field in this family.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。这一族字段在全语料的众数一律是 1.0。',
+        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
+        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("UVSEQUENCE", "patternNo"): {
         "EN": 'Starting frame of the sprite sheet (0 = top-left). Pair it with the Jitter field to randomise the start: an 8x8 sheet has 64 cells, so Jitter=63 picks any cell at spawn.',
@@ -4282,9 +4264,9 @@ def get_annotation(type_name: str, field_name: str) -> str:
     type_name 大写（如 "EMITTERSHAPE3D"）；field_name 为 schema ori_name。
     值为 {"EN":.., "ZH":..} 字典，按 i18n.get_lang() 选取，缺语种回退英文。
 
-    若 (type_name, field_name) 有对应的 RE Engine 官方字段名（FIELD_OFFICIAL_NAMES，
+    若 (type_name, field_name) 有对应的 RE Engine 字段名（FIELD_OFFICIAL_NAMES，
     来自 DTI type dump），在注释末尾追加一行权威交叉参考；label / ori_name / 索引均不变。
-    无 BT 注释但有官方名时，仅返回官方名行（使 ⓘ 仍可显示）。
+    无 BT 注释但有名时，仅返回名行（使 ⓘ 仍可显示）。
     """
     base = ""
     entry = FIELD_ANNOTATIONS.get((type_name.upper(), field_name))
@@ -4303,7 +4285,7 @@ def get_annotation(type_name: str, field_name: str) -> str:
         from . import i18n
         lang = i18n.get_lang()
         if lang == "ZH":
-            tag = "RE 官方字段名"
+            tag = "RE 字段名"
             if conf and conf != "确认":
                 line = f"[{tag}] {conf}可能为 {name}"
             else:

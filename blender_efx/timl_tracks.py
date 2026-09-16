@@ -406,12 +406,7 @@ class EFX_OT_timl_field_add_menu(Operator):
         if native in (0, 1):
             axis_name = "A0" if native == 0 else "A1"
             layout.separator()
-            if _is_zh():
-                layout.label(text="该属性的动画在游戏里通常只在 %s 轴生效；" % axis_name, icon="INFO")
-                layout.label(text="加到另一条轴很可能静默无效。", icon="BLANK1")
-            else:
-                layout.label(text="This attribute usually only works on %s in-game;" % axis_name, icon="INFO")
-                layout.label(text="the other axis is likely a silent no-op.", icon="BLANK1")
+            layout.label(text=T("timl.other_axis").format(axis_name), icon="INFO")
 
     def execute(self, context):
         return {"FINISHED"}
@@ -766,10 +761,10 @@ def _draw_tracks_panel(layout, context):
     会话外 → 数据源为 entry 字节，增删立即落字节。"""
     body, timl = _read_for_display()
     if body is None:
-        layout.label(text="Select an EFX_ENTRY with TIML", icon="INFO")
+        layout.label(text=T("timl.select_entry"), icon="INFO")
         return
     if timl is None:
-        layout.label(text="Failed to parse TIML", icon="ERROR")
+        layout.label(text=T("timl.parse_failed"), icon="ERROR")
         return
 
     wm = context.window_manager
@@ -813,7 +808,7 @@ def _draw_tracks_panel(layout, context):
     # 解析当前选中 TLP
     tlp_hex = getattr(wm, "efx_timl_tracks_tlp_filter", "NONE")
     if tlp_hex == "NONE" or not tlp_hex:
-        add_box.label(text="No matching attribute types in this EFX", icon="INFO")
+        add_box.label(text=T("timl.no_matching_types"), icon="INFO")
         return
 
     try:
@@ -823,7 +818,7 @@ def _draw_tracks_panel(layout, context):
 
     pairs = DT_PALETTE.get(tlp_h, [])
     if not pairs:
-        add_box.label(text="No corpus data for this TLP", icon="INFO")
+        add_box.label(text=T("timl.no_tracks_for_tlp"), icon="INFO")
         return
 
     col = add_box.column(align=True)
@@ -847,9 +842,7 @@ class EFX_PT_timl_tracks(Panel):
             _draw_tracks_panel(self.layout, context)
         except Exception:
             import traceback
-            self.layout.label(text="TIML Tracks panel error (see console):", icon="ERROR")
-            for line in traceback.format_exc().splitlines()[-4:]:
-                self.layout.label(text=line[:80])
+            self.layout.label(text=T("ui.error_console"), icon="ERROR")
             traceback.print_exc()
 
 

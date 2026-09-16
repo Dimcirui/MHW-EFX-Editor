@@ -885,9 +885,7 @@ class EFX_PT_timl_color_wheel(Panel):
             draw_color_wheel(self.layout, context)
         except Exception:
             import traceback
-            self.layout.label(text="TIML Color Wheel panel error (see console):", icon="ERROR")
-            for line in traceback.format_exc().splitlines()[-4:]:
-                self.layout.label(text=line[:80])
+            self.layout.label(text=T("ui.error_console"), icon="ERROR")
             traceback.print_exc()
 
 

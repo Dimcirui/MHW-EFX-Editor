@@ -926,14 +926,14 @@ def _draw_extern_ref_field(layout, obj) -> None:
     row.scale_y = 1.1
     row.use_property_split = False
     split = row.split(factor=0.45)
-    split.label(text="Reference Index")
+    split.label(text=T("extern.reference_index"))
 
     if not props.extern_ref_pointerized:
         # 死属性/越界：只读提示 + 强制解锁按钮
         val_row = split.row(align=True)
         sub = val_row.row(align=True)
         sub.enabled = False
-        sub.label(text="[dead attribute]", icon="ERROR")
+        sub.label(text=T("extern.dead_title"), icon="ERROR")
         val_row.operator("efx.force_pointerize_extern_ref", text="", icon="UNLOCKED")
         return
 
@@ -1141,7 +1141,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
             title_row.scale_y = 1.0
             block_title = type_name if type_name else f"Hash {bp.type_hash_str}"
             if bp.efx_dirty:
-                title_row.label(text=f"{block_title}  ● 已修改", icon="MODIFIER")
+                title_row.label(text=f"{block_title}  ● {T('common.modified')}", icon="MODIFIER")
             else:
                 title_row.label(text=block_title, icon="MODIFIER")
             # MATERIAL（Phase C）：材质槽编辑器（增删材质槽 + 类型下拉 + 贴图路径填/清）
@@ -2230,11 +2230,11 @@ def _draw_extern_props_content(layout, context):
     try:
         ep = obj.efx_extern
     except AttributeError:
-        layout.label(text="Extern props not registered", icon="ERROR")
+        layout.label(text=T("extern.data_unavailable"), icon="ERROR")
         return
 
     if len(ep.items) == 0:
-        layout.label(text="No extern data", icon="INFO")
+        layout.label(text=T("extern.no_data"), icon="INFO")
         return
 
     # 多 item 时显示 item 切换器（实测语料通常只有 1 个）
@@ -2261,7 +2261,7 @@ def _draw_extern_props_content(layout, context):
         box = layout.box()
         col = box.column(align=True)
         col.label(text=display_name, icon="MODIFIER")
-        col.label(text="Not supported yet", icon="INFO")
+        col.label(text=T("extern.read_only"), icon="INFO")
         return
 
     # 实例切换器（attr_count 个实例）
@@ -2286,11 +2286,11 @@ def _draw_extern_props_content(layout, context):
     col.separator(factor=0.5)
 
     if not inst.is_editable:
-        col.label(text="Not supported yet", icon="INFO")
+        col.label(text=T("extern.read_only"), icon="INFO")
         return
 
     if len(inst.field_items) == 0:
-        col.label(text="No fields", icon="INFO")
+        col.label(text=T("extern.no_fields"), icon="INFO")
         return
 
     _draw_plain_field_list(col, inst.field_items, type_name=type_name)
