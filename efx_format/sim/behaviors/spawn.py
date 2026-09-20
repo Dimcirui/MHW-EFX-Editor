@@ -3,35 +3,42 @@
 efx_format/sim/behaviors/spawn.py  —  SPAWN（发射节奏）
 
 模型照搬 efx_format/schema/attributes.py 里 2026-07-26 实机测试记下的三层结构
-（SPAWN 属性 → emitter 实例/轮次 → particle 个体）：
+（SPAWN 属性 → emitter 实例/轮次 → particle 个体）。字段内部名 2026-09-19 按官方讲座
+截图改名（外部标签 label_zh 不变，仍是三层模型考据出来的精确措辞）：
+  particlesPerBurst→spawnNum、burstInterval→intervalFrame、burstsPerCycle→loopNum、
+  emitterStartDelay→emitterDelayFrame、particleSpawnDelay→spawnWaitFrame。
 
   - `maxParticles`：**同时存活**软上限（不是终身总量）。
-  - `burstsPerCycle`(+Jitter)：每轮（每次换位置）重抽，三态——
-        0  → 永不换位置，按 burstInterval 节奏无限生成
+  - `loopNum`(+Jitter)：每轮（每次换位置）重抽，三态——
+        0  → 永不换位置，按 intervalFrame 节奏无限生成
         1  → 改用 altBurstInterval 节奏
-        ≥2 → 仍用 burstInterval 节奏
+        ≥2 → 仍用 intervalFrame 节奏
     非 0 时总批次数 = 该值 + emitterRepeatCount - 1，最后一批固定按粒子寿命
     （LIFE.duration + fadeOutDuration）节奏，随后立即换位置。
-  - `emitterRepeatCount`：0 = 无论 burstsPerCycle 是什么都永不换位置。无 Jitter 搭档。
-  - `particleSpawnDelay`(+Jitter)：唯一的 particle 层字段，逐粒子独立延迟。
+  - `emitterRepeatCount`：0 = 无论 loopNum 是什么都永不换位置。无 Jitter 搭档。
+  - `spawnWaitFrame`(+Jitter)：唯一的 particle 层字段，逐粒子独立延迟。
 
-`burstInterval` 的抖动每批重抽
+`intervalFrame` 的抖动每批重抽
 ------------------------------
-`SimConfig.spawn_interval_jitter`（默认 `per_burst`）。`particlesPerBurst` 的抖动本来就是
+`SimConfig.spawn_interval_jitter`（默认 `per_burst`）。`spawnNum` 的抖动本来就是
 每批重抽的，间隔没理由是另一套；而且「每批重抽」会让一串粒子的间距参差不齐，这与
-`burstIntervalJitter` 非 0 的特效在游戏里看到的不均匀排布一致。`per_cycle` 保留改动前的
+`intervalFrameJitter` 非 0 的特效在游戏里看到的不均匀排布一致。`per_cycle` 保留改动前的
 行为（一轮只抽一次，整轮等距）。
 
-未使用的字段：`instanceCountUnknLimit`(+Jitter) / `unknBitmask31`——schema 注释写明
-「仍未测试」，这里不猜。
+未使用的字段：`spawnFrame`(+Jitter)（原 instanceCountUnknLimit）——语料显示它与
+`spawnFlags` 的 UseSpawnFrame 位强相关（该位置位时 93% 的块此字段非零），大概率是那个
+开关对应的参数，但具体控制什么行为仍未测，这里不猜。
+`spawnFlags`（原 unknBitmask31）的 6 个位对应官方截图的 6 个勾选框（UseSpawnFrame/
+RingBufferMode/RayCastHitOnly/RayCastDependency/InitializeFull/InterporatePos），
+但都还没测过实际效果，模拟层同样不看。
 
 发射会停
 --------
-`emitterRepeatCount` 非 0 **且** `burstsPerCycle` 非 0 时，那 `per_cycle + repeat - 1`
+`emitterRepeatCount` 非 0 **且** `loopNum` 非 0 时，那 `per_cycle + repeat - 1`
 批发完就**不再发了**（`SimConfig.spawn_after_cycle`，默认 `stop`）。这是实机行为：
 用户的 `05 spell` 是 10 批、游戏里就只有 10 个符文，之后再没有新的。
 
-两个「无限」态照旧永不停：`burstsPerCycle == 0`、或 `emitterRepeatCount == 0`
+两个「无限」态照旧永不停：`loopNum == 0`、或 `emitterRepeatCount == 0`
 （后者的「否决权」语义见 schema 注释）。`repeat` 开关值切到 `recycle` 可以退回改动前的
 行为（等一个粒子寿命后换位置、重抽、再开一轮）。
 
@@ -62,8 +69,8 @@ class Spawn(Behavior):
         srng = emitter_stream_rng(em.seed)
         st = {
             "rng": srng,
-            "delay": jitter_int(f.get("emitterStartDelay"),
-                                f.get("emitterStartDelayJitter"),
+            "delay": jitter_int(f.get("emitterDelayFrame"),
+                                f.get("emitterDelayFrameJitter"),
                                 srng, em.config.jitter_mode),
             "wait": 0,
             "bursts_left": None,     # None = 本轮不计数（永不换位置，无限生成）
@@ -75,18 +82,18 @@ class Spawn(Behavior):
         self._begin_cycle(em, st)
 
     def _begin_cycle(self, em, st):
-        """开一轮：重抽 burstsPerCycle，定这一轮的节奏与批次数。"""
+        """开一轮：重抽 loopNum，定这一轮的节奏与批次数。"""
         f = em.f(SPAWN)
         cfg = em.config
         rng = st["rng"]
         mode = cfg.jitter_mode
 
-        per_cycle = jitter_int(f.get("burstsPerCycle"), f.get("burstsPerCycleJitter"),
+        per_cycle = jitter_int(f.get("loopNum"), f.get("loopNumJitter"),
                                rng, mode)
         repeat = f.i("emitterRepeatCount")
 
         # 三态之二（per_cycle==1）：节奏改用 altBurstInterval
-        st["interval_field"] = ("altBurstInterval", "altBurstIntervalJitter")             if per_cycle == 1 else ("burstInterval", "burstIntervalJitter")
+        st["interval_field"] = ("altBurstInterval", "altBurstIntervalJitter")             if per_cycle == 1 else ("intervalFrame", "intervalFrameJitter")
         interval = self._roll_interval(em, st)
 
         if per_cycle == 0 or repeat == 0:
@@ -135,7 +142,7 @@ class Spawn(Behavior):
         cfg = em.config
         rng = st["rng"]
 
-        count = jitter_int(f.get("particlesPerBurst"), f.get("particlesPerBurstJitter"),
+        count = jitter_int(f.get("spawnNum"), f.get("spawnNumJitter"),
                            rng, cfg.jitter_mode)
         if count > 0:
             cap = f.i("maxParticles")
@@ -175,6 +182,6 @@ class Spawn(Behavior):
         f = em.f(SPAWN, p)
         if f is None:
             return
-        p.delay_left = max(0, jitter_int(f.get("particleSpawnDelay"),
-                                         f.get("particleSpawnDelayJitter"),
+        p.delay_left = max(0, jitter_int(f.get("spawnWaitFrame"),
+                                         f.get("spawnWaitFrameJitter"),
                                          rng, em.config.jitter_mode))

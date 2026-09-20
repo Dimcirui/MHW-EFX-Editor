@@ -77,9 +77,9 @@ AXIS_GROUPS: dict = {
         ("divergence", [("X", "divergenceX"), ("Y", "divergenceY")]),
     ],
     "VELOCITY3D": [
-        ("rotation",   [("X", "rotationX"),   ("Y", "rotationY"),   ("Z", "rotationZ")]),
-        ("velocity",   [("X", "velocityX"),   ("Y", "velocityY"),   ("Z", "velocityZ")]),
-        ("divergence", [("X", "divergenceX"), ("Y", "divergenceY"), ("Z", "divergenceZ")]),
+        ("rotation", [("X", "rotationX"), ("Y", "rotationY"), ("Z", "rotationZ")]),
+        ("offset",   [("X", "offsetX"),   ("Y", "offsetY"),   ("Z", "offsetZ")]),
+        ("size",     [("X", "sizeX"),     ("Y", "sizeY"),     ("Z", "sizeZ")]),
     ],
     "EMITTERSHAPE3D": [
         ("localRotation", [("X", "localRotationX"), ("Y", "localRotationY"), ("Z", "localRotationZ")]),

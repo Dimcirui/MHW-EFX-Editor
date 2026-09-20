@@ -14,7 +14,8 @@ blender_efx/field_visibility.py — 按 mode 字段过滤生效字段（Route 2�
 字段、=1 offset/size 类字段）。EMITTERSHAPE3D 的 shapeType 门控、HOMING 的三条门控均为实机
 测试确认。UVCONTROL（uv2_enable 直接开关 uv2 组）、TRANSFORM3D（enableVelocityBitflag 位名
 即"启用速度/加速度"）为强语义推断。RANDOMFIX 因 mode→字段关系尚不明确，**暂不门控**
-（默认全显示），待实机/RE 补充。
+（默认全显示），待实机/RE 补充。RGBFIRE/RGBWATER 的 UseLife 门控为强语义推断
+（devlecture 面板分组 + 语料侧 useLife=0 时 keep/vanish 停在默认值不变，双重支撑）。
 """
 
 # ── 谓词（模块级具名，便于复用/可读）───────────────────────────────────────────
@@ -48,12 +49,12 @@ FIELD_VISIBILITY = {
         "rotationYJitter": ("velocityType", _eq0),
         "rotationZ":       ("velocityType", _eq0),
         "rotationZJitter": ("velocityType", _eq0),
-        "velocityX":       ("velocityType", _eq1),
-        "velocityY":       ("velocityType", _eq1),
-        "velocityZ":       ("velocityType", _eq1),
-        "divergenceX":     ("velocityType", _eq1),
-        "divergenceY":     ("velocityType", _eq1),
-        "divergenceZ":     ("velocityType", _eq1),
+        "offsetX":         ("velocityType", _eq1),
+        "offsetY":         ("velocityType", _eq1),
+        "offsetZ":         ("velocityType", _eq1),
+        "sizeX":           ("velocityType", _eq1),
+        "sizeY":           ("velocityType", _eq1),
+        "sizeZ":           ("velocityType", _eq1),
         # minMovementThreshold 属 velocityType=3(EmitterMotion/发射器运动)
         "minMovementThreshold": ("velocityType", _eq3),
     },
@@ -125,6 +126,50 @@ FIELD_VISIBILITY = {
         "length":          ("lengthMode", _eq0),
         "maxLengthLimit":  ("lengthMode", _eq1),
         "contractionSpeed": ("lengthMode", _eq1),
+    },
+    # RGBFIRE / RGBWATER：每段 ColorParam 生命期时序块（Appear/Keep/Vanish + LifeType）
+    # 只在对应 UseLife 打开时才生效——devlecture 面板上这几行本就紧跟在 Use*Life
+    # 下面、同属一个分组；useLife 关着时 keep/vanish 语料侧也确实停在默认值上不变
+    # （见 sim/behaviors/_common.py::roll_color_param）。Lighting/CorrectColorNo
+    # 在面板上是独立的行（不在 Use*Life 分组内），不门控。
+    "RGBFIRE": {
+        "fireColorParam_appearFrame":       ("fireColorParam_useLife", _truthy),
+        "fireColorParam_appearFrameJitter": ("fireColorParam_useLife", _truthy),
+        "fireColorParam_keepFrame":         ("fireColorParam_useLife", _truthy),
+        "fireColorParam_keepFrameJitter":   ("fireColorParam_useLife", _truthy),
+        "fireColorParam_vanishFrame":       ("fireColorParam_useLife", _truthy),
+        "fireColorParam_vanishFrameJitter": ("fireColorParam_useLife", _truthy),
+        "fireColorParam_lifeType":          ("fireColorParam_useLife", _truthy),
+        "smokeColorParam_appearFrame":       ("smokeColorParam_useLife", _truthy),
+        "smokeColorParam_appearFrameJitter": ("smokeColorParam_useLife", _truthy),
+        "smokeColorParam_keepFrame":         ("smokeColorParam_useLife", _truthy),
+        "smokeColorParam_keepFrameJitter":   ("smokeColorParam_useLife", _truthy),
+        "smokeColorParam_vanishFrame":       ("smokeColorParam_useLife", _truthy),
+        "smokeColorParam_vanishFrameJitter": ("smokeColorParam_useLife", _truthy),
+        "smokeColorParam_lifeType":          ("smokeColorParam_useLife", _truthy),
+    },
+    "RGBWATER": {
+        "specularColorParam_appearFrame":       ("specularColorParam_useLife", _truthy),
+        "specularColorParam_appearFrameJitter": ("specularColorParam_useLife", _truthy),
+        "specularColorParam_keepFrame":         ("specularColorParam_useLife", _truthy),
+        "specularColorParam_keepFrameJitter":   ("specularColorParam_useLife", _truthy),
+        "specularColorParam_vanishFrame":       ("specularColorParam_useLife", _truthy),
+        "specularColorParam_vanishFrameJitter": ("specularColorParam_useLife", _truthy),
+        "specularColorParam_lifeType":          ("specularColorParam_useLife", _truthy),
+        "sheetColorParam_appearFrame":       ("sheetColorParam_useLife", _truthy),
+        "sheetColorParam_appearFrameJitter": ("sheetColorParam_useLife", _truthy),
+        "sheetColorParam_keepFrame":         ("sheetColorParam_useLife", _truthy),
+        "sheetColorParam_keepFrameJitter":   ("sheetColorParam_useLife", _truthy),
+        "sheetColorParam_vanishFrame":       ("sheetColorParam_useLife", _truthy),
+        "sheetColorParam_vanishFrameJitter": ("sheetColorParam_useLife", _truthy),
+        "sheetColorParam_lifeType":          ("sheetColorParam_useLife", _truthy),
+        "waterLerpParam_appearFrame":       ("waterLerpParam_useLife", _truthy),
+        "waterLerpParam_appearFrameJitter": ("waterLerpParam_useLife", _truthy),
+        "waterLerpParam_keepFrame":         ("waterLerpParam_useLife", _truthy),
+        "waterLerpParam_keepFrameJitter":   ("waterLerpParam_useLife", _truthy),
+        "waterLerpParam_vanishFrame":       ("waterLerpParam_useLife", _truthy),
+        "waterLerpParam_vanishFrameJitter": ("waterLerpParam_useLife", _truthy),
+        "waterLerpParam_lifeType":          ("waterLerpParam_useLife", _truthy),
     },
 }
 

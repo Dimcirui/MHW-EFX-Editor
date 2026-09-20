@@ -42,9 +42,14 @@ _COLOR_ADJACENT_NAMES = frozenset({
     "emissiveColorRate", "emissiveColorRateJitter",
     "colorRate", "colorRateJitter",
     "colorScaler",
+    # RGBFIRE.fireFactor（原 brightness1，2026-09-19 改名，同一强度字段）
+    "fireFactor",
     # 颜色范围 / 颜色相关开关 / 模式
     "useColorRange", "useEmissiveColor", "useEmissiveColorRange",
     "disableAllColorRange", "colourTransitionPoint",
+    # RGBFIRE.lerpAlphaToBlue（原 unkn4）：0-1 插值位置，跟 colourTransitionPoint
+    # 同一类——是"混合比例"不是"强度值"，归到这一组而非下面的 _BRIGHTNESS_NAMES。
+    "lerpAlphaToBlue",
     # ⚠ 2026-09-04 移除三项：STRAINRIBBON.colorModeFlag 查明是 EPV 颜色槽（已改名
     #   epv_color_slot1，下面 EPV 那组已收）；TUBELIGHT 的 backFace/frontFaceTintMode
     #   实为光照有效半径（已改名 tail/headEffectiveRadius），与颜色无关。
@@ -53,6 +58,8 @@ _COLOR_ADJACENT_NAMES = frozenset({
     "EPVColorSlot1", "EPVColorSlot2", "epvColorSlot",
     "epvcolor_0", "epvcolor_1",
     "headColorEpvSlot", "tailColorEpvSlot",
+    # BILLBOARD3D.correctColorNo（原 EPVColorSlot1，2026-09-19 改名，同一 EPV 槽位机制）
+    "correctColorNo",
 })
 
 # 前缀匹配：火焰/烟雾色时序参数块（RGBFIRE，跟随 fireColor/smokeColor 通道生效/
@@ -85,6 +92,7 @@ _PACKED_INT_COLOR_FIELDS = frozenset({
 # 乘算时另有 data_type=="FLOAT" 的硬门控，双保险：即便名字命中、非浮点也跳过。
 _BRIGHTNESS_NAMES = frozenset({
     "brightness", "brightness1", "brightness2", "brightness3", "brightness4",
+    "fireFactor",   # RGBFIRE 原 brightness1
     "brightnessSlotMultiplier1", "brightnessSlotMultiplier2",
     "brightnessJitter", "bright",   # brightnessJitter 原名 randomBrightnessMult
     "lightIntensity", "lightIntensityJitter",

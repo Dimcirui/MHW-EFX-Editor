@@ -175,23 +175,23 @@ FIELD_ANNOTATIONS = {
     # ExternSpawn (EFX_Subtypes.bt)；2026-07-26 用户实机测试确认完整 emitter/particle
     # 三层模型（SPAWN属性本身 → emitter实例/轮次 → particle个体），字段名与下方 tooltip
     # 已按测试结果更新，详见 structs.py EXTERN_SPAWN_SCHEMA 行内注释总览。
-    ("SPAWN", "emitterStartDelay"): {
+    ("SPAWN", "emitterDelayFrame"): {
         "EN": "Frames to wait before the spawner's very first burst ever fires. "
-              "One-time delay applied once at activation — unrelated to burstInterval "
+              "One-time delay applied once at activation — unrelated to intervalFrame "
               "or altBurstInterval.",
-        "ZH": "发射器有史以来第一次生成前的等待帧数。只在激活时生效一次，跟 burstInterval "
+        "ZH": "发射器有史以来第一次生成前的等待帧数。只在激活时生效一次，跟 intervalFrame "
               "/ altBurstInterval 无关。",
     },
-    ("SPAWN", "emitterStartDelayJitter"): {
-        "EN": "Random jitter added to emitterStartDelay.",
-        "ZH": "叠加到 emitterStartDelay 上的随机抖动。",
+    ("SPAWN", "emitterDelayFrameJitter"): {
+        "EN": "Random jitter added to emitterDelayFrame.",
+        "ZH": "叠加到 emitterDelayFrame 上的随机抖动。",
     },
     ("SPAWN", "emitterRepeatCount"): {
         "EN": "0 = spawner never relocates, bursts continue forever regardless of "
-              "burstsPerCycle. Non-zero = added to burstsPerCycle to set total bursts "
-              "per cycle before relocating (see burstsPerCycle). Has no jitter of its own.",
-        "ZH": "0=发射器永不换位置，无论 burstsPerCycle 是什么都持续生成；非0时与 "
-              "burstsPerCycle 相加，决定每轮换位置前的总批次数（见 burstsPerCycle）。"
+              "loopNum. Non-zero = added to loopNum to set total bursts "
+              "per cycle before relocating (see loopNum). Has no jitter of its own.",
+        "ZH": "0=发射器永不换位置，无论 loopNum 是什么都持续生成；非0时与 "
+              "loopNum 相加，决定每轮换位置前的总批次数（见 loopNum）。"
               "没有自己的随机抖动。",
     },
 
@@ -254,12 +254,12 @@ FIELD_ANNOTATIONS = {
     ("VELOCITY3D", "velocityType"): {
         "EN": "Decides how the particle's movement DIRECTION is determined (speed always comes "
               "from speed/acceleration; gravity is independent and always applies). "
-              "0=Directional (direction from baseAxis + rotation), 1=DirectionalSpread "
-              "(Vi=(divergence-1)*spawnPos+velocity, normalized), 2=Radial (always moves outward, "
-              "rotation/velocity/divergence have no effect), 3=EmitterMotion (inherits the "
+              "0=DIRECTION (direction from baseAxis + rotation), 1=NORMAL "
+              "(Vi=(size-1)*spawnPos+offset, normalized), 2=RADIAL (always moves outward, "
+              "rotation/offset/size have no effect), 3=EMITTER_MOVE (inherits the "
               "emitter's own movement, gated by minMovementThreshold). ⚠ Values 4 and 5 also "
               "occur; their meaning is unknown.",
-        "ZH": '决定粒子运动方向如何确定（速度始终由 speed/acceleration 决定，重力独立于此始终生效）。0=Directional(由 baseAxis + rotation 决定方向)，1=DirectionalSpread(即 Vi=(divergence-1)*生成坐标+velocity 归一化模型)，2=Radial(始终向外运动，rotation/velocity/divergence 均无效)，3=EmitterMotion(继承 emitter 自身移动，受 minMovementThreshold 门控)。⚠ 另有 4/5 两个取值，含义未知。',
+        "ZH": '决定粒子运动方向如何确定（速度始终由 speed/acceleration 决定，重力独立于此始终生效）。0=DIRECTION(由 baseAxis + rotation 决定方向)，1=NORMAL(即 Vi=(size-1)*生成坐标+offset 归一化模型)，2=RADIAL(始终向外运动，rotation/offset/size 均无效)，3=EMITTER_MOVE(继承 emitter 自身移动，受 minMovementThreshold 门控)。⚠ 另有 4/5 两个取值，含义未知。',
     },
     ("VELOCITY3D", "gravity"): {
         "EN": "Gravity. Always applies regardless of velocityType.",
@@ -465,16 +465,16 @@ FIELD_ANNOTATIONS = {
     # ─── RGBFIRE ──────────────────────────────────────────────────────────────
     # ExternRgbFire (EFX_Subtypes.bt)
     ("RGBFIRE", "fireColor"): {
-        "EN": "Uses the texture's RGB channel — usually the outer glowing edge; also tints the inner smoke color.",
-        "ZH": "使用贴图的RGB通道——一般是外缘的荧光色；同时会给内部的烟雾色染色。",
+        "EN": "Tints the texture's Green channel — usually the outer glowing edge; also tints the inner smoke color.",
+        "ZH": "给贴图的绿通道染色——一般是外缘的荧光色；同时会给内部的烟雾色染色。",
     },
-    ("RGBFIRE", "brightness1"): {
-        "EN": "Fire color brightness — colors will combine.",
-        "ZH": "火焰色亮度——颜色会叠加混合。",
+    ("RGBFIRE", "fireFactor"): {
+        "EN": "Fire (GreenCh) layer intensity. 0 turns the fire layer off entirely; smoke is unaffected.",
+        "ZH": "火焰（绿通道）层的强度。设为 0 会把火焰这一层整个关掉，不影响烟雾层。",
     },
     ("RGBFIRE", "smokeColor"): {
-        "EN": "Uses the texture's Alpha channel — usually the inner core color.",
-        "ZH": "使用贴图的Alpha通道——一般是内部的核心色。",
+        "EN": "Tints the texture's Red channel — usually the inner core color.",
+        "ZH": "给贴图的红通道染色——一般是内部的核心色。",
     },
     ("RGBFIRE", "brightness2"): {
         "EN": "Smoke color brightness rate.",
@@ -496,9 +496,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Usually 0. Values 1 and 2 also occur, meaning unknown.",
         "ZH": "通常为 0。另有取值 1 和 2，含义未知。",
     },
-    ("RGBFIRE", "fireColorParam_unkn9"): {
-        "EN": 'Setting to 1 kills the fire color. Values 2/8/9 also occur, meaning unknown.',
-        "ZH": "设为 1 会消除火焰色。另有取值 2/8/9，含义未知。",
+    ("RGBFIRE", "fireColorParam_correctColorNo"): {
+        "EN": 'EPV colour slot id, same mechanism as BILLBOARD3D correctColorNo: 0 = use the local fire colour; non-zero = take it from that slot in the calling .epv instead. Setting to 1 makes the fire colour disappear when the .epv has no data for that slot (values 2/8/9 also occur).',
+        "ZH": "EPV 颜色槽位 id，跟 BILLBOARD3D 的 correctColorNo 是同一机制：0 = 用本地火焰色；非 0 = 改用调用方 .epv 对应槽位的颜色。若 .epv 没有该槽位数据，设为 1 会导致火焰色消失（另有取值 2/8/9）。",
     },
     ("RGBFIRE", "smokeColorParam_useLife"): {
         "EN": "Smoke color timing params (fade-in / duration / fade-out). Note: even a short duration can tint a persistent effect permanently.",
@@ -508,9 +508,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Usually 0. Values 1 and 2 also occur, meaning unknown.",
         "ZH": "通常为 0。另有取值 1 和 2，含义未知。",
     },
-    ("RGBFIRE", "smokeColorParam_unkn9"): {
-        "EN": 'Setting to 1 kills the smoke color. Values 2/7/8/9 also occur, meaning unknown.',
-        "ZH": "设为 1 会消除烟雾色。另有取值 2/7/8/9，含义未知。",
+    ("RGBFIRE", "smokeColorParam_correctColorNo"): {
+        "EN": 'EPV colour slot id, same mechanism as BILLBOARD3D correctColorNo: 0 = use the local smoke colour; non-zero = take it from that slot in the calling .epv instead. Setting to 1 makes the smoke colour disappear when the .epv has no data for that slot (values 2/7/8/9 also occur).',
+        "ZH": "EPV 颜色槽位 id，跟 BILLBOARD3D 的 correctColorNo 是同一机制：0 = 用本地烟雾色；非 0 = 改用调用方 .epv 对应槽位的颜色。若 .epv 没有该槽位数据，设为 1 会导致烟雾色消失（另有取值 2/7/8/9）。",
     },
 
     # ─── GUIDE ────────────────────────────────────────────────────────────────
@@ -519,32 +519,60 @@ FIELD_ANNOTATIONS = {
     # ─── PLEMISSIVE ───────────────────────────────────────────────────────────
     # ExternPlEmissive (EFX_Subtypes.bt)
     # body_p / wp_p 已重命名为 Aura Part (Player)/(Weapon) 并配勾选弹窗，名称自明，无需注释。
-    ("PLEMISSIVE", "area"): {
-        "EN": "Area of Aura (2 floats)",
-        "ZH": "光圈区域（2 个 float）",
+    ("PLEMISSIVE", "rimWidth"): {
+        "EN": "Rim light width. TIML DT 0xAC635CA9 (\"RimWidth\") confirmed.",
+        "ZH": "边缘光宽度。TIML DT 0xAC635CA9（\"RimWidth\"）已确认。",
     },
-    ("PLEMISSIVE", "bright"): {
-        "EN": "Brightness (can be negative)",
-        "ZH": "亮度（可为负值）",
+    ("PLEMISSIVE", "rimPower"): {
+        "EN": "Rim light falloff power. TIML DT 0x8BF31826 (\"RimPower\") confirmed.",
+        "ZH": "边缘光衰减强度。TIML DT 0x8BF31826（\"RimPower\"）已确认。",
     },
-    ("PLEMISSIVE", "area_of_aura"): {
-        "EN": "9=Front half,  8-1=Everything",
-        "ZH": "9=前半部分,  8-1=全部",
+    ("PLEMISSIVE", "rimAlpha"): {
+        "EN": "Rim light opacity (can be negative). TIML DT 0xF09920EC (\"RimAlpha\") confirmed.",
+        "ZH": "边缘光透明度（可为负值）。TIML DT 0xF09920EC（\"RimAlpha\"）已确认。",
+    },
+    ("PLEMISSIVE", "intensity"): {
+        "EN": "Emissive intensity. TIML DT 0x94BCC5CE (\"Intensity\") confirmed.",
+        "ZH": "自发光强度。TIML DT 0x94BCC5CE（\"Intensity\"）已确认。",
+    },
+    ("PLEMISSIVE", "mask0"): {
+        "EN": "Emit-mask threshold 0 (default 15.0). TIML DT 0xEC4350B5 (\"Mask0\") confirmed.",
+        "ZH": "发光遮罩阈值 0（默认 15.0）。TIML DT 0xEC4350B5（\"Mask0\"）已确认。",
+    },
+    ("PLEMISSIVE", "mask1"): {
+        "EN": "Emit-mask threshold 1 (default 250.0). TIML DT 0x9B446023 (\"Mask1\") confirmed.",
+        "ZH": "发光遮罩阈值 1（默认 250.0）。TIML DT 0x9B446023（\"Mask1\"）已确认。",
+    },
+    ("PLEMISSIVE", "emitMaskFlags"): {
+        "EN": "Emit-mask related toggles (4 bits used, bit0/bit3 unresolved — see enums.py::BITS_PLEMISSIVE_EMIT_MASK).",
+        "ZH": "发光遮罩相关的开关组合（用到 4 位，bit0/bit3 尚未分清——见 enums.py::BITS_PLEMISSIVE_EMIT_MASK）。",
     },
 
     # ─── PARENTEMISSIVE ───────────────────────────────────────────────────────
     # ParentEmissive (EFX_Subtypes.bt)
-    ("PARENTEMISSIVE", "brightness"): {
-        "EN": "Brightness",
-        "ZH": "亮度",
+    ("PARENTEMISSIVE", "intensity"): {
+        "EN": "Emissive intensity. Shares PlEmissive's TimelineParam (same TLP 0x598272E1), positional match only — weaker confidence than PLEMISSIVE's own Intensity.",
+        "ZH": "自发光强度。跟 PlEmissive 共用同一个 TimelineParam（同一个 TLP 0x598272E1），只是位置对应，置信度比 PLEMISSIVE 自己的 Intensity 弱一些。",
     },
-    ("PARENTEMISSIVE", "rimParam"): {
-        "EN": "Emissive Rim Parameters (3 floats)",
-        "ZH": "自发光边缘光参数（3 个 float）",
+    ("PARENTEMISSIVE", "rimWidth"): {
+        "EN": "Rim light width — same PlEmissive TimelineParam concept as PLEMISSIVE.rimWidth.",
+        "ZH": "边缘光宽度——跟 PLEMISSIVE.rimWidth 是同一个 PlEmissive TimelineParam 概念。",
     },
-    ("PARENTEMISSIVE", "blendParam"): {
-        "EN": "Emissive Rim Blend Parameters (3 floats)",
-        "ZH": "自发光边缘光混合参数（3 个 float）",
+    ("PARENTEMISSIVE", "rimPower"): {
+        "EN": "Rim light falloff power — same PlEmissive TimelineParam concept as PLEMISSIVE.rimPower.",
+        "ZH": "边缘光衰减强度——跟 PLEMISSIVE.rimPower 是同一个 PlEmissive TimelineParam 概念。",
+    },
+    ("PARENTEMISSIVE", "rimAlpha"): {
+        "EN": "Rim light opacity — same PlEmissive TimelineParam concept as PLEMISSIVE.rimAlpha.",
+        "ZH": "边缘光透明度——跟 PLEMISSIVE.rimAlpha 是同一个 PlEmissive TimelineParam 概念。",
+    },
+    ("PARENTEMISSIVE", "mask0"): {
+        "EN": "Emit-mask threshold 0 (weak guess — 15.0 is only the second most common value here, not the mode).",
+        "ZH": "发光遮罩阈值 0（弱假设——15.0 在这里只是次常见值，不是众数）。",
+    },
+    ("PARENTEMISSIVE", "mask1"): {
+        "EN": "Emit-mask threshold 1 (weak guess — 250.0 is only the second most common value here, not the mode).",
+        "ZH": "发光遮罩阈值 1（弱假设——250.0 在这里只是次常见值，不是众数）。",
     },
 
     # ─── PLSNOW ───────────────────────────────────────────────────────────────
@@ -1676,43 +1704,43 @@ FIELD_ANNOTATIONS = {
 
     # ─── 行为补充（社区实测，世界特效注释解析）────────────────────────────
     # SPAWN（2026-07-26 实机测试重新定型，取代旧的"burst次数"猜测）
-    ("SPAWN", "burstsPerCycle"): {
+    ("SPAWN", "loopNum"): {
         "EN": "Re-rolled each time the spawner starts a new cycle (new position). "
-              "0 = never relocates, bursts continue forever at burstInterval pacing. "
+              "0 = never relocates, bursts continue forever at intervalFrame pacing. "
               "1 = bursts use altBurstInterval pacing instead; total bursts this cycle "
-              "= emitterRepeatCount. ≥2 = normal burstInterval pacing; total bursts this "
+              "= emitterRepeatCount. ≥2 = normal intervalFrame pacing; total bursts this "
               "cycle = this value + emitterRepeatCount − 1. All bursts in a finite cycle "
               "(including the last) fire at the same pacing selected above — the last "
               "burst's own trigger timing is not special. What IS special is what "
               "happens after the last burst fires: instead of another burst, the "
               "spawner waits for that burst's particles to die (LIFE duration+"
               "fadeOutDuration) and then immediately relocates.",
-        "ZH": "发射器每次开始新一轮（换新位置）时重新抽取。0=永不换位置，按 burstInterval "
+        "ZH": "发射器每次开始新一轮（换新位置）时重新抽取。0=永不换位置，按 intervalFrame "
               "节奏无限生成；1=改用 altBurstInterval 节奏，本轮总批次数=emitterRepeatCount；"
-              "≥2=仍用 burstInterval 节奏，本轮总批次数=该值+emitterRepeatCount−1。有限轮次里"
+              "≥2=仍用 intervalFrame 节奏，本轮总批次数=该值+emitterRepeatCount−1。有限轮次里"
               "包括最后一批在内，全部批次都按上面选中的同一套节奏触发——最后一批本身的触发时机"
               "并无特殊；特殊的是最后一批触发之后：不是再等一次间隔去触发下一批，而是等这批粒子"
               "死亡(按LIFE的duration+fadeOutDuration)后立即换位置。",
     },
-    ("SPAWN", "burstsPerCycleJitter"): {
-        "EN": "Random jitter added to burstsPerCycle, re-rolled together with it each cycle.",
-        "ZH": "叠加到 burstsPerCycle 上的随机抖动，随每轮一起重新抽取。",
+    ("SPAWN", "loopNumJitter"): {
+        "EN": "Random jitter added to loopNum, re-rolled together with it each cycle.",
+        "ZH": "叠加到 loopNum 上的随机抖动，随每轮一起重新抽取。",
     },
-    ("SPAWN", "burstInterval"): {
+    ("SPAWN", "intervalFrame"): {
         "EN": "Frames between consecutive bursts within one spawner cycle. Only applies "
-              "when burstsPerCycle rolls to 0 or ≥2 — when it rolls to 1, altBurstInterval "
+              "when loopNum rolls to 0 or ≥2 — when it rolls to 1, altBurstInterval "
               "is used instead.",
-        "ZH": "同一轮发射周期内，连续两次生成批次之间的帧数间隔。仅在 burstsPerCycle 抽到 "
+        "ZH": "同一轮发射周期内，连续两次生成批次之间的帧数间隔。仅在 loopNum 抽到 "
               "0 或 ≥2 时生效；抽到1时改用 altBurstInterval。",
     },
-    ("SPAWN", "burstIntervalJitter"): {
-        "EN": "Random jitter added to burstInterval.",
-        "ZH": "叠加到 burstInterval 上的随机抖动。",
+    ("SPAWN", "intervalFrameJitter"): {
+        "EN": "Random jitter added to intervalFrame.",
+        "ZH": "叠加到 intervalFrame 上的随机抖动。",
     },
     ("SPAWN", "altBurstInterval"): {
-        "EN": "Frames between bursts, used instead of burstInterval specifically when "
-              "burstsPerCycle rolls to 1.",
-        "ZH": "当 burstsPerCycle 抽到1时，用来代替 burstInterval 的批次间隔帧数。",
+        "EN": "Frames between bursts, used instead of intervalFrame specifically when "
+              "loopNum rolls to 1.",
+        "ZH": "当 loopNum 抽到1时，用来代替 intervalFrame 的批次间隔帧数。",
     },
     ("SPAWN", "altBurstIntervalJitter"): {
         "EN": "Random jitter added to altBurstInterval.",
@@ -1804,44 +1832,44 @@ FIELD_ANNOTATIONS = {
         "EN": "Frames before speed takes effect.",
         "ZH": "速度生效前的延迟帧数。",
     },
-    ("VELOCITY3D", "velocityX"): {
+    ("VELOCITY3D", "offsetX"): {
         "EN": "Each particle's direction is computed per axis as "
-              "V_i = (divergence_i - 1) x i0 + velocity_i, where i0 is that particle's own "
+              "V_i = (size_i - 1) x i0 + offset_i, where i0 is that particle's own "
               "spawn coordinate on axis i, then normalized — only the direction is used, the "
-              "speed comes from speed/acceleration. velocity is simply the common movement "
+              "speed comes from speed/acceleration. offset is simply the common movement "
               "direction shared by all particles, regardless of where each one spawned.",
-        "ZH": "每个粒子的运动方向按下式逐轴算出：V_i =（divergence_i − 1）× i0 + velocity_i，"
+        "ZH": "每个粒子的运动方向按下式逐轴算出：V_i =（size_i − 1）× i0 + offset_i，"
               "其中 i0 是该粒子生成时在 i 轴上的坐标；算完再归一化——只取方向，速度大小由"
-              "初速度/加速度决定。velocity 可以简单视作全体粒子共同的运动方向，与各自在哪"
+              "初速度/加速度决定。offset 可以简单视作全体粒子共同的运动方向，与各自在哪"
               "生成无关。",
     },
-    ("VELOCITY3D", "velocityY"): {
-        "EN": "See velocityX.",
-        "ZH": "见 velocityX。",
+    ("VELOCITY3D", "offsetY"): {
+        "EN": "See offsetX.",
+        "ZH": "见 offsetX。",
     },
-    ("VELOCITY3D", "velocityZ"): {
-        "EN": "See velocityX.",
-        "ZH": "见 velocityX。",
+    ("VELOCITY3D", "offsetZ"): {
+        "EN": "See offsetX.",
+        "ZH": "见 offsetX。",
     },
-    ("VELOCITY3D", "divergenceX"): {
-        "EN": "Direction is computed per axis as V_i = (divergence_i - 1) x i0 + velocity_i, "
-              "where i0 is that particle's own spawn coordinate on axis i. divergence is simply "
+    ("VELOCITY3D", "sizeX"): {
+        "EN": "Direction is computed per axis as V_i = (size_i - 1) x i0 + offset_i, "
+              "where i0 is that particle's own spawn coordinate on axis i. size is simply "
               "how strongly particles spread out from / collapse toward the center, scaled by "
               "where each one spawned: 1 = no effect on this axis; >1 = spreads outward; "
               "<1 = converges inward, passing through to the other side. Direction only — the "
               "magnitude does not change the speed.",
-        "ZH": "运动方向按下式逐轴算出：V_i =（divergence_i − 1）× i0 + velocity_i，其中 i0 是"
-              "该粒子生成时在 i 轴上的坐标。divergence 可以简单视作以生成位置为基础的发散/"
+        "ZH": "运动方向按下式逐轴算出：V_i =（size_i − 1）× i0 + offset_i，其中 i0 是"
+              "该粒子生成时在 i 轴上的坐标。size 可以简单视作以生成位置为基础的发散/"
               "收拢强度：1=该轴无效果；>1 向外发散；<1 向内收拢（会穿过中心继续到对面）。"
               "只影响方向，数值大小不影响速度。",
     },
-    ("VELOCITY3D", "divergenceY"): {
-        "EN": "See divergenceX.",
-        "ZH": "见 divergenceX。",
+    ("VELOCITY3D", "sizeY"): {
+        "EN": "See sizeX.",
+        "ZH": "见 sizeX。",
     },
-    ("VELOCITY3D", "divergenceZ"): {
-        "EN": "See divergenceX.",
-        "ZH": "见 divergenceX。",
+    ("VELOCITY3D", "sizeZ"): {
+        "EN": "See sizeX.",
+        "ZH": "见 sizeX。",
     },
     # BILLBOARD3D（含本版新拆分字段）
     ("BILLBOARD3D", "color"): {
@@ -2501,7 +2529,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 1, 3].",
         "ZH": "常见取值为 [0, 1, 3]。",
     },
-    ("BILLBOARD3D", "EPVColorSlot1"): {
+    ("BILLBOARD3D", "correctColorNo"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
@@ -2533,21 +2561,25 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("BILLBOARD3D", "unknEnum5"): {
+    ("BILLBOARD3D", "divideNum"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 10].",
         "ZH": "常见取值为 [0, 1, 2, 3, 4, 10]。",
     },
-    ("BILLBOARD3D", "unknFlag6_0"): {
+    ("BILLBOARD3D", "enableGPUParticle"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("BILLBOARD3D", "unkn6_1"): {
+    ("BILLBOARD3D", "fieldInfluenceRate"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("BILLBOARD3D", "unkn7"): {
+    ("BILLBOARD3D", "fieldInfluenceRateMultiplier"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
+    },
+    ("BILLBOARD3D", "lightGroup"): {
+        "EN": 'Packed flags edited via the popup: which light groups this billboard reacts to. All 8 bits are independently used; a value of 255 is a distinct "affected by all groups" sentinel, not just the union of the 8 individual bits.',
+        "ZH": '打包标志，用弹窗编辑：这个 Billboard 对哪些光照组作出反应。8 位全部独立使用；255 是单独的"对全部光照组都反应"哨兵值，不只是 8 个独立位的自然并集。',
     },
     ("BILLBOARD3D", "unknFlag9"): {
         "EN": "Common values: 0/1.",
@@ -3186,9 +3218,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "与 MESH.rotationOrder 同一套旋转顺序枚举（0=XYZ,1=YZX,2=YXZ,3=ZYX,4=ZXY,5=XZY）；"
               "压倒性取值 4(ZXY)，与 MESH.rotationOrder 分布形状一致。",
     },
-    ("PLANE", "unknBitmask7_0"): {
-        "EN": 'Values [0, 1, 2, 3, 4, 8, 32, 33, 36] look like a bitmask (1/2/4/8/32 present, plus combinations 33=32+1, 36=32+4). Per-bit meaning unknown.',
-        "ZH": '常见取值 [0, 1, 2, 3, 4, 8, 32, 33, 36] 呈现位掩码特征（含 1/2/4/8/32 及其组合 33=32+1、36=32+4）。各 bit 含义未知。',
+    ("PLANE", "lightGroup"): {
+        "EN": 'Packed flags edited via the popup: which light groups this plane reacts to (same table as BILLBOARD3D/MESH/RIBBON).',
+        "ZH": '打包标志，用弹窗编辑：这个 Plane 对哪些光照组作出反应（与 BILLBOARD3D/MESH/RIBBON 共用同一张表）。',
     },
     ("PLANE", "unknFlag7_1"): {
         "EN": "Common values: 0/1.",
@@ -3198,21 +3230,21 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("PLEMISSIVE", "radii_effect_unkn2"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+    ("PLEMISSIVE", "enableUseEmitMask"): {
+        "EN": "Master switch for the emit mask. 0 = mask0/mask1 are never touched from default (100% clean gate across the whole corpus); 1 = always customized.",
+        "ZH": "发光遮罩功能的总开关。为 0 时 mask0/mask1 全语料从未偏离默认值（100% 干净的门控）；为 1 时全部被改过。",
     },
-    ("PLEMISSIVE", "unkn1"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("PLEMISSIVE", "blend"): {
+        "EN": "Blend factor. TIML DT 0x95A3A1D3 (\"Blend\") confirmed.",
+        "ZH": "混合系数。TIML DT 0x95A3A1D3（\"Blend\"）已确认。",
     },
-    ("PLEMISSIVE", "unkn5_1"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("PLEMISSIVE", "addMask0"): {
+        "EN": "Secondary (\"Add\") emit-mask threshold 0 (weak guess, based on position).",
+        "ZH": "次级（\"Add\"）发光遮罩阈值 0（弱假设，按位置推断）。",
     },
-    ("PLEMISSIVE", "unkn5_2"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("PLEMISSIVE", "addMask1"): {
+        "EN": "Secondary (\"Add\") emit-mask threshold 1 (weak guess, based on position).",
+        "ZH": "次级（\"Add\"）发光遮罩阈值 1（弱假设，按位置推断）。",
     },
     ("PTBEHAVIOR", "behav_type_len"): {
         "EN": "Common values: [20, 21, 28, 31, 34].",
@@ -3311,9 +3343,9 @@ FIELD_ANNOTATIONS = {
     },
     # fire/smoke 的 lighting 两项不再挂 tooltip：标签「火焰受光照 / 烟雾受光照」已经说完，
     # 原先的「作用尚未确认」与新标签矛盾，删除。
-    ("RGBFIRE", "unkn4"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("RGBFIRE", "lerpAlphaToBlue"): {
+        "EN": "Blends the texture's Alpha channel into the Blue channel (the auxiliary diffuse layer that has no colour picker of its own). 0 = keep Blue as-is; 1 = fully replace it with Alpha.",
+        "ZH": "把贴图 Alpha 通道按此比例混入 Blue 通道（B 通道是没有独立调色入口的辅助弥散层）。0 = 保留原 B 通道；1 = 完全用 Alpha 顶替。",
     },
     ("RGBWATER", "specularColorParam_keepFrameJitter"): {
         "EN": "Common values: [0, 5, 10, 14, 30, 40, 62].",
@@ -3323,9 +3355,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "sheetColorParam_unkn9"): {
-        "EN": "Common values: [0, 1, 2, 6, 7, 8].",
-        "ZH": "常见取值为 [0, 1, 2, 6, 7, 8]。",
+    ("RGBWATER", "sheetColorParam_correctColorNo"): {
+        "EN": "EPV colour slot id, same mechanism as BILLBOARD3D correctColorNo: 0 = use the local sheet colour; non-zero = take it from that slot in the calling .epv instead. Common values: [0, 1, 2, 6, 7, 8].",
+        "ZH": "EPV 颜色槽位 id，跟 BILLBOARD3D 的 correctColorNo 是同一机制：0 = 用本地水膜色；非 0 = 改用调用方 .epv 对应槽位的颜色。常见取值为 [0, 1, 2, 6, 7, 8]。",
     },
     ("RGBWATER", "waterLerpParam_useLife"): {
         "EN": "Common values: 0/1.",
@@ -3351,9 +3383,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("RGBWATER", "specularColorParam_unkn9"): {
-        "EN": "Common values: [0, 2].",
-        "ZH": "常见取值为 [0, 2]。",
+    ("RGBWATER", "specularColorParam_correctColorNo"): {
+        "EN": "EPV colour slot id, same mechanism as BILLBOARD3D correctColorNo: 0 = use the local specular colour; non-zero = take it from that slot in the calling .epv instead. Common values: [0, 2].",
+        "ZH": "EPV 颜色槽位 id，跟 BILLBOARD3D 的 correctColorNo 是同一机制：0 = 用本地高光色；非 0 = 改用调用方 .epv 对应槽位的颜色。常见取值为 [0, 2]。",
     },
     ("RGBWATER", "sheetColorParam_useLife"): {
         "EN": "Common values: 0/1.",
@@ -3366,10 +3398,6 @@ FIELD_ANNOTATIONS = {
     ("RGBWATER", "sheetColorParam_appearFrameJitter"): {
         "EN": "Common values: [0, 25].",
         "ZH": "常见取值为 [0, 25]。",
-    },
-    ("RGBWATER", "unknownFloat"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
     },
     ("RGBWATER", "specularColorParam_useLife"): {
         "EN": "Common values: 0/1.",
@@ -3534,9 +3562,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("RIBBON", "unknBitmask22_1"): {
-        "EN": "Bitmask over bits 0~6. Per-bit meaning unknown.",
-        "ZH": "位 0~6 的位掩码。各位含义未知。",
+    ("RIBBON", "lightGroup"): {
+        "EN": 'Packed flags edited via the popup: which light groups this ribbon reacts to (same table as BILLBOARD3D/MESH/PLANE).',
+        "ZH": '打包标志，用弹窗编辑：这个 Ribbon 对哪些光照组作出反应（与 BILLBOARD3D/MESH/PLANE 共用同一张表）。',
     },
     ("RIBBON", "unknFlag22_2"): {
         "EN": "Purpose unknown.",
@@ -3799,10 +3827,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200].",
         "ZH": "常见取值为 [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200]。",
     },
-    ("SHADERSETTINGS", "unknEnum4_8"): {
-        # 取值中两个非哨兵值匹配 jamcrc("Smoke")/jamcrc("Default")，疑似类别/分组名哈希。
-        "EN": '-1 = unset. Other values look like name hashes, possibly a category or group identifier. Purpose unknown.',
-        "ZH": "-1=未设置。其余取值形似名字哈希，可能是某种类别／分组标识。作用未知。",
+    ("SHADERSETTINGS", "presetId"): {
+        "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. -1 = none selected (uses the local values on this attribute instead).',
+        "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。-1=未选择任何预设（用本属性上的本地值）。',
     },
     ("SHADERSETTINGS", "unkn4_9"): {
         "EN": "Usually 0; other common values: [-1000, -500, -200, -100, -50, 20, 50, 100, 200].",
@@ -3848,26 +3875,30 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
               "[2, 3, 4, 5, 6, 7, 8, 9, 10]；绝大多数为 2。",
     },
-    ("SPAWN", "particleSpawnDelay"): {
+    ("SPAWN", "spawnWaitFrame"): {
         "EN": "Extra delay applied independently to each individual particle after its "
               "burst fires, staggering when particles from the same burst actually "
-              "become visible. Independent of all emitter-level timing (burstInterval, "
-              "burstsPerCycle, altBurstInterval, emitterStartDelay).",
+              "become visible. Independent of all emitter-level timing (intervalFrame, "
+              "loopNum, altBurstInterval, emitterDelayFrame).",
         "ZH": "每个粒子个体独立叠加的额外生成延迟，让同一批次里的粒子实际出现的时间彼此"
-              "错开。跟所有 emitter 层面的节奏（burstInterval、burstsPerCycle、"
-              "altBurstInterval、emitterStartDelay）无关。",
+              "错开。跟所有 emitter 层面的节奏（intervalFrame、loopNum、"
+              "altBurstInterval、emitterDelayFrame）无关。",
     },
-    ("SPAWN", "particleSpawnDelayJitter"): {
-        "EN": "Random jitter added to particleSpawnDelay, rolled independently per particle.",
-        "ZH": "叠加到 particleSpawnDelay 上的随机抖动，每个粒子独立抽取。",
+    ("SPAWN", "spawnWaitFrameJitter"): {
+        "EN": "Random jitter added to spawnWaitFrame, rolled independently per particle.",
+        "ZH": "叠加到 spawnWaitFrame 上的随机抖动，每个粒子独立抽取。",
     },
     ("SPAWN", "maxParticles"): {
         "EN": 'Soft cap on particles allowed alive at once for this spawner (concurrent count = burst rate × particle lifespan, i.e. duration+fadeOutDuration). Not a lifetime total — bursts are throttled once this cap would be exceeded, and resume in full once earlier particles die off.',
         "ZH": '该发射器同时存活粒子数的软上限。不是终身生成总量——超出上限时本批会被削减，等早前粒子死亡腾出空间后又能满额生成。',
     },
-    ("SPAWN", "unknBitmask31"): {
-        "EN": "Bitmask over bits 0~5, usually 0. Per-bit meaning unknown.",
-        "ZH": "位 0~5 的位掩码，通常为 0。各位含义未知。",
+    ("SPAWN", "spawnFlags"): {
+        "EN": 'Packed flags edited via the popup: UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos (all default off). UseSpawnFrame, RingBufferMode and the RayCast pair are confirmed by cross-checking against spawnFrame, RAYCAST co-occurrence and a comparable feature in Monster Hunter Wilds; InitializeFull/InterporatePos are still a tentative guess.',
+        "ZH": '打包标志，用弹窗编辑：UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos（均默认关闭）。UseSpawnFrame、RingBufferMode 和 RayCast 那一对已分别用 spawnFrame 共现、RAYCAST 共现、《怪物猎人：荒野》同类特征交叉验证坐实；InitializeFull/InterporatePos 仍是暂定假设。',
+    },
+    ("SPAWN", "spawnFrame"): {
+        "EN": 'Untested. Correlates strongly with the UseSpawnFrame bit in spawnFlags (93% of blocks with that bit set have this field non-zero), so it is likely the parameter that flag gates. Values look like clean frame counts.',
+        "ZH": '未测试。与 spawnFlags 里的 UseSpawnFrame 位强相关（该位置位的块里 93% 本字段非零），大概率是那个开关对应的参数。取值像干净的帧数刻度。',
     },
     ("SPAWNBYANGLE", "unknEnum3"): {
         "EN": "Common values: [1, 4].",
@@ -4110,7 +4141,7 @@ FIELD_ANNOTATIONS = {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
-    ("PLEMISSIVE", "epv_color_slot"): {
+    ("PLEMISSIVE", "correctColorNo"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
@@ -4187,17 +4218,17 @@ FIELD_ANNOTATIONS = {
         "EN": "Overall transparency strength of the water surface.",
         "ZH": '水面的整体透明度强度。',
     },
-    ("RGBWATER", "unknownFloat"): {
-        "EN": "Unknown. The only header float with no timeline parameter behind it — the engine declares six float parameters and this attribute has seven floats, so exactly one cannot be animated, and this is it. Mode 0.3 (73%), which does not look like an intensity value.",
-        "ZH": '未知。头部唯一一个背后没有时间线参数的 float——引擎只声明了六个 float 参数、本属性有七个 float，恰好有一个不可做动画，就是它。众数 0.3（73%），不像强度量。',
+    ("RGBWATER", "normalSharpness"): {
+        "EN": "Sharpness of the normal map reconstructed from the R/G channels — matches devlecture (default 0.3, corpus mode 0.3 at 73%). The only header float with no timeline parameter behind it; the engine declares six float parameters and this attribute has seven floats, so exactly one cannot be animated, and this is it.",
+        "ZH": '由 R/G 通道重建出的法线贴图的锐度——跟 devlecture 面板默认值 0.3 吻合（语料众数 0.3，占 73%）。头部唯一一个背后没有时间线参数的 float：引擎只声明了六个 float 参数、本属性有七个 float，恰好有一个不可做动画，就是它。',
     },
     ("UVSEQUENCE", "uvsPath"): {
         "EN": "Path to the .uvs sequence file — this is the artwork you actually see. The .uvs itself is a frame table pointing at a sprite-sheet .tex; playSpeed / patternNo pick which cell plays. Nearly every UVSEQUENCE has one (99% of blocks non-empty).",
         "ZH": '指向 .uvs 序列文件的路径 —— 真正显色的图就是这张。.uvs 本身是一张帧表，指向序列帧大图（.tex）；playSpeed / patternNo 决定放哪一格。通常需要填写。',
     },
     ("RGBWATER", "cubemapPath"): {
-        "EN": "Cube map path for the water surface's environment reflection. Common paths include cm_cube_000_CM and cm_cube_001_CM. This is often left empty; pairs with brightnessSlot2.",
-        "ZH": '水面环境反射用的立方贴图。常见路径包括 cm_cube_000_CM 和 cm_cube_001_CM，通常可留空；与 brightnessSlot2 配套使用。',
+        "EN": "Cube map path for the water surface's environment reflection. Common paths include cm_cube_000_CM and cm_cube_001_CM. This is often left empty; pairs with intensityCubeMap.",
+        "ZH": '水面环境反射用的立方贴图。常见路径包括 cm_cube_000_CM 和 cm_cube_001_CM，通常可留空；与 intensityCubeMap 配套使用。',
     },
     ("TURBULENCE", "tfaPath"): {
         "EN": "Path to the .tfa vector-field file that drives the turbulence. Common paths include cm_exMap\\turbulance_000_T and curlnoise_000_T. Usually required.",

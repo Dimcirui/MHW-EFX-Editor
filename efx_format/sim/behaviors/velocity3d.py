@@ -84,10 +84,10 @@ class Velocity3D(Behavior):
 
     def _initial_direction(self, vtype, f, p, em, rng, cfg):
         if vtype == VT_DIRECTIONAL_SPREAD:
-            # Vi = (divergence - 1) * 生成坐标 + velocity，再归一化
-            div = Vec3(f.get("divergenceX", 1.0), f.get("divergenceY", 1.0),
-                       f.get("divergenceZ", 1.0))
-            base = Vec3(f.get("velocityX"), f.get("velocityY"), f.get("velocityZ"))
+            # Vi = (size - 1) * 生成坐标 + offset，再归一化
+            div = Vec3(f.get("sizeX", 1.0), f.get("sizeY", 1.0),
+                       f.get("sizeZ", 1.0))
+            base = Vec3(f.get("offsetX"), f.get("offsetY"), f.get("offsetZ"))
             v = Vec3((div.x - 1.0) * p.spawn_pos.x + base.x,
                      (div.y - 1.0) * p.spawn_pos.y + base.y,
                      (div.z - 1.0) * p.spawn_pos.z + base.z)

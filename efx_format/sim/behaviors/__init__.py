@@ -15,6 +15,8 @@ T3（渲染修饰）    UVSEQUENCE（序列帧；帧表由宿主经 SimResources
 T4（绑定关系）    PARENTOPTIONS（只做「跟随发射器」+「停止追踪帧数」，其余如实 note）
 T4（联动）        PTLIFE（粒子在某个生命阶段触发 ACTION → 子实例，见 sim/scene.py）
 T4（联动）        PTCOLLISION（落地即停+可选单次触发 ACTION，不做真正反弹，见 ptcollision.py 头注）
+T4（运动）        NOISE（绕生成点的两组独立匀速圆周运动叠加，CONSTRAIN 阶段覆写 p.pos，
+                  见 noise.py 头注）
 T5（染色）        RGBFIRE / RGBWATER（两层颜色 + 各自的生命期时序块）
 T5（渲染修饰）    ALPHACORRECTION（逐纹素的 alpha 阈值/伽马，真正的处理在 shader）
 T5（渲染修饰）    REFRACTION（折射层 = 对背后画面做乘法；只做 pixelNormalOffset=0 那一档）
@@ -38,6 +40,7 @@ from . import emittershape3d   # noqa: F401
 from . import homing           # noqa: F401
 from . import life             # noqa: F401
 from . import mesh             # noqa: F401
+from . import noise            # noqa: F401
 from . import parentoptions    # noqa: F401
 from . import plane            # noqa: F401
 from . import ptcollision      # noqa: F401
@@ -58,5 +61,5 @@ from . import velocity3d       # noqa: F401
 __all__ = ["spawn", "life", "emittershape3d", "velocity3d", "homing",
            "transform3d", "scaleanim", "rotateanim", "billboard3d",
            "dummy", "plane", "ribbon", "ribbonblade", "mesh", "uvsequence",
-           "parentoptions", "ptlife", "ptcollision", "rgbfire", "rgbwater", "alphacorrection",
-           "uvcontrol", "refraction"]
+           "parentoptions", "ptlife", "ptcollision", "noise", "rgbfire", "rgbwater",
+           "alphacorrection", "uvcontrol", "refraction"]

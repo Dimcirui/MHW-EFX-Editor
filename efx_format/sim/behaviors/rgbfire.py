@@ -10,18 +10,20 @@ efx_format/sim/behaviors/rgbfire.py  —  RGBFIRE（火/烟两层染色）
     fireColorParam_*     fireColor 的生命期时序块（见 _common.roll_color_param）
     smokeColorParam_*    smokeColor 的生命期时序块
 
-brightness1 当作**火焰层的强度**
---------------------------------
+fireFactor（原 brightness1）当作**火焰层的强度**
+------------------------------------------------
 它紧跟在 fireColor 后面，位置上对应 RGBWATER 的 intensitySpecular/intensitySheet。
+devlecture P26 确认 GreenCh=Fire、RedCh=Smoke，对应面板上的"GreenCh Factor"。
 语料侧的证据是一道有方向的门（53532 个块）：
 
-    brightness1 != 0  →  fire 段开生命期 13.6%，smoke 段 21.9%
-    brightness1 == 0  →  fire 段开生命期  2.9%，smoke 段 23.4%
+    fireFactor != 0  →  fire 段开生命期 13.6%，smoke 段 21.9%
+    fireFactor == 0  →  fire 段开生命期  2.9%，smoke 段 23.4%
 
 fire 侧掉到 1/4.7，smoke 侧纹丝不动——这个不对称是**针对 fire 段**的，说明
-brightness1 管的就是火焰那一层（0 = 这层关掉）。对照组 unkn4 同样有一半是 0，
-但两侧都没有差别（11.0% vs 10.4%），不是这种门。brightness3/4 几乎从不为 0，
-不是「层开关」那一类，作用未知，不参与计算。
+fireFactor 管的就是火焰那一层（0 = 这层关掉）。对照组 lerpAlphaToBlue 同样有一半
+是 0，但两侧都没有差别（11.0% vs 10.4%），不是这种门。brightness3/4 几乎从不为
+0，不是「层开关」那一类；devlecture 面板上对应的 RedCh Factor/AlphaFactor 两项
+跟已有 tooltip 的"Color Balance 1/2"语义对不上，暂不套用，作用未知，不参与计算。
 
 两层怎么给下游
 --------------
@@ -75,7 +77,7 @@ class RgbFire(Behavior):
         p.rolled["rgbfire"] = {
             "fire": _rgb(f.raw("fireColor")),
             "smoke": _rgb(f.raw("smokeColor")),
-            "fire_i": max(0.0, float(f.get("brightness1", 1.0) or 0.0)),
+            "fire_i": max(0.0, float(f.get("fireFactor", 1.0) or 0.0)),
             "rate": float(f.get("brightness2", 1.0) or 0.0),
             "fp": roll_color_param(f, rng, cfg, "fireColorParam_"),
             "sp": roll_color_param(f, rng, cfg, "smokeColorParam_"),
@@ -91,7 +93,7 @@ class RgbFire(Behavior):
             if f is not None:
                 fire = _rgb(f.raw("fireColor"))
                 smoke = _rgb(f.raw("smokeColor"))
-                fire_i = max(0.0, float(f.get("brightness1", 1.0) or 0.0))
+                fire_i = max(0.0, float(f.get("fireFactor", 1.0) or 0.0))
                 rate = float(f.get("brightness2", 1.0) or 0.0)
 
         wf = fire_i * color_param_weight(st["fp"], p.age)

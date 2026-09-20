@@ -161,40 +161,38 @@ class EFXActionEntryProps(PropertyGroup):
 
     # ── PlayEmitter 专属（偏移基于 emitter raw）────────────────────────────────
     em_unkn0: IntProperty(
-        name="Unkn0",
+        name="Type Flags",
         description="PlayEmitter unkn[0] @0. Small integer, 37 distinct values across the "
                     "official corpus (0~23 contiguous, then sparse up to 50); zero in ~35%. "
-                    "Looks like an index or count. Purpose unconfirmed",
+                    "Temporary label, unverified",
         default=0,
     )
     em_unkn1: BoolProperty(
-        name="Unkn1",
-        description="PlayEmitter unkn[1] @4. Strictly 0/1 across the corpus. Purpose unconfirmed",
+        name="Set Land Attribute",
+        description="PlayEmitter unkn[1] @4. Strictly 0/1 across the corpus. Candidate: "
+                    "SetLandAttribute (docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §4.13), unverified",
         default=False,
     )
     em_unkn2: BoolProperty(
-        name="Unkn2",
-        description="PlayEmitter unkn[2] @8. Strictly 0/1 across the corpus. Purpose unconfirmed",
+        name="Set Land Direction",
+        description="PlayEmitter unkn[2] @8. Strictly 0/1 across the corpus. Candidate: "
+                    "SetLandDirection (docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §4.13), unverified",
         default=False,
     )
-    # ⚠ 标识符仍叫 em_rotation_order / em_rotation 只是为了不破坏已存 .blend（改
-    #   PropertyGroup 标识符会让旧数据回落默认值，而 fields_loaded 仍为 True，导出就会把
-    #   原本的 -90.0 写成 0）。实测语义**不成立**，故显示名/说明一律退回未知。
     em_rotation_order: IntProperty(
-        name="Unkn3",
-        description="PlayEmitter unkn[3] @12. Almost always 4, occasionally 2 or 0. Was guessed "
-                    "to be the shared rotation-order enum, but the adjacent angle group turned "
-                    "out to have no effect in-game, so that reading is withdrawn. Purpose "
-                    "unconfirmed",
+        name="Rotation Order",
+        description="PlayEmitter unkn[3] @12. Shares the same TransformRotOrder table as "
+                    "TRANSFORM3D/EMITTERSHAPE3D (corpus majority value 4 = ZXY, matching the "
+                    "official default). Purpose unconfirmed",
         default=4,
     )
     em_rotation: FloatVectorProperty(
-        name="Unkn4-6 (angles?)",
+        name="Rotation XYZ",
         description="PlayEmitter unkn[4..6] @16. Holds clean degree values (-90 in most nonzero "
                     "cases, also 90 / -140 / -180 / -150 / 78), but editing it has no visible "
-                    "effect in-game, so it is not the rotation of the called entries. May be an "
-                    "internal convention correction, or gated behind something not yet found. "
-                    "Purpose unconfirmed",
+                    "effect in-game, so it is not the rotation of the called entries. Same slot "
+                    "as PlayEFX's Rotation X/Y/Z. May be an internal convention correction, or "
+                    "gated behind something not yet found. Purpose unconfirmed",
         size=3,
         default=(0.0, 0.0, 0.0),
     )
@@ -208,8 +206,9 @@ class EFXActionEntryProps(PropertyGroup):
 
     # ── PlayEFX 专属（偏移基于 playefx raw；命名对齐 EFX_Play.bt 的字段下标）────
     pefx_unkn0: IntProperty(
-        name="Unkn0",
-        description="PlayEFX unkn0 @0. Small integer, 19 distinct values. Purpose unconfirmed",
+        name="Type Flags",
+        description="PlayEFX unkn0 @0. Small integer, 19 distinct values. Same leading slot as "
+                    "PlayEmitter's em_unkn0. Temporary label, unverified",
         default=0,
     )
     pefx_type_str: StringProperty(
@@ -219,39 +218,49 @@ class EFXActionEntryProps(PropertyGroup):
         default="0",
     )
     pefx_unkn_0: BoolProperty(
-        name="Unkn[0]",
-        description="PlayEFX unkn[0] @12. Strictly 0/1 across the corpus. Purpose unconfirmed",
+        name="Set Land Attribute",
+        description="PlayEFX unkn[0] @12. Strictly 0/1 across the corpus. Same slot as "
+                    "PlayEmitter's em_unkn1. Candidate: SetLandAttribute "
+                    "(docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §4.13), unverified",
         default=False,
     )
     pefx_unkn_1: BoolProperty(
-        name="Unkn[1]",
-        description="PlayEFX unkn[1] @16. Strictly 0/1 across the corpus. Purpose unconfirmed",
+        name="Set Land Direction",
+        description="PlayEFX unkn[1] @16. Strictly 0/1 across the corpus. Same slot as "
+                    "PlayEmitter's em_unkn2. Candidate: SetLandDirection "
+                    "(docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §4.13), unverified",
         default=False,
     )
     pefx_unkn_2: IntProperty(
         name="Unkn[2]",
-        description="PlayEFX unkn[2] @20. Constant 2 across the corpus. Purpose unconfirmed",
+        description="PlayEFX unkn[2] @20. Constant 2 across the corpus. No counterpart in "
+                    "PlayEmitter's layout - PlayEFX has one extra field here. Purpose unconfirmed",
         default=2,
     )
     pefx_unkn_3: FloatProperty(
-        name="Unkn[3]",
-        description="PlayEFX unkn[3] @24. Float; only ever 0, -90 or 90 in the corpus. "
-                    "Purpose unconfirmed",
+        name="Rotation X",
+        description="PlayEFX unkn[3] @24. Float; only ever 0, -90 or 90 in the corpus. Same "
+                    "slot as PlayEmitter's em_rotation.x. Purpose unconfirmed",
         default=0.0,
     )
     pefx_unkn_4: FloatProperty(
-        name="Unkn[4]",
-        description="PlayEFX unkn[4] @28. Float, always 0 in the corpus. Purpose unconfirmed",
+        name="Rotation Y",
+        description="PlayEFX unkn[4] @28. Float, always 0 in the corpus. Same slot as "
+                    "PlayEmitter's em_rotation.y. Purpose unconfirmed",
         default=0.0,
     )
     pefx_unkn_5: FloatProperty(
-        name="Unkn[5]",
-        description="PlayEFX unkn[5] @32. Float, always 0 in the corpus. Purpose unconfirmed",
+        name="Rotation Z",
+        description="PlayEFX unkn[5] @32. Float, always 0 in the corpus. Same slot as "
+                    "PlayEmitter's em_rotation.z. Purpose unconfirmed",
         default=0.0,
     )
     pefx_unkn_6: IntProperty(
-        name="Unkn[6]",
-        description="PlayEFX unkn[6] @36. Almost always 4, occasionally 2 or 0. Purpose unconfirmed",
+        name="Rotation Order",
+        description="PlayEFX unkn[6] @36. Almost always 4, occasionally 2 or 0 - identical "
+                    "distribution to PlayEmitter's em_rotation_order (same TransformRotOrder "
+                    "table, 4 = ZXY), just positioned after the float triple instead of before "
+                    "it. Purpose unconfirmed",
         default=4,
     )
     pefx_null: FloatVectorProperty(

@@ -499,11 +499,11 @@ class Simulator(object):
             except Exception:
                 return dv
 
-        start = g(sp, "emitterStartDelay") + g(sp, "emitterStartDelayJitter")
-        per_cycle = g(sp, "burstsPerCycle") + g(sp, "burstsPerCycleJitter")
+        start = g(sp, "emitterDelayFrame") + g(sp, "emitterDelayFrameJitter")
+        per_cycle = g(sp, "loopNum") + g(sp, "loopNumJitter")
         repeat = g(sp, "emitterRepeatCount")
         interval = (g(sp, "altBurstInterval") if per_cycle == 1
-                    else g(sp, "burstInterval"))
+                    else g(sp, "intervalFrame"))
         bursts = max(1, per_cycle + repeat - 1) if (per_cycle and repeat) else 1
 
         life = g(lf, "fadeInDuration") + g(lf, "duration") + g(lf, "fadeOutDuration")

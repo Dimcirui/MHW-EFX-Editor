@@ -38,6 +38,18 @@ ENUM_ROTATION_CORRECT_TYPE = EnumDef("RotationCorrectType", [
     (3, "To Camera", "朝向摄像机"),
     (4, "To Camera (Y axis only)", "朝向摄像机（仅 Y 轴）"),
 ])
+# EMITTERSHAPE3D.rayCastDependency：官方讲座 Inspector 完整下拉（docs/OFFICIAL_DEFAULTS_AND_ENUMS.md
+# §2.1），是一种运算模式（决定生成范围如何与地面/障碍物的射线检测结果结合），不是引用。
+# TypeLightning.TerminalShape 里同名字段目前未能在 schema 里定位（该结构仍是一整块 opaque
+# float 数组），暂不落地。
+ENUM_RAYCAST_DEPENDENCY = EnumDef("RayCastDependency", [
+    (0, "None", "无"),
+    (1, "Min", "取最小值"),
+    (2, "Max", "取最大值"),
+    (3, "Multiply", "相乘"),
+    (4, "Equal", "相等"),
+    (5, "Offset", "偏移"),
+])
 ENUM_SHAPE_TYPE2D = EnumDef("ShapeType2D", [
     (0, "Square", "方形"), 
     (1, "Circle", "圆形"), 
@@ -147,18 +159,70 @@ ENUM_MESH_TRACKING_FLAGS = EnumDef("MeshTrackingFlags", [
 
 BITS_ENABLE_VELOCITY = [(0x1, "Enable Velocity", "启用速度"), (0x2, "Enable Acceleration", "启用加速度")]
 
-# SPAWN.unknBitmask31：官方全语料(112573 块)穷举，可混合位只到 bit5（值 32），bit6 及以上
-# 从未出现——6 个占位未知位，per-bit 语义待确认。
-BITS_SPAWN_UNKN31 = [(1 << _i, "Unknown %d" % _i, "未知 %d" % _i) for _i in range(6)]
+# RAYCAST.rayCastAttr（原 spacer，2026-09-19 用户截图核对+全语料 1363 块位分布坐实）：
+# 官方讲座截图 §10.5.1 显示 SCR 默认勾选、OBJ 默认不勾选；语料里这个字段恒为
+# 0xFFFFFFxx（bit2 以上恒 1，此前误判为纯占位），只有 bit0/bit1 变化——bit0 置位率
+# 97.1%（=SCR，默认勾选），bit1 置位率 23.5%（=OBJ，少数勾选）。
+BITS_RAYCAST_ATTR = [(0x1, "SCR", "SCR"), (0x2, "OBJ", "OBJ")]
 
-# RIBBON.unknBitmask22_1：官方语料(14677 块)穷举，可混合位到 bit6（值 64），bit0 单独占大多数，
-# per-bit 语义待确认。
-BITS_RIBBON_UNKN22_1 = [(1 << _i, "Unknown %d" % _i, "未知 %d" % _i) for _i in range(7)]
+# RAYCAST.rayCastFlags（原 unknownBitmask2，2026-09-19 用户截图核对）：官方讲座显示
+# SyncSpawnFrame/RayCastOnce 均默认不勾选；语料里这个字段 90.8% 恒为 0，bit0/bit8
+# 各自独立偶尔置位（2.1%/7.1%），与"两个默认关闭的独立勾选框"形态吻合。
+BITS_RAYCAST_FLAGS = [(0x1, "SyncSpawnFrame", "同步生成帧"), (0x100, "RayCastOnce", "仅一次")]
+
+# SPAWN.spawnFlags（原 unknBitmask31）：官方全语料(112573 块)穷举，可混合位只到 bit5
+# （值 32），bit6 及以上从未出现——数量正好对上官方讲座 Spawn 面板截图的 6 个默认不勾选
+# 的独立勾选框（UseSpawnFrame/RingBufferMode/RayCastHitOnly/RayCastDependency/
+# InitializeFull/InterporatePos，2026-09-19 用户提供截图）。
+# 三条交叉验证坐实了 4 个位：
+#   ① 用"该 entry 是否同时挂了 RAYCAST 属性"验证：bit1/bit2 与 RAYCAST 共现率分别是
+#      无 RAYCAST 时的 105x/144x（其余位无此相关性），确认 bit1/bit2 是 RayCastHitOnly/
+#      RayCastDependency 这一对——具体谁是谁未定，按截图顺序定为 bit1=RayCastHitOnly、
+#      bit2=RayCastDependency（弱证据：两位几乎互斥、极少同时为1，不是"依赖"关系那种
+#      强共现，只是按名字顺序占位）。
+#   ② 用户提出 SPAWN.spawnFrame（原 instanceCountUnknLimit）非零 vs 本字段各位共现：
+#      bit5 命中率是其余位的 24~730 倍（bit5=167.1x，其余位 0.2x~6.8x），确认 bit5=
+#      UseSpawnFrame——3770 个 bit5=1 的块里 3505 个(93%) spawnFrame 确实非零，是
+#      spawnFrame 的启用开关。
+#   ③ 用户提供《怪物猎人：荒野》（RE Engine，设计理念一脉相承可作参考）里 RingBufferMode
+#      的实测画像，跟 bit0 交叉核对：启用频率几乎一致（0.7346% vs 荒野 0.74%）、搭配
+#      "无限循环"(loopNum=(0,0)) 的比例高度吻合（69.9% vs 24.0% 基线，对应荒野
+#      68.6% vs 24.0%）、entry 命名同样大量出现 GPU/GPUP/GPUP_yoin 及水/电/碎片一类
+#      "持续流"效果名。唯一方向相反的是 MaxParticles——MHW 这边关联的是大缓冲池
+#      （中位数 240 vs 基线 4），不是荒野那种"单粒子反复重画"，推测两代引擎具体实现
+#      方式不同（MHW 没有荒野那套 GPU 渲染管线块类型，只能用传统大缓冲池模拟持续流），
+#      但另外三条证据够强，确认 bit0=RingBufferMode。
+# 剩余 bit3/4：把已确认的 4 个位摆在一起看——RingBufferMode(bit0)→RayCastHitOnly(bit1)→
+# RayCastDependency(bit2) 正好是截图顺序里"从 RingBufferMode 开始"的连续三项，
+# UseSpawnFrame(bit5) 则是绕到最后——相当于截图顺序整体左移一位、UseSpawnFrame 转到
+# 末尾的循环排列。按同一个循环规律续下去，bit3/4 自然落在 InitializeFull/InterporatePos，
+# 不再是孤立的截图顺序猜测，但仍未实机验证。
+BITS_SPAWN_FLAGS = [
+    (0x01, "RingBufferMode", "RingBufferMode"),
+    (0x02, "RayCastHitOnly", "RayCastHitOnly（弱假设）"),
+    (0x04, "RayCastDependency", "RayCastDependency（弱假设）"),
+    (0x08, "InitializeFull", "InitializeFull（假设）"),
+    (0x10, "InterporatePos", "InterporatePos（假设）"),
+    (0x20, "UseSpawnFrame", "UseSpawnFrame"),
+]
+
+# PLEMISSIVE.emitMaskFlags（原 area_of_aura）：4 位掩码，全语料从未出现 bit4 及以上。
+# devlecture 面板在这个区域一共有 3 个勾选框（RimAlphaCorrect/OverrideSecondaryEmitControl/
+# EnableMaskAnim；第 4 个 EnableUseEmitMask 已确认落在独立字段 enableUseEmitMask 上，不在
+# 这个位掩码里）。bit1/bit2 关联检验方向清晰，bit0/bit3 证据打平分不清谁是 EnableMaskAnim，
+# 只标一个"弱假设"、另一个先留空——2026-09-19。
+BITS_PLEMISSIVE_EMIT_MASK = [
+    (0x1, "EnableMaskAnim", "启用遮罩动画（弱假设，也可能是 bit3）"),
+    (0x2, "OverrideSecondaryEmitControl", "覆盖次级发光控制"),
+    (0x4, "RimAlphaCorrect", "边缘光透明度修正"),
+    (0x8, "unkn3", "未知（可能是 EnableMaskAnim）"),
+]
+
 # ROTATEANIM 的 spinAxisMask：**不是** XYZ 轴掩码。原先按 bit0=X/bit1=Y/bit2=Z 读，
 # 与官方语料对不上——31535 个块里用到 bit0~bit6（OR=127，36 种取值，最大 88，0 从未出现），
 # 而 mask 与 spin_velocity 哪几轴非零毫无对应关系（mask=1 配三轴全非零 872 块、mask=3 配
 # 只有 X 非零 887 块…）。按旧读法，自旋模式里 67.6% 的块会有「给了角速度的轴被掩码挡掉」，
-# 作者不会这么写。各位含义未知，故用中性标签（同 BITS_RIBBON_UNKN22_1 的做法）。
+# 作者不会这么写。各位含义未知，故用中性标签。
 # ⚠ 模拟层（sim/behaviors/rotateanim.py）因此**不看**这个字段，只按 spin_velocity 逐轴取值。
 # 逐位占比：bit0 64.0% / bit1 47.6% / bit2 21.7% / bit3 16.4% / bit4 7.8% / bit5 0.05% / bit6 0.01%
 BITS_ROTATEANIM_SPIN_FLAGS = [
@@ -218,11 +282,35 @@ BITS_LOOPING_MODE = [
     ], "Direction", "播放方向"),
 ]
 
-# MESH.affectedByLight：官方语料实测 7 个可混合位（bit0~6，值 1/2/4/8/16/32/64，各种
-# 组合都出现），加一个从不单独出现的 bit7（值 128）——只在 all_value=255（全位）时才出现，
-# 说明 255 是独立的"全部受光照影响"哨兵，非 7 位勾选框自然并集(127)。各位具体对应哪种光源
-# /光照类型尚未确认，暂用占位标签。
-BITS_AFFECTED_BY_LIGHT = [(1 << _i, "Light Bit %d" % _i, "光照位 %d" % _i) for _i in range(7)]
+# LightGroup（MESH.affectedByLight 与 BILLBOARD3D.lightGroup 共用，2026-09-19 用户核对
+# 官方讲座 Type Billboard 面板截图坐实）：官方双列布局
+#   左列：VFX  NPC  LIGHT_OBJ  GROUP_6
+#   右列：PLAYER/OTOMO  ENEMY  SCR  EYE/LENS
+# 用户指出若按"从0计数、横着读"（每行先左列再右列）排列，GROUP_6 恰好落在 idx=6，
+# 不像巧合，故按行优先顺序定位序：
+#   bit0=VFX bit1=PLAYER/OTOMO bit2=NPC bit3=ENEMY bit4=LIGHT_OBJ bit5=SCR
+#   bit6=GROUP_6 bit7=EYE/LENS
+# 全语料交叉验证：BILLBOARD3D.unkn8 中 bit0 置位率 78.94%（=VFX，与截图"默认勾选"
+# 一致）、bit5 15.32%（=SCR，二者第二常见，与文档"SCR 这个标识在 LightGroup 里也
+# 出现"的旁注吻合）；MESH.affectedByLight 中同样是 bit0(46.9%)/bit5(47.8%) 两位独大，
+# 两个块用的是同一套位序。bit7(EYE/LENS) 只出现在 all_value=255（全选哨兵）里，从不
+# 单独出现——255 是独立的"全部受光照影响"值，非 7 位勾选框的自然并集(127)。
+# 2026-09-19 排查其余渲染主体（BILLBOARD2D/PLANE/RIBBON/RIBBONBLADE/STRAINRIBBON/
+# TUBELIGHT/LIGHTNING）后确认还有两处用同一张表：RIBBON.unknBitmask22_1（原
+# BITS_RIBBON_UNKN22_1 占位表，bit0 73.94%/bit5 11.39%）、PLANE.unknBitmask7_0
+# （bit0 77.19%/bit5 16.72%）——同一批 render body 共用的字段，已统一改名 lightGroup。
+# 其余几个块的候选字段逐个核对过位分布，都对不上这个签名（没有"bit0 占七成+bit5 第二"
+# 的形态），判定没有 LightGroup。
+BITS_LIGHT_GROUP = [
+    (0x01, "VFX", "VFX"),
+    (0x02, "Player/Otomo", "玩家/艾路"),
+    (0x04, "NPC", "NPC"),
+    (0x08, "Enemy", "敌人"),
+    (0x10, "Light Object", "光照物体"),
+    (0x20, "SCR", "SCR"),
+    (0x40, "Group 6", "组 6"),
+    (0x80, "Eye/Lens", "眼睛/镜头"),
+]
 
 _AXIS_DIRECTION6 = EnumDef("AxisDirection6", [
     (0, "Left", "左"),  # +X
@@ -251,11 +339,14 @@ _TRANSFORM_ROT_ORDER = EnumDef("TransformRotOrder", [
     (0, "XYZ", "XYZ"), (1, "YZX", "YZX"), (2, "YXZ", "YXZ"),
     (3, "ZYX", "ZYX"), (4, "ZXY", "ZXY"), (5, "XZY", "XZY"),
 ])
+# 2026-09-19 按官方讲座 §2.1 完整下拉核对，EN 标签改用官方词面（DIRECTION/NORMAL/
+# RADIAL/EMITTER_MOVE），ZH 保留实机考据措辞不变（NORMAL 曾实测更接近"常规/标准"而非
+# 字面"表面法线"，见 VELOCITY3D schema 注释，故不直译成"法线"）。
 _VELOCITY_TYPE = EnumDef("VelocityType", [
-    (0, "Directional", "定向"),
-    (1, "DirectionalSpread", "定向扩散"),
+    (0, "Direction", "定向"),
+    (1, "Normal", "定向扩散"),
     (2, "Radial", "径向"),
-    (3, "EmitterMotion", "发射器运动"),
+    (3, "Emitter Move", "发射器运动"),
 ])
 
 # BILLBOARD3D / PLANE / BILLBOARD2D 的 blendMode（着色器混合模式；RE Engine 对应 'AlphaRate'）。

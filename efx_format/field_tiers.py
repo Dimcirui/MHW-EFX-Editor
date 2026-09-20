@@ -16,7 +16,7 @@ efx_format/field_tiers.py — 属性字段分档表（常用 / 高级）。
 ⚠ 本文件由 `python tools/gen_field_tiers.py --write` 生成，别手改——
 手改会在下次重跑统计时丢失。要放行某个字段请加进生成脚本的 KEEP_COMMON。
 
-语料：`efx_samples/official/` 10084 文件（2026-09-04 生成）。
+语料：`efx_samples/official/` 10084 文件（2026-09-19 生成）。
 """
 
 # TYPE_NAME -> 该类型下归入「高级」的字段 ori_name 集合
@@ -33,12 +33,9 @@ ADVANCED_FIELDS = {
     }),
     'BILLBOARD3D': frozenset({
         'SlotOverride1',
+        'fieldInfluenceRate',
+        'fieldInfluenceRateMultiplier',
         'typeFlag',
-        'unkn6_1',
-        'unkn7',
-        'unkn8',
-        'unknEnum5',
-        'unknFlag6_0',
         'unknFlag9',
     }),
     'BLINK': frozenset({
@@ -87,7 +84,6 @@ ADVANCED_FIELDS = {
     }),
     'EMITTERSHAPE3D': frozenset({
         'typeFlag',
-        'unknBitmaskRadiusRelated',
         'unknFlag4',
     }),
     'EMITTERSHAPEMESH': frozenset({
@@ -105,12 +101,10 @@ ADVANCED_FIELDS = {
         'unknFlag2_2',
     }),
     'EXTERNREFERENCE': frozenset({
+        'lerp',
         'typeFlag',
-        'unkn1_3',
         'unkn1_4',
         'unkn1_5',
-        'unknEnum1_1',
-        'unknEnum1_2',
         'unknFlag1_6',
     }),
     'FADEBYANGLE': frozenset({
@@ -306,6 +300,8 @@ ADVANCED_FIELDS = {
         'unknFixed6_1',
         'unknFlag7_1',
         'unknFlag_cm2_3',
+        'unknFloat0',
+        'unknFloat1',
     }),
     'NOISE': frozenset({
         'section_length',
@@ -336,11 +332,10 @@ ADVANCED_FIELDS = {
     }),
     'PARENTEMISSIVE': frozenset({
         'typeFlag',
-        'unkn2',
+        'unkn7_2',
         'unkn8_1',
         'unkn8_2',
         'unknEnum1',
-        'unknEnum3',
         'unknEnum4',
         'unknFixed8_0',
         'unknFixed8_3',
@@ -403,18 +398,12 @@ ADVANCED_FIELDS = {
         'EPVColorSlot2',
         'typeFlag',
         'unknBitmask5_0',
-        'unknBitmask7_0',
         'unknEnum5_1',
         'unknFlag7_1',
     }),
     'PLEMISSIVE': frozenset({
         'NULL',
         'typeFlag',
-        'unkn1',
-        'unkn4',
-        'unkn5_1',
-        'unkn5_2',
-        'unknEnum0_1',
         'unknFixed5_0',
         'unknFixed5_3',
         'unknFixed5_4',
@@ -466,15 +455,13 @@ ADVANCED_FIELDS = {
         'unknEnum2',
     }),
     'RAYCAST': frozenset({
+        'prop2',
         'section_length',
-        'spacer',
         'spacer0',
         'spacer1',
         'spacer2',
         'spacer3',
         'typeFlag',
-        'unknownBitmask2',
-        'unknownEnum1',
     }),
     'REFRACTION': frozenset({
         'typeFlag',
@@ -492,11 +479,9 @@ ADVANCED_FIELDS = {
     }),
     'RGBFIRE': frozenset({
         'typeFlag',
-        'unkn4',
     }),
     'RGBWATER': frozenset({
         'typeFlag',
-        'unknownFloat',
     }),
     'RIBBON': frozenset({
         'lengthwise_offset_relative_to_camera',
@@ -512,7 +497,6 @@ ADVANCED_FIELDS = {
         'unkn20_3',
         'unkn21',
         'unkn22_0',
-        'unknBitmask22_1',
         'unknBool15',
         'unknBool16_1',
         'unknBool16_2_0',
@@ -584,7 +568,6 @@ ADVANCED_FIELDS = {
         'unknBool3',
         'unknEnum1',
         'unknEnum3_1',
-        'unknEnum4_8',
         'unknEnum5_0',
         'unknFixed4_12',
         'unknFlag2',
@@ -603,10 +586,7 @@ ADVANCED_FIELDS = {
         'unknFixed12',
     }),
     'SPAWN': frozenset({
-        'particleSpawnDelay',
-        'particleSpawnDelayJitter',
         'typeFlag',
-        'unknBitmask31',
     }),
     'SPAWNBYANGLE': frozenset({
         'section_length',

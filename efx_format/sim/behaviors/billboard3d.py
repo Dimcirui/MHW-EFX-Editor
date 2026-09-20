@@ -34,9 +34,10 @@ efx_format/sim/behaviors/billboard3d.py  —  BILLBOARD3D（渲染主体：面�
 
 未处理
 ------
-    EPVColorSlot1 / SlotOverride1 非 0 时，颜色实际来自调用方 .epv 的槽位，本地
-    color 不生效（annotations 明确写了）。预览拿不到 .epv，故照常用本地值并记一条
-    note，免得用户以为「改了颜色没反应」是预览的 bug——那恰恰是游戏内的真实行为。
+    correctColorNo（原 EPVColorSlot1）/ SlotOverride1 非 0 时，颜色实际来自调用方
+    .epv 的槽位，本地 color 不生效（annotations 明确写了）。预览拿不到 .epv，故照常
+    用本地值并记一条 note，免得用户以为「改了颜色没反应」是预览的 bug——那恰恰是
+    游戏内的真实行为。
     flowmap* 一族（扰动贴图）也未处理，属于 T3 的纹理部分。
 
 约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
@@ -80,7 +81,7 @@ class Billboard3D(Behavior):
         if f is None:
             return
         self._has_tracks = f.has_tracks
-        if f.i("EPVColorSlot1") or f.i("SlotOverride1"):
+        if f.i("correctColorNo") or f.i("SlotOverride1"):
             em.note("BILLBOARD3D 绑了 EPV 颜色槽位：游戏内颜色来自 .epv，"
                     "本地 color 不生效（预览仍按本地值画）")
 

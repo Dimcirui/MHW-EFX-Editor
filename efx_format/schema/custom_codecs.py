@@ -14,7 +14,7 @@ from .codec import (
 )
 from .fields_model import Attribute, Int, Float, Enum, Bool, Bitmask, Byte, attr_from_legacy
 from .enums import (
-    BITS_APPLICATION_RULE, BITS_LOOPING_MODE, BITS_AFFECTED_BY_LIGHT, BITS_RIBBON_UNKN22_1,
+    BITS_APPLICATION_RULE, BITS_LOOPING_MODE, BITS_LIGHT_GROUP,
     BITS_PLANE_UNKN5_1,
     ENUM_BLEND_MODE, ENUM_LOOPING_ORIENTATION, ENUM_MESH_TRACKING_FLAGS, ENUM_RIBBON_MODE,
     _AXIS_DIRECTION6, _TRANSFORM_ROT_ORDER,
@@ -122,12 +122,13 @@ def pack_uvsequence(values: dict) -> bytes:
 #
 # billboard_data (108 B, includes the path_len field at offset +104):
 #   unkn0(4)+applicationRule(4)+XYZ color(2)(4)+XYZ colorRange(2)(4)+brightness(4)+
-#   unkn2[3](12)+EPVColorSlot1(4)+SlotOverride1(4)+rotation(4)+rotationJitter(4)+
+#   unkn2[3](12)+correctColorNo(4)+SlotOverride1(4)+rotation(4)+rotationJitter(4)+
 #   scale(4)+scaleJ(4)+width(4)+widthJ(4)+height(4)+heightJ(4)+
 #   flowmapSpeed(4)+flowmapSpeedJ(4)+flowmapAccel(4)+flowmapAccelJ(4)+
 #   flowmapStrength(4)+flowmapStrengthJ(4)+flowmapStrAccel(4)+flowmapStrAccelJ(4)+
 #   path_len(4) = 108 B total
-# Extras (24 B): unkn5(4) + unkn6(uint64=8) + unkn7(4) + unkn8(4) + unkn9(4)
+# Extras (24 B): divideNum(4) + [enableGPUParticle(4)+fieldInfluenceRate(4)](uint64扒开)
+#   + fieldInfluenceRateMultiplier(4) + lightGroup(4) + unknFlag9(4)
 # Then: path[path_len]
 #
 # data_bytes: [0..107] = billboard_data (path_len at +104),
@@ -147,7 +148,7 @@ _BILLBOARD3D_FIXED_SCHEMA = [
     ('brightnessJitter',           'f'),  # 原 randomBrightnessMult
     ('useColorRange',              'i'),  # bool
     ('blendMode',                  'i'),
-    ('EPVColorSlot1',              'i'),
+    ('correctColorNo',             'i'),  # 原 EPVColorSlot1；用户 2026-09-19 判定即官方 CorrectColorNo
     ('SlotOverride1',              'i'),
     ('rotation',                   'f'),  # TIML DT 0x2FF50558("Rotation") 实机确认
     ('rotationJitter',             'f'),
@@ -169,13 +170,23 @@ _BILLBOARD3D_FIXED_SCHEMA = [
     # we handle path_len + extras + path manually below
 ]  # = 4+4+4+4+4+12+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
 
+# 2026-09-19 用户提供官方讲座 Type Billboard 面板截图核对 + 全语料 62787 块交叉验证：
+#   unknEnum5→divideNum：取值 {0,1,2,3,4,10} 跳跃式分布，不像连续编号的 Enum（SortType
+#     这种名字像枚举类），更像一个直接输入的计数值，改名 divideNum（对应截图 DivideNum）。
+#   unknFlag6_0→enableGPUParticle：与 body/label 含"GPU"关键字的实例强相关（GPU 命名
+#     实例里为 1 的比例 95.2%，非 GPU 实例仅 11.0%），坐实。
+#   unkn6_1/unkn7→fieldInfluenceRate(+Multiplier)：分别 99.98%/99.99% 恒为 0.0/1.0，
+#     与截图"Field Influence Rate: 0.0 * 1.0"（注意用"*"不是"±"，是值+倍率对）吻合。
+#   unkn8→lightGroup：全 8 位均有真实使用（含 255 全选样本），bit0 置位率 78.94%，
+#     与截图"VFX 默认勾选"一致，位序详见 enums.BITS_LIGHT_GROUP 注释。
+#   unknFlag9：与 GPU 命名无关联，其余假设未有更多证据，暂不改名。
 _BILLBOARD3D_EXTRAS_SCHEMA = [
-    ('unknEnum5', 'i'),
+    ('divideNum', 'i'),  # 原 unknEnum5
     # 拆分自原 uint64 unkn6：低32位=int/flag，高32位=float（实测 60842 个 BILLBOARD3D 块核对）
-    ('unknFlag6_0', 'i'),
-    ('unkn6_1', 'f'),
-    ('unkn7', 'f'),
-    ('unkn8', 'i'),
+    ('enableGPUParticle', 'i'),  # 原 unknFlag6_0
+    ('fieldInfluenceRate', 'f'),  # 原 unkn6_1
+    ('fieldInfluenceRateMultiplier', 'f'),  # 原 unkn7
+    ('lightGroup', 'i'),  # 原 unkn8
     ('unknFlag9', 'i'),
 ]  # = 4+8+4+4+4 = 24 B
 
@@ -231,6 +242,9 @@ BILLBOARD3D_ATTR = attr_from_legacy(
         'applicationRule': Bitmask('applicationRule', BITS_APPLICATION_RULE, label_zh="应用规则"),
         'useColorRange':   Bool('useColorRange', label_zh="启用颜色范围"),
         'blendMode':       Enum('blendMode', ENUM_BLEND_MODE, label_zh="混合模式"),
+        'enableGPUParticle': Bool('enableGPUParticle', label_zh="启用 GPU 粒子"),
+        'lightGroup': Bitmask('lightGroup', BITS_LIGHT_GROUP, all_value=255, strict=True,
+                               label_zh="光照组"),
     },
 )
 
@@ -457,7 +471,7 @@ _mesh_ovr = {n: Bool(n, backing='B') for n in _MESH_BOOL_FIELDS}
 _mesh_ovr['rotationOrder'] = Enum('rotationOrder', _TRANSFORM_ROT_ORDER, label_zh="旋转顺序")
 _mesh_ovr['tracking_flags'] = Enum('tracking_flags', ENUM_MESH_TRACKING_FLAGS, label_zh="追踪标志")
 _mesh_ovr['affectedByLight'] = Bitmask(
-    'affectedByLight', BITS_AFFECTED_BY_LIGHT, all_value=255, strict=True,
+    'affectedByLight', BITS_LIGHT_GROUP, all_value=255, strict=True,
     label_zh="受光照影响",
 )
 _mesh_ovr['visconIndex'] = Int('visconIndex', label_zh="可见条件索引")
@@ -631,8 +645,9 @@ _RIBBON_FIXED_SCHEMA = [
     ('unkn21',                   'f'),
     ('unkn22_0', 'f'),
     # 原 unknEnum22_1：全语料 17 种取值全部可干净分解为 2 的幂之和(bit0~6, 值1~64)，
-    # 是可混合位掩码而非枚举，2026-07-30 改名 + 转 Bitmask。
-    ('unknBitmask22_1', 'i'),
+    # 是可混合位掩码而非枚举，2026-07-30 改名 + 转 Bitmask；2026-09-19 用户核对 bit0
+    # 73.94%/bit5 11.39% 与 BILLBOARD3D/MESH 的 LightGroup 位分布同型，坐实为同一字段。
+    ('lightGroup', 'i'),  # 原 unknBitmask22_1
     ('unknFlag22_2', 'i'),
     # 原 4B int 恒为 0xCDCDCD00/0xCDCDCD01（未初始化填充）；只有最低字节（文件里的第 1 个
     # 字节）在 0/1 之间变化，其余 3 字节恒为 0xCD 纯占位（2026-07-10）。用户实机确认
@@ -730,7 +745,10 @@ RIBBON_ATTR = attr_from_legacy(
         'unknBool16_1':            Bool('unknBool16_1', backing='B'),
         'unknBool16_2_0':          Bool('unknBool16_2_0', backing='B'),
         'unknBool16_2_1':          Bool('unknBool16_2_1', backing='B'),
-        'unknBitmask22_1':         Bitmask('unknBitmask22_1', BITS_RIBBON_UNKN22_1, strict=True),
+        # ⚠ RIBBON 语料最大值只到 65（bit0+bit6），从未见到 bit7/255，不设 all_value
+        # （BILLBOARD3D/MESH 才有 255 全选哨兵，RIBBON 目前没有证据支持同样的写法）。
+        'lightGroup':              Bitmask('lightGroup', BITS_LIGHT_GROUP, strict=True,
+                                            label_zh="光照组"),
         'unknFlag22_2':            Bool('unknFlag22_2'),
         'visiblePreview':          Bool('visiblePreview', backing='B', label_zh="可见性修正"),
         'enableFlap':              Bool('enableFlap', backing='B', label_zh="启用抖动"),
@@ -828,7 +846,9 @@ _PLANE_EXTRAS_SCHEMA = [
     ('rotationOrder', 'i'), # 原 unknEnum5_3；实机确认为旋转顺序，与 MESH.rotationOrder 同款枚举
     ('rotation',('XYZ', 0)),
     # 拆分自原 uint64 unkn7：低32位=小整数/位掩码，高32位=0/1 标志（实测 4328 个 PLANE 块核对）
-    ('unknBitmask7_0', 'i'),
+    # lightGroup：2026-09-19 用户核对 bit0 77.19%/bit5 16.72%，与 BILLBOARD3D/MESH/
+    # RIBBON 的 LightGroup 位分布同型，坐实为同一字段。
+    ('lightGroup', 'i'),  # 原 unknBitmask7_0
     ('unknFlag7_1', 'i'),
 ]  # = 16+24+8 = 48 B
 
@@ -871,6 +891,8 @@ PLANE_ATTR = attr_from_legacy(
         'unknEnum5_1':     Bitmask('unknEnum5_1', BITS_PLANE_UNKN5_1, gate_first=True),
         'baseAxis':        Enum('baseAxis', _AXIS_DIRECTION6, label_zh="基准轴"),
         'rotationOrder':   Enum('rotationOrder', _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
+        # ⚠ PLANE 语料最大值只到 36（bit2+bit5），从未见到 bit7/255，不设 all_value。
+        'lightGroup':      Bitmask('lightGroup', BITS_LIGHT_GROUP, strict=True, label_zh="光照组"),
     },
 )
 
@@ -1391,14 +1413,14 @@ def pack_lightning(values: dict) -> bytes:
 # BT ExternRgbWater:
 #   unkn0(4)+XYZ color(2)[2](8)+
 #   brightnessSlot1(4)+emissiveMultiplier(4)+brightnessSlot2(4)+
-#   brightnessSlotMult1(4)+brightnessSlotMult2(4)+opacity(4)+unknownFloat(4)+
+#   brightnessSlotMult1(4)+brightnessSlotMult2(4)+opacity(4)+normalSharpness(4)+
 #   unknownInt[3](12)+unkn2[26](104)+path_len(4)+path
 # Fixed before path: 4+8+7*4+12+104 = 4+8+28+12+104 = 156 B
 # ─────────────────────────────────────────────────────────────────────────────
 
 _RGBWATER_FIXED_SCHEMA = [
     # ── 三段 10/10/9 字段的生命期时序块，与 RGBFIRE 的 fireColorParam_/smokeColorParam_
-    # 逐位同构（flag │ appear+J │ keep+J │ vanish+J │ lighting · lifeType · unkn9）。
+    # 逐位同构（flag │ appear+J │ keep+J │ vanish+J │ lighting · lifeType · correctColorNo）。
     # 2026-09-03 用户实机把三段全部定死：
     #     段0 → colorSpecular   段1 → colorSheet   段2 → waterLerpGtoB
     # 也就是说**这三段对应的是本块的三个「颜色向」参数，不是四个 intensity**——四个强度
@@ -1412,8 +1434,9 @@ _RGBWATER_FIXED_SCHEMA = [
     #   ⚠ 段2 曾被怀疑是 cubemap，已排除：cubemap 真正启用时段2 useLife 19.4%、
     #     未启用 22.2%，持平且方向还是反的。
     #
-    # 段2 只有 9 位（没有 unkn9），是三段唯一的结构差异——恰好它也是三段里唯一管标量
-    # （而非颜色）的，两件事可能相关。
+    # 段2 只有 9 位（没有 correctColorNo），是三段唯一的结构差异——2026-09-19 跟
+    # devlecture §10.1.2 对上了：面板只有 CorrectColorSpecularNo/CorrectColorSheetNo
+    # 两个下拉框，没有第三个对应 waterLerpGtoB 段的，字节结构和官方面板严丝合缝。
     ('typeFlag',                 'i'),   # 原 unkn0
     # ── 头部 2 色 + 7 float。2026-09-03 用户在 Blender 里逐条建 TIML 轨道实测，把 4 个
     # 位置钉到了官方 TimelineParam 名（DT hash 见 timl/names.py::FIELD_TO_DT）。
@@ -1430,8 +1453,9 @@ _RGBWATER_FIXED_SCHEMA = [
     ('intensityAlpha',           'f'),   # 原 opacity。实测 = DT IntensityAlpha
     # 头部到此与官方 8 个 TimelineParam 一一对应且全部实机确认。剩下这一个 float 没有
     # 对应 DT——引擎声明 6 个 float 参数、这里有 7 个 float，必有一个不可动画，就是它。
-    # 众数 0.3 占 73%，不像强度量。
-    ('unknownFloat',             'f'),
+    # devlecture P27（image15.PNG）：面板上紧跟在 CubemapAsset 前面的滑条正是
+    # NormalSharpness，默认 0.3——跟这里众数 0.3 占 73% 精确吻合。
+    ('normalSharpness',          'f'),   # 原 unknownFloat
     ('specularColorParam_useLife', 'i'),
     ('specularColorParam_appearFrame', 'i'),
     ('specularColorParam_appearFrameJitter', 'i'),
@@ -1441,7 +1465,9 @@ _RGBWATER_FIXED_SCHEMA = [
     ('specularColorParam_vanishFrameJitter', 'i'),
     ('specularColorParam_lighting', 'i'),
     ('specularColorParam_lifeType', 'i'),
-    ('specularColorParam_unkn9', 'i'),
+    # 原 unkn9：跟 RGBFIRE 的 fireColorParam_correctColorNo 同一形态（取值集合小、
+    # 跟 devlecture 的 CorrectColorSpecularNo 对应），同一 EPV 槽位覆盖机制。
+    ('specularColorParam_correctColorNo', 'i'),
     ('sheetColorParam_useLife', 'i'),
     ('sheetColorParam_appearFrame', 'i'),
     ('sheetColorParam_appearFrameJitter', 'i'),
@@ -1451,7 +1477,7 @@ _RGBWATER_FIXED_SCHEMA = [
     ('sheetColorParam_vanishFrameJitter', 'i'),
     ('sheetColorParam_lighting', 'i'),
     ('sheetColorParam_lifeType', 'i'),
-    ('sheetColorParam_unkn9', 'i'),
+    ('sheetColorParam_correctColorNo', 'i'),   # 原 unkn9，对应 CorrectColorSheetNo
     ('waterLerpParam_useLife', 'i'),
     ('waterLerpParam_appearFrame', 'i'),
     ('waterLerpParam_appearFrameJitter', 'i'),

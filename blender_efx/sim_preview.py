@@ -3684,7 +3684,7 @@ def register():
         default="forward")
     S.efx_sim_age_during_delay = BoolProperty(
         name="Age during spawn delay", default=False, update=_on_knob_changed,
-        description="Whether particleSpawnDelay still advances the particle's age")
+        description="Whether spawnWaitFrame still advances the particle's age")
     S.efx_sim_ribbon_length = EnumProperty(
         name="Ribbon length", update=_on_knob_changed,
         items=[("per_segment", "length x (subdiv-1)",

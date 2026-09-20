@@ -26,7 +26,7 @@ from efx_format.hashes import (ALPHACORRECTION, BILLBOARD3D, DUMMY,  # noqa: E40
                                LIFE, MESH, NOISE, PLANE, RIBBON, RIBBONBLADE,
                                PARENTOPTIONS, PTCOLLISION, PTLIFE, REFRACTION, RGBFIRE,
                                RGBWATER, ROTATEANIM, SCALEANIM,
-                               SPAWN, TRANSFORM3D, UVSEQUENCE, VELOCITY3D)
+                               SPAWN, TRANSFORM3D, TURBULENCE, UVSEQUENCE, VELOCITY3D)
 from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
                             Behavior, SimConfig, SimResources, SimScene,
                             Simulator, Vec3, from_attr_blocks, grid_table,
@@ -50,11 +50,11 @@ ARCHETYPE_DIR = os.path.join(_ROOT, "presets", "__archetypes__")
 
 def spawn_fields(**kw):
     f = {
-        "maxParticles": 0, "particlesPerBurst": 1, "particlesPerBurstJitter": 0,
-        "burstInterval": 10, "burstIntervalJitter": 0,
-        "burstsPerCycle": 0, "burstsPerCycleJitter": 0,
-        "emitterStartDelay": 0, "emitterStartDelayJitter": 0,
-        "particleSpawnDelay": 0, "particleSpawnDelayJitter": 0,
+        "maxParticles": 0, "spawnNum": 1, "spawnNumJitter": 0,
+        "intervalFrame": 10, "intervalFrameJitter": 0,
+        "loopNum": 0, "loopNumJitter": 0,
+        "emitterDelayFrame": 0, "emitterDelayFrameJitter": 0,
+        "spawnWaitFrame": 0, "spawnWaitFrameJitter": 0,
         "emitterRepeatCount": 0,
         "altBurstInterval": 0, "altBurstIntervalJitter": 0,
     }
@@ -82,8 +82,8 @@ def velocity_fields(**kw):
         "rotationZ": 0.0, "rotationZJitter": 0.0,
         "speed": 1.0, "speedJitter": 0.0,
         "speedCoef": 1.0, "speedCoefJitter": 0.0,
-        "velocityX": 0.0, "velocityY": 0.0, "velocityZ": 0.0,
-        "divergenceX": 1.0, "divergenceY": 1.0, "divergenceZ": 1.0,
+        "offsetX": 0.0, "offsetY": 0.0, "offsetZ": 0.0,
+        "sizeX": 1.0, "sizeY": 1.0, "sizeZ": 1.0,
         "velocityType": 0,
         "gravity": 0.0, "gravity_jitter": 0.0,
         "movementDelay": 0, "movementDelayJitter": 0,
@@ -125,8 +125,8 @@ def scaleanim_fields(**kw):
 def rgbfire_fields(**kw):
     f = {"typeFlag": 1,
          "fireColor": [255, 0, 0, 255], "smokeColor": [0, 0, 255, 255],
-         "brightness1": 1.0, "brightness2": 1.0,
-         "unkn4": 0.0, "brightness3": 1.0, "brightness4": 1.0}
+         "fireFactor": 1.0, "brightness2": 1.0,
+         "lerpAlphaToBlue": 0.0, "brightness3": 1.0, "brightness4": 1.0}
     for pre in ("fireColorParam_", "smokeColorParam_"):
         f[pre + "useLife"] = 0
         for k in ("appearFrame", "keepFrame", "vanishFrame"):
@@ -134,7 +134,7 @@ def rgbfire_fields(**kw):
             f[pre + k + "Jitter"] = 0
         f[pre + "lighting"] = 0
         f[pre + "lifeType"] = 0
-        f[pre + "unkn9"] = 0
+        f[pre + "correctColorNo"] = 0
     f.update(kw)
     return f
 
@@ -144,7 +144,7 @@ def rgbwater_fields(**kw):
          "colorSpecular": [255, 0, 0, 255], "colorSheet": [0, 0, 255, 255],
          "colorRate": 1.0, "waterLerpGtoB": 0.0, "intensityCubeMap": 0.0,
          "intensitySpecular": 1.0, "intensitySheet": 1.0, "intensityAlpha": 1.0,
-         "unknownFloat": 0.3, "path_len": 0, "path": b""}
+         "normalSharpness": 0.3, "path_len": 0, "path": b""}
     for pre in ("specularColorParam_", "sheetColorParam_", "waterLerpParam_"):
         f[pre + "useLife"] = 0
         for k in ("appearFrame", "keepFrame", "vanishFrame"):
@@ -153,7 +153,7 @@ def rgbwater_fields(**kw):
         f[pre + "lighting"] = 0
         f[pre + "lifeType"] = 0
     for pre in ("specularColorParam_", "sheetColorParam_"):
-        f[pre + "unkn9"] = 0
+        f[pre + "correctColorNo"] = 0
     f.update(kw)
     return f
 
@@ -195,7 +195,7 @@ def billboard_fields(**kw):
          "color": [255, 255, 255, 255], "colorRange": [255, 255, 255, 255],
          "useColorRange": 0, "blendMode": 0,
          "brightness": 1.0, "brightnessJitter": 0.0,
-         "EPVColorSlot1": 0, "SlotOverride1": 0,
+         "correctColorNo": 0, "SlotOverride1": 0,
          "rotation": 0.0, "rotationJitter": 0.0,
          "scale": 1.0, "scaleJitter": 0.0,
          "width": 100.0, "widthJitter": 0.0,
@@ -341,6 +341,18 @@ def homing_fields(**kw):
     return f
 
 
+def noise_fields(**kw):
+    f = {
+        "typeFlag": 0, "section_length": 36, "spacer": 0,
+        "lowFrequency": 0.0, "lowFrequencyJitter": 0.0,
+        "lowFrequencyWidth": 0.0, "lowFrequencyWidthJitter": 0.0,
+        "highFrequency": 0.0, "highFrequencyJitter": 0.0,
+        "highFrequencyWidth": 0.0, "highFrequencyWidthJitter": 0.0,
+    }
+    f.update(kw)
+    return f
+
+
 def make_sim(spawn=None, life=None, velocity=None, es3d=None, config=None, extra=(),
              transform=None, scaleanim=None, rotateanim=None, billboard=None,
              resources=None):
@@ -399,7 +411,7 @@ def uvs_bytes(frame_rects, extra_groups=0):
 
 def uvseq_sim(uv=None, frames=0, config=None, resources=None, **kw):
     """一个粒子 + UVSEQUENCE（默认配 BILLBOARD3D，这样 build_render 有东西可改）。"""
-    kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+    kw.setdefault("spawn", spawn_fields(intervalFrame=1000))
     kw.setdefault("life", life_fields(indefiniteLifespan=1))
     kw.setdefault("billboard", billboard_fields())
     extra = list(kw.pop("extra", ()))
@@ -412,7 +424,7 @@ def uvseq_sim(uv=None, frames=0, config=None, resources=None, **kw):
 
 def one_particle(frames=1, **kw):
     """生一个粒子、跑 `frames` 帧，返回它。"""
-    kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+    kw.setdefault("spawn", spawn_fields(intervalFrame=1000))
     kw.setdefault("life", life_fields(indefiniteLifespan=1))
     sim = make_sim(**kw)
     for _ in range(frames):
@@ -523,19 +535,19 @@ class TestSpawn(unittest.TestCase):
         return sorted(seen.values())
 
     def test_interval_is_exact(self):
-        """burstInterval=10 → 第 0/10/20… 帧各发一批，不是 11 帧一次。"""
-        sim = make_sim(spawn=spawn_fields(burstInterval=10, particlesPerBurst=1),
+        """intervalFrame=10 → 第 0/10/20… 帧各发一批，不是 11 帧一次。"""
+        sim = make_sim(spawn=spawn_fields(intervalFrame=10, spawnNum=1),
                        life=life_fields(indefiniteLifespan=1))
         self.assertEqual(self._birth_frames(sim, 31), [0, 10, 20, 30])
 
     def test_interval_zero_emits_every_frame(self):
-        sim = make_sim(spawn=spawn_fields(burstInterval=0, particlesPerBurst=1),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=0, spawnNum=1),
                        life=life_fields(indefiniteLifespan=1))
         self.assertEqual(self._birth_frames(sim, 5), [0, 1, 2, 3, 4])
 
     def test_interval_jitter_is_rolled_per_burst(self):
-        """burstIntervalJitter 每批重抽 → 批间距参差不齐，落在 [v, v+jitter] 里。"""
-        sim = make_sim(spawn=spawn_fields(burstInterval=4, burstIntervalJitter=4),
+        """intervalFrameJitter 每批重抽 → 批间距参差不齐，落在 [v, v+jitter] 里。"""
+        sim = make_sim(spawn=spawn_fields(intervalFrame=4, intervalFrameJitter=4),
                        life=life_fields(indefiniteLifespan=1))
         frames = self._birth_frames(sim, 200)
         gaps = {b - a for a, b in zip(frames, frames[1:])}
@@ -545,7 +557,7 @@ class TestSpawn(unittest.TestCase):
 
     def test_interval_jitter_per_cycle_is_uniform(self):
         """'per_cycle'（改动前的行为）：一轮只抽一次，整轮等距。"""
-        sim = make_sim(spawn=spawn_fields(burstInterval=4, burstIntervalJitter=4),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=4, intervalFrameJitter=4),
                        life=life_fields(indefiniteLifespan=1),
                        config=SimConfig(spawn_interval_jitter="per_cycle"))
         frames = self._birth_frames(sim, 200)
@@ -553,12 +565,12 @@ class TestSpawn(unittest.TestCase):
         self.assertEqual(len(gaps), 1)
 
     def test_emitter_start_delay(self):
-        sim = make_sim(spawn=spawn_fields(emitterStartDelay=7, burstInterval=100),
+        sim = make_sim(spawn=spawn_fields(emitterDelayFrame=7, intervalFrame=100),
                        life=life_fields(indefiniteLifespan=1))
         self.assertEqual(self._birth_frames(sim, 20), [7])
 
     def test_particles_per_burst(self):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=4, burstInterval=100),
+        sim = make_sim(spawn=spawn_fields(spawnNum=4, intervalFrame=100),
                        life=life_fields(indefiniteLifespan=1))
         sim.step()
         self.assertEqual(len(sim.particles), 4)
@@ -570,7 +582,7 @@ class TestSpawn(unittest.TestCase):
         时还占着名额，所以满编+同龄时会有一帧空窗（见 simulator.py 的取舍说明）。
         """
         sim = make_sim(
-            spawn=spawn_fields(particlesPerBurst=5, burstInterval=0, maxParticles=3),
+            spawn=spawn_fields(spawnNum=5, intervalFrame=0, maxParticles=3),
             life=life_fields(duration=4))
         counts = []
         for _ in range(40):
@@ -581,10 +593,10 @@ class TestSpawn(unittest.TestCase):
         self.assertGreater(sim.em.spawned_total, 3)   # 确实一直在补
 
     def test_bursts_per_cycle_one_uses_alt_interval(self):
-        """三态之二：burstsPerCycle 抽到 1 时改用 altBurstInterval 作节奏。"""
+        """三态之二：loopNum 抽到 1 时改用 altBurstInterval 作节奏。"""
         sim = make_sim(
-            spawn=spawn_fields(burstsPerCycle=1, emitterRepeatCount=3,
-                               burstInterval=100, altBurstInterval=5),
+            spawn=spawn_fields(loopNum=1, emitterRepeatCount=3,
+                               intervalFrame=100, altBurstInterval=5),
             life=life_fields(indefiniteLifespan=1))
         frames = self._birth_frames(sim, 12)
         self.assertEqual(frames[:3], [0, 5, 10])
@@ -592,25 +604,25 @@ class TestSpawn(unittest.TestCase):
     def test_repeat_count_zero_never_stops(self):
         """emitterRepeatCount=0 → 永不换位置、无限生成（三态之一）。"""
         sim = make_sim(
-            spawn=spawn_fields(burstsPerCycle=2, emitterRepeatCount=0, burstInterval=3),
+            spawn=spawn_fields(loopNum=2, emitterRepeatCount=0, intervalFrame=3),
             life=life_fields(indefiniteLifespan=1))
         frames = self._birth_frames(sim, 30)
         self.assertGreaterEqual(len(frames), 9)
 
     def test_finite_cycle_stops_emitting(self):
-        """批次数 = burstsPerCycle + emitterRepeatCount - 1，发完就**不再发**。
+        """批次数 = loopNum + emitterRepeatCount - 1，发完就**不再发**。
 
         3 + 1 - 1 = 3 批、间隔 2 帧 → 只有 0/2/4 三个出生帧，后面一直空着。
         """
         sim = make_sim(
-            spawn=spawn_fields(burstsPerCycle=3, emitterRepeatCount=1, burstInterval=2),
+            spawn=spawn_fields(loopNum=3, emitterRepeatCount=1, intervalFrame=2),
             life=life_fields(duration=10, indefiniteLifespan=1))
         self.assertEqual(self._birth_frames(sim, 200), [0, 2, 4])
 
     def test_recycle_mode_keeps_going(self):
         """'recycle'（改动前的行为）：最后一批之后按粒子寿命等一段，换位置再开一轮。"""
         sim = make_sim(
-            spawn=spawn_fields(burstsPerCycle=3, emitterRepeatCount=1, burstInterval=2),
+            spawn=spawn_fields(loopNum=3, emitterRepeatCount=1, intervalFrame=2),
             life=life_fields(duration=10, indefiniteLifespan=1),
             config=SimConfig(spawn_after_cycle="recycle"))
         frames = self._birth_frames(sim, 30)
@@ -620,7 +632,7 @@ class TestSpawn(unittest.TestCase):
     def test_zero_repeat_count_never_stops(self):
         """emitterRepeatCount=0 是「无限」那一态，不受收工逻辑影响。"""
         sim = make_sim(
-            spawn=spawn_fields(burstsPerCycle=2, emitterRepeatCount=0, burstInterval=3),
+            spawn=spawn_fields(loopNum=2, emitterRepeatCount=0, intervalFrame=3),
             life=life_fields(duration=5))
         sim.run(500)
         self.assertGreater(sim.em.spawned_total, 50)
@@ -628,7 +640,7 @@ class TestSpawn(unittest.TestCase):
 
     def test_particle_spawn_delay_holds_the_particle(self):
         sim = make_sim(
-            spawn=spawn_fields(particleSpawnDelay=5, burstInterval=100),
+            spawn=spawn_fields(spawnWaitFrame=5, intervalFrame=100),
             life=life_fields(indefiniteLifespan=1),
             velocity=velocity_fields(speed=10.0))
         sim.step()
@@ -653,7 +665,7 @@ class TestLife(unittest.TestCase):
         这里挂一个未实现的 LIGHTNING 当渲染体，只借它的退化点探测粒子存在，
         与本测试要验的 duration 逻辑无关。
         """
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000), life=life_fields(duration=10),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000), life=life_fields(duration=10),
                        extra=[(LIGHTNING, {})])
         rendered = 0
         for _ in range(30):
@@ -662,14 +674,14 @@ class TestLife(unittest.TestCase):
         self.assertEqual(rendered, 10)
 
     def test_indefinite_never_dies(self):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(duration=3, indefiniteLifespan=1))
         for _ in range(200):
             sim.step()
         self.assertEqual(len(sim.particles), 1)
 
     def test_fade_in_ramps_alpha(self):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(fadeInDuration=4, duration=10))
         alphas = []
         for _ in range(6):
@@ -679,7 +691,7 @@ class TestLife(unittest.TestCase):
         self.assertEqual(alphas[:5], [0.0, 0.25, 0.5, 0.75, 1.0])
 
     def test_fade_out_ramps_down(self):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(duration=4, fadeOutDuration=4))
         alphas = []
         for _ in range(9):
@@ -691,9 +703,9 @@ class TestLife(unittest.TestCase):
     def test_life_model_switch_changes_total(self):
         """SimConfig.life_model 是待标定开关，两种算法给出不同总长。"""
         f = life_fields(fadeInDuration=5, duration=10, fadeOutDuration=5)
-        a = make_sim(spawn=spawn_fields(burstInterval=1000), life=f,
+        a = make_sim(spawn=spawn_fields(intervalFrame=1000), life=f,
                      config=SimConfig(life_model="sum"))
-        b = make_sim(spawn=spawn_fields(burstInterval=1000), life=f,
+        b = make_sim(spawn=spawn_fields(intervalFrame=1000), life=f,
                      config=SimConfig(life_model="duration"))
         a.step()
         b.step()
@@ -709,7 +721,7 @@ class TestEmitterShape3D(unittest.TestCase):
     """按作者教程《生成方式》：rangeXYZ = 偏移(内边界) / 尺寸(向外的厚度)。"""
 
     def _spawn_many(self, es3d, n=300, config=None):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=n, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=n, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        es3d=es3d, config=config)
         sim.step()
@@ -868,7 +880,7 @@ class TestEmitterShape3D(unittest.TestCase):
 class TestVelocity3D(unittest.TestCase):
 
     def _one(self, velocity, frames=1, config=None, es3d=None):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        es3d=es3d, velocity=velocity, config=config)
         for _ in range(frames):
@@ -913,7 +925,7 @@ class TestVelocity3D(unittest.TestCase):
 
     def test_radial_moves_outward(self):
         es3d = es3d_fields(shapeType=1, rangeXYZ=[0, 10, 0, 10, 0, 10])
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=50, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=50, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1), es3d=es3d,
                        velocity=velocity_fields(velocityType=2, speed=1.0))
         sim.step()
@@ -921,24 +933,24 @@ class TestVelocity3D(unittest.TestCase):
             self.assertGreater(p.pos.length(), p.spawn_pos.length())
 
     def test_directional_spread_uses_the_documented_formula(self):
-        """Vi = (divergence - 1) * 生成坐标 + velocity，归一化。"""
+        """Vi = (size - 1) * 生成坐标 + offset，归一化。"""
         es3d = es3d_fields(shapeType=3, rangeXYZ=[3.0, 3.0, 0.0, 0.0, 4.0, 4.0])
         p = self._one(velocity_fields(velocityType=1, speed=5.0,
-                                      divergenceX=2.0, divergenceY=1.0, divergenceZ=2.0),
+                                      sizeX=2.0, sizeY=1.0, sizeZ=2.0),
                       es3d=es3d)
         expect = Vec3(3.0, 0.0, 4.0).normalized() * 5.0
         self.assertAlmostEqual(p.vel.x, expect.x, places=6)
         self.assertAlmostEqual(p.vel.z, expect.z, places=6)
 
     def test_unknown_velocity_type_is_reported(self):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        velocity=velocity_fields(velocityType=5))
         sim.step()
         self.assertTrue(any("velocityType=5" in n for n in sim.notes))
 
     def test_rotation_jitter_spreads_directions(self):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=100, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=100, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        velocity=velocity_fields(speed=1.0, rotationX=30.0,
                                                 rotationXJitter=10.0))
@@ -954,7 +966,7 @@ class TestHoming(unittest.TestCase):
     docstring），所以断言只查「有界、周期性」而不是「半径恰好等于 target」。"""
 
     def _sim(self, homing, es3d=None, velocity=None, life=None, config=None):
-        return make_sim(spawn=spawn_fields(burstInterval=1000),
+        return make_sim(spawn=spawn_fields(intervalFrame=1000),
                         life=life or life_fields(indefiniteLifespan=1),
                         es3d=es3d, velocity=velocity or velocity_fields(speed=0.0),
                         config=config, extra=[(HOMING, homing)])
@@ -1362,7 +1374,7 @@ class TestHoming(unittest.TestCase):
             cfg = SimConfig()
             cfg.homing_compose = compose
             sim = make_sim(
-                spawn=spawn_fields(particlesPerBurst=60, burstInterval=1000),
+                spawn=spawn_fields(spawnNum=60, intervalFrame=1000),
                 life=life_fields(indefiniteLifespan=1),
                 es3d=es3d_fields(shapeType=1,
                                  rangeXYZ=[30.0, 0.0, 30.0, 0.0, 30.0, 0.0]),
@@ -1713,6 +1725,50 @@ class TestHoming(unittest.TestCase):
                             for n in sim0.notes))
 
 
+class TestNoise(unittest.TestCase):
+    """NOISE：两组各自随机取向的匀速圆周运动叠加，圆心固定在生成点。"""
+
+    @staticmethod
+    def _sim(fields, config=None):
+        return make_sim(spawn=spawn_fields(intervalFrame=1000),
+                        life=life_fields(indefiniteLifespan=1),
+                        extra=[(NOISE, fields)], config=config)
+
+    def test_single_group_orbits_spawn_point_at_constant_radius(self):
+        """闭式解：只开一组时，每一帧到生成点的距离都精确等于 lowFrequencyWidth。"""
+        sim = self._sim(noise_fields(lowFrequency=90.0, lowFrequencyWidth=10.0))
+        for _ in range(8):
+            sim.step()
+            self.assertAlmostEqual(sim.particles[0].pos.length(), 10.0, places=6)
+
+    def test_zero_radius_group_is_a_true_no_op(self):
+        """第二组半径为 0 时，不管它的转速多大，都不应该扰动第一组的轨迹
+        （两边消耗的随机数序列长度必须一致，否则会连带打乱第一组抽到的轴/相位）。"""
+        sim1 = self._sim(noise_fields(lowFrequency=45.0, lowFrequencyWidth=5.0))
+        sim2 = self._sim(noise_fields(lowFrequency=45.0, lowFrequencyWidth=5.0,
+                                      highFrequency=999.0, highFrequencyWidth=0.0))
+        for _ in range(5):
+            sim1.step()
+            sim2.step()
+        drift = (sim1.particles[0].pos - sim2.particles[0].pos).length()
+        self.assertAlmostEqual(drift, 0.0, places=6)
+
+    def test_two_groups_stay_within_triangle_inequality(self):
+        """两组叠加：到生成点的距离必须落在 |r1-r2| ~ r1+r2 之间（三角不等式），
+        且不会精确等于单组半径——否则说明第二组没真正参与叠加。"""
+        sim = self._sim(noise_fields(lowFrequency=37.0, lowFrequencyWidth=6.0,
+                                     highFrequency=101.0, highFrequencyWidth=3.0))
+        saw_non_trivial = False
+        for _ in range(20):
+            sim.step()
+            dist = sim.particles[0].pos.length()
+            self.assertLessEqual(dist, 6.0 + 3.0 + 1e-6)
+            self.assertGreaterEqual(dist, abs(6.0 - 3.0) - 1e-6)
+            if abs(dist - 6.0) > 1e-3:
+                saw_non_trivial = True
+        self.assertTrue(saw_non_trivial)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 注册表 / 阶段契约
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1729,11 +1785,11 @@ class TestRegistryAndStages(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        register(NOISE)(_StageViolator)
+        register(TURBULENCE)(_StageViolator)
 
     def test_unknown_attribute_is_reported_not_crashed(self):
         fake_hash = 0x7FFFFFF1
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        extra=[(fake_hash, {})])
         sim.step()
@@ -1743,7 +1799,7 @@ class TestRegistryAndStages(unittest.TestCase):
 
     def test_disabled_attribute_is_skipped(self):
         cfg = SimConfig(disabled={VELOCITY3D})
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        velocity=velocity_fields(speed=99.0), config=cfg)
         sim.step()
@@ -1752,7 +1808,7 @@ class TestRegistryAndStages(unittest.TestCase):
     def test_stage_order_is_data(self):
         """VELOCITY3D 默认在 INTEGRATE，可被 order_override 挪走。"""
         cfg = SimConfig(order_override={VELOCITY3D: (FORCE, 5)})
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        velocity=velocity_fields(speed=1.0), config=cfg)
         bound = [b for b in sim.bound if b.type_hash == VELOCITY3D][0]
@@ -1760,18 +1816,18 @@ class TestRegistryAndStages(unittest.TestCase):
 
     def test_strict_mode_catches_stage_violation(self):
         cfg = SimConfig(strict=True)
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
-                       extra=[(NOISE, {})], config=cfg)
+                       extra=[(TURBULENCE, {})], config=cfg)
         with self.assertRaises(AssertionError) as ctx:
             for _ in range(3):
                 sim.step()
         self.assertIn("FORCE", str(ctx.exception))
 
     def test_non_strict_mode_lets_it_through(self):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
-                       extra=[(NOISE, {})], config=SimConfig(strict=False))
+                       extra=[(TURBULENCE, {})], config=SimConfig(strict=False))
         for _ in range(3):
             sim.step()
         self.assertGreater(sim.particles[0].pos.x, 0.0)
@@ -1785,8 +1841,8 @@ class TestDeterminismAndRender(unittest.TestCase):
 
     def _trace(self, seed):
         sim = make_sim(
-            spawn=spawn_fields(particlesPerBurst=3, burstInterval=2,
-                               particlesPerBurstJitter=2),
+            spawn=spawn_fields(spawnNum=3, intervalFrame=2,
+                               spawnNumJitter=2),
             life=life_fields(duration=8, durationJitter=4),
             es3d=es3d_fields(shapeType=1, rangeXYZ=[0, 5, 0, 5, 0, 5]),
             velocity=velocity_fields(speed=1.0, speedJitter=2.0, speedCoef=0.9),
@@ -1805,7 +1861,7 @@ class TestDeterminismAndRender(unittest.TestCase):
 
     def test_reset_replays_identically(self):
         sim = make_sim(
-            spawn=spawn_fields(particlesPerBurst=2, burstInterval=3),
+            spawn=spawn_fields(spawnNum=2, intervalFrame=3),
             life=life_fields(duration=6),
             es3d=es3d_fields(shapeType=1, rangeXYZ=[0, 5, 0, 5, 0, 5]),
             velocity=velocity_fields(speed=1.0, speedJitter=1.0))
@@ -1815,7 +1871,7 @@ class TestDeterminismAndRender(unittest.TestCase):
         self.assertEqual(first, second)
 
     def test_run_to_rewinds(self):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        velocity=velocity_fields(speed=1.0))
         sim.run_to(10)
@@ -1825,7 +1881,7 @@ class TestDeterminismAndRender(unittest.TestCase):
         self.assertEqual(sim.particles[0].pos.as_tuple(), forward)
 
     def test_build_render_is_side_effect_free(self):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=5, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=5, intervalFrame=1000),
                        life=life_fields(duration=20),
                        velocity=velocity_fields(speed=1.0))
         sim.run(3)
@@ -1839,7 +1895,7 @@ class TestDeterminismAndRender(unittest.TestCase):
 
     def test_render_carries_alpha_from_life(self):
         # 借 LIGHTNING（未实现的渲染体）撑出退化点，见 test_duration_is_exact_frame_count。
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(fadeInDuration=4, duration=10),
                        velocity=velocity_fields(speed=0.0),
                        extra=[(LIGHTNING, {})])
@@ -2047,7 +2103,7 @@ class TestFieldResolution(unittest.TestCase):
 class TestSuggestedDuration(unittest.TestCase):
 
     def test_covers_start_delay_and_life(self):
-        sim = make_sim(spawn=spawn_fields(emitterStartDelay=30, burstInterval=10),
+        sim = make_sim(spawn=spawn_fields(emitterDelayFrame=30, intervalFrame=10),
                        life=life_fields(duration=45))
         self.assertGreaterEqual(sim.suggested_duration(), 75)
 
@@ -2060,7 +2116,7 @@ class TestSuggestedDuration(unittest.TestCase):
 
     def test_never_exceeds_max_frames(self):
         cfg = SimConfig(max_frames=50)
-        sim = make_sim(spawn=spawn_fields(emitterStartDelay=99999),
+        sim = make_sim(spawn=spawn_fields(emitterDelayFrame=99999),
                        life=life_fields(indefiniteLifespan=1), config=cfg)
         self.assertLessEqual(sim.suggested_duration(), 50)
 
@@ -2123,7 +2179,7 @@ class TestScaleAnimTimings(unittest.TestCase):
     """
 
     def _frames_to_vanish(self, scaleanim, limit=600):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
                        life=life_fields(indefiniteLifespan=1),
                        billboard=billboard_fields(scale=30.0, width=1.0, height=1.0),
                        scaleanim=scaleanim)
@@ -2148,7 +2204,7 @@ class TestScaleAnimTimings(unittest.TestCase):
 
     def test_multiplier_mode_is_still_available(self):
         """'multiplier'（改动前的行为）：两组都按归一化倍率，30 倍的差距就没了。"""
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
                        life=life_fields(indefiniteLifespan=1),
                        billboard=billboard_fields(scale=30.0, width=1.0, height=1.0),
                        scaleanim=scaleanim_fields(initialScaleSpeed=-0.1),
@@ -2162,7 +2218,7 @@ class TestRgbColoring(unittest.TestCase):
     """RGBFIRE / RGBWATER：两层颜色 + 各自的生命期时序块。"""
 
     def _color(self, block_hash, fields, frames=1, config=None):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
                        life=life_fields(indefiniteLifespan=1),
                        billboard=billboard_fields(),
                        extra=[(block_hash, fields)], config=config)
@@ -2177,9 +2233,9 @@ class TestRgbColoring(unittest.TestCase):
         self.assertAlmostEqual(p.color[1], 0.0, places=5)
         self.assertAlmostEqual(p.color[2], 0.5, places=5)
 
-    def test_brightness1_zero_turns_the_fire_layer_off(self):
-        """brightness1=0 → 只剩 smokeColor（语料证据见 behaviors/rgbfire.py）。"""
-        p = self._color(RGBFIRE, rgbfire_fields(brightness1=0.0))
+    def test_fire_factor_zero_turns_the_fire_layer_off(self):
+        """fireFactor=0 → 只剩 smokeColor（语料证据见 behaviors/rgbfire.py）。"""
+        p = self._color(RGBFIRE, rgbfire_fields(fireFactor=0.0))
         self.assertAlmostEqual(p.color[0], 0.0, places=5)
         self.assertAlmostEqual(p.color[2], 1.0, places=5)
 
@@ -2229,7 +2285,7 @@ class TestAlphaCorrection(unittest.TestCase):
     """只往渲染项上挂参数——逐纹素的处理在 glue 的 fragment shader 里。"""
 
     def _item(self, **kw):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
                        life=life_fields(indefiniteLifespan=1),
                        billboard=billboard_fields(),
                        extra=[(ALPHACORRECTION, alphacorrection_fields(**kw))])
@@ -2252,7 +2308,7 @@ class TestAlphaCorrection(unittest.TestCase):
 
     def test_particle_alpha_is_untouched(self):
         """这是逐纹素的操作，不该整体乘个 alpha。"""
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=1, burstInterval=10000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
                        life=life_fields(indefiniteLifespan=1),
                        billboard=billboard_fields(),
                        extra=[(ALPHACORRECTION,
@@ -2312,7 +2368,7 @@ class TestRotateAnim(unittest.TestCase):
         self.assertAlmostEqual(p.rot.z, self.SIGN * 30.0, places=6)  # 第 5..7 帧共 3 次
 
     def test_random_direction_mode_produces_both_signs(self):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=60, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=60, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        rotateanim=rotateanim_fields(rotationModeMask=1,
                                                     billboardRotation=10.0))
@@ -2321,7 +2377,7 @@ class TestRotateAnim(unittest.TestCase):
         self.assertEqual(signs, {1, -1})
 
     def test_fixed_direction_mode_is_single_signed(self):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=60, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=60, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        rotateanim=rotateanim_fields(rotationModeMask=0,
                                                     billboardRotation=10.0))
@@ -2331,7 +2387,7 @@ class TestRotateAnim(unittest.TestCase):
 
     def test_plane_spin_reaches_the_plane_body(self):
         """PLANE 的横/纵轴要真的跟着转——渲染体不消费 p.rot 的话，改了也看不见。"""
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        rotateanim=rotateanim_fields(
                            rotationModeMask=2, spinAxisMask=16,
@@ -2356,7 +2412,7 @@ class TestTransform3D(unittest.TestCase):
         """默认宿主负责摆位——模拟层再加一次就会双份位移。"""
         sim = make_sim(transform=transform3d_fields(
                            translate=[10.0, 0.0, 20.0, 0.0, 30.0, 0.0]),
-                       spawn=spawn_fields(burstInterval=1000),
+                       spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1))
         sim.step()
         self.assertEqual(sim.em.origin, Vec3())
@@ -2366,7 +2422,7 @@ class TestTransform3D(unittest.TestCase):
     def test_apply_base_switch_moves_the_emitter(self):
         sim = make_sim(transform=transform3d_fields(
                            translate=[10.0, 0.0, 20.0, 0.0, 30.0, 0.0]),
-                       spawn=spawn_fields(burstInterval=1000),
+                       spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        config=SimConfig(t3d_apply_base=True))
         sim.step()
@@ -2377,9 +2433,9 @@ class TestTransform3D(unittest.TestCase):
         # 60/秒 = 1/帧
         base = dict(translation_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         off = make_sim(transform=transform3d_fields(enableVelocityBitflag=0, **base),
-                       spawn=spawn_fields(burstInterval=1000), life=life_fields())
+                       spawn=spawn_fields(intervalFrame=1000), life=life_fields())
         on = make_sim(transform=transform3d_fields(enableVelocityBitflag=1, **base),
-                      spawn=spawn_fields(burstInterval=1000), life=life_fields())
+                      spawn=spawn_fields(intervalFrame=1000), life=life_fields())
         off.run(5)
         on.run(5)
         self.assertEqual(off.em.origin, Vec3())
@@ -2391,7 +2447,7 @@ class TestTransform3D(unittest.TestCase):
             transform=transform3d_fields(
                 enableVelocityBitflag=1,
                 translation_velocity=[120.0, 0.0, 0.0, 0.0, 0.0, 0.0]),   # 2/帧
-            spawn=spawn_fields(burstInterval=1000),
+            spawn=spawn_fields(intervalFrame=1000),
             life=life_fields(indefiniteLifespan=1),
             velocity=velocity_fields(velocityType=3, speed=1.0))
         sim.run(3)
@@ -2403,7 +2459,7 @@ class TestTransform3D(unittest.TestCase):
             transform=transform3d_fields(
                 enableVelocityBitflag=1,
                 translation_velocity=[30.0, 0.0, 0.0, 0.0, 0.0, 0.0]),    # 0.5/帧
-            spawn=spawn_fields(burstInterval=1000),
+            spawn=spawn_fields(intervalFrame=1000),
             life=life_fields(indefiniteLifespan=1),
             velocity=velocity_fields(velocityType=3, speed=1.0,
                                      minMovementThreshold=10.0))
@@ -2414,7 +2470,7 @@ class TestTransform3D(unittest.TestCase):
         """'raw' = 照字面符号（改动前的行为）。"""
         t = transform3d_fields(enableVelocityBitflag=1,
                                rotation_velocity=[0.0, 0.0, 600.0, 0.0, 0.0, 0.0])
-        sim = make_sim(transform=t, spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(transform=t, spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        config=SimConfig(t3d_rotation_sign="raw"))
         sim.run(10)
@@ -2427,7 +2483,7 @@ class TestTransform3D(unittest.TestCase):
                                translation_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                rotation_velocity=[0.0, 0.0, 600.0, 0.0, 0.0, 0.0],
                                scale_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        kw = dict(spawn=spawn_fields(burstInterval=1000),
+        kw = dict(spawn=spawn_fields(intervalFrame=1000),
                   life=life_fields(indefiniteLifespan=1))
         sec = make_sim(transform=t, **kw)
         sec.run(10)
@@ -2446,7 +2502,7 @@ class TestTransform3D(unittest.TestCase):
         表现上粒子会从收缩变成朝外飞（05 spell 那条就是这么暴露的）。"""
         t = transform3d_fields(enableVelocityBitflag=1,
                                scale_velocity=[-60.0, 0.0, -60.0, 0.0, -60.0, 0.0])
-        sim = make_sim(transform=t, spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(transform=t, spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1))
         sim.run(30)                                   # 每帧 -1，30 帧远远穿过 0
         for v in sim.em.scale_dynamic:
@@ -2469,7 +2525,7 @@ class TestBillboard3D(unittest.TestCase):
 
     def _item(self, frames=1, **kw):
         kw.setdefault("billboard", billboard_fields())
-        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("spawn", spawn_fields(intervalFrame=1000))
         kw.setdefault("life", life_fields(indefiniteLifespan=1))
         sim = make_sim(**kw)
         for _ in range(frames):
@@ -2505,7 +2561,7 @@ class TestBillboard3D(unittest.TestCase):
         self.assertAlmostEqual(it.color[0], 200 / 255.0, places=6)
 
     def test_color_range_lerps_per_particle(self):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=60, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=60, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        billboard=billboard_fields(color=[0, 0, 0, 255],
                                                   colorRange=[255, 255, 255, 255],
@@ -2517,7 +2573,7 @@ class TestBillboard3D(unittest.TestCase):
         self.assertLessEqual(max(reds), 1.0)
 
     def test_color_range_off_is_uniform(self):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=20, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=20, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        billboard=billboard_fields(color=[0, 0, 0, 255],
                                                   colorRange=[255, 255, 255, 255],
@@ -2549,12 +2605,12 @@ class TestBillboard3D(unittest.TestCase):
         self.assertAlmostEqual(it.rot, 45.0 - 30.0, places=6)
 
     def test_epv_slot_is_reported(self):
-        _it, sim = self._item(billboard=billboard_fields(EPVColorSlot1=3))
+        _it, sim = self._item(billboard=billboard_fields(correctColorNo=3))
         self.assertTrue(any("EPV" in n for n in sim.notes))
 
     def test_render_body_writes_no_particle_state(self):
         """RENDER_BODY 阶段不许改粒子状态——strict 模式会查。"""
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        billboard=billboard_fields(), scaleanim=scaleanim_fields(),
                        rotateanim=rotateanim_fields(),
@@ -2633,7 +2689,7 @@ class TestColorAndAlpha(unittest.TestCase):
 
     def _sim(self, n=40, config=None, life=None, **bb):
         f = billboard_fields(**bb)
-        return make_sim(spawn=spawn_fields(particlesPerBurst=n, burstInterval=1000),
+        return make_sim(spawn=spawn_fields(spawnNum=n, intervalFrame=1000),
                         life=life or life_fields(indefiniteLifespan=1),
                         billboard=f, config=config)
 
@@ -2697,7 +2753,7 @@ class TestColorAndAlpha(unittest.TestCase):
     def test_life_fade_multiplies_the_colour_alpha(self):
         """LIFE 的淡入 × 颜色自带的 alpha —— 两者相乘，不是二选一。"""
         life = life_fields(fadeInDuration=10, duration=50, fadeOutDuration=0)
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000), life=life,
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000), life=life,
                        billboard=billboard_fields(color=[255, 255, 255, 128],
                                                   useColorRange=0))
         for _ in range(6):
@@ -2736,7 +2792,7 @@ class TestColorAndAlpha(unittest.TestCase):
                 self.assertAlmostEqual(again[i] * bright, it.color[i], places=6)
 
     def test_mesh_disable_all_colour_range(self):
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=8, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=8, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        extra=[(MESH, mesh_fields(color=list(self.BLACK),
                                                  colorRange=list(self.WHITE),
@@ -2756,7 +2812,7 @@ class TestColorAndAlpha(unittest.TestCase):
                 if tag == "ribbon":
                     kw["ribbonMode"] = 1        # 定长面片：静止也画得出来
                 sim = make_sim(
-                    spawn=spawn_fields(particlesPerBurst=30, burstInterval=1000),
+                    spawn=spawn_fields(spawnNum=30, intervalFrame=1000),
                     life=life_fields(indefiniteLifespan=1),
                     extra=[(hash_, fields(**kw))])
                 sim.step()
@@ -2773,7 +2829,7 @@ class TestPtLifeActionScene(unittest.TestCase):
                child_spawn=None):
         """两个 entry：0 = 父（带 PTLIFE），1 = 子（一个静止的 billboard）。"""
         parent_blocks = [
-            (SPAWN, spawn_fields(burstInterval=1000)),
+            (SPAWN, spawn_fields(intervalFrame=1000)),
             (LIFE, parent_life or life_fields(duration=10)),
             (PTLIFE, ptlife or ptlife_fields()),
             (BILLBOARD3D, billboard_fields()),
@@ -2781,7 +2837,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         if parent_velocity is not None:
             parent_blocks.append((VELOCITY3D, parent_velocity))
         child_blocks = [
-            (SPAWN, child_spawn or spawn_fields(burstInterval=1000)),
+            (SPAWN, child_spawn or spawn_fields(intervalFrame=1000)),
             (LIFE, child_life or life_fields(indefiniteLifespan=1)),
             (BILLBOARD3D, billboard_fields()),
         ]
@@ -2882,7 +2938,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         子实例 VELOCITY3D 的方向字段因此跟着偏转。不同时刻出生的子实例应该拿到
         不同方向——这正是「父转、多个子特效各自偏转」画出螺旋的机制。"""
         parent_blocks = [
-            (SPAWN, spawn_fields(particlesPerBurst=1, burstInterval=5, burstsPerCycle=0)),
+            (SPAWN, spawn_fields(spawnNum=1, intervalFrame=5, loopNum=0)),
             (LIFE, life_fields(indefiniteLifespan=1)),
             (TRANSFORM3D, transform3d_fields(
                 enableVelocityBitflag=1,
@@ -2890,7 +2946,7 @@ class TestPtLifeActionScene(unittest.TestCase):
             (PTLIFE, ptlife_fields(status=0)),
         ]
         child_blocks = [
-            (SPAWN, spawn_fields(burstInterval=1000)),
+            (SPAWN, spawn_fields(intervalFrame=1000)),
             (LIFE, life_fields(indefiniteLifespan=1)),
             (VELOCITY3D, velocity_fields(baseAxis=2, speed=1.0)),
         ]
@@ -2955,8 +3011,8 @@ class TestPtLifeActionScene(unittest.TestCase):
         也要跟着扫描角度只占一个象限（整圈的话 x/z 两侧都会有点）。
         """
         blocks = [
-            (SPAWN, {"maxParticles": 200, "particlesPerBurst": 40,
-                     "burstInterval": 1, "burstsPerCycle": 0,
+            (SPAWN, {"maxParticles": 200, "spawnNum": 40,
+                     "intervalFrame": 1, "loopNum": 0,
                      "emitterRepeatCount": 1}),
             (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
             (EMITTERSHAPE3D, {"shapeType": 1,          # 球
@@ -3006,8 +3062,8 @@ class TestPtLifeActionScene(unittest.TestCase):
         """
         def amounts(unit, phase, frames):
             blocks = [
-                (SPAWN, {"maxParticles": 1, "particlesPerBurst": 1,
-                         "burstInterval": 0, "burstsPerCycle": 1,
+                (SPAWN, {"maxParticles": 1, "spawnNum": 1,
+                         "intervalFrame": 0, "loopNum": 1,
                          "emitterRepeatCount": 1}),
                 (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
                 (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
@@ -3039,8 +3095,8 @@ class TestPtLifeActionScene(unittest.TestCase):
     def test_flowmap_off_leaves_nothing_on_the_item(self):
         """没开 bit 0x04 就完全不挂——glue 据此决定要不要分流动桶。"""
         blocks = [
-            (SPAWN, {"maxParticles": 1, "particlesPerBurst": 1, "burstInterval": 0,
-                     "burstsPerCycle": 1, "emitterRepeatCount": 1}),
+            (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
+                     "loopNum": 1, "emitterRepeatCount": 1}),
             (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100, "scale": 1,
@@ -3060,8 +3116,8 @@ class TestPtLifeActionScene(unittest.TestCase):
         绿蓝，所以 REFRACTION 是**覆盖**渲染体的混合模式。
         """
         blocks = [
-            (SPAWN, {"maxParticles": 1, "particlesPerBurst": 1, "burstInterval": 0,
-                     "burstsPerCycle": 1, "emitterRepeatCount": 1}),
+            (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
+                     "loopNum": 1, "emitterRepeatCount": 1}),
             (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 0, 0, 255], "brightness": 10,
                            "blendMode": 1, "width": 100, "height": 100, "scale": 1}),
@@ -3081,8 +3137,8 @@ class TestPtLifeActionScene(unittest.TestCase):
         """没做的那两档要如实说，别让面板显示成「已模拟」就完事。"""
         def notes(offset, blend):
             blocks = [
-                (SPAWN, {"maxParticles": 1, "particlesPerBurst": 1,
-                         "burstInterval": 0, "burstsPerCycle": 1,
+                (SPAWN, {"maxParticles": 1, "spawnNum": 1,
+                         "intervalFrame": 0, "loopNum": 1,
                          "emitterRepeatCount": 1}),
                 (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
                 (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
@@ -3144,12 +3200,12 @@ class TestPtLifeActionScene(unittest.TestCase):
         t = transform3d_fields(translate=[0.0, 0.0, 70.0, 0.0, 0.0, 0.0])
         blocks = [
             (TRANSFORM3D, t),
-            (SPAWN, spawn_fields(burstInterval=1000)),
+            (SPAWN, spawn_fields(intervalFrame=1000)),
             (LIFE, life_fields(indefiniteLifespan=1)),
             (BILLBOARD3D, billboard_fields()),
         ]
         parent = [
-            (SPAWN, spawn_fields(burstInterval=1000)),
+            (SPAWN, spawn_fields(intervalFrame=1000)),
             (LIFE, life_fields(indefiniteLifespan=1)),
             (PTLIFE, ptlife_fields(status=0)),
             (BILLBOARD3D, billboard_fields()),
@@ -3166,7 +3222,7 @@ class TestPtLifeActionScene(unittest.TestCase):
     def test_depth_limit_stops_recursion(self):
         """自指的 action（entry 0 触发指向自己的 action）→ 靠深度上限收住。"""
         blocks = [
-            (SPAWN, spawn_fields(burstInterval=1000)),
+            (SPAWN, spawn_fields(intervalFrame=1000)),
             (LIFE, life_fields(indefiniteLifespan=1)),
             (PTLIFE, ptlife_fields(status=0)),
             (BILLBOARD3D, billboard_fields()),
@@ -3207,7 +3263,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         self.assertEqual(sc.instance_count, 1)       # 只剩根
 
     def test_a_child_that_has_not_fired_yet_is_not_culled(self):
-        """SPAWN.emitterStartDelay 比空转宽限还长 → 不能在它开火前就把实例回收了。
+        """SPAWN.emitterDelayFrame 比空转宽限还长 → 不能在它开火前就把实例回收了。
 
         用户的 `wp11_017` 里 `explpt` 就是这样：延迟 60 帧，而空转宽限 30 帧，
         表现成「这个子特效完全不触发」。判据是**有没有吐过粒子**：一个都没吐过的
@@ -3215,8 +3271,8 @@ class TestPtLifeActionScene(unittest.TestCase):
         """
         sc = self._scene(ptlife=ptlife_fields(status=0),
                          parent_life=life_fields(indefiniteLifespan=1),
-                         child_spawn=spawn_fields(emitterStartDelay=60,
-                                                  burstInterval=1000),
+                         child_spawn=spawn_fields(emitterDelayFrame=60,
+                                                  intervalFrame=1000),
                          child_life=life_fields(indefiniteLifespan=1),
                          config=SimConfig(seed=1, child_cull_grace=5))
         sc.run(40)
@@ -3229,8 +3285,8 @@ class TestPtLifeActionScene(unittest.TestCase):
         """但也不能无限等——一个永远不发的子实例最后还是要收掉。"""
         sc = self._scene(ptlife=ptlife_fields(status=0),
                          parent_life=life_fields(indefiniteLifespan=1),
-                         child_spawn=spawn_fields(emitterStartDelay=100000,
-                                                  burstInterval=1000),
+                         child_spawn=spawn_fields(emitterDelayFrame=100000,
+                                                  intervalFrame=1000),
                          config=SimConfig(seed=1, child_cull_grace=5,
                                           child_pending_grace=20))
         sc.run(15)
@@ -3267,14 +3323,14 @@ class TestPtCollisionActionScene(unittest.TestCase):
 
     def _scene(self, ptcollision=None, velocity=None, life=None, config=None):
         parent_blocks = [
-            (SPAWN, spawn_fields(burstInterval=1000)),
+            (SPAWN, spawn_fields(intervalFrame=1000)),
             (LIFE, life or life_fields(indefiniteLifespan=1)),
             (VELOCITY3D, velocity or velocity_fields(baseAxis=4, speed=1.0)),
             (PTCOLLISION, ptcollision or ptcollision_fields()),
             (BILLBOARD3D, billboard_fields()),
         ]
         child_blocks = [
-            (SPAWN, spawn_fields(burstInterval=1000)),
+            (SPAWN, spawn_fields(intervalFrame=1000)),
             (LIFE, life_fields(indefiniteLifespan=1)),
             (BILLBOARD3D, billboard_fields()),
         ]
@@ -3359,7 +3415,7 @@ class TestParentOptions(unittest.TestCase):
     """跟随发射器 + 停止追踪帧数（其余字段刻意未实现，只 note）。"""
 
     def _sim(self, parent=None, frames=10, drift=(0.0, 0.0, 0.0), **kw):
-        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("spawn", spawn_fields(intervalFrame=1000))
         kw.setdefault("life", life_fields(indefiniteLifespan=1))
         kw.setdefault("transform", drifting_emitter(*drift))
         extra = list(kw.pop("extra", ()))
@@ -3479,7 +3535,7 @@ class TestEmitterRotationReachesParticles(unittest.TestCase):
     （在这之前 em.rotation/em.scale 只是累积着没人用）。"""
 
     def _spawn_at(self, transform, frames=4, es3d=None, velocity=None):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000, emitterStartDelay=3),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000, emitterDelayFrame=3),
                        life=life_fields(indefiniteLifespan=1),
                        transform=transform,
                        es3d=es3d, velocity=velocity)
@@ -3596,7 +3652,7 @@ class TestTrailRecording(unittest.TestCase):
 
     def test_not_recorded_unless_requested(self):
         """没有条带类渲染体就不记轨迹——那是白白的逐帧拷贝。"""
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        velocity=velocity_fields(speed=1.0))
         sim.run(10)
@@ -3604,7 +3660,7 @@ class TestTrailRecording(unittest.TestCase):
         self.assertEqual(sim.em.trail, [])
 
     def test_recorded_when_a_body_needs_it(self):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        velocity=velocity_fields(speed=1.0),
                        extra=[(RIBBON, ribbon_fields())])
@@ -3614,7 +3670,7 @@ class TestTrailRecording(unittest.TestCase):
         self.assertEqual(len(sim.em.trail), 10)
 
     def test_trail_is_capped(self):
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        velocity=velocity_fields(speed=1.0),
                        extra=[(RIBBON, ribbon_fields())],
@@ -3631,7 +3687,7 @@ class TestDummy(unittest.TestCase):
 
     def test_draws_nothing_at_all(self):
         """DUMMY 是「无视觉输出的功能性宿主」——既不该画，也不该退化成点。"""
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=5, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=5, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        extra=[(DUMMY, {"typeFlag": 1, "section_length": 1})])
         sim.run(5)
@@ -3645,7 +3701,7 @@ class TestDummy(unittest.TestCase):
 
     def test_without_dummy_the_fallback_point_appears(self):
         """对照组：渲染体存在但没实现时（同 LIGHTNING）才该出现退化点。"""
-        sim = make_sim(spawn=spawn_fields(burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        extra=[(LIGHTNING, {})])
         sim.run(3)
@@ -3654,7 +3710,7 @@ class TestDummy(unittest.TestCase):
     def test_truly_bodyless_renders_nothing(self):
         """PTBEHAVIOR、或压根没挂任何渲染体分类属性的 entry（纯 Action 召唤枢纽等）——
         跟显式的 DUMMY 一样明确不画，不该凭空冒出退化点。"""
-        sim = make_sim(spawn=spawn_fields(particlesPerBurst=5, burstInterval=1000),
+        sim = make_sim(spawn=spawn_fields(spawnNum=5, intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1))
         sim.run(5)
         self.assertEqual(len(sim.particles), 5)      # 粒子照常存在
@@ -3668,7 +3724,7 @@ class TestDummy(unittest.TestCase):
 class TestPlane(unittest.TestCase):
 
     def _item(self, frames=1, **kw):
-        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("spawn", spawn_fields(intervalFrame=1000))
         kw.setdefault("life", life_fields(indefiniteLifespan=1))
         sim = make_sim(extra=[(PLANE, kw.pop("plane"))], **kw)
         for _ in range(frames):
@@ -3721,7 +3777,7 @@ class TestPlane(unittest.TestCase):
 class TestRibbon(unittest.TestCase):
 
     def _sim(self, ribbon=None, frames=20, **kw):
-        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("spawn", spawn_fields(intervalFrame=1000))
         kw.setdefault("life", life_fields(indefiniteLifespan=1))
         sim = make_sim(extra=[(RIBBON, ribbon or ribbon_fields())], **kw)
         for _ in range(frames):
@@ -3851,7 +3907,7 @@ class TestRibbon(unittest.TestCase):
                                                      baseAxis=1))],
                        velocity=velocity_fields(speed=10.0, baseAxis=2,
                                                 movementDelay=5),
-                       spawn=spawn_fields(burstInterval=1000),
+                       spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        config=SimConfig(ribbon_rigid_dir="velocity"))
         for _ in range(3):                  # 还没到 movementDelay，粒子仍静止
@@ -3884,7 +3940,7 @@ class TestRibbon(unittest.TestCase):
         """
         sim = make_sim(extra=[(RIBBON, ribbon_fields(ribbonMode=1, length=60.0,
                                                      baseAxis=0))],
-                       spawn=spawn_fields(burstInterval=1000),
+                       spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1))
         sim.em.host_rotation.z = 90.0        # 模拟被旋转过的触发者
         sim.step()
@@ -3903,7 +3959,7 @@ class TestRibbon(unittest.TestCase):
         sim = make_sim(
             extra=[(RIBBON, ribbon_fields(ribbonMode=1, color=[0, 0, 255, 255])),
                   (RGBFIRE, rgbfire_fields())],   # 默认 fireColor=红 smokeColor=蓝，跟上面不是同一回事
-            spawn=spawn_fields(burstInterval=1000),
+            spawn=spawn_fields(intervalFrame=1000),
             life=life_fields(indefiniteLifespan=1))
         sim.step()
         it = sim.build_render()[0]
@@ -4005,7 +4061,7 @@ class TestRibbon(unittest.TestCase):
 class TestRibbonBlade(unittest.TestCase):
 
     def _sim(self, blade=None, frames=20, **kw):
-        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("spawn", spawn_fields(intervalFrame=1000))
         kw.setdefault("life", life_fields(indefiniteLifespan=1))
         sim = make_sim(extra=[(RIBBONBLADE, blade or blade_fields())], **kw)
         for _ in range(frames):
@@ -4043,7 +4099,7 @@ class TestRibbonBlade(unittest.TestCase):
 
         def run(shrink):
             sim = make_sim(
-                spawn=spawn_fields(burstInterval=1000),
+                spawn=spawn_fields(intervalFrame=1000),
                 life=life_fields(indefiniteLifespan=1),
                 transform=transform3d_fields(
                     enableVelocityBitflag=1,
@@ -4090,7 +4146,7 @@ class TestRibbonBlade(unittest.TestCase):
 class TestMesh(unittest.TestCase):
 
     def _item(self, mesh=None, frames=1, **kw):
-        kw.setdefault("spawn", spawn_fields(burstInterval=1000))
+        kw.setdefault("spawn", spawn_fields(intervalFrame=1000))
         kw.setdefault("life", life_fields(indefiniteLifespan=1))
         sim = make_sim(extra=[(MESH, mesh or mesh_fields())], **kw)
         for _ in range(frames):
@@ -4187,7 +4243,7 @@ class TestT3EndToEnd(unittest.TestCase):
             with self.subTest(archetype=stem):
                 blocks, timl = _load_archetype(stem + ".json")
                 sim = from_attr_blocks(blocks, timl, SimConfig(seed=2))
-                # 10 帧：ribbon_particle 只发一批（burstsPerCycle=1/repeat=1）、
+                # 10 帧：ribbon_particle 只发一批（loopNum=1/repeat=1）、
                 # 寿命 1+15 帧，跑到 40 帧那一批早没了
                 sim.run(10)
                 items = sim.build_render()
@@ -4391,7 +4447,7 @@ class TestUvSequence(unittest.TestCase):
     def test_random_flip_is_deterministic_per_seed(self):
         uv = {"loopingMode": looping_mode(playback=1, flip_h=2, flip_v=2),
               "loopingOrientation": 3}
-        spawn = spawn_fields(particlesPerBurst=24, burstInterval=1000)
+        spawn = spawn_fields(spawnNum=24, intervalFrame=1000)
 
         def run(seed):
             sim = uvseq_sim(uv=uv, spawn=spawn, resources=self._res(4),

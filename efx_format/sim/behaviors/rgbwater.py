@@ -11,12 +11,12 @@ efx_format/sim/behaviors/rgbwater.py  —  RGBWATER（高光/水膜两层染色�
     specularColorParam_* / sheetColorParam_*   两层各自的生命期时序块
 
 比 RGBFIRE 好的一点：两层各自的强度都是**具名确认过的字段**，不用像那边一样靠
-统计去认 brightness1，所以 'weighted' 合成在这里是直接照字段来的。
+统计去认 fireFactor，所以 'weighted' 合成在这里是直接照字段来的。
 
 未参与计算（作用与我们的渲染无关或未知）：
     waterLerpGtoB / intensityCubeMap    水面反射相关，需要环境贴图才谈得上
     waterLerpParam_*                    上面那个标量的生命期块
-    unknownFloat                        无对应 TimelineParam，众数 0.3
+    normalSharpness（原 unknownFloat）   法线锐度，devlecture 确认，需要真实法线贴图才谈得上
 
 约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
 """

@@ -51,7 +51,7 @@ UNKNOWNS = {
         ("sum", "duration"), "sum",
     ),
     "age_during_delay": (
-        "SPAWN.particleSpawnDelay 期间粒子的 age 是否推进（影响 TIML A1 与 LIFE）。",
+        "SPAWN.spawnWaitFrame 期间粒子的 age 是否推进（影响 TIML A1 与 LIFE）。",
         (False, True), False,
     ),
     # "t3d_velocity_unit" 已标定，降级成注释（保留开关，不再是待办）：TRANSFORM3D
@@ -63,13 +63,13 @@ UNKNOWNS = {
     # 衰减率。UI 已从 Calibration 面板移除，Scene 属性 efx_sim_t3d_vel_unit 仍
     # 保留（默认 per_second）。
     "spawn_interval_jitter": (
-        "SPAWN.burstIntervalJitter 的重抽粒度。'per_burst'=每一批都重新抽一次间隔"
-        "（默认，与同为发射器层的 particlesPerBurstJitter 一致），一串粒子的间距参差不齐；"
+        "SPAWN.intervalFrameJitter 的重抽粒度。'per_burst'=每一批都重新抽一次间隔"
+        "（默认，与同为发射器层的 spawnNumJitter 一致），一串粒子的间距参差不齐；"
         "'per_cycle'=一轮只抽一次，整轮等距（改动前的行为）。",
         ("per_burst", "per_cycle"), "per_burst",
     ),
     "spawn_after_cycle": (
-        "有限轮次（burstsPerCycle 与 emitterRepeatCount 都非 0）的那些批次发完之后。"
+        "有限轮次（loopNum 与 emitterRepeatCount 都非 0）的那些批次发完之后。"
         "'stop'=不再发（默认）；'recycle'=等一个粒子寿命后换位置、重抽、再开一轮"
         "（改动前的行为）。两个「无限」态（任一为 0）不受此开关影响。",
         ("stop", "recycle"), "stop",
@@ -97,7 +97,7 @@ UNKNOWNS = {
     ),
     "rgb_tint_mode": (
         "RGBFIRE / RGBWATER 的两层颜色怎么压成粒子的单一颜色。'weighted'=各按自己的"
-        "强度×生命期权重加权平均（默认；火焰用 brightness1、高光/水膜用 "
+        "强度×生命期权重加权平均（默认；火焰用 fireFactor、高光/水膜用 "
         "intensitySpecular/intensitySheet）；'mix'=等权平均；'first'=只取 fireColor/"
         "colorSpecular；'second'=只取 smokeColor/colorSheet。"
         "⚠ 实机是外缘/内部两层按贴图分布的，压成一个颜色是当前渲染链的限制，"
@@ -457,7 +457,7 @@ class SimConfig(object):
         self.max_instances = 256            # 同时存在的实例数
         self.max_particles_total = 20000    # 全树粒子总数
         self.child_cull_grace = 30          # 生成过粒子的子实例，空转多少帧就回收
-        #: 还一个粒子都没吐过的子实例能等多久。SPAWN.emitterStartDelay 可以很长，
+        #: 还一个粒子都没吐过的子实例能等多久。SPAWN.emitterDelayFrame 可以很长，
         #: 用 child_cull_grace 那 30 帧去卡它会让子特效「完全不触发」。
         self.child_pending_grace = 600
         self.trail_max = 64                 # 逐粒子位置历史的最大帧数（条带类渲染体用）

@@ -2346,8 +2346,8 @@ FIELD_TO_DT = {
     ("RGBFIRE", "brightness2"):   [(0x9F1E012E, 2)],
     # ── RGBWATER（2026-09-03 用户实机逐条确认；轨道只在 A0 生效，见 BLOCK_NATIVE_AXIS）──
     # 官方 8 个 TimelineParam 与本块头部 8 个字段**全部实机逐条确认**，无遗留。
-    # 头部的第 9 个 float（unknownFloat）没有对应 DT——引擎只声明 6 个 float 参数，
-    # 这里有 7 个 float，多出来的那个不可动画。
+    # 头部的第 9 个 float（normalSharpness，原 unknownFloat）没有对应 DT——引擎只
+    # 声明 6 个 float 参数，这里有 7 个 float，多出来的那个不可动画。
     ("RGBWATER", "colorRate"):         [(0x9F1E012E, 2)],
     ("RGBWATER", "waterLerpGtoB"):     [(0xA7EDA21C, 2)],
     ("RGBWATER", "intensitySheet"):    [(0x4E00491F, 2)],

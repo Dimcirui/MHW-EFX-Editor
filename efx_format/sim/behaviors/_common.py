@@ -217,7 +217,7 @@ def pick_trail(p, em):
 # ─────────────────────────────────────────────────────────────────────────────
 # ColorParam —— RGBFIRE / RGBWATER 共用的「一种颜色的生命期时序块」
 #
-# 10 个 int 一段，逐位同构（RGBWATER 的第三段只有 9 位，没有 unkn9）：
+# 10 个 int 一段，逐位同构（RGBWATER 的第三段只有 9 位，没有 correctColorNo）：
 #     useLife │ appearFrame(+J) │ keepFrame(+J) │ vanishFrame(+J) │ lighting │ lifeType
 # useLife=0 时整段不生效——语料里 RGBFIRE 的 fire 段只有 10.7% 开、smoke 段 22.3%，
 # 关着的那些 keep/vanish 仍停在 20/40 这组默认值上，是惰性的。

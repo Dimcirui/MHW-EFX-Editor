@@ -10,14 +10,16 @@ from .fields_model import (
 )
 from .enums import (
     ENUM_SHAPE_TYPE3D, ENUM_RANGE_DIVIDE_AXIS, ENUM_RANGE_DIVIDE_AXIS_2D,
-    ENUM_ROTATION_CORRECT_TYPE,
+    ENUM_ROTATION_CORRECT_TYPE, ENUM_RAYCAST_DEPENDENCY,
     ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_IMPACT_PLAY_TRIGGER_MODE, ENUM_PTLIFE_STATUS,
     ENUM_RAYCAST_DIR, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
     ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE, ENUM_REFRACTION_OFFSET,
     BITS_ENABLE_VELOCITY, BITS_ROTATEANIM_SPIN_FLAGS, BITS_RANDOMFIX_TABLE,
     BITS_FADEBYANGLE_FLAGS,
-    BITS_SPAWN_UNKN31,
+    BITS_SPAWN_FLAGS,
+    BITS_RAYCAST_ATTR, BITS_RAYCAST_FLAGS,
+    BITS_PLEMISSIVE_EMIT_MASK,
     _AXIS_DIRECTION6, _ROT_ORDER6, _VELOCITY_TYPE, _TRANSFORM_ROT_ORDER,
 )
 from .codec import _schema_size
@@ -106,47 +108,65 @@ assert _schema_size(PARENTOPTIONS_SCHEMA) == 60, \
 #
 # BT 原字段名（EFX_Subtypes.bt）见各字段行内注释；下面是 2026-07-26 用户实机测试
 # （详见 docs/ATTRIBUTE_BEHAVIOR_NOTES.md「SPAWN」一节）后按 emitter/particle 三层模型
-# （SPAWN属性本身 → emitter实例/轮次 → particle个体）重新命名的结果：
+# （SPAWN属性本身 → emitter实例/轮次 → particle个体）重新命名的结果。
 #
-#   maxParticles/burstInterval/burstsPerCycle/emitterRepeatCount/emitterStartDelay
-#   均为 emitter 实例层字段；particleSpawnDelay 是唯一的 particle 层字段。
+# 2026-09-19 内部名按官方讲座 Spawn 面板截图改名（命名优先级：DTI匹配>devlecture匹配>
+# 我们的第三方命名>其他），外部 label_zh 不变——那是三层模型考据出来的精确措辞，跟
+# 官方通用名是两回事，改内部名不影响它：
+#   particlesPerBurst→spawnNum、burstInterval→intervalFrame、burstsPerCycle→loopNum、
+#   emitterStartDelay→emitterDelayFrame、particleSpawnDelay→spawnWaitFrame。
+#
+#   maxParticles/intervalFrame/loopNum/emitterRepeatCount/emitterDelayFrame
+#   均为 emitter 实例层字段；spawnWaitFrame 是唯一的 particle 层字段。
 #
 # 核心机制（完整模型见 docs）：
 #   - maxParticles：同时存活粒子数软上限（非终身总量，Little's Law 验证：
 #     稳态同存数=生成速率×粒子寿命）
-#   - burstsPerCycle(+Jitter)：每轮（每次换新位置）重新抽取，三态：
-#     0=永不换位置+burstInterval节奏无限生成；1=改用altBurstInterval节奏；
-#     ≥2=仍用burstInterval节奏。非0时总批次数=该值+emitterRepeatCount-1，
+#   - loopNum(+Jitter)：每轮（每次换新位置）重新抽取，三态：
+#     0=永不换位置+intervalFrame节奏无限生成；1=改用altBurstInterval节奏；
+#     ≥2=仍用intervalFrame节奏。非0时总批次数=该值+emitterRepeatCount-1，
 #     最后一批固定按粒子寿命(LIFE duration+fadeOutDuration)节奏，随后立即换位置
-#   - emitterRepeatCount：0=无论burstsPerCycle是什么都永不换位置；
-#     非0时与burstsPerCycle相加决定总批次数。没有Jitter搭档
-#   - altBurstInterval(+Jitter)：仅当burstsPerCycle抽到1时，取代burstInterval
+#   - emitterRepeatCount：0=无论loopNum是什么都永不换位置；
+#     非0时与loopNum相加决定总批次数。没有Jitter搭档
+#   - altBurstInterval(+Jitter)：仅当loopNum抽到1时，取代intervalFrame
 #     作为批次间隔（原名ringBufferInterval，2026-07-26根据精确模型改名——它就是
-#     burstInterval的替代取值，跟"环形缓冲"式的容量回收逻辑无关，那是maxParticles的职责）
-#   - instanceCountUnknLimit(+Jitter)/unknBitmask31：仍未测试，保留原名
+#     intervalFrame的替代取值，跟"环形缓冲"式的容量回收逻辑无关，那是maxParticles的职责；
+#     官方讲座截图没有单独展示这个字段，内部名维持我们自己的考据结果不改）
+#   - spawnFrame(+Jitter)（原 instanceCountUnknLimit）：用户 2026-09-19 假设即
+#     UseSpawnFrame 对应的参数——语料交叉验证 spawnFlags.bit5(UseSpawnFrame) 置位时
+#     93% 的块 spawnFrame 非零，是其余 5 位的 24~730 倍相关性，坐实两者是"开关+参数"
+#     一对；取值为干净整数刻度（1/10/20/30/40/50/60/100/120/300…），像帧数，具体
+#     控制什么行为仍未测。
+#   - spawnFlags（原 unknBitmask31）：官方全语料(112573 块)穷举，可混合位只到 bit5
+#     （值 32），bit6+ 从未出现。数量正好对上截图 6 个默认不勾选的独立勾选框
+#     （UseSpawnFrame/RingBufferMode/RayCastHitOnly/RayCastDependency/InitializeFull/
+#     InterporatePos）。两条交叉验证坐实 3 个位：① 同 entry 是否有 RAYCAST 属性→
+#     bit1/bit2 共现率是无 RAYCAST 时的 105x/144x，是 RayCastHitOnly/RayCastDependency
+#     这一对；② spawnFrame 是否非零→bit5 共现率 167x 远超其余位，是 UseSpawnFrame。
+#     具体 bit1 vs bit2 谁是谁、以及剩余 bit0/3/4（RingBufferMode/InitializeFull/
+#     InterporatePos）对应哪个名字，只能按截图列出的顺序假设，未实机验证。
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_SPAWN_ATTR = Attribute(size=72, fields=[
     Int("typeFlag"),  # 原 unkn0
     Int("maxParticles", label_zh="同时存活上限"),  # 原 instancesSpawnedTotal，同时存活软上限
-    Int("particlesPerBurst", label_zh="单批生成数"),  # 原 instancesSpawnedPerFrame
-    Int("particlesPerBurstJitter", label_zh="单批生成数抖动"),  # 原 randomizedSpawnsPerFrame
-    Int("burstInterval", label_zh="批次间隔（帧）"),  # 原 frameDelayBetweenSpawns
-    Int("burstIntervalJitter", label_zh="批次间隔抖动（帧）"),  # 原 randomizedDelay
-    Int("burstsPerCycle", label_zh="每轮批次数"),  # 原 durationOfSpawnerLifespan，三态模式选择+计数基准
-    Int("burstsPerCycleJitter", label_zh="每轮批次数抖动"),  # 原 randomizedLifespan
-    Int("instanceCountUnknLimit"),
-    Int("instanceCountUnknLimitJitter"),
-    Int("emitterStartDelay", label_zh="发射器启动延迟（帧）"),  # 原 occur，发射器首次生成前的一次性延迟
-    Int("emitterStartDelayJitter", label_zh="发射器启动延迟抖动（帧）"),  # 原 occur2
-    # BT 原标 uint32；实测全语料从未接近 2^31，改签名 int 换取原生数值控件（原字符串输入框）  
-    Int("particleSpawnDelay", label_zh="粒子生成延迟（帧）"),  # 原 unkn10，粒子个体独立生成延迟
-    Int("particleSpawnDelayJitter", label_zh="粒子生成延迟抖动（帧）"),  # 原 unknEnum11
+    Int("spawnNum", label_zh="单批生成数"),  # 原 particlesPerBurst/instancesSpawnedPerFrame
+    Int("spawnNumJitter", label_zh="单批生成数抖动"),  # 原 particlesPerBurstJitter/randomizedSpawnsPerFrame
+    Int("intervalFrame", label_zh="批次间隔（帧）"),  # 原 burstInterval/frameDelayBetweenSpawns
+    Int("intervalFrameJitter", label_zh="批次间隔抖动（帧）"),  # 原 burstIntervalJitter/randomizedDelay
+    Int("loopNum", label_zh="每轮批次数"),  # 原 burstsPerCycle/durationOfSpawnerLifespan，三态模式选择+计数基准
+    Int("loopNumJitter", label_zh="每轮批次数抖动"),  # 原 burstsPerCycleJitter/randomizedLifespan
+    Int("spawnFrame", label_zh="生成帧"),  # 原 instanceCountUnknLimit，假设即 UseSpawnFrame 的参数
+    Int("spawnFrameJitter", label_zh="生成帧抖动"),  # 原 instanceCountUnknLimitJitter
+    Int("emitterDelayFrame", label_zh="发射器启动延迟（帧）"),  # 原 emitterStartDelay/occur，发射器首次生成前的一次性延迟
+    Int("emitterDelayFrameJitter", label_zh="发射器启动延迟抖动（帧）"),  # 原 emitterStartDelayJitter/occur2
+    # BT 原标 uint32；实测全语料从未接近 2^31，改签名 int 换取原生数值控件（原字符串输入框）
+    Int("spawnWaitFrame", label_zh="粒子生成延迟（帧）"),  # 原 particleSpawnDelay/unkn10，粒子个体独立生成延迟
+    Int("spawnWaitFrameJitter", label_zh="粒子生成延迟抖动（帧）"),  # 原 particleSpawnDelayJitter/unknEnum11
     Int("emitterRepeatCount", label_zh="重复次数"),  # 原 repeatAtribute，批次数加成+换位置总开关
-    Int("altBurstInterval", label_zh="替代批次间隔（帧）"),  # 原 unkn21（一度改名 ringBufferInterval，已订正），burstsPerCycle=1时的专属批次间隔
+    Int("altBurstInterval", label_zh="替代批次间隔（帧）"),  # 原 unkn21（一度改名 ringBufferInterval，已订正），loopNum=1时的专属批次间隔
     Int("altBurstIntervalJitter", label_zh="替代批次间隔抖动（帧）"),  # 原 unkn30
-    # 官方全语料(112573 块)穷举：可混合位只到 bit5（值 32），bit6+ 从未出现，strict=True。
-    Bitmask("unknBitmask31", BITS_SPAWN_UNKN31, strict=True),
+    Bitmask("spawnFlags", BITS_SPAWN_FLAGS, strict=True, label_zh="生成标志位"),  # 原 unknBitmask31
 ])
 EXTERN_SPAWN_SCHEMA = EXTERN_SPAWN_ATTR.schema
 assert _schema_size(EXTERN_SPAWN_SCHEMA) == 72, \
@@ -254,8 +274,16 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Float("unkn4_5"),
     Float("unkn4_6"),
     Float("unkn4_7"),
-    Int("unknEnum4_8"),  # BT 模板标为 float，但仅 10 种取值，63.6% 恒为 -1（sentinel），
-                        # 其余为看似随机的大整数（疑似哈希/ID），无一落在正常浮点参数范围，改回 int
+    # 原 unknEnum4_8。2026-09-19 用户提供官方讲座 EffectSettingPresets 资源表截图
+    # （§5，8 个具名 preset：Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test）
+    # 坐实即 PresetId：全语料恰好 9 种取值——1 个 -1（63.6%，= 无 preset/None 默认）+
+    # 8 个非 -1 值，数量精确对上 8 个具名 preset。其中 4 个用 jamcrc(名字) 精确验证：
+    # Default→-753088836、Smoke→2004367745、test05→752604312、Hit_test→-1388296667，
+    # 均在语料里原样命中。剩余 4 个值（对应 Water/Hahen/Dirt/Aura）用截图显示的名字
+    # 算出的 jamcrc 对不上，可能内部字符串跟显示名不同，未继续深挖，先按索引/哈希
+    # 混合的引用处理，不建 Enum（本就是外部资源表的引用，不是固定枚举，见官方文档
+    # §2.2"⚠️部分枚举"的处理原则）。
+    Int("presetId", label_zh="预设 ID"),
     Float("unkn4_9"),
     Float("unkn4_10"),
     Float("unkn4_11"),
@@ -365,11 +393,16 @@ assert _schema_size(SHADERSETTINGS_SCHEMA) == 116, \
 #   speed/speedJitter        原 initialVelocity/expansion_radius_limit（+jitter），依续作改名，语义不变
 #   acceleration(+Jitter)    原 expansion_radius_elasticity（+jitter）；续作叫 drag（1=匀速/0=瞬停），
 #                            本质同一个力，用户 2026-07-26 决定保留 acceleration 名字
-#   velocityX/Y/Z            原 offsetX/Y/Z；仅 velocityType=DirectionalSpread 时生效，方向性、量级无关
-#   divergenceX/Y/Z          原 sizeX/Y/Z（energyOnAxis*）；1=该轴无效果，<1 朝基准点，>1 背离基准点
-#   velocityType             原 expansionType；续作 0=Directional/1=DirectionalSpread(原"Normal")/
-#                            2=Radial/3=EmitterMotion(原"Spread")。⚠ 语料曾观测 4/5(旧注释 ScreenSpace/Unkn)，  
-#                            超出 0~3 集合，UI 层需对越界值回退显示原整数
+#   offsetX/Y/Z              原 velocityX/Y/Z（更早原名 offsetX/Y/Z）；2026-09-19 官方讲座
+#                            §2.1 坐实 NORMAL 模式确有 Offset X/Y/Z 字段，内部名改回续作/官方
+#                            一致的 offset，仅 velocityType=NORMAL 时生效，方向性、量级无关
+#   sizeX/Y/Z                原 divergenceX/Y/Z（更早原名 sizeX/Y/Z，energyOnAxis*）；同上官方
+#                            确认 NORMAL 模式的 Size X/Y/Z，内部名改回 size；1=该轴无效果，
+#                            <1 朝基准点，>1 背离基准点
+#   velocityType             原 expansionType；官方讲座 §2.1 完整下拉坐实 0=DIRECTION/
+#                            1=NORMAL/2=RADIAL/3=EMITTER_MOVE（EN 标签已改用官方词面，ZH 保留
+#                            实机考据措辞）。⚠ 语料曾观测 4/5，超出 0~3 集合，UI 层需对越界值
+#                            回退显示原整数
 #   movementDelay(+Jitter)   原 initialVelocityDelay/expansionDelay（+jitter），依续作改名，语义不变
 #   minMovementThreshold     原 unknFloat/NULL2；仅 velocityType=EmitterMotion 有意义（emitter 速度  
 #                            低于此阈值不施加给粒子）
@@ -389,12 +422,12 @@ VELOCITY3D_ATTR = Attribute(size=108, native_timl_axis=0, fields=[
     Float("speedJitter", label_zh="初速度偏差"),
     Float("speedCoef", label_zh="加速度"),
     Float("speedCoefJitter", label_zh="加速度偏差"),
-    Float("velocityX", label_zh="X 基准点偏置"),
-    Float("velocityY", label_zh="Y 基准点偏置"),
-    Float("velocityZ", label_zh="Z 基准点偏置"),
-    Float("divergenceX", label_zh="X 基准点伸缩"),
-    Float("divergenceY", label_zh="Y 基准点伸缩"),
-    Float("divergenceZ", label_zh="Z 基准点伸缩"),
+    Float("offsetX", label_zh="X 基准点偏置"),  # 原 velocityX
+    Float("offsetY", label_zh="Y 基准点偏置"),  # 原 velocityY
+    Float("offsetZ", label_zh="Z 基准点偏置"),  # 原 velocityZ
+    Float("sizeX", label_zh="X 基准点伸缩"),  # 原 divergenceX
+    Float("sizeY", label_zh="Y 基准点伸缩"),  # 原 divergenceY
+    Float("sizeZ", label_zh="Z 基准点伸缩"),  # 原 divergenceZ
     Enum("velocityType", _VELOCITY_TYPE, label_zh="速度类型"),
     Float("gravity", label_zh="重力"),
     Float("gravity_jitter", label_zh="重力抖动"),
@@ -500,7 +533,9 @@ assert _schema_size(EXTERN_VELOCITY3D6_SCHEMA) == 80, \
 #         min/max 取用，不看谁存在哪个字段）；实际半径 = rangeXYZ 该轴的外边界 × 该比例
 #         （旧注释写作 "rangeXYZ.max"，rangeXYZ 改判 offset/size 后需复测确认基准取的是
 #          外边界 offset+size 还是 size 本身）
-#   int   unknBitmaskRadiusRelated：目前视为全形状生效。枚举 0~5，机制不明            4 B
+#   int   rayCastDependency：全形状生效。docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §2.1 官方
+#         讲座下拉完整拍到 6 项（NONE/MIN/MAX/MUL/EQUAL/OFFSET），与本字段 0~5 取值域吻合，
+#         按下拉顺序坐实；具体运算机制仍不明                                        4 B
 #   int   unknFlag4：目前视为全形状生效。0/1，机制不明，多数为 1                     4 B
 # Point(shapeType≥3) 例外：以上按形状的过滤规则对它一律不生效（全部字段照常显示）。
 # Total: 4+24+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 4+24+15×4 = 88 B ✓
@@ -522,7 +557,7 @@ EXTERN_EMITTERSHAPE3D_ATTR = Attribute(size=88, fields=[
     Int("rangeDivideVerticalNum", label_zh="纵向等分数量"),  # 原 spawnTotal
     Float("radiusEnd", label_zh="结束半径"),
     Float("radiusOrigin", label_zh="起始半径"),
-    Int("unknBitmaskRadiusRelated"),
+    Enum("rayCastDependency", ENUM_RAYCAST_DEPENDENCY, label_zh="射线检测依赖"),  # 原 unknBitmaskRadiusRelated
     Bool("unknFlag4"),
 ])
 EXTERN_EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_ATTR.schema
@@ -643,11 +678,21 @@ assert _schema_size(FADEBYDEPTH_SCHEMA) == 20, \
 
 EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Int("typeFlag"),  # 原 unkn0
-    Raw("fireColor", ('XYZ', 2), label_zh="火焰色"),  # 原 color1；TIML DT 0x39A1E557("FireColor") 已确认
-    Float("brightness1", label_zh="亮度1"),
-    Raw("smokeColor", ('XYZ', 2), label_zh="烟雾色"),  # 原 color2；TIML DT 0x5A8C6820("SmokeColor") 已确认
-    Float("brightness2", label_zh="亮度2"),  # TIML DT 0x9F1E012E("ColorRate") 已确认
-    Float("unkn4"),
+    # devlecture P26 (image14.PNG)：面板标题是 RGB Common，但字段全用 Fire/Smoke 术语，
+    # 且官方强调的是纹理的 GreenCh（=Fire）/RedCh（=Smoke）通道——顺序由 CorrectFireColorNo
+    # 紧邻 GreenCh 组、TotalFireLifeFrame 收尾 GreenCh 组确定，Smoke/RedCh 同理。
+    # 内部名沿用 fire/smoke（TIML DT 已确认，优先级高于 devlecture 的 GreenCh/RedCh
+    # 措辞），标签里用括号把 GreenCh/RedCh 补上做辅助说明，避免用户以为只是任意起名。
+    Raw("fireColor", ('XYZ', 2), label_en="Fire (GreenCh) Color", label_zh="火焰（绿通道）颜色"),  # 原 color1；TIML DT 0x39A1E557("FireColor") 已确认
+    Float("fireFactor", label_en="Fire (GreenCh) Factor", label_zh="火焰（绿通道）系数"),  # 原 brightness1；语料方向门证据见 sim/behaviors/rgbfire.py
+    Raw("smokeColor", ('XYZ', 2), label_en="Smoke (RedCh) Color", label_zh="烟雾（红通道）颜色"),  # 原 color2；TIML DT 0x5A8C6820("SmokeColor") 已确认
+    Float("brightness2", label_zh="亮度2"),  # TIML DT 0x9F1E012E("ColorRate") 已确认；devlecture 里是独立于 Green/Red 分组之外的 ColorRate 行
+    # devlecture 同一面板上紧邻的滑条 LerpAlphaToBlue：全语料 54028 块严格落在
+    # [0.0, 1.0]（无一例外），是插值系数的典型特征，与滑条描述吻合。
+    Float("lerpAlphaToBlue", label_en="Lerp Alpha To Blue", label_zh="Alpha 混入蓝通道比例"),  # 原 unkn4
+    # brightness3/brightness4：devlecture 面板上还有 RedCh Factor / AlphaFactor 两项待认领，
+    # 但已有的实机 tooltip 把这两个字段定性为「Color Balance 1/2」（互相牵制、任一为 0 会
+    # 让画面全部消失），跟 RedCh Factor/AlphaFactor 的语义对不上，暂不套用 devlecture 命名。
     Float("brightness3", label_zh="亮度3"),
     Float("brightness4", label_zh="亮度4"),
     # ColorParam fireColorParam (10 ints)：fireColor 的生命期时序块。
@@ -658,33 +703,36 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     # 三个 range 字段各占两格（值+抖动），正是官方 range 类型的字节展开。
     # ⚠ 前缀 fireColorParam_/smokeColorParam_ 保留：color_fields.py 靠它把整块
     #   归类为「颜色相关」（Color Editor 模式过滤依据）。
-    # UI 措辞：淡入/持续时间/淡出三对沿用旧称不动；useLife/lighting/lifeType 三项
-    #   因原本无中文标签（界面显示派生英文名 "…unkn7"）故直接给正式标签。
-    Bool("fireColorParam_useLife", label_en="Use Fire Life", label_zh="启用火焰生命期"),
-    Int("fireColorParam_appearFrame", label_zh="火焰色 淡入"),
-    Int("fireColorParam_appearFrameJitter", label_zh="火焰色 淡入抖动"),
-    Int("fireColorParam_keepFrame", label_zh="火焰色 持续时间"),
-    Int("fireColorParam_keepFrameJitter", label_zh="火焰色 持续时间抖动"),
-    Int("fireColorParam_vanishFrame", label_zh="火焰色 淡出"),
-    Int("fireColorParam_vanishFrameJitter", label_zh="火焰色 淡出抖动"),
-    Bool("fireColorParam_lighting", label_en="Fire Lighting", label_zh="火焰受光照"),
-    Int("fireColorParam_lifeType", label_en="Fire Life Type", label_zh="火焰生命期模式"),
-    # unkn9：官方 fire 段只有 9 格、我们有 10 格，这一格没有对应官方名。取值
-    # {0,1,2,7,8,9}，按 int32 位重解读成 float 全为 0（次正规噪声），确认是整数。
-    Int("fireColorParam_unkn9"),
+    # 标签精简为 devlecture 原文的 Appear/Keep/Vanish，加 Fire(GreenCh)/Smoke(RedCh)
+    # 分组前缀，去掉旧的「Color Param fade In/duration/fade Out」冗长措辞。
+    Bool("fireColorParam_useLife", label_en="Fire (GreenCh) Use Life", label_zh="火焰（绿通道）启用生命期"),
+    Int("fireColorParam_appearFrame", label_en="Fire (GreenCh) Appear", label_zh="火焰（绿通道）淡入"),
+    Int("fireColorParam_appearFrameJitter", label_en="Fire (GreenCh) Appear Jitter", label_zh="火焰（绿通道）淡入抖动"),
+    Int("fireColorParam_keepFrame", label_en="Fire (GreenCh) Keep", label_zh="火焰（绿通道）持续"),
+    Int("fireColorParam_keepFrameJitter", label_en="Fire (GreenCh) Keep Jitter", label_zh="火焰（绿通道）持续抖动"),
+    Int("fireColorParam_vanishFrame", label_en="Fire (GreenCh) Vanish", label_zh="火焰（绿通道）淡出"),
+    Int("fireColorParam_vanishFrameJitter", label_en="Fire (GreenCh) Vanish Jitter", label_zh="火焰（绿通道）淡出抖动"),
+    Bool("fireColorParam_lighting", label_en="Fire (GreenCh) Lighting", label_zh="火焰（绿通道）受光照"),
+    Int("fireColorParam_lifeType", label_en="Fire (GreenCh) Life Type", label_zh="火焰（绿通道）生命期模式"),
+    # 原 unkn9：取值集合 {0,1,2,7,8,9}、0 占 99.4%，跟 BILLBOARD3D 的 correctColorNo
+    # （EPV 槽位覆盖 id，0=用本地值）同一取值形态；且跟 lifeType/appearFrame+keepFrame+
+    # vanishFrame 的总和都测过没有相关性（互斥共现，量级也对不上"总生命期帧数"假设），
+    # 排除了"是 TotalFireLifeFrame"的可能。已有 tooltip 描述"设为 1 会消除火焰色"，
+    # 与 EPV 槽位覆盖机制吻合（本地预览拿不到 .epv 数据，槽位非 0 时颜色显示为空）。
+    Int("fireColorParam_correctColorNo", label_en="Correct Fire Color No", label_zh="修正火焰颜色编号"),
     # ColorParam smokeColorParam (10 ints)：smokeColor 的生命期时序块，与 fire 段同构
     # （mUseSmokeLife / mSmokeAppearFrame / KeepFrame / VanishFrame / mSmokeLighting /
     # mSmokeLifeType）。
-    Bool("smokeColorParam_useLife", label_en="Use Smoke Life", label_zh="启用烟雾生命期"),
-    Int("smokeColorParam_appearFrame", label_zh="烟雾色 淡入"),
-    Int("smokeColorParam_appearFrameJitter", label_zh="烟雾色 淡入抖动"),
-    Int("smokeColorParam_keepFrame", label_zh="烟雾色 持续时间"),
-    Int("smokeColorParam_keepFrameJitter", label_zh="烟雾色 持续时间抖动"),
-    Int("smokeColorParam_vanishFrame", label_zh="烟雾色 淡出"),
-    Int("smokeColorParam_vanishFrameJitter", label_zh="烟雾色 淡出抖动"),
-    Bool("smokeColorParam_lighting", label_en="Smoke Lighting", label_zh="烟雾受光照"),
-    Int("smokeColorParam_lifeType", label_en="Smoke Life Type", label_zh="烟雾生命期模式"),
-    Int("smokeColorParam_unkn9"),
+    Bool("smokeColorParam_useLife", label_en="Smoke (RedCh) Use Life", label_zh="烟雾（红通道）启用生命期"),
+    Int("smokeColorParam_appearFrame", label_en="Smoke (RedCh) Appear", label_zh="烟雾（红通道）淡入"),
+    Int("smokeColorParam_appearFrameJitter", label_en="Smoke (RedCh) Appear Jitter", label_zh="烟雾（红通道）淡入抖动"),
+    Int("smokeColorParam_keepFrame", label_en="Smoke (RedCh) Keep", label_zh="烟雾（红通道）持续"),
+    Int("smokeColorParam_keepFrameJitter", label_en="Smoke (RedCh) Keep Jitter", label_zh="烟雾（红通道）持续抖动"),
+    Int("smokeColorParam_vanishFrame", label_en="Smoke (RedCh) Vanish", label_zh="烟雾（红通道）淡出"),
+    Int("smokeColorParam_vanishFrameJitter", label_en="Smoke (RedCh) Vanish Jitter", label_zh="烟雾（红通道）淡出抖动"),
+    Bool("smokeColorParam_lighting", label_en="Smoke (RedCh) Lighting", label_zh="烟雾（红通道）受光照"),
+    Int("smokeColorParam_lifeType", label_en="Smoke (RedCh) Life Type", label_zh="烟雾（红通道）生命期模式"),
+    Int("smokeColorParam_correctColorNo", label_en="Correct Smoke Color No", label_zh="修正烟雾颜色编号"),  # 原 unkn9，理由同上
 ])
 EXTERN_RGBFIRE_SCHEMA = EXTERN_RGBFIRE_ATTR.schema
 assert _schema_size(EXTERN_RGBFIRE_SCHEMA) == 112, \
@@ -824,20 +872,26 @@ assert _schema_size(REFRACTION_SCHEMA) == 12, \
 # main_axis_speed_jitter/2（原 secondary_axis_speed/2）、teleport_radius_jitter/2
 # （原 smooth_radius_randomized/2）实测确认（2026-07-11）：分别是前一个字段的 jitter，
 # 不是独立的"次轴速度"/"平滑半径随机"字段。
+#
+# 2026-09-19 devlecture §10.4（P41 完整面板）：Noise 是"通过双重 sin 计算为发生
+# 位置与运动赋予摇曳"，只有 4 个字段（各带 ± 抖动）：LowFrequency(1.0±0.5)/
+# LowFrequencyWidth(50.0±0)/HighFrequency(0±0)/HighFrequencyWidth(0±0)。跟本 schema
+# 已经搞清楚机制的 4 对字段一一对应（Low=第一重、High=第二重，Frequency=速度、
+# Width=位移振幅），直接改名，不改值。文档特别注明 Noise/Blink 应共用同一套命名。
 # ─────────────────────────────────────────────────────────────────────────────
 
 NOISE_ATTR = Attribute(size=44, fields=[
-    Int("typeFlag"),  # 原 NULL（名字错，语料 35 种取值，非空）  
+    Int("typeFlag"),  # 原 NULL（名字错，语料 35 种取值，非空）
     Int("section_length", label_zh="段长度"),
     Int("spacer"),
-    Float("main_axis_speed", label_zh="主轴速度"),
-    Float("main_axis_speed_jitter", label_zh="主轴速度抖动"),  # 原 secondary_axis_speed
-    Float("teleport_radius", label_zh="传送半径"),
-    Float("teleport_radius_jitter", label_zh="传送半径抖动"),  # 原 smooth_radius_randomized
-    Float("main_axis_speed2", label_zh="主轴速度2"),
-    Float("main_axis_speed2_jitter", label_zh="主轴速度2抖动"),  # 原 secondary_axis_speed2
-    Float("teleport_radius2", label_zh="传送半径2"),
-    Float("teleport_radius2_jitter", label_zh="传送半径2抖动"),  # 原 smooth_radius_randomized2
+    Float("lowFrequency", label_zh="低频"),  # 原 main_axis_speed
+    Float("lowFrequencyJitter", label_zh="低频抖动"),  # 原 main_axis_speed_jitter
+    Float("lowFrequencyWidth", label_zh="低频振幅"),  # 原 teleport_radius
+    Float("lowFrequencyWidthJitter", label_zh="低频振幅抖动"),  # 原 teleport_radius_jitter
+    Float("highFrequency", label_zh="高频"),  # 原 main_axis_speed2
+    Float("highFrequencyJitter", label_zh="高频抖动"),  # 原 main_axis_speed2_jitter
+    Float("highFrequencyWidth", label_zh="高频振幅"),  # 原 teleport_radius2
+    Float("highFrequencyWidthJitter", label_zh="高频振幅抖动"),  # 原 teleport_radius2_jitter
 ])
 NOISE_SCHEMA = NOISE_ATTR.schema
 assert _schema_size(NOISE_SCHEMA) == 44, \
@@ -922,31 +976,50 @@ assert _schema_size(GUIDE_SCHEMA) == 112, \
 # PlEmissive schema  (data_bytes = 76 B; full block = 80 B)
 #
 # BT (EFX_Subtypes.bt):
-#   int unkn0[2](8) + float unkn1(4) + ubyte body_p(1) + ubyte wp_p(1) + short NULL(2) +  
+#   int unkn0[2](8) + float unkn1(4) + ubyte body_p(1) + ubyte wp_p(1) + short NULL(2) +
 #   int epv_color_slot(4) + XYZ color(2)(4) + float unkn4(4) + float area[2](8) +
 #   float bright(4) + int area_of_aura(4) + float radii[3](12) + float unkn5[5](20)
 # = 8+4+4+4+4+8+4+4+12+20 = 76 B ✓
+#
+# 2026-09-19 按 devlecture §10.3.1（P36 完整面板截图）+ 语料 208 块统计落地。8 个
+# 字段全部拿到 TIML DT 哈希确认（jamcrc(官方名) 精确命中该 TLP 下此前一直没解出来
+# 的 8 个 DT，见 shadersettings-presetid-jamcrc 同款手法）：
+#   Priority(unknEnum0_1)/Blend(unkn1,0x95A3A1D3)/Emissive(color,0xFA79B1CD)/
+#   Intensity(unkn4,0x94BCC5CE)/RimWidth(area[0],0xAC635CA9)/RimPower(area[1],
+#   0x8BF31826)/RimAlpha(bright,0xF09920EC)/Mask0(radii_effect_unkn0,0xEC4350B5)/
+#   Mask1(radii_effect_unkn1,0x9B446023)。除 priority 没有 DT（devlecture 示例值
+#   17，语料众数落在附近的 10/17/18/19/20）外，其余全部是 DTI 级确认，Emissive/
+#   Intensity/RimWidth/RimPower/RimAlpha/Mask0/Mask1 这 7 个还额外有语料默认值精确
+#   吻合（RimAlpha/Intensity/Blend 众数 1.0、Mask0/Mask1 众数精确等于 15.0/250.0）
+#   佐证。correctColorNo 是已确认的 EPV 槽位覆盖机制（同 BILLBOARD3D）。
+# area_of_aura 是 4 位掩码（全语料从未见 bit4 及以上），bit1/bit2 关联检验方向清晰
+# （见 enums.py::BITS_PLEMISSIVE_EMIT_MASK 注释），改名 emitMaskFlags。
+# enableUseEmitMask（原 radii_effect_unkn2）是全语料唯一一个 100%/0% 完美门控：
+# ==0 时 Mask0/Mask1 从未被改过默认值，==1 时 100% 被改过——是 EmitMask 功能的
+# 真正总开关。unkn5_1/unkn5_2（AddMask0/AddMask1 候选）证据较弱，先按位置改名，
+# 标注弱假设；unknFixed5_0/5_3/5_4 全语料恒为 0.0，找不到区分依据，维持 unkn。
 # ─────────────────────────────────────────────────────────────────────────────
 
 PLEMISSIVE_ATTR = Attribute(size=76, fields=[
     Int("typeFlag"),  # 原 unkn0_0
-    Int("unknEnum0_1"),
-    Float("unkn1"),
+    Int("priority", label_zh="优先级"),  # 原 unknEnum0_1；devlecture 示例值 17，无 DT
+    Float("blend", label_zh="混合"),  # 原 unkn1；TIML DT 0x95A3A1D3("Blend") 已确认
     Byte("body_p", label_zh="关联 Body"),
     Byte("wp_p", label_zh="关联武器"),
     Short("NULL"),
-    Int("epv_color_slot", label_zh="EPV 颜色槽"),
-    Raw("color", ('XYZ', 2), label_zh="颜色"),
-    Float("unkn4"),
-    Raw("area", ('f', 2), label_zh="区域"),
-    Float("bright", label_zh="亮度"),
-    Int("area_of_aura", label_zh="光环范围"),
-    Float("radii_effect_unkn0"),
-    Float("radii_effect_unkn1"),
-    Float("radii_effect_unkn2"),
+    Int("correctColorNo", label_zh="修正颜色编号"),  # 原 epv_color_slot；EPV 槽位覆盖机制
+    Raw("emissive", ('XYZ', 2), label_zh="自发光颜色"),  # 原 color；TIML DT 0xFA79B1CD("Emissive") 已确认
+    Float("intensity", label_zh="强度"),  # 原 unkn4；TIML DT 0x94BCC5CE("Intensity") 已确认
+    Float("rimWidth", label_zh="边缘光宽度"),  # 原 area[0]；TIML DT 0xAC635CA9("RimWidth") 已确认
+    Float("rimPower", label_zh="边缘光强度"),  # 原 area[1]；TIML DT 0x8BF31826("RimPower") 已确认
+    Float("rimAlpha", label_zh="边缘光透明度"),  # 原 bright；TIML DT 0xF09920EC("RimAlpha") 已确认
+    Bitmask("emitMaskFlags", BITS_PLEMISSIVE_EMIT_MASK, strict=True, label_zh="发光遮罩标志"),  # 原 area_of_aura
+    Float("mask0", label_zh="遮罩阈值 0"),  # 原 radii_effect_unkn0；TIML DT 0xEC4350B5("Mask0") 已确认，众数 15.0
+    Float("mask1", label_zh="遮罩阈值 1"),  # 原 radii_effect_unkn1；TIML DT 0x9B446023("Mask1") 已确认，众数 250.0
+    Bool("enableUseEmitMask", label_zh="启用发光遮罩"),  # 原 radii_effect_unkn2；100%/0% 完美门控 Mask0/Mask1
     Float("unknFixed5_0"),
-    Float("unkn5_1"),
-    Float("unkn5_2"),
+    Float("addMask0"),  # 原 unkn5_1；弱假设，位置对应 devlecture 的 AddMask0
+    Float("addMask1"),  # 原 unkn5_2；弱假设，位置对应 devlecture 的 AddMask1
     Float("unknFixed5_3"),
     Float("unknFixed5_4"),
 ])
@@ -963,18 +1036,36 @@ assert _schema_size(PLEMISSIVE_SCHEMA) == 76, \
 #   XYZ color(2)(4) + float brightness(4) + float rimParam[3](12) +
 #   long unkn4(4) + float blendParam[3](12) + float unkn8[5](20)
 # = 4+4+4+4+4+4+12+4+12+20 = 72 B ✓
+#
+# 2026-09-19：ParentEmissive 跟 PlEmissive 共用同一个 TIML TLP（0x598272E1，
+# 注释里写着两者共现 3.5x），说明官方本来就是同一套 TimelineParam 字段定义应用在
+# 这两个类型上，PLEMISSIVE 那 8 个改名同样成立，只需重新确认字节位置：
+#   unkn2→blend（众数 1.0 占 67.4%）、color→emissive（位置对应）、
+#   rimParam[0..2]→rimWidth/rimPower/rimAlpha（[2] 众数 1.0 占 85.8%，比 PLEMISSIVE
+#   还干净——这里官方本来就把三个连续存成一个数组）、unknEnum3→correctColorNo
+#   （distinct=4，0 占 58.9%，EPV 槽位模式）、brightness→intensity（位置对应，但
+#   语料分布比 PLEMISSIVE 松散，弱假设）、blendParam[0]/[1]→mask0/mask1（15.0/250.0
+#   是第二常见值而非众数，弱假设）。blendParam[2] 众数 1.0/0.99，找不到 PLEMISSIVE
+#   对应物，维持 unkn；unknEnum4 结构上像位掩码但众数是 9 不是 0，跟 PLEMISSIVE 默认
+#   关闭的模式对不上，也不套用 emitMaskFlags。
+# ⚠ rimParam/blendParam 由数组拆成独立字段，是拆分不是纯改名，字段改名兼容表覆盖
+#   不了，已导入的 .blend 需要重新导入。
 # ─────────────────────────────────────────────────────────────────────────────
 
 PARENTEMISSIVE_ATTR = Attribute(size=72, fields=[
     Int("typeFlag"),  # 原 unkn0
     Int("unknEnum1"),
-    Float("unkn2"),
-    Int("unknEnum3"),
-    Raw("color", ('XYZ', 2), label_zh="颜色"),
-    Float("brightness", label_zh="亮度"),
-    Raw("rimParam", ('f', 3), label_zh="边缘光参数"),
+    Float("blend", label_zh="混合"),  # 原 unkn2；同 PLEMISSIVE 的 Blend，众数 1.0(67.4%)
+    Int("correctColorNo", label_zh="修正颜色编号"),  # 原 unknEnum3；EPV 槽位模式
+    Raw("emissive", ('XYZ', 2), label_zh="自发光颜色"),  # 原 color；同 PLEMISSIVE 的 Emissive
+    Float("intensity", label_zh="强度"),  # 原 brightness；弱假设，语料分布比 PLEMISSIVE 松散
+    Float("rimWidth", label_zh="边缘光宽度"),  # 原 rimParam[0]
+    Float("rimPower", label_zh="边缘光强度"),  # 原 rimParam[1]
+    Float("rimAlpha", label_zh="边缘光透明度"),  # 原 rimParam[2]；众数 1.0(85.8%)
     Int("unknEnum4"),
-    Raw("blendParam", ('f', 3), label_zh="混合参数"),
+    Float("mask0", label_zh="遮罩阈值 0"),  # 原 blendParam[0]；弱假设
+    Float("mask1", label_zh="遮罩阈值 1"),  # 原 blendParam[1]；弱假设
+    Float("unkn7_2"),  # 原 blendParam[2]；无 PLEMISSIVE 对应物
     Float("unknFixed8_0"),
     Float("unkn8_1"),
     Float("unkn8_2"),
@@ -1158,12 +1249,18 @@ assert _schema_size(DUMMY_SCHEMA) == 9, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERNREFERENCE_ATTR = Attribute(size=36, fields=[
-    Int("typeFlag"),  # 原 unkn0，语料恒为 0（该类型场景下无变体）  
+    Int("typeFlag"),  # 原 unkn0，语料恒为 0（该类型场景下无变体）
     Int("referenceIndex", label_zh="Extern 引用"),
+    # trigger_condition 语义已由实机测试坐实（查克贝盾/剑过热三态状态机，见 memory
+    # externreference-trigger-condition-cb-state），不因 OFFICIAL_DEFAULTS_AND_ENUMS.md
+    # §4.14 的 ExternFactorMode 猜测而改名——两者概念上可能相关（该文档提到 Lerp 可由
+    # "寿命"或"程序"驱动，跟这里的状态机选择不矛盾），但未到能合并命名的确定程度。
     Int("trigger_condition", label_zh="触发条件"),
-    Int("unknEnum1_1"),
-    Int("unknEnum1_2"),
-    Float("unkn1_3"),
+    # index0/index1/lerp：2026-09-19 核对，现有预设默认值 0/1/0.0 与官方讲座 §4.14
+    # Index0=0／Index1=1／Lerp=0.0 逐字节精确匹配，坐实改名。
+    Int("index0", label_zh="索引 0"),  # 原 unknEnum1_1
+    Int("index1", label_zh="索引 1"),  # 原 unknEnum1_2
+    Float("lerp", label_zh="插值系数"),  # 原 unkn1_3
     Int("unkn1_4"),
     Int("unkn1_5"),
     Bool("unknFlag1_6"),
@@ -1289,22 +1386,29 @@ assert _schema_size(MASTERONLY_SCHEMA) == 4, \
 #
 # BT (EFX_Subtypes.bt):
 #   int unkn0[2](8) + float unkn1[11](44) = 52 B
+#
+# 2026-09-19 devlecture §10.4（P44 完整面板）：Blink 是"通过双重 sin 计算为透明度
+# 赋予波动"，跟 Noise 后 4 个字段完全同名同构，只是前面多了 MinRate/MaxRate 两个
+# 钳制滑条（因为输出目标是 alpha，需要值域钳制；Noise 输出位移不需要）：
+# MinRate(0)/MaxRate(1.0)/LowFrequency(3.0±0)/LowFrequencyWidth(1.0±0)/
+# HighFrequency(0±0)/HighFrequencyWidth(0±0)。改名对齐 Noise 那一套（Amplitude→
+# Width、lowFreq→lowFrequency），minAlpha/maxAlpha 改成官方的 MinRate/MaxRate。
 # ─────────────────────────────────────────────────────────────────────────────
 
 BLINK_ATTR = Attribute(size=52, fields=[
     Int("typeFlag"),  # 原 unkn0_0
     Int("section_length", label_zh="段长度"),  # 原 unkn0_1
-    Float("unkn1_0"),  # bool (byte 0) + 0xCD×3 padding  
-    Float("minAlpha"),
-    Float("maxAlpha"),
-    Float("lowFreq"),
-    Float("lowFreqJitter"),
-    Float("lowFreqAmplitude"),
-    Float("lowFreqAmplitudeJitter"),
-    Float("highFreq"),
-    Float("highFreqJitter"),
-    Float("highFreqAmplitude"),
-    Float("highFreqAmplitudeJitter"),
+    Float("unkn1_0"),  # bool (byte 0) + 0xCD×3 padding
+    Float("minRate", label_zh="最小速率"),  # 原 minAlpha
+    Float("maxRate", label_zh="最大速率"),  # 原 maxAlpha
+    Float("lowFrequency", label_zh="低频"),  # 原 lowFreq
+    Float("lowFrequencyJitter", label_zh="低频抖动"),  # 原 lowFreqJitter
+    Float("lowFrequencyWidth", label_zh="低频振幅"),  # 原 lowFreqAmplitude
+    Float("lowFrequencyWidthJitter", label_zh="低频振幅抖动"),  # 原 lowFreqAmplitudeJitter
+    Float("highFrequency", label_zh="高频"),  # 原 highFreq
+    Float("highFrequencyJitter", label_zh="高频抖动"),  # 原 highFreqJitter
+    Float("highFrequencyWidth", label_zh="高频振幅"),  # 原 highFreqAmplitude
+    Float("highFrequencyWidthJitter", label_zh="高频振幅抖动"),  # 原 highFreqAmplitudeJitter
 ])
 BLINK_SCHEMA = BLINK_ATTR.schema
 assert _schema_size(BLINK_SCHEMA) == 52, \
@@ -1343,33 +1447,53 @@ assert _schema_size(FADEBYEMITTERANGLE_SCHEMA) == 28, \
 # RayCast schema  (data_bytes = 78 B; full block = 82 B)
 #
 # BT (EFX_Subtypes.bt):
-#   int unknown(4) + int fixed70(4) + long spacer0(4) +  
+#   int unknown(4) + int fixed70(4) + long spacer0(4) +
 #   float distanceMod0/j(8) + float prop1/j(8) +
-#   long spacer1/2/3(12) + float prop2(4) + XYZ prop3(3)(12) +  
+#   long spacer1/2/3(12) + float prop2(4) + XYZ prop3(3)(12) +
 #   int direction(4) + float distanceMod1/j(8) +
-#   long spacer(4) + int unknown1(4) + short unknown2(2)  
+#   long spacer(4) + int unknown1(4) + short unknown2(2)
 # = 4+4+4+8+8+12+4+12+4+8+4+4+2 = 78 B ✓
+#
+# 2026-09-19 用户提供官方讲座 RayCast 面板截图（docs/OFFICIAL_DEFAULTS_AND_ENUMS.md
+# §4.11）逐字段核对 + official 全语料 1363 块交叉验证：
+#   spacer1/spacer2/spacer3：恒为 0xCDCDCDCD，确认是纯占位，不是 StartOffset（此前的
+#     猜测已证伪）。
+#   prop3(XYZ)：z 分量恒 0，x/y 分量有真实小幅度偏移值——对应 StartOffset X/Y/Z，
+#     已改名 startOffset。
+#   spacer（原判占位）：**不是占位**——恒为 0xFFFFFFxx，只有低 2 位变化：bit0 置位率
+#     97.1%、bit1 置位率 23.5%，与截图"SCR 默认勾选、OBJ 默认不勾选"的比例吻合，
+#     已改名 rayCastAttr（Bitmask，bit0=SCR/bit1=OBJ）。
+#   unknownBitmask2：90.8% 恒为 0，bit0/bit8 各自独立偶尔置位（2.1%/7.1%），与截图
+#     "SyncSpawnFrame/RayCastOnce 均默认不勾选"的两个独立勾选框形态吻合，已改名
+#     rayCastFlags（Bitmask，bit0=SyncSpawnFrame/bit8=RayCastOnce）。
+#   unknownEnum1：改名 rayCastID（对应截图 RayCastID），语料 52.3% 为 -1——猜测
+#     -1=NONE（截图唯一见到的取值），但只有单一取值证据，不建 Enum，保留原始整数。
+#   distanceMod0/prop1/distanceMod1（对应截图 MaxDistance/StartDistance/Speed）：
+#     三者数值区间高度重叠、prop1 与 distanceMod0 有 63.3% 概率相等、语料里没有一次
+#     取到官方默认值 650.0，靠语料统计无法区分身份。用户 2026-09-19 按此假设定名
+#     （未实机验证）：distanceMod0→startDistance、distanceMod1→maxDistance、
+#     prop1→speed。
 # ─────────────────────────────────────────────────────────────────────────────
 
 RAYCAST_ATTR = Attribute(size=78, fields=[
     Int("typeFlag"),  # 原 unknown0
     Int("section_length", label_zh="段长度"),  # 原 fixed70
     Int("spacer0"),
-    Float("distanceMod0", label_zh="距离调制0"),
-    Float("distanceMod0Jitter", label_zh="距离调制0抖动"),
-    Float("prop1", label_zh="属性1"),
-    Float("prop1Jitter", label_zh="属性1抖动"),
+    Float("startDistance", label_zh="起始距离"),  # 原 distanceMod0（假设，未实机验证）
+    Float("startDistanceJitter", label_zh="起始距离抖动"),  # 原 distanceMod0Jitter
+    Float("speed", label_zh="速度"),  # 原 prop1（假设，未实机验证）
+    Float("speedJitter", label_zh="速度抖动"),  # 原 prop1Jitter
     Int("spacer1"),
     Int("spacer2"),
     Int("spacer3"),
     Float("prop2", label_zh="属性2"),
-    Raw("prop3", ('XYZ', 3), label_zh="属性3"),
+    Raw("startOffset", ('XYZ', 3), label_zh="起始偏移"),  # 原 prop3
     Enum("direction", ENUM_RAYCAST_DIR, label_zh="方向"),
-    Float("distanceMod1", label_zh="距离调制1"),
-    Float("distanceMod1Jitter", label_zh="距离调制1抖动"),
-    Int("spacer"),
-    Int("unknownEnum1"),
-    Short("unknownBitmask2"),
+    Float("maxDistance", label_zh="最大距离"),  # 原 distanceMod1（假设，未实机验证）
+    Float("maxDistanceJitter", label_zh="最大距离抖动"),  # 原 distanceMod1Jitter
+    Bitmask("rayCastAttr", BITS_RAYCAST_ATTR, strict=True, label_zh="射线属性"),  # 原 spacer
+    Int("rayCastID", label_zh="RayCast ID"),  # 原 unknownEnum1
+    Bitmask("rayCastFlags", BITS_RAYCAST_FLAGS, backing='h', strict=True, label_zh="射线标志位"),  # 原 unknownBitmask2
 ])
 RAYCAST_SCHEMA = RAYCAST_ATTR.schema
 assert _schema_size(RAYCAST_SCHEMA) == 78, \

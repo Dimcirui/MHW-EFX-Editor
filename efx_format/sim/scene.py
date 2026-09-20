@@ -361,7 +361,7 @@ class SimScene(object):
         # 4. 回收：只回收子实例（根实例永远留着，播放器的帧号靠它）
         #
         # ⚠ 「一个粒子都还没吐过」和「吐完了没了」是两回事，不能用同一个宽限期：
-        # SPAWN.emitterStartDelay 可以很长（用户的 `explpt` 是 60 帧），而空转宽限只有
+        # SPAWN.emitterDelayFrame 可以很长（用户的 `explpt` 是 60 帧），而空转宽限只有
         # 30 帧——按老逻辑它在开火前 30 帧就被回收了，表现成「这个子特效完全不触发」。
         # 所以还没生成过粒子的实例用一个**宽得多**的等待上限，生成过之后才按 grace 收。
         grace = int(getattr(self.config, "child_cull_grace", 30))
