@@ -2610,8 +2610,16 @@ FIELD_ANNOTATIONS = {
         "ZH": "0/1，具体机制不明，大部分情况下取 1。",
     },
     ("EMITTERSHAPE3D", "rayCastDependency"): {
-        "EN": "Enum 0~5, exact mechanism unclear.",
-        "ZH": "枚举值 0~5，具体机制不明。",
+        "EN": "How a RayCast hit distance is applied to the spawn range. "
+              "0 = None (range unchanged); 1 = Equal (range becomes the distance the ray has "
+              "travelled); 2 = Multiply (that distance times the offset); 3 = Min (clamped at "
+              "the offset, stops growing); 4 = Max (keeps growing past the offset); "
+              "5 = Offset (the whole range shifts along the ray, ending at the ray's max distance).",
+        "ZH": "射线检测的命中距离以何种运算作用到生成范围上。"
+              "0 = 无（范围不变）；1 = 相等（范围等于射线已行进的距离）；"
+              "2 = 相乘（该距离 × 偏移量）；3 = 取最小值（到达偏移量后不再增长）；"
+              "4 = 取最大值（超过偏移量后继续增长）；"
+              "5 = 偏移（范围整体随射线平移，终点为射线的最大距离）。",
     },
     ("EMITTERSHAPEMESH", "typeFlag"): {
         "EN": "Header field present in most attribute types, a type/category "
@@ -2908,8 +2916,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "作用未知。几乎恒为 0（99.8% 的块），少数非零值是 1 或 3。",
     },
     ("MESH", "rotationOrder"): {
-        "EN": "Rotation-order setting with values 0~5; 4 is the usual value. The exact meaning of each value is unknown.",
-        "ZH": "旋转顺序设置，取值为 0~5，其中 4 最常见。各取值的具体含义未知。",
+        "EN": "Order the rotation axes are applied in. ZXY is the usual choice (about 88%).",
+        "ZH": "旋转各轴的应用顺序。常用 ZXY（约 88%）。",
     },
     ("MESH", "typeFlag"): {
         "EN": "Header field present in most attribute types, a type/category "
