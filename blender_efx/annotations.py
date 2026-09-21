@@ -2633,8 +2633,16 @@ FIELD_ANNOTATIONS = {
         "ZH": "0/1，具体机制不明，大部分情况下取 1。",
     },
     ("EMITTERSHAPE3D", "unknBitmaskRadiusRelated"): {
-        "EN": "Enum 0~5, exact mechanism unclear.",
-        "ZH": "枚举值 0~5，具体机制不明。",
+        "EN": "How a RayCast hit distance is applied to the spawn range. "
+              "0 = None (range unchanged); 1 = Equal (range becomes the distance the ray has "
+              "travelled); 2 = Multiply (that distance times the offset); 3 = Min (clamped at "
+              "the offset, stops growing); 4 = Max (keeps growing past the offset); "
+              "5 = Offset (the whole range shifts along the ray, ending at the ray's max distance).",
+        "ZH": "射线检测的命中距离以何种运算作用到生成范围上。"
+              "0 = 无（范围不变）；1 = 相等（范围等于射线已行进的距离）；"
+              "2 = 相乘（该距离 × 偏移量）；3 = 取最小值（到达偏移量后不再增长）；"
+              "4 = 取最大值（超过偏移量后继续增长）；"
+              "5 = 偏移（范围整体随射线平移，终点为射线的最大距离）。",
     },
     ("EMITTERSHAPEMESH", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
@@ -2919,8 +2927,8 @@ FIELD_ANNOTATIONS = {
               "「完全随机旋转」，与 rotation2 偶见的 -360 呼应）；偶见其他角度值。",
     },
     ("MESH", "rotationOrder"): {
-        "EN": "Formerly unkn7_2. Exactly 6 observed values (0~5, dominated by 4 at ~88%) — same value shape as EMITTERSHAPE3D's rotationOrder (also dominated by 4), suggesting they may share the same engine-wide rotation-order enum. Exact meaning per value unknown.",
-        "ZH": '原名 unkn7_2。恰好观测到 6 种取值（0~5，4 占约 88%）——与 EMITTERSHAPE3D 的 rotationOrder 分布形态相同（同样以 4 为主流值），推测两者可能共用引擎内同一套旋转顺序枚举。各取值具体含义未知。',
+        "EN": "Order the rotation axes are applied in. ZXY is the usual choice (about 88%).",
+        "ZH": "旋转各轴的应用顺序。常用 ZXY（约 88%）。",
     },
     ("MESH", "typeFlag"): {
         "EN": "Header field present in most attribute types, likely a type/category "
