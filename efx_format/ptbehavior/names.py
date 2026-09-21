@@ -1,5 +1,5 @@
 """
-efx_format/ptbehavior_names.py  —  PTBEHAVIOR 属性 key 哈希 → 名（自动生成，勿手改主体）
+efx_format/ptbehavior/names.py  —  PTBEHAVIOR 属性 key 哈希 → 名（自动生成，勿手改主体）
 
 key = jamcrc(属性名)。来源：RE Engine DTI 属性 dump（dti_prop_dump.h + wip_dump，权威）
 + 少量 "m/mp 前缀 + mrl3 槽名" jamcrc 爆破补充。哈希全局共享，同名跨 b_type 通用。

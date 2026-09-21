@@ -378,17 +378,24 @@ class Simulator(object):
                 continue      # 渲染体明说「我不该有视觉输出」（DUMMY），不走退化点
             if item is not None and "layers" in p.rolled and item.kind != "RIBBON":
                 # 双层染色（RGBFIRE/RGBWATER）在 SHADE 阶段算好两层，留在 p.rolled 里。
-                # 渲染体不必认识这些属性，由这里统一转交——有贴图的 glue 会按贴图亮度
-                # 在两层之间插值，没贴图的用 item.color（已经压成一个代表色了）。
+                # 渲染体不必认识这些属性，由这里统一转交给贴图 glue 的 fragment shader；
+                # 没贴图的用 item.color（已经压成一个代表色了）。
                 #
-                # ⚠ RIBBON 排除在外：这套"按贴图亮度在两层间插值"是给 BILLBOARD3D
-                # 那种单张贴图（贴图亮=核心色、暗=外缘色）设计的，RIBBON 的贴图是沿
-                # 长度走的序列帧，没有"亮度=核心"这层语义。RIBBON 自己的 build_render
-                # 已经把 RGBFIRE 的 p.color 正确乘进 item.color 里了（见 ribbon.py），
-                # 这里再叠一层会整个替换掉——RGBFIRE 两层若是白色（无染色意图），
-                # 结果就是贴图原色不受调制地透出来，实测表现为"设的蓝色显示成了贴图
-                # 本身的颜色（比如绿色）"。
+                # RGBFIRE/RGBWATER 各自的贴图通道语义不同（G=火焰 / R×mix(A,B,lerp)=烟雾，
+                # 对 mix(A,B,lerp)=水膜 / R×G×A=高光），靠各自的 `*_lerp` 键告诉 glue
+                # 走哪条 shader 分支；两个键都不在时退回通用的「按贴图亮度插值」模型。
+                #
+                # ⚠ RIBBON 排除在外：这套模型是给 BILLBOARD3D 那种单张贴图设计的，
+                # RIBBON 的贴图是沿长度走的序列帧，没有这层语义。RIBBON 自己的
+                # build_render 已经把 RGBFIRE 的 p.color 正确乘进 item.color 里了
+                # （见 ribbon.py），这里再叠一层会整个替换掉——RGBFIRE 两层若是白色
+                # （无染色意图），结果就是贴图原色不受调制地透出来，实测表现为
+                # "设的蓝色显示成了贴图本身的颜色（比如绿色）"。
                 item.extra.setdefault("layers", p.rolled["layers"])
+                if "rgbfire_lerp" in p.rolled:
+                    item.extra.setdefault("rgbfire_lerp", p.rolled["rgbfire_lerp"])
+                elif "rgbwater_lerp" in p.rolled:
+                    item.extra.setdefault("rgbwater_lerp", p.rolled["rgbwater_lerp"])
             if item is None:
                 if not self._has_body:
                     # 这个 entry 压根没有「渲染主体」类属性（PTBEHAVIOR / 纯 Action

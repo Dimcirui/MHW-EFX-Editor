@@ -34,10 +34,10 @@ efx_format/sim/behaviors/billboard3d.py  —  BILLBOARD3D（渲染主体：面�
 
 未处理
 ------
-    correctColorNo（原 EPVColorSlot1）/ SlotOverride1 非 0 时，颜色实际来自调用方
-    .epv 的槽位，本地 color 不生效（annotations 明确写了）。预览拿不到 .epv，故照常
-    用本地值并记一条 note，免得用户以为「改了颜色没反应」是预览的 bug——那恰恰是
-    游戏内的真实行为。
+    correctColorNo（原 EPVColorSlot1）/ colorRangeCorrectColorNo（原 SlotOverride1）
+    非 0 时，颜色实际来自调用方 .epv 的槽位，本地 color 不生效（annotations 明确
+    写了）。预览拿不到 .epv，故照常用本地值并记一条 note，免得用户以为「改了颜色
+    没反应」是预览的 bug——那恰恰是游戏内的真实行为。
     flowmap* 一族（扰动贴图）也未处理，属于 T3 的纹理部分。
 
 约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
@@ -81,7 +81,7 @@ class Billboard3D(Behavior):
         if f is None:
             return
         self._has_tracks = f.has_tracks
-        if f.i("correctColorNo") or f.i("SlotOverride1"):
+        if f.i("correctColorNo") or f.i("colorRangeCorrectColorNo"):
             em.note("BILLBOARD3D 绑了 EPV 颜色槽位：游戏内颜色来自 .epv，"
                     "本地 color 不生效（预览仍按本地值画）")
 
@@ -169,6 +169,13 @@ class Billboard3D(Behavior):
                       g0 * bright * p.color[1],
                       b0 * bright * p.color[2],
                       a0 * p.alpha]
+        # 渲染主体自己的颜色（不含 RGBFIRE/RGBWATER 的 p.color）单独存一份：用户
+        # 实机对拍确认，这颜色对贴图/两层染色是**逐通道相乘的滤镜**，不是叠加的
+        # 底色（红色滤镜下，贴图里非红的部分会变黑，不是被红色盖过去）。挂了
+        # RGBFIRE/RGBWATER 时 item.color 已经把 p.color（两层混合的代表色）乘了
+        # 进去，glue 的两层染色分支要单独乘这份「纯自身色」，见 sim_preview.py
+        # 的 `_layers_of`。
+        item.extra["base_tint"] = (r0 * bright, g0 * bright, b0 * bright)
         item.blend = rolled.get("bb_blend", "ALPHA")
         item.extra["vel"] = p.vel
         item.extra["age"] = p.age

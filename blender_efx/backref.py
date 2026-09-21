@@ -24,10 +24,23 @@ blender_efx/backref.py  —  L2 反向引用视图（只读）
      - Action emitter（其 entries[*].targets 有指向该 entry 的）
    分组显示 + 跳转按钮。
 
+5. ``is_entry_action_triggered`` / ``count_entry_subselect_tables``
+   两个单点谓词：该 entry 有没有被某个 Action 指到、被几张 Subselect 表收录。
+   `classify_entry_activation` 与面板都建在它们之上。
+
+6. ``classify_entry_activation(entry_obj) -> dict``
+   汇总判定一个 entry 到底会不会被激活，以及经由哪条路径（EOF 直接触发 /
+   被 Action 召唤 / 只在 Subselect 表里 / 谁都没指它）。`panels.py` 也用这个
+   结果给 entry 打状态标。
+
+7. ``EFX_PT_root_states``
+   Root 状态总览（VIEW_3D N 面板）。对整棵树跑一遍上面的分类，按激活路径
+   分组列出全部 entry，一眼看出哪些 entry 是死的。
+
 约束
 ----
 - 纯只读显示：不修改任何引用数据、不碰导出路径、不改 efx_format/。
-- Python 3.11 语法（目标 Blender 4.3.2）。
+- Python 3.10 语法（兼容 Blender 3.6～5.x）。
 - bpy 稳定子集（Panel / Operator / StringProperty / layout.box 等）。
 - 不使用 5.x 新增 API。
 - 跳转算子不需要 UNDO（纯选择操作，不改场景数据）。

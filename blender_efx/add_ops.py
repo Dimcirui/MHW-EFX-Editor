@@ -1,42 +1,10 @@
-"""
-blender_efx/add_ops.py  —  L2 #3c：从「整 entry 预设」新增 entry + Active EFX 选择器
+"""Entry 预设与活动 EFX 目标选择。
 
-功能：
-  - save_entry_preset(entry_obj, name)：把整个 entry（头字段 + 属性列表）存为 JSON 预设
-  - add_entry_from_preset(preset_path, root_obj)：按预设新建一个 EFX_ENTRY 对象树
-  - list_entry_presets()：扫 __entries__/ 目录生成 EnumProperty items
-  - 算子：efx.save_entry_preset / efx.add_entry_from_preset / efx.open_entry_preset_folder
-  - Scene.efx_active_efx：当前操作的 EFX 文件集合（新增 entry / 导出目标，PointerProperty → Collection）
-  - get_active_efx_root(context)：解析当前活动 EFX 根
-
-设计约束（参照 CLAUDE.md）：
-  - Python 3.11 语法（目标 Blender 4.3.2），bpy 只用长期稳定子集
-  - 包内相对导入；不改 efx_format/ 与 io_tree.py（仅复用其函数）
-  - 新增 entry 只需：建对象、设好 efx_index、置 root["labels_dirty"]=1，
-    导出端会按实际内容自动重算 header 计数/size。
-  - #3c 跨文件引用增强：从预设新增 entry 时，对属性内 EXTERNREFERENCE/PTLIFE/
-    PTCOLLISION 三类引用重指针化到**目标文件**的段。目标范围内→指向目标对象；
-    源有效但目标越界（真·跨文件断引用）→悬空（pointerized=True, ptr=None，由
-    #4 校验报告供用户重连）；源也越界/死属性→verbatim（pointerized=False，原样保留）。
-    需预设记录源文件段计数（save_entry_preset 写入 "source_counts"）。
-  - entry 头字段名与 io_tree.py 导入端（第 238-276 行）完全一致：
-      standard：body_type / unkn0 / attr_count / null / timl_length / timl_bytes
-      extended：body_type / unkn0 / null0 / null1 / unkn1 / unkn2 / attr_count /
-                null2 / timl_length / timl_bytes
-      root / unknown：raw
-    （attr_count 仅作记录，新增时忽略——导出端按实际属性数重算）
-
-预设 JSON schema：
-{
-  "efx_preset_kind": "entry",
-  "entry_kind": "standard",
-  "props": {"body_type": "...", "unkn0": "...", ...},   # 除 timl_bytes 外的头字段（十进制字符串）
-  "timl_bytes": "<b64>",
-  "raw": "",                                            # root/unknown 才用
-  "source_label": "原 raw_label（仅供默认命名，新增不进标签表）",
-  "source_counts": {"extern": <int>, "entry": <int>, "action": <int>},  # 源文件段计数（#3c 跨文件断引用判定）
-  "attributes": [ {"type_hash": "<十进制str>", "data_bytes": "<b64>"}, ... ]
-}
+维护约束：
+- 段引用按目标 EFX 解析；source_counts 区分待重连的越界引用与原样保留的值。
+- 预设头字段与导入端一致，attr_count 仅作记录，导出时按实际属性重算。
+- 兼容预设只从 __bodies__ 读取并规范化；新预设只能写入 __entries__。
+- 属性字节从导出侧字段解析取得，不能直接使用导入快照。
 """
 
 import json
@@ -61,11 +29,7 @@ def _archetypes_preset_dir() -> str:
     """
     返回 archetype 模板目录 presets/__archetypes__/ 的绝对路径。
 
-    **随扩展下发的 curated entry 模板**（"新建即可用"的起手配方），与
-    presets/__attributes__/ 对称：入库、进构建包、只读。属性集按官方语料的高频配方，
-    字段值按语料分位（见 docs/ATTRIBUTE_VALUE_RANGES.md）。
-    用户自己保存的 entry 预设走 __entries__，不混在这里——否则用户数据会被卷进 git，
-    而且插件升级覆盖目录时会被冲掉。
+    该目录只放随扩展分发的模板；用户保存的预设必须写入 __entries__，以免升级覆盖。
     """
     return os.path.join(_presets_root(), "__archetypes__")
 
@@ -77,17 +41,14 @@ def _entries_preset_dir() -> str:
 
 def _bodies_preset_dir_legacy() -> str:
     """
-    返回 3.0 重命名前的旧 entry 预设目录 presets/__bodies__/ 的绝对路径（只读兼容）。
+    返回旧 entry 预设目录 presets/__bodies__/ 的绝对路径（只读兼容）。
 
-    用户的自定义 entry 预设大多存在这里（不像属性预设主要是随插件下发的现成货），
-    重命名时特意不删——list_entry_presets() 一并扫描，add_entry_from_preset_dict()
-    自动识别并转换其中的旧 schema key（见 _normalize_legacy_entry_preset）。
-    新增/保存的预设不会再写回这里，统一走 __entries__。
+    枚举时仍扫描该目录，并在载入时规范化旧 schema；新预设一律写入 __entries__。
     """
     return os.path.join(_presets_root(), "__bodies__")
 
 
-# 各 kind 的头字段名（除 timl_bytes/raw 外）——与 io_tree.py 导入端完全一致。
+# 预设头字段须与导入端保持一致；attr_count 由导出端按实际属性重算。
 _STANDARD_PROP_KEYS = ("body_type", "unkn0", "attr_count", "null", "timl_length")
 _EXTENDED_PROP_KEYS = (
     "body_type", "unkn0", "null0", "null1", "unkn1", "unkn2",
@@ -101,13 +62,8 @@ _EXTENDED_PROP_KEYS = (
 
 def get_active_efx_root(context):
     """
-    解析当前活动 EFX 根集合（供新增 entry / 复制粘贴 / 导出等用）。
-
-    优先 scene.efx_active_efx（用户在 N 面板选的 EFX 文件**集合**，本身即 ROOT）；
-    否则回退：活动对象所属的 EFX 顶层集合（find_root_collection）——这样跨文件
-    复制/粘贴 entry 时，只要点一下目标文件里的任意对象就行，不必来回切 Active EFX 选择器；
-    否则扫场景：若恰好有一个 EFX_ROOT 集合，返回它；
-    否则返回 None（让用户显式选择）。
+    优先使用显式目标，其次使用活动对象所在根；仅有一个根时才自动选取，
+    歧义时返回 None，以避免跨文件操作落到错误目标。
     """
     scn = getattr(context, "scene", None)
     if scn is not None:
@@ -172,10 +128,7 @@ def save_entry_preset(entry_obj: bpy.types.Object, name: str) -> str:
 
 
 def build_entry_preset_dict(entry_obj: bpy.types.Object) -> dict:
-    """
-    把 entry_obj（整个 entry：头字段 + 属性列表）构建为 preset dict（不落盘）。
-    供 save_entry_preset（写文件）与 复制Entry（内存剪贴板）共用。
-    """
+    """磁盘预设和会话剪贴板共用的唯一 Entry 序列化路径。"""
     if entry_obj is None or entry_obj.get("~TYPE") != "EFX_ENTRY":
         raise ValueError("build_entry_preset_dict：目标对象不是 EFX_ENTRY")
 
@@ -217,13 +170,8 @@ def build_entry_preset_dict(entry_obj: bpy.types.Object) -> dict:
 
 def _collect_attribute_dicts(entry_obj: bpy.types.Object) -> list:
     """
-    收集 entry_obj 的 EFX_ATTRIBUTE 子对象（按 efx_index 升序），
-    每个存 {"type_hash": <十进制str>, "data_bytes": <b64>}。
-
-    ⚠ data_bytes 用**导出端同款的字段感知解析**（io_tree._resolve_attribute_data_bytes）
-    取当前实际字节——脏属性按字段模型重打包、引用属性按指针覆写——而非读
-    obj["data_bytes"]（那是导入快照、不含用户编辑）。这样预设/复制Entry 抓到的是修改后的值。
-    源文件段局部 index 映射（按 efx_index 排序 enumerate）与导出一致，供引用覆写。
+    使用与导出端相同的字段解析取得当前字节，而非导入快照，
+    以保留字段编辑和引用覆写。局部段索引也须与导出顺序一致。
     """
     import base64
     from . import io_tree
@@ -406,7 +354,7 @@ def add_entry_from_preset_dict(preset: dict,
 
     # 若预设源 entry 有名字、且追加位置处于标签前缀边界（前面条目全有标签），
     # 给新 entry 一个真正的标签槽——名字才能持久化、也可被重命名。
-    # 否则（文件本身有无标签 entry）保持 has_label=0（名字仅 Blender 显示，不进文件）。
+    # 否则（文件本身有无标签 entry）保持 has_label=0（名字仅 Blender 显示）。
     if source_label:
         try:
             from .reorder import can_label_entry
@@ -438,8 +386,24 @@ def add_entry_from_preset_dict(preset: dict,
                       entry_obj, col_entry, raw_label)
 
     else:
-        # root / unknown：整段 raw（b64）
-        entry_obj["raw"] = str(preset.get("raw", ""))
+        # root：尝试跟 io_tree 导入端同一套逻辑拆成 AttrBlock 子对象
+        # （UnitBoundary/RenderTarget/LayoutBank 伪装成属性，可见、可删）；
+        # 拆不动（非 root 或数据本身就不合法）才退回整段 raw 只读存底。
+        raw_str = str(preset.get("raw", ""))
+        decomposed = False
+        if entry_kind == "root" and raw_str:
+            try:
+                from ..efx_format.efxfile import EFXFile
+                raw_bytes = io_tree._b64dec(raw_str)
+                body, end_pos = EFXFile._parse_root_body(raw_bytes, 0)
+                if end_pos == len(raw_bytes):
+                    attr_blocks = [io_tree._root_entry_to_attr_block(e) for e in body.entries]
+                    io_tree._build_attr_attribute_children(attr_blocks, entry_obj, col_entry, raw_label)
+                    decomposed = True
+            except Exception:
+                decomposed = False
+        if not decomposed:
+            entry_obj["raw"] = raw_str
 
     # #3c 跨文件引用重指针化：把新增 entry 内属性的段局部引用重指向目标文件的段。
     if entry_kind in ("standard", "extended"):
@@ -460,16 +424,8 @@ def _repointerize_refs(preset: dict,
                        entry_obj: bpy.types.Object,
                        root_obj: bpy.types.Collection) -> None:
     """
-    对刚新增 entry（entry_obj）下的引用属性（EXTERNREFERENCE/PTLIFE/PTCOLLISION），
-    按**目标文件**（root_obj）的段重新指针化。
-
-    复用 extern_ref / entry_action_ref 的 init 函数（不修改它们）：
-      - 目标范围内 → init 已指向目标对象（pointerized=True）。
-      - 哨兵 -1     → init 已设 none（pointerized=True）。
-      - init 留 pointerized=False = 越界/死属性；再用 _flag_if_cross_file_broken
-        借源计数区分"源有效但目标越界（→悬空）"与"源也越界（→verbatim）"。
-
-    包一层 try/except：任何属性异常都安全跳过，保证新增不因引用问题失败。
+    按目标文件的段重建引用属性。源计数用于将跨文件越界引用标为悬空，
+    而将源中已无效的值保持原样。
     """
     from . import io_tree
     from . import extern_ref, entry_action_ref
@@ -519,8 +475,6 @@ def _repointerize_refs(preset: dict,
                     fmt='<i', target_count=target_count_extern,
                     src_count=src_extern)
             elif th == PTLIFE:
-                # 2026-07 简化：init 本身就总是留下可编辑状态（越界/死值 → 无目标），
-                # 不再需要跨文件断引用的额外标记补丁。
                 entry_action_ref.init_ptlife_ref_props(
                     blk, data_bytes, target_play_map, target_count_play)
             elif th == PTCOLLISION:
@@ -579,11 +533,7 @@ def _build_attributes(io_tree, AttrBlock, attribute_list, entry_obj,
 
 
 def _find_entry_collection(root_obj: bpy.types.Collection):
-    """
-    找新增 entry 应落入的 Entry 叶子集合：直接读 root_obj（顶层文件集合）下
-    ~TYPE=="EFX_ENTRY_COLLECTION" 的子集合（O(1)，不再靠名字后缀猜）。
-    极端兜底（叶子集合缺失，理论不该发生）：场景主集合。
-    """
+    """按类型定位目标根的 Entry 叶子集合；缺失时回退到场景主集合。"""
     col = _rc.get_leaf_collection(root_obj, "EFX_ENTRY")
     if col is not None:
         return col
@@ -596,15 +546,15 @@ def _find_entry_collection(root_obj: bpy.types.Collection):
 
 def list_entry_presets():
     """
-    按此顺序扫三个目录，返回 EnumProperty items 列表 [(完整路径, 显示名, ""), ...]：
-      1. __archetypes__/  随扩展下发的 curated 模板（只读，见 _archetypes_preset_dir）
-      2. __entries__/     用户保存的 entry 预设（保存目标）
-      3. __bodies__/      3.0 重命名前的旧目录名，只读兼容、不再写入
-    空目录返回 [("", "（无预设）", "")]。
+    返回按内置模板、分发模板、用户预设和兼容预设排序的 EnumProperty items。
     """
     from .presets import _encode_path_ident, _read_display_name
+    from .i18n import T
+    from . import builtin_entries
 
-    result = []
+    # 零属性模板不显示计数后缀。
+    result = [(ident, ("%s (%d)" % (T(key), n)) if n else T(key), "")
+              for ident, key, n in builtin_entries.items()]
     for preset_dir in (_archetypes_preset_dir(),
                        _entries_preset_dir(),
                        _bodies_preset_dir_legacy()):
@@ -657,8 +607,10 @@ class EFX_OT_save_entry_preset(bpy.types.Operator):
         obj = context.active_object
         try:
             path = save_entry_preset(obj, self.preset_name)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Failed to save entry preset: {exc}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, "Failed to save entry preset. See the system console for details.")
             return {"CANCELLED"}
         _invalidate_entry_preset_cache()
         self.report({"INFO"}, f"Saved entry preset: {os.path.basename(path)}")
@@ -705,12 +657,19 @@ class EFX_OT_add_entry_from_preset(bpy.types.Operator):
             self.report({"ERROR"}, "No entry preset selected")
             return {"CANCELLED"}
 
-        from .presets import _decode_path_ident
-        actual_path = _decode_path_ident(self.preset_path)
+        from . import builtin_entries
         try:
-            new_obj = add_entry_from_preset(actual_path, root)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Failed to add entry: {exc}")
+            if builtin_entries.is_builtin(self.preset_path):
+                new_obj = add_entry_from_preset_dict(
+                    builtin_entries.get(self.preset_path), root)
+            else:
+                from .presets import _decode_path_ident
+                new_obj = add_entry_from_preset(
+                    _decode_path_ident(self.preset_path), root)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, "Failed to add entry from preset. See the system console for details.")
             return {"CANCELLED"}
 
         # 选中并激活新对象
@@ -746,10 +705,10 @@ class EFX_OT_open_entry_preset_folder(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 复制 / 粘贴 Entry（内存剪贴板，会话级；快速搬 entry 而不必存预设）
+# 复制 / 粘贴 Entry
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 模块级整-entry 剪贴板：build_entry_preset_dict 的结果（含 source_counts/in_eof）。
+# 模块级整-entry 剪贴板：build_entry_preset_dict 的结果，不随 .blend 保存。
 _ENTRY_CLIPBOARD = {}
 
 
@@ -770,8 +729,10 @@ class EFX_OT_copy_entry(bpy.types.Operator):
         global _ENTRY_CLIPBOARD
         try:
             _ENTRY_CLIPBOARD = build_entry_preset_dict(context.active_object)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Failed to copy Entry: {exc}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, "Failed to copy this entry. See the system console for details.")
             return {"CANCELLED"}
         nblk = len(_ENTRY_CLIPBOARD.get("attributes", []))
         self.report({"INFO"}, f"Copied Entry ({nblk} attributes) to clipboard")
@@ -779,7 +740,7 @@ class EFX_OT_copy_entry(bpy.types.Operator):
 
 
 class EFX_OT_paste_entry(bpy.types.Operator):
-    """把剪贴板的 Entry 粘贴（新增）到 Active EFX，不必另存预设"""
+    """把剪贴板的 Entry 粘贴（新增）到 Active EFX"""
 
     bl_idname      = "efx.paste_entry"
     bl_label       = "Paste Entry"
@@ -811,8 +772,10 @@ class EFX_OT_paste_entry(bpy.types.Operator):
             return {"CANCELLED"}
         try:
             new_obj = add_entry_from_preset_dict(_ENTRY_CLIPBOARD, root)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Failed to paste Entry: {exc}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, "Failed to paste this entry. See the system console for details.")
             return {"CANCELLED"}
         try:
             for o in context.selected_objects:
@@ -874,9 +837,14 @@ def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
-    # Active EFX 选择器：挂在 Scene 上（场景级，随 .blend 保存）。
-    # 选 EFX 文件**集合**（大纲里那个紫色 .efx 集合，比选 header 对象直观）；
-    # 新增 entry / 导出都以它为目标。
+    # 在播种包内预设后，只清理逐字节一致的内置副本，保留用户修改。
+    try:
+        from . import builtin_entries
+        builtin_entries.purge_superseded_copies(_presets_root())
+    except Exception:
+        pass  # 清理失败最多多几个重复项，不该拦住插件启用
+
+    # 场景级目标必须是 EFX 文件集合，供新增和导出共用。
     bpy.types.Scene.efx_active_efx = PointerProperty(
         name="Active EFX",
         description="The EFX file collection currently being operated on (target for adding entries / exporting)",
@@ -884,8 +852,7 @@ def register():
         poll=_active_efx_poll,
     )
 
-    # entry 预设下拉：挂 WindowManager（会话级，不污染场景数据）。
-    # SKIP_SAVE 避免把跨机器可能失效的路径字符串写入 .blend。
+    # 预设标识包含路径，故只保留在会话中，避免写入 .blend。
     bpy.types.WindowManager.efx_entry_preset_enum = EnumProperty(
         name="Entry Preset",
         description="Select the whole-entry preset to add",

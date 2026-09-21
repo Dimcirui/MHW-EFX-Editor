@@ -1,5 +1,5 @@
 """
-blender_epv/panels.py — EPV 工具 / 字段 N 面板（阶段 2 + 3）。
+blender_epv/panels.py — EPV 工具 / 字段 N 面板。
 
 3D 视口 N 面板「EPV」标签页：
   EPV_PT_main      — 导入 / 导出 + 当前选中信息

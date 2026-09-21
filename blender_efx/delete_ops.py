@@ -1,5 +1,5 @@
 """
-blender_efx/delete_ops.py  —  L2 #3b：删除条目（entry / attribute / action / extern / subselect）
+blender_efx/delete_ops.py  —  删除条目（entry / attribute / action / extern / subselect）
 
 算子（全部 bl_options={"REGISTER","UNDO"}，invoke 用 invoke_confirm 弹确认，均支持多选批量删除）：
   efx.delete_entry      —  删除所有选中 EFX_ENTRY（连带其全部 EFX_ATTRIBUTE 子属性）
@@ -34,7 +34,7 @@ blender_efx/delete_ops.py  —  L2 #3b：删除条目（entry / attribute / acti
      误挂到别的 entry 下）——是预期行为，不是 bug。
 
 约束（参照 CLAUDE.md）：
-  - Python 3.11 语法（目标 Blender 4.3.2）
+  - Python 3.10 语法（兼容 Blender 3.6～5.x）
   - bpy 只用稳定子集
   - 不改 efx_format/
   - bl_options = {"REGISTER", "UNDO"}

@@ -1,14 +1,16 @@
 """
-blender_efx/uvs_io.py  —  UVS Edition（Phase 2）
+blender_efx/uvs_io.py  —  UVS 编辑工具
 
-UVSEQUENCE 块属性下的 UVS 编辑工具栏。
+UVSEQUENCE 属性下的 .uvs 序列帧编辑工具栏，也服务 standalone.py 建的无主 UVS。
 
-功能（Phase 2）：
-  - 解析 / 序列化 .uvs 文件（Import / Export）
-  - Group 列表（UIList，只读浏览）
+功能：
+  - 解析 / 序列化 .uvs 文件（Import / Export / Reload）
+  - Group 列表（UIList）+ 增删与重排
   - 选中 Group 的路径槽（Path 0-3）+ 类型 + Dynamic 可编辑
-  - "Edit UVS"按钮占位（Phase 3 实现弹窗）
-  - "GIF to PNG Sequence"按钮占位（Phase 4）
+  - Edit UVS：独立窗口的帧矩形可视编辑器（`EFX_OT_uvs_edit` + `EFX_PT_uvs_editor`，
+    含帧的增删改移与按网格批量生成）
+  - GIF to PNG Sprite Sheet：GIF 拆帧拼精灵表，可选自动回写当前 Group 的帧数据
+    （`EFX_OT_uvs_gif_to_png`）
 
 数据存储策略：
   - EFXUVSProps 挂到 Object（efx_uvs）。谁持有它分两种情况：
@@ -231,7 +233,7 @@ class EFXUVSGroupProp(PropertyGroup):
     type2_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(2))
     type3_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(3))
 
-    # Phase 3：帧生成参数
+    # 帧生成参数
     grid_h: IntProperty(name="H", min=1, default=1,
                         description="Sprite sheet horizontal cell count",
                         update=lambda self, ctx: setattr(self, "gen_frame_count", self.grid_h * self.grid_v))
@@ -287,7 +289,7 @@ class EFXUVSProps(PropertyGroup):
     group_index: IntProperty(name="Group Index", default=0,
                              update=lambda self, ctx: _tag_redraw_editor())
 
-    # Phase 3：IMAGE_EDITOR 参考图名称（bpy.data.images 中的 name）
+    # IMAGE_EDITOR 参考图名称（bpy.data.images 中的 name）
     ref_image_name: StringProperty(name="Reference Image", default="")
 
 
@@ -643,7 +645,7 @@ class EFX_PT_uvs_edition(Panel):
             row.operator("efx.uvs_export", icon="EXPORT", text="Export")
             row.operator("efx.uvs_reload", icon="FILE_REFRESH", text="")
 
-        # ── GIF → PNG 精灵表（Phase 4，独立于 UVS 是否已加载）──────────────────
+        # ── GIF → PNG 精灵表（独立于 UVS 是否已加载）──────────────────
         box = layout.box()
         box.label(text=T("uvs.gif_to_png_box"), icon="IMAGE_DATA")
         if _check_pillow():
@@ -729,7 +731,7 @@ _CLASSES_P2 = [
     EFX_PT_uvs_edition,
 ]
 
-# Phase 3 & 4 classes appended after their definitions below
+# UVS 帧编辑器弹窗（_CLASSES_P3）与 GIF → PNG 精灵表生成（_CLASSES_P4）的 classes，在其定义之后 append
 _CLASSES_P3 = []  # filled after class definitions
 _CLASSES_P4 = []  # filled after class definitions
 
@@ -760,7 +762,7 @@ def unregister():
 
 
 # =============================================================================
-# Phase 3 — UVS 编辑弹窗（新窗口 + Image Editor + GPU overlay）
+# UVS 编辑弹窗（新窗口 + Image Editor + GPU overlay）
 # =============================================================================
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1675,7 +1677,7 @@ class EFX_OT_uvs_slot_remove(Operator):
 
 
 # =============================================================================
-# Phase 4 — GIF → PNG 精灵表生成
+# GIF → PNG 精灵表生成
 # =============================================================================
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2005,7 +2007,7 @@ class EFX_OT_uvs_gif_to_png(Operator, ImportHelper):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase 4 注册列表
+# GIF → PNG 精灵表生成注册列表
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CLASSES_P4.extend([EFX_OT_uvs_gif_to_png])

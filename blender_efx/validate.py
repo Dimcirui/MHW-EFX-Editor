@@ -1,5 +1,5 @@
 """
-blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error）
+blender_efx/validate.py  —  导出前校验（仿 mrl3 checkMrl3Error）
 
 提供：
   validate_efx_tree(root_obj) -> list[dict]  纯函数，扫描对象树返回问题列表
@@ -33,7 +33,7 @@ blender_efx/validate.py  —  L2 #4：导出前校验（仿 mrl3 checkMrl3Error�
      残留空壳，这里只是提醒用户手动清理场景里的对象；见该检查项内联注释）
 
 约束（参照 CLAUDE.md）：
-  - Python 3.11 语法（目标 Blender 4.3.2）
+  - Python 3.10 语法（兼容 Blender 3.6～5.x）
   - bpy 只用稳定子集
   - 不改 efx_format/，不改 io_tree.py
   - 所有属性访问 getattr + try/except 防御（对象可能未初始化对应 PropertyGroup）
@@ -193,6 +193,29 @@ def detect_dimension_entries(root_obj) -> tuple:
 # 核心校验函数
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _extern_ref_state_indices(blk_obj) -> list:
+    """读 EXTERNREFERENCE 属性里的 index0 / index1（选哪两列做切换/插值）。
+
+    EXTERNREFERENCE 是 36B 定长：typeFlag(+0) / referenceIndex(+4) /
+    trigger_condition(+8) / index0(+12) / index1(+16) / ...
+    读不出来（字节不足/无数据）返回空列表——校验拿不到就不报，不猜。
+    """
+    import base64
+    import struct as _struct
+
+    raw = blk_obj.get("data_bytes")
+    if not raw:
+        return []
+    try:
+        data = base64.b64decode(str(raw))
+    except Exception:
+        return []
+    if len(data) < 20:
+        return []
+    i0, i1 = _struct.unpack_from("<ii", data, 12)
+    return [("index0", i0), ("index1", i1)]
+
+
 def validate_efx_tree(root_obj) -> list:
     """
     扫描 root_obj 对象树，返回问题列表。
@@ -217,6 +240,66 @@ def validate_efx_tree(root_obj) -> list:
     externs    = _children_by_type(root_obj, "EFX_EXTERN")
     subselects = _children_by_type(root_obj, "EFX_SUBSELECT")
     count_extern = len(externs)
+
+    # ── (6) Extern 结构：空 EA / 指向被剔除 EA / 状态下标越界 ───────────────────
+    # 空 EA（0 item）官方语料 1477 个里一个都没有，导出端会剔除它（io_tree §4a）。
+    # 判据必须与导出端一致，否则会报了不删、或删了不报。
+    _empty_externs = set()
+    for ext in externs:
+        ep = getattr(ext, "efx_extern", None)
+        if ep is None:
+            continue
+        hdr = ext.get("hdr_item_count")
+        if hdr is not None:
+            try:
+                if int(str(hdr)) == 0:
+                    continue        # 导入时本就为空 → 导出端也原样保留，不报
+            except (ValueError, TypeError):
+                pass
+        if len(ep.items) == 0:
+            _empty_externs.add(ext.name)
+            problems.append({
+                "level": "WARN",
+                "msg": (f"Extern '{ext.name}' has no items and will be left out of the exported "
+                        "file; add an item to it, or delete it"),
+                "obj": ext.name,
+            })
+
+    for body in bodies:
+        for blk in _children_by_type(body, "EFX_ATTRIBUTE"):
+            er = getattr(blk, "efx_extern_ref", None)
+            if er is None:
+                continue
+            try:
+                ptr = er.extern_ref_ptr
+                if (er.extern_ref_pointerized and not er.extern_ref_none
+                        and ptr is not None and ptr.name in _empty_externs):
+                    problems.append({
+                        "level": "WARN",
+                        "msg": (f"ExternReference attribute '{blk.name}' points at Extern "
+                                f"'{ptr.name}', which has no items and will be left out of the "
+                                "exported file; this reference will be written as 'no target'"),
+                        "obj": blk.name,
+                    })
+                # 状态下标越界：删掉某一列后，引用里残留的 index0/index1 可能超范围
+                if (er.extern_ref_pointerized and not er.extern_ref_none
+                        and ptr is not None):
+                    pep = getattr(ptr, "efx_extern", None)
+                    n_state = max((len(it.instances) for it in pep.items), default=0) if pep else 0
+                    if n_state:
+                        raw = _extern_ref_state_indices(blk)
+                        for label, v in raw:
+                            if v >= n_state:
+                                problems.append({
+                                    "level": "WARN",
+                                    "msg": (f"ExternReference attribute '{blk.name}' selects "
+                                            f"{label}={v}, but Extern '{ptr.name}' only has "
+                                            f"{n_state} state(s); the game will fall back to an "
+                                            "existing state"),
+                                    "obj": blk.name,
+                                })
+            except AttributeError:
+                pass
 
     # ── (1) 悬空指针 ─────────────────────────────────────────────────────────
 
@@ -321,6 +404,19 @@ def validate_efx_tree(root_obj) -> list:
                 f"EOF section had invalid entry indices {_eof_dropped} "
                 "(out of range or duplicated) — dropped on import; export writes the "
                 "repaired list, so the file will not be byte-identical to the original"
+            ),
+            "obj": "",
+        })
+    # Root 专属子条目（UnitBoundary/RenderTarget/LayoutBank）跑到普通 entry 下面，
+    # 或普通渲染属性跑到 Root 下面——两边导出时都会丢弃，不是静默兼容。
+    _root_attr_dropped = str(root_obj.get("root_attr_dropped", ""))
+    if _root_attr_dropped:
+        problems.append({
+            "level": "WARN",
+            "category": "root_attr_dropped",
+            "msg": (
+                f"Attribute(s) dropped on export (wrong entry type for their kind): "
+                f"{_root_attr_dropped}"
             ),
             "obj": "",
         })
@@ -741,7 +837,7 @@ class EFX_OT_validate(bpy.types.Operator):
 
     bl_idname      = "efx.validate"
     bl_label       = "Pre-export Validation"
-    bl_description = "Scan the EFX object tree for dangling pointers / duplicate index / dead attributes and report issues in a popup"
+    bl_description = "Scan the EFX object tree for invalid references, duplicate indices, and invalid attributes, and report the results in a popup"
     bl_options     = {"REGISTER"}
 
     @classmethod

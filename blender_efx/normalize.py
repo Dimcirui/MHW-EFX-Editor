@@ -61,9 +61,16 @@ def _nn(idx: int) -> str:
 def _collect_group(root, type_tag: str) -> list:
     """收集 root 文件集合下 ~TYPE==type_tag 的顶层对象，按 (efx_index, name) 稳定排序
     （root_collection.collect_top_level 已按 efx_index 排序，这里补 name 次级键，
-    保证 Shift+D 撞车出的同 index 副本按 name 拆出确定前后顺序）。"""
+    保证 Shift+D 撞车出的同 index 副本按 name 拆出确定前后顺序）。
+
+    EFX_ENTRY 额外规则：entry_kind=="root" 的条目恒排第一——跟 io_tree.py 导出端
+    的强制顺序保持一致，避免"面板显示的编号"和"导出文件里的实际顺序"对不上。"""
     objs = _rc.collect_top_level(root, type_tag)
-    objs.sort(key=lambda o: (int(o.get("efx_index", 0)), o.name))
+    if type_tag == "EFX_ENTRY":
+        objs.sort(key=lambda o: (0 if str(o.get("entry_kind", "")) == "root" else 1,
+                                  int(o.get("efx_index", 0)), o.name))
+    else:
+        objs.sort(key=lambda o: (int(o.get("efx_index", 0)), o.name))
     return objs
 
 

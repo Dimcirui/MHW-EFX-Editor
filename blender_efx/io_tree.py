@@ -1,8 +1,8 @@
 """
-blender_efx/io_tree.py  —  L1.0：EFX ↔ Blender 对象树 导入/导出
+blender_efx/io_tree.py  —  EFX ↔ Blender 对象树 导入/导出
 
 设计原则（参照 CLAUDE.md）：
-  - 只使用 Python 3.11 语法（目标 Blender 4.3.2）
+  - 只使用 Python 3.10 语法（兼容 Blender 3.6～5.x）
   - bpy 只用稳定子集：collections.new / objects.new(Empty) / collection.objects.link
     / obj.parent / obj["key"] / empty_display_size
   - 不使用 5.x 新增 API
@@ -43,7 +43,7 @@ from ..efx_format.efxfile import (
     EntryDataExtended,
     RootBody,
     RootUnitBoundary,
-    RootOpaqueEntry,
+    ROOT_SUBENTRY_HASHES,
     SubselectTable,
 )
 from ..efx_format.hashes import HASH_TO_NAME
@@ -71,6 +71,20 @@ def _b64enc(data: bytes) -> str:
 def _b64dec(s: str) -> bytes:
     """base64 字符串 → bytes（从自定义属性还原）。"""
     return base64.b64decode(s)
+
+
+def _root_entry_to_attr_block(e) -> AttrBlock:
+    """把 RootBody 的一个子条目（RootUnitBoundary / RootOpaqueEntry）转成 AttrBlock。
+
+    两者的 serialize() 都是「4B 类型 + 剩余字节」，跟 AttrBlock 的编码同构，
+    只是把「剩余字节」的来源换一下：UnitBoundary 现算 ints+floats，
+    RootOpaqueEntry 直接砍掉已有 raw 的前 4 字节。
+    """
+    if isinstance(e, RootUnitBoundary):
+        data = struct.pack('<2i', *e.ints) + struct.pack('<8f', *e.floats)
+        return AttrBlock(type_hash=RootBody.UNITBOUNDARY, data_bytes=data)
+    type_hash = struct.unpack_from('<I', e.raw, 0)[0]
+    return AttrBlock(type_hash=type_hash, data_bytes=e.raw[4:])
 
 
 def _new_empty(name: str, collection: bpy.types.Collection) -> bpy.types.Object:
@@ -146,7 +160,7 @@ def _recalc_timl_length(data: bytes) -> bytes:
 
 
 def _export_timl_bytes(entry_obj: bpy.types.Object) -> bytes:
-    """Phase 3 导出用 TIML 字节：句柄有持久 fcurve → 从 fcurve 同步回字节（含用户编辑）；
+    """导出用 TIML 字节（TIML fcurve 持久化机制，见 timl_edit.py）：句柄有持久 fcurve → 从 fcurve 同步回字节（含用户编辑）；
     无 fcurve / 空 / 非-timl → 存储的 timl_bytes verbatim（sync_fcurves_to_bytes 内部已兜底）。
     最后若开启 recalc_timl_length，逐轴把长度设为末帧+1。"""
     stored = _b64dec(str(entry_obj.get("timl_bytes", "")))
@@ -332,30 +346,25 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         entry_obj.empty_display_type = 'ARROWS'   # XYZ 三色轴，使特效体朝向直观可见
         entry_obj["~TYPE"]         = "EFX_ENTRY"
         entry_obj["efx_index"]     = body_idx  # 原始顺序，还原时用
-        entry_obj["efx_raw_label"] = raw_label  # L2 #3a：原始标签，重排重建显示名用
+        entry_obj["efx_raw_label"] = raw_label  # reorder.py：原始标签，重排重建显示名用
         entry_obj["efx_has_label"] = int(has_label)  # 1=有原始标签, 0=合成标签
         # 归属靠 col_entry（其 efx_root_ptr 指回 root_col），不再额外 parent 到 ROOT
 
         if isinstance(body, RootBody):
             entry_obj["entry_kind"] = "root"
-            # 仅当全部子条目都是 UnitBoundary（实测 100% 官方样本如此）才结构化为
-            # 可编辑字段；含 RenderTarget/LayoutBank 或整段不透明回退时存 base64 只读。
-            structurable = (
-                body.raw is None
-                and all(isinstance(e, RootUnitBoundary) for e in body.entries)
-            )
-            if structurable:
-                entry_obj["root_structured"] = 1
-                entry_obj["root_const0"]     = str(body.const0)
-                entry_obj["root_const1"]     = str(body.const1)
-                entry_obj["root_ub_count"]   = len(body.entries)
-                for j, e in enumerate(body.entries):
-                    # 原生数组 IDProperty → panel 可直接 layout.prop 编辑
-                    entry_obj["root_ub%d_ints" % j]   = list(e.ints)
-                    entry_obj["root_ub%d_floats" % j] = list(e.floats)
+            if body.raw is not None:
+                # 整段不可解析（理论上不该出现，见 degraded-count-chase-to-zero）：
+                # 原样只读存底，没有子对象可拆。
+                entry_obj["raw"] = _b64enc(body.raw)
             else:
-                entry_obj["root_structured"] = 0
-                entry_obj["raw"]             = _b64enc(body.serialize())
+                # UnitBoundary / RenderTarget / LayoutBank 统一"伪装"成 AttrBlock
+                # 建 EFX_ATTRIBUTE 子对象——三者的 serialize() 都只是「4B 类型 +
+                # 剩余字节」，跟 AttrBlock 的编码完全同构，可以直接复用整套属性
+                # 子对象基建（命名/排序/删除/Entry Inspector 显示），不用另起一套
+                # "Root 专属"机制。RenderTarget/LayoutBank 本身仍未逆向到能拆字段，
+                # 落地后跟其它 opaque 属性类型一样只读显示原始字节。
+                attr_blocks = [_root_entry_to_attr_block(e) for e in body.entries]
+                _build_attr_attribute_children(attr_blocks, entry_obj, col_entry, raw_label)
 
         elif isinstance(body, EntryDataExtended):
             # 扩展头（body_type < 256，36B 头）
@@ -375,7 +384,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
             _build_attr_attribute_children(body.attr_blocks, entry_obj, col_entry, raw_label)
             if body.timl_length > 0:
                 _h = make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
-                # Phase 3：导入即把 TIML 持久化为句柄上的原生 fcurve（值编辑面；导出时同步回字节）
+                # timl_edit.py：导入即把 TIML 持久化为句柄上的原生 fcurve（值编辑面；导出时同步回字节）
                 try:
                     from . import timl_edit as _te
                     _te.build_persistent_fcurves(_h, entry_obj)
@@ -396,7 +405,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
             _build_attr_attribute_children(body.attr_blocks, entry_obj, col_entry, raw_label)
             if body.timl_length > 0:
                 _h = make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
-                # Phase 3：导入即把 TIML 持久化为句柄上的原生 fcurve（值编辑面；导出时同步回字节）
+                # timl_edit.py：导入即把 TIML 持久化为句柄上的原生 fcurve（值编辑面；导出时同步回字节）
                 try:
                     from . import timl_edit as _te
                     _te.build_persistent_fcurves(_h, entry_obj)
@@ -408,7 +417,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
             entry_obj["entry_kind"] = "unknown"
             entry_obj["raw"]       = _b64enc(body.serialize())
 
-    # ── 6. Play：L2 #1b 结构化存储（替换纯 opaque）────────────────────────────
+    # ── 6. Action：action_emitter.py 结构化存储（替换纯 opaque）────────────────────────────
     #
     # main_bodies_by_index 在 §8（Subselect）构建前暂不可用，
     # 但 §5 Main 段已建完——提前在此处用相同逻辑构建一次，供 PlayEmitter 解析用。
@@ -431,14 +440,14 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         obj["efx_has_label"] = int(has_label)   # 1=有原始标签, 0=合成名（不进标签表）
         obj["raw_b64"]       = _b64enc(pd.serialize())
 
-        # ── L2 #1b：结构化初始化 ──────────────────────────────────────────────
+        # ── action_emitter.py：结构化初始化 ──────────────────────────────────────────────
         try:
             _action_emitter.init_action_props(obj, pd, _action_entries_by_index)
         except Exception:
             # 任何异常均安全回退：raw_b64 保证 byte-perfect
             pass
 
-    # ── 7. Extern：L1.0 简化，每个 ExternAttribute 存 serialize() 字节 ──────
+    # ── 7. Extern：每个 ExternAttribute 存 serialize() 字节 ──────
     for i, ea in enumerate(efx.extern):
         # Extern 段全局位置 = play_label_count + i；前 _n_labels 个才有标签
         extern_label_idx = play_label_count + i
@@ -452,13 +461,17 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         obj["efx_raw_label"] = extern_label     # 标签重建用
         obj["efx_has_label"] = int(has_label)   # 1=有原始标签, 0=合成名（不进标签表）
         obj["raw_b64"]       = _b64enc(ea.serialize())
+        # 导入时的 item 数快照。导出端据此区分"本来就是空的"（原样保留）和"被删空/
+        # 新建后还没填"（丢弃），判据同 §4a0 对合法空 entry 的处理——那次就是因为
+        # 判据只看"现在是不是空"而误伤了合法空 entry，导致后续索引整体错位。
+        obj["hdr_item_count"] = len(ea.items)
         try:
             from . import extern_props as _ep
             _ep.init_extern_props(obj, ea)
         except Exception:
             pass  # 任何异常安全跳过，raw_b64 保底
 
-    # ── 7b. ExternReference 指针化二次 pass（L2 #1c）──────────────────────────
+    # ── 7b. ExternReference 指针化二次 pass（extern_ref.py）──────────────────────────
     #
     # §5 Main 段建立时 Extern 对象尚未存在，所以 init_attribute_props 当时拿不到
     # extern_objs_by_index。现在 §7 Extern 段已建完，补做二次 pass：
@@ -500,7 +513,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     except (ImportError, Exception):
         pass
 
-    # ── 7c. PTLIFE/PTCOLLISION 指针化二次 pass（L2 #1d）─────────────────────────
+    # ── 7c. PTLIFE/PTCOLLISION 指针化二次 pass（entry_action_ref.py）─────────────────────────
     #
     # Main 段已建完（§5），Play 段已建完（§6）——现在可以做 PTLIFE / PTCOLLISION 块
     # 的引用指针化：
@@ -554,7 +567,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     except (ImportError, Exception):
         pass
 
-    # ── 8. Subselect：L2 #1a 结构化存储（替换 opaque）──────────────────────────
+    # ── 8. Subselect：subselect.py 结构化存储（替换 opaque）──────────────────────────
     #
     # 构建 {efx_index → EFX_ENTRY 对象} 映射，供 init_subselect_props 解析 entries。
     main_bodies_by_index = {
@@ -567,10 +580,10 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         obj = _new_empty(f"{nn} subselect_{i}", col_subselect)
         obj["~TYPE"]     = "EFX_SUBSELECT"
         obj["efx_index"] = i
-        # raw_b64：byte-perfect 回退（始终写入，与 L1.0 一致；结构化导出优先）
+        # raw_b64：byte-perfect 回退（始终写入；结构化导出优先）
         obj["raw_b64"]   = _b64enc(tbl.serialize())
 
-        # ── L2 #1a：结构化初始化 ──────────────────────────────────────────────
+        # ── subselect.py：结构化初始化 ──────────────────────────────────────────────
         try:
             _subselect.init_subselect_props(obj, tbl, main_bodies_by_index)
         except Exception:
@@ -704,22 +717,22 @@ def _build_attr_attribute_children(
     count_extern: int = 0,
 ) -> None:
     """
-    为 body 对象建 AttrBlock 子 Empty 列表（EFX_ATTRIBUTE）。
-    子块保持原始顺序（存 efx_index）。
+    为 Entry 对象建 AttrBlock 子 Empty 列表（EFX_ATTRIBUTE）。
+    子属性保持原始顺序（存 efx_index）。
     必须把子对象也 link 到同一集合里（Blender 要求对象必须在集合里才可见）。
 
-    L1.1a 新增：
+    字段模型初始化（fields.py）：
       - 调用 fields.init_attribute_props 初始化 obj.efx_block PropertyGroup
         （含字段展开或 opaque 回退，加载完后 efx_dirty=False）
       - 继续保留自定义属性 data_bytes 用于不依赖 PropertyGroup 的场景
 
-    L2 #1c 新增：
+    extern 指针化（extern_ref.py）：
       - extern_objs_by_index / count_extern 传入 init_attribute_props，
-        供 EXTERNREFERENCE 块的 extern 指针化使用。
+        供 EXTERNREFERENCE 属性的 extern 指针化使用。
 
     命名方案（显示用，不影响导出顺序）：
-      [父body标签] NN 类型名
-      NN = 块在该 body 内的序号（零填充 2 位，>99 则自动 3 位）
+      [父Entry标签] NN 类型名
+      NN = 属性在该 Entry 内的序号（零填充 2 位，>99 则自动 3 位）
     """
     if extern_objs_by_index is None:
         extern_objs_by_index = {}
@@ -739,12 +752,12 @@ def _build_attr_attribute_children(
         blk_obj["efx_index"]      = blk_idx
         blk_obj["type_hash"]      = str(blk.type_hash)   # uint32：存十进制字符串防溢出
         blk_obj["data_bytes"]     = _b64enc(blk.data_bytes)
-        blk_obj["efx_type_name"]  = type_name  # 原始大写，L2 #3a：内部标识/重排重建显示名用
+        blk_obj["efx_type_name"]  = type_name  # 原始大写，reorder.py：内部标识/重排重建显示名用
         blk_obj.parent            = parent_obj
 
-        # ── L1.1a + L2 #1c：初始化 efx_block PropertyGroup ──────────────────
+        # ── 初始化 efx_block PropertyGroup（fields.py + extern_ref.py）──────────────────
         # init_attribute_props 内部管理 _LOADING 守卫，填完后重置 efx_dirty=False。
-        # L2 #1c：extra args extern_objs_by_index/count_extern 供 EXTERNREFERENCE 使用。
+        # extern_ref.py：extra args extern_objs_by_index/count_extern 供 EXTERNREFERENCE 使用。
         try:
             _fields.init_attribute_props(
                 blk_obj, blk,
@@ -821,6 +834,11 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
     # ── 4. 收集 Main body 对象（按 efx_index 排序）────────────────────────
     #   子对象通过集合归属（root_col 下 _2 Entry 叶子集合）+ ~TYPE == EFX_ENTRY 来找
     body_objs = _rc.collect_top_level(r, "EFX_ENTRY")
+    # Root 恒排第一：不管存的 efx_index 是多少（手动重排/原生 Shift+D 都可能
+    # 打乱），导出时强制把 entry_kind=="root" 的条目挪到最前面，其余保持原有
+    # 相对顺序。下面 entry_index_map / body_index_map_export 都基于这个排好的
+    # body_objs 重新按位置编号，不需要再单独改 efx_index 属性本身。
+    body_objs.sort(key=lambda o: 0 if str(o.get("entry_kind", "")) == "root" else 1)
 
     # 一次性建 {entry: [attribute 子对象]} 映射，本函数下面多处按 entry 逐个取
     # attribute 子对象都查这张表（O(1)），不再各自现场扫全场景 bpy.data.objects——
@@ -857,14 +875,53 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             return False
     body_objs = [o for o in body_objs if not _is_native_delete_leftover(o)]
 
-    # ── 4a. 提前构建 extern_index_map（L2 #1c）─────────────────────────────────
+    # ── 4a. 收集 Extern + 剔除空 EA + 构建 extern_index_map（extern_ref.py）────────────
     # 需要在遍历 main_bodies 时传给 _resolve_attribute_data_bytes，
     # 所以在 §4 主循环开始前先收集并排序 EFX_EXTERN 对象。
-    extern_objs = _rc.collect_top_level(r, "EFX_EXTERN")
-    # {EFX_EXTERN Object → extern 段局部 0-based index}
+    #
+    # ⚠ 剔除必须发生在 extern_index_map 构建**之前**：这一个列表同时决定了
+    # ① EXTERNREFERENCE 的 referenceIndex 取值（extern_index_map）
+    # ② 实际写出的字节顺序（§5 extern_raw）
+    # ③ header 的 count_extern（§6）
+    # ④ 标签表重建时 Extern 段占的位置（§2b 的 _ordered）
+    # 在这里过滤，四者自动保持一致；若改到 §5 写出时才跳过，索引会整体前移而
+    # referenceIndex 不变 → 所有指向后面 EA 的引用静默指错，且没有任何报错。
+    def _extern_bytes(o):
+        """一个 EFX_EXTERN 对象最终写出的字节（结构化失败则回退原始字节）。"""
+        try:
+            from . import extern_props as _ep
+            return _ep.export_extern_data(o)
+        except Exception:
+            return _b64dec(str(o["raw_b64"]))
+
+    def _is_empty_extern(o):
+        """是否是该丢弃的空 EA（item_count==0）。
+
+        判据同 §4a0 对"原生删除残留空壳"的处理：**只丢那些本来不空、现在被删空的，
+        以及本会话新建后还没填内容的**。导入时就是空的（hdr_item_count==0）一律原样
+        保留——§4a0 那次正是因为判据只看"现在空不空"，误伤了合法的空 entry，导致
+        count 少 1、后续引用索引整体错位。官方语料 1477 个 EA 无一为空，所以这条
+        保留分支实际上只是防御。
+        """
+        hdr = o.get("hdr_item_count")
+        if hdr is not None:
+            try:
+                if int(str(hdr)) == 0:
+                    return False        # 导入时本就为空 → 原样保留
+            except (ValueError, TypeError):
+                pass
+        data = _extern_bytes(o)
+        if len(data) < 12:
+            return False                # 字节异常，不敢丢
+        return struct.unpack_from("<i", data, 8)[0] == 0   # EA 头 +8 = item_count
+
+    _all_extern_objs = _rc.collect_top_level(r, "EFX_EXTERN")
+    dropped_extern_objs = [o for o in _all_extern_objs if _is_empty_extern(o)]
+    extern_objs = [o for o in _all_extern_objs if o not in dropped_extern_objs]
+    # {EFX_EXTERN Object → extern 段局部 0-based index}（只含真正写出的）
     extern_index_map = {obj: idx for idx, obj in enumerate(extern_objs)}
 
-    # ── 4b. 构建 entry_index_map 和 play_index_map（L2 #1d）─────────────────────
+    # ── 4b. 构建 entry_index_map 和 play_index_map（entry_action_ref.py）─────────────────────
     # body_objs 已排序，enumerate 序号 == Main 局部 index（与导出顺序一致）
     body_index_map_export = {obj: idx for idx, obj in enumerate(body_objs)}
 
@@ -935,31 +992,63 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
         # 会走悬空跳过路径，不产生此问题）。78/78 不受影响（未编辑文件 len==count_body）。
         eof_ints = eof_ints[:len(body_objs)]
 
+    # 误放的属性：root 专属子条目（UnitBoundary/RenderTarget/LayoutBank）混进了
+    # 普通 entry，或普通渲染属性混进了 root——两边都不认，导出时丢弃，记下来
+    # 供 validate.py + 导出后弹窗报 WARN（不静默，见 root_attr_dropped 用法）。
+    _root_attr_dropped = []
+
     main_bodies = []
     for entry_obj in body_objs:
         kind = str(entry_obj["entry_kind"])
 
         if kind == "root":
-            if int(entry_obj.get("root_structured", 0)) == 1:
-                n = int(entry_obj.get("root_ub_count", 0))
-                entries = []
-                for j in range(n):
-                    ints = tuple(int(x) for x in entry_obj["root_ub%d_ints" % j])
-                    floats = tuple(float(x) for x in entry_obj["root_ub%d_floats" % j])
-                    entries.append(RootUnitBoundary(ints=ints, floats=floats))
-                main_bodies.append(RootBody(
-                    const0=int(str(entry_obj["root_const0"])),
-                    const1=int(str(entry_obj["root_const1"])),
-                    entries=entries,
-                ))
+            # 子条目现在是伪装成 AttrBlock 的 EFX_ATTRIBUTE 子对象（见导入端
+            # _root_entry_to_attr_block）；AttrBlock.serialize() 本身就是
+            # RootUnitBoundary/RootOpaqueEntry 那套「4B 类型+剩余字节」编码，
+            # 直接喂给 RootBody(entries=...) 即可，不用转回具体的子类。
+            # 没有子对象（整段不可解析的旧回退）才退回原样 raw。
+            blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
+            if blk_objs:
+                blk_objs.sort(key=lambda o: int(o["efx_index"]))
+                valid_objs, bad_objs = [], []
+                for blk in blk_objs:
+                    (valid_objs if int(str(blk["type_hash"])) in ROOT_SUBENTRY_HASHES
+                     else bad_objs).append(blk)
+                for blk in bad_objs:
+                    _root_attr_dropped.append(
+                        f"{blk.get('efx_type_name', blk.name)} on Root entry "
+                        f"'{entry_obj.name}' (not a Root sub-entry type)"
+                    )
+                if valid_objs:
+                    attr_blocks = [
+                        AttrBlock(type_hash=int(str(blk["type_hash"])),
+                                 data_bytes=_b64dec(str(blk["data_bytes"])))
+                        for blk in valid_objs
+                    ]
+                    main_bodies.append(RootBody(entries=attr_blocks))
+                elif "raw" in entry_obj:
+                    raw = _b64dec(str(entry_obj["raw"]))
+                    main_bodies.append(RootBody(raw=raw))
+                else:
+                    main_bodies.append(RootBody(entries=[]))
             else:
                 raw = _b64dec(str(entry_obj["raw"]))
                 main_bodies.append(RootBody(raw=raw))
 
         elif kind == "extended":
-            # 收集 AttrBlock 子对象
+            # 收集 AttrBlock 子对象（过滤掉误放进来的 Root 专属子条目类型）
             blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
             blk_objs.sort(key=lambda o: int(o["efx_index"]))
+            good_objs = []
+            for blk in blk_objs:
+                if int(str(blk["type_hash"])) in ROOT_SUBENTRY_HASHES:
+                    _root_attr_dropped.append(
+                        f"{blk.get('efx_type_name', blk.name)} on non-root entry "
+                        f"'{entry_obj.name}' (Root-only sub-entry type)"
+                    )
+                else:
+                    good_objs.append(blk)
+            blk_objs = good_objs
             attr_blocks = [
                 AttrBlock(
                     type_hash  = int(str(blk["type_hash"])),
@@ -970,7 +1059,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
                 )
                 for blk in blk_objs
             ]
-            _ext_timl = _export_timl_bytes(entry_obj)   # Phase 3：句柄有 fcurve → 同步回字节
+            _ext_timl = _export_timl_bytes(entry_obj)   # timl_edit.py：句柄有 fcurve → 同步回字节
             main_bodies.append(EntryDataExtended(
                 body_type   = int(str(entry_obj["body_type"])),
                 unkn0       = int(str(entry_obj["unkn0"])),
@@ -978,7 +1067,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
                 null1       = int(str(entry_obj["null1"])),
                 unkn1       = int(str(entry_obj["unkn1"])),
                 unkn2       = int(str(entry_obj["unkn2"])),
-                attr_count  = len(attr_blocks),  # L2 #3b：从实际块数重算（增删块后正确）
+                attr_count  = len(attr_blocks),  # delete_ops.py：从实际属性数重算（增删属性后正确）
                 null2       = int(str(entry_obj["null2"])),
                 timl_length = len(_ext_timl),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
                 timl_bytes  = _ext_timl,
@@ -988,6 +1077,16 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
         elif kind == "standard":
             blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
             blk_objs.sort(key=lambda o: int(o["efx_index"]))
+            good_objs = []
+            for blk in blk_objs:
+                if int(str(blk["type_hash"])) in ROOT_SUBENTRY_HASHES:
+                    _root_attr_dropped.append(
+                        f"{blk.get('efx_type_name', blk.name)} on non-root entry "
+                        f"'{entry_obj.name}' (Root-only sub-entry type)"
+                    )
+                else:
+                    good_objs.append(blk)
+            blk_objs = good_objs
             attr_blocks = [
                 AttrBlock(
                     type_hash  = int(str(blk["type_hash"])),
@@ -998,11 +1097,11 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
                 )
                 for blk in blk_objs
             ]
-            _std_timl = _export_timl_bytes(entry_obj)   # Phase 3：句柄有 fcurve → 同步回字节
+            _std_timl = _export_timl_bytes(entry_obj)   # timl_edit.py：句柄有 fcurve → 同步回字节
             main_bodies.append(EntryData(
                 body_type   = int(str(entry_obj["body_type"])),
                 unkn0       = int(str(entry_obj["unkn0"])),
-                attr_count  = len(attr_blocks),  # L2 #3b：从实际块数重算（增删块后正确）
+                attr_count  = len(attr_blocks),  # delete_ops.py：从实际属性数重算（增删属性后正确）
                 null        = int(str(entry_obj["null"])),
                 timl_length = len(_std_timl),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
                 timl_bytes  = _std_timl,
@@ -1014,7 +1113,14 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             raw = _b64dec(str(entry_obj["raw"]))
             main_bodies.append(RootBody(raw=raw))
 
-    # ── 5. Play：L2 #1b 结构化导出（PLAYEMITTER targets 经 entry_index_map 重算）──
+    # 诊断记录：本次导出丢弃的"放错位置"属性（同 eof_dropped 的约定——记在
+    # root 集合上，validate.py + 导出后弹窗读取报 WARN，不静默）。
+    if _root_attr_dropped:
+        r["root_attr_dropped"] = "; ".join(_root_attr_dropped)
+    elif "root_attr_dropped" in r:
+        del r["root_attr_dropped"]
+
+    # ── 5. Action：action_emitter.py 结构化导出（PLAYEMITTER targets 经 entry_index_map 重算）──
     #   body_objs 已在 §4 按 efx_index 排序；entry_index_map 在 §4b 构建。
     #   此处提前构建，以便 Play 导出也能用（Play 段在 Subselect 之前）。
     #   extern_objs 已在 §4a 收集并排序；extern_index_map 已在 §4a 构建。
@@ -1032,19 +1138,10 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             # 回退：用 raw_b64 原样拼接（byte-perfect 保底）
             play_raw += _b64dec(str(po["raw_b64"]))
 
-    try:
-        from . import extern_props as _ep
-        def _extern_bytes(o):
-            try:
-                return _ep.export_extern_data(o)
-            except Exception:
-                return _b64dec(str(o["raw_b64"]))
-    except Exception:
-        def _extern_bytes(o):
-            return _b64dec(str(o["raw_b64"]))
+    # _extern_bytes 在 §4a 定义（剔除空 EA 时就要用它算出实际写出的字节）
     extern_raw = b"".join(_extern_bytes(o) for o in extern_objs)
 
-    # ── 5b. Subselect：L2 #1a 结构化导出 ─────────────────────────────────────
+    # ── 5b. Subselect：subselect.py 结构化导出 ─────────────────────────────────────
     #   构建 Main 段局部索引映射，供 export_subselect_table 解析 body_ptr → 整数 index。
     #   §4d 已收集排序过（结构变化检测用），直接复用。
     subselect_objs = subselect_objs_prescan
@@ -1062,7 +1159,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             # 回退：用 raw_b64 原样拼接（byte-perfect 保底）
             subselect_raw += _b64dec(str(ss_obj["raw_b64"]))
 
-    # ── 6. header 计数/size 重算（L2 #3b：增删后必须重算）────────────────────
+    # ── 6. header 计数/size 重算（delete_ops.py：增删后必须重算）────────────────────
     # 计数（count_*）对全 78 样本恒 == 实际条目数，安全重算（删除后即为新计数）。
     hdr.count_body      = len(body_objs)
     hdr.count_play      = len(play_objs)
@@ -1098,7 +1195,7 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
                               entry_index_map: dict = None,
                               play_index_map: dict = None) -> bytes:
     """
-    L1.1a + L2 #1c + L2 #1d：决定导出时 EFX_ATTRIBUTE 的 data_bytes 来源。
+    fields.py + extern_ref.py + entry_action_ref.py：决定导出时 EFX_ATTRIBUTE 的 data_bytes 来源。
 
     2026-07 退休 block 级 efx_dirty 门控（结构权威下放收尾，见 memory
     attribute-dirty-gate-retired）：
@@ -1115,9 +1212,9 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
     本函数的路径选择——与 efx_format.timl.Timl.dirty 的转型（"有模型就强制重建"）
     同一哲学。
 
-    extern_index_map : dict[bpy.types.Object, int] | None — L2 #1c
-    entry_index_map   : dict[bpy.types.Object, int] | None — L2 #1d PTLIFE
-    play_index_map   : dict[bpy.types.Object, int] | None — L2 #1d PTCOLLISION
+    extern_index_map : dict[bpy.types.Object, int] | None — extern_ref.py
+    entry_index_map   : dict[bpy.types.Object, int] | None — entry_action_ref.py PTLIFE
+    play_index_map   : dict[bpy.types.Object, int] | None — entry_action_ref.py PTCOLLISION
     """
     try:
         bp = blk_obj.efx_block
@@ -1130,7 +1227,7 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
             )
     except Exception:
         pass
-    # 回退：opaque（is_editable=False）或编码异常 → 原始自定义属性，再走 L2 #1c / #1d overlay
+    # 回退：opaque（is_editable=False）或编码异常 → 原始自定义属性，再走 extern_ref.py / entry_action_ref.py overlay
     data = _b64dec(str(blk_obj["data_bytes"]))
     if extern_index_map is not None:
         data = _fields._apply_extern_ref_overlay(blk_obj, data, extern_index_map)

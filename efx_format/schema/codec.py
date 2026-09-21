@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-efx_format/codec.py — 核心字段编解码（纯 Python，零 bpy）。
+efx_format/schema/codec.py — 核心字段编解码。
 
 schema 是 (name, spec) 列表；codec 按序读写每个字段，保证 pack(unpack(data)) == data。
 本模块是编解码基座，被 attributes / custom_codecs / structs 装配层依赖，自身不依赖它们。

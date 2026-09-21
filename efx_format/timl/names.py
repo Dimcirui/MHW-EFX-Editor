@@ -1,5 +1,5 @@
 """
-efx_format/timl_names.py  —  TIML hash → 可读名 + game↔Blender 坐标换算
+efx_format/timl/names.py  —  TIML hash → 可读名 + game↔Blender 坐标换算
 
 TIML 通道名由两段 hash 组成：
   - timelineParameterHash：这条动画**影响哪个对象/块**（Transform3D / RgbFire / TypeRibbon…）。
@@ -2343,7 +2343,11 @@ FIELD_TO_DT = {
     ("VELOCITY3D", "gravity"):    [(0x6A5FE3C4, 2)],
     ("RGBFIRE", "fireColor"):     [(0x39A1E557, 3)],
     ("RGBFIRE", "smokeColor"):    [(0x5A8C6820, 3)],
-    ("RGBFIRE", "brightness2"):   [(0x9F1E012E, 2)],
+    ("RGBFIRE", "colorRate"):     [(0x9F1E012E, 2)],  # 2026-09-20 订正：原挂在 brightness2 上是错的，实机改值测出是 brightness4
+    # alphaFactor：2026-09-20 试过按裸名 jamcrc 现算的两个候选（"AlphaFactor"→0xCD5F1BDD、
+    # "AlphaRate"→0xA55C051B），用户在曲线编辑器手动建轨道实机测试，两个都不生效——已撤回，
+    # 不留在 FIELD_TO_DT/DTI_EXTRA_PAIRS 里。负结果记着：这个字段目前没有已知能驱动它的
+    # DT 哈希，别重复猜同一批候选。
     # ── RGBWATER（2026-09-03 用户实机逐条确认；轨道只在 A0 生效，见 BLOCK_NATIVE_AXIS）──
     # 官方 8 个 TimelineParam 与本块头部 8 个字段**全部实机逐条确认**，无遗留。
     # 头部的第 9 个 float（normalSharpness，原 unknownFloat）没有对应 DT——引擎只
@@ -2695,6 +2699,8 @@ DTI_EXTRA_PAIRS = {
         (0x49AE09C7, 2), (0x2FCE3B02, 2), (0xC4A60432, 2), (0xA2C636F7, 2), (0x2B0CF983, 2),
         (0x55BD853E, 2), (0xCCB4D484, 2), (0xBBB3E412, 2)
     ],
+    # RgbFire.alphaFactor：2026-09-20 试过 jamcrc("AlphaFactor")/jamcrc("AlphaRate") 两个
+    # 候选哈希，实机测试都不生效，已撤回（详见 FIELD_TO_DT 旁的同一条记录）。
     # ⚠ RgbWater 这 4 条已被实机验证**确实可用**（用户 2026-09-03 建轨道逐条测出对应字段）
     #   —— 这是「DTI 有、语料 0 例」的条目并非死数据的直接证据，本表其余条目同理可测。
     0x2101C529: [  # RgbWater，+4
@@ -3419,14 +3425,23 @@ def _merge_pairs():
 
     语料条目在前、DTI 补充在后，所以下拉里官方用过的排前面。最后那张
     `dti_tlp_extra.DTI_TLP_EXTRA` 补的是官方 dump 里被类型筛掉的参数（bool/u32/向量），
-    合进来之后调色板 = 「DTI 认识的全部 TLP 参数」，不再按类型预筛。"""
+    合进来之后调色板 = 「DTI 认识的全部 TLP 参数」，不再按类型预筛。
+
+    ⚠ 2026-09-20 修复：原来 `seen` 只在每张源表合并前算一次，不随合并过程更新，
+    只挡得住"跨表重复"，挡不住"单张源表自己内部就重复"——`dti_tlp_extra.py` 里
+    90/98 个 TLP 条目本身就有内部重复哈希（如 EffectParameter3/4 里同一个哈希连续
+    出现 8~23 次），导致 TIML Tracks 面板同一行显示几十遍。改成逐条去重，不动原始
+    数据文件（保留 dump 原始计数，只是调色板展示层去重）。"""
     from .dti_tlp_extra import DTI_TLP_EXTRA
-    out = {h: list(v) for h, v in CORPUS_PAIRS.items()}
-    for src in (DTI_EXTRA_PAIRS, OFFICIAL_TLP_DT, DTI_TLP_EXTRA):
+    out = {}
+    for src in (CORPUS_PAIRS, DTI_EXTRA_PAIRS, OFFICIAL_TLP_DT, DTI_TLP_EXTRA):
         for h, v in src.items():
             cur = out.setdefault(h, [])
             seen = {x[0] for x in cur}
-            cur.extend(x for x in v if x[0] not in seen)
+            for x in v:
+                if x[0] not in seen:
+                    seen.add(x[0])
+                    cur.append(x)
     return out
 
 

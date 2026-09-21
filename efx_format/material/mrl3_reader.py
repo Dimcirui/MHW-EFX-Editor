@@ -1,5 +1,5 @@
 """
-efx_format/material/mrl3_reader.py — .mrl3 材质文件只读解析（纯 Python，零 bpy）
+efx_format/material/mrl3_reader.py — .mrl3 材质文件只读解析
 
 移植自 MHW_Model_Editor 的 mrl3/file_mrl3.py（Mrl3Header + MaterialInfo + Material +
 Mrl3File.read()），去掉了原版对 bpy（i18n 报错文案）和 mrl3_dicts（材质名反查表，

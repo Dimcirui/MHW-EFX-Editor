@@ -1,40 +1,9 @@
-"""
-blender_efx/attribute_ops.py  —  属性级组装：单属性的复制/粘贴与属性预设保存/新增
+"""属性预设的序列化、保存、选择与插入。
 
-功能：
-  - build_attribute_preset_dict(blk_obj)：把单个 EFX_ATTRIBUTE 构建为预设 dict（供保存/复制共用）
-  - save_attribute_preset(blk_obj, name)：落盘到 presets/__attributes__/
-  - add_attribute_to_entry(entry_obj, preset_dict)：按预设在 entry 末尾追加单个属性
-  - 两级选择：list_attribute_categories()（第一级分类 EnumProperty items）+
-    EFX_MT_attribute_preset_picker（第二级具体预设，Menu，按子组分组显示灰字标题，
-    点击预设行直接新增，不需要额外的"Add"确认按钮）
-  - 算子：efx.save_attribute_preset / efx.add_attribute_from_preset /
-          efx.open_attribute_preset_folder / efx.copy_attribute / efx.paste_attribute
-
-设计约束（参照 CLAUDE.md）：
-  - Python 3.11 语法（目标 Blender 4.3.2），bpy 只用长期稳定子集
-  - 包内相对导入；不改 efx_format/ 与 io_tree.py（仅复用其函数）
-  - 新增属性只需：建对象、设好 efx_index，导出端会按实际属性数自动重算 attr_count。
-  - data_bytes 用 io_tree._resolve_attribute_data_bytes（与保存 entry 预设同款），
-    抓到的是用户修改后的当前实际字节。
-
-预设 JSON schema：
-{
-    "efx_preset_kind": "attribute",
-    "type_hash": "<十进制str>",
-    "type_name": "<TRANSFORM3D / 0x... 等>",
-    "display_name": "<用户命名（utf-8）>",
-    "category": "<该属性类型的官方分类 slug；见 efx_format/categories.py>",
-    "subgroup": "<该分类内的子组 slug，无子组则空串>",
-    "data_bytes": "<base64>"
-}
-"category"/"subgroup" 只是该属性类型本身的官方分类元数据（供人读/供迁移脚本用），
-2026-07 分类重构后不再决定存盘位置——所有 save_attribute_preset 新建的预设统一存 custom/，
-跟官方分类目录彻底隔离。
-
-存盘布局：presets/__attributes__/<category>[/<subgroup>]/<NAME>.json（官方分类，部分分类下
-再按子组分子目录）；presets/__attributes__/custom/<NAME>.json（用户新建预设，扁平不分子组）。
-根目录下的旧扁平 *.json 仍被 EFX_MT_attribute_preset_picker 在 misc 分类下兜底读取（向后兼容）。
+维护约束：
+- 属性字节必须通过 io_tree 的导出侧解析取得，不能使用导入快照。
+- 新属性按规范顺序插入；导出端按实际属性重算 attr_count。
+- category/subgroup 是类型元数据，不决定用户预设的位置；用户预设只写入 custom 目录。
 """
 
 import base64
@@ -58,7 +27,7 @@ from . import root_collection as _rc
 # 路径工具
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 子组排序基准（按 ATTRIBUTE_SUBGROUP_LABELS 插入顺序），供 _iter_preset_files 分组排序用。
+# UI 子组排序基准。
 _SUBGROUP_ORDER = list(ATTRIBUTE_SUBGROUP_LABELS)
 
 
@@ -73,10 +42,7 @@ def _attribute_category_dir(slug: str) -> str:
 
 
 def _iter_preset_files(category_dir: str) -> list:
-    """递归扫描 category_dir 下所有 .json 预设文件，按 (子组顺序, 文件名) 排好序返回
-    [(文件绝对路径, 子组slug), ...]；子组 slug 取自相对 category_dir 的一级子目录名，
-    直接落在 category_dir 根下（分类本身不分子组）则子组 slug 为空串，排最前。
-    子组间顺序按 ATTRIBUTE_SUBGROUP_LABELS 插入顺序，不在表里的未知子组排最后。"""
+    """返回分类目录内的预设文件及其一级子组，按 UI 子组顺序和文件名排序。"""
     items = []
     if not os.path.isdir(category_dir):
         return items
@@ -110,8 +76,7 @@ def _preset_display_item(path: str) -> tuple:
         stored_display = d.get("display_name", "")
     except Exception:
         type_name, stored_display = "", ""
-    # 自动生成的预设（display_name 为空 / 等于 type_name / 「TYPE（…）」式）→
-    # 按当前语言用 type_label 显示；用户自定义名则原样保留。
+    # 自动名按当前语言显示；用户自定义名保持原样。
     if type_name and _is_autogen_name(stored_display, type_name):
         label = i18n.type_label(type_name)
     else:
@@ -124,20 +89,15 @@ def _preset_display_item(path: str) -> tuple:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_attribute_preset_dict(blk_obj: bpy.types.Object) -> dict:
-    """
-    把 blk_obj（EFX_ATTRIBUTE）构建为 preset dict（不落盘）。
-    供 save_attribute_preset（写文件）与 复制属性（内存剪贴板）共用。
-
-    data_bytes 用 io_tree._resolve_attribute_data_bytes 取当前实际字节（含字段编辑）。
-    """
+    """磁盘预设和会话剪贴板共用的属性序列化路径。"""
     if blk_obj is None or blk_obj.get("~TYPE") != "EFX_ATTRIBUTE":
         raise ValueError("build_attribute_preset_dict：目标对象不是 EFX_ATTRIBUTE")
 
     from . import io_tree
     from ..efx_format.hashes import HASH_TO_NAME
 
-    # 构建导出端所需的 index 映射（与 _collect_attribute_dicts 同款）
-    root = _rc.find_root_collection(blk_obj)  # attribute 直接归属该 root（同集合）
+    # 导出侧解析所需的段索引映射。
+    root = _rc.find_root_collection(blk_obj)
 
     def _localmap(type_tag):
         if root is None:
@@ -164,23 +124,15 @@ def build_attribute_preset_dict(blk_obj: bpy.types.Object) -> dict:
         "efx_preset_kind": "attribute",
         "type_hash": str(type_hash),
         "type_name": type_name,
-        "display_name": type_name,  # 可被 save_attribute_preset 用用户输入覆盖
-        "category": category_of(type_hash),      # 元数据：该类型的官方分类，不决定存盘位置
-        "subgroup": subgroup_of(type_hash),       # 元数据：该分类内的子组，无子组则空串
+        "display_name": type_name,
+        "category": category_of(type_hash),
+        "subgroup": subgroup_of(type_hash),
         "data_bytes": base64.b64encode(data).decode("ascii"),
     }
 
 
 def save_attribute_preset(blk_obj: bpy.types.Object, name: str) -> str:
-    """
-    把 blk_obj 存为属性预设 JSON 文件，统一存进 presets/__attributes__/custom/。
-
-    返回保存的路径；name 用于显示名（可含中文），文件名 ASCII 化。
-
-    2026-07 分类重构起：用户新建预设不再按 category_of(type_hash) 落进官方分类目录
-    （那些目录只放插件内置预设，未来版本更新时会被强制覆盖同步）——统一存 custom/，
-    跟官方内容彻底隔离，保证不会被更新覆盖，也让"custom 分类=用户内容"的边界清晰可判。
-    """
+    """将属性预设保存到 custom 目录，避免与分发预设混写。"""
     if not name or not name.strip():
         raise ValueError("save_attribute_preset：预设名称不能为空")
 
@@ -199,18 +151,11 @@ def save_attribute_preset(blk_obj: bpy.types.Object, name: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 分类与预设列举（两级下拉）
+# 分类与预设列举
 # ─────────────────────────────────────────────────────────────────────────────
 
 def list_attribute_categories() -> list:
-    """
-    扫 __attributes__/ 的子目录，返回有预设的分类 EnumProperty items：
-      [(slug, 中文名, ""), ...]，按 ATTRIBUTE_CATEGORY_LABELS 顺序排列。
-    无任何预设时返回 [("", "（无属性预设）", "")]。
-
-    递归检查每个分类目录下是否有 .json（部分分类的预设落在子组子目录下，不是直接
-    在分类根目录里），custom 分类初始为空目录，天然不会出现在结果里。
-    """
+    """返回含预设的分类；子组目录中的预设也计入所属分类。"""
     root = _attribute_preset_dir()
     have = set()
     if os.path.isdir(root):
@@ -231,7 +176,7 @@ def list_attribute_categories() -> list:
     for slug in ATTRIBUTE_CATEGORY_LABELS:
         if slug in have:
             result.append((slug, category_label(slug, lang), ""))
-    # 出现了未登记的 slug（用户手建目录）也列出来
+    # 同时列出未登记的自定义目录。
     for slug in sorted(have):
         if slug not in ATTRIBUTE_CATEGORY_LABELS:
             result.append((slug, slug, ""))
@@ -242,9 +187,7 @@ def list_attribute_categories() -> list:
 
 
 def list_all_attribute_presets() -> list:
-    """把 __attributes__/ 下全部预设拍平成一个列表，供全局模糊搜索新增用：
-    [(ident, label, type_name), ...]，按 label 排序（搜索场景不需要分类/子组顺序，
-    好找优先）。同一路径规则的 _preset_display_item 复用两级选择那套。"""
+    """返回全部预设的扁平搜索列表，按显示名排序。"""
     root = _attribute_preset_dir()
     out = []
     if os.path.isdir(root):
@@ -257,7 +200,7 @@ def list_all_attribute_presets() -> list:
 
 
 def _is_autogen_name(display_name: str, type_name: str) -> bool:
-    """display_name 是否为自动生成式（空 / 等于 type_name / 「TYPE（中文）」），而非用户自定义。"""
+    """判断显示名是否为类型派生的自动名。"""
     if display_name in ("", type_name):
         return True
     return display_name.startswith(type_name + "（") and display_name.endswith("）")
@@ -268,26 +211,7 @@ def _is_autogen_name(display_name: str, type_name: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bpy.types.Object:
-    """
-    按 preset_dict 在 entry 末尾追加单个 EFX_ATTRIBUTE。
-
-    参数
-    ----
-    entry_obj    : ~TYPE == 'EFX_ENTRY' 的对象
-    preset_dict : {"efx_preset_kind":"attribute","type_hash":str,"data_bytes":b64,...}
-
-    返回
-    ----
-    新建的 EFX_ATTRIBUTE 对象。
-
-    说明
-    ----
-    - 新属性 efx_index 按**规范顺序**插入（`categories.canonical_insert_index`），
-      插入点之后的兄弟属性整体后移一位并重建显示名；不再一律追加到末尾
-    - attr_count 由导出端（io_tree §4c）按实际属性数重算，无需手动维护
-    - EXTERNREFERENCE 引用指针在 init_attribute_props 内初始化；PTLIFE/PTCOLLISION
-      在本函数末尾补充指针化（越界 baked 值强制转可编辑悬空，供用户指定 Action）
-    """
+    """从预设向 Entry 插入属性，并重建其可编辑引用。"""
     from . import io_tree
     from . import fields as _fields
     from ..efx_format.efxfile import AttrBlock
@@ -308,13 +232,10 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
     cols = entry_obj.users_collection
     collection = cols[0] if cols else bpy.context.scene.collection
 
-    # ── 计算新 efx_index：插到规范顺序对应的位置，而不是一律追加到末尾 ────────
-    # 规范顺序表见 efx_format/categories.py::ATTRIBUTE_CANONICAL_ORDER（官方语料
-    # 拓扑排序得出，99.5% 的 entry 符合）。追加到末尾会让新属性落在几乎必然错误的
-    # 位置（例如在 RGBFIRE/PTLIFE 这些惯例末位属性之后）。
+    # ── 按规范顺序计算插入位置 ────────────────────────────────────────────────
     from ..efx_format.categories import canonical_insert_index
 
-    siblings = iter_entry_attributes(entry_obj)   # 已按 efx_index 升序
+    siblings = iter_entry_attributes(entry_obj)
     sib_hashes = []
     for obj in siblings:
         try:
@@ -324,7 +245,7 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
 
     new_idx = canonical_insert_index(sib_hashes, type_hash)
 
-    # 插入点及其之后的兄弟属性整体后移一位，腾出 new_idx；显示名含序号，需同步重建
+    # efx_index 是导出顺序；后移属性时同步刷新其序号显示名。
     from .delete_ops import _rebuild_attribute_name
     for pos, obj in enumerate(siblings):
         shifted = pos if pos < new_idx else pos + 1
@@ -332,12 +253,12 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
         try:
             obj.name = _rebuild_attribute_name(obj, shifted)
         except Exception:
-            pass  # 名字重建失败不阻断新增（efx_index 才是导出权威）
+            pass  # 名字仅供显示，不能阻断索引更新。
 
     # ── 构建显示名 ────────────────────────────────────────────────────────────
     from ..efx_format.hashes import pretty_type_name
     type_name = HASH_TO_NAME.get(type_hash, f"0x{type_hash:08X}")
-    display_type_name = pretty_type_name(type_name)  # 大纲显示用，非内部标识
+    display_type_name = pretty_type_name(type_name)
     parent_label = str(entry_obj.get("efx_raw_label", ""))
     nn = str(new_idx).zfill(2) if new_idx < 100 else str(new_idx)
     blk_name = (f"[{parent_label}] {nn} {display_type_name}" if parent_label
@@ -349,11 +270,11 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
     blk_obj["efx_index"]     = new_idx
     blk_obj["type_hash"]     = str(type_hash)
     blk_obj["data_bytes"]    = base64.b64encode(data_bytes).decode("ascii")
-    blk_obj["efx_type_name"] = type_name  # 原始大写，内部标识/重排重建显示名用
+    blk_obj["efx_type_name"] = type_name
     blk_obj.parent           = entry_obj
 
     # ── 初始化 efx_block PropertyGroup ────────────────────────────────────────
-    # 构建 extern 映射（供 EXTERNREFERENCE 属性指针化）
+    # EXTERNREFERENCE 初始化需要 Extern 索引映射。
     root_obj = _rc.find_root_collection(entry_obj)
     extern_objs = {}
     if root_obj is not None:
@@ -371,14 +292,11 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
             count_extern=len(extern_objs),
         )
     except Exception:
-        # 安全回退：efx_block 保持 is_editable=False
+        # 回退为不可编辑的原始属性。
         pass
 
-    # ── PTLIFE / PTCOLLISION 引用指针化 ───────────────────────────────────────
-    # init_attribute_props 只处理 EXTERNREFERENCE；PTLIFE/PTCOLLISION 在 io_tree 导入时
-    # 由独立第二 pass 指针化，而单属性新增路径没有该 pass → 此处补上。
-    # 2026-07 简化后 init_*_ref_props 本身就总是留下可编辑状态（越界/死值 → play_ptr
-    # 留空=无目标，导出自动写 -1），不再需要额外"强制转悬空"补丁。
+    # ── PTLIFE / PTCOLLISION 引用 ─────────────────────────────────────────────
+    # 单属性新增不会经过导入的第二阶段，须在此初始化 Action 引用。
     if root_obj is not None:
         play_objs = {}
         for obj in _rc.collect_top_level(root_obj, "EFX_ACTION"):
@@ -397,9 +315,9 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
         except Exception:
             pass
 
-    # attr_count 由导出端自动重算，无需设 labels_dirty（属性不在标签表）
+    # 属性不参与标签表；attr_count 由导出端重算。
 
-    # entry 自身显示名可能要变（新属性若是渲染主体，需在 entry 名后补/改后缀）
+    # 渲染主体变化可能影响 Entry 显示名。
     from . import reorder as _reorder
     entry_obj.name = _reorder._entry_display_name(
         int(entry_obj.get("efx_index", 0)),
@@ -411,7 +329,7 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
 
 
 def add_attribute_to_entry_from_path(entry_obj: bpy.types.Object, path: str) -> bpy.types.Object:
-    """从 JSON 文件路径读取预设并新增到 entry 末尾。"""
+    """读取 JSON 预设并插入 Entry。"""
     try:
         with open(path, "r", encoding="utf-8") as f:
             preset = json.load(f)
@@ -421,27 +339,22 @@ def add_attribute_to_entry_from_path(entry_obj: bpy.types.Object, path: str) -> 
 
 
 def _resolve_target_entry(obj):
-    """新增属性的目标 entry 解析：obj 本身是 EFX_ENTRY 则直接用；
-    obj 是 EFX_ATTRIBUTE 则取其父 EFX_ENTRY（连续新增属性时无需先切回 entry）。
-    都不满足返回 None。
-    """
+    """从 Entry 或其属性解析目标；Root Entry 不接受普通属性插入。"""
     if obj is None:
         return None
     t = obj.get("~TYPE")
     if t == "EFX_ENTRY":
-        return obj
+        return obj if str(obj.get("entry_kind", "")) != "root" else None
     if t == "EFX_ATTRIBUTE":
         parent = obj.parent
-        if parent is not None and parent.get("~TYPE") == "EFX_ENTRY":
+        if (parent is not None and parent.get("~TYPE") == "EFX_ENTRY"
+                and str(parent.get("entry_kind", "")) != "root"):
             return parent
     return None
 
 
 def _resolve_target_entries(context):
-    """批量新增属性的目标 entry 列表：把选中对象逐个过 _resolve_target_entry，
-    去重并保持稳定顺序（活动对象所属 entry 排第一，便于报告/后续选中）。
-    没有任何选中时退回活动对象；都解析不出返回空列表。
-    """
+    """返回去重的目标 Entry，活动对象所属 Entry 排在首位。"""
     entries = []
     seen = set()
 
@@ -458,7 +371,7 @@ def _resolve_target_entries(context):
 
 
 def _load_attribute_preset(path: str) -> dict:
-    """读取属性预设 JSON（批量新增时只读一次，避免每个 entry 都开文件）。"""
+    """读取属性预设 JSON。"""
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -467,9 +380,7 @@ def _load_attribute_preset(path: str) -> dict:
 
 
 def _add_to_entries(entries, preset: dict):
-    """把同一份预设逐个加到 entries 上。返回 (新建属性对象列表, [(entry名, 错误)])。
-    单个 entry 失败不影响其余（批量时不做全体回滚，报告里点出失败的是哪些）。
-    """
+    """逐个插入预设并收集结果；单项失败不回滚其他目标。"""
     added = []
     failed = []
     for e in entries:
@@ -506,10 +417,10 @@ def _report_batch(op, verb: str, added, failed, skipped: int = 0):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 内存剪贴板（会话级）
+# 内存剪贴板
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 模块级整-属性剪贴板：build_attribute_preset_dict 的结果（会话内有效）。
+# 模块级属性剪贴板，不随 .blend 保存。
 _ATTRIBUTE_CLIPBOARD: dict = {}
 
 
@@ -518,7 +429,7 @@ _ATTRIBUTE_CLIPBOARD: dict = {}
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_save_attribute_preset(bpy.types.Operator):
-    """把当前选中的 EFX_ATTRIBUTE 保存为整属性预设（供其他 entry 新增使用）"""
+    """将当前属性保存为可复用预设。"""
 
     bl_idname      = "efx.save_attribute_preset"
     bl_label       = "Save as Attribute Preset"
@@ -550,8 +461,10 @@ class EFX_OT_save_attribute_preset(bpy.types.Operator):
         obj = context.active_object
         try:
             path = save_attribute_preset(obj, self.preset_name)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Failed to save attribute preset: {exc}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, "Failed to save attribute preset. See the system console for details.")
             return {"CANCELLED"}
         _invalidate_attribute_preset_cache()
         self.report({"INFO"}, f"Attribute preset saved: {os.path.basename(path)}")
@@ -563,7 +476,7 @@ class EFX_OT_save_attribute_preset(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_add_attribute_from_preset(bpy.types.Operator):
-    """按选中的属性预设，给每个选中的 EFX_ENTRY 各新增一个属性（多选即批量）"""
+    """将选中预设插入每个目标 Entry。"""
 
     bl_idname      = "efx.add_attribute_from_preset"
     bl_label       = "Add Attribute"
@@ -592,8 +505,10 @@ class EFX_OT_add_attribute_from_preset(bpy.types.Operator):
         actual_path = _decode_path_ident(self.preset_path)
         try:
             preset = _load_attribute_preset(actual_path)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Failed to add attribute: {exc}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, "Failed to add attribute from preset. See the system console for details.")
             return {"CANCELLED"}
 
         added, failed = _add_to_entries(entries, preset)
@@ -607,14 +522,11 @@ class EFX_OT_add_attribute_from_preset(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 「常用但缺失」建议：按渲染主体线推荐该 entry 通常还该有的属性
+# 缺失属性建议
 # ─────────────────────────────────────────────────────────────────────────────
 
 def default_attribute_preset_path(type_hash: int):
-    """
-    返回该属性类型随扩展下发的默认预设路径（presets/__attributes__/<分类>/[<子组>/]<TYPE>.json），
-    不存在则返回 None。用于"一键补上建议属性"——直接复用用户手动新增时拿到的同一份数据。
-    """
+    """返回随扩展分发的该类型默认预设路径；不存在时返回 None。"""
     from ..efx_format.hashes import HASH_TO_NAME
     from ..efx_format.categories import attribute_preset_relpath
     name = HASH_TO_NAME.get(type_hash)
@@ -627,16 +539,7 @@ def default_attribute_preset_path(type_hash: int):
 
 
 def iter_entry_attributes(entry_obj):
-    """
-    按 efx_index 升序返回该 entry 的 EFX_ATTRIBUTE 子对象。
-
-    ⚠ **作用域优先取 entry 所在集合的 all_objects，而不是遍历 bpy.data.objects。**
-    本函数会被面板 draw（Entry Inspector、「常用但缺失」建议）在**每次重绘**时调用，
-    全场景扫描在"场景里累积了多个 efx 文件"时是实打实的开销——同 memory
-    `onchange-full-scene-scan-perf-bug` 的教训（那次是导入退化到分钟级），
-    `io_tree` 里也为同一原因刻意避开了 `obj.children`（那同样是全场景反查）。
-    集合取不到时才退回全局扫描，保证正确性优先。
-    """
+    """按 efx_index 返回 Entry 属性，优先限定在所属集合内。"""
     pool = None
     try:
         cols = entry_obj.users_collection
@@ -661,10 +564,7 @@ def iter_entry_attributes(entry_obj):
 
 
 def entry_body_hash(entry_obj):
-    """
-    返回该 entry 的 renderer_body 类型 hash；无渲染主体返回 None。
-    多主体（语料里仅 10 例）取 efx_index 最小的那个。
-    """
+    """返回首个 renderer_body 类型哈希；不存在时返回 None。"""
     from ..efx_format.categories import ATTRIBUTE_CATEGORY_OF
     for obj in iter_entry_attributes(entry_obj):
         try:
@@ -688,16 +588,7 @@ def entry_present_hashes(entry_obj):
 
 
 def suggested_for_entry(entry_obj, min_rate=40):
-    """
-    返回 [(type_hash, 出现率, 预设路径), ...]：该主体线上常用（>=min_rate%）但本 entry
-    缺失、且有现成默认预设可一键补的属性。纯建议，不参与任何校验。
-
-    ⚠ 没有单一默认预设的类型会被静默跳过，这是刻意的：目前只有 **PTBEHAVIOR** 属于这种
-    情况——它是类型化稀疏覆盖包，随扩展下发的是 5 个变体预设
-    （`PTBEHAVIOR_<b_type>.json`），必须由用户选哪一种行为，不能替他挑一个补上。
-    后果是"无渲染主体"那条线（占全语料 8.1%）拿不到建议，可接受：该线 80% 的 entry
-    本来就已经有 PTBEHAVIOR，建议只在它缺失时才会触发。
-    """
+    """返回常用但缺失且存在默认预设的属性建议；不参与校验。"""
     from ..efx_format.categories import suggest_missing_attributes
     body = entry_body_hash(entry_obj)
     present = entry_present_hashes(entry_obj)
@@ -739,11 +630,13 @@ class EFX_OT_add_suggested_attribute(bpy.types.Operator):
             return {"CANCELLED"}
         try:
             preset = _load_attribute_preset(path)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Failed to add attribute: {exc}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, "Failed to add attribute from preset. See the system console for details.")
             return {"CANCELLED"}
 
-        # 批量时跳过已经有该类型属性的 entry（建议本身就是"常用但缺失"）
+        # 批量建议不重复添加已有类型。
         targets = [e for e in entries
                    if len(entries) == 1 or h not in entry_present_hashes(e)]
         if not targets:
@@ -752,7 +645,8 @@ class EFX_OT_add_suggested_attribute(bpy.types.Operator):
 
         added, failed = _add_to_entries(targets, preset)
         if not added:
-            self.report({"ERROR"}, f"Failed to add attribute: {failed[0][1]}")
+            print(f"[EFX] Failed to add attribute to '{failed[0][0]}': {failed[0][1]}")
+            self.report({"ERROR"}, "Failed to add this attribute. See the system console for details.")
             return {"CANCELLED"}
 
         _select_added(context, added)
@@ -765,7 +659,7 @@ class EFX_OT_add_suggested_attribute(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_open_attribute_preset_folder(bpy.types.Operator):
-    """打开属性预设所在文件夹（资源管理器 / Finder）"""
+    """打开属性预设目录。"""
 
     bl_idname      = "efx.open_attribute_preset_folder"
     bl_label       = "Open Attribute Preset Folder"
@@ -784,7 +678,7 @@ class EFX_OT_open_attribute_preset_folder(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_copy_attribute(bpy.types.Operator):
-    """把当前 EFX_ATTRIBUTE 复制到内存剪贴板（供"粘贴属性"快速新增）"""
+    """将当前属性复制到内存剪贴板。"""
 
     bl_idname      = "efx.copy_attribute"
     bl_label       = "Copy Attribute"
@@ -800,8 +694,10 @@ class EFX_OT_copy_attribute(bpy.types.Operator):
         global _ATTRIBUTE_CLIPBOARD
         try:
             _ATTRIBUTE_CLIPBOARD = build_attribute_preset_dict(context.active_object)
-        except Exception as exc:
-            self.report({"ERROR"}, f"Failed to copy attribute: {exc}")
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, "Failed to copy this attribute. See the system console for details.")
             return {"CANCELLED"}
         type_name = _ATTRIBUTE_CLIPBOARD.get("type_name", "")
         self.report({"INFO"}, f"Attribute copied to clipboard ({type_name})")
@@ -809,7 +705,7 @@ class EFX_OT_copy_attribute(bpy.types.Operator):
 
 
 class EFX_OT_paste_attribute(bpy.types.Operator):
-    """把剪贴板的属性粘贴（新增）到每个选中的 EFX_ENTRY（多选即批量）"""
+    """将剪贴板属性插入每个目标 Entry。"""
 
     bl_idname      = "efx.paste_attribute"
     bl_label       = "Paste Attribute"
@@ -843,18 +739,13 @@ class EFX_OT_paste_attribute(bpy.types.Operator):
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
-# EnumProperty 动态回调缓存（GC 陷阱说明见 panels.py 顶部）。
-# 脏标志 + 2 秒 TTL：保存后立即失效；手动改文件夹 2 秒内刷新。
-# 第二级"具体预设"选择改用 EFX_MT_attribute_preset_picker（Menu，见下方）现场扫描，
-# 不再需要 EnumProperty 缓存（Menu.draw 只在用户点开菜单时才调用，不像动态 EnumProperty
-# items 那样每次界面重绘都触发，没有同等的缓存必要）。
+# 动态 EnumProperty 项缓存；保存后通过脏标志立即失效。
 _attribute_category_items_cache = [("", "(no attribute presets)", "")]
 _attribute_category_dirty = True
 _attribute_category_cache_time = 0.0
 _ATTRIBUTE_CACHE_TTL = 2.0            # 秒
 
-# 全局模糊搜索新增（efx.attribute_add_search，见下方）用的拍平列表，同一套缓存纪律：
-# 脏标志 + TTL，跟分类缓存共享 _invalidate_attribute_preset_cache() 一并失效。
+# 全局搜索列表与分类缓存共享失效标志。
 _attribute_search_items_cache = [("", "(no attribute presets)", "")]
 _attribute_search_dirty = True
 _attribute_search_cache_time = 0.0
@@ -867,7 +758,7 @@ def _invalidate_attribute_preset_cache():
 
 
 def _get_attribute_category_items(self, context):
-    """WindowManager.efx_block_category_enum 的动态 items 回调（带缓存）。"""
+    """分类动态 items 回调。"""
     global _attribute_category_items_cache, _attribute_category_dirty, _attribute_category_cache_time
     now = time.monotonic()
     if _attribute_category_dirty or (now - _attribute_category_cache_time) > _ATTRIBUTE_CACHE_TTL:
@@ -881,7 +772,7 @@ def _get_attribute_category_items(self, context):
 
 
 def _get_attribute_search_items(self, context):
-    """EFX_OT_attribute_add_search 的动态 items 回调（带缓存，同上）。"""
+    """搜索动态 items 回调。"""
     global _attribute_search_items_cache, _attribute_search_dirty, _attribute_search_cache_time
     now = time.monotonic()
     if _attribute_search_dirty or (now - _attribute_search_cache_time) > _ATTRIBUTE_CACHE_TTL:
@@ -895,15 +786,7 @@ def _get_attribute_search_items(self, context):
 
 
 class EFX_OT_attribute_add_search(bpy.types.Operator):
-    """按名字模糊搜索属性类型并直接新增，不用先猜它归在哪个分类。
-
-    参照 Wilds EFX Editor 的 efx_re.attribute_add_search：走 Blender 原生
-    `WindowManager.invoke_search_popup()`（键盘打字模糊过滤，官方"Enum Search
-    Popup"标准写法）。列表来自 list_all_attribute_presets()（全部 72 个预设拍平，
-    覆盖当前"能新增"的全集——不是所有 169 个已命名类型都有预设，只有 68 个已
-    schema 化的类型能给出有意义的默认字段值，多出来的类型光有名字没有默认值可填，
-    强行加进来对用户没有帮助）。选中之后直接转调既有的 efx.add_attribute_from_preset，
-    同一份新增逻辑只写一次，不重复。"""
+    """搜索已具备默认预设的属性类型，并复用预设插入流程。"""
 
     bl_idname      = "efx.attribute_add_search"
     bl_label       = "Search Attribute Type"
@@ -930,12 +813,7 @@ class EFX_OT_attribute_add_search(bpy.types.Operator):
 
 
 class EFX_MT_attribute_preset_picker(bpy.types.Menu):
-    """第二级"具体预设"选择菜单：按子组分组，灰字标题（layout.label，不可点）+
-    具体预设行（点击直接触发 efx.add_attribute_from_preset，无需再单独点 Add）。
-
-    子组分组顺序/标签见 efx_format.categories.ATTRIBUTE_SUBGROUP_LABELS；分类本身不分
-    子组（如 skeleton/spawn_method）则不出现任何标题，所有预设平铺一列。
-    """
+    """按子组显示具体属性预设的二级菜单。"""
 
     bl_idname = "EFX_MT_attribute_preset_picker"
     bl_label  = "Attribute Preset"
@@ -952,7 +830,7 @@ class EFX_MT_attribute_preset_picker(bpy.types.Menu):
 
         items = _iter_preset_files(_attribute_category_dir(slug))
         if slug == "misc":
-            # 旧扁平预设兜底：__attributes__/ 根目录下早于分类系统的遗留文件
+            # 兼容属性预设根目录中的扁平文件。
             root = _attribute_preset_dir()
             if os.path.isdir(root):
                 for entry in sorted(os.scandir(root), key=lambda e: e.name):

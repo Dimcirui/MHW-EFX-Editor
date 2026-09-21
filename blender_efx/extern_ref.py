@@ -1,8 +1,8 @@
 """
-blender_efx/extern_ref.py  —  L2 #1c：ExternReference.referenceIndex → extern 指针化
+blender_efx/extern_ref.py  —  ExternReference.referenceIndex → extern 指针化
 
 设计原则（参照 CLAUDE.md / subselect.py / action_emitter.py 模式）：
-  - Python 3.11 语法（目标 Blender 4.3.2）
+  - Python 3.10 语法（兼容 Blender 3.6～5.x）
   - bpy 只用稳定子集（PropertyGroup / PointerProperty / BoolProperty / Panel）
   - 不使用 5.x 新增 API
   - efx_format/ 是纯 Python 层，本文件是胶水层（不改 efx_format/）
@@ -32,7 +32,9 @@ referenceIndex 语义（实测，BLUEPRINT §9）：
 多对一天然支持：多个 EXTERNREFERENCE 块可指向同一 EFX_EXTERN 对象，
 PointerProperty 天然允许，build_local_index_map 解析得到相同 index，完全正确。
 
-byte-perfect 保证：
+字节行为（⚠ 这是**当前行为的描述**，不是必须守住的契约。硬不变量只在 codec 层：
+`serialize(parse(x)) == x`。胶水层允许规范化，「导入→不编辑→导出」不要求逐字节
+相同——见 docs/TESTING_AND_INVARIANTS.md「核心不变量」。）
   - 死块（pointerized=False）：orig_b64 路径整体保留，完全不动。
   - 哨兵（none=True）：导出写 -1（0xFFFFFFFF 的有符号补码），与原始文件完全一致。
   - 有效指针（未变 extern）：extern 对象的 efx_index == 导出局部 index == 原值，byte-perfect。
@@ -208,7 +210,7 @@ def overlay_extern_ref_index(
 
     注意
     ----
-    - 使用 bytearray 做 pack_into，再转回 bytes（Python 3.11 兼容）。
+    - 使用 bytearray 做 pack_into，再转回 bytes（Python 3.10 兼容）。
     - 覆写操作：struct.pack_into('<i', buf, 4, new_index)。
     - 哨兵路径：none=True → 写 -1（struct pack '<i' 的 -1 = 0xFFFFFFFF 小端）。
     - 悬空指针（ptr=None 且 none=False）：静默返回原始字节（安全回退）。
@@ -233,8 +235,14 @@ def overlay_extern_ref_index(
             return data_bytes
         new_index = extern_index_map.get(extern_obj)
         if new_index is None:
-            # extern_obj 不在当前文件的 Extern 段里（极端情况：跨文件等）
-            return data_bytes
+            # 指向的 extern 不在本次导出的 Extern 段里。两种成因，处理相同：
+            #   - 它是空 EA，被导出端剔除了（io_tree §4a）
+            #   - 极端情况：指针指向别的文件的 extern（poll 本该拦住）
+            # **必须写 -1 哨兵，不能原样返回**：原样返回会保留旧的 referenceIndex，
+            # 而剔除会让后面的 EA 整体前移一位，于是这个引用静默指到另一个 EA 上，
+            # 不报任何错。-1 是格式本身的"无目标"哨兵（官方语料 1143 例）。
+            # 对未编辑文件无影响：那时每个指针都能在 map 里解析到，走不到这里。
+            new_index = _SENTINEL_VALUE
 
     # 覆写 data_bytes 中 referenceIndex 的 4 字节（偏移 4）
     if len(data_bytes) < 8:

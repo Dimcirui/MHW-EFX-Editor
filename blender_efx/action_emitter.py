@@ -1,50 +1,49 @@
 """
-blender_efx/action_emitter.py  —  L2 #1b：PlayEmitter targets 指针化
+blender_efx/action_emitter.py  —  Action 段的字段编辑 + PlayEmitter targets 指针化
 
-设计原则（参照 CLAUDE.md / subselect.py 模式）：
-  - Python 3.11 语法（目标 Blender 4.3.2）
-  - bpy 只用稳定子集（PropertyGroup / CollectionProperty / PointerProperty /
-    StringProperty / IntProperty / Panel / UIList / Operator）
-  - 不使用 5.x 新增 API
-  - efx_format/ 是纯 Python 层，本文件不改 efx_format/
-  - byte-perfect：PlayEmitter 导出时只替换 targets 段，其余字节逐字保留
+Action 有两种条目，两种的字段都已完全展开可编辑：
 
-PlayEmitter 结构（raw = type_hash 之后的字节，来自 efxfile.py _parse_play）：
-  offset  0: int unkn[7]       28 B   ← 始终保留原始字节
-  offset 16: float unkn[4..6]  12 B   ← 干净的角度值（多为 -90），但**实测编辑无任何效果**，
-                                        不是被调用 entry 的旋转（用户 2026-07-31 实机测试）
-  offset 28: XYZ xyz(3)        12 B   ← float[3]，可编辑；**Size（统一缩放尺寸）**，默认
-                                        1.0=不缩放。已实机确认生效
-  offset 40: int NULL[3]       12 B   ← 实为 **Position（位置偏移）**，名不副实；已实机确认
-                                        生效（用户 2026-07-31）。PlayEFX 侧同理：@40 是
-                                        Size、@52「NULL[3]」是 Position
-  offset 52: int target_count   4 B   ← 重建时更新（当前阶段数量不变）
-  offset 56: int targets[N]    4*N B  ← 由 entry 指针映射 → 局部 index 重写
+  PLAYEMITTER  调用本文件内的 entry。targets 之外是一整套作用于被调用 entry 的 transform：
 
-PlayEFX：raw 整体保留，完全 opaque，不解析。
+                   官方名              本文件属性
+                   SetLandAttribute    em_unkn1   取命中地面的属性，供按标志位过滤特效
+                   SetLandDirection    em_unkn2   让生成实例的矩阵贴合地面倾斜（与 RayCast 并用），这两个对应情况不确定，可能要和上面一个互换
+                   Rotation  X/Y/Z     em_rotation
+                   Order               em_rotation_order   旋转顺序
+                   Scale     X/Y/Z     xyz
+                   Translate X/Y/Z     em_position
+
+  PLAYEFX      调用外部 .efx 文件。路径 + Scale(@40) / Translate(@52)，其余槽位与
+               PLAYEMITTER 同构。
+
+  ⚠ 内部属性名里的 `unkn*` 对齐 `EFX_Play.bt` 的数组下标（`unkn[0..6]`），只是对照社区模板
+    时的溯源线索——**界面上显示的是各自 `name=` 的语义名**，不是 unkn。改属性标识符会让已存
+    .blend 里的值回落默认，所以只改 label/description，标识符保持不动。
+
+  字段偏移见 `load_entry_fields_from_raw`（`struct.unpack_from` 的字面量就是权威，
+  不在这里复述一遍）。
 
 PropertyGroup 层级：
-  obj.efx_play  (EFXActionProps)
-    ├── play_type_str : str        # ActionData.play_type (uint32 十进制)
-    └── entries       : CollectionProperty[EFXActionEntryProps]
-          ├── type_hash_str : str  # 十进制字符串
-          ├── raw_b64       : str  # 完整 entry raw（typeHash 之后），始终保留
-          ├── is_emitter    : bool # type_hash == PLAYEMITTER
-          └── targets       : CollectionProperty[EFXActionTarget]  # 仅 PLAYEMITTER 有效
-                └── body_ptr : PointerProperty(poll=EFX_ENTRY)
 
-byte-perfect 保证：
-  - PlayEFX：raw_b64 原样序列化，不经任何解析。
-  - PlayEmitter：prefix_bytes（raw[:56]，即 unkn[7]+xyz+NULL[3]+target_count 位置前）
-    + 重建的 target_count + 重建的 targets[]。
-    实际上把 raw[:52] 保留（unkn[7]+xyz+NULL[3]），
-    再 pack('<i', N) 写 target_count，再 pack('<i', idx) * N 写 targets。
-    非 targets 字节（含 target_count 字节原值）只要数量不变就逐字复现。
-  - entries 未变时：target 指针 → efx_index == 导出的局部 index → byte-perfect。
+    obj.efx_play  (EFXActionProps)
+      ├── play_type_str : str                        # ActionData.play_type
+      └── entries       : [EFXActionEntryProps]
+            ├── raw_b64      : str                   # 原始字节，重建失败时的兜底
+            ├── is_emitter   : bool                  # 决定走 em_* 还是 pefx_* 那组字段
+            ├── fields_loaded: bool                  # ⚠ 见下
+            └── targets      : [EFXActionTarget]     # 仅 PLAYEMITTER
+                  └── body_ptr : PointerProperty(poll=EFX_ENTRY)
 
-悬空 target 处理：
-  body_ptr 为 None 的 target 导出时跳过（不写入），与 subselect.py 保持一致。
-  validate.py 统一扫描报 WARN（导出后弹窗报告，不阻断导出）——0.2.57 定型的既定设计。
+⚠ `fields_loaded=False` 时（raw 长度不足、解析异常或旧 `.blend` 尚未保存这些属性），
+  两类 entry 的头部字段沿用原始字节，防止默认 0 覆盖 rotation / rotationOrder 等数据。
+  size、PlayEmitter targets 和 PlayEFX 路径仍按现有编辑模型重建；改重建函数时不要绕过
+  头部字段的门控。
+
+⚠ 悬空 target（`body_ptr is None`）导出时**跳过不写**，与 subselect.py 一致；
+  由 validate.py 统一报 WARN，不阻断导出。
+
+字节行为：PlayEmitter 重建 target_count + targets[]，PlayEFX 重建 path_len + 路径；
+其余区间在 fields_loaded 时按属性重写，否则沿用原字节。
 """
 
 import struct
@@ -125,7 +124,7 @@ class EFXActionEntryProps(PropertyGroup):
     )
     raw_b64: StringProperty(
         name="Raw (b64)",
-        description="Base64 encoding of ActionEntry.raw; always preserves unknown bytes for byte-perfect fallback",
+        description="Base64-encoded raw data for this entry, preserved for any part not exposed as editable fields",
         default="",
     )
     is_emitter: BoolProperty(
@@ -142,64 +141,50 @@ class EFXActionEntryProps(PropertyGroup):
         default=(1.0, 1.0, 1.0),
     )
 
-    # ── 全字段暴露（2026-07-31）────────────────────────────────────────────────
-    # 之前只有 xyz + targets/path 可编辑，unkn[7]/NULL[3] 全部只随 raw_b64 原样保留。
-    # 现在按 official 全语料（4794 PlayEmitter / 560 PlayEFX）的取值形态逐个暴露。
-    #
-    # ⚠ fields_loaded 门控：这批属性是 0.5.3 才加的，比它更早导入的 .blend 里它们
-    #   全是默认 0——若无条件写回就会把 rotation/rotationOrder 等真实数据抹成 0。
-    #   故只在导入（或新建 entry）时显式置 True 后才用属性值重建，否则一律沿用
-    #   raw_b64 的原始字节。老 .blend 因此表现为「这些字段不可编辑但绝不被破坏」，
-    #   重新导入即恢复可编辑。
+    # 旧 .blend 可能没有以下结构化字段；仅在成功解析后写回，
+    # 避免默认值覆盖 raw_b64 中的原始数据。
     fields_loaded: BoolProperty(
         name="Fields Loaded",
-        description="Internal: True once the unkn/rotation/position properties below have "
-                    "been populated from the raw bytes. Guards .blend files imported before "
-                    "these fields existed from having real data overwritten with zeros",
+        description="True once the fields below have been loaded from this entry's data. "
+                    "Prevents .blend files saved before these fields existed from having "
+                    "their data overwritten with zeros",
         default=False,
     )
 
     # ── PlayEmitter 专属（偏移基于 emitter raw）────────────────────────────────
     em_unkn0: IntProperty(
         name="Type Flags",
-        description="PlayEmitter unkn[0] @0. Small integer, 37 distinct values across the "
-                    "official corpus (0~23 contiguous, then sparse up to 50); zero in ~35%. "
-                    "Temporary label, unverified",
+        description="Effect unknown. Usually 0; common range is 0~23",
         default=0,
     )
     em_unkn1: BoolProperty(
         name="Set Land Attribute",
-        description="PlayEmitter unkn[1] @4. Strictly 0/1 across the corpus. Candidate: "
-                    "SetLandAttribute (docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §4.13), unverified",
+        description="Likely sets a land-attribute flag; exact effect unknown",
         default=False,
     )
     em_unkn2: BoolProperty(
         name="Set Land Direction",
-        description="PlayEmitter unkn[2] @8. Strictly 0/1 across the corpus. Candidate: "
-                    "SetLandDirection (docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §4.13), unverified",
+        description="Likely sets a land-direction flag; exact effect unknown",
         default=False,
     )
     em_rotation_order: IntProperty(
         name="Rotation Order",
-        description="PlayEmitter unkn[3] @12. Shares the same TransformRotOrder table as "
-                    "TRANSFORM3D/EMITTERSHAPE3D (corpus majority value 4 = ZXY, matching the "
-                    "official default). Purpose unconfirmed",
+        description="Uses the same rotation-order enum as TRANSFORM3D/EMITTERSHAPE3D "
+                    "(default and most common value is 4 = ZXY). What it actually affects "
+                    "here is unknown",
         default=4,
     )
     em_rotation: FloatVectorProperty(
         name="Rotation XYZ",
-        description="PlayEmitter unkn[4..6] @16. Holds clean degree values (-90 in most nonzero "
-                    "cases, also 90 / -140 / -180 / -150 / 78), but editing it has no visible "
-                    "effect in-game, so it is not the rotation of the called entries. Same slot "
-                    "as PlayEFX's Rotation X/Y/Z. May be an internal convention correction, or "
-                    "gated behind something not yet found. Purpose unconfirmed",
+        description="Holds degree-like values (most often -90), but editing it has no "
+                    "visible effect in-game — it does not rotate the entries this Action "
+                    "calls. Its actual purpose is unknown",
         size=3,
         default=(0.0, 0.0, 0.0),
     )
     em_position: FloatVectorProperty(
         name="Position XYZ",
-        description="Position offset applied to the entries this Action calls. Named NULL[3] in "
-                    "the community template, but it carries real values across the corpus",
+        description="Position offset applied to the entries this Action calls",
         size=3,
         default=(0.0, 0.0, 0.0),
     )
@@ -207,68 +192,59 @@ class EFXActionEntryProps(PropertyGroup):
     # ── PlayEFX 专属（偏移基于 playefx raw；命名对齐 EFX_Play.bt 的字段下标）────
     pefx_unkn0: IntProperty(
         name="Type Flags",
-        description="PlayEFX unkn0 @0. Small integer, 19 distinct values. Same leading slot as "
-                    "PlayEmitter's em_unkn0. Temporary label, unverified",
+        description="Effect unknown. Shares the same slot as PlayEmitter's Type Flags",
         default=0,
     )
     pefx_type_str: StringProperty(
         name="Type",
-        description="PlayEFX type @8 (uint32 as a decimal string). Constant 1082828692 across "
-                    "the whole corpus",
+        description="Fixed identifier value (decimal); should not need to be changed",
         default="0",
     )
     pefx_unkn_0: BoolProperty(
         name="Set Land Attribute",
-        description="PlayEFX unkn[0] @12. Strictly 0/1 across the corpus. Same slot as "
-                    "PlayEmitter's em_unkn1. Candidate: SetLandAttribute "
-                    "(docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §4.13), unverified",
+        description="Likely sets a land-attribute flag; exact effect unknown. Shares the "
+                    "same slot as PlayEmitter's Set Land Attribute",
         default=False,
     )
     pefx_unkn_1: BoolProperty(
         name="Set Land Direction",
-        description="PlayEFX unkn[1] @16. Strictly 0/1 across the corpus. Same slot as "
-                    "PlayEmitter's em_unkn2. Candidate: SetLandDirection "
-                    "(docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §4.13), unverified",
+        description="Likely sets a land-direction flag; exact effect unknown. Shares the "
+                    "same slot as PlayEmitter's Set Land Direction",
         default=False,
     )
     pefx_unkn_2: IntProperty(
-        name="Unkn[2]",
-        description="PlayEFX unkn[2] @20. Constant 2 across the corpus. No counterpart in "
-                    "PlayEmitter's layout - PlayEFX has one extra field here. Purpose unconfirmed",
+        name="Unknown 2",
+        description="Fixed at 2 in practice. Has no counterpart in PlayEmitter; its "
+                    "purpose is unknown",
         default=2,
     )
     pefx_unkn_3: FloatProperty(
         name="Rotation X",
-        description="PlayEFX unkn[3] @24. Float; only ever 0, -90 or 90 in the corpus. Same "
-                    "slot as PlayEmitter's em_rotation.x. Purpose unconfirmed",
+        description="Common values are 0, -90 or 90. Shares the same slot as PlayEmitter's "
+                    "Rotation X. Its actual effect is unknown",
         default=0.0,
     )
     pefx_unkn_4: FloatProperty(
         name="Rotation Y",
-        description="PlayEFX unkn[4] @28. Float, always 0 in the corpus. Same slot as "
-                    "PlayEmitter's em_rotation.y. Purpose unconfirmed",
+        description="Usually 0. Shares the same slot as PlayEmitter's Rotation Y. Its "
+                    "actual effect is unknown",
         default=0.0,
     )
     pefx_unkn_5: FloatProperty(
         name="Rotation Z",
-        description="PlayEFX unkn[5] @32. Float, always 0 in the corpus. Same slot as "
-                    "PlayEmitter's em_rotation.z. Purpose unconfirmed",
+        description="Usually 0. Shares the same slot as PlayEmitter's Rotation Z. Its "
+                    "actual effect is unknown",
         default=0.0,
     )
     pefx_unkn_6: IntProperty(
         name="Rotation Order",
-        description="PlayEFX unkn[6] @36. Almost always 4, occasionally 2 or 0 - identical "
-                    "distribution to PlayEmitter's em_rotation_order (same TransformRotOrder "
-                    "table, 4 = ZXY), just positioned after the float triple instead of before "
-                    "it. Purpose unconfirmed",
+        description="Uses the same rotation-order enum as PlayEmitter's Rotation Order "
+                    "(default 4 = ZXY). What it actually affects here is unknown",
         default=4,
     )
     pefx_null: FloatVectorProperty(
         name="Position XYZ",
-        description="PlayEFX NULL[3] @52. Position offset of the effect this entry calls - the "
-                    "counterpart of PlayEmitter's own position slot. Named NULL in the community "
-                    "template, but a handful of entries carry real distance-magnitude values "
-                    "(-300, -175, -100, 100). Interpretation unverified",
+        description="Position offset applied to the external .efx this entry calls",
         size=3,
         default=(0.0, 0.0, 0.0),
     )
@@ -407,12 +383,6 @@ def init_action_props(play_obj: bpy.types.Object,
 
         if entry.type_hash == PLAYEMITTER:
             item.is_emitter = True
-            # PlayEmitter raw 布局（type_hash 之后）：
-            #   [0:28]  unkn[7] (28B)      ← 拆成 unkn0/unkn1/unkn2/rotationOrder + rotation XYZ
-            #   [28:40] XYZ float[3] (12B) ← Size XYZ
-            #   [40:52] NULL[3] (12B)      ← Position XYZ（名不副实，语料里有真实取值）
-            #   [52:56] target_count (int32)
-            #   [56:]   targets[N] (int32 each)
             raw = entry.raw
             load_entry_fields_from_raw(item, raw, True)
             if len(raw) >= 56:
@@ -427,14 +397,6 @@ def init_action_props(play_obj: bpy.types.Object,
                     if entry_obj is not None:
                         t.body_ptr = entry_obj
         else:
-            # PlayEFX raw 布局（type_hash 之后）：
-            #   [0:4]   unkn0 (4B)
-            #   [4:8]   path_len (int32)
-            #   [8:12]  type (4B)
-            #   [12:40] unkn[7] (28B)
-            #   [40:52] XYZ float[3] (12B)  ← 可编辑
-            #   [52:64] NULL[3] (12B)
-            #   [64:]   path[path_len]       ← 可编辑
             item.is_emitter = False
             raw = entry.raw
             load_entry_fields_from_raw(item, raw, False)
@@ -472,13 +434,12 @@ def export_action_data(play_obj: bpy.types.Object,
     回退策略
     --------
     若 play_obj 不存在 efx_play 属性（旧场景/兼容），
-    则从自定义属性 raw_b64 还原原始字节（byte-perfect 回退）。
+    则从自定义属性 raw_b64 还原原始字节。
 
     悬空 target 处理
     -----------------
-    body_ptr 为 None（指针悬空）的 target 跳过（不写入 targets），以保证导出不崩溃。
-    validate.py 统一扫描报 WARN（导出后弹窗报告，不阻断导出）——0.2.57 定型的既定设计，
-    不是待补的校验缺口。
+    body_ptr 为 None（指针悬空）的 target 跳过（不写入 targets；
+    validate.py 统一报告 WARN，不阻断导出。
     """
     from ..efx_format.efxfile import ActionData, ActionEntry
 
@@ -521,16 +482,8 @@ def _rebuild_emitter_raw(item: EFXActionEntryProps,
     """
     重建 PlayEmitter entry 的 raw 字节。
 
-    策略：
-      raw[:28]   unkn0/unkn1/unkn2/rotationOrder + rotation XYZ（fields_loaded 时按属性重写）
-      raw[28:40] 用 item.xyz 重写（Size XYZ，float[3]）
-      raw[40:52] Position XYZ（fields_loaded 时按属性重写）
-      target_count + targets 由 entry 指针映射重建
-
-    ⚠ fields_loaded=False（这批属性存在之前导入的老 .blend）时，raw[:28] 与 raw[40:52]
-      一律沿用原始字节——否则默认 0 会把真实的 rotation/rotationOrder 抹平。
-
-    悬空 target（body_ptr=None 或不在 entry_index_map）静默跳过。
+    fields_loaded=False 时保留头部和 Position 的原始字节。
+    targets 按当前 entry 指针重建；悬空或不属于当前 EFX 的目标会被跳过。
     """
     orig_raw = _b64dec(str(item.raw_b64))
 
@@ -570,21 +523,8 @@ def _rebuild_actionefx_raw(item: EFXActionEntryProps) -> bytes:
     """
     重建 PlayEFX entry 的 raw 字节。
 
-    策略：
-      raw[0:4]   unkn0（fields_loaded 时按属性重写）
-      raw[4:8]   path_len 按新路径重算
-      raw[8:40]  type + unkn[0..6]（fields_loaded 时按属性重写）
-      raw[40:52] 用 item.xyz 重写（float[3]）
-      raw[52:64] NULL[3]（fields_loaded 时按属性重写）
-      raw[64:]   用 item.efx_path 重写（UTF-8 + null 终止符）
-
-    ⚠ 同 _rebuild_emitter_raw：fields_loaded=False 时这些区间一律沿用原始字节。
-      pefx_type_str 解析失败（空串/溢出）同样退回原字节，不写坏 type 字段。
-
-    ⚠ 路径未改动时原样沿用原始 path_len + 路径字节，不重新编码——同
-      rebuild_custom_field_attribute 对 custom 块路径的处理。无条件重新编码会破坏两类
-      原文件写法：① path_len==0 且完全没有路径字节（官方语料确有此写法，evc1054_020/021），
-      重新编码会凭空补出 path_len=1 + 一个 \\x00；② 路径尾部带多余 null 对齐填充。
+    fields_loaded 控制可编辑字段是否写回原始数据。
+    路径未修改时保留原始 path_len 和路径字节，以保护空路径与尾部填充。
     """
     orig_raw = _b64dec(str(item.raw_b64))
 
@@ -604,9 +544,9 @@ def _rebuild_actionefx_raw(item: EFXActionEntryProps) -> bytes:
         path_bytes = item.efx_path.encode('utf-8') + b'\x00'
         path_len_bytes = struct.pack('<i', len(path_bytes))
 
-    head = orig_raw[:4]        # unkn0
-    mid = orig_raw[8:40]       # type + unkn[0..6]
-    tail = orig_raw[52:64]     # NULL[3]
+    head = orig_raw[:4]        # Type Flags
+    mid = orig_raw[8:40]       # Type、标志位、旋转字段
+    tail = orig_raw[52:64]     # Position XYZ
     if item.fields_loaded:
         try:
             type_val = int(str(item.pefx_type_str)) & 0xFFFFFFFF
@@ -669,7 +609,7 @@ def _fallback_raw_action(play_obj: bpy.types.Object):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §5  面板算子（当前阶段：仅支持编辑已有 target 指向，不支持增删）
+# §5  Action Entry 与 PlayEmitter Target 编辑算子
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_action_target_add(Operator):
@@ -782,9 +722,7 @@ class EFX_OT_action_entry_add(Operator):
             item.is_emitter    = False
             item.raw_b64       = _b64mod.b64encode(_BLANK_PLAYEFX_RAW).decode('ascii')
             item.efx_path      = ""
-            # 从模板字节填满全部可编辑属性（含 fields_loaded=True），新 entry 立刻可编辑。
-            # ⚠ 别再在这之后覆写 item.xyz——模板里 @40 已是 Size=(1,1,1)，写 (0,0,0)
-            #   等于零缩放（语料 560/560 无一例为 0）。
+            # 模板已经包含 Size=(1,1,1)；解析后不要再用默认值覆盖 xyz。
             load_entry_fields_from_raw(item, _BLANK_PLAYEFX_RAW, False)
         else:
             emitter_raw = (_BLANK_EMITTER_UNKN7
@@ -862,16 +800,13 @@ class EFX_UL_action_targets(bpy.types.UIList):
 def _draw_action_content(layout, context):
     """
     绘制 EFX_ACTION 的数据内容。
-    被 EFX_PT_action（N 面板）和 EFX_PT_action_props/_object（属性编辑器）共用。
-
-    选中 EFX_ACTION 对象时显示：
-      - play_type 元数据（只读）
-      - 各 entry 列表：
-          PLAYEFX  → 路径（只读字符串）
-          PLAYEMITTER → target entry 指针列表（可编辑指向）
-      - 悬空 target 指针警告
+    由 N 面板和属性编辑器 Data 标签共用，提供 Action 重命名、
+    PlayEmitter/PlayEFX Entry 编辑与 target 管理。
     """
+    from .reorder import draw_rename_field
+
     obj = context.active_object
+    draw_rename_field(layout, obj)
 
     try:
         props = obj.efx_play
@@ -899,7 +834,6 @@ def _draw_action_content(layout, context):
             rem_op = hdr.operator("efx.action_entry_remove", text="", icon="X")
             rem_op.entry_index = ei
 
-            # 已实机确认生效的两组放前面；旋转组实测无效果，降级进下面的未知区。
             entry_box.prop(entry, "xyz", text=T("action.size_xyz"))
             entry_box.prop(entry, "em_position", text=T("action.position_xyz"))
             unk_col = entry_box.column(align=True)
@@ -958,8 +892,6 @@ def _draw_action_content(layout, context):
             rem_op.entry_index = ei
 
             entry_box.prop(entry, "efx_path", text=T("action.efx_path"))
-            # @40 是 Size 不是位置偏移：语料 560 个 PlayEFX 里 (1,1,1) 占 65.7%、
-            # (0,0,0) 零例——位置偏移不可能一个零都没有。
             entry_box.prop(entry, "xyz", text=T("action.size_xyz"))
             entry_box.prop(entry, "pefx_null", text=T("action.position_xyz"))
             entry_box.prop(entry, "pefx_type_str", text=T("action.playefx_type"))
@@ -1023,24 +955,6 @@ class EFX_PT_action_props(bpy.types.Panel):
     bl_space_type   = "PROPERTIES"
     bl_region_type  = "WINDOW"
     bl_context      = "data"
-    bl_label        = "EFX Action Data"
-    bl_options      = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ACTION"
-
-    def draw(self, context):
-        _draw_action_content(self.layout, context)
-
-
-class EFX_PT_action_object(bpy.types.Panel):
-    """Action 数据（属性编辑器 → Object Properties，保底版本）"""
-
-    bl_space_type   = "PROPERTIES"
-    bl_region_type  = "WINDOW"
-    bl_context      = "object"
     bl_label        = "EFX Action Data"
     bl_options      = {"DEFAULT_CLOSED"}
 

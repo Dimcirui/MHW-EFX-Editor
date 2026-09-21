@@ -340,19 +340,12 @@ class Homing(Behavior):
         initial_speed = f.get("initialSpeed")
         target_speed = f.get("targetSpeed")
 
-        # 「上限被 targetSpeed 钳住」是旧假说（八角探针只测过「相等→闭合圆」和
-        # 「initialSpeed 更小→从小圈向外旋开」两种，从没测过 initialSpeed 更大的情况，
-        # 「钳住」纯属过度引申）。2026-09-12 用户拿游戏实拍反证：扩张之后还会再收缩，
-        # 只有 initialSpeed 不设上限、直接朝 targetSpeed 收敛（可以从大到小）才解释得
-        # 通。「任一为 0→完全不动」这条是唯一保留的边界，用 locked 独立锁死，不再靠
-        # min() 顺带实现。
+        # 起手速度被 targetSpeed 钳住上限：initialSpeed 更大时完全不起作用，圈的大小
+        # 只跟 targetSpeed 走。⚠ 曾误判"扩张后还会再收缩"与钳住矛盾而一度删掉这条——
+        # 那是归因错了，扩张再收缩是轨道几何本身的呼吸（圆过目标点，|p|=2r·sin(θ/2)），
+        # 与速度收敛无关，钳住结论不变。「任一为 0→完全不动」是唯一保留的边界，用
+        # locked 独立锁死，不再靠 min() 顺带实现。
         locked = initial_speed <= 0.0 or target_speed <= 0.0
-        # ⚠ 起手速度被 targetSpeed **钳住上限**——2026-09-12 用户实拍坐实：
-        # 1.0→0.5 与 0.9→0.1 都是「第一圈就已经是终态半径」，且圈的大小只跟
-        # targetSpeed 走，initialSpeed 更大时完全不起作用。本会话早些时候曾把这条
-        # 钳制当 bug 删掉，理由是用户说「扩张后还会再收缩」——**那是归因错了**：
-        # 扩张再收缩是**轨道几何本身**（圆过目标点，|p|=2r·sin(θ/2) 的呼吸），
-        # 与速度收敛无关。最早那份文档写的「上限被 targetSpeed 钳住」是对的。
         start_speed = min(initial_speed, target_speed)
         turn_step_rad = math.radians(turn_rate) / fps
         p.user[Homing] = {

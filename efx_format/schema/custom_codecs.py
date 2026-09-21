@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-efx_format/custom_codecs.py — 变长 / 分派型 custom 块的手写编解码
+efx_format/schema/custom_codecs.py — 变长 / 分派型 custom 块的手写编解码
 """
 from __future__ import annotations
 import struct
@@ -16,7 +16,7 @@ from .fields_model import Attribute, Int, Float, Enum, Bool, Bitmask, Byte, attr
 from .enums import (
     BITS_APPLICATION_RULE, BITS_LOOPING_MODE, BITS_LIGHT_GROUP,
     BITS_PLANE_UNKN5_1,
-    ENUM_BLEND_MODE, ENUM_LOOPING_ORIENTATION, ENUM_MESH_TRACKING_FLAGS, ENUM_RIBBON_MODE,
+    ENUM_LOOPING_ORIENTATION, ENUM_MESH_TRACKING_FLAGS, ENUM_RIBBON_MODE,
     _AXIS_DIRECTION6, _TRANSFORM_ROT_ORDER,
 )
 from ..hashes import *  # noqa: F401,F403  —— 各 custom 类型 hash 常量
@@ -149,7 +149,7 @@ _BILLBOARD3D_FIXED_SCHEMA = [
     ('useColorRange',              'i'),  # bool
     ('blendMode',                  'i'),
     ('correctColorNo',             'i'),  # 原 EPVColorSlot1；用户 2026-09-19 判定即官方 CorrectColorNo
-    ('SlotOverride1',              'i'),
+    ('colorRangeCorrectColorNo',   'i'),  # 原 SlotOverride1
     ('rotation',                   'f'),  # TIML DT 0x2FF50558("Rotation") 实机确认
     ('rotationJitter',             'f'),
     ('scale',                      'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
@@ -241,10 +241,19 @@ BILLBOARD3D_ATTR = attr_from_legacy(
     overrides={
         'applicationRule': Bitmask('applicationRule', BITS_APPLICATION_RULE, label_zh="应用规则"),
         'useColorRange':   Bool('useColorRange', label_zh="启用颜色范围"),
-        'blendMode':       Enum('blendMode', ENUM_BLEND_MODE, label_zh="混合模式"),
+        # 2026-09-20 从"混合模式"二值枚举改成布尔：ENUM_BLEND_MODE 只有 Alpha Blend(0)/
+        # Additive(1) 两个取值，Additive 叠加混合就是自发光/辉光效果。字节不变。
+        'blendMode':       Bool('blendMode', label_en="Enable Emissive", label_zh="启用自发光"),
         'enableGPUParticle': Bool('enableGPUParticle', label_zh="启用 GPU 粒子"),
         'lightGroup': Bitmask('lightGroup', BITS_LIGHT_GROUP, all_value=255, strict=True,
                                label_zh="光照组"),
+        'correctColorNo': Int('correctColorNo', label_zh="EPV 颜色修正槽位"),
+        # colorRangeCorrectColorNo：原名 SlotOverride1，沿用 EPVColorSlot 命名习惯；
+        # 跟紧邻的 correctColorNo（已确认对应 color）结构对称，位置又正好挨着
+        # colorRange，推测是 colorRange 专属的 EPV 槽位覆盖——但没有独立的实机测试
+        # 或注释坐实，只是位置类比，标"?"存疑。
+        'colorRangeCorrectColorNo': Int('colorRangeCorrectColorNo', label_en="Correct Color Range No?",
+                                         label_zh="EPV 颜色修正槽位?"),
     },
 )
 
@@ -272,8 +281,8 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     ('brightnessJitter',  'f'),     # 8  原 randomBrightnessMult，2026-07-30 改名（见 RIBBON schema 注释）
     ('useColorRange',     'i'),
     ('blendMode',         'i'),
-    ('EPVColorSlot1',     'i'),
-    ('EPVColorSlot2',     'i'),   # 16
+    ('correctColorNo',            'i'),  # 原 EPVColorSlot1
+    ('colorRangeCorrectColorNo',  'i'),  # 原 EPVColorSlot2，16
     # （2026-07-10）：原名 rotationJitterMin/Max、scaleJitterMin/Max 其实
     # 不是"抖动范围的 min/max"，是"固定值 + 抖动量"这套本仓库到处都在用的 value/valueJitter
     # 配对（同 BILLBOARD3D 的 rotation/rotationJitter、scale/scaleJitter）。
@@ -316,7 +325,16 @@ BILLBOARD2D_ATTR = attr_from_legacy(
     _schema_size(_BILLBOARD2D_EDIT_SCHEMA), _BILLBOARD2D_EDIT_SCHEMA,
     overrides={
         'useColorRange': Bool('useColorRange', label_zh="启用颜色范围"),
-        'blendMode':     Enum('blendMode', ENUM_BLEND_MODE, label_zh="混合模式"),
+        # 2026-09-20 从"混合模式"二值枚举改成布尔，理由同 BILLBOARD3D。
+        'blendMode':     Bool('blendMode', label_en="Enable Emissive", label_zh="启用自发光"),
+        # correctColorNo/colorRangeCorrectColorNo：原 EPVColorSlot1/2，跟 BILLBOARD3D
+        # 逐字段同构（color/colorRange/brightness/useColorRange/blendMode/两个 EPV
+        # 槽位/rotation…顺序完全一致），BILLBOARD3D 那边已把 EPVColorSlot1 坐实为
+        # correctColorNo（对应 color）；这里按同一结构类推同样改名，
+        # colorRangeCorrectColorNo 是否专属 colorRange 未独立验证，标"?"。
+        'correctColorNo': Int('correctColorNo', label_zh="EPV 颜色修正槽位"),
+        'colorRangeCorrectColorNo': Int('colorRangeCorrectColorNo', label_en="Correct Color Range No?",
+                                         label_zh="EPV 颜色修正槽位?"),
     },
 )
 
@@ -355,8 +373,7 @@ def pack_billboard2d(values: dict) -> bytes:
 #   XYZ scale(0)(24) + float global_scale/j(8) +
 #   int visconIndex/Jitter（原 starting/end_model_viscon；2026-08 实机确认是固定/随机配对，
 #     非 start/end：视觉条件（mod3 Visible Condition）索引 + 其随机量）(8) + colour*4(16) + int unkn7_0/1(8) +
-#   int rotationOrder（原 unkn7_2；恰好 6 种取值 0~5，与 EMITTERSHAPE3D.rotationOrder
-#     同构且同样以 4 为主流值，猜测为共享的旋转轴顺序枚举，语义未确认）(4) +
+#   int rotationOrder（原 unkn7_2）(4) +
 #   int tracking_flags（互斥模式选择,已转 Enum,官方语料见 0/1/2/4/6/8/10,10 不在
 #     社区文档表内待确认,9 从未出现）(4) + int unkn40(4) +
 #   int affectedByLight（官方语料证实为可混合位掩码：bit0~6 各种组合都出现,
@@ -757,7 +774,10 @@ RIBBON_ATTR = attr_from_legacy(
         # 原 spacer0/1/2/3/5/7/8、unkn24 拆出的真实 bool（0xCD 占位掩盖的低字节数据）。
         'useColorRange': Bool('useColorRange', backing='B', label_zh="启用颜色范围"),
         'ribbonMode':    Enum('ribbonMode', ENUM_RIBBON_MODE, label_zh="条带模式"),
-        'blendMode':     Enum('blendMode', ENUM_BLEND_MODE, backing='B', label_zh="混合模式"),
+        # 2026-09-20 从"混合模式"二值枚举改成布尔：ENUM_BLEND_MODE 从来就只有
+        # Alpha Blend(0)/Additive(1) 两个取值，Additive 叠加混合就是自发光/辉光效果，
+        # 用勾选框比二选一下拉更直观。字节不变（同一个 'B' 背板，0/1 两个值）。
+        'blendMode':     Bool('blendMode', backing='B', label_en="Enable Emissive", label_zh="启用自发光"),
         'unknBool15':  Bool('unknBool15'),
         'unknBool3a':  Bool('unknBool3a', backing='B'),
         'unknBool3b':  Bool('unknBool3b', backing='B'),
@@ -766,6 +786,11 @@ RIBBON_ATTR = attr_from_legacy(
         'unknBool8':   Bool('unknBool8', backing='B'),
         'flowmapPlayOnce': Bool('flowmapPlayOnce', backing='B', label_zh="流动只播放一次"),
         'flowmapReverse':  Bool('flowmapReverse', backing='B', label_zh="流动逆向播放"),
+        # epvcolor_0/1：STRAINRIBBON 的 epv_color_slot1/2 注释里明确写"同 RIBBON.epvcolor
+        # 那套机制"——slot0 管 color、slot1 管 colorRange，跟 correctColorNo 家族同一种
+        # EPV 槽位覆盖，2026-09-20 补标签+挪到各自颜色上面（此前只改名没接完）。
+        'epvcolor_0': Int('epvcolor_0', label_zh="EPV 颜色修正槽位"),
+        'epvcolor_1': Int('epvcolor_1', label_zh="EPV 颜色修正槽位"),
     },
 )
 
@@ -815,8 +840,8 @@ _PLANE_DDS_SCHEMA = [
     ('brightnessJitter',  'f'),  # 原 randomBrightnessMult
     ('useColorRange',      'i'),
     ('blendMode',          'i'),
-    ('EPVColorSlot1',      'i'),
-    ('EPVColorSlot2',      'i'),
+    ('correctColorNo',            'i'),  # 原 EPVColorSlot1
+    ('colorRangeCorrectColorNo',  'i'),  # 原 EPVColorSlot2
     # 与顶部 XYZ 朝向独立的一对标量旋转+抖动（平面沿自身垂线的自旋），
     # 同 MESH.rotation2/rotation2Jitter 命名（原 SlotOverride1/2，2026-07-08 已排除
     # 整数槽位覆盖语义，重解读为 float）。
@@ -887,12 +912,19 @@ PLANE_ATTR = attr_from_legacy(
     overrides={
         'applicationRule': Bitmask('applicationRule', BITS_APPLICATION_RULE, label_zh="应用规则"),
         'useColorRange':   Bool('useColorRange', label_zh="启用颜色范围"),
-        'blendMode':       Enum('blendMode', ENUM_BLEND_MODE, label_zh="混合模式"),
+        # 2026-09-20 从"混合模式"二值枚举改成布尔，理由同 BILLBOARD3D。
+        'blendMode':       Bool('blendMode', label_en="Enable Emissive", label_zh="启用自发光"),
         'unknEnum5_1':     Bitmask('unknEnum5_1', BITS_PLANE_UNKN5_1, gate_first=True),
         'baseAxis':        Enum('baseAxis', _AXIS_DIRECTION6, label_zh="基准轴"),
         'rotationOrder':   Enum('rotationOrder', _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
         # ⚠ PLANE 语料最大值只到 36（bit2+bit5），从未见到 bit7/255，不设 all_value。
         'lightGroup':      Bitmask('lightGroup', BITS_LIGHT_GROUP, strict=True, label_zh="光照组"),
+        # correctColorNo/colorRangeCorrectColorNo：原 EPVColorSlot1/2，跟
+        # BILLBOARD3D/BILLBOARD2D 逐字段同构，按同一结构类推改名（见 BILLBOARD2D
+        # 的同名注释）。
+        'correctColorNo':           Int('correctColorNo', label_zh="EPV 颜色修正槽位"),
+        'colorRangeCorrectColorNo': Int('colorRangeCorrectColorNo', label_en="Correct Color Range No?",
+                                         label_zh="EPV 颜色修正槽位?"),
     },
 )
 
@@ -1035,11 +1067,7 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('widthwiseUVScalingBML',  'f'),
     ('endPointScatter',        'B'),        # color3.x（终点扩散开关）
     ('originReleaseFlag',      'B'),        # color3.y（起点解锁标志）
-    # 原 color3_z：曾记为"真实 0/1 标志、语义待确认、模板误标成颜色"。2026-07-31 关联检验
-    # 定为 flowmap 总开关——按其取值分组统计"下面 8 件套是否偏离默认 [1,0,1,0,1,0,1,0]"：
-    # =0 的 126 块**全部(126/126)**停在默认，=1 的 55 块有 52 块(94.5%)偏离；同组对照字节
-    # endPointScatter(75%/30.8%)、originReleaseFlag、color3_w 全都毫无相关性，排除巧合。
-    # （3 个"=1 但仍默认"的反例属于"开了没调"，同 RIBBON 那 48 个无效 reverse 组合。）
+    # 原 color3_z：模板误标成颜色分量，实为下方 flowmap 8 件套的总开关。
     ('enableFlowmap',          'B'),        # 原 color3_z
     ('color3_w',               'B'),        # 真保留，恒为 0xCD
     # 原 unkn06_0..unkn06_7（32B）= flowmap 8 件套。2026-07-31 对全 340B 逐槽滑窗，**只有这
@@ -1191,6 +1219,46 @@ def pack_turbulence(values: dict) -> bytes:
 # path 由 codec 单独处理。unknEnum*/unknFlag* 值集未确认，暂按 int。
 _TURBULENCE_EDIT_SCHEMA = [('typeFlag', 'i')] + _TURBULENCE_AFTER_PATH_SCHEMA
 TURBULENCE_ATTR = attr_from_legacy(_schema_size(_TURBULENCE_EDIT_SCHEMA), _TURBULENCE_EDIT_SCHEMA)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠ EXTERNSTRAINRIBBON / EXTERNTURBULENCE —— 2026-09-20 FABRICATED（虚构，无真实样本）
+#
+# 全部 efx_samples/ 语料（官方+社区）从未出现过这两个类型作为 Extern 子项；社区 BT
+# 参考模板把它们写成空 `typedef struct{}`；RE Engine DTI 转储对所有 ExternXxx 类只有
+# 统一的通用 mItems 容器字段，不提供任何可区分的结构信息。
+#
+# 这两个 schema 是纯粹的外推假设，依据是：已确认的 3 个"主属性含内嵌路径"的 Extern
+# 覆盖版（UVSEQUENCE/BILLBOARD3D/RGBWATER）无一例外表现为「主属性去掉路径 + 固定
+# 5 字节尾巴（int32+byte）」。STRAINRIBBON/TURBULENCE 的主属性同样含内嵌路径，故按
+# 同一规律外推：
+#   EXTERNSTRAINRIBBON = STRAINRIBBON 主属性路径前的 340B 定长段 + 5B 尾巴 = 345B
+#   EXTERNTURBULENCE   = TURBULENCE 主属性 typeFlag(4B)+路径后 152B 定长段 + 5B 尾巴 = 161B
+# 尾巴字段命名/取值完全是猜的（全部填 0，不借用 RGBWATER 那组"恒为1/0"的实测值，避免
+# 制造"这也是实测出来的"的错觉）。字段名/标签沿用对应主属性的既有命名（同一 Field
+# 对象直接复用），只有 unkn_tail0/1 是新增的、明确未知的猜测字段。
+# 一旦真的遇到样本，先核对字节是否吻合，不吻合要立刻改，不要因为代码能跑就默认对。
+# ─────────────────────────────────────────────────────────────────────────────
+
+EXTERN_STRAINRIBBON_ATTR = Attribute(
+    size=345,
+    fields=list(STRAINRIBBON_ATTR.fields) + [
+        Int("unkn_tail0"),
+        Byte("unkn_tail1"),
+    ],
+)
+assert _schema_size(EXTERN_STRAINRIBBON_ATTR.schema) == 345, \
+    f"EXTERN_STRAINRIBBON_ATTR size mismatch: {_schema_size(EXTERN_STRAINRIBBON_ATTR.schema)}"
+
+EXTERN_TURBULENCE_ATTR = Attribute(
+    size=161,
+    fields=list(TURBULENCE_ATTR.fields) + [
+        Int("unkn_tail0"),
+        Byte("unkn_tail1"),
+    ],
+)
+assert _schema_size(EXTERN_TURBULENCE_ATTR.schema) == 161, \
+    f"EXTERN_TURBULENCE_ATTR size mismatch: {_schema_size(EXTERN_TURBULENCE_ATTR.schema)}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1437,6 +1505,16 @@ _RGBWATER_FIXED_SCHEMA = [
     # 段2 只有 9 位（没有 correctColorNo），是三段唯一的结构差异——2026-09-19 跟
     # devlecture §10.1.2 对上了：面板只有 CorrectColorSpecularNo/CorrectColorSheetNo
     # 两个下拉框，没有第三个对应 waterLerpGtoB 段的，字节结构和官方面板严丝合缝。
+    #
+    # 2026-09-20 用户拿自制 ABCD 四通道测试贴图（R=A、G=B、B=C、Alpha=D，四个字母互不
+    # 重叠画在贴图四个通道里）实机逐条测出两条遮罩公式：
+    #   水膜(Sheet)遮罩    = mix(Alpha, Blue, waterLerpGtoB)——0 时纯 Alpha 形状、1 时
+    #                        纯 Blue 形状，两次都是单通道的干净整块，不是交集也不是叠加。
+    #   高光(Specular)遮罩 = R × G × Alpha 三通道交集——用连通域检测比对实机截图，
+    #                        三块碎片的形状类别、相对位置精确对应，不是渲染噪声。
+    # `waterLerpGtoB` 这个名字本身就是官方 TIML DT 确认过的原名（不是我们瞎起的），但
+    # 字面意思"G 混入 B"跟实测的"Alpha 混入 Blue"对不上——保留内部名（DTI 权威），
+    # 面板标签改成准确描述实测行为的说法，不用"GtoB"这个字面翻译。
     ('typeFlag',                 'i'),   # 原 unkn0
     # ── 头部 2 色 + 7 float。2026-09-03 用户在 Blender 里逐条建 TIML 轨道实测，把 4 个
     # 位置钉到了官方 TimelineParam 名（DT hash 见 timl/names.py::FIELD_TO_DT）。
@@ -1492,35 +1570,41 @@ assert _schema_size(_RGBWATER_FIXED_SCHEMA) == 156, \
     f"_RGBWATER_FIXED_SCHEMA size mismatch: {_schema_size(_RGBWATER_FIXED_SCHEMA)}"
 RGBWATER_ATTR = attr_from_legacy(
     _schema_size(_RGBWATER_FIXED_SCHEMA), _RGBWATER_FIXED_SCHEMA,
+    # 2026-09-20 比照 RGBFIRE 精简：面板按 [高光]/[水膜]/[环境反射]/[插值] 分组显示
+    # （见 panels.py 的 RGBWATER 专属分组逻辑），组内字段不再重复"高光/水膜/水色插值"
+    # 前缀——分组小标题已经给出上下文。`waterLerpGtoB` 的标签改成描述实测行为
+    # （Alpha 混入蓝通道），不用字面直译的"绿→蓝"（原名 DTI 权威保留，只改标签）。
     labels={
-        'colorSpecular': '高光颜色',
-        'colorSheet': '水膜颜色',
-        'colorRate': '颜色比率',
-        'waterLerpGtoB': '水色 绿→蓝',
+        'colorSpecular': '颜色',
+        'colorSheet': '颜色',
+        'colorRate': '总体亮度',
+        'waterLerpGtoB': 'Alpha 混入蓝通道比例',
         'intensityCubeMap': '环境反射强度',
-        'intensitySpecular': '高光强度',
-        'intensitySheet': '水膜强度',
-        'intensityAlpha': '透明度强度',
-        'specularColorParam_appearFrame': '高光 出现帧',
-        'specularColorParam_keepFrame': '高光 保持帧',
-        'specularColorParam_vanishFrame': '高光 消失帧',
-        'specularColorParam_lifeType': '高光 生命期模式',
-        'sheetColorParam_appearFrame': '水膜 出现帧',
-        'sheetColorParam_keepFrame': '水膜 保持帧',
-        'sheetColorParam_vanishFrame': '水膜 消失帧',
-        'sheetColorParam_lifeType': '水膜 生命期模式',
-        'waterLerpParam_appearFrame': '水色插值 出现帧',
-        'waterLerpParam_keepFrame': '水色插值 保持帧',
-        'waterLerpParam_vanishFrame': '水色插值 消失帧',
-        'waterLerpParam_lifeType': '水色插值 生命期模式',
+        'intensitySpecular': '强度',
+        'intensitySheet': '强度',
+        'intensityAlpha': '总体透明度',
+        'specularColorParam_appearFrame': '淡入',
+        'specularColorParam_keepFrame': '持续',
+        'specularColorParam_vanishFrame': '淡出',
+        'specularColorParam_lifeType': '生命期模式',
+        'specularColorParam_correctColorNo': 'EPV 颜色修正槽位',
+        'sheetColorParam_appearFrame': '淡入',
+        'sheetColorParam_keepFrame': '持续',
+        'sheetColorParam_vanishFrame': '淡出',
+        'sheetColorParam_lifeType': '生命期模式',
+        'sheetColorParam_correctColorNo': 'EPV 颜色修正槽位',
+        'waterLerpParam_appearFrame': '淡入',
+        'waterLerpParam_keepFrame': '持续',
+        'waterLerpParam_vanishFrame': '淡出',
+        'waterLerpParam_lifeType': '生命期模式',
     },
     overrides={
-        'specularColorParam_useLife':  Bool('specularColorParam_useLife',  label_en='Use Life 0',  label_zh='高光 启用生命期'),
-        'specularColorParam_lighting': Bool('specularColorParam_lighting', label_en='Lighting 0', label_zh='高光 受光照'),
-        'sheetColorParam_useLife':  Bool('sheetColorParam_useLife',  label_en='Use Life 1',  label_zh='水膜 启用生命期'),
-        'sheetColorParam_lighting': Bool('sheetColorParam_lighting', label_en='Lighting 1', label_zh='水膜 受光照'),
-        'waterLerpParam_useLife':  Bool('waterLerpParam_useLife',  label_en='Use Life 2',  label_zh='水色插值 启用生命期'),
-        'waterLerpParam_lighting': Bool('waterLerpParam_lighting', label_en='Lighting 2', label_zh='水色插值 受光照'),
+        'specularColorParam_useLife':  Bool('specularColorParam_useLife',  label_en='Use Life',  label_zh='启用生命周期'),
+        'specularColorParam_lighting': Bool('specularColorParam_lighting', label_en='Lighting', label_zh='受光照影响'),
+        'sheetColorParam_useLife':  Bool('sheetColorParam_useLife',  label_en='Use Life',  label_zh='启用生命周期'),
+        'sheetColorParam_lighting': Bool('sheetColorParam_lighting', label_en='Lighting', label_zh='受光照影响'),
+        'waterLerpParam_useLife':  Bool('waterLerpParam_useLife',  label_en='Use Life',  label_zh='启用生命周期'),
+        'waterLerpParam_lighting': Bool('waterLerpParam_lighting', label_en='Lighting', label_zh='受光照影响'),
     },
 )
 
@@ -1863,7 +1947,7 @@ TUBELIGHT_ATTR = Attribute(size=124, fields=[
     Int("unknFixed3_0"),                               # off64
     Int("unknFixed3_1"),                               # off68
     Int("unkn3_2"),                                    # off72
-    Int("headColorEpvSlot", label_zh="起点颜色 EPV 颜色槽"),  # off76
+    Int("headColorEpvSlot", label_zh="EPV 颜色修正槽位"),  # off76
     Int("headColor", label_zh="光柱起点颜色"),          # off80 打包 RGBA int
     # ── ⚠ 头/尾几何四件套：高度对称但对不齐，待进一步探索 ────────────────────────
     # 用户 2026-09-04 观察：tailPlaneOffset(off112) 像是**起点**的实边位置、unkn6b_1(off116)
@@ -2007,6 +2091,75 @@ def _walk_layoutbank_block(data: bytes, pos: int) -> int:
     return pos
 
 
+def _read_layoutbank_block_columns(data: bytes, pos: int):
+    """跟 _walk_layoutbank_block 走同一遍字节，但把每列的值也读出来，供只读展示用。
+
+    返回 (columns, new_pos)；columns = [{'block_type', 'count', 'values'}, ...]。
+    values 按 2026-09 全语料统计坐实的原生宽度解出（未实机确认具体语义，只保真原生
+    类型）：
+      block_type 0/1 → count*3 个 float32（0 是真实小数；1 常见大量精确 0.0）
+      block_type 6   → count*3 个 int32（其实是 16 位小整数 0 扩展到 32 位，见下方
+                       int16 展示；这里额外把 int32 值也存，两者数值相同）
+      block_type 1~5（不含 6）→ count*2 个 int16（4 short 一组，真实数据只占 1~3
+                       个，其余是 0 填充，见 docs 结论）
+      block_type 7   → 变宽（count*2*unkn0 个 int16），信息量太低，原样存 int16
+    """
+    columns = []
+    count = struct.unpack_from('<i', data, pos)[0]
+    pos += 4
+    if count > 0:
+        while True:
+            sentinel = struct.unpack_from('<i', data, pos)[0]
+            if sentinel == -1:
+                pos += 4
+                break
+            block_type = sentinel
+            pos += 4
+            if block_type == 0 or block_type == 6:
+                n = count * 3
+                if block_type == 0:
+                    values = list(struct.unpack_from(f'<{n}f', data, pos))
+                else:
+                    values = list(struct.unpack_from(f'<{n}i', data, pos))
+                pos += n * 4
+            elif 0 < block_type < 6:
+                n16 = count * 2 * 2
+                values = list(struct.unpack_from(f'<{n16}h', data, pos))
+                pos += n16 * 2
+            elif block_type == 7:
+                sub_unkn0 = struct.unpack_from('<i', data, pos)[0]
+                pos += 4
+                n16 = count * 2 * sub_unkn0 * 2
+                values = list(struct.unpack_from(f'<{n16}h', data, pos))
+                pos += n16 * 2
+                block_type = f'7(sub={sub_unkn0})'
+            else:
+                raise ValueError(f'LayoutBank_B: unknown block_type={block_type} at pos {pos-4}')
+            columns.append({'block_type': block_type, 'count': count, 'values': values})
+    return columns, pos
+
+
+def describe_layoutbank(data: bytes) -> list:
+    """解出 Root LayoutBank 子条目（伪装成 AttrBlock 后的 data_bytes，即去掉了
+    4 字节类型头）的全部列，供只读展示用（不做字段级编辑，见用户 2026-09-20
+    的决定：LayoutBank 结构因人而异、变长，套不进固定 schema 模型）。
+
+    data_bytes 布局：int unkn0(4) + int block_count(4) + block_count ×
+    LayoutBank_Block。返回 [{'block_idx', 'block_type', 'count', 'values'}, ...]，
+    按出现顺序摊平（不再按 LayoutBank_Block 分组，UI 只需要一份平铺列表）。
+    """
+    (unkn0,) = struct.unpack_from('<i', data, 0)
+    (block_count,) = struct.unpack_from('<i', data, 4)
+    pos = 8
+    out = []
+    for bi in range(block_count):
+        columns, pos = _read_layoutbank_block_columns(data, pos)
+        for col in columns:
+            col['block_idx'] = bi
+            out.append(col)
+    return out
+
+
 _LAYOUT_PREFIX_SCHEMA = [
     ('typeFlag', 'i'),   # 原 unkn0_0
     ('unknFixed0_1', 'i'),
@@ -2017,11 +2170,11 @@ _LAYOUT_PREFIX_SCHEMA = [
 ]
 assert _schema_size(_LAYOUT_PREFIX_SCHEMA) == 24, \
     f"_LAYOUT_PREFIX_SCHEMA size mismatch: {_schema_size(_LAYOUT_PREFIX_SCHEMA)}"
-# LAYOUT 恒在的 24B 固定前缀（可编辑）；嵌套 LayoutBank_Block + 条件尾巴仍 opaque。
+# LAYOUT 恒在的 24B 固定前缀（可编辑）；嵌套 LayoutBank_Block 仍 opaque。
 LAYOUT_ATTR = attr_from_legacy(_schema_size(_LAYOUT_PREFIX_SCHEMA), _LAYOUT_PREFIX_SCHEMA)
 
 def unpack_layout(data: bytes, off: int = 0):
-    """Unpack Layout（24B fixed + LayoutBank_Block(opaque)，恒无尾巴）。"""
+    """Unpack Layout（24B fixed + LayoutBank_Block(opaque)）。"""
     values, off = unpack(_LAYOUT_PREFIX_SCHEMA, data, off)
     bank_start = off
     bank_end = _walk_layoutbank_block(data, bank_start)
@@ -2038,7 +2191,7 @@ def pack_layout(values: dict) -> bytes:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# L1.1b：含路径 custom 类型的路径感知 extract / rebuild
+# 含路径 custom 类型的路径感知 extract / rebuild
 #
 # 设计原则：
 #   - extract_paths(type_hash, data_bytes) → list[str]   （UTF-8 解码路径）
@@ -2046,7 +2199,7 @@ def pack_layout(values: dict) -> bytes:
 #     非路径字节逐字从原 data_bytes verbatim 拷贝，只更新 path_len 字段和路径段。  
 #     若 new_paths == original_paths，输出 == 原 data_bytes（identity）。  
 #   - 不调用整体 pack_* 函数，绝对不 re-pack 非路径部分。  
-#   - PTBEHAVIOR / MATERIAL 已在 L1.1c 加入（嵌套/变长分派，多路径按序重建）。
+#   - PTBEHAVIOR / MATERIAL 支持嵌套/变长分派，多路径按序重建。
 #
 # 支持类型：
 #   UVSEQUENCE   —— 末尾 length-prefixed path（path_len @ offset 40, path @ 44）
@@ -2190,7 +2343,7 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
         path2_b = data_bytes[off:null2]
         return [_path_bytes_to_str(path1_b), _path_bytes_to_str(path2_b)]
 
-    # ── L1.1c：MATERIAL ─────────────────────────────────────────────────────────
+    # ── MATERIAL ─────────────────────────────────────────────────────────
     # 结构：int64 unkn00(8) + int block_count(4) +
     #   block_count × Tex_Block:
     #     long mat_name_hash(4)+long mat_shader(4)+long unkn03(4)+int set_count(4)
@@ -2225,7 +2378,7 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
                     off += 4   # long unkn_type
         return paths
 
-    # ── L1.1c：PTBEHAVIOR ───────────────────────────────────────────────────────
+    # ── PTBEHAVIOR ───────────────────────────────────────────────────────
     # 结构：int unkn0(4)+int behav_type_len(4)+int para_count(4)+
     #   char b_type[behav_type_len] +
     #   para_count × EFX_Behav:
@@ -2270,10 +2423,23 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
         return paths
 
 
-    # Layout：无嵌入路径（24B fixed + LayoutBank_Block(opaque) + 可选 20B tail），
+    # Layout：无嵌入路径（24B fixed + LayoutBank_Block(opaque)），
     # 返回空列表，只为了让 CUSTOM_FIELD_SCHEMA_MAP 里的 24B 固定前缀字段展开生效。
     if type_hash == LAYOUT:
         return []
+
+    # RenderTarget（Root 专属子条目，伪装成 AttrBlock，见 io_tree.py 的
+    # _root_entry_to_attr_block）：path_count(4) + 6×(path_len(4)+path，含末尾
+    # null) + NULL(4) + unkn0[6](24) + unkn1[9](36)。6 个槎位常有留空（只有
+    # 一个 \x00），按出现顺序原样返回 6 项，不因空槎跳过。
+    if type_hash == RENDERTARGET:
+        paths = []
+        off = 4  # 跳过 path_count
+        for _ in range(6):
+            (path_len,) = struct.unpack_from('<i', data_bytes, off); off += 4
+            path_b = data_bytes[off:off + path_len].rstrip(b'\x00'); off += path_len
+            paths.append(_path_bytes_to_str(path_b))
+        return paths
 
     raise ValueError(f"extract_paths: 不支持的类型 hash 0x{type_hash:08X}")
 
@@ -2430,7 +2596,7 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path1_b + b'\x00'
                 + new_path2_b + b'\x00')
 
-    # ── L1.1c：MATERIAL ─────────────────────────────────────────────────────────
+    # ── MATERIAL ─────────────────────────────────────────────────────────
     # 策略：遍历嵌套结构，逐字节拷贝所有非路径部分，对 type==0x80 的 Tex_Set
     # 用 new_paths[path_idx] 替换 path_len+path 段，其余字节 verbatim。  
     # path_idx 按 type==0x80 出现顺序递增，对齐 extract_paths 的返回顺序。
@@ -2471,7 +2637,7 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                     parts.append(data_bytes[off:off + 4]); off += 4
         return b''.join(parts)
 
-    # ── L1.1c：PTBEHAVIOR ───────────────────────────────────────────────────────
+    # ── PTBEHAVIOR ───────────────────────────────────────────────────────
     # 策略：遍历 EFX_Behav 列表，逐字节拷贝非路径部分，对 t==0x80 的参数
     # 用 new_paths[path_idx] 替换 file_type 后面的 path_len+path 段。
     # file_type(4) verbatim，只替换 path_len(4)+path[path_len]。  
@@ -2529,10 +2695,91 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
     if type_hash == LAYOUT:
         return data_bytes
 
+    # ── RenderTarget ──
+    # 结构：path_count(4) verbatim + 6×(path_len+path，含末尾 null) + tail(NULL
+    # + unkn0[6] + unkn1[9]，24+36=60B) verbatim。
+    if type_hash == RENDERTARGET:
+        assert len(new_paths) == 6
+        off = 4
+        for _ in range(6):
+            (path_len,) = struct.unpack_from('<i', data_bytes, off); off += 4 + path_len
+        tail = data_bytes[off:]
+        out = data_bytes[:4]
+        for p in new_paths:
+            pb = _str_to_path_bytes(p) + b'\x00'
+            out += struct.pack('<i', len(pb)) + pb
+        return out + tail
+
     raise ValueError(f"rebuild_with_paths: 不支持的类型 hash 0x{type_hash:08X}")
 
 
-# 支持路径编辑的 custom 类型集合（L1.1b：9 种；L1.1c 新增 MATERIAL + PTBEHAVIOR）
+# ─────────────────────────────────────────────────────────────────────────────
+# RenderTarget（Root 专属子条目，见 refs/EFX_Root.bt）—— 伪装成 AttrBlock 才能
+# 套用现有的属性子对象基建（io_tree.py::_root_entry_to_attr_block）。
+#
+#   long type(4，已在 AttrBlock.type_hash，不进 data_bytes)
+#   int  path_count(4)                       —— 全语料 18 例取值 0/2/4，跟哪个
+#                                                路径槎位有值对不上，语义未知
+#   6 × RenderTarget_Path：int path_len(4) + char p[path_len]（含末尾 null）
+#   long NULL(4)                             —— 全语料恒 0
+#   int  unkn0[6](24)
+#   float unkn1[9](36)                       —— [0,6,7,8] 恒为 1/16/1/40；
+#                                                [5] 是唯一常变的，像距离/范围
+#
+# 18 例统计全部收在 unkn0/unkn1 的字段注释里；均未实机确认，字段名保持中性。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def unpack_rendertarget(data: bytes, off: int = 0):
+    """Unpack RenderTarget data_bytes（Root 专属子条目）。"""
+    values = {}
+    (values['path_count'],) = struct.unpack_from('<i', data, off)
+    off += 4
+    for i in range(6):
+        (path_len,) = struct.unpack_from('<i', data, off)
+        off += 4
+        values[f'path{i}'] = data[off:off + path_len]
+        off += path_len
+    (values['nullField'],) = struct.unpack_from('<i', data, off)
+    off += 4
+    for i in range(6):
+        (values[f'unkn0_{i}'],) = struct.unpack_from('<i', data, off)
+        off += 4
+    for i in range(9):
+        (values[f'unkn1_{i}'],) = struct.unpack_from('<f', data, off)
+        off += 4
+    return values, off
+
+
+def pack_rendertarget(values: dict) -> bytes:
+    """Pack RenderTarget values dict back to bytes。"""
+    out = struct.pack('<i', values['path_count'])
+    for i in range(6):
+        p = values[f'path{i}']
+        out += struct.pack('<i', len(p)) + p
+    out += struct.pack('<i', values['nullField'])
+    for i in range(6):
+        out += struct.pack('<i', values[f'unkn0_{i}'])
+    for i in range(9):
+        out += struct.pack('<f', values[f'unkn1_{i}'])
+    return out
+
+
+# 可编辑标量字段 schema（排除 path0..5，由 codec 单独处理，同其它 custom 类型约定）。
+_RENDERTARGET_TAIL_SCHEMA = [
+    ('path_count', 'i'),  # 语义未知，见上方注释
+    ('nullField', 'i'),   # 全语料恒 0
+    ('unkn0_0', 'i'), ('unkn0_1', 'i'), ('unkn0_2', 'i'),
+    ('unkn0_3', 'i'), ('unkn0_4', 'i'), ('unkn0_5', 'i'),
+    ('unkn1_0', 'f'),  # 恒 1.0
+    ('unkn1_1', 'f'), ('unkn1_2', 'f'), ('unkn1_3', 'f'), ('unkn1_4', 'f'),  # 恒 0.0
+    ('unkn1_5', 'f'),  # 唯一常变的一个，像距离/范围
+    ('unkn1_6', 'f'),  # 恒 16.0
+    ('unkn1_7', 'f'),  # 恒 1.0
+    ('unkn1_8', 'f'),  # 恒 40.0
+]
+
+
+# 支持路径编辑的 custom 类型集合（基础 9 种；MATERIAL + PTBEHAVIOR 为嵌套/分派新增）
 PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     UVSEQUENCE,
     BILLBOARD3D,
@@ -2544,7 +2791,7 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     TURBULENCE,
     LIGHTNING,
     RGBWATER,
-    # L1.1c：嵌套/分派类型，含多个嵌入路径
+    # 嵌套/分派类型，含多个嵌入路径
     MATERIAL,
     PTBEHAVIOR,
     # 新增变长路径类型
@@ -2554,6 +2801,8 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     TONEMAPFILTER,
     # 无嵌入路径但需要 Phase A 固定字段展开：extract_paths/rebuild_with_paths 均按 0 路径处理
     LAYOUT,
+    # Root 专属子条目（伪装成 AttrBlock），含 6 个嵌入路径
+    RENDERTARGET,
 })
 
 
@@ -2569,7 +2818,8 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
 # 由 decode 原值经 pack 精确还原（NaN / 精度 / 哨兵全免疫），因 field_roundtrip
 # 已证 pack(unpack(data)) == data 位精确。
 #
-# 注意：MATERIAL / PTBEHAVIOR 是嵌套分派结构，不在此表（Phase B 另做）。
+# 注意：MATERIAL / PTBEHAVIOR 是嵌套分派结构，不在此表（分别由 fields.py 的
+# rebuild_material_attribute / rebuild_ptbehavior_attribute 单独处理）。
 # 拼接顺序仅影响 UI 显示顺序，不影响正确性（rebuild 按字段名覆盖，pack 按 dict 布局）。
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2595,10 +2845,11 @@ CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     # TonemapFilter：3 个 fixed 标量字段（unkn0[2]/unkn1/unkn2[3]）；path/path_len
     # 由 codec 处理、不入 schema，path 走通用 STRING-item↔bytes-key 路径回写。
     TONEMAPFILTER:    _TONEMAPFILTER_FIXED_SCHEMA,
-    # Layout：暴露恒在的 24B fixed 前缀；LayoutBank_Block(嵌套变长) 与尾段
-    # （20B，present-conditional，见 unpack_layout 顶部注释）都不在此表，但
-    # unpack_layout/pack_layout 会原样保留（未编辑字段精确回填）。
+    # Layout：暴露恒在的 24B fixed 前缀；LayoutBank_Block（嵌套变长）
+    # 不在此表，但 unpack_layout/pack_layout 会原样保留（未编辑字段精确回填）。
     LAYOUT:           _LAYOUT_PREFIX_SCHEMA,
+    # RenderTarget：Root 专属子条目，6 个 path0..5 由 codec 单独处理，不入 schema。
+    RENDERTARGET:     _RENDERTARGET_TAIL_SCHEMA,
 }
 
 

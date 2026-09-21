@@ -1,8 +1,8 @@
 """
-blender_efx/operators.py  —  L1.0 + L1.2 + L1.3 扩展：导入/导出算子 + 预设算子 + FileHandler
+blender_efx/operators.py  —  导入/导出算子 + 预设算子 + FileHandler
 
 约束（参照 CLAUDE.md）：
-  - Python 3.11 语法（目标 Blender 4.3.2）
+  - Python 3.10 语法（兼容 Blender 3.6～5.x）
   - bpy 只用稳定子集：Operator / ImportHelper / ExportHelper / register_class
   - FileHandler：Blender 4.1+ 稳定 API（4.3.2 / 5.1 均有）
   - 不使用 5.x 新增 API
@@ -11,7 +11,7 @@ blender_efx/operators.py  —  L1.0 + L1.2 + L1.3 扩展：导入/导出算子 +
 字段复用：efx.copy_attribute_fields / efx.paste_attribute_fields（即时内存剪贴板）。
   （旧「字段值预设」算子 save/apply_attribute_preset 已移除，整属性预设见 attribute_ops。）
 
-L1.3 拖入导入（FileHandler）：
+拖入导入（FileHandler）：
   EFX_FH_import  —  注册 .efx 文件拖入 3D 视口时调用 efx.import_efx
   efx.import_efx 补充 files+directory 属性支持 FileHandler 调用约定，
   同时保持原有"文件浏览器/按钮选文件导入"用法不变。
@@ -82,7 +82,7 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         maxlen=255,
     )
 
-    # L1.3 FileHandler 支持：FileHandler 调用时传入 directory + files（OperatorFileListElement 列表）
+    # FileHandler 支持：FileHandler 调用时传入 directory + files（OperatorFileListElement 列表）
     # ImportHelper 提供的 filepath 在单文件菜单路径下使用；
     # FileHandler 拖入时使用 directory + files 约定（Blender 4.1+ FileHandler 标准）。
     # 两种调用路径均由同一个 execute 统一处理。
@@ -194,10 +194,12 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
                 imported_paths.append(filepath)
             except Exception as exc:
                 import traceback
+                traceback.print_exc()
                 errors.append(f"{os.path.basename(filepath)}: {exc}")
                 self.report(
                     {"ERROR"},
-                    f"EFX import failed: {filepath}\n{traceback.format_exc()}",
+                    f"Failed to import '{os.path.basename(filepath)}'. The file may be "
+                    "corrupted or use an unsupported format; see the system console for details.",
                 )
 
         # ── 导入后按 TRANSFORM3D + 绑定骨骼(jointNo) 摆放各特效体 ────────────
@@ -497,13 +499,24 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         # ── 2. 导出为字节 ───────────────────────────────────────────────────
         try:
             data = io_tree.export_efx_tree(root, recalc_timl_length=self.recalc_timl_length)
-        except Exception as exc:
+        except Exception:
             import traceback
+            traceback.print_exc()
             self.report(
                 {"ERROR"},
-                f"EFX export serialization failed: {exc}\n{traceback.format_exc()}",
+                "Failed to export this EFX. See the system console for details.",
             )
             return {"CANCELLED"}
+
+        # root_attr_dropped 是本次 export_efx_tree 调用才算出来的（跟 eof_dropped
+        # 不同，不是导入时就有的），第 440 行那次 pre-export validate 看不到——
+        # 导出完直接读 root 上的最新值，并进 skipped 那个统一弹窗一起报。
+        _root_attr_dropped = str(root.get("root_attr_dropped", ""))
+        if _root_attr_dropped:
+            skipped.append({
+                "category": "root_attr_dropped",
+                "msg": f"Attribute(s) dropped (wrong entry type for their kind): {_root_attr_dropped}",
+            })
 
         # ── 2.5 自动重算 filesize_double（doubleBuffer @ header 偏移 68，uint LE）──
         # 公式：max(原值, ceil16(2.0 × 文件大小))。原地覆写 4 字节（不改文件长度，
@@ -525,8 +538,11 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         try:
             with open(self.filepath, "wb") as f:
                 f.write(data)
-        except OSError as exc:
-            self.report({"ERROR"}, f"Failed to write file: {exc}")
+        except OSError:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, f"Failed to write '{self.filepath}'. Check disk space and "
+                                    "whether the file is open in another program.")
             return {"CANCELLED"}
 
         # ── 3.5 报告被跳过/清理的引用（悬空指针 + EOF 越界 raw 哨兵）──────────────
@@ -562,7 +578,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# L1.4 即时复制/粘贴（内存剪贴板）
+# 即时复制/粘贴（内存剪贴板）
 #   （旧「字段值预设」算子 EFX_OT_save/apply_attribute_preset 已移除：属性预设改为
 #    attribute_ops 的整属性增删机制；字段复用保留为下方的即时复制/粘贴。）
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1269,8 +1285,11 @@ class EFX_OT_material_pick_mrl3_reference(bpy.types.Operator, ImportHelper):
             with open(self.filepath, "rb") as f:
                 data = f.read()
             materials = read_materials(data)
-        except (Mrl3ParseError, OSError) as e:
-            self.report({"ERROR"}, f"Failed to parse .mrl3: {e}")
+        except (Mrl3ParseError, OSError):
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, "Failed to read this .mrl3 file. It may be corrupted or use "
+                                    "an unsupported format; see the system console for details.")
             return {"CANCELLED"}
 
         if not materials:
@@ -1577,7 +1596,7 @@ class EFX_OT_randomfix_set_table_group(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# L1.3 FileHandler：拖入 3D 视口导入 .efx
+# FileHandler：拖入 3D 视口导入 .efx
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # ⚠ 版本守卫：FileHandler 是 Blender 4.1+ API。3.6 等老版本 bpy.types.FileHandler

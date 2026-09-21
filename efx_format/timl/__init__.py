@@ -1,5 +1,5 @@
 """
-efx_format/timl.py  —  TIML 完整 4 层树解析 + 序列化（纯 Python，零 bpy）
+efx_format/timl/__init__.py  —  TIML 完整 4 层树解析 + 序列化
 
 定位
 ----

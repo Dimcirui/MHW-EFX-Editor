@@ -21,7 +21,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from efx_format.hashes import (ALPHACORRECTION, BILLBOARD3D, DUMMY,  # noqa: E402
+from efx_format.hashes import (ALPHACORRECTION, BILLBOARD2D, BILLBOARD3D, DUMMY,  # noqa: E402
                                EMITTERSHAPE3D, HOMING, LIGHTNING,
                                LIFE, MESH, NOISE, PLANE, RIBBON, RIBBONBLADE,
                                PARENTOPTIONS, PTCOLLISION, PTLIFE, REFRACTION, RGBFIRE,
@@ -125,8 +125,8 @@ def scaleanim_fields(**kw):
 def rgbfire_fields(**kw):
     f = {"typeFlag": 1,
          "fireColor": [255, 0, 0, 255], "smokeColor": [0, 0, 255, 255],
-         "fireFactor": 1.0, "brightness2": 1.0,
-         "lerpAlphaToBlue": 0.0, "brightness3": 1.0, "brightness4": 1.0}
+         "fireFactor": 1.0, "redChFactor": 1.0,
+         "lerpAlphaToBlue": 0.0, "alphaFactor": 1.0, "colorRate": 1.0}
     for pre in ("fireColorParam_", "smokeColorParam_"):
         f[pre + "useLife"] = 0
         for k in ("appearFrame", "keepFrame", "vanishFrame"):
@@ -195,7 +195,7 @@ def billboard_fields(**kw):
          "color": [255, 255, 255, 255], "colorRange": [255, 255, 255, 255],
          "useColorRange": 0, "blendMode": 0,
          "brightness": 1.0, "brightnessJitter": 0.0,
-         "correctColorNo": 0, "SlotOverride1": 0,
+         "correctColorNo": 0, "colorRangeCorrectColorNo": 0,
          "rotation": 0.0, "rotationJitter": 0.0,
          "scale": 1.0, "scaleJitter": 0.0,
          "width": 100.0, "widthJitter": 0.0,
@@ -209,7 +209,7 @@ def plane_fields(**kw):
          "color": [255, 255, 255, 255], "colorRange": [255, 255, 255, 255],
          "useColorRange": 0, "blendMode": 0,
          "brightness": 1.0, "brightnessJitter": 0.0,
-         "EPVColorSlot1": 0, "EPVColorSlot2": 0,
+         "correctColorNo": 0, "colorRangeCorrectColorNo": 0,
          "rotation2": 0.0, "rotation2Jitter": 0.0,
          "scale": 1.0, "scaleJitter": 0.0,
          "width": 100.0, "widthJitter": 0.0,
@@ -2225,6 +2225,14 @@ class TestRgbColoring(unittest.TestCase):
         sim.run(frames)
         return sim.particles[0]
 
+    def _item(self, block_hash, fields, frames=1):
+        sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(),
+                       extra=[(block_hash, fields)])
+        sim.run(frames)
+        return sim.build_render()[0]
+
     # ── RGBFIRE ──────────────────────────────────────────────────────────────
     def test_two_layers_are_weighted_together(self):
         """两层强度相等 → 取中间色（红 + 蓝 → 半红半蓝）。"""
@@ -2239,8 +2247,20 @@ class TestRgbColoring(unittest.TestCase):
         self.assertAlmostEqual(p.color[0], 0.0, places=5)
         self.assertAlmostEqual(p.color[2], 1.0, places=5)
 
+    def test_smoke_factor_zero_turns_the_smoke_layer_off(self):
+        """redChFactor=0 → 只剩 fireColor，跟 fireFactor 镜像对称。"""
+        p = self._color(RGBFIRE, rgbfire_fields(redChFactor=0.0))
+        self.assertAlmostEqual(p.color[0], 1.0, places=5)
+        self.assertAlmostEqual(p.color[2], 0.0, places=5)
+
+    def test_lerp_alpha_to_blue_rides_on_the_render_item(self):
+        """贴图通道遮罩混合系数挂在渲染项上，供 glue 的 fragment shader 使用。"""
+        it = self._item(RGBFIRE, rgbfire_fields(lerpAlphaToBlue=0.75))
+        self.assertAlmostEqual(it.extra["rgbfire_lerp"], 0.75, places=5)
+        self.assertIn("layers", it.extra)
+
     def test_color_rate_scales_the_tint(self):
-        p = self._color(RGBFIRE, rgbfire_fields(brightness2=2.0))
+        p = self._color(RGBFIRE, rgbfire_fields(colorRate=2.0))
         self.assertAlmostEqual(p.color[0], 1.0, places=5)
         self.assertAlmostEqual(p.color[2], 1.0, places=5)
 
@@ -2279,6 +2299,13 @@ class TestRgbColoring(unittest.TestCase):
         self.assertAlmostEqual(p.alpha, 1.0, places=5)
         q = self._color(RGBWATER, rgbwater_fields(intensityAlpha=0.25))
         self.assertAlmostEqual(q.alpha, 0.25, places=5)
+
+    def test_water_lerp_gtob_rides_on_the_render_item(self):
+        """贴图通道遮罩混合系数挂在渲染项上，供 glue 的 fragment shader 使用。"""
+        it = self._item(RGBWATER, rgbwater_fields(waterLerpGtoB=0.6))
+        self.assertAlmostEqual(it.extra["rgbwater_lerp"], 0.6, places=5)
+        self.assertIn("layers", it.extra)
+        self.assertNotIn("rgbfire_lerp", it.extra)
 
 
 class TestAlphaCorrection(unittest.TestCase):
@@ -2559,6 +2586,27 @@ class TestBillboard3D(unittest.TestCase):
         it, _ = self._item(billboard=billboard_fields(color=[100, 100, 100, 255],
                                                       brightness=2.0))
         self.assertAlmostEqual(it.color[0], 200 / 255.0, places=6)
+
+    def test_base_tint_is_own_color_times_brightness(self):
+        """`base_tint` 是渲染体自己的颜色（供 glue 当两层染色的逐通道滤镜用），
+        跟 item.color 分开存，见 sim_preview.py 的 `_layers_of`。"""
+        it, _ = self._item(billboard=billboard_fields(color=[128, 0, 255, 255],
+                                                      brightness=2.0))
+        r, g, b = it.extra["base_tint"]
+        self.assertAlmostEqual(r, 128 / 255.0 * 2.0, places=6)
+        self.assertAlmostEqual(g, 0.0, places=6)
+        self.assertAlmostEqual(b, 1.0 * 2.0, places=6)
+
+    def test_base_tint_is_independent_of_rgbfire_tint(self):
+        """挂了 RGBFIRE 时 item.color 会把两层的代表色乘进去，但 `base_tint`
+        只反映渲染体自己的颜色，不含 RGBFIRE 的贡献——两者在 glue 里分开使用。"""
+        it, sim = self._item(billboard=billboard_fields(color=[255, 0, 0, 255]),
+                             extra=[(RGBFIRE, rgbfire_fields())])
+        r, g, b = it.extra["base_tint"]
+        self.assertAlmostEqual(r, 1.0, places=5)
+        self.assertAlmostEqual(g, 0.0, places=5)
+        self.assertAlmostEqual(b, 0.0, places=5)
+        self.assertIn("layers", it.extra)
 
     def test_color_range_lerps_per_particle(self):
         sim = make_sim(spawn=spawn_fields(spawnNum=60, intervalFrame=1000),
@@ -4259,10 +4307,9 @@ class TestT3EndToEnd(unittest.TestCase):
                 self.assertEqual(sim.build_render(), [])
 
     def test_skipped_bodies_still_fall_back_honestly(self):
-        """STRAINRIBBON / LIGHTNING / BILLBOARD2D 刻意不做 → 退化点 + 如实列出。"""
+        """STRAINRIBBON / LIGHTNING 刻意不做 → 退化点 + 如实列出。"""
         for stem, missing in (("draw_chain", "STRAINRIBBON"),
-                              ("lightning", "LIGHTNING"),
-                              ("2d_entry_basic", "BILLBOARD2D")):
+                              ("lightning", "LIGHTNING")):
             with self.subTest(archetype=stem):
                 blocks, timl = _load_archetype(stem + ".json")
                 sim = from_attr_blocks(blocks, timl, SimConfig(seed=2))
@@ -4270,6 +4317,18 @@ class TestT3EndToEnd(unittest.TestCase):
                 self.assertIn(missing, [n for _h, n in sim.unsupported])
                 for it in sim.build_render():
                     self.assertEqual(it.kind, "POINT")
+
+    def test_billboard2d_falls_back_honestly(self):
+        """BILLBOARD2D 同上。唯一带它的 archetype 预设已移除，改用合成 entry
+        保住这条覆盖——未模拟的渲染主体照样得退化成点、并出现在 unsupported 里。"""
+        sim = make_sim(spawn=spawn_fields(intervalFrame=0, spawnNum=1),
+                       life=life_fields(),
+                       extra=[(BILLBOARD2D, {})],
+                       config=SimConfig(seed=2))
+        sim.run(20)
+        self.assertIn("BILLBOARD2D", [n for _h, n in sim.unsupported])
+        for it in sim.build_render():
+            self.assertEqual(it.kind, "POINT")
 
     def test_all_archetypes_survive_strict_mode(self):
         for name in sorted(os.listdir(ARCHETYPE_DIR)):

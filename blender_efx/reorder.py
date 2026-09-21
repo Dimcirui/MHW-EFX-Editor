@@ -1,5 +1,5 @@
 """
-blender_efx/reorder.py  —  L2 #3a：entry / attribute 的重排（上移/下移）
+blender_efx/reorder.py  —  entry / attribute 的重排（上移/下移）
 
 算子：
   efx.move_entry  —  对 EFX_ENTRY 对象执行上移/下移（direction='UP'/'DOWN'）
@@ -18,7 +18,7 @@ blender_efx/reorder.py  —  L2 #3a：entry / attribute 的重排（上移/下�
      结果与原导入完全一致，导出字节不变。
 
 约束（参照 CLAUDE.md）：
-  - Python 3.11 语法（目标 Blender 4.3.2）
+  - Python 3.10 语法（兼容 Blender 3.6～5.x）
   - bpy 只用稳定子集
   - 不改 efx_format/，不改 io_tree.py
   - bl_options = {"REGISTER", "UNDO"}
@@ -409,8 +409,14 @@ def can_label_entry(obj) -> bool:
 
     返回 True 表示：它已在前缀内（has_label=1），或恰好在前缀边界（前面全有标签，
     可安全扩展前缀把它纳入）。
+
+    Root entry 恒不可改名——它不是"一个特效体"，没有语义上的名字，固定显示为
+    "Root"。这里直接拦，inline 输入框（can_rename）和 Edit 面板弹窗按钮
+    （EFX_OT_rename_entry.poll 直接调这个函数）两条路径同时生效。
     """
     if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
+        return False
+    if str(obj.get("entry_kind", "")) == "root":
         return False
     if int(obj.get("efx_has_label", 0)) == 1:
         return True
@@ -462,43 +468,11 @@ class EFX_OT_rename_entry(bpy.types.Operator):
         self.layout.prop(self, "new_name")
 
     def execute(self, context):
-        obj = context.active_object
-        if not can_label_entry(obj):
-            self.report({"ERROR"}, "This entry cannot be named (preceding unnamed entries would break the label position mapping)")
+        ok, msg = apply_rename(context.active_object, self.new_name)
+        if not ok:
+            self.report({"ERROR"}, msg)
             return {"CANCELLED"}
-
-        new_name = self.new_name.strip()
-        if not new_name:
-            self.report({"ERROR"}, "Name cannot be empty")
-            return {"CANCELLED"}
-        if "\x00" in new_name:
-            self.report({"ERROR"}, "Name cannot contain NUL characters")
-            return {"CANCELLED"}
-
-        root = _rc.find_root_collection(obj)
-        if root is None:
-            self.report({"ERROR"}, "EFX_ROOT not found")
-            return {"CANCELLED"}
-
-        # 更新标签 + 提升为有标签 + 重建显示名 + 置 labels_dirty
-        idx = int(obj.get("efx_index", 0))
-        obj["efx_raw_label"] = new_name
-        obj["efx_has_label"] = 1   # 边界 entry 提升为有标签
-        obj.name = _entry_display_name(idx, new_name, entry_obj=obj)
-        root["labels_dirty"] = 1
-
-        # body_type = jamcrc(entry 名)（standard entry，实测 99.7%+ 命中，见
-        # memory play-type-is-jamcrc-of-name）。用户手动改名 = 改身份，必须重算，
-        # 否则名↔哈希不一致，按名字哈希定位该 entry 的外部工具会失效。
-        # extended（body_type≡1）/ root（≡ROOT_MARKER）不是名字哈希，不动。
-        if str(obj.get("entry_kind", "")) == "standard":
-            try:
-                from ..efx_format.hashes import jamcrc
-                obj["body_type"] = str(jamcrc(new_name) & 0xFFFFFFFF)
-            except Exception:
-                pass
-
-        self.report({"INFO"}, f"Renamed to: {new_name} (written to label table on export)")
+        self.report({"INFO"}, f"Renamed to: {msg} (written to label table on export)")
         return {"FINISHED"}
 
 
@@ -575,44 +549,11 @@ class EFX_OT_rename_action_extern(bpy.types.Operator):
         self.layout.prop(self, "new_name")
 
     def execute(self, context):
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") not in ("EFX_ACTION", "EFX_EXTERN"):
-            self.report({"ERROR"}, "Select an Action or Extern object")
+        ok, msg = apply_rename(context.active_object, self.new_name)
+        if not ok:
+            self.report({"ERROR"}, msg)
             return {"CANCELLED"}
-        if not can_label_action_extern(obj):
-            self.report({"ERROR"}, "This entry cannot be named (preceding unnamed entries would break the label position mapping)")
-            return {"CANCELLED"}
-
-        new_name = self.new_name.strip()
-        if not new_name:
-            self.report({"ERROR"}, "Name cannot be empty")
-            return {"CANCELLED"}
-        if "\x00" in new_name:
-            self.report({"ERROR"}, "Name cannot contain NUL characters")
-            return {"CANCELLED"}
-
-        root = _rc.find_root_collection(obj)
-        if root is None:
-            self.report({"ERROR"}, "EFX_ROOT not found")
-            return {"CANCELLED"}
-
-        idx = int(obj.get("efx_index", 0))
-        nn = str(idx).zfill(2) if idx < 100 else str(idx)
-        obj["efx_raw_label"] = new_name
-        obj["efx_has_label"] = 1
-        obj.name = f"{nn} {new_name}"
-        root["labels_dirty"] = 1
-
-        # play_type = jamcrc(action 名)（实测 5251/5251）。重命名 EFX_ACTION 必须同步
-        # 重算 play_type，否则名↔哈希不一致，按名字哈希调用 action 的引用会失效。
-        if obj.get("~TYPE") == "EFX_ACTION":
-            try:
-                from ..efx_format.hashes import jamcrc
-                obj.efx_play.play_type_str = str(jamcrc(new_name))
-            except Exception:
-                pass
-
-        self.report({"INFO"}, f"Renamed to: {new_name} (written to label table on export)")
+        self.report({"INFO"}, f"Renamed to: {msg} (written to label table on export)")
         return {"FINISHED"}
 
 
@@ -701,6 +642,140 @@ def auto_sort_entry_attributes(root_obj) -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# 重命名：共用内核 + 两种画法（Edit 面板的弹窗按钮 / 属性面板的就地输入框）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def can_rename(obj) -> bool:
+    """obj 现在能不能改名（按类型分派到对应的标签前缀判定）。非可命名类型 → False。"""
+    t = obj.get("~TYPE") if obj is not None else None
+    if t == "EFX_ENTRY":
+        return can_label_entry(obj)
+    if t in ("EFX_ACTION", "EFX_EXTERN"):
+        return can_label_action_extern(obj)
+    return False
+
+
+def apply_rename(obj, new_name: str):
+    """改名 + 全部连带副作用，返回 (是否成功, 信息)。
+
+    弹窗算子和属性面板的输入框共用这一份。副作用漏一项都会让导出结果对不上：
+      - efx_raw_label / efx_has_label：标签表里的名字，边界条目顺带提升为有标签
+      - obj.name：大纲显示名（entry 带渲染主体后缀，action/extern 是 '{nn} {label}'）
+      - root.labels_dirty：不置位的话导出端不会重建标签表，改名等于没改
+      - 身份哈希：entry 的 body_type / action 的 play_type = jamcrc(名字)，
+        不同步重算就会名↔哈希不一致，按哈希定位的引用全部失效
+    """
+    t = obj.get("~TYPE") if obj is not None else None
+    if t not in ("EFX_ENTRY", "EFX_ACTION", "EFX_EXTERN"):
+        return False, "Select an Entry, Action or Extern"
+    if not can_rename(obj):
+        return False, "This item cannot be named (a preceding item is unnamed, which would break the label position mapping)"
+
+    new_name = new_name.strip()
+    if not new_name:
+        return False, "Name cannot be empty"
+    if "\x00" in new_name:
+        return False, "Name cannot contain NUL characters"
+
+    root = _rc.find_root_collection(obj)
+    if root is None:
+        return False, "EFX_ROOT not found"
+
+    idx = int(obj.get("efx_index", 0))
+    obj["efx_raw_label"] = new_name
+    obj["efx_has_label"] = 1
+    root["labels_dirty"] = 1
+
+    if t == "EFX_ENTRY":
+        obj.name = _entry_display_name(idx, new_name, entry_obj=obj)
+        # extended（body_type≡1）/ root（≡ROOT_MARKER）不是名字哈希，不动
+        if str(obj.get("entry_kind", "")) == "standard":
+            try:
+                from ..efx_format.hashes import jamcrc
+                obj["body_type"] = str(jamcrc(new_name) & 0xFFFFFFFF)
+            except Exception:
+                pass
+    else:
+        nn = str(idx).zfill(2) if idx < 100 else str(idx)
+        obj.name = f"{nn} {new_name}"
+        try:
+            from ..efx_format.hashes import jamcrc
+            if t == "EFX_ACTION":
+                obj.efx_play.play_type_str = str(jamcrc(new_name))
+            else:
+                # ExternAttribute.attr_type = jamcrc(extern 标签名)，与 action 的
+                # play_type / entry 的 body_type 同族（official 全语料 1477/1477 命中，
+                # 零反例）。改名不同步重算就会名↔哈希脱钩。
+                obj.efx_extern.attr_type_str = str(jamcrc(new_name))
+        except Exception:
+            pass
+
+    return True, new_name
+
+
+def _label_edit_get(self):
+    return str(self.get("efx_raw_label", ""))
+
+
+def _label_edit_set(self, value):
+    # 输入框里敲的每个名字都要走完整副作用链，不能直接写 efx_raw_label。
+    # 名字非法或当前不可命名时静默不改——控件会在下次重绘时弹回原值，
+    # 输入框没有 report 通道，这里报不出错。可命名判定已经在画的时候灰掉了控件。
+    apply_rename(self, value)
+
+
+def draw_rename_field(layout, obj) -> None:
+    """就地编辑名字的输入框（点进去直接改），供各类型自己的属性面板用。
+
+    不可命名时灰掉控件并在下面补一行说明——光给个灰框看不出为什么不能改。
+    """
+    from .i18n import T
+
+    t = obj.get("~TYPE") if obj is not None else None
+    if t not in ("EFX_ENTRY", "EFX_ACTION", "EFX_EXTERN"):
+        return
+    # Root 不是"没法改名"（那会走下面的 blocked_hint，暗示"先做点什么就能改"），
+    # 是压根不适用改名这件事——不画输入框也不画提示。
+    if t == "EFX_ENTRY" and str(obj.get("entry_kind", "")) == "root":
+        return
+
+    allowed = can_rename(obj)
+    row = layout.row()
+    row.enabled = allowed
+    row.prop(obj, "efx_label_edit", text=T("entry.name_field"))
+    if not allowed:
+        hint = layout.row()
+        hint.enabled = False
+        hint.label(text=T("entry.name_blocked_hint"), icon="INFO")
+
+
+def draw_rename_button(layout, obj) -> None:
+    """弹窗式重命名按钮，供 Edit 面板用（属性面板走 draw_rename_field）。
+
+    两种画法的可命名判定同源（can_rename），不会一边能改一边不能改。
+    """
+    from .i18n import T
+
+    t = obj.get("~TYPE") if obj is not None else None
+    if t == "EFX_ENTRY" and str(obj.get("entry_kind", "")) == "root":
+        return  # 同 draw_rename_field：Root 不适用改名，连按钮都不画
+    if t == "EFX_ENTRY":
+        op_id, ok_key, blocked_key = "efx.rename_entry", "entry.rename", "entry.rename_blocked"
+    elif t in ("EFX_ACTION", "EFX_EXTERN"):
+        op_id, ok_key, blocked_key = ("efx.rename_action_extern", "actionextern.rename",
+                                      "actionextern.rename_blocked")
+    else:
+        return
+
+    if can_rename(obj):
+        layout.operator(op_id, text=T(ok_key), icon="GREASEPENCIL")
+    else:
+        sub = layout.column()
+        sub.enabled = False
+        sub.operator(op_id, text=T(blocked_key), icon="GREASEPENCIL")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -717,7 +792,18 @@ def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
+    # 属性面板上就地改名的输入框。get/set 直接读写 efx_raw_label 自定义属性，
+    # 不另开一份存储——否则导入时两边会对不上。写入统一走 apply_rename 的副作用链。
+    bpy.types.Object.efx_label_edit = bpy.props.StringProperty(
+        name="Name",
+        description="This item's name in the EFX label table (applied to the file on export)",
+        get=_label_edit_get,
+        set=_label_edit_set,
+    )
+
 
 def unregister():
+    if hasattr(bpy.types.Object, "efx_label_edit"):
+        del bpy.types.Object.efx_label_edit
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)

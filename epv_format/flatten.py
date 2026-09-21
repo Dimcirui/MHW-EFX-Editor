@@ -5,7 +5,7 @@ epv_format/flatten.py — EPVRecord ↔ 扁平 dict、EPVFile ↔ 树 的纯 Pyt
 ----
 Blender 层把每条 record 的全部字段存到对象的自定义属性上；byte-perfect 往返的真正
 风险在「字段是否完整无损地拆/拼」与「group / record 顺序是否保持」。把这层逻辑放在
-纯 Python（零 bpy），即可脱离 Blender 单测（见 tools/epv_roundtrip.py --tree）。
+可脱离 Blender 单测（见 tools/epv_roundtrip.py --tree）。
 
 dict 的值只用 Blender 自定义属性支持的类型：int / float / str / list[int|float]。
 """

@@ -1,100 +1,59 @@
-"""
-blender_efx/annotations.py  —  L1.3 BT 注释接入
+"""属性字段的双语 tooltip 与可选 RE 字段名交叉参考。
 
-从 010 Editor BT 模板（refs/EFX_Subtypes.bt、EFX_Utils.bt）提取的字段注释。
-手工解析并清洗，与 efx_format/structs.py 的 schema ori_name 对齐。
+FIELD_ANNOTATIONS 的键为 (大写类型名, schema ori_name)，值为 EN/ZH 文本。数组字段按其
+单个 schema 字段名查找；get_annotation() 按当前 UI 语言选取文本，缺失时回退英文。
 
-字典键格式：(type_name, field_ori_name)
-  - type_name  : HASH_TO_NAME 对应的哈希名（大写，如 "EMITTERSHAPE3D"）
-  - field_ori_name : schema 中的 ori_name（即 structs.py 里各 Schema 的字段名）
-
-值：双语注释字典 {"EN": "<english>", "ZH": "<中文>"}（单行，去除多余空白）。
-  get_annotation() 按当前 UI 语言（i18n.get_lang()）返回对应字符串，缺语种回退英文。
-
-覆盖范围：
-  - 30 种 flat 可编辑类型（有 schema 的类型）
-  - 9 种含路径的 _custom 类型（fixed 部分字段）
-  - 重点：枚举字段、bitflag 字段、有语义的 unkn 字段
-
-注意：
-  - 数组字段（如 unkn0[3]）在 schema 里是单个字段名 "unkn0"，注释也映射到该名。
-  - 路径字段（path/path1/path2）由 io_tree 负责，面板显示 STRING 类型，注释不重复。
-  - EXTERN 变体与主类型共用同一 schema 名（如 EXTERNVELOCITY3D → "VELOCITY3D" 注释不适用），
-    Extern 属性在 io_tree 中以不同 type_hash 存储，不在本字典；仅主 attribute 类型有注释。
+RE 字段名仅作交叉参考，不改变 schema 标签、字段索引或文件布局解释。
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RE Engine 字段名交叉参考（来自 DTI type dump，refs/dti_effect_fields.json）
-# 键：(TYPE_NAME 大写, schema ori_name)  值：(字段名, CRC32 十六进制串, 置信度)
-# 置信度："确认"（偏移对齐，铁定）/ "高" / "中" / "低"（语义推断）/ 省略=确认。
-#   UI tip 渲染："确认"不加限定词；高/中/低 显示"X可能为 <名>"。
-#
-# 仅在注释 tooltip 末尾追加，作权威交叉参考——label / ori_name / 索引全不变。
-# dump 的字段名是内存结构名（m/mp 前缀 或 nTimelineParam 动画参数名），与 .efx
-# 文件布局非 1:1（内存≠文件，尾部常分歧），故逐字段人工核对、按置信度标注后录入。
-#
-# 注：哈希算法 jamcrc（zlib.crc32 ^ 0xFFFFFFFF）。数据源 refs/dti_effect_fields.json。
+# RE Engine 字段名交叉参考。
+# 键：(TYPE_NAME 大写, schema ori_name)；值：(字段名, 哈希字符串, 置信度)。
+# 非“确认”的映射在 tooltip 中以可能性标注。内存字段名与 .efx 文件布局不必一一对应，
+# 因此该表只能补充 tooltip，不能替代 schema 定义。
 # ─────────────────────────────────────────────────────────────────────────────
 
 FIELD_OFFICIAL_NAMES = {
-    # ── PARENTOPTIONS（nEffect::ParentOptions，按内存偏移 0x30–0x50 铁对齐）──
+    # ── PARENTOPTIONS ─────────────────────────────────────────────────────────
     ("PARENTOPTIONS", "relationPos"): ("mRelationPos[XYZ]", "0xC8E41E1E", "确认"),
     ("PARENTOPTIONS", "relationRot"):       ("mRelationRot[XYZ]", "0x2DAC4052", "确认"),
     ("PARENTOPTIONS", "relationScl"):       ("mRelationScl[XYZ]", "0x1E11460A", "确认"),
 
-    # ── 语义映射（nTimelineParam 动画参数 ↔ schema 字段，按置信度标注）──────────
-    # TRANSFORM3D：translate/rotate/resize = 位置/旋转/缩放（XYZ 三连）铁定确认
+    # ── 语义映射 ───────────────────────────────────────────────────────────────
     ("TRANSFORM3D", "translate"): ("pos[XYZ]", "0x8E8AFE06", "确认"),
     ("TRANSFORM3D", "rotate"):    ("rot[XYZ]", "0xF105BBE3", "确认"),
     ("TRANSFORM3D", "resize"):    ("scl[XYZ]", "0x9486DF23", "确认"),
-    # BILLBOARD3D：color = 显示颜色 RGBA（nadao_qian.efx 实测：TIML 从红→蓝紫渐变确认）
     ("BILLBOARD3D", "color"):     ("Color",    "0x58689812", "确认"),
-    # BILLBOARD3D：colorRange，与 color 同源自 dump 的 nEffect::nTimelineParam::TypeBillboard3D
     ("BILLBOARD3D", "colorRange"): ("ColorRange", "0xC216C23D", "确认"),
-    # PLANE：与 BILLBOARD3D 同源自 dump 的 nEffect::nTimelineParam::TypePlane，实机确认同一套机制
     ("PLANE", "color"):      ("Color",      "0x58689812", "确认"),
     ("PLANE", "colorRange"): ("ColorRange", "0xC216C23D", "确认"),
-    # MESH：scale/rotation → SizeX/Y/Z / RotationX/Y/Z（nadao_qian.efx SizeY 0x531B9E44 实测确认，余轴同理）
     ("MESH", "scale"):            ("SizeX/Y/Z",    "0x241CAED2", "确认"),
     ("MESH", "rotation"):         ("RotationX/Y/Z","0x002FF505",  "确认"),
-    # MESH：color/colorRange、emissiveColor/emissiveColorRange 两组 —— 实机组合排除测试确认
-    # (2026-07-06)，与 dump 里 nEffect::nTimelineParam::TypeMesh 的字段名逐个对上
     ("MESH", "color"):               ("Color",              "0x58689812", "确认"),
     ("MESH", "colorRange"):          ("ColorRange",          "0xC216C23D", "确认"),
     ("MESH", "emissiveColor"):       ("EmissiveColor",       "0x608DCF8D", "确认"),
     ("MESH", "emissiveColorRange"):  ("EmissiveColorRange",  "0x7F2CEB57", "确认"),
-    # VELOCITY3D：gravity 名称精确吻合
-    ("VELOCITY3D", "gravity"):    ("Gravity", "0x6A5FE3C4", "高"),
-    # EMITTERSHAPE3D：rangeXYZ ↔ Range 盒（注释确认定尺寸/范围，升高；2026-07 改名
-    # localRotationX/Y/Z 后与 DTI 名 LocalRotationX/Y/Z 直接一致，独立佐证改名）
-    ("EMITTERSHAPE3D", "localRotationX"): ("LocalRotationX", "0x701FE225", "中"),
-    ("EMITTERSHAPE3D", "localRotationY"): ("LocalRotationY", "0x0718D2B3", "中"),
-    ("EMITTERSHAPE3D", "localRotationZ"): ("LocalRotationZ", "0x9E118309", "中"),
-    # ⚠ dump 里叫 RangeMin/Max，但 MHW 实机行为是 offset/size（内边界+厚度，用户
-    #   2026-07-30 测试确认全形状通用）——名字保留 dump 原文，语义以实测为准。
-    ("EMITTERSHAPE3D", "rangeXYZ"):       ("RangeMin/Max[XYZ]", "0x760F3D43", "高"),
-    # SCALEANIM：Size*Add 动画增量 ↔ 缩放速度（注释佐证整体/按轴，且 dump 无 Accel 参数）
-    ("SCALEANIM", "initialScaleSpeed"): ("SizeScalarAdd", "0xC24DF97C", "高"),
-    ("SCALEANIM", "scaleSpeedX"):       ("SizeXAdd", "0x909EC047", "高"),
-    ("SCALEANIM", "scaleSpeedY"):       ("SizeYAdd", "0x2822A722", "高"),
-    ("SCALEANIM", "scaleSpeedZ"):       ("SizeZAdd", "0x3A9708CC", "高"),
-    # ROTATEANIM：单字段 spin_velocity 与按轴 RotationAdd 存在歧义
-    ("ROTATEANIM", "spin_velocity"):    ("RotationAdd", "0xE81961E4", "低"),
-    # LIFE：KeepFrame ≈ 存活时长
-    ("LIFE", "duration"):               ("KeepFrame", "0xBD8D5203", "中"),
+    ("VELOCITY3D", "gravity"):    ("Gravity", "0x6A5FE3C4", "确认"),
+    ("EMITTERSHAPE3D", "localRotationX"): ("LocalRotationX", "0x701FE225", "确认"),
+    ("EMITTERSHAPE3D", "localRotationY"): ("LocalRotationY", "0x0718D2B3", "确认"),
+    ("EMITTERSHAPE3D", "localRotationZ"): ("LocalRotationZ", "0x9E118309", "确认"),
+    ("EMITTERSHAPE3D", "rangeXYZ"):       ("RangeMin/Max[XYZ]", "0x760F3D43", "确认"),
+    ("SCALEANIM", "initialScaleSpeed"): ("SizeScalarAdd", "0xC24DF97C", "确认"),
+    ("SCALEANIM", "scaleSpeedX"):       ("SizeXAdd", "0x909EC047", "确认"),
+    ("SCALEANIM", "scaleSpeedY"):       ("SizeYAdd", "0x2822A722", "确认"),
+    ("SCALEANIM", "scaleSpeedZ"):       ("SizeZAdd", "0x3A9708CC", "确认"),
+    ("ROTATEANIM", "spin_velocity"):    ("RotationAdd", "0xE81961E4", "确认"),
+    ("LIFE", "duration"):               ("KeepFrame", "0xBD8D5203", "确认"),
 }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 注释字典
-# 键：(type_name: str, field_name: str)
-# 值：双语字典 {"EN": "...", "ZH": "..."}
+    # 双语 tooltip 字典
 # ─────────────────────────────────────────────────────────────────────────────
 
 FIELD_ANNOTATIONS = {
 
     # ─── TRANSFORM3D ──────────────────────────────────────────────────────────
-    # ExternTransform3D (EFX_Subtypes.bt)
     ("TRANSFORM3D", "rotationOrder"): {
         "EN": "4 is the most common value. 0-XYZ, 1-YZX, 2-ZXY, 3-ZYX, 4-YXZ, 5-XZY",
         "ZH": "4 为最常见值。0-XYZ，1-YZX，2-ZXY，3-ZYX，4-YXZ，5-XZY",
@@ -118,7 +77,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── PARENTOPTIONS ────────────────────────────────────────────────────────
-    # ParentOptions (EFX_Subtypes.bt)
     ("PARENTOPTIONS", "relationPos"): {
         "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
               "  1=Track Player Movement,  2=Do not track further movements,"
@@ -172,9 +130,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── SPAWN ────────────────────────────────────────────────────────────────
-    # ExternSpawn (EFX_Subtypes.bt)；2026-07-26 用户实机测试确认完整 emitter/particle
-    # 三层模型（SPAWN属性本身 → emitter实例/轮次 → particle个体），字段名与下方 tooltip
-    # 已按测试结果更新，详见 structs.py EXTERN_SPAWN_SCHEMA 行内注释总览。
     ("SPAWN", "emitterDelayFrame"): {
         "EN": "Frames to wait before the spawner's very first burst ever fires. "
               "One-time delay applied once at activation — unrelated to intervalFrame "
@@ -196,7 +151,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── LIFE ─────────────────────────────────────────────────────────────────
-    # Life (EFX_Subtypes.bt)
     ("LIFE", "timeToDeath"): {
         "EN": "Overrides indefinite lifespan",
         "ZH": "覆盖无限寿命",
@@ -207,7 +161,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── EMITTERSHAPE3D ───────────────────────────────────────────────────────
-    # ExternEmitterShape3D (EFX_Subtypes.bt)
     ("EMITTERSHAPE3D", "localRotationX"): {
         "EN": "Overall rotation of the emitter shape.",
         "ZH": "生成形状的总体旋转。",
@@ -231,10 +184,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── VELOCITY3D ───────────────────────────────────────────────────────────
-    # ExternVelocity3D (EFX_Subtypes.bt)
-    # baseAxis 的 0~5 与社区 RE Engine 续作 schema 的笛卡尔 AxisType
-    # (0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z) 是同一套映射——游戏默认坐标系下 +X=左/+Y=上/+Z=前，
-    # 两边只是措辞不同，不是分歧。（结论已写进 tooltip，对照过程留在这里。）
     ("VELOCITY3D", "baseAxis"): {
         "EN": "Base axis for speed (one of six cardinal axes, not a free direction vector), combined with rotationX/Y/Z to give the final direction. Only meaningful when velocityType=Directional. 0=left,1=up,2=front,3=right,4=down,5=back (in the game's default coordinate system +X=left, +Y=up, +Z=front).",
         "ZH": 'speed 的基准轴（六个基准轴之一，不是自由方向向量），与 rotationX/Y/Z 复合得到最终方向。仅在 velocityType=Directional 时有意义。0=左,1=上,2=前,3=右,4=下,5=后（游戏默认坐标系下 +X=左,+Y=上,+Z=前）。',
@@ -248,9 +197,6 @@ FIELD_ANNOTATIONS = {
         "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
         "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
-    # 枚举命名沿革：1 早期误标为 "Normal"、3 早期误标为 "Spread"，现按实测行为定名。
-    # 4/5 在本项目里确有出现（旧注释猜作 ScreenSpace/Unkn），而社区那份 RE Engine
-    # 续作 schema 只有 0~3 四态——两边没对上，未回查前不采信任何一边，tooltip 里只写"含义未知"。
     ("VELOCITY3D", "velocityType"): {
         "EN": "Decides how the particle's movement DIRECTION is determined (speed always comes "
               "from speed/acceleration; gravity is independent and always applies). "
@@ -267,7 +213,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── SHADERSETTINGS ───────────────────────────────────────────────────────
-    # ShaderSettings (EFX_Subtypes.bt)
     ("SHADERSETTINGS", "controlBitflag"): {
         "EN": "0=No alpha, 1=Alpha enabled, 2=Emissive behavior, "
               "3=Inverted color + alpha, 6=Greyscale",
@@ -318,7 +263,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── FADEBYDEPTH ──────────────────────────────────────────────────────────
-    # FadeByDepth（实机确认，见 structs.py 注释）
     ("FADEBYDEPTH", "nearFadeInStart"): {
         "EN": "Near fade-in start. Below this distance, fully invisible.",
         "ZH": "近处淡入起点，小于此距离完全不可见。",
@@ -337,7 +281,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── SCALEANIM ────────────────────────────────────────────────────────────
-    # ExternScaleAnim (EFX_Subtypes.bt)
     ("SCALEANIM", "initialScaleSpeed"): {
         "EN": "Initial expansion speed (the overall scale-in at animation start).",
         "ZH": "初始扩散速度（动画刚进来时的整体缩放）。",
@@ -360,7 +303,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── ALPHACORRECTION ──────────────────────────────────────────────────────
-    # AlphaCorrection (EFX_Subtypes.bt)
     ("ALPHACORRECTION", "lowPass"): {
         "EN": "Hard alpha clip threshold (like Photoshop's Threshold tool) — alpha below this value is cut to 0. 0 = no clipping.",
         "ZH": "Alpha 硬裁切阈值（类似 PS 的 Threshold 工具）——低于此值的 alpha 直接归 0。0 = 不裁切。",
@@ -369,14 +311,12 @@ FIELD_ANNOTATIONS = {
         "EN": "Contrast/gamma correction on alpha. Unbounded — higher values fade out low/mid alpha (edges) while keeping high alpha (core) intact; values can exceed 1, where almost everything fades to transparent.",
         "ZH": "对 alpha 做对比度/伽马修正。无上限——值越大，低/中 alpha（边缘）越快变透明，高 alpha（核心）保留；可超过 1，过大时几乎全图变透明。",
     },
-    # 010 BT 模板把它标成 NULL，实际并非恒定值；tooltip 只写结论。
     ("ALPHACORRECTION", "unkn3"): {
         "EN": "Unnamed float parameter, not a fixed constant. Usually 0 (unset); other values seen roughly in [-3.0, 3.0]. Purpose unknown.",
         "ZH": "未命名的浮点参数，并非恒定值。通常为 0（未设置）；其余取值大致落在 [-3.0, 3.0] 之间。具体作用未知。",
     },
 
     # ─── TUBELIGHT ────────────────────────────────────────────────────────────
-    # TubeLight 由一个面（tailColor 发光平面）+ 一根光柱（起点 headColor，终点 tailColor）组成。
     ("TUBELIGHT", "headColor"): {
         "EN": "Light column start color.",
         "ZH": "光柱起点颜色。",
@@ -463,7 +403,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── RGBFIRE ──────────────────────────────────────────────────────────────
-    # ExternRgbFire (EFX_Subtypes.bt)
     ("RGBFIRE", "fireColor"): {
         "EN": "Tints the texture's Green channel — usually the outer glowing edge; also tints the inner smoke color.",
         "ZH": "给贴图的绿通道染色——一般是外缘的荧光色；同时会给内部的烟雾色染色。",
@@ -476,17 +415,17 @@ FIELD_ANNOTATIONS = {
         "EN": "Tints the texture's Red channel — usually the inner core color.",
         "ZH": "给贴图的红通道染色——一般是内部的核心色。",
     },
-    ("RGBFIRE", "brightness2"): {
-        "EN": "Smoke color brightness rate.",
-        "ZH": "烟雾色的亮度速率。",
+    ("RGBFIRE", "redChFactor"): {
+        "EN": "Smoke (RedCh) layer intensity, mirrors Fire (GreenCh) Factor.",
+        "ZH": "烟雾（红通道）层的强度，跟火焰（绿通道）系数镜像对称。",
     },
-    ("RGBFIRE", "brightness3"): {
-        "EN": "Color Balance 1 — brings out color 1 without lowering overall brightness",
-        "ZH": "色彩平衡 1 —— 在不降低整体亮度的情况下突出颜色 1",
+    ("RGBFIRE", "alphaFactor"): {
+        "EN": "Overall alpha (transparency) intensity — setting either this or Color Rate to 0 makes everything disappear.",
+        "ZH": "整体透明度强度——这个和亮度强度任一设为 0 都会让画面全部消失。",
     },
-    ("RGBFIRE", "brightness4"): {
-        "EN": "Color Balance 2 — setting either balance to 0 makes all disappear",
-        "ZH": "色彩平衡 2 —— 任一平衡设为 0 都会让全部消失",
+    ("RGBFIRE", "colorRate"): {
+        "EN": "Overall color brightness intensity — setting either this or Alpha Rate to 0 makes everything disappear.",
+        "ZH": "整体亮度强度——这个和透明度强度任一设为 0 都会让画面全部消失。",
     },
     ("RGBFIRE", "fireColorParam_useLife"): {
         "EN": "Fire color timing params (fade-in / duration / fade-out).",
@@ -514,45 +453,41 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── GUIDE ────────────────────────────────────────────────────────────────
-    # Guide (EFX_Subtypes.bt) — field names are descriptive, few inline comments
 
     # ─── PLEMISSIVE ───────────────────────────────────────────────────────────
-    # ExternPlEmissive (EFX_Subtypes.bt)
-    # body_p / wp_p 已重命名为 Aura Part (Player)/(Weapon) 并配勾选弹窗，名称自明，无需注释。
     ("PLEMISSIVE", "rimWidth"): {
-        "EN": "Rim light width. TIML DT 0xAC635CA9 (\"RimWidth\") confirmed.",
-        "ZH": "边缘光宽度。TIML DT 0xAC635CA9（\"RimWidth\"）已确认。",
+        "EN": "Rim light width. Can be animated via a TIML track.",
+        "ZH": "边缘光宽度。可通过 TIML 轨道做动画。",
     },
     ("PLEMISSIVE", "rimPower"): {
-        "EN": "Rim light falloff power. TIML DT 0x8BF31826 (\"RimPower\") confirmed.",
-        "ZH": "边缘光衰减强度。TIML DT 0x8BF31826（\"RimPower\"）已确认。",
+        "EN": "Rim light falloff power. Can be animated via a TIML track.",
+        "ZH": "边缘光衰减强度。可通过 TIML 轨道做动画。",
     },
     ("PLEMISSIVE", "rimAlpha"): {
-        "EN": "Rim light opacity (can be negative). TIML DT 0xF09920EC (\"RimAlpha\") confirmed.",
-        "ZH": "边缘光透明度（可为负值）。TIML DT 0xF09920EC（\"RimAlpha\"）已确认。",
+        "EN": "Rim light opacity (can be negative). Can be animated via a TIML track.",
+        "ZH": "边缘光透明度（可为负值）。可通过 TIML 轨道做动画。",
     },
     ("PLEMISSIVE", "intensity"): {
-        "EN": "Emissive intensity. TIML DT 0x94BCC5CE (\"Intensity\") confirmed.",
-        "ZH": "自发光强度。TIML DT 0x94BCC5CE（\"Intensity\"）已确认。",
+        "EN": "Emissive intensity. Can be animated via a TIML track.",
+        "ZH": "自发光强度。可通过 TIML 轨道做动画。",
     },
     ("PLEMISSIVE", "mask0"): {
-        "EN": "Emit-mask threshold 0 (default 15.0). TIML DT 0xEC4350B5 (\"Mask0\") confirmed.",
-        "ZH": "发光遮罩阈值 0（默认 15.0）。TIML DT 0xEC4350B5（\"Mask0\"）已确认。",
+        "EN": "Emit-mask threshold 0 (default 15.0). Can be animated via a TIML track.",
+        "ZH": "发光遮罩阈值 0（默认 15.0）。可通过 TIML 轨道做动画。",
     },
     ("PLEMISSIVE", "mask1"): {
-        "EN": "Emit-mask threshold 1 (default 250.0). TIML DT 0x9B446023 (\"Mask1\") confirmed.",
-        "ZH": "发光遮罩阈值 1（默认 250.0）。TIML DT 0x9B446023（\"Mask1\"）已确认。",
+        "EN": "Emit-mask threshold 1 (default 250.0). Can be animated via a TIML track.",
+        "ZH": "发光遮罩阈值 1（默认 250.0）。可通过 TIML 轨道做动画。",
     },
     ("PLEMISSIVE", "emitMaskFlags"): {
-        "EN": "Emit-mask related toggles (4 bits used, bit0/bit3 unresolved — see enums.py::BITS_PLEMISSIVE_EMIT_MASK).",
-        "ZH": "发光遮罩相关的开关组合（用到 4 位，bit0/bit3 尚未分清——见 enums.py::BITS_PLEMISSIVE_EMIT_MASK）。",
+        "EN": "Emit-mask related toggles (4 bits used); bit0 and bit3 have no known effect.",
+        "ZH": "发光遮罩相关的开关组合（用到 4 位）；bit0 和 bit3 没有已知作用。",
     },
 
     # ─── PARENTEMISSIVE ───────────────────────────────────────────────────────
-    # ParentEmissive (EFX_Subtypes.bt)
     ("PARENTEMISSIVE", "intensity"): {
-        "EN": "Emissive intensity. Shares PlEmissive's TimelineParam (same TLP 0x598272E1), positional match only — weaker confidence than PLEMISSIVE's own Intensity.",
-        "ZH": "自发光强度。跟 PlEmissive 共用同一个 TimelineParam（同一个 TLP 0x598272E1），只是位置对应，置信度比 PLEMISSIVE 自己的 Intensity 弱一些。",
+        "EN": "Emissive intensity. Same mechanism as PLEMISSIVE.intensity; can be animated via a TIML track.",
+        "ZH": "自发光强度。机制与 PLEMISSIVE.intensity 相同，可通过 TIML 轨道做动画。",
     },
     ("PARENTEMISSIVE", "rimWidth"): {
         "EN": "Rim light width — same PlEmissive TimelineParam concept as PLEMISSIVE.rimWidth.",
@@ -567,16 +502,15 @@ FIELD_ANNOTATIONS = {
         "ZH": "边缘光透明度——跟 PLEMISSIVE.rimAlpha 是同一个 PlEmissive TimelineParam 概念。",
     },
     ("PARENTEMISSIVE", "mask0"): {
-        "EN": "Emit-mask threshold 0 (weak guess — 15.0 is only the second most common value here, not the mode).",
-        "ZH": "发光遮罩阈值 0（弱假设——15.0 在这里只是次常见值，不是众数）。",
+        "EN": "Emit-mask threshold 0. Common value is 15.0.",
+        "ZH": "发光遮罩阈值 0。常见取值为 15.0。",
     },
     ("PARENTEMISSIVE", "mask1"): {
-        "EN": "Emit-mask threshold 1 (weak guess — 250.0 is only the second most common value here, not the mode).",
-        "ZH": "发光遮罩阈值 1（弱假设——250.0 在这里只是次常见值，不是众数）。",
+        "EN": "Emit-mask threshold 1. Common value is 250.0.",
+        "ZH": "发光遮罩阈值 1。常见取值为 250.0。",
     },
 
     # ─── PLSNOW ───────────────────────────────────────────────────────────────
-    # PlSnow (EFX_Subtypes.bt)
     ("PLSNOW", "body_part_id"): {
         "EN": "1F=Everything, 1/2/3/4/5=body parts as usual",
         "ZH": "1F=全部, 1/2/3/4/5=照常对应身体部位",
@@ -599,7 +533,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── PTCOLLISION ──────────────────────────────────────────────────────────
-    # PtCollision (EFX_Subtypes.bt)
     ("PTCOLLISION", "projectionOffset"): {
         "EN": "Offsets the collision plane along -Y. Positive values shift it down, "
               "negative values shift it up.",
@@ -638,7 +571,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── PTLIFE ───────────────────────────────────────────────────────────────
-    # PtLife (EFX_Subtypes.bt)
     ("PTLIFE", "status"): {
         "EN": "Determines when the specified Action is triggered, matching the particle's "
               "fade-in / sustain / fade-out lifecycle stages (LIFE.fadeInDuration/duration/"
@@ -654,17 +586,11 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── EMITTERBOUNDARY ──────────────────────────────────────────────────────
-    # EmitterBoundary — no inline comments in BT
 
     # ─── FADEBYANGLE ──────────────────────────────────────────────────────────
-    # FadeByAngle — no inline comments in BT
 
     # ─── FADEBYEMITTERANGLE ───────────────────────────────────────────────────
-    # FadeByEmitterAngle — cone angle, alpha rate, fade-in range
-    # 用户实机确认（2026-07-23）：fadeInStart/fadeInEnd 其实是距离而非角度
-    # （量级跟 cone 的 0~360 完全不同，跟 FADEBYDEPTH 同尺度），机制是
-    # fadeInStart(远/大值)~fadeInEnd(近/小值) 单段淡入区间——跟 FADEBYDEPTH
-    # 不同，这里只有一对值，不是两段近/远分开的区间，故不需要 near/far 前缀。
+    # fadeInStart/fadeInEnd 组成单段距离淡入区间，不使用 near/far 前缀。
     ("FADEBYEMITTERANGLE", "fadeInStart"): {
         "EN": "Fade-in start (distance, not angle). Below this distance, gradually appears.",
         "ZH": "淡入起点（是距离不是角度），小于此距离逐渐显现。",
@@ -675,10 +601,8 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── NOISE ────────────────────────────────────────────────────────────────
-    # Noise — no inline comments in BT
 
     # ─── UVCONTROL ────────────────────────────────────────────────────────────
-    # UVControl (EFX_Subtypes.bt)
     ("UVCONTROL", "uv1_offsetCoef"): {
         "EN": "Multiplies speed every second (UV1)",
         "ZH": "每秒对速度做乘法（UV1）",
@@ -693,10 +617,8 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── EMITTERSHAPE2D ───────────────────────────────────────────────────────
-    # EmitterShape2D — no inline comments in BT
 
     # ─── RAYCAST ──────────────────────────────────────────────────────────────
-    # RayCast (EFX_Subtypes.bt)
     ("RAYCAST", "direction"): {
         "EN": "Ray direction. Same AxisDirection6 enum as VELOCITY3D/RIBBON/RIBBONBLADE: "
               "0=Left, 1=Up, 2=Front, 3=Right, 4=Down, 5=Back. Casting downward to find "
@@ -705,24 +627,23 @@ FIELD_ANNOTATIONS = {
               "0=左, 1=上, 2=前, 3=右, 4=下, 5=后。朝下探地面是最常见的用法"
               "（光是 4 就占全部 RAYCAST 块的 36%）。",
     },
-    ("RAYCAST", "unknownEnum1"): {
-        "EN": "Usually -1; occasionally 0",
-        "ZH": "通常为 -1；偶尔为 0",
+    ("RAYCAST", "rayCastID"): {
+        "EN": "Shown as a dropdown defaulting to NONE. Only 4 values are used in practice "
+              "(-1/0/1/2); -1 = NONE. The meaning of 0/1/2 is unknown, possibly used for "
+              "program-side identification.",
+        "ZH": "以下拉框显示，默认 NONE。实际只会用到 4 种取值（-1/0/1/2）；-1 = NONE。0/1/2 "
+              "的具体含义未知，可能用于程序侧识别。",
     },
-    ("RAYCAST", "unknownBitmask2"): {
-        "EN": "Value 256 — may be flag or enum",
-        "ZH": "取值为 256，可能是标志或枚举。",
+    ("RAYCAST", "rayCastFlags"): {
+        "EN": "Bit0 = SyncSpawnFrame, bit8 = RayCastOnce (matches the two independent checkboxes in the official panel).",
+        "ZH": "bit0 = SyncSpawnFrame，bit8 = RayCastOnce（对应官方面板上两个独立的勾选框）。",
     },
 
     # ─── HOMING ───────────────────────────────────────────────────────────────
-    # 字段语义来自 212 个块统计 + 八角探针系统实测（2026-07-30 定稿）。
-    # 运动学模型与改名依据见 efx_format/schema/attributes.py 的 Homing schema 注释；
-    # 调查过程记在 docs/ATTRIBUTE_BEHAVIOR_NOTES.md。
-    # typeFlag/section_length/spacer 是大部分 attribute 都有的头部字段，见下方通用说明。
     ("HOMING", "typeFlag"): {
-        "EN": 'Header field present in most attribute types, likely a type/category marker rather than a tunable value. Exact value semantics unknown.',
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数，具体数值"
-              "具体含义未知。",
+        "EN": "Header field present in most attribute types, a type/category "
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("HOMING", "section_length"): {
         "EN": "Fixed at 44 — do not modify",
@@ -833,25 +754,22 @@ FIELD_ANNOTATIONS = {
         "ZH": "通常为 0（约 97%）。",
     },
 
-    # ─── typeFlag/section_length 通用头字段（2026-07-23，19 个类型统一改名）───────
-    # 绝大多数 attribute 类型开头都是这两个 4B 字段：field[0]（typeFlag）呈小基数
-    # 离散分布，疑似类型/分类标记；field[1]（section_length）100% 恒等于「该 attribute
-    # 总字节数 - 8」，是引擎自描述的剩余长度标记，不是可调参数（判据见 field_labels.py
-    # RESERVED_FILL_FIELDS 注释）。这里补上尚无独立注释的类型。
+    # ─── typeFlag/section_length 通用头字段 ─────────────────────────────────────
+    # typeFlag 是类型/分类标记；section_length 记录该属性剩余字节长度，均非可调参数。
     ("NOISE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("RIBBON", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("DUMMY", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Fixed at 1.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。固定为 1。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。固定为 1。",
     },
     ("DUMMY", "section_length"): {
         "EN": "Structural remaining-length marker; computed by the engine, not a "
@@ -859,139 +777,138 @@ FIELD_ANNOTATIONS = {
         "ZH": "结构性剩余长度标记，由引擎计算，非可调参数——请勿修改",
     },
     ("FADEBYEMITTERANGLE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Fixed at 0.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。固定为 0。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。固定为 0。",
     },
     ("FADEBYEMITTERANGLE", "section_length"): {
         "EN": "Fixed at 20 — do not modify",
         "ZH": "固定为 20，请勿修改。",
     },
     ("RAYCAST", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("RAYCAST", "section_length"): {
         "EN": "Fixed at 70 — do not modify",
         "ZH": "固定为 70，请勿修改。",
     },
     ("SCREENSPACECOLLISION", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("SCREENSPACECOLLISION", "section_length"): {
         "EN": "Fixed at 28 — do not modify",
         "ZH": "固定为 28，请勿修改。",
     },
     ("SHOVEL", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("SHOVEL", "section_length"): {
         "EN": "Fixed at 62 — do not modify",
         "ZH": "固定为 62，请勿修改。",
     },
     ("PTTRIGGER", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("PTTRIGGER", "section_length"): {
         "EN": "Fixed at 8 — do not modify",
         "ZH": "固定为 8，请勿修改。",
     },
     ("SPAWNBYANGLE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("SPAWNBYANGLE", "section_length"): {
         "EN": "Fixed at 14 — do not modify",
         "ZH": "固定为 14，请勿修改。",
     },
     ("CHECKPUREATTRIBUTE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("CHECKPUREATTRIBUTE", "section_length"): {
         "EN": "Fixed at 32 — do not modify",
         "ZH": "固定为 32，请勿修改。",
     },
     ("SPAWNBYOCCLUSION", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("SPAWNBYOCCLUSION", "section_length"): {
         "EN": "Fixed at 12 — do not modify",
         "ZH": "固定为 12，请勿修改。",
     },
     ("PARENTSNOW", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("PARENTSNOW", "section_length"): {
         "EN": "Fixed at 72 — do not modify",
         "ZH": "固定为 72，请勿修改。",
     },
     ("OTOMOSNOW", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("OTOMOSNOW", "section_length"): {
         "EN": "Fixed at 76 — do not modify",
         "ZH": "固定为 76，请勿修改。",
     },
     ("FAKEPLANE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("FAKEPLANE", "section_length"): {
         "EN": "Fixed at 52 — do not modify",
         "ZH": "固定为 52，请勿修改。",
     },
     ("FAKEDOF", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: 1~5.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值 1~5。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值 1~5。",
     },
     ("STRAINRIBBON", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: 1~13.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值 1~13。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值 1~13。",
     },
-    # 2026-07-23 第三轮：变长(_custom codec)类型的固定前缀部分同样核实
     ("RGBWATER", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("TURBULENCE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("BILLBOARD3D", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("TUBELIGHT", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Fixed at 0.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。固定为 0。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。固定为 0。",
     },
     ("TONEMAPFILTER", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Value is 0.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。取值为 0。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。取值为 0。",
     },
     ("TONEMAPFILTER", "intensity"): {
         "EN": "Effect intensity.",
@@ -1010,20 +927,19 @@ FIELD_ANNOTATIONS = {
         "ZH": "含义未知。",
     },
     ("LAYOUT", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     ("MATERIAL", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Unusually stored as a 64-bit value "
               "(most other typeFlag fields are 32-bit) but still shows the same "
               "small-cardinality distribution.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。此字段较特殊，"
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。此字段较特殊，"
               "以 64 位存储（其余大多数 typeFlag 字段为 32 位），但取值分布形态相同（小基数离散）。",
     },
-    # PTBEHAVIOR 的 param 行按参数真名（hint_name，如 mBrightThreshold）查注释，
-    # 不按 ori_name（那是 'p3' 这样的序号占位）。见 panels._draw_field_row_buttons 的 anno_name。
+    # PTBEHAVIOR 参数按 hint_name 查 tooltip，不按序号占位的 ori_name。
     ("PTBEHAVIOR", "mBrightThreshold"): {
         "EN": "Brightness cutoff for the filter's bright pass: screen pixels darker than "
               "this are dropped before the radial blur, leaving only the brightest parts. "
@@ -1043,23 +959,20 @@ FIELD_ANNOTATIONS = {
               "色块本身只能拖到 1，更亮的值用它下面那行原始 RGB 数值改。Alpha 几乎总是 1.0。",
     },
     ("PTBEHAVIOR", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Not the same field as the "
               "per-parameter unkn0 seen elsewhere in this block.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。跟本块内每个"
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。跟本块内每个"
               "参数各自的 unkn0 是不同字段，不要混淆。",
     },
 
     # ─── SCREENSPACECOLLISION ─────────────────────────────────────────────────
-    # ScreenSpaceCollision (EFX_Subtypes.bt)
     ("SCREENSPACECOLLISION", "lifespan"): {
         "EN": "0=No interaction; higher values = more bounce",
         "ZH": "0=无交互；数值越大反弹越多",
     },
 
     # ─── SHOVEL ───────────────────────────────────────────────────────────────
-    # Shovel — no inline comments in BT for most fields
-    # 取值统计依据见 docs/BLOCK_BEHAVIOR_NOTES.md「SHOVEL」节（tools/scan_shovel.py）
     ("SHOVEL", "unkn09"): {
         "EN": "Range roughly -180 to 90 (degrees); most commonly -180 or 0.",
         "ZH": "取值范围约 -180~90（角度）；最常见为 -180 或 0。",
@@ -1098,10 +1011,8 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── EXTERNREFERENCE ──────────────────────────────────────────────────────
-    # ExternReference — no inline comments in BT
 
     # ─── DUMMY / RANDOMFIX / MASTERONLY / BLINK / LUMINANCEBLEED / REFRACTION ─
-    # No significant inline comments in BT
     ("LUMINANCEBLEED", "bleed"): {
         "EN": "Bleed strength — how far/strongly bright pixels bleed into surrounding "
               "pixels. 0 = no effect; increasing toward 1 gives a natural bloom-like glow. "
@@ -1446,10 +1357,11 @@ FIELD_ANNOTATIONS = {
               "color 与 colorRange 之间随机变化）。（RE Engine 里对应字段叫 'EdgeBlendRange'。）",
     },
     ("PLANE", "blendMode"): {
-        "EN": "Shader blend mode: 0 = alpha blend (can show black at normal brightness), "
-              "1 = additive blend. (RE Engine's own name for the equivalent field is 'AlphaRate'.)",
-        "ZH": "着色器混合模式：0=alpha 混合（正常亮度下可显示黑色），1=add 叠加混合。"
-              "（RE Engine 里对应字段叫 'AlphaRate'。）",
+        "EN": "Additive (glow) blending instead of normal alpha blending. Off = alpha blend "
+              "(can show black at normal brightness); on = additive. (RE Engine's own name "
+              "for the equivalent field is 'AlphaRate'.)",
+        "ZH": "用叠加（发光）混合代替普通的 alpha 混合。不勾=alpha 混合（正常亮度下可显示黑色）；"
+              "勾选=add 叠加混合。（RE Engine 里对应字段叫 'AlphaRate'。）",
     },
     ("PLANE", "scale"): {
         "EN": "Scale",
@@ -1512,12 +1424,10 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── TURBULENCE (fixed part fields) ───────────────────────────────────────
-    # Turbulence — no inline comments in BT for non-path fields
 
     # ─── LIGHTNING (fixed part fields) ────────────────────────────────────────
-    # Lightning — no significant inline comments in BT for fixed fields
 
-    # ─── STRAINRIBBON（拔刀链条，社区注释 EFX_Crimson.bt）─────────────────────
+    # ─── STRAINRIBBON ─────────────────────────────────────────────────────────
     ("STRAINRIBBON", "unknFixed00_2"): {
         "EN": "Flag byte. Usually 0; its effect is unknown.",
         "ZH": "标志位，通常为 0；具体作用未知。",
@@ -1634,7 +1544,7 @@ FIELD_ANNOTATIONS = {
               "with Alpha scaling for thickness/halo variation",
         "ZH": "贴图宽度方向光照通道缩放。0.1=极细线；1=默认；5=发光纹理宽度大增锯齿感强；与 Alpha 缩放配合做粗细/光晕变化",
     },
-    # 下面两个字段在 BT 模板里被误标成颜色，实为开关；出处不写进 tooltip。
+    # 下列字段是开关，不作为颜色处理。
     ("STRAINRIBBON", "endPointScatter"): {
         "EN": "Endpoint-scatter switch. 0=endpoint "
               "anchored to the end bone; non-zero=endpoint unanchored, multiple bolts "
@@ -1671,7 +1581,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Random variation of the angle-related parameter. Fixed at 0.0.",
         "ZH": "角度相关参数的随机偏差，固定为 0.0。",
     },
-    # 链条物理参数（MT Framework，即 MHW 引擎）
+    # 链条物理参数
     ("STRAINRIBBON", "lengthBreakpoint"): {
         "EN": "Length breakpoint (chain-break-related physics parameter)",
         "ZH": "长度断点（链条断裂相关物理参数）",
@@ -1702,8 +1612,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "位移开关。据 BT：0=一切正常；1/2=消除前一个位移；3=消除位移",
     },
 
-    # ─── 行为补充（社区实测，世界特效注释解析）────────────────────────────
-    # SPAWN（2026-07-26 实机测试重新定型，取代旧的"burst次数"猜测）
+    # ─── 行为补充 ─────────────────────────────────────────────────────────────
+    # SPAWN
     ("SPAWN", "loopNum"): {
         "EN": "Re-rolled each time the spawner starts a new cycle (new position). "
               "0 = never relocates, bursts continue forever at intervalFrame pacing. "
@@ -1871,7 +1781,7 @@ FIELD_ANNOTATIONS = {
         "EN": "See sizeX.",
         "ZH": "见 sizeX。",
     },
-    # BILLBOARD3D（含本版新拆分字段）
+    # BILLBOARD3D
     ("BILLBOARD3D", "color"): {
         "EN": "Base color (RGBA). Shown as-is when useColorRange is off.",
         "ZH": "基准颜色（RGBA）。useColorRange 关闭时固定显示这个颜色。",
@@ -1890,22 +1800,21 @@ FIELD_ANNOTATIONS = {
               "color 与 colorRange 之间随机变化）。",
     },
     ("BILLBOARD3D", "brightnessJitter"): {
-        # 原名 randomBrightnessMult；改判定为 jitter（取值范围与 brightness 同量级，非 0~1 比例）。
         "EN": "Jitter paired with brightness.",
         "ZH": "与亮度配对的抖动量。",
     },
     ("BILLBOARD3D", "blendMode"): {
-        "EN": "Shader blend mode: 0 = alpha blend (can show black at normal brightness), "
-              "1 = additive blend.",
-        "ZH": "着色器混合模式：0=alpha 混合（正常亮度下可显示黑色），1=add 叠加混合。",
+        "EN": "Additive (glow) blending instead of normal alpha blending. Off = alpha blend "
+              "(can show black at normal brightness); on = additive.",
+        "ZH": "用叠加（发光）混合代替普通的 alpha 混合。不勾=alpha 混合（正常亮度下可显示黑色）；"
+              "勾选=add 叠加混合。",
     },
-    # SCALEANIM（社区验证语义：初始整体扩散 + 播放过程逐轴 X/Y/Z 速度/加速度）
+    # SCALEANIM
     ("SCALEANIM", "initialScaleAccel"): {
         "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
         "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
     },
     ("SCALEANIM", "initialScaleSpeedJitter"): {
-        # 原名 NULL/unknFloat；按位置+取值形态判定为 initialScaleSpeed 的 jitter，未实机确认。
         "EN": "Jitter paired with initialScaleSpeed.",
         "ZH": "与初始扩散速度配对的抖动量。未知。",
     },
@@ -1929,8 +1838,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Frame time when the per-axis scale animation starts updating.",
         "ZH": "逐轴缩放动画开始更新的时间（帧）。",
     },
-    # ROTATEANIM（含本版新拆分字段）
-    # BT 模板把它标成 int，实为 float，本项目已订正；出处不写进 tooltip。
+    # ROTATEANIM
     ("ROTATEANIM", "billboardRotation"): {
         "EN": "BILLBOARD3D plane rotation (static value; pairs with billboardRotationJitter as "
               "the random).",
@@ -1946,7 +1854,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── LIGHTNING ────────────────────────────────────────────────────────────
-    # ⚠ = 危险/崩溃字段。
     ("LIGHTNING", "spacer0"): {
         "EN": "Memory-alignment padding (-842150656). Do not edit.",
         "ZH": "内存对齐占位符（-842150656）。请勿编辑。",
@@ -2356,11 +2263,11 @@ FIELD_ANNOTATIONS = {
         "ZH": "支线结束宽度抖动（默认 1）。支线独有，主线无对应。",
     },
     ("LIGHTNING", "unknFixed07_19"): {
-        "EN": "⚠ DO NOT MODIFY. Extreme float (~1.3e-43); guessed engine pointer/special flag.",
+        "EN": "⚠ DO NOT MODIFY. Extreme float (~1.3e-43); editing may break the effect.",
         "ZH": "⚠ 请勿修改。此值为极端浮点（约 1.3e-43），修改可能破坏特效。",
     },
     ("LIGHTNING", "unkn07_20"): {
-        "EN": "⚠ DO NOT MODIFY. Extreme float (~-1.35e+08); guessed engine pointer/flag.",
+        "EN": "⚠ DO NOT MODIFY. Extreme float (~-1.35e+08); editing may break the effect.",
         "ZH": "⚠ 请勿修改。此值为极端浮点（约 -1.35e+08），修改可能破坏特效。",
     },
     ("LIGHTNING", "unknEnum07_21"): {
@@ -2377,7 +2284,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "⚠ 禁止修改。改非0崩溃；指针/结构体引用区。",
     },
     ("LIGHTNING", "unknBitmask07_24"): {
-        "EN": "⚠ DO NOT MODIFY. Extreme float (~4.2e-45); guessed engine pointer.",
+        "EN": "⚠ DO NOT MODIFY. Extreme float (~4.2e-45); editing may break the effect.",
         "ZH": "⚠ 请勿修改。此值为极端浮点（约 4.2e-45），修改可能破坏特效。",
     },
     ("LIGHTNING", "unkn07_25"): {
@@ -2465,16 +2372,13 @@ FIELD_ANNOTATIONS = {
         "ZH": "保留字段。测 1/100/-1 无变化。",
     },
 
-    # -----------------------------------------------------------------------
-    # 批量生成：BOOLEAN/NORMALIZED/PERCENTAGE/ENUM 常见取值提示
-    # 来源：stats/field_classification.json（confidence>=0.6），仅提示"通常取值"，
-    # 不代表字段被锁定为该范围/取值——未覆盖到的其他取值同样合法。
-    # -----------------------------------------------------------------------
-    # ALPHACORRECTION 的头部槽位 schema 名仍是 unkn0（其它类型都叫 typeFlag）。
+    # ─── 常见取值提示 ──────────────────────────────────────────────────────────
+    # 提示的常见范围不是字段的合法值限制。
+    # ALPHACORRECTION 的对应头字段名为 unkn0。
     ("ALPHACORRECTION", "unkn0"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common range: 1~11 (rare outliers up to 45).",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见范围 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见范围 "
               "1~11（个别情况可达 45）。",
     },
     ("ALPHACORRECTION", "unknFlag2"): {
@@ -2486,9 +2390,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
     ("BILLBOARD2D", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: [1, 5, 6, 7, 8, 10].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 5, 6, 7, 8, 10]。",
     },
     ("BILLBOARD2D", "applicationRule"): {
@@ -2502,16 +2406,18 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("BILLBOARD2D", "blendMode"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "Additive (glow) blending instead of normal alpha blending. Off = alpha blend "
+              "(can show black at normal brightness); on = additive.",
+        "ZH": "用叠加（发光）混合代替普通的 alpha 混合。不勾=alpha 混合（正常亮度下可显示黑色）；"
+              "勾选=add 叠加混合。",
     },
-    ("BILLBOARD2D", "EPVColorSlot1"): {
+    ("BILLBOARD2D", "correctColorNo"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
-    ("BILLBOARD2D", "EPVColorSlot2"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+    ("BILLBOARD2D", "colorRangeCorrectColorNo"): {
+        "EN": 'EPV colour slot id, same mechanism as correctColorNo. Exactly which attribute this targets is unknown; non-zero takes the attribute from that slot instead of the value here. 0 = use the local value.',
+        "ZH": 'EPV 颜色槽位 id，机制同 correctColorNo。具体对应哪个属性未知；写非 0 就改用对应 id 槽位里的属性，顶掉本属性上的值；0 = 用本地值。',
     },
     ("BILLBOARD2D", "flowmapSpeedJitter"): {
         "EN": "Common range: 0~1.",
@@ -2533,9 +2439,9 @@ FIELD_ANNOTATIONS = {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
-    ("BILLBOARD3D", "SlotOverride1"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+    ("BILLBOARD3D", "colorRangeCorrectColorNo"): {
+        "EN": 'EPV colour slot id, same mechanism as correctColorNo. Exactly which attribute this targets is unknown; non-zero takes the attribute from that slot instead of the value here. 0 = use the local value.',
+        "ZH": 'EPV 颜色槽位 id，机制同 correctColorNo。具体对应哪个属性未知；写非 0 就改用对应 id 槽位里的属性，顶掉本属性上的值；0 = 用本地值。',
     },
     ("BILLBOARD3D", "flowmapSpeedCoef"): {
         "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
@@ -2591,45 +2497,45 @@ FIELD_ANNOTATIONS = {
         "ZH": "结构性剩余长度标记（=块总字节数-8），由引擎计算，非可调参数。常见取值为 "
               "[5, 30, 44]。",
     },
-    ("BLINK", "minAlpha"): {
-        "EN": "Lower bound of the flicker range — the blink always spans the full minAlpha~maxAlpha range, not just the edges of it.",
-        "ZH": "闪烁摆动范围的下限——闪烁始终会撑满 minAlpha~maxAlpha 之间的整个区间，不只是碰到边缘。",
+    ("BLINK", "minRate"): {
+        "EN": "Lower bound of the flicker range — the blink always spans the full minRate~maxRate range, not just the edges of it.",
+        "ZH": "闪烁摆动范围的下限——闪烁始终会撑满 minRate~maxRate 之间的整个区间，不只是碰到边缘。",
     },
-    ("BLINK", "maxAlpha"): {
-        "EN": "Upper bound of the flicker range (pairs with minAlpha).",
-        "ZH": "闪烁摆动范围的上限（与 minAlpha 配对使用）。",
+    ("BLINK", "maxRate"): {
+        "EN": "Upper bound of the flicker range (pairs with minRate).",
+        "ZH": "闪烁摆动范围的上限（与 minRate 配对使用）。",
     },
-    ("BLINK", "lowFreq"): {
-        "EN": "Blink speed of the low-frequency channel; adds together with the high-frequency channel. Setting this to 0 does NOT turn the channel off — it freezes it at half of lowFreqAmplitude. Set lowFreqAmplitude to 0 to actually disable it.",
-        "ZH": "低频通道的闪烁速度，与高频通道叠加生效。把这里设为 0 并不会关闭该通道——只会让它固定停在 lowFreqAmplitude 一半的位置。要真正关闭该通道，请把 lowFreqAmplitude 设为 0。",
+    ("BLINK", "lowFrequency"): {
+        "EN": "Blink speed of the low-frequency channel; adds together with the high-frequency channel. Setting this to 0 does NOT turn the channel off — it freezes it at half of lowFrequencyWidth. Set lowFrequencyWidth to 0 to actually disable it.",
+        "ZH": "低频通道的闪烁速度，与高频通道叠加生效。把这里设为 0 并不会关闭该通道——只会让它固定停在 lowFrequencyWidth 一半的位置。要真正关闭该通道，请把 lowFrequencyWidth 设为 0。",
     },
-    ("BLINK", "lowFreqAmplitude"): {
+    ("BLINK", "lowFrequencyWidth"): {
         "EN": "Blink depth of the low-frequency channel — the higher, the more pronounced. Set to 0 to fully disable this channel.",
         "ZH": "低频通道的闪烁深度，越大摆动越明显。设为 0 即可彻底关闭这一通道。",
     },
-    ("BLINK", "highFreq"): {
-        "EN": "Blink speed of the high-frequency channel; adds together with the low-frequency channel. Setting this to 0 does NOT turn the channel off — it freezes it at half of highFreqAmplitude. Set highFreqAmplitude to 0 to actually disable it.",
-        "ZH": "高频通道的闪烁速度，与低频通道叠加生效。把这里设为 0 并不会关闭该通道——只会让它固定停在 highFreqAmplitude 一半的位置。要真正关闭该通道，请把 highFreqAmplitude 设为 0。",
+    ("BLINK", "highFrequency"): {
+        "EN": "Blink speed of the high-frequency channel; adds together with the low-frequency channel. Setting this to 0 does NOT turn the channel off — it freezes it at half of highFrequencyWidth. Set highFrequencyWidth to 0 to actually disable it.",
+        "ZH": "高频通道的闪烁速度，与低频通道叠加生效。把这里设为 0 并不会关闭该通道——只会让它固定停在 highFrequencyWidth 一半的位置。要真正关闭该通道，请把 highFrequencyWidth 设为 0。",
     },
-    ("BLINK", "highFreqAmplitude"): {
+    ("BLINK", "highFrequencyWidth"): {
         "EN": "Blink depth of the high-frequency channel — the higher, the more pronounced. Set to 0 to fully disable this channel.",
         "ZH": "高频通道的闪烁深度，越大摆动越明显。设为 0 即可彻底关闭这一通道。",
     },
-    ("BLINK", "lowFreqJitter"): {
-        "EN": "Per-particle random offset applied to lowFreq, so particles don't blink in sync. Common range: 0~100.",
-        "ZH": "对 lowFreq 施加的逐粒子随机偏移，避免多个粒子同步闪烁。常见取值在 0~100 之间。",
+    ("BLINK", "lowFrequencyJitter"): {
+        "EN": "Per-particle random offset applied to lowFrequency, so particles don't blink in sync. Common range: 0~100.",
+        "ZH": "对 lowFrequency 施加的逐粒子随机偏移，避免多个粒子同步闪烁。常见取值在 0~100 之间。",
     },
-    ("BLINK", "lowFreqAmplitudeJitter"): {
-        "EN": "Per-particle random offset applied to lowFreqAmplitude. Common range: 0~100.",
-        "ZH": "对 lowFreqAmplitude 施加的逐粒子随机偏移。常见取值在 0~100 之间。",
+    ("BLINK", "lowFrequencyWidthJitter"): {
+        "EN": "Per-particle random offset applied to lowFrequencyWidth. Common range: 0~100.",
+        "ZH": "对 lowFrequencyWidth 施加的逐粒子随机偏移。常见取值在 0~100 之间。",
     },
-    ("BLINK", "highFreqJitter"): {
-        "EN": "Per-particle random offset applied to highFreq, so particles don't blink in sync. Common range: 0~100.",
-        "ZH": "对 highFreq 施加的逐粒子随机偏移，避免多个粒子同步闪烁。常见取值在 0~100 之间。",
+    ("BLINK", "highFrequencyJitter"): {
+        "EN": "Per-particle random offset applied to highFrequency, so particles don't blink in sync. Common range: 0~100.",
+        "ZH": "对 highFrequency 施加的逐粒子随机偏移，避免多个粒子同步闪烁。常见取值在 0~100 之间。",
     },
-    ("BLINK", "highFreqAmplitudeJitter"): {
-        "EN": "Per-particle random offset applied to highFreqAmplitude. Common range: 0~100.",
-        "ZH": "对 highFreqAmplitude 施加的逐粒子随机偏移。常见取值在 0~100 之间。",
+    ("BLINK", "highFrequencyWidthJitter"): {
+        "EN": "Per-particle random offset applied to highFrequencyWidth. Common range: 0~100.",
+        "ZH": "对 highFrequencyWidth 施加的逐粒子随机偏移。常见取值在 0~100 之间。",
     },
     ("EMITTERSHAPE2D", "rangeX"): {
         "EN": "X spawn range, the 2D counterpart of EMITTERSHAPE3D.rangeXYZ: offset is the "
@@ -2660,9 +2566,9 @@ FIELD_ANNOTATIONS = {
               "是生成范围，不是粒子个数。常见取值为 [0, 3, 5, 6, 8, 10, 16, 18]。",
     },
     ("EMITTERSHAPE2D", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: [1, 2, 3, 7, 8, 9, 13].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 2, 3, 7, 8, 9, 13]。",
     },
     ("EMITTERSHAPE2D", "shapeType"): {
@@ -2682,10 +2588,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "局部旋转各轴的应用顺序。",
     },
     ("EMITTERSHAPE3D", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: "
               "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]。",
     },
     ("EMITTERSHAPE3D", "rangeDivideAxis"): {
@@ -2703,14 +2609,14 @@ FIELD_ANNOTATIONS = {
         "EN": "0/1, exact mechanism unclear. Mostly 1.",
         "ZH": "0/1，具体机制不明，大部分情况下取 1。",
     },
-    ("EMITTERSHAPE3D", "unknBitmaskRadiusRelated"): {
+    ("EMITTERSHAPE3D", "rayCastDependency"): {
         "EN": "Enum 0~5, exact mechanism unclear.",
         "ZH": "枚举值 0~5，具体机制不明。",
     },
     ("EMITTERSHAPEMESH", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: [1, 2, 3, 4, 5, 6, 7, 9].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 2, 3, 4, 5, 6, 7, 9]。",
     },
     ("EMITTERSHAPEMESH", "unknFlag2_0"): {
@@ -2742,20 +2648,33 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("EXTERNREFERENCE", "trigger_condition"): {
-        "EN": "Common values: [0, 1, 3, 4146].",
-        "ZH": "常见取值为 [0, 1, 3, 4146]。",
+        "EN": "Default: pick Index0/Index1 directly, no transition. Over Emitter Lifetime: "
+              "switches on an external event, transitioning over transitionDuration after "
+              "triggerDelay. Over Particle Lifetime: transitions automatically over "
+              "transitionDuration, no external event needed.",
+        "ZH": "默认：直接按 Index0/Index1 取值，不做过渡。随发射器生命周期：由外部事件触发切换，"
+              "在 triggerDelay 之后用 transitionDuration 完成过渡。随粒子生命周期：自动过渡，"
+              "用 transitionDuration 完成，无需外部事件。",
     },
-    ("EXTERNREFERENCE", "unknEnum1_1"): {
+    ("EXTERNREFERENCE", "index0"): {
         "EN": "Common values: [0, 1, 2, 4].",
         "ZH": "常见取值为 [0, 1, 2, 4]。",
     },
-    ("EXTERNREFERENCE", "unknEnum1_2"): {
+    ("EXTERNREFERENCE", "index1"): {
         "EN": "Common values: [0, 1, 2, 3, 5].",
         "ZH": "常见取值为 [0, 1, 2, 3, 5]。",
     },
-    ("EXTERNREFERENCE", "unkn1_3"): {
+    ("EXTERNREFERENCE", "lerp"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
+    },
+    ("EXTERNREFERENCE", "transitionDuration"): {
+        "EN": "Frame count over which Lerp interpolates from Index0 to Index1.",
+        "ZH": "Lerp 从 Index0 过渡到 Index1 所用的帧数。",
+    },
+    ("EXTERNREFERENCE", "triggerDelay"): {
+        "EN": "Frame count to wait after the trigger event before the transition starts.",
+        "ZH": "触发事件发生后，等待多少帧再开始过渡。",
     },
     ("EXTERNREFERENCE", "unknFlag1_6"): {
         "EN": "Common values: 0/1.",
@@ -2882,10 +2801,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
     ("LIFE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: "
               "[1, 2, 5, 6, 7, 8, 9, 10, 12].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 2, 5, 6, 7, 8, 9, 10, 12]。",
     },
     ("LIFE", "unknFrame"): {
@@ -2897,9 +2816,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "通常为 0；其余常见取值为 [5, 6, 10, 15, 20, 30, 40, 50, 60]。",
     },
     ("LIGHTNING", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: [1, 2, 3, 4, 7].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 2, 3, 4, 7]。",
     },
     ("LIGHTNING", "unknEnum08_1"): {
@@ -2993,10 +2912,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "旋转顺序设置，取值为 0~5，其中 4 最常见。各取值的具体含义未知。",
     },
     ("MESH", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: "
               "[1, 2, 3, 4, 5, 6, 7, 8, 9].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 2, 3, 4, 5, 6, 7, 8, 9]。",
     },
     ("MESH", "unknFixed0_1"): {
@@ -3024,21 +2943,21 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("NOISE", "main_axis_speed_jitter"): {
-        "EN": "Random variation of main_axis_speed. Common range: 0~100.",
-        "ZH": "main_axis_speed 的随机偏差。常见取值在 0~100 之间。",
+    ("NOISE", "lowFrequencyJitter"): {
+        "EN": "Per-particle random offset applied to lowFrequency, so particles don't jitter in sync. Common range: 0~100.",
+        "ZH": "对 lowFrequency 施加的逐粒子随机偏移，避免多个粒子的抖动同步。常见取值在 0~100 之间。",
     },
-    ("NOISE", "main_axis_speed2_jitter"): {
-        "EN": "Random variation of main_axis_speed2. Common range: 0~100.",
-        "ZH": "main_axis_speed2 的随机偏差。常见取值在 0~100 之间。",
+    ("NOISE", "highFrequencyJitter"): {
+        "EN": "Per-particle random offset applied to highFrequency, so particles don't jitter in sync. Common range: 0~100.",
+        "ZH": "对 highFrequency 施加的逐粒子随机偏移，避免多个粒子的抖动同步。常见取值在 0~100 之间。",
     },
-    ("NOISE", "teleport_radius_jitter"): {
-        "EN": "Random variation of teleport_radius.",
-        "ZH": "teleport_radius 的随机偏差。",
+    ("NOISE", "lowFrequencyWidthJitter"): {
+        "EN": "Per-particle random offset applied to lowFrequencyWidth, so particles don't jitter by the same amount.",
+        "ZH": "对 lowFrequencyWidth 施加的逐粒子随机偏移，避免多个粒子的抖动幅度完全一致。",
     },
-    ("NOISE", "teleport_radius2_jitter"): {
-        "EN": "Random variation of teleport_radius2.",
-        "ZH": "teleport_radius2 的随机偏差。",
+    ("NOISE", "highFrequencyWidthJitter"): {
+        "EN": "Per-particle random offset applied to highFrequencyWidth, so particles don't jitter by the same amount.",
+        "ZH": "对 highFrequencyWidth 施加的逐粒子随机偏移，避免多个粒子的抖动幅度完全一致。",
     },
     ("NOISE", "section_length"): {
         "EN": "Common values: [0, 36].",
@@ -3060,11 +2979,11 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("PARENTEMISSIVE", "unkn2"): {
+    ("PARENTEMISSIVE", "blend"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("PARENTEMISSIVE", "unknEnum3"): {
+    ("PARENTEMISSIVE", "correctColorNo"): {
         "EN": "Common values: [0, 1, 2, 9].",
         "ZH": "常见取值为 [0, 1, 2, 9]。",
     },
@@ -3117,10 +3036,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~1 之间。",
     },
     ("PATHCHAIN", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: "
               "[0, 1, 2, 3, 4, 5, 7, 17].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[0, 1, 2, 3, 4, 5, 7, 17]。",
     },
     ("PATHCHAIN", "unkn4_0"): {
@@ -3147,14 +3066,14 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
-    ("PLANE", "EPVColorSlot1"): {
+    ("PLANE", "correctColorNo"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     ("PLANE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common range: 1~13 (rare outliers up to 41).",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见范围 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见范围 "
               "1~13（个别情况可达 41）。",
     },
     ("PLANE", "rotation2"): {
@@ -3195,7 +3114,6 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
     ("PLANE", "brightnessJitter"): {
-        # 原名 randomBrightnessMult；同 BILLBOARD3D 的字段位置，PLANE 上的行为未实机确认。
         "EN": "Jitter paired with brightness. Exact behavior on PLANE unknown.",
         "ZH": "与亮度配对的抖动量。在 PLANE 上的具体行为未知。",
     },
@@ -3231,20 +3149,20 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
     ("PLEMISSIVE", "enableUseEmitMask"): {
-        "EN": "Master switch for the emit mask. 0 = mask0/mask1 are never touched from default (100% clean gate across the whole corpus); 1 = always customized.",
-        "ZH": "发光遮罩功能的总开关。为 0 时 mask0/mask1 全语料从未偏离默认值（100% 干净的门控）；为 1 时全部被改过。",
+        "EN": "Master switch for the emit mask. 0 = mask0/mask1 stay at their default; 1 = they take the customized values.",
+        "ZH": "发光遮罩功能的总开关。为 0 时 mask0/mask1 保持默认值；为 1 时使用自定义的数值。",
     },
     ("PLEMISSIVE", "blend"): {
-        "EN": "Blend factor. TIML DT 0x95A3A1D3 (\"Blend\") confirmed.",
-        "ZH": "混合系数。TIML DT 0x95A3A1D3（\"Blend\"）已确认。",
+        "EN": "Blend factor. Can be animated via a TIML track.",
+        "ZH": "混合系数。可通过 TIML 轨道做动画。",
     },
     ("PLEMISSIVE", "addMask0"): {
-        "EN": "Secondary (\"Add\") emit-mask threshold 0 (weak guess, based on position).",
-        "ZH": "次级（\"Add\"）发光遮罩阈值 0（弱假设，按位置推断）。",
+        "EN": "May be a secondary (\"Add\") emit-mask threshold; exact purpose unknown.",
+        "ZH": "可能是次级（\"Add\"）发光遮罩阈值；具体作用未知。",
     },
     ("PLEMISSIVE", "addMask1"): {
-        "EN": "Secondary (\"Add\") emit-mask threshold 1 (weak guess, based on position).",
-        "ZH": "次级（\"Add\"）发光遮罩阈值 1（弱假设，按位置推断）。",
+        "EN": "May be a secondary (\"Add\") emit-mask threshold; exact purpose unknown.",
+        "ZH": "可能是次级（\"Add\"）发光遮罩阈值；具体作用未知。",
     },
     ("PTBEHAVIOR", "behav_type_len"): {
         "EN": "Common values: [20, 21, 28, 31, 34].",
@@ -3320,7 +3238,7 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [1, 2, 4, 8].",
         "ZH": "常见取值为 [1, 2, 4, 8]。",
     },
-    ("RAYCAST", "spacer"): {
+    ("RAYCAST", "rayCastAttr"): {
         "EN": "Common values: [-4, -3, -2, -1].",
         "ZH": "常见取值为 [-4, -3, -2, -1]。",
     },
@@ -3332,17 +3250,15 @@ FIELD_ANNOTATIONS = {
               "可以透过看到背后原本内容（混合叠加）。",
     },
     ("REPEATAREA", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: [0, 1, 2, 3, 4, 7, 10].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[0, 1, 2, 3, 4, 7, 10]。",
     },
     ("REPEATAREA", "unknEnum4"): {
         "EN": "Common values: [1, 2, 5, 7].",
         "ZH": "常见取值为 [1, 2, 5, 7]。",
     },
-    # fire/smoke 的 lighting 两项不再挂 tooltip：标签「火焰受光照 / 烟雾受光照」已经说完，
-    # 原先的「作用尚未确认」与新标签矛盾，删除。
     ("RGBFIRE", "lerpAlphaToBlue"): {
         "EN": "Blends the texture's Alpha channel into the Blue channel (the auxiliary diffuse layer that has no colour picker of its own). 0 = keep Blue as-is; 1 = fully replace it with Alpha.",
         "ZH": "把贴图 Alpha 通道按此比例混入 Blue 通道（B 通道是没有独立调色入口的辅助弥散层）。0 = 保留原 B 通道；1 = 完全用 Alpha 顶替。",
@@ -3647,9 +3563,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("RIBBONBLADE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: [1, 2, 4].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 2, 4]。",
     },
     ("RIBBONBLADE", "unknFlag12_0"): {
@@ -3777,10 +3693,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~1 之间。",
     },
     ("SHADERSETTINGS", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: "
               "[1, 2, 3, 4, 5, 6, 7, 10, 11, 12].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 2, 3, 4, 5, 6, 7, 10, 11, 12]。",
     },
     ("SHADERSETTINGS", "unknEnum1"): {
@@ -3828,8 +3744,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200]。",
     },
     ("SHADERSETTINGS", "presetId"): {
-        "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. -1 = none selected (uses the local values on this attribute instead).',
-        "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。-1=未选择任何预设（用本属性上的本地值）。',
+        "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. Type a preset name (or pick one from the dropdown) to use it; leave empty for none.',
+        "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。填入预设名字（或从下拉里选一个）即可使用，留空表示不选任何预设。',
     },
     ("SHADERSETTINGS", "unkn4_9"): {
         "EN": "Usually 0; other common values: [-1000, -500, -200, -100, -50, 20, 50, 100, 200].",
@@ -3869,10 +3785,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 1, 2, 3, 4, 5, 7, 8, 9]；最常见为 0 或 1。",
     },
     ("SPAWN", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: "
               "[2, 3, 4, 5, 6, 7, 8, 9, 10]; overwhelmingly 2.",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[2, 3, 4, 5, 6, 7, 8, 9, 10]；绝大多数为 2。",
     },
     ("SPAWN", "spawnWaitFrame"): {
@@ -3893,8 +3809,8 @@ FIELD_ANNOTATIONS = {
         "ZH": '该发射器同时存活粒子数的软上限。不是终身生成总量——超出上限时本批会被削减，等早前粒子死亡腾出空间后又能满额生成。',
     },
     ("SPAWN", "spawnFlags"): {
-        "EN": 'Packed flags edited via the popup: UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos (all default off). UseSpawnFrame, RingBufferMode and the RayCast pair are confirmed by cross-checking against spawnFrame, RAYCAST co-occurrence and a comparable feature in Monster Hunter Wilds; InitializeFull/InterporatePos are still a tentative guess.',
-        "ZH": '打包标志，用弹窗编辑：UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos（均默认关闭）。UseSpawnFrame、RingBufferMode 和 RayCast 那一对已分别用 spawnFrame 共现、RAYCAST 共现、《怪物猎人：荒野》同类特征交叉验证坐实；InitializeFull/InterporatePos 仍是暂定假设。',
+        "EN": 'Packed flags edited via the popup: UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos (all default off). The exact effect of InitializeFull / InterporatePos is unknown.',
+        "ZH": '打包标志，用弹窗编辑：UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos（均默认关闭）。InitializeFull / InterporatePos 的具体作用未知。',
     },
     ("SPAWN", "spawnFrame"): {
         "EN": 'Untested. Correlates strongly with the UseSpawnFrame bit in spawnFlags (93% of blocks with that bit set have this field non-zero), so it is likely the parameter that flag gates. Values look like clean frame counts.',
@@ -4001,7 +3917,6 @@ FIELD_ANNOTATIONS = {
         "ZH": "通常为 1.0（不缩放）；偶见 0.5 或 2.0。",
     },
     ("TUBELIGHT", "unknBool0_2"): {
-        # 原 unknEnum0_2 int 拆出的唯一真实数据字节；情况量小（22 块 / 17 文件）。
         "EN": "Purpose unknown.",
         "ZH": "作用未知。",
     },
@@ -4060,10 +3975,10 @@ FIELD_ANNOTATIONS = {
               "playbackMode/flipCode/direction/loopingOrientation）。",
     },
     ("UVSEQUENCE", "typeFlag"): {
-        "EN": "Header field present in most attribute types, likely a type/category "
+        "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value. Common values: "
               "[1, 2, 5, 6, 7, 8, 9, 11, 13, 14].",
-        "ZH": "大部分 attribute 都有的头部字段，疑似类型/分类标记而非可调参数。常见取值为 "
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 2, 5, 6, 7, 8, 9, 11, 13, 14]。",
     },
     ("UVSEQUENCE", "sequenceNoJitter"): {
@@ -4137,9 +4052,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
 
-    ("PLANE", "EPVColorSlot2"): {
-        "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
-        "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
+    ("PLANE", "colorRangeCorrectColorNo"): {
+        "EN": 'EPV colour slot id, same mechanism as correctColorNo. Exactly which attribute this targets is unknown; non-zero takes the attribute from that slot instead of the value here. 0 = use the local value.',
+        "ZH": 'EPV 颜色槽位 id，机制同 correctColorNo。具体对应哪个属性未知；写非 0 就改用对应 id 槽位里的属性，顶掉本属性上的值；0 = 用本地值。',
     },
     ("PLEMISSIVE", "correctColorNo"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
@@ -4157,7 +4072,7 @@ FIELD_ANNOTATIONS = {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
-    # flowmap 贴图名以 *_F_NM.tex 结尾，旧资料因此误称它为法线贴图；tooltip 只写"不是法线贴图"这个结论。
+    # Flowmap 与法线贴图是不同输入，tooltip 只说明该区别。
     ("BILLBOARD2D", "flowmapPath"): {
         "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
         "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
@@ -4219,8 +4134,8 @@ FIELD_ANNOTATIONS = {
         "ZH": '水面的整体透明度强度。',
     },
     ("RGBWATER", "normalSharpness"): {
-        "EN": "Sharpness of the normal map reconstructed from the R/G channels — matches devlecture (default 0.3, corpus mode 0.3 at 73%). The only header float with no timeline parameter behind it; the engine declares six float parameters and this attribute has seven floats, so exactly one cannot be animated, and this is it.",
-        "ZH": '由 R/G 通道重建出的法线贴图的锐度——跟 devlecture 面板默认值 0.3 吻合（语料众数 0.3，占 73%）。头部唯一一个背后没有时间线参数的 float：引擎只声明了六个 float 参数、本属性有七个 float，恰好有一个不可做动画，就是它。',
+        "EN": "Sharpness of the normal map reconstructed from the R/G channels. Common value is 0.3. Unlike the other header floats, this one cannot be animated via a TIML track.",
+        "ZH": '由 R/G 通道重建出的法线贴图的锐度。常见取值为 0.3。与其它头部 float 字段不同，这个字段不能通过 TIML 轨道做动画。',
     },
     ("UVSEQUENCE", "uvsPath"): {
         "EN": "Path to the .uvs sequence file — this is the artwork you actually see. The .uvs itself is a frame table pointing at a sprite-sheet .tex; playSpeed / patternNo pick which cell plays. Nearly every UVSEQUENCE has one (99% of blocks non-empty).",

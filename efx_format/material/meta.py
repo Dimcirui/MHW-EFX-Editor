@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-efx_format/material_meta.py — MATERIAL 块的哈希→名称查表（纯数据，零依赖）
+efx_format/material/meta.py — MATERIAL 块的哈希→名称查表（纯数据）
 
 来源：MHW_Model_Editor 的 mrl3 字典（master_material_dict.json / various_hash_dict.json，
 皆解包自 MHW ShaderPackage.sdf）。EFX 的 MATERIAL 块与 mrl3 共享同一套材质系统：

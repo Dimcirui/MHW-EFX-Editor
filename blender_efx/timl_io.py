@@ -12,7 +12,7 @@ timl 在 EFX 里由 timl_length 字段界定，故允许变长——导出端 io
 另提供 resolve_timl_entry()：把 EFX_TIML 句柄 / EFX_ENTRY 解析回所属 entry（TIML 统一入口）。
 通道级编辑见 timl_edit.py（原生 F 曲线，自建）。
 
-约束（CLAUDE.md）：Python 3.11、bpy 稳定子集、包内相对导入。
+约束（CLAUDE.md）：Python 3.10、bpy 稳定子集、包内相对导入。
 """
 
 import base64
@@ -183,8 +183,11 @@ class EFX_OT_export_entry_timl(bpy.types.Operator, ExportHelper):
         try:
             with open(self.filepath, "wb") as f:
                 f.write(data)
-        except OSError as exc:
-            self.report({"ERROR"}, f"Failed to write file: {exc}")
+        except OSError:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, f"Failed to write '{self.filepath}'. Check disk space and "
+                                    "whether the file is open in another program.")
             return {"CANCELLED"}
         self.report({"INFO"}, f"TIML exported: {self.filepath} ({len(data)} bytes)")
         return {"FINISHED"}
@@ -275,8 +278,10 @@ class EFX_OT_import_entry_timl(bpy.types.Operator, ImportHelper):
         try:
             with open(path, "rb") as f:
                 data = f.read()
-        except OSError as exc:
-            self.report({"ERROR"}, f"Failed to read file: {exc}")
+        except OSError:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, f"Failed to read '{path}'. See the system console for details.")
             return {"CANCELLED"}
 
         if data[:4] != _TIML_MAGIC:

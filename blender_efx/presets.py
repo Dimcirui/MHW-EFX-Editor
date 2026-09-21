@@ -10,7 +10,7 @@ blender_efx/presets.py  —  预设公共工具 + 字段值序列化助手
     （供 operators.py 的字段即时复制/粘贴复用）
 
 设计约束（参照 CLAUDE.md）：
-  - Python 3.11 语法
+  - Python 3.10 语法（兼容 Blender 3.6～5.x）
   - 预设 JSON 里浮点用 repr 保证精度；uint 用字符串
   - read_only 字段加载时跳过（永远保持 orig_b64 路径）
 

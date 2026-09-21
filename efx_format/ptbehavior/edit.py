@@ -1,5 +1,5 @@
 """
-efx_format/ptbehavior_edit.py  —  PTBEHAVIOR 稀疏覆盖的增删编辑核心（纯 Python，零 bpy）
+efx_format/ptbehavior/edit.py  —  PTBEHAVIOR 稀疏覆盖的增删编辑核心
 
 PTBEHAVIOR 是类型化稀疏覆盖（见 categories/catalog 与 memory ptbehavior-is-sparse-override）：
 每个 b_type 一张固定有序的属性表，实例只存被覆盖的属性子集（保持子序列）。本模块在

@@ -23,15 +23,11 @@ gpu 绘制还顺带把加法混合白拿了：`gpu.state.blend_set('ADDITIVE')` 
 骨架照搬 `uvs_io.py`（`wm.window_new` + `draw_handler_add` + modal 管生命周期），
 那套在本仓库已经跑通过。
 
-⚠ 本文件尚未在 Blender 里跑过
------------------------------
-写它的环境没有 Blender。逻辑层（efx_format/sim）有 74 条单测护着，但下面这些
-bpy 侧的东西必须实机验一遍：
-
-  - `gpu.shader.from_builtin` 的名字：4.0+ 是 'FLAT_COLOR'，3.x 是 '3D_FLAT_COLOR'。
-    `_builtin()` 两个都试。（顺带一提 uvs_io.py:766 直接写死了 4.0+ 的名字，
-    如果那边 3.6 确实报错，把 `_builtin` 提出去共用即可。）
-  - `gpu.state.blend_set('ADDITIVE')` 是否如预期。
+⚠ gpu 模块的版本地雷（改本文件前先看这里）
+-------------------------------------------
+  - `gpu.shader.from_builtin` 的名字跨版本不同：4.0+ 是 'FLAT_COLOR'，3.x 是
+    '3D_FLAT_COLOR'。`_builtin()` 两个都试，别写死。（`uvs_io.py:766` 直接写死了
+    4.0+ 的名字，那边若在 3.6 报错，把 `_builtin` 提出去共用即可。）
   - **不要**用 `gpu.types.GPUShader(vert_src, frag_src)` 字符串构造器：3.4 起废弃、
     5.0 移除，且 Vulkan 后端（5.x 默认）下不工作。本模块只用 builtin shader，
     真要自定义 shader 走 `gpu.shader.create_from_info`。
@@ -1859,23 +1855,59 @@ void main()
 #: alpha 通道恒 1，照实取 alpha 画出来会连黑底一起变成不透明的一整片。
 #: ALPHACORRECTION 是**逐纹素**
 #: 改贴图 alpha 的形状（硬阈值裁切 + 伽马），只有在这里做才是对的。
-#: 两层染色（RGBFIRE/RGBWATER）按**贴图亮度**在外缘色与核心色之间插值：笔画核心亮
-#: → 取核心色，边缘暗 → 取外缘色。没有第二层时 col2 == color，mix 自动退化成恒等。
 #:
-#: ⚠ 最终色只乘贴图**亮度**（`lum`），不乘贴图的 RGB 本身——用户实机对拍确认：
-#: RIBBON 设纯饱和蓝，贴图（cm_elec_902_BM，实测不透明区平均 R0.34/G0.62/B0.19，
-#: 明显偏绿）绑着的情况下，游戏里显示的仍是纯蓝，贴图自己的色相完全不参与，只提供
-#: 形状/亮度。之前这里写的是 `t.rgb * rgb`——贴图当"有色贴图"参与调色，蓝乘绿贴图
-#: 蓝通道被摁低、算出来反而绿占主导，这是把 tint 蓝显示成绿的根因。
+#: 两层染色分三套模型，靠 `fireLerp`/`waterLerp`（两个都 <0 = 关）区分，两者
+#: 互斥（同一渲染项只可能来自 RGBFIRE 或 RGBWATER 之一，见 simulator.py）：
+#:
+#: * 通用模型（两者都关，没挂 RGBFIRE/RGBWATER 的普通贴图渲染体）：col2 == color
+#:   （`_layers_of` 没有第二层时两边都返回 col），贴图 RGB 直接乘渲染体颜色——
+#:   2026-09-20 用户实机对拍确认：BILLBOARD3D 颜色设纯红时，贴图上非红的区域
+#:   整块变黑，不是被红色盖过去；纯白时贴图原样显示。也就是说这个颜色对贴图是
+#:   **逐通道相乘的滤镜**，不是「亮度当遮罩、颜色当底色叠加」。
+#: * RGBFIRE（`fireLerp` ∈ [0,1]）：devlecture 给出贴图通道各自的语义
+#:   （R=烟密度、G=火焰强度、B=辅助弥散层、A=轮廓遮罩），两层不是靠亮度插值，
+#:   是各自独立的遮罩相加：col=火焰色用 G 做遮罩，col2=烟雾色用
+#:   `R × mix(A, B, fireLerp)` 做遮罩——`lerpAlphaToBlue` 就是把 A 按比例混入 B。
+#:   col/col2 本身已经在 `_layers_of` 里乘过渲染体自己的颜色（`base_tint`），
+#:   跟通用模型是同一条「颜色=逐通道滤镜」规则，只是滤镜作用在两层各自的遮罩
+#:   结果上，而不是整张贴图的 RGB 上——两层用的是纯色调（fireColor/smokeColor），
+#:   贴图 RGB 本身在这两个块里不表示颜色，只是遮罩数据。
+#: * RGBWATER（`waterLerp` ∈ [0,1]）：用户拿 ABCD 四通道测试贴图实机测出的两条
+#:   遮罩（见 custom_codecs.py `_RGBWATER_FIXED_SCHEMA` 注释）：col=水膜色用
+#:   `mix(A, B, waterLerp)` 做遮罩（跟 RGBFIRE 的烟雾遮罩同构，只是分子换成
+#:   waterLerpGtoB），col2=高光色用 `R × G × A` 三通道交集做遮罩，同样已经乘过
+#:   `base_tint`。
+#:
+#: ⚠ RIBBON 不走 `_layers_of` 的双层分支（simulator.py 排除在外），挂了 RGBFIRE
+#: 时是把两层的加权代表色直接乘进 item.color 后走这里的通用模型；早前用户拿
+#: cm_elec_902_BM（不透明区平均 R0.34/G0.62/B0.19，偏绿）测出纯蓝 tint 显示仍是
+#: 纯蓝，像是"贴图色相不参与"——这份记录目前按"加法混合下贴图最亮的核心区域
+#: 本来就接近灰阶，逐通道相乘和纯亮度调制在那份样本上难以区分"处理，不当成
+#: 与本次结论矛盾，但没有专门对 RIBBON 重新实机验证，见 color-layering-open-
+#: question 备忘。
 _FRAG_SRC = """
 void main()
 {
   vec4 t = texture(image, v_uv);
-  float lum = max(t.r, max(t.g, t.b));
-  vec3 rgb = mix(v_col.rgb, v_col2.rgb, lum);
+  vec3 rgb;
+  float lum;
+  if (fireLerp >= 0.0) {
+    float fireMask = t.g;
+    float smokeMask = t.r * mix(t.a, t.b, fireLerp);
+    lum = max(fireMask, smokeMask);
+    rgb = v_col.rgb * fireMask + v_col2.rgb * smokeMask;
+  } else if (waterLerp >= 0.0) {
+    float sheetMask = mix(t.a, t.b, waterLerp);
+    float specMask = t.r * t.g * t.a;
+    lum = max(sheetMask, specMask);
+    rgb = v_col.rgb * sheetMask + v_col2.rgb * specMask;
+  } else {
+    lum = max(t.r, max(t.g, t.b));
+    rgb = t.rgb * v_col.rgb;
+  }
   float a = mix(t.a, lum, alphaFix.z);
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
-  fragColor = vec4(lum * rgb, a * v_col.a);
+  fragColor = vec4(rgb, a * v_col.a);
 }
 """
 
@@ -1974,11 +2006,25 @@ void main()
 {
   vec2 f = texture(flowTex, v_luv).rg * 2.0 - 1.0;
   vec4 t = texture(image, v_uv + f * v_flowoff);
-  float lum = max(t.r, max(t.g, t.b));
-  vec3 rgb = mix(v_col.rgb, v_col2.rgb, lum);
+  vec3 rgb;
+  float lum;
+  if (fireLerp >= 0.0) {
+    float fireMask = t.g;
+    float smokeMask = t.r * mix(t.a, t.b, fireLerp);
+    lum = max(fireMask, smokeMask);
+    rgb = v_col.rgb * fireMask + v_col2.rgb * smokeMask;
+  } else if (waterLerp >= 0.0) {
+    float sheetMask = mix(t.a, t.b, waterLerp);
+    float specMask = t.r * t.g * t.a;
+    lum = max(sheetMask, specMask);
+    rgb = v_col.rgb * sheetMask + v_col2.rgb * specMask;
+  } else {
+    lum = max(t.r, max(t.g, t.b));
+    rgb = t.rgb * v_col.rgb;
+  }
   float a = mix(t.a, lum, alphaFix.z);
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
-  fragColor = vec4(lum * rgb, a * v_col.a);
+  fragColor = vec4(rgb, a * v_col.a);
 }
 """
 
@@ -1999,6 +2045,8 @@ def _flow_shader():
         info = gpu.types.GPUShaderCreateInfo()
         info.push_constant("MAT4", "ModelViewProjectionMatrix")
         info.push_constant("VEC3", "alphaFix")
+        info.push_constant("FLOAT", "fireLerp")
+        info.push_constant("FLOAT", "waterLerp")
         info.sampler(0, "FLOAT_2D", "image")
         info.sampler(1, "FLOAT_2D", "flowTex")
         info.vertex_in(0, "VEC3", "pos")
@@ -2036,6 +2084,8 @@ def _tex_shader():
         info = gpu.types.GPUShaderCreateInfo()
         info.push_constant("MAT4", "ModelViewProjectionMatrix")
         info.push_constant("VEC3", "alphaFix")
+        info.push_constant("FLOAT", "fireLerp")
+        info.push_constant("FLOAT", "waterLerp")
         info.sampler(0, "FLOAT_2D", "image")
         info.vertex_in(0, "VEC3", "pos")
         info.vertex_in(1, "VEC2", "uv")
@@ -2160,13 +2210,16 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         return name, float(amt) * flow_gain
 
     def _bucket_for(it, tex, flow_tex=""):
-        """返回 `(桶 key, 桶)`。key = (绘制次序, 混合模式, 贴图, alpha 修正, 流动贴图)。
+        """返回 `(桶 key, 桶)`。key = (绘制次序, 混合模式, 贴图, alpha 修正, 流动贴图,
+        RGBFIRE/RGBWATER 通道混合系数)。
 
         次序键放最前面：完全重合的面片谁盖谁由绘制顺序决定（粒子不写深度），而实机
         是按 entry 在文件里的排布定的，所以桶必须能按它排序，见 `entry_order`。
 
-        alpha 修正（ALPHACORRECTION）是 shader 的 push constant，逐 draw 生效，所以
-        也必须进 key。两者都是**逐 entry**的，一个场景里就那么几种取值，分桶开销可忽略。
+        alpha 修正（ALPHACORRECTION）、RGBFIRE 的 `fireLerp`、RGBWATER 的
+        `waterLerp` 都是 shader 的 push constant，逐 draw 生效，所以都必须进 key，
+        否则同一个 shader 程序画完其中一种的桶又画别的桶时会沿用上一次的取值。
+        都是**逐 entry**的，一个场景里就那么几种取值，分桶开销可忽略。
         """
         mode = it.blend
         if mode == "MULTIPLY":
@@ -2182,7 +2235,14 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             luma = 0.0 if _texture_alpha_is_usable(tex) else 1.0
         else:
             luma = 1.0 if luma_mode == "on" else 0.0
-        key = (_order_of(it), mode, tex, (low, gamma, luma), flow_tex)
+        # <0 = 关（走通用的贴图亮度插值），[0,1] = 各自专属的通道遮罩模式；
+        # 两者互斥，同一渲染项不会同时挂两个键（见 simulator.py）。
+        fire_lerp = it.extra.get("rgbfire_lerp")
+        fire_lerp = -1.0 if fire_lerp is None else fire_lerp
+        water_lerp = it.extra.get("rgbwater_lerp")
+        water_lerp = -1.0 if water_lerp is None else water_lerp
+        lerp = (fire_lerp, water_lerp)
+        key = (_order_of(it), mode, tex, (low, gamma, luma), flow_tex, lerp)
         b = buckets.get(key)
         if b is None:
             # 第 4 条是双层染色的核心色；和 uv 一样只有走贴图 shader 的桶才需要。
@@ -2261,6 +2321,14 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
           （`mix(1, 贴图×颜色, 覆盖度×alpha)`）。
         * **没贴图** → 走 FLAT_COLOR，shader 里没法混，只能在这里把 alpha 折进
           RGB，见 `_multiply_tint`。
+
+        用户实机对拍确认：渲染主体自己的颜色（BILLBOARD3D/PLANE/MESH 的 color 字段，
+        跟 RGBFIRE/RGBWATER 无关）对两层染色是**逐通道相乘的滤镜**，不是叠加的
+        底色——同样两层设红/蓝，主体颜色纯红时红层原样显示、蓝层整个变黑；主体
+        颜色纯蓝则反过来；主体颜色是白/洋红这类两通道都非零的颜色，两层才都保留。
+        `col` 这时已经过 HDR 色调映射，直接乘会跟两层各自的色调映射结果不同量纲，
+        所以改用 `base_tint`（渲染体自己的原始颜色，未色调映射，见 billboard3d.py）
+        跟两层的原始值先乘再一起送去色调映射。
         """
         if it.blend == "MULTIPLY":
             c = col if tex else _multiply_tint(col, refr_gain)
@@ -2268,8 +2336,11 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         lay = it.extra.get("layers")
         if not lay:
             return col, col
-        a = _display_color((lay[0][0], lay[0][1], lay[0][2], col[3]), hdr_mode)
-        b = _display_color((lay[1][0], lay[1][1], lay[1][2], col[3]), hdr_mode)
+        bt = it.extra.get("base_tint") or (1.0, 1.0, 1.0)
+        a = _display_color((lay[0][0] * bt[0], lay[0][1] * bt[1], lay[0][2] * bt[2],
+                            col[3]), hdr_mode)
+        b = _display_color((lay[1][0] * bt[0], lay[1][1] * bt[1], lay[1][2] * bt[2],
+                            col[3]), hdr_mode)
         return a, b
 
     def _world(v):
@@ -2429,7 +2500,7 @@ def _build_payload(scene, rv3d, trs):
     """
     from gpu_extras.batch import batch_for_shader
 
-    buckets = {}          # (次序, 混合模式, 贴图名, alpha 修正) -> [顶点, 颜色, UV|None, 核心色|None, numpy 分块]
+    buckets = {}          # (次序, 混合模式, 贴图名, alpha 修正, 流动贴图, (fireLerp, waterLerp)) -> [顶点, 颜色, UV|None, 核心色|None, numpy 分块]
     points, point_colors, lines, line_colors = [], [], [], []
     for tr in trs:
         _collect_track(tr, scene, rv3d, buckets, points, point_colors,
@@ -2461,7 +2532,7 @@ def _build_payload(scene, rv3d, trs):
         bv, bc, bu, b2, bnp, blu, bfo = buckets[key]
         if not (bv or bnp):
             continue
-        _bo, mode, tex_name, fix, flow_name = key
+        _bo, mode, tex_name, fix, flow_name, lerp = key
         if bnp:
             bv, bc, bu, b2 = _join_chunks(bv, bc, bu, b2, bnp)
         tex = _gpu_texture(tex_name) if (bu is not None) else None
@@ -2471,7 +2542,7 @@ def _build_payload(scene, rv3d, trs):
         ftex = (_gpu_texture(flow_name)
                 if (flow_name and blu is not None and mode != "MULTIPLY") else None)
         if ftex is not None and tex is not None and flow_shader is not None:
-            tris.append((mode, flow_shader, (tex, ftex), fix,
+            tris.append((mode, flow_shader, (tex, ftex), fix, lerp,
                          batch_for_shader(flow_shader, "TRIS",
                                           {"pos": bv, "uv": bu, "color": bc,
                                            "col2": b2, "luv": blu,
@@ -2480,21 +2551,22 @@ def _build_payload(scene, rv3d, trs):
         if mode == "MULTIPLY":
             # 折射：源色已经在 `_multiply_tint` 里折好了，shader 只负责遮罩。
             # 没贴图（或 shader 建不出来）就整片乘——实测样本正是这一档。
+            # 折射不走双层通道混合，lerp 恒 None。
             if tex is not None and refr_shader is not None:
-                tris.append((mode, refr_shader, tex, (fix, refr_param),
+                tris.append((mode, refr_shader, tex, (fix, refr_param), None,
                              batch_for_shader(refr_shader, "TRIS",
                                               {"pos": bv, "uv": bu, "color": bc})))
             else:
-                tris.append((mode, flat, None, None,
+                tris.append((mode, flat, None, None, None,
                              batch_for_shader(flat, "TRIS",
                                               {"pos": bv, "color": bc})))
         elif tex is not None and tex_shader is not None:
-            tris.append((mode, tex_shader, tex, fix,
+            tris.append((mode, tex_shader, tex, fix, lerp,
                          batch_for_shader(tex_shader, "TRIS",
                                           {"pos": bv, "uv": bu, "color": bc,
                                            "col2": b2})))
         else:
-            tris.append((mode, flat, None, None,
+            tris.append((mode, flat, None, None, None,
                          batch_for_shader(flat, "TRIS",
                                           {"pos": bv, "color": bc})))
 
@@ -2553,7 +2625,7 @@ def _draw():
     gpu.state.depth_test_set("LESS_EQUAL")
     gpu.state.depth_mask_set(False)      # 粒子之间不互相遮挡，但仍被场景几何遮挡
     try:
-        for mode, shader, tex, fix, batch in tris:
+        for mode, shader, tex, fix, lerp, batch in tris:
             gpu.state.blend_set(mode)
             if tex is not None:
                 shader.bind()
@@ -2570,6 +2642,13 @@ def _draw():
                 elif fix is not None:
                     # (lowPass, contrast_gamma, lumaAsAlpha)，中性值 (0, 1, 0)
                     shader.uniform_float("alphaFix", fix)
+                    if lerp is not None:
+                        # (fireLerp, waterLerp)：<0 = 走通用贴图亮度插值，[0,1] =
+                        # 对应块专属的通道遮罩模式；每次 bind 都要两个都设，同一个
+                        # shader 程序前一次画的是别的桶时会把值留在状态里，不重设
+                        # 会漏到下一个桶
+                        shader.uniform_float("fireLerp", lerp[0])
+                        shader.uniform_float("waterLerp", lerp[1])
             batch.draw(shader)
 
         overlay = "ADDITIVE" if blend == "ADDITIVE" else "ALPHA"

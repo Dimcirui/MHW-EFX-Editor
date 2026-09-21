@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-efx_format/schema/labels.py — 字段中文标签（纯数据 + 单一 accessor，零 bpy 依赖）
+efx_format/schema/labels.py — 字段中文标签（纯数据 + 单一 accessor）
 
 标签归属统一在 schema 层：
   · 定长块（走 typed Attribute）：标签就是 Field.label_zh，权威、单一声明处。
@@ -102,9 +102,10 @@ _LABELS_GLOBAL = {
     'loopingPad': '保留',
     # applicationRule/loopingMode 现为 Bitmask 字段（label 在 Field.label_zh），拆分子字段已退休。
 
-    # EPV 颜色槽（MESH / STRAINRIBBON 共用同名字段，此前两边都没有中文标签）
-    'epv_color_slot1': 'EPV 颜色槽 1',
-    'epv_color_slot2': 'EPV 颜色槽 2',
+    # EPV 颜色修正槽位（MESH / STRAINRIBBON 共用同名字段；STRAINRIBBON 一侧已确认
+    # slot1 管 color、slot2 管 colorRange，MESH 一侧配对目标未定，公用同一个通用名）
+    'epv_color_slot1': 'EPV 颜色修正槽位',
+    'epv_color_slot2': 'EPV 颜色修正槽位',
 
     # ── 路径槽（2026-09-03 由统一的 path / path1 / path2 改成按内容命名）──────
     # 名字在 blender_efx/fields.py::_PATH_ITEM_NAMES 里定义（路径不在 schema，
@@ -179,8 +180,8 @@ _LABELS_BY_TYPE = {
     ('LIGHTNING', 'unkn07_17'): '支线 UV 重复结束',
     ('LIGHTNING', 'unkn07_18'): '支线结束宽度抖动',
     ('LIGHTNING', 'emissive'): '自发光颜色',
-    ('LIGHTNING', 'EPVColorSlot1'): 'EPV 颜色槽1',
-    ('LIGHTNING', 'EPVColorSlot2'): 'EPV 颜色槽2',
+    ('LIGHTNING', 'EPVColorSlot1'): 'EPV 颜色修正槽位',
+    ('LIGHTNING', 'EPVColorSlot2'): 'EPV 颜色修正槽位',
     ('LIGHTNING', 'unknAngle13_0'): '未知角度',
     # ── RIBBONBLADE ──
     ('RIBBONBLADE', 'widthDirection'): '宽度延伸方向',
@@ -196,45 +197,48 @@ _LABELS_BY_TYPE = {
     ('RIBBONBLADE', 'flowmapStrengthCoef'): '流光贴图强度加速度',
     ('RIBBONBLADE', 'flowmapStrengthCoefJitter'): '流光贴图强度加速度抖动',
     # ── RGBWATER（devlecture §10.1.2 P27 image15.PNG，结构与 RGBFIRE 平行但
-    #    颜色槽是 Specular/Sheet 不是 Fire/Smoke，三段生命期块加 Specular/Sheet/
-    #    LerpGtoB 分组前缀，Appear/Keep/Vanish 精简措辞同 RGBFIRE）──
-    ('RGBWATER', 'colorSpecular'): '高光颜色',
-    ('RGBWATER', 'colorSheet'): '水膜颜色',
-    ('RGBWATER', 'waterLerpGtoB'): '绿混入蓝通道比例',
-    ('RGBWATER', 'intensityCubeMap'): '环境贴图系数',
-    ('RGBWATER', 'intensitySpecular'): '高光系数',
-    ('RGBWATER', 'intensitySheet'): '水膜系数',
-    ('RGBWATER', 'intensityAlpha'): '不透明度系数',
+    #    颜色槽是 Specular/Sheet 不是 Fire/Smoke）。2026-09-20 比照 RGBFIRE 精简：
+    #    这张表实际上会被 custom_codecs.py::RGBWATER_ATTR 的 `labels=`/`overrides=`
+    #    盖过去（field_label_zh 查找顺序是 Field.label_zh 优先），这里只是保持
+    #    同步、不留矛盾条目，不是真正生效的那份。──
+    ('RGBWATER', 'colorSpecular'): '颜色',
+    ('RGBWATER', 'colorSheet'): '颜色',
+    ('RGBWATER', 'waterLerpGtoB'): 'Alpha 混入蓝通道比例',
+    ('RGBWATER', 'intensityCubeMap'): '环境反射强度',
+    ('RGBWATER', 'intensitySpecular'): '强度',
+    ('RGBWATER', 'intensitySheet'): '强度',
+    ('RGBWATER', 'intensityAlpha'): '总体透明度',
+    ('RGBWATER', 'colorRate'): '总体亮度',
     ('RGBWATER', 'normalSharpness'): '法线锐度',
-    ('RGBWATER', 'specularColorParam_useLife'): '高光启用生命期',
-    ('RGBWATER', 'specularColorParam_lifeType'): '高光生命期模式',
-    ('RGBWATER', 'specularColorParam_appearFrame'): '高光淡入',
-    ('RGBWATER', 'specularColorParam_appearFrameJitter'): '高光淡入抖动',
-    ('RGBWATER', 'specularColorParam_keepFrame'): '高光持续',
-    ('RGBWATER', 'specularColorParam_keepFrameJitter'): '高光持续抖动',
-    ('RGBWATER', 'specularColorParam_vanishFrame'): '高光淡出',
-    ('RGBWATER', 'specularColorParam_vanishFrameJitter'): '高光淡出抖动',
-    ('RGBWATER', 'specularColorParam_lighting'): '高光受光照',
-    ('RGBWATER', 'specularColorParam_correctColorNo'): '修正高光颜色编号',
-    ('RGBWATER', 'sheetColorParam_useLife'): '水膜启用生命期',
-    ('RGBWATER', 'sheetColorParam_lifeType'): '水膜生命期模式',
-    ('RGBWATER', 'sheetColorParam_appearFrame'): '水膜淡入',
-    ('RGBWATER', 'sheetColorParam_appearFrameJitter'): '水膜淡入抖动',
-    ('RGBWATER', 'sheetColorParam_keepFrame'): '水膜持续',
-    ('RGBWATER', 'sheetColorParam_keepFrameJitter'): '水膜持续抖动',
-    ('RGBWATER', 'sheetColorParam_vanishFrame'): '水膜淡出',
-    ('RGBWATER', 'sheetColorParam_vanishFrameJitter'): '水膜淡出抖动',
-    ('RGBWATER', 'sheetColorParam_lighting'): '水膜受光照',
-    ('RGBWATER', 'sheetColorParam_correctColorNo'): '修正水膜颜色编号',
-    ('RGBWATER', 'waterLerpParam_useLife'): '绿蓝混合启用生命期',
-    ('RGBWATER', 'waterLerpParam_lifeType'): '绿蓝混合生命期模式',
-    ('RGBWATER', 'waterLerpParam_appearFrame'): '绿蓝混合淡入',
-    ('RGBWATER', 'waterLerpParam_appearFrameJitter'): '绿蓝混合淡入抖动',
-    ('RGBWATER', 'waterLerpParam_keepFrame'): '绿蓝混合持续',
-    ('RGBWATER', 'waterLerpParam_keepFrameJitter'): '绿蓝混合持续抖动',
-    ('RGBWATER', 'waterLerpParam_vanishFrame'): '绿蓝混合淡出',
-    ('RGBWATER', 'waterLerpParam_vanishFrameJitter'): '绿蓝混合淡出抖动',
-    ('RGBWATER', 'waterLerpParam_lighting'): '绿蓝混合受光照',
+    ('RGBWATER', 'specularColorParam_useLife'): '启用生命周期',
+    ('RGBWATER', 'specularColorParam_lifeType'): '生命期模式',
+    ('RGBWATER', 'specularColorParam_appearFrame'): '淡入',
+    ('RGBWATER', 'specularColorParam_appearFrameJitter'): '淡入抖动',
+    ('RGBWATER', 'specularColorParam_keepFrame'): '持续',
+    ('RGBWATER', 'specularColorParam_keepFrameJitter'): '持续抖动',
+    ('RGBWATER', 'specularColorParam_vanishFrame'): '淡出',
+    ('RGBWATER', 'specularColorParam_vanishFrameJitter'): '淡出抖动',
+    ('RGBWATER', 'specularColorParam_lighting'): '受光照影响',
+    ('RGBWATER', 'specularColorParam_correctColorNo'): 'EPV 颜色修正槽位',
+    ('RGBWATER', 'sheetColorParam_useLife'): '启用生命周期',
+    ('RGBWATER', 'sheetColorParam_lifeType'): '生命期模式',
+    ('RGBWATER', 'sheetColorParam_appearFrame'): '淡入',
+    ('RGBWATER', 'sheetColorParam_appearFrameJitter'): '淡入抖动',
+    ('RGBWATER', 'sheetColorParam_keepFrame'): '持续',
+    ('RGBWATER', 'sheetColorParam_keepFrameJitter'): '持续抖动',
+    ('RGBWATER', 'sheetColorParam_vanishFrame'): '淡出',
+    ('RGBWATER', 'sheetColorParam_vanishFrameJitter'): '淡出抖动',
+    ('RGBWATER', 'sheetColorParam_lighting'): '受光照影响',
+    ('RGBWATER', 'sheetColorParam_correctColorNo'): 'EPV 颜色修正槽位',
+    ('RGBWATER', 'waterLerpParam_useLife'): '启用生命周期',
+    ('RGBWATER', 'waterLerpParam_lifeType'): '生命期模式',
+    ('RGBWATER', 'waterLerpParam_appearFrame'): '淡入',
+    ('RGBWATER', 'waterLerpParam_appearFrameJitter'): '淡入抖动',
+    ('RGBWATER', 'waterLerpParam_keepFrame'): '持续',
+    ('RGBWATER', 'waterLerpParam_keepFrameJitter'): '持续抖动',
+    ('RGBWATER', 'waterLerpParam_vanishFrame'): '淡出',
+    ('RGBWATER', 'waterLerpParam_vanishFrameJitter'): '淡出抖动',
+    ('RGBWATER', 'waterLerpParam_lighting'): '受光照影响',
 }
 
 
@@ -324,45 +328,48 @@ _LABELS_EN_BY_TYPE = {
     # duration/fade Out"）已按 devlecture 原文精简为 Appear/Keep/Vanish + Fire
     # (GreenCh)/Smoke(RedCh) 分组前缀，改在 attributes.py 的 Field.label_en 里
     # 直接声明（优先级更高），此处冻结表条目退休。
-    # ── RGBWATER（custom-codec 块没有 Field.label_en，只能走这张表；devlecture
-    #    §10.1.2 原文措辞，Appear/Keep/Vanish 精简同 RGBFIRE）──
-    ('RGBWATER', 'colorSpecular'):                       'Specular Color',
-    ('RGBWATER', 'colorSheet'):                          'Sheet Color',
-    ('RGBWATER', 'waterLerpGtoB'):                       'Lerp GtoB',
+    # ── RGBWATER（custom-codec 块没有 Field.label_en，只能走这张表）。2026-09-20
+    #    比照 RGBFIRE 精简：面板按 [Specular]/[Sheet]/[Environment Reflection]/
+    #    [Lerp] 分组显示，组内字段不再重复分组前缀。`waterLerpGtoB` 的标签改成
+    #    描述实测行为（Alpha 混入 Blue），不用字面直译的"Lerp GtoB"。──
+    ('RGBWATER', 'colorSpecular'):                       'Color',
+    ('RGBWATER', 'colorSheet'):                          'Color',
+    ('RGBWATER', 'waterLerpGtoB'):                       'Lerp Alpha To Blue',
     ('RGBWATER', 'intensityCubeMap'):                    'CubeMap Factor',
-    ('RGBWATER', 'intensitySpecular'):                   'Specular Factor',
-    ('RGBWATER', 'intensitySheet'):                      'Sheet Factor',
-    ('RGBWATER', 'intensityAlpha'):                      'Opacity Factor',
+    ('RGBWATER', 'intensitySpecular'):                   'Factor',
+    ('RGBWATER', 'intensitySheet'):                      'Factor',
+    ('RGBWATER', 'intensityAlpha'):                      'Overall Alpha',
+    ('RGBWATER', 'colorRate'):                           'Overall Brightness',
     ('RGBWATER', 'normalSharpness'):                     'Normal Sharpness',
-    ('RGBWATER', 'specularColorParam_useLife'):          'Specular Use Life',
-    ('RGBWATER', 'specularColorParam_lifeType'):         'Specular Life Type',
-    ('RGBWATER', 'specularColorParam_appearFrame'):      'Specular Appear',
-    ('RGBWATER', 'specularColorParam_appearFrameJitter'): 'Specular Appear Jitter',
-    ('RGBWATER', 'specularColorParam_keepFrame'):        'Specular Keep',
-    ('RGBWATER', 'specularColorParam_keepFrameJitter'):  'Specular Keep Jitter',
-    ('RGBWATER', 'specularColorParam_vanishFrame'):      'Specular Vanish',
-    ('RGBWATER', 'specularColorParam_vanishFrameJitter'): 'Specular Vanish Jitter',
-    ('RGBWATER', 'specularColorParam_lighting'):         'Specular Lighting',
-    ('RGBWATER', 'specularColorParam_correctColorNo'):   'Correct Color Specular No',
-    ('RGBWATER', 'sheetColorParam_useLife'):             'Sheet Use Life',
-    ('RGBWATER', 'sheetColorParam_lifeType'):            'Sheet Life Type',
-    ('RGBWATER', 'sheetColorParam_appearFrame'):         'Sheet Appear',
-    ('RGBWATER', 'sheetColorParam_appearFrameJitter'):   'Sheet Appear Jitter',
-    ('RGBWATER', 'sheetColorParam_keepFrame'):           'Sheet Keep',
-    ('RGBWATER', 'sheetColorParam_keepFrameJitter'):     'Sheet Keep Jitter',
-    ('RGBWATER', 'sheetColorParam_vanishFrame'):         'Sheet Vanish',
-    ('RGBWATER', 'sheetColorParam_vanishFrameJitter'):   'Sheet Vanish Jitter',
-    ('RGBWATER', 'sheetColorParam_lighting'):            'Sheet Lighting',
-    ('RGBWATER', 'sheetColorParam_correctColorNo'):      'Correct Color Sheet No',
-    ('RGBWATER', 'waterLerpParam_useLife'):              'Lerp GtoB Use Life',
-    ('RGBWATER', 'waterLerpParam_lifeType'):             'Lerp GtoB Life Type',
-    ('RGBWATER', 'waterLerpParam_appearFrame'):          'Lerp GtoB Appear',
-    ('RGBWATER', 'waterLerpParam_appearFrameJitter'):    'Lerp GtoB Appear Jitter',
-    ('RGBWATER', 'waterLerpParam_keepFrame'):            'Lerp GtoB Keep',
-    ('RGBWATER', 'waterLerpParam_keepFrameJitter'):      'Lerp GtoB Keep Jitter',
-    ('RGBWATER', 'waterLerpParam_vanishFrame'):          'Lerp GtoB Vanish',
-    ('RGBWATER', 'waterLerpParam_vanishFrameJitter'):    'Lerp GtoB Vanish Jitter',
-    ('RGBWATER', 'waterLerpParam_lighting'):             'Lerp GtoB Lighting',
+    ('RGBWATER', 'specularColorParam_useLife'):          'Use Life',
+    ('RGBWATER', 'specularColorParam_lifeType'):         'Life Type',
+    ('RGBWATER', 'specularColorParam_appearFrame'):      'Appear',
+    ('RGBWATER', 'specularColorParam_appearFrameJitter'): 'Appear Jitter',
+    ('RGBWATER', 'specularColorParam_keepFrame'):        'Keep',
+    ('RGBWATER', 'specularColorParam_keepFrameJitter'):  'Keep Jitter',
+    ('RGBWATER', 'specularColorParam_vanishFrame'):      'Vanish',
+    ('RGBWATER', 'specularColorParam_vanishFrameJitter'): 'Vanish Jitter',
+    ('RGBWATER', 'specularColorParam_lighting'):         'Lighting',
+    ('RGBWATER', 'specularColorParam_correctColorNo'):   'EPV Color Slot',
+    ('RGBWATER', 'sheetColorParam_useLife'):             'Use Life',
+    ('RGBWATER', 'sheetColorParam_lifeType'):            'Life Type',
+    ('RGBWATER', 'sheetColorParam_appearFrame'):         'Appear',
+    ('RGBWATER', 'sheetColorParam_appearFrameJitter'):   'Appear Jitter',
+    ('RGBWATER', 'sheetColorParam_keepFrame'):           'Keep',
+    ('RGBWATER', 'sheetColorParam_keepFrameJitter'):     'Keep Jitter',
+    ('RGBWATER', 'sheetColorParam_vanishFrame'):         'Vanish',
+    ('RGBWATER', 'sheetColorParam_vanishFrameJitter'):   'Vanish Jitter',
+    ('RGBWATER', 'sheetColorParam_lighting'):            'Lighting',
+    ('RGBWATER', 'sheetColorParam_correctColorNo'):      'EPV Color Slot',
+    ('RGBWATER', 'waterLerpParam_useLife'):              'Use Life',
+    ('RGBWATER', 'waterLerpParam_lifeType'):             'Life Type',
+    ('RGBWATER', 'waterLerpParam_appearFrame'):          'Appear',
+    ('RGBWATER', 'waterLerpParam_appearFrameJitter'):    'Appear Jitter',
+    ('RGBWATER', 'waterLerpParam_keepFrame'):            'Keep',
+    ('RGBWATER', 'waterLerpParam_keepFrameJitter'):      'Keep Jitter',
+    ('RGBWATER', 'waterLerpParam_vanishFrame'):          'Vanish',
+    ('RGBWATER', 'waterLerpParam_vanishFrameJitter'):    'Vanish Jitter',
+    ('RGBWATER', 'waterLerpParam_lighting'):             'Lighting',
 }
 
 

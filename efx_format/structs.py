@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Tuple
 from .schema.fields_model import (
     Attribute, EnumDef, BitDef,
     Int, UInt, Short, UShort, Byte, SByte, Float, Int64, UInt64,
-    Enum, EnumVec3, Bool, Bitmask, Raw, register,
+    Enum, EnumVec3, Bool, Bitmask, Raw, register, register_alias, ATTR_REGISTRY,
 )
 
 from .schema.enums import (
@@ -120,6 +120,8 @@ from .hashes import (
     FAKEPLANE,
     REPEATAREA,
     FAKEDOF,
+    UNITBOUNDARY,
+    RENDERTARGET,
     # variable-length and dispatch types (17 types)
     UVSEQUENCE,
     BILLBOARD3D,
@@ -138,6 +140,15 @@ from .hashes import (
     EMITTERSHAPEMESH,
     BILLBOARD2D,
     LAYOUT,
+    # Extern 覆盖版 hash（跟同名/对应主属性字节布局相同，复用同一份 schema，见文末
+    # EXTERN_HASH_ALIASES：注册时需要把 FIELD_REGISTRY 也登记到这些 hash 下）
+    EXTERNTRANSFORM3D, EXTERNSPAWN, EXTERNVELOCITY3D, EXTERNEMITTERSHAPE3D,
+    EXTERNSCALEANIM, EXTERNRGBFIRE, EXTERNPLEMISSIVE, EXTERNLIFE, EXTERNPLSNOW,
+    EXTERNPARENTEMISSIVE, EXTERNROTATEANIM, EXTERNUVSEQUENCE, EXTERNBILLBOARD3D,
+    EXTERNRGBWATER, EXTERNMESH, EXTERNTYPERIBBON, EXTERNTYPEPLANE,
+    # ⚠ FABRICATED（虚构，无真实样本，见 efxfile.py::_extern_data_size 顶部大段注释）
+    EXTERNFADEBYANGLE, EXTERNFADEBYDEPTH, EXTERNUVCONTROL, EXTERNGUIDE,
+    EXTERNPARENTSNOW, EXTERNOTOMOSNOW, EXTERNSTRAINRIBBON, EXTERNTURBULENCE,
 )
 
 # ── typed field-object model: fill in hash and register (see schema/fields_model.py) ──
@@ -222,6 +233,8 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     FAKEPLANE:          (FAKEPLANE_SCHEMA,            60),
     REPEATAREA:         (REPEATAREA_SCHEMA,           52),
     FAKEDOF:            (FAKEDOF_SCHEMA,              32),
+    # Root 专属子条目（不是普通渲染属性，见 io_tree.py::_root_entry_to_attr_block）：
+    UNITBOUNDARY:       (UNITBOUNDARY_SCHEMA,         40),
     # ── Variable/dispatch types: sentinel '_custom', size=None ────────────────
     # These are routed to ATTR_CUSTOM_CODEC by decode/encode on AttrBlock.
     UVSEQUENCE:  ('_custom', None),
@@ -241,6 +254,8 @@ ATTR_SCHEMA_MAP: Dict[int, Tuple[list, int]] = {
     EMITTERSHAPEMESH: ('_custom', None),
     BILLBOARD2D:      ('_custom', None),
     LAYOUT:           ('_custom', None),
+    # Root 专属子条目（伪装成 AttrBlock，见 io_tree.py::_root_entry_to_attr_block）：
+    RENDERTARGET:     ('_custom', None),
 }
 
 # Populate custom codec registry after the hash imports above
@@ -262,6 +277,7 @@ ATTR_CUSTOM_CODEC = {
     EMITTERSHAPEMESH: (unpack_emittershapemesh, pack_emittershapemesh),
     BILLBOARD2D:      (unpack_billboard2d,      pack_billboard2d),
     LAYOUT:           (unpack_layout,           pack_layout),
+    RENDERTARGET:     (unpack_rendertarget,     pack_rendertarget),
 }
 
 
@@ -321,6 +337,7 @@ _MIGRATED_ATTRS = [
     FAKEPLANE_ATTR,
     REPEATAREA_ATTR,
     FAKEDOF_ATTR,
+    UNITBOUNDARY_ATTR,
 ]
 _schema_id_to_hash = {id(_sch): _h for _h, (_sch, _sz) in ATTR_SCHEMA_MAP.items() if isinstance(_sch, list)}
 for _a in _MIGRATED_ATTRS:
@@ -328,3 +345,64 @@ for _a in _MIGRATED_ATTRS:
     if _h is not None:
         _a.hash = _h
         register(_a)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Extern 覆盖版 hash 别名登记
+#
+# 上面的 register() 只把每个 Attribute 登记到它自己的主属性 hash 下。但字节布局相同、
+# 直接复用同一份 schema 的 Extern 覆盖版块（EXTERNSPAWN/EXTERNLIFE/…）用的是另一个 hash，
+# 若不额外登记，blender_efx/fields.py 按 (extern_hash, field_name) 反查 FIELD_REGISTRY
+# 会全部落空——label_zh/Enum/Bitmask 控件在 Extern 实例上静默退化成裸整数框（2026-09-20
+# 用户实机截图发现：EXTERNSPAWN 面板中文标签全部缺失、Spawn Flags 没有渲染成 Bitmask
+# 弹窗）。这里把已注册的主属性 Attribute 追加登记到对应 Extern hash 下，不改动 Attribute
+# 自身的 .hash。
+# ─────────────────────────────────────────────────────────────────────────────
+EXTERN_HASH_ALIASES = {
+    EXTERNTRANSFORM3D:    TRANSFORM3D,
+    EXTERNSPAWN:          SPAWN,
+    EXTERNVELOCITY3D:     VELOCITY3D,
+    EXTERNEMITTERSHAPE3D: EMITTERSHAPE3D,
+    EXTERNSCALEANIM:      SCALEANIM,
+    EXTERNRGBFIRE:        RGBFIRE,
+    EXTERNPLEMISSIVE:     PLEMISSIVE,
+    EXTERNLIFE:           LIFE,
+    EXTERNPLSNOW:         PLSNOW,
+    EXTERNPARENTEMISSIVE: PARENTEMISSIVE,
+    EXTERNROTATEANIM:     ROTATEANIM,
+    EXTERNUVSEQUENCE:     UVSEQUENCE,
+    EXTERNBILLBOARD3D:    BILLBOARD3D,
+    EXTERNRGBWATER:       RGBWATER,
+    EXTERNMESH:           MESH,
+    EXTERNTYPERIBBON:     RIBBON,
+    EXTERNTYPEPLANE:      PLANE,
+
+    # ⚠ FABRICATED（虚构，无真实样本，见 efxfile.py::_extern_data_size 顶部大段注释）。
+    # 这 6 个主属性本身不含路径，按"已确认类型"的规律外推为原样等长复制，直接复用
+    # 主属性 Attribute——跟上面那些真实confirmed 的条目字节上做的事完全一样，唯一区别
+    # 是没有任何真实样本验证过这个假设。
+    EXTERNFADEBYANGLE:    FADEBYANGLE,
+    EXTERNFADEBYDEPTH:    FADEBYDEPTH,
+    EXTERNUVCONTROL:      UVCONTROL,
+    EXTERNGUIDE:          GUIDE,
+    EXTERNPARENTSNOW:     PARENTSNOW,
+    EXTERNOTOMOSNOW:      OTOMOSNOW,
+}
+for _extern_hash, _main_hash in EXTERN_HASH_ALIASES.items():
+    _main_attr = ATTR_REGISTRY.get(_main_hash)
+    if _main_attr is not None:
+        register_alias(_extern_hash, _main_attr)
+
+# ⚠ FABRICATED（虚构）：STRAINRIBBON/TURBULENCE 主属性含内嵌路径，Extern 覆盖版不能
+# 简单复用主属性 schema（尺寸不同），用 custom_codecs.py 里专门构造的"主属性定长段 +
+# 猜测 5B 尾巴" Attribute 对象，直接登记到 Extern hash 下（不是别名，是独立注册）。
+EXTERN_STRAINRIBBON_ATTR.hash = EXTERNSTRAINRIBBON
+register(EXTERN_STRAINRIBBON_ATTR)
+EXTERN_TURBULENCE_ATTR.hash = EXTERNTURBULENCE
+register(EXTERN_TURBULENCE_ATTR)
+
+# UI 侧（blender_efx/panels.py）用这个集合判断是否要在 Extern 实例面板标题后追加
+# "(fabricated)"，提醒用户这个类型的编辑支持是外推猜测，不是实测坐实。
+FABRICATED_EXTERN_HASHES = frozenset({
+    EXTERNFADEBYANGLE, EXTERNFADEBYDEPTH, EXTERNUVCONTROL, EXTERNGUIDE,
+    EXTERNPARENTSNOW, EXTERNOTOMOSNOW, EXTERNSTRAINRIBBON, EXTERNTURBULENCE,
+})

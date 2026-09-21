@@ -1,18 +1,18 @@
 """
-blender_efx/panels.py  —  L1.1a + L1.2 预设 UI + L1.3 BT 注释接入 + L1.4 预设面板重构
-                           + L1.5 属性字段显示重设计（语义化绘制 + ctc 现代风 + 友好字段名）
+blender_efx/panels.py  —  属性字段绘制 + 预设 UI + BT 注释接入 + 预设面板重构
+                           + 属性字段显示重设计（语义化绘制 + ctc 现代风 + 友好字段名）
 
 约束（参照 CLAUDE.md）：
-  - Python 3.11 语法（目标 Blender 4.3.2）
+  - Python 3.10 语法（兼容 Blender 3.6～5.x）
   - bpy 只用稳定子集：Panel / layout.operator / layout.box / layout.label /
     layout.prop / layout.row / layout.column / BoolProperty / WindowManager /
     EnumProperty（动态 items 回调）
   - 不使用 5.x 新增 API
 
-L1.4 预设 UI 重构：
+预设 UI 重构：
   - EFX_PT_entry 顶部：移除旧预设按钮，只保留 Import/Export。
   - _draw_attribute_fields_content 底部：移除旧 _draw_preset_ui 嵌入调用。
-  - 新增独立可展开面板 EFX_PT_presets（VIEW_3D N 面板），
+  - 新增独立可展开面板（今为 EFX_PT_add，VIEW_3D N 面板），
     与属性字段面板平级，poll 要求 is_editable=True 的 EFX_ATTRIBUTE。
     （属性编辑器预设变体 _props/_object 已按设计理念移除，工具功能仅保留在 N 面板）
   - 新面板内容从上到下：
@@ -34,7 +34,7 @@ L1.4 预设 UI 重构：
   COLOR_RGBA 同时用于 spec='colour'（真 RGBA）和 spec=('XYZ',2)（XYZ type 2，第4字节为 alpha）。
   两者绘制逻辑统一，alpha 通道对两类字段均可见可编辑。
 
-L1.5 属性字段显示重设计：
+属性字段显示重设计：
   - 友好字段名：下划线→空格、camelCase 拆词、首字母大写（仅显示，逻辑仍用 ori_name）。
   - FLOAT6（XYZ type 0，6个float，顺序=[fixed_x,random_x,fixed_y,random_y,fixed_z,random_z]）：
     字段名一行 + 3 行（X Static/Random、Y Static/Random、Z Static/Random），
@@ -54,10 +54,10 @@ L1.5 属性字段显示重设计：
 import os
 import re
 import bpy
-from .subselect import EFX_PT_subselect, EFX_PT_subselect_data, EFX_PT_subselect_object  # L2 #1a：Subselect 归属面板
-from .action_emitter import EFX_PT_action, EFX_PT_action_props, EFX_PT_action_object  # L2 #1b：Action 数据面板
-from .extern_ref import EFX_PT_extern_ref      # L2 #1c：ExternReference 指针面板
-from .entry_action_ref import (                   # L2 #1d：EOF 归属面板
+from .subselect import EFX_PT_subselect, EFX_PT_subselect_data  # Subselect 归属面板
+from .action_emitter import EFX_PT_action, EFX_PT_action_props  # Action 数据面板
+from .extern_ref import EFX_PT_extern_ref      # ExternReference 指针面板
+from .entry_action_ref import (                   # EOF 归属面板
     EFX_PT_eof_list,
     EFX_OT_eof_toggle_entry,
     is_entry_in_eof,
@@ -70,7 +70,7 @@ from .backref import (                          # L2 反向引用视图（只读
     classify_entry_activation,
 )
 from .add_ops import get_active_efx_root
-# L2 #3a：重排面板（entry + attribute 上移/下移按钮）
+# 重排面板（entry + attribute 上移/下移按钮）
 from . import reorder as _reorder
 # 中英双语化：T() 查表 + 语言切换行
 from . import i18n
@@ -250,13 +250,13 @@ _OFFSET_SIZE_PAIRS = {
 }
 
 
-def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = ""):
+def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = "", label_override=None):
     """
     把 value 字段与紧随其后的 jitter 字段合并成一行两列：友好名 | 固定 | 随机。
     与 XYZ Static/Random 的分组风格一致（rotation X/Y/Z 等各成一行）。
     _OFFSET_SIZE_PAIRS 里的配对改用 偏移 | 尺寸 措辞。
     """
-    fname = _friendly_name(vitem.ori_name, type_name)
+    fname = label_override if label_override else _friendly_name(vitem.ori_name, type_name)
     vattr = _SCALAR_PROP_ATTR[vitem.data_type]
     jattr = _SCALAR_PROP_ATTR[jitem.data_type]
 
@@ -390,7 +390,7 @@ def _bitmask_field(type_name: str, ori_name: str):
 def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj=None,
                      anno_name: str = ""):
     """
-    按 item.data_type 在 layout 上绘制对应控件（L1.5 重设计版）。
+    按 item.data_type 在 layout 上绘制对应控件（属性字段显示重设计版）。
 
     FLOAT6（XYZ type 0）：
       字段名一行（友好名 + ⓘ）+ 3 行（X/Y/Z，每行 Static index 和 Random index）。
@@ -661,12 +661,12 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         if item.ori_name.startswith("__"):
             split.label(text=item.opaque_str)
         else:
-            split.label(text="[opaque]")
+            split.label(text=T("field.read_only"))
     elif dtype == "STRING":
         # 路径字段：可编辑文本框（用于 custom-codec 含路径类型）
         split.prop(item, "string_value", text="")
     else:
-        split.label(text=f"[未知类型 {dtype}]")
+        split.label(text=T("field.unknown_type"))
 
     # RANDOMFIX：种子槎位骰子按钮（一键随机重生成）+ 选择组勾选弹窗
     if type_name == "RANDOMFIX":
@@ -686,6 +686,27 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
 # 2026-07-01 schema 重构后 unkn5/unkn6a 已是独立标量字段，交给通用引擎处理）
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 位标志逐位展开（2026-09-20）：把一个 Bitmask 字段的某一位单独画成一行勾选框，
+# 而不是"摘要 + 弹窗"。多行共用同一个底层 int/byte/short 槽（bitmask_bools 代理，
+# 见 fields.py），可以分开摆在面板不同位置——TRANSFORM3D.enableVelocityBitflag
+# 两位一起摆；SPAWN.spawnFlags 则是 UseSpawnFrame 单独挪到 spawnFrame 上面当门控，
+# 其余 5 位留在原位。ⓘ 提示按钮仍指向整个字段（弹窗按钮标出的注释是整个位掩码的）。
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _draw_bitmask_bit_row(layout, item, type_name, bit_index, label, *, anno_name=None, show_info=True):
+    """画一行：标签 | 单个位的勾选框 | （可选）ⓘ 提示按钮。"""
+    row = layout.row(align=True)
+    row.scale_y = 1.1
+    row.use_property_split = False
+    split = row.split(factor=0.45)
+    split.label(text=label)
+    split.prop(item, "bitmask_bools", index=bit_index, text="")
+    if show_info:
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item,
+                                 anno_name=anno_name or item.ori_name)
+
+
 def _draw_tubelight_int_as_color(layout, item, type_name, label):
     """headColor/tailColor：打包 RGBA 颜色选择器。"""
     row = layout.row(align=True)
@@ -697,6 +718,103 @@ def _draw_tubelight_int_as_color(layout, item, type_name, label):
     val_row.prop(item, "int_as_color_display", text="")
     val_row.prop(item, "int_as_color_display", index=3, text="A", slider=True)
     _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SHADERSETTINGS 专用字段绘制（presetId：字符串输入，导出时按 jamcrc 算成 int32；
+# 见 blender_efx/fields.py 的 preset_name_display 影子属性）
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _draw_shadersettings_preset_id(layout, item, type_name, label):
+    """presetId：预设名字符串输入框 + 已知名字下拉。"""
+    row = layout.row(align=True)
+    row.scale_y = 1.1
+    row.use_property_split = False
+    split = row.split(factor=0.45)
+    split.label(text=label)
+    val_row = split.row(align=True)
+    val_row.prop(item, "preset_name_display", text="")
+    val_row.menu("EFX_MT_shadersettings_preset_picker", text="", icon="DOWNARROW_HLT")
+    _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RGBFIRE 专用分组显示（2026-09-20 用户要求的重排；顺序订正见
+# efx_format/field_order.py 的 RGBFIRE 锚点条目，这里只管小标题/分隔线/行内简化标签）。
+# 组内字段去掉 "Fire (GreenCh)"/"Smoke (RedCh)" 前缀——有分组小标题兜底，不再需要
+# 每行重复一遍；ⓘ 提示按钮仍按 ori_name 查完整的 annotations，不受标签精简影响。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_RGBFIRE_ROW_LABELS = {
+    "colorRate":   ("总体亮度", "Overall Brightness"),
+    "alphaFactor": ("总体透明度", "Overall Alpha"),
+    "fireColorParam_correctColorNo":  ("EPV 颜色修正槽位", "EPV Color Slot"),
+    "fireColor":                      ("颜色", "Color"),
+    "fireFactor":                     ("强度", "Factor"),
+    "fireColorParam_lighting":        ("受光照影响", "Lighting"),
+    "fireColorParam_useLife":         ("启用生命周期", "Use Life"),
+    "fireColorParam_appearFrame":     ("淡入", "Appear"),
+    "fireColorParam_keepFrame":       ("持续", "Keep"),
+    "fireColorParam_vanishFrame":     ("淡出", "Vanish"),
+    "fireColorParam_lifeType":        ("生命期模式", "Life Type"),
+    "smokeColorParam_correctColorNo": ("EPV 颜色修正槽位", "EPV Color Slot"),
+    "smokeColor":                     ("颜色", "Color"),
+    "redChFactor":                    ("强度", "Factor"),
+    "smokeColorParam_lighting":       ("受光照影响", "Lighting"),
+    "smokeColorParam_useLife":        ("启用生命周期", "Use Life"),
+    "smokeColorParam_appearFrame":    ("淡入", "Appear"),
+    "smokeColorParam_keepFrame":      ("持续", "Keep"),
+    "smokeColorParam_vanishFrame":    ("淡出", "Vanish"),
+    "smokeColorParam_lifeType":       ("生命期模式", "Life Type"),
+}
+
+
+def _draw_section_header(layout, zh: bool, text_zh: str, text_en: str):
+    """小标题行：偏小/灰的分组名（用 .active=False 借主题的次要文字颜色）。
+    RGBFIRE/RGBWATER 的分组面板共用这一个绘制函数。"""
+    row = layout.row()
+    row.active = False
+    row.label(text=text_zh if zh else text_en)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RGBWATER 专用分组显示（2026-09-20，跟 RGBFIRE 同一批要求）：顺序订正见
+# efx_format/field_order.py 的 RGBWATER 锚点条目，这里管小标题/分隔线/简化标签。
+# `waterLerpGtoB` 的行标签直接用官方原名描述实测行为（Alpha 混入蓝通道），
+# 内部字段名保留 DTI 原名不动。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_RGBWATER_ROW_LABELS = {
+    "colorRate":      ("总体亮度", "Overall Brightness"),
+    "intensityAlpha": ("总体透明度", "Overall Alpha"),
+    "specularColorParam_correctColorNo": ("EPV 颜色修正槽位", "EPV Color Slot"),
+    "colorSpecular":                     ("颜色", "Color"),
+    "intensitySpecular":                 ("强度", "Factor"),
+    "specularColorParam_lighting":       ("受光照影响", "Lighting"),
+    "specularColorParam_useLife":        ("启用生命周期", "Use Life"),
+    "specularColorParam_appearFrame":    ("淡入", "Appear"),
+    "specularColorParam_keepFrame":      ("持续", "Keep"),
+    "specularColorParam_vanishFrame":    ("淡出", "Vanish"),
+    "specularColorParam_lifeType":       ("生命期模式", "Life Type"),
+    "sheetColorParam_correctColorNo": ("EPV 颜色修正槽位", "EPV Color Slot"),
+    "colorSheet":                     ("颜色", "Color"),
+    "intensitySheet":                 ("强度", "Factor"),
+    "sheetColorParam_lighting":       ("受光照影响", "Lighting"),
+    "sheetColorParam_useLife":        ("启用生命周期", "Use Life"),
+    "sheetColorParam_appearFrame":    ("淡入", "Appear"),
+    "sheetColorParam_keepFrame":      ("持续", "Keep"),
+    "sheetColorParam_vanishFrame":    ("淡出", "Vanish"),
+    "sheetColorParam_lifeType":       ("生命期模式", "Life Type"),
+    "cubemapPath":      ("环境反射贴图", "Environment Reflection Map"),
+    "intensityCubeMap": ("环境反射强度", "CubeMap Factor"),
+    "waterLerpGtoB":            ("Alpha 混入蓝通道比例", "Lerp Alpha To Blue"),
+    "waterLerpParam_lighting":  ("受光照影响", "Lighting"),
+    "waterLerpParam_useLife":   ("启用生命周期", "Use Life"),
+    "waterLerpParam_appearFrame": ("淡入", "Appear"),
+    "waterLerpParam_keepFrame":   ("持续", "Keep"),
+    "waterLerpParam_vanishFrame": ("淡出", "Vanish"),
+    "waterLerpParam_lifeType":    ("生命期模式", "Life Type"),
+}
 
 
 def _ptb_item_is_color(item) -> bool:
@@ -899,11 +1017,11 @@ def _draw_material_editor(layout, context, material_groups: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# L1.4 预设面板 — 动态 EnumProperty items 回调
+# 预设面板 — 动态 EnumProperty items 回调
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────────────────────────────────────
-# L2 #1c：EXTERNREFERENCE referenceIndex 字段的内联指针 UI
+# EXTERNREFERENCE referenceIndex 字段的内联指针 UI
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _draw_extern_ref_field(layout, obj) -> None:
@@ -998,6 +1116,42 @@ def _draw_ptcollision_ref_field(layout, obj) -> None:
         hint.label(text=T("attribute.sentinel_no_target"), icon="X")
 
 
+def _draw_layoutbank_summary(layout, bp) -> None:
+    """LayoutBank 只读列摘要：逐 Block 列出每一列的类型/行数/前几个值。
+
+    不接受编辑——变长表放不进 EFXFieldItem 模型，见 describe_layoutbank 的
+    文档串。数值宽度已按 2026-09 全语料统计坐实的原生类型解出，但语义未知。
+    """
+    import base64
+    from ..efx_format.schema.custom_codecs import describe_layoutbank
+
+    row = layout.row()
+    row.enabled = False
+    row.label(text=T("attribute.layoutbank_readonly_note"), icon="INFO")
+
+    try:
+        raw = base64.b64decode(bp.raw_b64)
+        columns = describe_layoutbank(raw)
+    except Exception:
+        layout.label(text=T("attribute.layoutbank_decode_failed"), icon="ERROR")
+        return
+
+    last_block = None
+    for col in columns:
+        if col["block_idx"] != last_block:
+            last_block = col["block_idx"]
+            layout.label(text=f"Block {last_block}", icon="ANIM_DATA")
+        box = layout.box()
+        vals = col["values"]
+        preview = ", ".join(
+            (f"{v:.3g}" if isinstance(v, float) else str(v)) for v in vals[:8]
+        )
+        if len(vals) > 8:
+            preview += ", …"
+        box.label(text=f"col type={col['block_type']}  n={col['count']}")
+        box.label(text=preview)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 公共绘制函数：属性字段内容（两个 Panel 共用，避免重复代码）
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1037,6 +1191,13 @@ def _draw_attribute_fields_content(layout, context, obj=None):
         type_name = HASH_TO_NAME.get(type_hash_int, "").upper()
     except (ValueError, ImportError):
         type_name = ""
+
+    # LayoutBank（Root 专属子条目，伪装成 AttrBlock）：结构是变长的"列数不定、
+    # 每列宽度不定"的表，套不进固定 Field 模型（2026-09-20 跟用户确认过，走只读
+    # 摘要而不是假装能编辑）。数值宽度/含义见 describe_layoutbank 的文档串。
+    if type_name == "LAYOUTBANK":
+        _draw_layoutbank_summary(layout, bp)
+        return
 
     # ── EFX Color Editor 模式：只画颜色/亮度相关字段（is_color_field 判据）───────
     _color_only = _rc.is_color_editor_mode(obj)
@@ -1121,6 +1282,41 @@ def _draw_attribute_fields_content(layout, context, obj=None):
     try:
         from ..efx_format.hashes import RIBBONBLADE as _RIBBONBLADE_HASH_P
         _is_ribbonblade = (int(bp.type_hash_str) == _RIBBONBLADE_HASH_P)
+    except (ValueError, ImportError):
+        pass
+
+    _is_shadersettings = False
+    try:
+        from ..efx_format.hashes import SHADERSETTINGS as _SHADERSETTINGS_HASH_P
+        _is_shadersettings = (int(bp.type_hash_str) == _SHADERSETTINGS_HASH_P)
+    except (ValueError, ImportError):
+        pass
+
+    _is_rgbfire = False
+    try:
+        from ..efx_format.hashes import RGBFIRE as _RGBFIRE_HASH_P
+        _is_rgbfire = (int(bp.type_hash_str) == _RGBFIRE_HASH_P)
+    except (ValueError, ImportError):
+        pass
+
+    _is_rgbwater = False
+    try:
+        from ..efx_format.hashes import RGBWATER as _RGBWATER_HASH_P
+        _is_rgbwater = (int(bp.type_hash_str) == _RGBWATER_HASH_P)
+    except (ValueError, ImportError):
+        pass
+
+    _is_transform3d = False
+    try:
+        from ..efx_format.hashes import TRANSFORM3D as _TRANSFORM3D_HASH_P
+        _is_transform3d = (int(bp.type_hash_str) == _TRANSFORM3D_HASH_P)
+    except (ValueError, ImportError):
+        pass
+
+    _is_spawn = False
+    try:
+        from ..efx_format.hashes import SPAWN as _SPAWN_HASH_P
+        _is_spawn = (int(bp.type_hash_str) == _SPAWN_HASH_P)
     except (ValueError, ImportError):
         pass
 
@@ -1235,6 +1431,42 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                 if item.ori_name.startswith("__") and item.ori_name.endswith("__"):
                     i += 1
                     continue
+                # TRANSFORM3D / SPAWN：从位掩码里拆出来、挪到别的字段前面当门控开关的
+                # 勾选框，必须画在"模式过滤隐藏判定"**之前**——它们门控的字段（velocity/
+                # modifier 组、spawnFrame）关着的时候会被下面那条隐藏判定跳过，如果勾选
+                # 框跟着一起判断就会连自己也被隐藏，等于没法再打开，字段永远显示不出来。
+                # enableVelocityBitflag/spawnFlags 本身不受这条隐藏判定影响（不在
+                # FIELD_VISIBILITY 表里），所以它们自己该怎么画（弹窗/其余位）仍在下面
+                # 原来的位置处理，不受影响。
+                if _is_transform3d and item.ori_name in (
+                        "translation_velocity", "translation_velocity_modifier"):
+                    _flag_item = _item_by_name.get("enableVelocityBitflag")
+                    if _flag_item is not None:
+                        from .i18n import get_lang as _get_lang_t3d
+                        _zh_t3d = _get_lang_t3d() == "ZH"
+                        if item.ori_name == "translation_velocity":
+                            _draw_bitmask_bit_row(_tcol, _flag_item, type_name, 0,
+                                                  "启用速度" if _zh_t3d else "Enable Velocity")
+                        else:
+                            _draw_bitmask_bit_row(_tcol, _flag_item, type_name, 1,
+                                                  "启用加速度" if _zh_t3d else "Enable Acceleration")
+                    # 不 continue：velocity/modifier 字段本身照常往下走（含隐藏判定）
+                if _is_spawn and item.ori_name == "spawnFrame":
+                    _spawnflags_item = _item_by_name.get("spawnFlags")
+                    if _spawnflags_item is not None:
+                        from ..efx_format.schema.enums import BITS_SPAWN_FLAGS as _BITS_SF
+                        from .i18n import get_lang as _get_lang_sp
+                        _zh_sp = _get_lang_sp() == "ZH"
+                        _en_uf, _zh_uf = next((e, z) for m, e, z in _BITS_SF if m == 0x20)
+                        _draw_bitmask_bit_row(_tcol, _spawnflags_item, type_name, 5,
+                                              _zh_uf if _zh_sp else _en_uf,
+                                              anno_name="spawnFlags")
+                    # 不 continue：spawnFrame 本身照常往下走（含 jitter 配对/隐藏判定）
+                # TRANSFORM3D：enableVelocityBitflag 本身到了它原来的字节位置不再单独
+                # 画（两个位已经画在上面两组前面了）。
+                if _is_transform3d and item.ori_name == "enableVelocityBitflag":
+                    i += 1
+                    continue
                 # 模式过滤：非生效字段隐藏（show_all 关时）。放在 axis-group 判定前，
                 # 使被隐藏的组首字段（如 velocityX）连带整组不绘制。
                 if (_has_vis_rules and not _show_all_fields
@@ -1270,7 +1502,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                 if item.ori_name in _axis_group_consumed:
                     i += 1
                     continue
-                # L2 #1c：EXTERNREFERENCE 的 referenceIndex 字段替换为 extern 指针 UI
+                # EXTERNREFERENCE 的 referenceIndex 字段替换为 extern 指针 UI
                 if _is_extern_ref and item.ori_name == "referenceIndex":
                     _draw_extern_ref_field(_tcol, obj)
                     i += 1
@@ -1331,6 +1563,12 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     _draw_tubelight_int_as_color(_tcol, item, type_name, _lbl)
                     i += 1
                     continue
+                # SHADERSETTINGS：presetId 换成字符串输入 + 已知名字下拉（见上方函数注释）。
+                if _is_shadersettings and item.ori_name == "presetId":
+                    _draw_shadersettings_preset_id(_tcol, item, type_name,
+                                                    _friendly_name("presetId", type_name))
+                    i += 1
+                    continue
                 # PLEMISSIVE：body_p / wp_p（光圈部位掩码）保留原数值字段（直接可看/改），
                 # 行尾附勾选弹窗按钮作为计算辅助。下拉拉开即显示部位，无需额外摘要行。
                 if _is_plemissive and item.ori_name in ("body_p", "wp_p"):
@@ -1358,6 +1596,93 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     }
                     _sub_lbl_rb = _sub_overrides_rb.get(_sub_key) or _friendly_name(_sub_key, type_name)
                     _draw_field_item(_tcol, item, type_name=type_name, label_override=f"{_prefix_rb} {_sub_lbl_rb}", obj=obj)
+                    i += 1
+                    continue
+                # RGBFIRE：分组小标题/分隔线 + 组内简化标签（见上方函数/表注释；
+                # 字段实际显示顺序已由 field_order.py 的锚点表重排过）。
+                if _is_rgbfire:
+                    from .i18n import get_lang as _get_lang_rf
+                    _zh_rf = _get_lang_rf() == "ZH"
+                    if item.ori_name == "colorRate":
+                        _tcol.separator(factor=1.0)
+                    elif item.ori_name == "fireColorParam_correctColorNo":
+                        _tcol.separator(factor=1.0)
+                        _draw_section_header(_tcol, _zh_rf, "火焰色（绿通道）", "Fire (GreenCh)")
+                    elif item.ori_name == "smokeColorParam_correctColorNo":
+                        _tcol.separator(factor=1.0)
+                        _draw_section_header(_tcol, _zh_rf, "烟雾色（红通道）", "Smoke (RedCh)")
+                    elif item.ori_name == "lerpAlphaToBlue":
+                        _tcol.separator(factor=1.0)
+                    _rf_lbl = _RGBFIRE_ROW_LABELS.get(item.ori_name)
+                    if _rf_lbl:
+                        _lbl_text = _rf_lbl[0] if _zh_rf else _rf_lbl[1]
+                        _nxt_rf = items[i + 1] if i + 1 < n else None
+                        if (_nxt_rf is not None and item.data_type in _SCALAR_PROP_ATTR
+                                and not _is_jitter_name(item.ori_name)
+                                and not item.ori_name.startswith("__")
+                                and _nxt_rf.data_type == item.data_type
+                                and _is_matching_jitter(item.ori_name, _nxt_rf.ori_name)):
+                            _draw_value_jitter_pair(_tcol, item, _nxt_rf, type_name=type_name,
+                                                     label_override=_lbl_text)
+                            i += 2
+                        else:
+                            _draw_field_item(_tcol, item, type_name=type_name,
+                                              label_override=_lbl_text, obj=obj)
+                            i += 1
+                        continue
+                # RGBWATER：分组小标题/分隔线 + 组内简化标签（同上，见 field_order.py
+                # 的 RGBWATER 锚点表 + 上方 _RGBWATER_ROW_LABELS 注释）。
+                if _is_rgbwater:
+                    from .i18n import get_lang as _get_lang_rw
+                    _zh_rw = _get_lang_rw() == "ZH"
+                    if item.ori_name == "colorRate":
+                        _tcol.separator(factor=1.0)
+                    elif item.ori_name == "specularColorParam_correctColorNo":
+                        _tcol.separator(factor=1.0)
+                        _draw_section_header(_tcol, _zh_rw, "高光", "Specular")
+                    elif item.ori_name == "sheetColorParam_correctColorNo":
+                        _tcol.separator(factor=1.0)
+                        _draw_section_header(_tcol, _zh_rw, "水膜", "Sheet")
+                    elif item.ori_name == "cubemapPath":
+                        _tcol.separator(factor=1.0)
+                        _draw_section_header(_tcol, _zh_rw, "环境反射", "Environment Reflection")
+                    elif item.ori_name == "waterLerpGtoB":
+                        _tcol.separator(factor=1.0)
+                        _draw_section_header(_tcol, _zh_rw, "插值", "Lerp")
+                    _rw_lbl = _RGBWATER_ROW_LABELS.get(item.ori_name)
+                    if _rw_lbl:
+                        _lbl_text = _rw_lbl[0] if _zh_rw else _rw_lbl[1]
+                        _nxt_rw = items[i + 1] if i + 1 < n else None
+                        if (_nxt_rw is not None and item.data_type in _SCALAR_PROP_ATTR
+                                and not _is_jitter_name(item.ori_name)
+                                and not item.ori_name.startswith("__")
+                                and _nxt_rw.data_type == item.data_type
+                                and _is_matching_jitter(item.ori_name, _nxt_rw.ori_name)):
+                            _draw_value_jitter_pair(_tcol, item, _nxt_rw, type_name=type_name,
+                                                     label_override=_lbl_text)
+                            i += 2
+                        else:
+                            _draw_field_item(_tcol, item, type_name=type_name,
+                                              label_override=_lbl_text, obj=obj)
+                            i += 1
+                        continue
+                # SPAWN：spawnFlags 6 个位拆开平铺——UseSpawnFrame(bit5) 单独挪到
+                # spawnFrame 上面当门控（field_visibility.py 已配置 spawnFrame/-Jitter
+                # 只在它打开时显示），其余 5 位留在 spawnFlags 原本的字节位置。
+                # ⚠ 挪到 spawnFrame 上面那颗勾选框的绘制代码在**更前面**（模式过滤/
+                # 隐藏判定之前），不在这里——spawnFrame 自己会被同一个门控隐藏，如果
+                # 勾选框跟它绑在一起判断，字段一隐藏勾选框也会跟着消失，就没法再打开了。
+                if _is_spawn and item.ori_name == "spawnFlags":
+                    from ..efx_format.schema.enums import BITS_SPAWN_FLAGS as _BITS_SF2
+                    from .i18n import get_lang as _get_lang_sp2
+                    _zh_sp2 = _get_lang_sp2() == "ZH"
+                    for _mask, _en_b, _zh_b in _BITS_SF2:
+                        if _mask == 0x20:
+                            continue  # UseSpawnFrame 已经挪到 spawnFrame 上面画过了
+                        _bit = _mask.bit_length() - 1
+                        _draw_bitmask_bit_row(_tcol, item, type_name, _bit,
+                                              _zh_b if _zh_sp2 else _en_b,
+                                              anno_name="spawnFlags")
                     i += 1
                     continue
                 # value + jitter 配对（位置性：下一个是同类型 jitter 标量）
@@ -1428,9 +1753,9 @@ class EFX_PT_entry(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "MHW EFX"
-    # 固定顺序：MHW EFX > Add Section > Presets > Edit > 其他（默认顺序，bl_order 未设时=0）。
+    # 固定顺序：MHW EFX > Add > Edit > 其他（默认顺序，bl_order 未设时=0）。
     # 必须用负数——Blender 未显式设 bl_order 的面板默认值就是 0，正数反而排到那些"默认顺序"
-    # 面板后面（之前用 0/1/2/3 试过，Presets=3 直接被挤到全局最后，只有负数才保证排在最前）。
+    # 面板后面（之前用 0/1/2/3 试过，最大的那个直接被挤到全局最后，只有负数才保证排在最前）。
     bl_order       = -4
 
     def draw(self, context):
@@ -1458,14 +1783,21 @@ class EFX_PT_entry(bpy.types.Panel):
                      text=T("entry.sync_transform"), icon="ORIENTATION_GLOBAL")
         row.operator("efx.validate", text=T("validate.run_btn"), icon="CHECKMARK")
 
+        layout.operator("efx.add_mhw_vfx_workspace",
+                         text=T("entry.add_workspace"), icon="WORKSPACE")
+
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_presets  —  统一「预设」面板（Entry 预设 / Attribute 预设，顶部模式切换）
+# EFX_PT_add  —  统一「新建」面板
+#   顶部一排 Action / Extern / Subselect 一键新建，下面 Entry / Attribute 两个标签页。
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_entry_presets_content(layout, context):
-    """Entry 预设模式：复制/粘贴 Entry + 保存 + 选预设新增 + 打开文件夹。
-    目标 EFX 由 EFX_PT_entry 顶部的 Active EFX 选择器决定。"""
+def _draw_entry_tab(layout, context):
+    """Entry 标签页：复制/粘贴 Entry + 保存 + 选预设新增 + 打开文件夹。
+    目标 EFX 由 EFX_PT_entry 顶部的 Active EFX 选择器决定。
+
+    新增只有"选预设"这一条路径——下拉最前面两项是代码内置的基础 3D / 2D Entry
+    （见 builtin_entries），"零属性空白 entry"没有使用价值，已不再提供。"""
     wm = context.window_manager
 
     # 1. 复制 Entry / 粘贴 Entry（整 entry 内存剪贴板；算子 poll 自动灰）
@@ -1538,46 +1870,39 @@ def _draw_suggested_attributes(layout, entry_obj):
         sub.label(text="%d%%" % rate)
 
 
-def _draw_attribute_presets_content(layout, context):
-    """Attribute 预设模式：复制/保存整属性 + 分类选择 + 选预设新增 + 粘贴属性 + 打开文件夹。
-    新增属性需选中 EFX_ENTRY 或其下的 EFX_ATTRIBUTE（连续新增属性免切回 entry），
-    保存/复制需选中 EFX_ATTRIBUTE，算子 poll 自动灰。"""
+def _draw_add_attribute_block(layout, context):
+    """「给当前 entry 加一个属性」这一块：目标提示 + 缺失建议 + 搜索 + 分类菜单。
+
+    两处共用：Add 面板的 Attribute 标签页，和属性编辑器 Data 标签的 Entry 面板
+    （在那儿看着 entry 的属性栈顺手加，不用切回 N 面板）。
+
+    目标 entry 由 `_resolve_target_entries` 解析——选中 EFX_ATTRIBUTE 时算它的父
+    entry，所以连续加好几个属性不用每次点回 entry；多选时一次作用到全部。
+    """
     wm = context.window_manager
 
-    # 1. 复制整属性（需选中 EFX_ATTRIBUTE）/ 粘贴属性（需选中 EFX_ENTRY 或其 EFX_ATTRIBUTE），poll 自动灰
-    row = layout.row(align=True)
-    row.operator("efx.copy_attribute", text=T("attribute.copy_whole"), icon="COPYDOWN")
-    row.operator("efx.paste_attribute", text=T("attribute.paste"), icon="PASTEDOWN")
-
-    # 2. 保存为属性预设（需选中 EFX_ATTRIBUTE，poll 自动灰）
-    layout.operator("efx.save_attribute_preset", text=T("attribute.save_preset"), icon="ADD")
-
-    layout.separator()
-
-    # 2. 分类 + 属性预设下拉 + 新增（需选中 EFX_ENTRY，poll 自动灰）
-    # 多选多个 entry（或其属性）时，新增/粘贴/建议一次性作用到全部，标题按数量显示。
     try:
         from .attribute_ops import _resolve_target_entries
-        _targets = _resolve_target_entries(context)
+        targets = _resolve_target_entries(context)
     except Exception:
-        _targets = []
-    if len(_targets) > 1:
+        targets = []
+
+    if len(targets) > 1:
         layout.label(text=T("attribute.add_to_prefix")
-                     + T("attribute.add_to_multi").format(n=len(_targets)), icon="PLUS")
-    elif _targets:
-        body_label = _targets[0].get("efx_raw_label", "") or _targets[0].name
+                     + T("attribute.add_to_multi").format(n=len(targets)), icon="PLUS")
+    elif targets:
+        body_label = targets[0].get("efx_raw_label", "") or targets[0].name
         layout.label(text=T("attribute.add_to_prefix") + body_label, icon="PLUS")
     else:
         row_lbl = layout.row()
         row_lbl.enabled = False
         row_lbl.label(text=T("attribute.add_to_prefix") + T("attribute.add_to_no_entry"), icon="PLUS")
-    # 2b. 「常用但缺失」建议：按该 entry 的渲染主体线，列出官方通常还会带、但这里没有的
-    #     属性，一键补上（插到规范顺序位）。纯建议，不是校验——见
-    #     efx_format/categories.py::suggest_missing_attributes。
-    #     目标 entry 用与新增算子相同的解析（选中 EFX_ATTRIBUTE 时也算，连续新增免切回）。
-    _target = _targets[0] if _targets else None
-    if _target is not None:
-        _draw_suggested_attributes(layout, _target)
+
+    # 「常用但缺失」建议：按该 entry 的渲染主体线，列出官方通常还会带、但这里没有的
+    # 属性，一键补上（插到规范顺序位）。纯建议，不是校验——见
+    # efx_format/categories.py::suggest_missing_attributes。
+    if targets:
+        _draw_suggested_attributes(layout, targets[0])
 
     # 全局模糊搜索新增：不用先猜类型归在哪个分类，键盘打字过滤全部 72 个预设。
     layout.operator("efx.attribute_add_search", text=T("attribute.search_add"), icon="VIEWZOOM")
@@ -1587,36 +1912,106 @@ def _draw_attribute_presets_content(layout, context):
     # 不再需要单独的下拉选中 + Add 确认两步。
     layout.menu("EFX_MT_attribute_preset_picker", text=T("attribute.add"), icon="PLAY")
 
+
+def _draw_add_extern_override_block(layout, context):
+    """选中的 EFX_ATTRIBUTE 若属于 CLAUDE.md 数据模型坐实的 18 个类型（有对应
+    extern 类型），一键给它加一个 extern 覆盖：复用/新建同 entry 的
+    EXTERNREFERENCE + 目标 EA 里的对应 item，种子取该属性当前实际字节。
+    没有对应类型（包括 8 个 FABRICATED）时不显示任何东西——按钮出现本身就是
+    "这个类型支持"的信号，不需要额外的灰态提示。
+
+    见 extern_props.py::add_extern_override_for_attribute 的完整规则。
+    """
+    obj = context.active_object
+    if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+        return
+    try:
+        from .extern_props import main_to_extern_hash
+        from ..efx_format.hashes import HASH_TO_NAME
+        main_hash = int(str(obj.get("type_hash", "0")))
+    except (ValueError, TypeError, ImportError):
+        return
+    extern_hash = main_to_extern_hash(main_hash)
+    if extern_hash is None:
+        return
+    from ..efx_format.hashes import pretty_type_name as _pretty_ext
+    extern_name = (_pretty_ext(HASH_TO_NAME.get(extern_hash, ""))
+                   or f"0x{extern_hash:08X}")
+    layout.operator("efx.add_extern_override_for_attribute",
+                     text=T("extern.add_override").format(name=extern_name),
+                     icon="LINKED")
+
+
+def _draw_attribute_tab(layout, context):
+    """Attribute 标签页：复制/保存整属性 + 加 extern 覆盖 + 新增属性 + 粘贴属性 + 打开文件夹。
+    新增属性需选中 EFX_ENTRY 或其下的 EFX_ATTRIBUTE（连续新增属性免切回 entry），
+    保存/复制/加 extern 覆盖需选中 EFX_ATTRIBUTE，算子 poll 自动灰。"""
+    # 1. 复制整属性（需选中 EFX_ATTRIBUTE）/ 粘贴属性（需选中 EFX_ENTRY 或其 EFX_ATTRIBUTE），poll 自动灰
+    row = layout.row(align=True)
+    row.operator("efx.copy_attribute", text=T("attribute.copy_whole"), icon="COPYDOWN")
+    row.operator("efx.paste_attribute", text=T("attribute.paste"), icon="PASTEDOWN")
+
+    # 2. 保存为属性预设（需选中 EFX_ATTRIBUTE，poll 自动灰）
+    layout.operator("efx.save_attribute_preset", text=T("attribute.save_preset"), icon="ADD")
+
+    # 2b. 给当前属性加对应的 extern 覆盖（只有支持的类型才显示按钮）
+    _draw_add_extern_override_block(layout, context)
+
     layout.separator()
 
-    # 3. 打开文件夹
+    # 3. 新增属性
+    _draw_add_attribute_block(layout, context)
+
+    layout.separator()
+
+    # 4. 打开文件夹
     layout.operator("efx.open_attribute_preset_folder", text=T("entry.open_folder"), icon="FILE_FOLDER")
 
 
-class EFX_PT_presets(bpy.types.Panel):
-    """EFX 预设（Entry 预设 / Attribute 预设，顶部模式切换）"""
+class EFX_PT_add(bpy.types.Panel):
+    """EFX 新建：Action / Extern / Subselect 一键新建 + Entry / Attribute 标签页
+
+    分界线是「点完就结束」还是「点之前得先在面板里选」，不是类型的重要程度或子类型多少：
+      - Action 的分支发生在算子自己的 invoke_props_dialog 里；Extern 新建不再弹窗，
+        直接建一个空白 EA（item 类型改在 Extern Properties 面板里"添加 Item"搜索选），
+        面板上只需要一个入口 → 顶部一排按钮；
+      - Entry 的预设下拉、Attribute 的目标提示 + 搜索 + 分类菜单必须常驻面板，
+        才需要一块可切换的版面 → 标签页。
+    以后哪种类型长出了需要常驻的选择器，它自己就该从按钮升成标签页。
+    """
 
     bl_space_type   = "VIEW_3D"
     bl_region_type  = "UI"
     bl_category     = "EFX"
-    bl_label        = "Presets"
+    bl_label        = "Add"
     bl_options      = {"DEFAULT_CLOSED"}
-    bl_order        = -2  # 固定顺序：MHW EFX > Add Section > Presets > Edit > 其他
+    bl_order        = -3  # 固定顺序：MHW EFX > Add > Edit > 其他
 
     @classmethod
     def poll(cls, context):
-        # Color Editor 模式：预设是结构/整属性工具，不属于"只管颜色"范围，隐藏。
-        return not _rc.is_color_editor_mode(context.active_object)
+        from .add_ops import get_active_efx_root
+        root = get_active_efx_root(context)
+        # Color Editor 模式：新建是结构编辑功能，不属于"只管颜色"范围，隐藏。
+        return root is not None and not _rc.root_is_color_editor_mode(root)
 
     def draw(self, context):
         layout = self.layout
         wm = context.window_manager
+
+        # 一排「点完就结束」的新建（子类型在各自算子的弹窗里选，不占面板）
+        row = layout.row(align=True)
+        row.operator("efx.add_action",    text=T("addsec.action"),    icon="ADD")
+        row.operator("efx.add_extern",    text=T("addsec.extern"),    icon="ADD")
+        row.operator("efx.add_subselect", text=T("addsec.subselect"), icon="ADD")
+
+        layout.separator()
+
         layout.row().prop(wm, "efx_preset_mode", expand=True)
         layout.separator(factor=0.3)
         if wm.efx_preset_mode == "ATTRIBUTE":
-            _draw_attribute_presets_content(layout, context)
+            _draw_attribute_tab(layout, context)
         else:
-            _draw_entry_presets_content(layout, context)
+            _draw_entry_tab(layout, context)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1724,12 +2119,45 @@ class EFX_PT_entry_activation(bpy.types.Panel):
 #   Entry Status（EFX_PT_entry_status）管激活状态和引用，Entry Properties 管原始数据。
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _describe_root_subentries(raw_b64: str) -> list:
+    """解出 opaque Root 的子条目类型名列表（['UnitBoundary', 'RenderTarget', ...]）。
+
+    只读子条目类型，不展开字段——RenderTarget/LayoutBank 仍是 opaque。解不出（空/
+    格式不对）时返回空列表，调用方据此隐藏整块，不报错。
+    """
+    import base64
+    from ..efx_format.efxfile import EFXFile, RootBody, RootUnitBoundary
+    try:
+        raw = base64.b64decode(raw_b64)
+        if not raw:
+            return []
+        body, end_pos = EFXFile._parse_root_body(raw, 0)
+    except Exception:
+        return []
+    if end_pos != len(raw):
+        return []  # 没能精确耗尽整段字节，说明解析假设不成立，宁可不显示
+    names = []
+    for e in body.entries:
+        if isinstance(e, RootUnitBoundary):
+            names.append("UnitBoundary")
+        else:
+            t = int.from_bytes(e.raw[:4], "little")
+            names.append({RootBody.RENDERTARGET: "RenderTarget",
+                          RootBody.LAYOUTBANK: "LayoutBank"}.get(t, "Unknown"))
+    return names
+
+
 def _draw_entry_properties_content(layout, context):
     """
-    绘制 EFX_ENTRY 的原始属性内容（Type / Root UnitBoundary）。
-    被 EFX_PT_entry_properties（N 面板）和 EFX_PT_entry_properties_data/_object
-    （属性编辑器）共用。
+    绘制 EFX_ENTRY 的原始属性内容（重命名 / Type / Root UnitBoundary）。
+    被 EFX_PT_entry_properties（N 面板）和 EFX_PT_entry_properties_data
+    （属性编辑器 Data 标签）共用。
+
+    名字是 entry 自己的属性（写进 EFX_Type 标签表），所以重命名放在这里；
+    Edit 面板那份弹窗按钮保留不动，两条路径共用 reorder.apply_rename 的副作用链。
     """
+    from .reorder import draw_rename_field
+
     obj = context.active_object
     entry_kind = str(obj.get("entry_kind", "unknown"))
     kind_label = {
@@ -1740,21 +2168,21 @@ def _draw_entry_properties_content(layout, context):
     row.enabled = False
     row.label(text=T("entry.type_label") + kind_label, icon="INFO")
 
-    # Root entry 的 UnitBoundary 子条目（结构化时可编辑；含 RT/LayoutBank 的
-    # root 走 opaque 只读，不显示）。语义未完全解释：ints[2] + floats[8]。
-    if entry_kind == "root" and int(obj.get("root_structured", 0)) == 1:
-        n = int(obj.get("root_ub_count", 0))
-        if n == 0:
-            layout.label(text="(empty root — no sub-entries)", icon="DOT")
-        for j in range(n):
-            box = layout.box()
-            box.label(text="Unit Boundary %d" % j, icon="SHADING_BBOX")
-            ik = "root_ub%d_ints" % j
-            fk = "root_ub%d_floats" % j
-            if ik in obj:
-                box.prop(obj, '["%s"]' % ik, text="Ints")
-            if fk in obj:
-                box.prop(obj, '["%s"]' % fk, text="Floats")
+    draw_rename_field(layout, obj)
+
+    # Root entry 的子条目（UnitBoundary/RenderTarget/LayoutBank）现伪装成
+    # EFX_ATTRIBUTE 子对象（见 io_tree.py::_root_entry_to_attr_block），跟其它
+    # 属性一样出现在下面的 "EFX Entry Inspector" 里——可见、按 efx.delete_attribute
+    # 删除、Inspector 自动重排。这里只处理拆不动、整段只读回退的罕见情况
+    # （raw 有值：非法/未知的 root 数据，见 add_ops.py 的 decomposed 分支）。
+    if entry_kind == "root" and obj.get("raw"):
+        names = _describe_root_subentries(str(obj.get("raw", "")))
+        if names:
+            layout.label(text=T("entry.root_subentries") + ", ".join(names),
+                         icon="SHADING_BBOX")
+        row = layout.row()
+        row.enabled = False
+        row.label(text=T("entry.root_opaque_note"))
 
 
 class EFX_PT_entry_properties(bpy.types.Panel):
@@ -1777,7 +2205,11 @@ class EFX_PT_entry_properties(bpy.types.Panel):
 
 
 class EFX_PT_entry_properties_data(bpy.types.Panel):
-    """EFX Entry 原始属性（属性编辑器 → Object Data Properties，选中 EFX_ENTRY 时显示）"""
+    """EFX Entry 原始属性（属性编辑器 → Object Data Properties，选中 EFX_ENTRY 时显示）
+
+    这里额外挂一块「新增属性」：Data 标签下面紧跟着就是 Entry Inspector（整个属性栈），
+    看着栈顺手加一个比切回 N 面板顺。N 面板不加这块——那边 Add 面板就在同一列里。
+    """
 
     bl_space_type   = "PROPERTIES"
     bl_region_type  = "WINDOW"
@@ -1793,25 +2225,8 @@ class EFX_PT_entry_properties_data(bpy.types.Panel):
 
     def draw(self, context):
         _draw_entry_properties_content(self.layout, context)
-
-
-class EFX_PT_entry_properties_object(bpy.types.Panel):
-    """EFX Entry 原始属性（属性编辑器 → Object Properties，保底版本）"""
-
-    bl_space_type   = "PROPERTIES"
-    bl_region_type  = "WINDOW"
-    bl_context      = "object"
-    bl_label        = "EFX Entry Properties"
-    bl_options      = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        return (obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
-                and not _rc.is_color_editor_mode(obj))
-
-    def draw(self, context):
-        _draw_entry_properties_content(self.layout, context)
+        self.layout.separator()
+        _draw_add_attribute_block(self.layout, context)
 
 
 class EFX_PT_entry_unkn(bpy.types.Panel):
@@ -1961,25 +2376,6 @@ class EFX_PT_entry_inspector(bpy.types.Panel):
         _draw_entry_inspector_content(self.layout, context)
 
 
-class EFX_PT_entry_inspector_object(bpy.types.Panel):
-    """Entry Inspector 的 Object Properties 保底版（同 EFX_PT_attribute_fields_object 的理由：
-    万一某版本 Empty 的 'data' 上下文不渲染，用户仍能在 Object 标签找到）"""
-
-    bl_space_type   = "PROPERTIES"
-    bl_region_type  = "WINDOW"
-    bl_context      = "object"
-    bl_label        = "EFX Entry Inspector"
-    bl_options      = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ENTRY"
-
-    def draw(self, context):
-        _draw_entry_inspector_content(self.layout, context)
-
-
 class EFX_PT_attribute_fields(bpy.types.Panel):
     """EFX 属性字段属性栏（选中 EFX_ATTRIBUTE 对象时显示）"""
 
@@ -2003,11 +2399,8 @@ class EFX_PT_attribute_fields(bpy.types.Panel):
 # EFX_PT_attribute_fields_props  —  属性编辑器 Object Data Properties 标签
 #
 # bl_context = 'data'：Empty 物体的 Object Data Properties（空物体设置页）。
-# 在 4.3.2 / 5.1 上，Empty 的 'data' 上下文是有效的（显示 Empty 尺寸/类型等），
-# 因此 'data' 是首选。
-#
-# 保底版本 EFX_PT_attribute_fields_object（bl_context='object'）同时注册：
-# 万一 'data' 在某版本的 Empty 上不渲染，用户仍可在 Object Properties 标签找到字段面板。
+# 3.6～5.x 上 Empty 的 'data' 上下文一直有效（显示 Empty 尺寸/类型等），所以
+# 只在这一个标签下挂——Object 标签本身内容已经很多，不再放重复的一份。
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_attribute_fields_props(bpy.types.Panel):
@@ -2029,61 +2422,11 @@ class EFX_PT_attribute_fields_props(bpy.types.Panel):
         _draw_attribute_fields_content(self.layout, context)
 
 
-class EFX_PT_attribute_fields_object(bpy.types.Panel):
-    """EFX 属性字段（属性编辑器 → Object Properties，保底版本）"""
-
-    bl_space_type   = "PROPERTIES"
-    bl_region_type  = "WINDOW"
-    bl_context      = "object"
-    bl_label        = "EFX Attribute Properties"
-    bl_options      = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        """仅当选中对象是 EFX_ATTRIBUTE 时显示此面板。"""
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_ATTRIBUTE"
-
-    def draw(self, context):
-        _draw_attribute_fields_content(self.layout, context)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # filesize_double（doubleBuffer）编辑已挪到导出弹窗（operators.py::EFX_OT_export.draw，
 # 取消勾选"自动重算"时紧邻出现），不再单独占用 ROOT 集合的 N 面板一栏。
 # ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_add_section  —  从无到有新建 Action / Extern / Subselect 段条目
-#   poll = 已选 Active EFX；三个按钮各建一个带合法空白模板的容器对象。
-# ─────────────────────────────────────────────────────────────────────────────
-
-class EFX_PT_add_section(bpy.types.Panel):
-    """EFX 新建段条目（Entry / Action / Extern / Subselect）"""
-
-    bl_space_type   = "VIEW_3D"
-    bl_region_type  = "UI"
-    bl_category     = "EFX"
-    bl_label        = "Add Section"
-    bl_options      = {"DEFAULT_CLOSED"}
-    bl_order        = -3  # 固定顺序：MHW EFX > Add Section > Presets > Edit > 其他
-
-    @classmethod
-    def poll(cls, context):
-        from .add_ops import get_active_efx_root
-        root = get_active_efx_root(context)
-        # Color Editor 模式：新建段是结构编辑功能，不属于"只管颜色"范围，隐藏。
-        return root is not None and not _rc.root_is_color_editor_mode(root)
-
-    def draw(self, context):
-        layout = self.layout
-        col = layout.column(align=True)
-        col.operator("efx.add_entry",     text=T("addsec.entry"),     icon="OBJECT_DATA")
-        col.operator("efx.add_action",      text=T("addsec.action"),      icon="PLAY")
-        col.operator("efx.add_extern",    text=T("addsec.extern"),    icon="FILE_BLEND")
-        col.operator("efx.add_subselect", text=T("addsec.subselect"), icon="OUTLINER_OB_EMPTY")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_delete  —  删除条目 + 导出前校验（L2 #3b / #4）
+# EFX_PT_delete  —  删除条目（delete_ops.py） + 导出前校验（validate.py）
 #   按 active_object 的 ~TYPE 显示对应删除按钮；始终提供"导出前校验"按钮。
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2105,7 +2448,7 @@ class EFX_PT_delete(bpy.types.Panel):
     bl_category     = "EFX"
     bl_label        = "Edit"
     bl_options      = {"DEFAULT_CLOSED"}
-    bl_order        = -1  # 固定顺序：MHW EFX > Add Section > Presets > Edit > 其他
+    bl_order        = -1  # 固定顺序：MHW EFX > Add > Edit > 其他
 
     @classmethod
     def poll(cls, context):
@@ -2142,13 +2485,8 @@ class EFX_PT_delete(bpy.types.Panel):
             op_dn = row.operator("efx.move_entry", text=T("attribute.move_down"), icon="TRIA_DOWN")
             op_dn.direction = "DOWN"
 
-            from .reorder import can_label_entry
-            if can_label_entry(obj):
-                layout.operator("efx.rename_entry", text=T("entry.rename"), icon="GREASEPENCIL")
-            else:
-                sub = layout.column()
-                sub.enabled = False
-                sub.operator("efx.rename_entry", text=T("entry.rename_blocked"), icon="GREASEPENCIL")
+            from .reorder import draw_rename_button
+            draw_rename_button(layout, obj)
 
         # ── EFX_ACTION / EFX_EXTERN：排序 + 重命名 ─────────────────────────────
         elif t in ("EFX_ACTION", "EFX_EXTERN"):
@@ -2158,13 +2496,8 @@ class EFX_PT_delete(bpy.types.Panel):
             op_dn = row.operator("efx.move_action_extern", text=T("attribute.move_down"), icon="TRIA_DOWN")
             op_dn.direction = "DOWN"
 
-            from .reorder import can_label_action_extern
-            if can_label_action_extern(obj):
-                layout.operator("efx.rename_action_extern", text=T("actionextern.rename"), icon="GREASEPENCIL")
-            else:
-                sub = layout.column()
-                sub.enabled = False
-                sub.operator("efx.rename_action_extern", text=T("actionextern.rename_blocked"), icon="GREASEPENCIL")
+            from .reorder import draw_rename_button
+            draw_rename_button(layout, obj)
 
         # ── 删除按钮（按类型，始终显示）──────────────────────────────────────
         entry = _DELETE_BY_TYPE.get(t)
@@ -2220,12 +2553,101 @@ def _draw_plain_field_list(col, field_items, type_name: str = "") -> None:
 # EFX_PT_extern_props — Extern 段字段展开面板（选中 EFX_EXTERN 时显示）
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _extern_item_display_name(it) -> tuple:
+    """返回 (display_name, type_name)：type_name 供字段注释查表，display_name 供标题显示。"""
+    type_name = ""
+    try:
+        from ..efx_format.hashes import HASH_TO_NAME
+        type_name = HASH_TO_NAME.get(int(it.type_hash_str), "").upper()
+    except Exception:
+        pass
+    # 标题用正常大小写（ExternPtBehavior），type_name 保持大写原名——字段注释和
+    # schema 都按原名查表，两者不能混用
+    from ..efx_format.hashes import pretty_type_name as _pretty
+    display_name = _pretty(type_name) if type_name else f"0x{int(it.type_hash_str):08X}"
+    # 无真实样本支撑的类型在标题后追加"?"，不改 type_name 本身（避免影响字段注释查表）。
+    # 沿用 part_mask_ops.py 的措辞约定：不确定的东西标"?"，不写置信度/来源括注。
+    try:
+        from ..efx_format.structs import FABRICATED_EXTERN_HASHES
+        if int(it.type_hash_str) in FABRICATED_EXTERN_HASHES:
+            display_name += "?"
+    except Exception:
+        pass
+    return display_name, type_name
+
+
+def _draw_extern_item_block(layout, it, state_idx: int, item_index: int) -> None:
+    """画一个 item（某 EXTERN* 类型）的可折叠块：折叠头（三角 + 类型名 + 删除按钮）+
+    展开后当前状态的字段。
+
+    state_idx 是 EA 级的状态/列下标，按该 item 自己的槛数 clamp——这是各 item 槛数
+    不一致时的边界处理（详见 _draw_extern_props_content 里的提示行）。折叠头写法照抄
+    _draw_inspector_module。item_index 是它在 ep.items 里的下标，供删除按钮定位。
+    """
+    display_name, type_name = _extern_item_display_name(it)
+
+    box = layout.box()
+    header = box.row(align=True)
+    expanded = bool(it.ui_expand)
+    header.prop(it, "ui_expand", text="",
+                icon="TRIA_DOWN" if expanded else "TRIA_RIGHT", emboss=False)
+    header.label(text=display_name, icon="MODIFIER")
+    op = header.operator("efx.extern_item_remove", text="", icon="X", emboss=False)
+    op.item_index = item_index
+
+    if not expanded:
+        return
+
+    col = box.column(align=True)
+
+    if not it.is_editable:
+        col.label(text=T("extern.read_only"), icon="INFO")
+        return
+
+    n_inst = len(it.instances)
+    if n_inst == 0:
+        col.label(text=T("extern.no_fields"), icon="INFO")
+        return
+
+    inst_idx = min(state_idx, n_inst - 1)
+    inst = it.instances[inst_idx]
+
+    if not inst.is_editable:
+        col.label(text=T("extern.read_only"), icon="INFO")
+        return
+
+    if len(inst.field_items) == 0:
+        col.label(text=T("extern.no_fields"), icon="INFO")
+        return
+
+    # Extern 覆盖里填了路径 —— 官方语料 1540 个 extern 变长元素路径**无一非空**
+    # （Mesh 285 / TypeRibbon 73 / TypePlane 6 / UVSequence 127 / Billboard3D 874 /
+    # RGBWater 48 …），所以这是个没有先例的写法，给红字警告但不阻止。
+    if any(fi.data_type == "STRING" and fi.string_value for fi in inst.field_items):
+        warn = col.row()
+        warn.alert = True
+        warn.label(text=T("extern.path_warning"), icon="ERROR")
+
+    _draw_plain_field_list(col, inst.field_items, type_name=type_name)
+
+
 def _draw_extern_props_content(layout, context):
     """
     绘制 EFX_EXTERN 的属性内容。
-    被 EFX_PT_extern_props（N 面板）和 EFX_PT_extern_props_data/_object（属性编辑器）共用。
+    被 EFX_PT_extern_props（N 面板）和 EFX_PT_extern_props_data（属性编辑器 Data 标签）共用。
+
+    名字写进 EFX_Type 标签表，是 extern 自己的属性，所以重命名也画在这里
+    （Edit 面板那份弹窗按钮保留，两条路径共用 reorder.apply_rename 的副作用链）。
+
+    状态/列切换器画在 EA 级：instance 下标横跨同一个 EA 内全部 item，代表一个完整
+    状态（同一列上 Spawn/Velocity3D/RgbFire 等一起从状态 i 切到状态 j），不是"选中
+    某个 item 再单独翻它的实例"。下面逐个列出该 EA 下的全部 item，每个可折叠。
     """
+    from .reorder import draw_rename_field
+    from .extern_props import _extern_max_instance_count
+
     obj = context.active_object
+    draw_rename_field(layout, obj)
 
     try:
         ep = obj.efx_extern
@@ -2237,63 +2659,36 @@ def _draw_extern_props_content(layout, context):
         layout.label(text=T("extern.no_data"), icon="INFO")
         return
 
-    # 多 item 时显示 item 切换器（实测语料通常只有 1 个）
-    if len(ep.items) > 1:
+    n_state = _extern_max_instance_count(ep)
+
+    # EA 级状态/列切换器（多数 EA 只有 1 列，切换器只在 >1 时显示）
+    if n_state > 1:
         row = layout.row(align=True)
-        row.label(text=f"Item {ep.active_item + 1} / {len(ep.items)}", icon="NODETREE")
-        sub = row.row(align=True)
-        decr = sub.operator("efx.extern_item_prev", text="", icon="TRIA_LEFT")  # noqa: F841
-        incr = sub.operator("efx.extern_item_next", text="", icon="TRIA_RIGHT")  # noqa: F841
-
-    ai = min(ep.active_item, len(ep.items) - 1)
-    it = ep.items[ai]
-
-    # 解析 type_name 用于字段注释查表
-    type_name = ""
-    try:
-        from ..efx_format.hashes import HASH_TO_NAME
-        type_name = HASH_TO_NAME.get(int(it.type_hash_str), "").upper()
-    except Exception:
-        pass
-    display_name = type_name or f"0x{int(it.type_hash_str):08X}"
-
-    if not it.is_editable:
-        box = layout.box()
-        col = box.column(align=True)
-        col.label(text=display_name, icon="MODIFIER")
-        col.label(text=T("extern.read_only"), icon="INFO")
-        return
-
-    # 实例切换器（attr_count 个实例）
-    n_inst = len(it.instances)
-    if n_inst > 1:
-        row = layout.row(align=True)
-        row.label(text=f"Instance {it.active_instance + 1} / {n_inst}")
+        row.label(text="%s %d / %d" % (T("extern.state_label"),
+                                       ep.active_instance + 1, n_state),
+                  icon="NODETREE")
         nav = row.row(align=True)
         nav.operator("efx.extern_instance_prev", text="", icon="TRIA_LEFT")
         nav.operator("efx.extern_instance_next", text="", icon="TRIA_RIGHT")
 
-    inst_idx = min(it.active_instance, n_inst - 1)
-    inst = it.instances[inst_idx]
+    if n_state > 0:
+        srow = layout.row(align=True)
+        srow.operator("efx.extern_state_duplicate", text=T("extern.dup_state"), icon="DUPLICATE")
+        srow.operator("efx.extern_state_remove", text=T("extern.remove_state"), icon="REMOVE")
 
-    box = layout.box()
-    col = box.column(align=True)
+    # 边界：各 item 槽数不一致时，明确提示——用户切到某一列，槽数不够的 item
+    # 会静默 clamp 到自己的最后一槽，不加提示会让人以为它也切到了同一状态。
+    counts = {len(it.instances) for it in ep.items}
+    if len(counts) > 1:
+        layout.label(text=T("extern.uneven_instance_counts"), icon="INFO")
 
-    title = display_name
-    if n_inst > 1:
-        title += f"  [{inst_idx + 1}/{n_inst}]"
-    col.label(text=title, icon="MODIFIER")
-    col.separator(factor=0.5)
+    state_idx = min(ep.active_instance, n_state - 1) if n_state > 0 else 0
 
-    if not inst.is_editable:
-        col.label(text=T("extern.read_only"), icon="INFO")
-        return
+    for idx, it in enumerate(ep.items):
+        _draw_extern_item_block(layout, it, state_idx, idx)
 
-    if len(inst.field_items) == 0:
-        col.label(text=T("extern.no_fields"), icon="INFO")
-        return
-
-    _draw_plain_field_list(col, inst.field_items, type_name=type_name)
+    layout.separator()
+    layout.operator("efx.extern_item_add_search", text=T("extern.add_item"), icon="ADD")
 
 
 class EFX_PT_extern_props(bpy.types.Panel):
@@ -2332,52 +2727,27 @@ class EFX_PT_extern_props_data(bpy.types.Panel):
         _draw_extern_props_content(self.layout, context)
 
 
-class EFX_PT_extern_props_object(bpy.types.Panel):
-    """EFX Extern 属性（属性编辑器 → Object Properties，保底版本）"""
-
-    bl_space_type   = "PROPERTIES"
-    bl_region_type  = "WINDOW"
-    bl_context      = "object"
-    bl_label        = "EFX Extern Properties"
-    bl_options      = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_EXTERN"
-
-    def draw(self, context):
-        _draw_extern_props_content(self.layout, context)
-
-
 _CLASSES = (
     # 主面板（Import/Export/Active EFX/Armature）
     EFX_PT_entry,
     # 子面板（挂在 EFX_PT_entry 下，无上下文依赖）
-    EFX_PT_presets,
-    EFX_PT_add_section,
+    EFX_PT_add,
     # 顶级上下文面板（选中特定对象时出现，与 EFX_PT_entry 同级）
     EFX_PT_delete,
     EFX_PT_entry_status,
     EFX_PT_entry_activation,
     EFX_PT_entry_properties,
     EFX_PT_entry_properties_data,
-    EFX_PT_entry_properties_object,
     EFX_PT_entry_unkn,
     EFX_PT_entry_inspector,
-    EFX_PT_entry_inspector_object,
     EFX_PT_attribute_fields,
     EFX_PT_attribute_fields_props,
-    EFX_PT_attribute_fields_object,
     EFX_PT_subselect,
     EFX_PT_subselect_data,
-    EFX_PT_subselect_object,
     EFX_PT_action,
     EFX_PT_action_props,
-    EFX_PT_action_object,
     EFX_PT_extern_props,
     EFX_PT_extern_props_data,
-    EFX_PT_extern_props_object,
     EFX_PT_extern_ref,
     EFX_PT_eof_list,
     # EOF 算子

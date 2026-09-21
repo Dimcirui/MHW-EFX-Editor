@@ -4,36 +4,48 @@ efx_format/sim/behaviors/rgbfire.py  —  RGBFIRE（火/烟两层染色）
 
 字段语义来自实机（见 schema 注释）：
 
-    fireColor            外缘的荧光色，同时会把 smoke 也染上一层
-    smokeColor           内部的颜色；对常驻主体是持久焊死的
-    brightness2          ColorRate（整体亮度倍率，TIML DT 0x9F1E012E 已确认）
+    fireColor            火焰（GreenCh）层的颜色
+    smokeColor           烟雾（RedCh）层的颜色
+    fireFactor/redChFactor  两层各自独立的强度旋钮（已实机确认门控效果，见下）
+    colorRate            ColorRate（整体亮度倍率，TIML DT 0x9F1E012E 已确认；2026-09-20
+                          改值实机测试订正，原挂在 brightness2 上是错的）
+    alphaFactor          全局透明度强度，效果暂未接入模拟
     fireColorParam_*     fireColor 的生命期时序块（见 _common.roll_color_param）
     smokeColorParam_*    smokeColor 的生命期时序块
 
-fireFactor（原 brightness1）当作**火焰层的强度**
-------------------------------------------------
-它紧跟在 fireColor 后面，位置上对应 RGBWATER 的 intensitySpecular/intensitySheet。
-devlecture P26 确认 GreenCh=Fire、RedCh=Smoke，对应面板上的"GreenCh Factor"。
-语料侧的证据是一道有方向的门（53532 个块）：
+fireFactor/redChFactor 是每层各自的强度旋钮
+------------------------------------------
+devlecture P26 确认 GreenCh=Fire、RedCh=Smoke。语料侧证据是一道有方向的门
+（53532 个块）：
 
     fireFactor != 0  →  fire 段开生命期 13.6%，smoke 段 21.9%
     fireFactor == 0  →  fire 段开生命期  2.9%，smoke 段 23.4%
 
 fire 侧掉到 1/4.7，smoke 侧纹丝不动——这个不对称是**针对 fire 段**的，说明
-fireFactor 管的就是火焰那一层（0 = 这层关掉）。对照组 lerpAlphaToBlue 同样有一半
-是 0，但两侧都没有差别（11.0% vs 10.4%），不是这种门。brightness3/4 几乎从不为
-0，不是「层开关」那一类；devlecture 面板上对应的 RedCh Factor/AlphaFactor 两项
-跟已有 tooltip 的"Color Balance 1/2"语义对不上，暂不套用，作用未知，不参与计算。
+fireFactor 管的就是火焰那一层（0 = 这层关掉）。redChFactor 跟 fireFactor 同一识别度、
+同一实机测试批次，按镜像关系认作烟雾层的同款旋钮，两者都已接入权重（`fire_i`/
+`smoke_i`）。alphaFactor/colorRate 几乎从不为 0，不是「层开关」那一类，跟
+fireFactor/redChFactor 不是同一种字段；colorRate 是整体亮度倍率（已接入 `rate`），
+alphaFactor 效果暂未接入模拟。
 
-两层怎么给下游
---------------
-两条路同时走：
+贴图通道语义与两层怎么给下游
+--------------------------
+devlecture 面板标题是 RGB Common，字段全用 Fire/Smoke 术语，且官方强调纹理通道
+按 R=烟密度、G=火焰强度、B=辅助弥散层（无独立调色入口）、A=轮廓遮罩 分工，
+`lerpAlphaToBlue` 就是把 A 按比例混入 B。两条路同时走：
 
   - `p.color` = 压成一个的代表色（`SimConfig.rgb_tint_mode` 决定怎么合，默认
-    'weighted'）。纯色片 / POINT / MESH 这些拿不到逐纹素亮度的路径用它。
-  - `p.rolled["layers"] = (外缘色, 核心色)`，两层各自乘好自己的权重与 ColorRate。
-    有贴图时 glue 的 fragment shader 按**贴图亮度**在两者之间插值：亮处（笔画核心）
-    取核心色、暗处（边缘）取外缘色——这才是实机那两层的样子。
+    'weighted'）。纯色片 / POINT / MESH 这些拿不到逐纹素通道的路径用它。
+  - `p.rolled["layers"] = (火焰色, 烟雾色)`，各自乘好自己的权重、ColorRate；
+    `p.rolled["rgbfire_lerp"] = lerpAlphaToBlue`。有贴图时 glue 的 fragment
+    shader 按通道语义分别取火焰/烟雾的遮罩再各自上色（见 sim_preview.py
+    `_FRAG_SRC`）：
+
+        fire_mask  = G                                      ← 独立，不掺 B/A
+        smoke_mask = R × mix(Alpha, Blue, lerpAlphaToBlue)   ← 多插一个 Alpha↔Blue 系数
+
+    GreenCh（火焰）恒不受 B/Alpha 影响；lerpAlphaToBlue=0 时烟雾以 Alpha 为底、
+    R 在其中刻出实际显示的部分，=1 时 Alpha 项被 Blue 完全顶替。
 
 约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
 """
@@ -57,7 +69,7 @@ class RgbFire(Behavior):
     STAGE = SHADE
     ORDER = 60
 
-    #: fireColor/smokeColor/brightness2 有 FIELD_TO_DT 映射——挂了 TIML 就每帧
+    #: fireColor/smokeColor/colorRate 有 FIELD_TO_DT 映射——挂了 TIML 就每帧
     #: 重解，同 MESH 的模式（见该文件注释：只在出生时采样会把颜色冻结在 age=0）。
     _has_tracks = False
 
@@ -78,7 +90,9 @@ class RgbFire(Behavior):
             "fire": _rgb(f.raw("fireColor")),
             "smoke": _rgb(f.raw("smokeColor")),
             "fire_i": max(0.0, float(f.get("fireFactor", 1.0) or 0.0)),
-            "rate": float(f.get("brightness2", 1.0) or 0.0),
+            "smoke_i": max(0.0, float(f.get("redChFactor", 1.0) or 0.0)),
+            "rate": float(f.get("colorRate", 1.0) or 0.0),
+            "lerp": max(0.0, min(1.0, float(f.get("lerpAlphaToBlue", 0.0) or 0.0))),
             "fp": roll_color_param(f, rng, cfg, "fireColorParam_"),
             "sp": roll_color_param(f, rng, cfg, "smokeColorParam_"),
         }
@@ -87,19 +101,24 @@ class RgbFire(Behavior):
         st = p.rolled.get("rgbfire")
         if st is None:
             return
-        fire, smoke, fire_i, rate = st["fire"], st["smoke"], st["fire_i"], st["rate"]
+        fire, smoke = st["fire"], st["smoke"]
+        fire_i, smoke_i, rate, lerp = st["fire_i"], st["smoke_i"], st["rate"], st["lerp"]
         if self._has_tracks:
             f = em.f(RGBFIRE, p)
             if f is not None:
                 fire = _rgb(f.raw("fireColor"))
                 smoke = _rgb(f.raw("smokeColor"))
                 fire_i = max(0.0, float(f.get("fireFactor", 1.0) or 0.0))
-                rate = float(f.get("brightness2", 1.0) or 0.0)
+                smoke_i = max(0.0, float(f.get("redChFactor", 1.0) or 0.0))
+                rate = float(f.get("colorRate", 1.0) or 0.0)
+                lerp = max(0.0, min(1.0, float(f.get("lerpAlphaToBlue", 0.0) or 0.0)))
 
         wf = fire_i * color_param_weight(st["fp"], p.age)
-        ws = color_param_weight(st["sp"], p.age)
+        ws = smoke_i * color_param_weight(st["sp"], p.age)
         tint = blend_two_colors(em.config, fire, wf, smoke, ws)
         p.color = [tint[0] * rate, tint[1] * rate, tint[2] * rate]
-        # fireColor 是外缘的荧光、smokeColor 是内部色 → (外缘, 核心)
+        # (火焰色, 烟雾色)；贴图 shader 按 G/R×mix(A,B,lerp) 两个遮罩分别取用，
+        # 见文件顶部说明与 sim_preview.py 的 `_FRAG_SRC`。
         p.rolled["layers"] = ([c * wf * rate for c in fire],
                               [c * ws * rate for c in smoke])
+        p.rolled["rgbfire_lerp"] = lerp

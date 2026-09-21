@@ -74,7 +74,7 @@ def _store_timl(body, data: bytes):
 # get/set 回调工厂（按 anim_index 绑定，挂在 WindowManager 上，瞬态不保存）
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 持久化模型（见 timl_edit Phase 3）：无独立编辑会话。元字段(长度/循环/循环起点)不进 fcurve，
+# 持久化模型（见 timl_edit.py）：无独立编辑会话。元字段(长度/循环/循环起点)不进 fcurve，
 # 直接轻量 patch timl_bytes——导出 sync 只覆盖关键帧、保留这些结构字段，故安全高效、无需重建 fcurve。
 def _make_length_get(idx):
     def _get(self):

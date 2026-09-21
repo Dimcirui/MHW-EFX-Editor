@@ -34,24 +34,25 @@ from bpy.props import BoolProperty, StringProperty
 # ── 掩码常量 ──────────────────────────────────────────────────────────────────
 # (attr_key, bit, 中文简称, 英文簡稱)；body_p bit0~4 沿用旧名，与官方 8 防具项前 5 位
 # （HELM/BODY/ARM/WAIST/LEG）顺序一致，故 bit5~7 按同一顺序接排 ACCE/HAIR/FACE
-# （用户 2026-09-19 假设，未实机验证，标"（假设）"）。
+# （用户 2026-09-19 假设，未实机验证）。2026-09-20 起不确定的字段名统一在末尾加"?"，
+# 不再用"（假设）"/"（弱假设）"这种置信度括注（面向用户的文案约定，见 UI_COPY_GUIDE.md）。
 _BODY_PARTS = [
     ("head",  0x01, "头 Head",   "Head"),
     ("body",  0x02, "身 Body",   "Body"),
     ("arms",  0x04, "臂 Arms",   "Arms"),
     ("waist", 0x08, "腰 Waist",  "Waist"),
     ("legs",  0x10, "腿 Legs",   "Legs"),
-    ("acce",  0x20, "饰 Acce（假设）",  "Acce (assumed)"),
-    ("hair",  0x40, "发 Hair（假设）",  "Hair (assumed)"),
-    ("face",  0x80, "脸 Face（假设）",  "Face (assumed)"),
+    ("acce",  0x20, "饰 Acce?",  "Acce?"),
+    ("hair",  0x40, "发 Hair?",  "Hair?"),
+    ("face",  0x80, "脸 Face?",  "Face?"),
 ]
 
 # wp_p：bit0~2 按用户 2026-09-19 假设改名（bit1=wpMain 较有把握，bit0=wpSub0/
 # bit2=wpSub1 是临时假设，均未实机验证），bit3~7 仍未定位，按 unkn{位号} 占位。
 _WP_PARTS = [
-    ("wpSub0",   0x01, "WP_SUB0（假设）",  "WP_SUB0 (assumed)"),
-    ("wpMain",   0x02, "WP_MAIN（假设）",  "WP_MAIN (assumed)"),
-    ("wpSub1",   0x04, "WP_SUB1（假设）",  "WP_SUB1 (assumed)"),
+    ("wpSub0",   0x01, "WP_SUB0?",  "WP_SUB0?"),
+    ("wpMain",   0x02, "WP_MAIN?",  "WP_MAIN?"),
+    ("wpSub1",   0x04, "WP_SUB1?",  "WP_SUB1?"),
     ("wp_unkn3", 0x08, "未知 3", "Unknown 3"),
     ("wp_unkn4", 0x10, "未知 4", "Unknown 4"),
     ("wp_unkn5", 0x20, "未知 5", "Unknown 5"),
@@ -103,13 +104,16 @@ class EFX_OT_set_part_mask(bpy.types.Operator):
     arms:  BoolProperty(name="臂 Arms",  default=False)
     waist: BoolProperty(name="腰 Waist", default=False)
     legs:  BoolProperty(name="腿 Legs",  default=False)
-    body_unkn5: BoolProperty(name="未知 5", default=False)
-    body_unkn6: BoolProperty(name="未知 6", default=False)
-    body_unkn7: BoolProperty(name="未知 7", default=False)
+    # 2026-09-20 修复：_BODY_PARTS 早就把 bit5~7 从占位名改成了 acce/hair/face，
+    # 这里的属性名一直没跟着改——draw()/invoke()/execute() 都按 _BODY_PARTS 的 key
+    # 反查 getattr(self, key)，key 对不上会直接报错，之前这几个位的勾选框其实是坏的。
+    acce: BoolProperty(name="饰 Acce?", default=False)
+    hair: BoolProperty(name="发 Hair?", default=False)
+    face: BoolProperty(name="脸 Face?", default=False)
 
-    wpSub0: BoolProperty(name="WP_SUB0（假设）", default=False)
-    wpMain: BoolProperty(name="WP_MAIN（假设）", default=False)
-    wp_unkn2: BoolProperty(name="未知 2", default=False)
+    wpSub0: BoolProperty(name="WP_SUB0?", default=False)
+    wpMain: BoolProperty(name="WP_MAIN?", default=False)
+    wpSub1: BoolProperty(name="WP_SUB1?", default=False)  # 同上，_WP_PARTS 早有这一位，这里漏注册了
     wp_unkn3: BoolProperty(name="未知 3", default=False)
     wp_unkn4: BoolProperty(name="未知 4", default=False)
     wp_unkn5: BoolProperty(name="未知 5", default=False)

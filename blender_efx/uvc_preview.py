@@ -898,71 +898,6 @@ class EFX_PT_mesh_binding(Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Panel：UVCONTROL 属性 → 预览控制（顶层 N 面板，仅选中 UVCONTROL 属性时显示）
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _draw_preview_controls(layout, context):
-    """预览进入/退出控件（UVCONTROL 属性面板与 entry 面板共用）。"""
-    layout.label(text=T("uvc.timeline_hint"), icon="TIME")
-
-    if _is_active():
-        box = layout.box()
-        box.label(text=T("uvc.previewing").format(len(_state["pairs"])), icon="PLAY")
-        row = box.row()
-        row.scale_y = 1.3
-        row.operator("efx.uvc_preview_exit", text=T("uvc.exit"), icon="X")
-    else:
-        layout.prop(context.scene, "efx_uvc_preview_all", text=T("uvc.all_efx"))
-        row = layout.row()
-        row.scale_y = 1.3
-        row.operator("efx.uvc_preview_enter", text=T("uvc.enter"), icon="PLAY")
-        if getattr(context.scene, "efx_uvc_preview_all", False):
-            layout.label(text=T("uvc.scope_all"), icon="WORLD")
-        else:
-            layout.label(text=T("uvc.scope_one"))
-
-
-class EFX_PT_uvc_preview(Panel):
-    """UV Control 预览控制（仅选中 UVCONTROL 属性时显示）"""
-
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "EFX"
-    bl_label = "UV Control Preview"
-    bl_order = 0  # 压在 Attribute Properties 之上
-    bl_options = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        return _is_uvcontrol_attribute(context.active_object)
-
-    def draw(self, context):
-        _draw_preview_controls(self.layout, context)
-
-
-class EFX_PT_uvc_preview_entry(Panel):
-    """全局预览（选中 EFX_ENTRY 时显示）—— entry 级入口，默认驱动本 EFX 全部已绑定网格。"""
-
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "EFX"
-    bl_label = "Effect Preview"
-    bl_order = 0  # 压在 Entry Properties 之上
-    bl_options = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
-            return False
-        from . import root_collection as _rc
-        return not _rc.is_color_editor_mode(obj)
-
-    def draw(self, context):
-        _draw_preview_controls(self.layout, context)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -970,8 +905,8 @@ _CLASSES = [
     EFX_OT_uvc_preview_enter,
     EFX_OT_uvc_preview_exit,
     EFX_PT_mesh_binding,
-    # EFX_PT_uvc_preview / EFX_PT_uvc_preview_entry 已整合进统一「EFX Preview」面板
-    # （mesh_drive.py），不再单独注册；算子保留供 Mesh Drive 编排调用。
+    # 本模块只出「Mesh Binding」一个子面板。预览的进入/退出控件在统一的
+    # 「Mesh Drive」面板里（mesh_drive.py），它直接驱动下面这两个算子。
 ]
 
 

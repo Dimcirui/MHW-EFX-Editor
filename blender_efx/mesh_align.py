@@ -318,52 +318,14 @@ class EFX_OT_mesh_align_exit(Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Panel（选中 EFX_ENTRY 时显示）
-# ─────────────────────────────────────────────────────────────────────────────
-
-class EFX_PT_mesh_align(Panel):
-    """绑定网格实时对齐预览"""
-
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "EFX"
-    bl_label = "Mesh Align (Preview)"
-    bl_order = 2
-    bl_options = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
-            return False
-        from . import root_collection as _rc
-        return not _rc.is_color_editor_mode(obj)
-
-    def draw(self, context):
-        layout = self.layout
-        layout.label(text=T("align.hint"), icon="SNAP_ON")
-        if _is_active():
-            box = layout.box()
-            box.label(text=T("align.previewing").format(len(_sc.iter_marked(_INSTANCE_MARKER))), icon="PLAY")
-            row = box.row()
-            row.scale_y = 1.3
-            row.operator("efx.mesh_align_exit", text=T("align.exit"), icon="X")
-        else:
-            layout.prop(context.scene, "efx_align_all_efx", text=T("align.all_efx"))
-            row = layout.row()
-            row.scale_y = 1.3
-            row.operator("efx.mesh_align_enter", text=T("align.enter"), icon="PLAY")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CLASSES = [
     EFX_OT_mesh_align_enter,
     EFX_OT_mesh_align_exit,
-    # EFX_PT_mesh_align 已整合进「Mesh Drive」面板（mesh_drive.py）的静态摆放项，
-    # 不再单独注册；算子保留供 EFX Preview 编排调用。
+    # 本模块不出面板：静态摆放这一项已并进「Mesh Drive」面板（mesh_drive.py），
+    # 这里只留算子供它编排调用。
 ]
 
 

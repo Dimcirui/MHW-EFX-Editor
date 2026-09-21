@@ -210,6 +210,13 @@ STRINGS = {
     "entry.sync_transform":   {"EN": "Refresh Entry Positions", "ZH": "刷新特效体位置"},
     "entry.anchor_placement": {"EN": "Anchor to triggering entry", "ZH": "锚定到触发它的特效体"},
     "entry.blender_coords":   {"EN": "Blender coordinate display", "ZH": "按 Blender 坐标显示 XYZ"},
+    "entry.add_workspace":    {"EN": "Add MHW VFX Workspace", "ZH": "添加 MHW VFX 工作区"},
+    "entry.workspace_added":  {"EN": "MHW VFX workspace added and switched to",
+                               "ZH": "已添加并切换到 MHW VFX 工作区"},
+    "entry.workspace_switched": {"EN": "MHW VFX workspace already exists, switched to it",
+                                 "ZH": "MHW VFX 工作区已存在，已切换过去"},
+    "entry.workspace_missing": {"EN": "MHW VFX workspace template not found",
+                                "ZH": "找不到 MHW VFX 工作区模板文件"},
     # ── Color Editor 全局改色工具（仅仅导入颜色模式）──────────────────────────
     "colortool.target":       {"EN": "Target Color",        "ZH": "目标颜色"},
     "colortool.shift":        {"EN": "Shift Palette",       "ZH": "色系偏移"},
@@ -305,6 +312,9 @@ STRINGS = {
                                   "ZH": "这类特效常用、但这里没有"},
     "inspector.no_attributes":   {"EN": "This entry has no attributes yet",
                                   "ZH": "这个 Entry 还没有任何属性"},
+    "entry.root_subentries":    {"EN": "Root sub-entries: ",   "ZH": "Root 子条目："},
+    "entry.root_opaque_note":   {"EN": "Content isn't broken into editable fields yet",
+                                  "ZH": "内容尚未拆成可编辑字段"},
     "attribute.category":        {"EN": "Category",            "ZH": "分类"},
     "attribute.add":             {"EN": "Add",                 "ZH": "新增"},
     "attribute.search_add":      {"EN": "Search & Add...",     "ZH": "搜索新增…"},
@@ -330,6 +340,11 @@ STRINGS = {
     "attribute.no_fields":       {"EN": "(no fields)",         "ZH": "（无字段）"},
     "attribute.no_color_fields": {"EN": "(no color/brightness fields on this attribute)", "ZH": "（该属性没有颜色/亮度字段）"},
     "attribute.select_hint":     {"EN": "Select an EFX_ATTRIBUTE object", "ZH": "请选中 EFX_ATTRIBUTE 对象"},
+    "attribute.layoutbank_readonly_note": {
+        "EN": "Read-only: this table's shape varies per instance and doesn't fit a fixed field layout",
+        "ZH": "只读：这张表的结构因实例而变，套不进固定字段布局"},
+    "attribute.layoutbank_decode_failed": {
+        "EN": "Could not decode this LayoutBank", "ZH": "无法解析这个 LayoutBank"},
 
     # ── 导入/导出算子（operators.py）弹窗 ─────────────────────────────────────
     "op.export_validation_failed_header": {"EN": "Pre-export validation found errors, cancelled:", "ZH": "导出前校验发现错误，已取消："},
@@ -389,7 +404,7 @@ STRINGS = {
     "timlm.edit_active":    {"EN": "Channel edit in progress — exit it to enable/clear axes",
                              "ZH": "通道编辑进行中——退出后才能启用/清空轴"},
 
-    # ── TIML 通道编辑会话（timl_edit.py，阶段2b，自建零 FK）──────────────────────
+    # ── TIML 通道编辑会话（timl_edit.py，自建零 FK）──────────────────────
     "timle.enter":          {"EN": "Browse TIML Transform",   "ZH": "浏览 TIML transform 效果"},
     "timle.enter_hint":     {"EN": "Binds meshes to follow the TIML transform animation for viewport preview. "
                                    "TIML is always editable in the Dope Sheet / Graph Editor (edits are live).",
@@ -634,6 +649,14 @@ STRINGS = {
     "entry.add_to_active":    {"EN": "Add to Direct Trigger",   "ZH": "加入直接触发列表"},
     "entry.rename":           {"EN": "Rename",               "ZH": "重命名"},
     "entry.rename_blocked":   {"EN": "Rename (preceding item unnamed)", "ZH": "重命名（前有未命名条目）"},
+    # 代码内置的两个基础 entry 模板（entry 预设下拉最前面两项，后缀括号里是属性数）
+    "preset.builtin_3d":      {"EN": "Basic 3D Entry",       "ZH": "基础 3D Entry"},
+    "preset.builtin_2d":      {"EN": "Basic 2D Entry",       "ZH": "基础 2D Entry"},
+    "preset.builtin_root":    {"EN": "Root",                 "ZH": "Root"},
+    # 属性面板上就地改名的输入框（Edit 面板仍是弹窗按钮）
+    "entry.name_field":       {"EN": "Name",                 "ZH": "名称"},
+    "entry.name_blocked_hint": {"EN": "Name a preceding item first",
+                                "ZH": "需先命名前面的条目"},
     "entry.type_label":       {"EN": "Type: ",               "ZH": "类型："},
     "entry.type_standard":    {"EN": "Standard",             "ZH": "标准"},
     "entry.type_extended":    {"EN": "Extended",             "ZH": "扩展"},
@@ -649,6 +672,8 @@ STRINGS = {
     # EMITTERSHAPE3D.rangeXYZ 的两个值不是 static+random，而是 offset+size（全形状通用）。
     "field.offset":          {"EN": "Offset",               "ZH": "偏移"},
     "field.size":            {"EN": "Size",                 "ZH": "尺寸"},
+    "field.read_only":       {"EN": "(read-only)",          "ZH": "（只读）"},
+    "field.unknown_type":    {"EN": "(unsupported field type)", "ZH": "（不支持的字段类型）"},
     "material.type":         {"EN": "Material type:", "ZH": "主材质类型："},
     # ── MATERIAL 结构化编辑器（Phase C，2026-07）───────────────────────────────
     "material.slot":         {"EN": "Material Slot", "ZH": "材质槽"},
@@ -673,6 +698,35 @@ STRINGS = {
                               "ZH": "Extern 数据暂不可用。请重新加载扩展后重试。"},
     "extern.read_only":          {"EN": "This Extern type is currently read-only", "ZH": "此 Extern 类型当前为只读"},
     "extern.no_fields":          {"EN": "No editable fields are available", "ZH": "没有可编辑字段"},
+    "extern.path_warning": {
+        "EN": "Setting a path in an Extern override may have no effect or crash the game",
+        "ZH": "extern 填写路径可能会无效或导致游戏崩溃"},
+    "extern.state_label": {"EN": "State", "ZH": "状态"},
+    "extern.dup_state": {"EN": "Duplicate State", "ZH": "复制状态"},
+    "extern.state_dup_blocked": {
+        "EN": "Cannot duplicate a state: item '{name}' stores all its states as one block "
+              "that this editor cannot split apart",
+        "ZH": "无法复制状态：项「{name}」的所有状态存成了一整块，本编辑器无法拆开"},
+    "extern.state_remove_blocked": {
+        "EN": "Cannot remove a state: item '{name}' stores all its states as one block "
+              "that this editor cannot split apart",
+        "ZH": "无法删除状态：项「{name}」的所有状态存成了一整块，本编辑器无法拆开"},
+    "extern.uneven_instance_counts": {
+        "EN": "These items don't all have the same number of states; some may show their last state instead of the selected one.",
+        "ZH": "这些项的状态数量不一致；部分项可能会停在自己的最后一个状态，而不是当前选中的状态。"},
+    "extern.add_item":           {"EN": "Add Item", "ZH": "添加 Item"},
+    "extern.remove_state":       {"EN": "Remove State", "ZH": "移除状态"},
+    "extern.add_override":       {"EN": "Add {name} Extern Override", "ZH": "添加 {name} Extern 覆盖"},
+    "extern.override_target_label": {"EN": "Target Extern", "ZH": "目标 Extern"},
+    "extern.override_new_ea":    {"EN": "New Extern", "ZH": "新建 Extern"},
+    "extern.override_empty_ea":  {"EN": "empty", "ZH": "空"},
+    "extern.override_states_suffix": {"EN": "states", "ZH": "个状态"},
+    "extern.override_already_exists": {
+        "EN": "{ea} already has a {type} item; nothing changed.",
+        "ZH": "{ea} 已经有 {type} 类型的 item，未做任何改动。"},
+    "extern.override_repointed_warning": {
+        "EN": "This entry now follows {new}; overrides for it in {old} no longer apply.",
+        "ZH": "该 entry 现在改由 {new} 驱动；{old} 里对它的其它覆盖将不再生效。"},
     "timl.select_entry":         {"EN": "Select an EFX entry with TIML data", "ZH": "请选择带有 TIML 数据的 EFX 条目"},
     "timl.parse_failed":         {"EN": "TIML data could not be read", "ZH": "无法读取 TIML 数据"},
     "timl.no_matching_types":    {"EN": "No matching attribute types in this EFX", "ZH": "此 EFX 中没有匹配的属性类型"},
@@ -688,13 +742,11 @@ STRINGS = {
     "del.extern_btn":    {"EN": "Delete Extern",    "ZH": "删除 Extern"},
     "del.subselect_btn": {"EN": "Delete Subselect", "ZH": "删除 Subselect"},
 
-    # ── 新建段条目（panels 新建面板）──────────────────────────────────────────
-    "addsec.action":      {"EN": "Add Action",        "ZH": "新建 Action"},
-    "addsec.entry":       {"EN": "Add Entry",          "ZH": "新建 Entry"},
-    "addsec.extern":    {"EN": "Add Extern",        "ZH": "新建 Extern"},
-    "addsec.subselect": {"EN": "Add Subselect",     "ZH": "新建 Subselect"},
-    "addsec.hint":      {"EN": "Exporter recomputes header automatically",
-                         "ZH": "导出端自动重算 header/标签"},
+    # ── 新建段条目（Add 面板）────────────────────────────────────────────────
+    # 一排三个按钮，宽度紧张，只留类型名（Action/Extern/Subselect 全库统一保留英文原名）
+    "addsec.action":    {"EN": "Action",       "ZH": "Action"},
+    "addsec.extern":    {"EN": "Extern",       "ZH": "Extern"},
+    "addsec.subselect": {"EN": "Subselect",    "ZH": "Subselect"},
 
     # ── Action / Extern 重命名 ─────────────────────────────────────────────────
     "actionextern.rename":         {"EN": "Rename", "ZH": "重命名"},

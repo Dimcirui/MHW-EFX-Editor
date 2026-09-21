@@ -16,7 +16,8 @@ scale / width / height / flowmap*）与 BILLBOARD3D 同名同义，走 _common.p
 
 尺寸约定同 BILLBOARD3D：`scale`(SizeScalar) 是倍率，`width`/`height` 是游戏单位。
 
-未处理：EPVColorSlot1/2（记 note）、flowmap 一族（属 T3 纹理部分）。
+未处理：correctColorNo/colorRangeCorrectColorNo（记 note，原 EPVColorSlot1/2）、
+flowmap 一族（属 T3 纹理部分）。
 
 约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
 """
@@ -45,7 +46,7 @@ class Plane(Behavior):
         if f is None:
             return
         self._has_tracks = f.has_tracks
-        epv_note(f, em, "PLANE", "EPVColorSlot1", "EPVColorSlot2")
+        epv_note(f, em, "PLANE", "correctColorNo", "colorRangeCorrectColorNo")
 
     def on_particle_spawn(self, p, em, rng):
         f = em.f(PLANE, p)
@@ -104,6 +105,9 @@ class Plane(Behavior):
                       g0 * bright * p.color[1],
                       b0 * bright * p.color[2],
                       a0 * p.alpha]
+        # 渲染主体自己的颜色（不含 RGBFIRE/RGBWATER 的 p.color）单独存一份，供
+        # glue 的两层染色分支当逐通道滤镜用，见 billboard3d.py 同名字段的注释。
+        item.extra["base_tint"] = (r0 * bright, g0 * bright, b0 * bright)
         item.blend = rolled["pl_blend"]
         item.extra["vel"] = p.vel
         item.extra["age"] = p.age

@@ -44,22 +44,34 @@ FIELD_RENAME_ALIASES = {
     ("EXTERNREFERENCE", "unknEnum1_1"): "index0",
     ("EXTERNREFERENCE", "unknEnum1_2"): "index1",
     ("EXTERNREFERENCE", "unkn1_3"): "lerp",
+    # ── EXTERNREFERENCE（2026-09-20，用户实机测试坐实触发四态 + 时长/延迟语义）──
+    ("EXTERNREFERENCE", "unkn1_4"): "transitionDuration",
+    ("EXTERNREFERENCE", "unkn1_5"): "triggerDelay",
 
     # ── RAYCAST（2026-09-19，官方讲座截图 + 全语料位分布交叉核对）───────────────
     ("RAYCAST", "prop3"): "startOffset",
     ("RAYCAST", "spacer"): "rayCastAttr",
     ("RAYCAST", "unknownEnum1"): "rayCastID",
     ("RAYCAST", "unknownBitmask2"): "rayCastFlags",
-    # distanceMod0/prop1/distanceMod1 三选一身份靠语料统计分不清，用户按假设定名：
-    ("RAYCAST", "distanceMod0"): "startDistance",
-    ("RAYCAST", "distanceMod0Jitter"): "startDistanceJitter",
-    ("RAYCAST", "prop1"): "speed",
-    ("RAYCAST", "prop1Jitter"): "speedJitter",
-    ("RAYCAST", "distanceMod1"): "maxDistance",
-    ("RAYCAST", "distanceMod1Jitter"): "maxDistanceJitter",
+    # distanceMod0/prop1/distanceMod1：语料统计分不清身份，2026-09-19 实机测试
+    # （调"速度"=0 后改"最大距离"仍连续影响生成时机，是速率特征不是距离上限特征）
+    # 推翻了当天早些时候按截图顺序初定的名字，改成三向对调，这里直接指向最终名：
+    ("RAYCAST", "distanceMod0"): "maxDistance",
+    ("RAYCAST", "distanceMod0Jitter"): "maxDistanceJitter",
+    ("RAYCAST", "prop1"): "startDistance",
+    ("RAYCAST", "prop1Jitter"): "startDistanceJitter",
+    ("RAYCAST", "distanceMod1"): "speed",
+    ("RAYCAST", "distanceMod1Jitter"): "speedJitter",
 
     # ── BILLBOARD3D（2026-09-19，官方讲座 Type Billboard 面板截图 + 全语料交叉核对）──
     ("BILLBOARD3D", "EPVColorSlot1"): "correctColorNo",
+    # 2026-09-20 按结构类推改名：BILLBOARD3D.SlotOverride1、BILLBOARD2D/PLANE 的
+    # EPVColorSlot1/2（三者跟 BILLBOARD3D 逐字段同构）。
+    ("BILLBOARD3D", "SlotOverride1"): "colorRangeCorrectColorNo",
+    ("BILLBOARD2D", "EPVColorSlot1"): "correctColorNo",
+    ("BILLBOARD2D", "EPVColorSlot2"): "colorRangeCorrectColorNo",
+    ("PLANE", "EPVColorSlot1"): "correctColorNo",
+    ("PLANE", "EPVColorSlot2"): "colorRangeCorrectColorNo",
     ("BILLBOARD3D", "unknEnum5"): "divideNum",
     ("BILLBOARD3D", "unknFlag6_0"): "enableGPUParticle",
     ("BILLBOARD3D", "unkn6_1"): "fieldInfluenceRate",
@@ -311,6 +323,12 @@ FIELD_RENAME_ALIASES = {
     ("RGBFIRE", "color2"): "smokeColor",
     ("RGBFIRE", "brightness1"): "fireFactor",
     ("RGBFIRE", "unkn4"): "lerpAlphaToBlue",
+    # brightness2/3/4：2026-09-20 实机改值测试订正身份，按 devlecture 顺序改名
+    ("RGBFIRE", "brightness2"): "redChFactor",
+    ("RGBFIRE", "brightness3"): "alphaFactor",
+    ("RGBFIRE", "brightness4"): "colorRate",
+    # alphaRate：同一天内改名途中的中间名，devlecture 原名其实是 AlphaFactor 不是 AlphaRate
+    ("RGBFIRE", "alphaRate"): "alphaFactor",
     ("RGBFIRE", "fireColorParam_unkn9"): "fireColorParam_correctColorNo",
     ("RGBFIRE", "smokeColorParam_unkn9"): "smokeColorParam_correctColorNo",
     ("RGBWATER", "unkn0"): "typeFlag",
@@ -342,6 +360,8 @@ FIELD_RENAME_ALIASES = {
     ("SCREENSPACECOLLISION", "unkn0_1"): "section_length",
     ("SHADERSETTINGS", "unkn0"): "typeFlag",
     ("SHADERSETTINGS", "unknEnum4_8"): "presetId",
+    ("SHADERSETTINGS", "zDepthModifierStart"): "depthBias",
+    ("SHADERSETTINGS", "zDepthModifierEnd"): "softParticleDistance",
     ("SHOVEL", "unkn00"): "typeFlag",
     ("SHOVEL", "unkn01"): "section_length",
     ("SPAWN", "unkn0"): "typeFlag",

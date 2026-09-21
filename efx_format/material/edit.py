@@ -1,7 +1,7 @@
 """
-efx_format/material_edit.py  —  MATERIAL 结构化编辑核心（纯 Python，零 bpy）
+efx_format/material/edit.py  —  MATERIAL 结构化编辑核心
 
-背景（见 memory 与 material_meta.py 顶部注释）：MATERIAL 是两层嵌套
+背景（见 memory 与 material/meta.py 顶部注释）：MATERIAL 是两层嵌套
 （Tex_Block「材质槽」→ Tex_Set「贴图/参数槽」），本模块在 unpack_material
 产出的 values dict 上做编辑/增删，再交给 pack_material 还原字节。已证
 pack_material(unpack_material(x)) == x（5792/5792 官方语料零反例，见

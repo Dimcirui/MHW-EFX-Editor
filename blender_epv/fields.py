@@ -1,5 +1,5 @@
 """
-blender_epv/fields.py — EPV record 字段的 PropertyGroup（阶段 3）。
+blender_epv/fields.py — EPV record 字段的 PropertyGroup。
 
 EPVRecordProps 挂到 Object 上（仅 EPV_RECORD 对象使用），承载除 position/rotation
 （由 transform 承载）外的全部 record 字段，含 8 槽 epvColor 表（CollectionProperty）。

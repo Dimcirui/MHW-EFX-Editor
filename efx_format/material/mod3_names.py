@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-efx_format/material/mod3_names.py — .mod3 材质名表只读解析（纯 Python，零 bpy）
+efx_format/material/mod3_names.py — .mod3 材质名表只读解析
 
 只做一件事：读 .mod3 的 materialNameList（每条材质槽的真实名字字符串，如
 "VFX_EmissiveFog_Mt__3"）。.mrl3 本身不存名字字符串，只存 jamcrc 后的

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-efx_format/sim/  —  EFX 粒子系统模拟核心（零 bpy）
+efx_format/sim/  —  EFX 粒子系统模拟核心
 
 定位
 ----

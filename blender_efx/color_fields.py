@@ -31,7 +31,7 @@ from ..efx_format.hashes import TUBELIGHT as _TUBELIGHT
 # （2026-07-14），非纯拍脑袋列表。
 _COLOR_ADJACENT_NAMES = frozenset({
     # 亮度 / 强度
-    "brightness", "brightness1", "brightness2", "brightness3", "brightness4",
+    "brightness",
     "brightnessSlot1", "brightnessSlot2",
     "brightnessSlotMultiplier1", "brightnessSlotMultiplier2",
     "brightnessJitter", "bright",   # brightnessJitter 原名 randomBrightnessMult
@@ -42,8 +42,9 @@ _COLOR_ADJACENT_NAMES = frozenset({
     "emissiveColorRate", "emissiveColorRateJitter",
     "colorRate", "colorRateJitter",
     "colorScaler",
-    # RGBFIRE.fireFactor（原 brightness1，2026-09-19 改名，同一强度字段）
-    "fireFactor",
+    # RGBFIRE.fireFactor/redChFactor/alphaFactor（原 brightness1/2/3，2026-09-19/20 改名，
+    # 同一组强度字段；colorRate（原 brightness4）已并入上面通用的 colorRate 条目）
+    "fireFactor", "redChFactor", "alphaFactor",
     # 颜色范围 / 颜色相关开关 / 模式
     "useColorRange", "useEmissiveColor", "useEmissiveColorRange",
     "disableAllColorRange", "colourTransitionPoint",
@@ -60,6 +61,9 @@ _COLOR_ADJACENT_NAMES = frozenset({
     "headColorEpvSlot", "tailColorEpvSlot",
     # BILLBOARD3D.correctColorNo（原 EPVColorSlot1，2026-09-19 改名，同一 EPV 槽位机制）
     "correctColorNo",
+    # BILLBOARD3D/BILLBOARD2D/PLANE.colorRangeCorrectColorNo（原 SlotOverride1/
+    # EPVColorSlot2，2026-09-20 按结构类推改名，同一 EPV 槽位机制，专属 colorRange 未确认）
+    "colorRangeCorrectColorNo",
 })
 
 # 前缀匹配：火焰/烟雾色时序参数块（RGBFIRE，跟随 fireColor/smokeColor 通道生效/
@@ -91,8 +95,8 @@ _PACKED_INT_COLOR_FIELDS = frozenset({
 #    ③ 取值 p50=1.0 / p99=100 / max=10000，是 HDR 倍率形态。用户 2026-09-09 定调。）
 # 乘算时另有 data_type=="FLOAT" 的硬门控，双保险：即便名字命中、非浮点也跳过。
 _BRIGHTNESS_NAMES = frozenset({
-    "brightness", "brightness1", "brightness2", "brightness3", "brightness4",
-    "fireFactor",   # RGBFIRE 原 brightness1
+    "brightness",
+    "fireFactor", "redChFactor",   # RGBFIRE 原 brightness1/2；alphaRate（原 brightness3）管 alpha 不管亮度，不收进来
     "brightnessSlotMultiplier1", "brightnessSlotMultiplier2",
     "brightnessJitter", "bright",   # brightnessJitter 原名 randomBrightnessMult
     "lightIntensity", "lightIntensityJitter",

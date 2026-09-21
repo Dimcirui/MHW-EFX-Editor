@@ -264,6 +264,21 @@ def register(attr):
     return attr
 
 
+def register_alias(hash_value, attr):
+    """把已登记的 Attribute 追加登记到另一个共用同一 schema 的 hash 下，不改动 attr.hash 本身。
+
+    用于 Extern 覆盖版块（EXTERNSPAWN/EXTERNLIFE/…）跟主属性块（SPAWN/LIFE/…）字节布局完全
+    相同、直接复用同一份 schema 的场景——两者的 hash 不同，若不额外登记，Extern 一侧按自己的
+    hash 反查 FIELD_REGISTRY 会全部落空，label_zh/Enum/Bitmask 控件在 Extern 实例上静默退化
+    成裸整数框（2026-09-20 用户实机截图发现：EXTERNSPAWN 面板中文标签全部缺失、Spawn Flags
+    没有渲染成 Bitmask 弹窗）。返回 attr（便于链式）。
+    """
+    ATTR_REGISTRY[hash_value] = attr
+    for f in attr.fields:
+        FIELD_REGISTRY[(hash_value, f.name)] = f
+    return attr
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # legacy tuple schema → typed Attribute 的机械降级
 # ─────────────────────────────────────────────────────────────────────────────

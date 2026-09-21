@@ -22,9 +22,43 @@ _BENUM_ITEMS_CACHE = {}
 
 
 def _find_item(bp, ori_name):
+    if bp is None:
+        return None
     for it in bp.field_items:
         if it.ori_name == ori_name:
             return it
+    return None
+
+
+def _field_container(obj, type_name):
+    """返回承载 field_items 的容器：主属性是 obj.efx_block，Extern 是当前状态列里
+    对应类型的那个实例。拿不到返回 None。
+
+    Extern 的字段挂在 efx_extern.items[i].instances[j] 上，不在对象的 efx_block
+    上——位掩码编辑器最初只按主属性写，于是在 Extern 面板里按钮画得出来、点下去
+    却报 "Not a bitmask field"。这里按「类型 + 当前状态列」定位，与面板正在显示的
+    那一份一致（同一 EA 内不会有两个同类型 item，新增时已查重）。
+    """
+    if obj is None:
+        return None
+    t = obj.get("~TYPE")
+    if t == "EFX_ATTRIBUTE":
+        return getattr(obj, "efx_block", None)
+    if t == "EFX_EXTERN":
+        from ..efx_format.hashes import NAME_TO_HASH
+        ep = getattr(obj, "efx_extern", None)
+        want = NAME_TO_HASH.get(type_name)
+        if ep is None or want is None:
+            return None
+        for it in ep.items:
+            try:
+                if int(it.type_hash_str) != want:
+                    continue
+            except (ValueError, TypeError):
+                continue
+            if not len(it.instances):
+                return None
+            return it.instances[min(ep.active_instance, len(it.instances) - 1)]
     return None
 
 
@@ -81,7 +115,7 @@ def _benum_items_factory(idx):
         obj = (context.blend_data.objects.get(self.obj_name) if self.obj_name
                else (context.active_object if context else None))
         if obj is not None:
-            it = _find_item(obj.efx_block, self.field)
+            it = _find_item(_field_container(obj, self.type_name), self.field)
             if it is not None:
                 from .fields import _enum_backing_read
                 cur = (_enum_backing_read(it) & be.mask) >> be.shift
@@ -150,10 +184,11 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
     def invoke(self, context, event):
         obj = self._resolve_obj(context)
         field = _bitmask_field(self.type_name, self.field)
-        if field is None or obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+        # 容器解析得到就放行——主属性和 Extern 实例都支持，不再按 ~TYPE 硬判
+        if field is None or _field_container(obj, self.type_name) is None:
             self.report({"ERROR"}, "Not a bitmask field")
             return {"CANCELLED"}
-        item = _find_item(obj.efx_block, self.field)
+        item = _find_item(_field_container(obj, self.type_name), self.field)
         if item is None:
             self.report({"ERROR"}, "Field '%s' not found" % self.field)
             return {"CANCELLED"}
@@ -214,7 +249,7 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
         field = _bitmask_field(self.type_name, self.field)
         if field is None or obj is None:
             return {"CANCELLED"}
-        item = _find_item(obj.efx_block, self.field)
+        item = _find_item(_field_container(obj, self.type_name), self.field)
         if item is None:
             self.report({"ERROR"}, "Field '%s' not found" % self.field)
             return {"CANCELLED"}

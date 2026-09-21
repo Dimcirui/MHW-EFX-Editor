@@ -42,13 +42,22 @@ ENUM_ROTATION_CORRECT_TYPE = EnumDef("RotationCorrectType", [
 # §2.1），是一种运算模式（决定生成范围如何与地面/障碍物的射线检测结果结合），不是引用。
 # TypeLightning.TerminalShape 里同名字段目前未能在 schema 里定位（该结构仍是一整块 opaque
 # float 数组），暂不落地。
+# EMITTERSHAPE3D.rayCastDependency：官方下拉六项 None/Min/Max/Multiply/Equal/Offset，
+# 但取值↔名字的对应关系跟按下拉顺序猜的不一样——2026-09-19 用户逐个取值实机测试，
+# 五个非 None 取值的具体公式全部坐实：
+#   1 = Equal    ES3D 范围直接替换成 raycast 已行进距离（从 0 长到 RayCast.MaxDistance），
+#                跟 ES3D 自身原有范围无关，是"范围恒等于 raycast 距离"。
+#   2 = Multiply ES3D 范围 = raycast 距离 × Offset（乘积）。
+#   3 = Min      min(raycast 距离, Offset)——到达 Offset 后卡住不再增长，真正的上限。
+#   4 = Max      max(raycast 距离, Offset)——raycast 距离超过 Offset 后继续跟着变大，不封顶。
+#   5 = Offset   ES3D 范围整体随 raycast 平移，终点是 RayCast.MaxDistance。
 ENUM_RAYCAST_DEPENDENCY = EnumDef("RayCastDependency", [
     (0, "None", "无"),
-    (1, "Min", "取最小值"),
-    (2, "Max", "取最大值"),
-    (3, "Multiply", "相乘"),
-    (4, "Equal", "相等"),
-    (5, "Offset", "偏移"),
+    (1, "Equal", "相等（范围由 RayCast 位置决定）"),
+    (2, "Multiply", "相乘（范围为 RayCast 位置×Offset 决定）"),
+    (3, "Min", "取最小值（范围取 RayCast 位置和 Offset 的较小值）"),
+    (4, "Max", "取最大值（范围取 RayCast 位置和 Offset 的较大值）"),
+    (5, "Offset", "偏移（范围整体随 RayCast 位置偏移）"),
 ])
 ENUM_SHAPE_TYPE2D = EnumDef("ShapeType2D", [
     (0, "Square", "方形"), 
@@ -84,10 +93,17 @@ ENUM_PTLIFE_STATUS = EnumDef("PtLifeStatus", [
     (4, "On Death", "死亡时"),
     (-1, "Unknown", "未知"),
 ])
+#  2026-09-20 用户实机测试确认四态；0/1/3 为全语料唯一出现的取值，2 未见语料样本。
+ENUM_EXTERNREF_TRIGGER = EnumDef("ExternRefTrigger", [
+    (0, "Default", "默认"),
+    (1, "Over Emitter Lifetime", "随发射器生命周期"),
+    (2, "Unknown", "未知"),
+    (3, "Over Particle Lifetime", "随粒子生命周期"),
+])
 ENUM_HOMING_TARGET = EnumDef("HomingTarget", [
-    (0, "Spawn Point", "生成点"), 
+    (0, "Spawn Point", "生成点"),
     (1, "Model Origin", "模型原点"),
-    (2, "World Origin", "世界原点"), 
+    (2, "World Origin", "世界原点"),
     (3, "World Origin", "世界原点"),
 ])
 # 2026-07-30 实测重命名：五个值不是五种"力"，而是「以归航目标为球心、半径 =
@@ -184,14 +200,10 @@ BITS_RAYCAST_FLAGS = [(0x1, "SyncSpawnFrame", "同步生成帧"), (0x100, "RayCa
 #      bit5 命中率是其余位的 24~730 倍（bit5=167.1x，其余位 0.2x~6.8x），确认 bit5=
 #      UseSpawnFrame——3770 个 bit5=1 的块里 3505 个(93%) spawnFrame 确实非零，是
 #      spawnFrame 的启用开关。
-#   ③ 用户提供《怪物猎人：荒野》（RE Engine，设计理念一脉相承可作参考）里 RingBufferMode
-#      的实测画像，跟 bit0 交叉核对：启用频率几乎一致（0.7346% vs 荒野 0.74%）、搭配
-#      "无限循环"(loopNum=(0,0)) 的比例高度吻合（69.9% vs 24.0% 基线，对应荒野
-#      68.6% vs 24.0%）、entry 命名同样大量出现 GPU/GPUP/GPUP_yoin 及水/电/碎片一类
-#      "持续流"效果名。唯一方向相反的是 MaxParticles——MHW 这边关联的是大缓冲池
-#      （中位数 240 vs 基线 4），不是荒野那种"单粒子反复重画"，推测两代引擎具体实现
-#      方式不同（MHW 没有荒野那套 GPU 渲染管线块类型，只能用传统大缓冲池模拟持续流），
-#      但另外三条证据够强，确认 bit0=RingBufferMode。
+#   ③ 跟《荒野》（RE Engine，设计理念一脉相承）RingBufferMode 的实测画像交叉核对：启用
+#      频率（0.73% vs 0.74%）、"无限循环"占比（69.9% vs 68.6%）、entry 命名规律均高度吻合，
+#      确认 bit0=RingBufferMode。唯一不同点：MHW 关联的是大缓冲池而非荒野的单粒子重画，
+#      两代引擎具体实现方式为何不同不影响此结论，未深究。
 # 剩余 bit3/4：把已确认的 4 个位摆在一起看——RingBufferMode(bit0)→RayCastHitOnly(bit1)→
 # RayCastDependency(bit2) 正好是截图顺序里"从 RingBufferMode 开始"的连续三项，
 # UseSpawnFrame(bit5) 则是绕到最后——相当于截图顺序整体左移一位、UseSpawnFrame 转到
@@ -199,10 +211,10 @@ BITS_RAYCAST_FLAGS = [(0x1, "SyncSpawnFrame", "同步生成帧"), (0x100, "RayCa
 # 不再是孤立的截图顺序猜测，但仍未实机验证。
 BITS_SPAWN_FLAGS = [
     (0x01, "RingBufferMode", "RingBufferMode"),
-    (0x02, "RayCastHitOnly", "RayCastHitOnly（弱假设）"),
-    (0x04, "RayCastDependency", "RayCastDependency（弱假设）"),
-    (0x08, "InitializeFull", "InitializeFull（假设）"),
-    (0x10, "InterporatePos", "InterporatePos（假设）"),
+    (0x02, "RayCastHitOnly?", "RayCastHitOnly?"),
+    (0x04, "RayCastDependency?", "RayCastDependency?"),
+    (0x08, "InitializeFull?", "InitializeFull?"),
+    (0x10, "InterporatePos?", "InterporatePos?"),
     (0x20, "UseSpawnFrame", "UseSpawnFrame"),
 ]
 
@@ -327,6 +339,16 @@ _AXIS_DIRECTION6 = EnumDef("AxisDirection6", [
 # 按旧表则变成「上」最多。⚠ 仍未实机确认，若日后测出 RAYCAST 确实自成一套，改回独立 EnumDef 即可。
 ENUM_RAYCAST_DIR = _AXIS_DIRECTION6
 
+# RAYCAST.rayCastID：全 official 语料 1369 个块只出现过 4 种取值（-1/0/1/2），不是
+# 铺满 32 位空间的哈希，只做"快速挑语料里见过的值"下拉，不接 jamcrc 反查。-1 对应
+# devlecture 截图默认显示的 NONE；0/1/2 含义未知，只给字面数字标签，不编造语义。
+ENUM_RAYCAST_ID = EnumDef("RayCastID", [
+    (-1, "None", "无"),
+    (0, "0", "0"),
+    (1, "1", "1"),
+    (2, "2", "2"),
+])
+
 _ROT_ORDER6 = EnumDef("RotOrder", [
     (0, "XYZ", "XYZ"), (1, "XZY", "XZY"), (2, "YXZ", "YXZ"),
     (3, "YZX", "YZX"), (4, "ZXY", "ZXY"), (5, "ZYX", "ZYX"),
@@ -347,12 +369,6 @@ _VELOCITY_TYPE = EnumDef("VelocityType", [
     (1, "Normal", "定向扩散"),
     (2, "Radial", "径向"),
     (3, "Emitter Move", "发射器运动"),
-])
-
-# BILLBOARD3D / PLANE / BILLBOARD2D 的 blendMode（着色器混合模式；RE Engine 对应 'AlphaRate'）。
-ENUM_BLEND_MODE = EnumDef("BlendMode", [
-    (0, "Alpha Blend", "Alpha 混合"),
-    (1, "Additive", "Add 叠加"),
 ])
 
 # RIBBON.ribbonMode（原 unknEnum4_1）：三种条带形态，用户实机确认(2026-07-30)。命名对齐续作
@@ -377,4 +393,15 @@ ENUM_REFRACTION_OFFSET = EnumDef("RefractionOffset", [
     (0, "None", "不偏移"),
     (1, "Single", "单次偏移"),
     (2, "Multiple", "多重偏移"),
+])
+
+# Root.UnitBoundary 的 ints[1]：官方语料 2302 例三态分布(945/523/834)，按各态非零字段
+# 交叉统计推出——mode0 只有 radius+radius2 非零、mode1 是 boundaryMin/Max 组成的 AABB
+# 都非零、mode2 几乎全零。跟续作(MHWs) UnitCulling 用 Center/Size/Rotation+Flags 位掩码
+# 的做法不同（未直接验证过对应关系，只是同一概念在不同引擎版本的类比），未实机确认，
+# 标"?"。
+ENUM_UNITBOUNDARY_TYPE = EnumDef("UnitBoundaryType", [
+    (0, "Sphere?", "球形?"),
+    (1, "Box?", "长方体?"),
+    (2, "None?", "无?"),
 ])

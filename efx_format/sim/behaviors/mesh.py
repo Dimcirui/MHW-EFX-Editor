@@ -139,6 +139,9 @@ class Mesh(Behavior):
                       g0 * rate * p.color[1],
                       b0 * rate * p.color[2],
                       a0 * p.alpha]
+        # 渲染主体自己的颜色（不含 RGBFIRE/RGBWATER 的 p.color）单独存一份，供
+        # glue 的两层染色分支当逐通道滤镜用，见 billboard3d.py 同名字段的注释。
+        item.extra["base_tint"] = (r0 * rate, g0 * rate, b0 * rate)
         item.blend = "ALPHA"           # MESH 没有 blendMode 字段；网格按实心处理
         # 属性旋转 + ROTATEANIM 累积 + **发射器自己的旋转** + **从 PTLIFE 父实例
         # 继承的旋转**。`em.rot_dynamic` 是「宿主没有替我们套的那部分」：根 entry

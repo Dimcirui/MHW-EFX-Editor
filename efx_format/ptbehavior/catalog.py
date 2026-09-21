@@ -1,5 +1,5 @@
 """
-efx_format/ptbehavior_catalog.py  —  PTBEHAVIOR 属性目录（自动生成，勿手改）
+efx_format/ptbehavior/catalog.py  —  PTBEHAVIOR 属性目录（自动生成，勿手改）
 
 由 tools/gen_ptbehavior_catalog.py 从全量语料推导。PTBEHAVIOR 是类型化稀疏
 覆盖结构：每个 b_type 一张有序属性表，实例只存被覆盖的子集（保持子序列）。

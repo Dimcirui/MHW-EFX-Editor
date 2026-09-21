@@ -480,6 +480,13 @@ class RootBody:
             out += e.serialize()
         return out
 
+
+# Root 专属子条目类型哈希集合——blender_efx 拿这个判断一个"伪装成属性"的
+# EFX_ATTRIBUTE 子对象是不是真的属于 Root（导出时过滤误放的属性用）。
+ROOT_SUBENTRY_HASHES = frozenset({
+    RootBody.UNITBOUNDARY, RootBody.RENDERTARGET, RootBody.LAYOUTBANK,
+})
+
 @dataclass
 class SubselectTable:
     """One table in the Subselect section."""
@@ -748,16 +755,33 @@ class EFXFile:
             28559457: 72,     # EXTERNSPAWN (EFX_Crimson.bt: ExternSpawn = long unkn[18] = 72B)
             1880343637: 88,   # EXTERNEMITTERSHAPE3D (EFX_Crimson.bt: long unkn[22] = 88B)
             725249589: 76,    # EXTERNPLEMISSIVE
-            1338793878: 48,   # EXTERNVELOCITY3D0 (long unkn[12] = 48B)
-            283026906: 84,    # EXTERNVELOCITY3D2 (long unkn[21] = 84B)
-            705591903: 72,    # EXTERNVELOCITY3D5 (long unkn[18] = 72B)
-            1879331968: 80,   # EXTERNVELOCITY3D6 (long unkn[20] = 80B)
+            # 2026-09-20：以下 4 个曾按"VELOCITY3D 变体"命名，实为对应主属性的 Extern
+            # 覆盖版（byte-size + 全语料 pack(unpack(x))==x 零反例验证坐实，见 memory
+            # extern-velocity3d-misnomer-corrected）。尺寸不变，仅改注释名。
+            1338793878: 48,   # EXTERNLIFE (原 EXTERNVELOCITY3D0；= 主属性 LIFE，48B)
+            283026906: 84,    # EXTERNPLSNOW (原 EXTERNVELOCITY3D2；= 主属性 PLSNOW，84B)
+            705591903: 72,    # EXTERNPARENTEMISSIVE (原 EXTERNVELOCITY3D5；= 主属性 PARENTEMISSIVE，72B)
+            1879331968: 80,   # EXTERNROTATEANIM (原 EXTERNVELOCITY3D6；= 主属性 ROTATEANIM，80B)
 
-            0x3002E4CE: 157,  # EXTERNVELOCITY3D7 (long unkn[39] + byte unkn1 = 39*4+1 = 157B)
-            0x295D488A: 133,  # EXTERNBILLBOARD3D (133B/elem, confirmed via structural analysis)
-            0x320E3177: 361,  # EXTERNVELOCITY3D1 (361B/elem, confirmed via structural analysis)
-            0x1CC2BE3A: 161,  # EXTERNRGBWATER (161B/elem, roundtrip verified)
-            0x7CFF28CC: 45,   # EXTERNUVSEQUENCE (45B/elem, confirmed via structural analysis)
+
+            # ⚠ 2026-09-20 FABRICATED（虚构）：以下 8 个尺寸没有任何真实样本支撑——全部
+            # 27 万+ 语料文件（efx_samples/ 全量，含官方+社区）从未出现过这些类型作为
+            # Extern 子项。社区 BT 参考模板（EFX_Extern.bt / EFX_Crimson.bt）把它们写成
+            # 空 `typedef struct{}`，RE Engine DTI 转储对所有 ExternXxx 类都只显示同一个
+            # 通用 mItems 容器字段，没有任何能区分它们的结构信息。
+            # 这 8 个尺寸纯粹是按"已确认的 14+4 个同类 Extern 覆盖版"的经验规律外推：
+            #   - 6 个（FADEBYANGLE/FADEBYDEPTH/UVCONTROL/GUIDE/PARENTSNOW/OTOMOSNOW）
+            #     的主属性本身不含路径，按规律原样等长复制；
+            #   - 另 2 个（STRAINRIBBON/TURBULENCE）主属性含内嵌路径，已随 UVSEQUENCE/
+            #     BILLBOARD3D/RGBWATER 一起改走下面的「主属性 codec」变长分支，不在本表。
+            # 一旦真的在游戏更新或新样本里遇到这些类型，务必先核对字节内容是否跟这里的
+            # 猜测吻合，不吻合要立刻改，不要因为代码能跑就默认这个猜测是对的。
+            1415485201: 40,   # EXTERNFADEBYANGLE (FABRICATED，= 主属性 FADEBYANGLE 原样)
+            779931249:  20,   # EXTERNFADEBYDEPTH (FABRICATED，= 主属性 FADEBYDEPTH 原样)
+            1243935109: 236,  # EXTERNUVCONTROL   (FABRICATED，= 主属性 UVCONTROL 原样)
+            766474541:  112,  # EXTERNGUIDE       (FABRICATED，= 主属性 GUIDE 原样)
+            74649634:   80,   # EXTERNPARENTSNOW  (FABRICATED，= 主属性 PARENTSNOW 原样)
+            1181241355: 84,   # EXTERNOTOMOSNOW   (FABRICATED，= 主属性 OTOMOSNOW 原样)
         }
         if type_hash in FIXED:
             return attri_count * FIXED[type_hash]
@@ -771,6 +795,60 @@ class EFXFile:
                 null1 = data.index(b'\x00', path1_start)
                 null2 = data.index(b'\x00', null1 + 1)
                 p = null2 + 1
+            return p - pos
+
+        # Variable-length: EXTERNTYPERIBBON (原 EXTERNVELOCITY3D1) - each element = main
+        # RIBBON's 360B fixed prefix + 1 null-terminated path string. 2026-09-20：曾按
+        # "361B/elem 定长" 硬编码，实为跟主属性 RIBBON 同源的变长结构，语料里恰好路径
+        # 全为空（1B 终止符），才凑出"看似定长 361B"的假象；改按真实变长扫描，兼容非空路径。
+        if type_hash == 0x320E3177:  # EXTERNTYPERIBBON
+            p = pos
+            for _ in range(attri_count):
+                path_start = p + 360
+                null = data.index(b'\x00', path_start)
+                p = null + 1
+            return p - pos
+
+        # Variable-length: EXTERNTYPEPLANE (原 EXTERNVELOCITY3D7) - each element = main
+        # PLANE's 104B DDS 段 + int32 path_len(4B) + 48B extras 段 + path_len 字节路径。
+        # 2026-09-20：曾按 "157B/elem 定长" 硬编码，实为跟主属性 PLANE 同源的变长结构，
+        # 语料里恰好 path_len==1（仅终止符）才凑出"看似定长 157B"的假象；改按 path_len
+        # 显式读取，兼容非空路径。
+        if type_hash == 0x3002E4CE:  # EXTERNTYPEPLANE
+            p = pos
+            for _ in range(attri_count):
+                (path_len,) = struct.unpack_from('<i', data, p + 104)
+                p += 156 + path_len
+            return p - pos
+
+        # Variable-length: EXTERNUVSEQUENCE / EXTERNBILLBOARD3D / EXTERNRGBWATER
+        # （+ FABRICATED 的 EXTERNSTRAINRIBBON / EXTERNTURBULENCE，主属性同样含内嵌路径）
+        #
+        # 2026-09-20 订正：这几个此前按 45/133/161 等"定长"硬编码，理由是"主属性定长前缀
+        # + 固定 5B 尾巴（int32 + byte，语义未知）"。**那个 5B 尾巴是误读**——它其实是
+        # 主属性自己的 path_len + 一条空路径（终止符 1 字节）。全语料 1049 个元素实测：
+        # 直接用主属性 codec 解，消耗字节数恰好等于元素长度，且 pack(unpack(x)) == x
+        # 逐字节还原（UVSequence 127 / Billboard3D 874 / RGBWater 48，零反例）。
+        # 也就是说 extern 元素 == 主属性编码本身，跟 MESH/RIBBON/PLANE 是同一回事，
+        # "看似定长"只是因为语料里每条路径都恰好是空的（path_len==1）——与
+        # EXTERNTYPERIBBON/EXTERNTYPEPLANE 当年踩的是同一个坑。
+        #
+        # 顺带修好了字段错位：旧 EXTERN_BILLBOARD3D_SCHEMA 解出的 lightGroup 恒为
+        # 0x3F800000（float 1.0，显然不是位掩码），改用主属性 codec 后是 {1,0,33,32,2}，
+        # 与主属性侧分布同形。
+        _MAIN_CODEC_EXTERN = {
+            0x7CFF28CC: "unpack_uvsequence",    # EXTERNUVSEQUENCE
+            0x295D488A: "unpack_billboard3d",   # EXTERNBILLBOARD3D
+            0x1CC2BE3A: "unpack_rgbwater",      # EXTERNRGBWATER
+            167781675:  "unpack_strainribbon",  # EXTERNSTRAINRIBBON (FABRICATED)
+            777721399:  "unpack_turbulence",    # EXTERNTURBULENCE   (FABRICATED)
+        }
+        if type_hash in _MAIN_CODEC_EXTERN:
+            from . import structs as _structs
+            _un = getattr(_structs, _MAIN_CODEC_EXTERN[type_hash])
+            p = pos
+            for _ in range(attri_count):
+                _vals, p = _un(data, p)
             return p - pos
 
         # Variable-length: EXTERNPTBEHAVIOR - data = EFX_Behavior efx_behavior[attri_count]

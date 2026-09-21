@@ -49,6 +49,8 @@ bl_info = {
     "category": "Import-Export",
 }
 
+import os
+
 import bpy
 from bpy.types import AddonPreferences
 from bpy.props import BoolProperty, IntProperty, StringProperty
@@ -56,6 +58,36 @@ from bpy.props import BoolProperty, IntProperty, StringProperty
 from . import addon_updater_ops   # CGCookie Blender Add-on Updater（从 Modding-Toolkit 移植）
 from . import blender_efx
 from . import blender_epv
+
+
+# ── Chunk Root 持久化：不存进 AddonPreferences 本体 ──────────────────────────
+# AddonPreferences 的值存在 Blender 用户偏好里，按插件模块名索引；扩展系统"更新"
+# 是先卸载旧包再装新包，这一步会把旧模块名对应的偏好一并清掉——重新启/停用插件
+# （disable/enable）也可能撞上同一失效路径。跟 blender_efx/i18n.py 的语言持久化
+# 用同一招：另存一个跟插件生命周期无关的用户配置文件，get/set 直接代理读写这个
+# 文件，AddonPreferences 面板上的这一格因此不再依赖 Blender 自己保留偏好数据。
+def _chunk_root_config_path() -> str:
+    try:
+        cfg = bpy.utils.user_resource("CONFIG")
+    except Exception:
+        cfg = os.path.expanduser("~")
+    return os.path.join(cfg, "efx_editor_chunk_root.txt")
+
+
+def _get_chunk_root_pref(self) -> str:
+    try:
+        with open(_chunk_root_config_path(), "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except Exception:
+        return ""
+
+
+def _set_chunk_root_pref(self, value: str) -> None:
+    try:
+        with open(_chunk_root_config_path(), "w", encoding="utf-8") as f:
+            f.write(value)
+    except Exception:
+        pass
 
 
 # ── 插件偏好设置（Edit > Preferences > Add-ons > MHW EFX Editor）──────────────
@@ -84,12 +116,15 @@ class EFX_Preferences(AddonPreferences):
 
     # 永久默认 Chunk Root（提取根目录）：跨 .blend 文件生效，导入 EFX / 联动 mod3、UVS 贴图时
     # 若当前场景没单独填 Scene.efx_chunk_root，就用这里的值兜底——不用每个新文件都重选一遍。
+    # get/set 代理到用户配置目录下的文件（见上面 _get_chunk_root_pref/_set_chunk_root_pref），
+    # 不依赖 Blender 的 AddonPreferences 存储，插件更新/停用重启用都不会把它冲掉。
     chunk_root: StringProperty(
         name="Chunk Root",
         description="MHW 提取根目录默认值（含 vfx/ 等），跨文件永久生效。"
                     "场景里的 Chunk Root 留空时用这里的值；填了场景值则场景值优先",
         subtype="DIR_PATH",
-        default="",
+        get=_get_chunk_root_pref,
+        set=_set_chunk_root_pref,
     )
 
     auto_check_update: BoolProperty(

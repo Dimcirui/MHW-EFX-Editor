@@ -28,6 +28,7 @@ def _in24(v): return v in (2, 4)    # 枚举取 2 或 4
 def _truthy(v): return v != 0       # 布尔/开关（≠0 生效）
 def _bit0(v): return bool(v & 0x1)  # 位 0
 def _bit1(v): return bool(v & 0x2)  # 位 1
+def _bit5(v): return bool(v & 0x20)  # 位 5
 
 
 def _shape3d(*allowed):
@@ -65,7 +66,8 @@ FIELD_VISIBILITY = {
         "divergenceX": ("velocityType", _eq1),
         "divergenceY": ("velocityType", _eq1),
     },
-    # UVCONTROL：uv2_enable 关时 uv2 子组不生效（强语义推断）。
+    # UVCONTROL：uv2_enable 关时 uv2 子组不生效（强语义推断）；enableFlowmap 关时
+    # flowmap 八件套不生效，同 RIBBON/STRAINRIBBON/LIGHTNING/BILLBOARD*/PLANE 同款开关。
     "UVCONTROL": {
         "uv2_offset":  ("uv2_enable", _truthy),
         "uv2_offsetAdd":            ("uv2_enable", _truthy),
@@ -73,6 +75,14 @@ FIELD_VISIBILITY = {
         "uv2_scale":            ("uv2_enable", _truthy),
         "uv2_scaleAdd":       ("uv2_enable", _truthy),
         "uv2_scaleCoef":("uv2_enable", _truthy),
+        "flowmapSpeed":              ("enableFlowmap", _truthy),
+        "flowmapSpeedJitter":        ("enableFlowmap", _truthy),
+        "flowmapSpeedCoef":          ("enableFlowmap", _truthy),
+        "flowmapSpeedCoefJitter":    ("enableFlowmap", _truthy),
+        "flowmapStrength":           ("enableFlowmap", _truthy),
+        "flowmapStrengthJitter":     ("enableFlowmap", _truthy),
+        "flowmapStrengthCoef":       ("enableFlowmap", _truthy),
+        "flowmapStrengthCoefJitter": ("enableFlowmap", _truthy),
     },
     # TRANSFORM3D：enableVelocityBitflag bit0=启用速度、bit1=启用加速度（强语义推断）。
     "TRANSFORM3D": {
@@ -117,6 +127,86 @@ FIELD_VISIBILITY = {
         "spinSpeedCoefYJitter":      ("rotationModeMask", _in23),
         "spinSpeedCoefZ":            ("rotationModeMask", _in23),
         "spinSpeedCoefZJitter":      ("rotationModeMask", _in23),
+        # spin_velocity 只服务自旋速度系两个模式(2/3)；旋转模式在平面旋转系(0/1)时
+        # 这个字段无意义，之前只挪了位置没接门控，2026-09-20 补上。
+        "spin_velocity":             ("rotationModeMask", _in23),
+    },
+    # SPAWN：spawnFlags.bit5(UseSpawnFrame) 关闭时 spawnFrame(+Jitter) 不生效——语料
+    # 交叉验证 93% 的相关性支撑这对"开关+参数"关系（见 attributes.py 的 EXTERN_SPAWN_ATTR
+    # 注释）。2026-09-20 把 UseSpawnFrame 从弹窗里的一个位挪成 spawnFrame 上面单独一行
+    # 勾选框（panels.py），这里补上门控让它真正起到"总开关"的作用。
+    "SPAWN": {
+        "spawnFrame":       ("spawnFlags", _bit5),
+        "spawnFrameJitter": ("spawnFlags", _bit5),
+    },
+    # 2026-09-20 用户要求的批量整理：给一批已经确认是"开关+被控字段"的 Bool 字段补上
+    # 可见性门控（之前这些开关字段本来就存在，只是没有把关掉的时候隐藏对应字段）。
+    # colorRange 系：useColorRange 早已是 Bool，只是没接门控。
+    "RIBBON": {
+        "colorRange":              ("useColorRange", _truthy),
+        "epvcolor_1":              ("useColorRange", _truthy),
+        "brightness":              ("blendMode", _truthy),
+        "brightnessJitter":        ("blendMode", _truthy),
+        "flowmapPath":             ("enableFlowmap", _truthy),
+        "flowmapSpeed":            ("enableFlowmap", _truthy),
+        "flowmapSpeedJitter":      ("enableFlowmap", _truthy),
+        "flowmapSpeedCoef":        ("enableFlowmap", _truthy),
+        "flowmapSpeedCoefJitter":  ("enableFlowmap", _truthy),
+        "flowmapStrength":         ("enableFlowmap", _truthy),
+        "flowmapStrengthJitter":   ("enableFlowmap", _truthy),
+        "flowmapStrengthCoef":     ("enableFlowmap", _truthy),
+        "flowmapStrengthCoefJitter": ("enableFlowmap", _truthy),
+        "flowmapPlayOnce":         ("enableFlowmap", _truthy),
+        "flowmapReverse":          ("enableFlowmap", _truthy),
+    },
+    "STRAINRIBBON": {
+        "colorRange":              ("useColorRange", _truthy),
+        "epv_color_slot2":         ("useColorRange", _truthy),
+        "emissionStrength":        ("useEmission", _truthy),
+        "emissionStrengthJitter":  ("useEmission", _truthy),
+        "flowmapPath":             ("enableFlowmap", _truthy),
+        "flowmapSpeed":            ("enableFlowmap", _truthy),
+        "flowmapSpeedJitter":      ("enableFlowmap", _truthy),
+        "flowmapSpeedCoef":        ("enableFlowmap", _truthy),
+        "flowmapSpeedCoefJitter":  ("enableFlowmap", _truthy),
+        "flowmapStrength":         ("enableFlowmap", _truthy),
+        "flowmapStrengthJitter":   ("enableFlowmap", _truthy),
+        "flowmapStrengthCoef":     ("enableFlowmap", _truthy),
+        "flowmapStrengthCoefJitter": ("enableFlowmap", _truthy),
+    },
+    "LIGHTNING": {
+        "flowmapPath":             ("enableFlowmap", _truthy),
+        "flowmapSpeed":            ("enableFlowmap", _truthy),
+        "flowmapSpeedJitter":      ("enableFlowmap", _truthy),
+        "flowmapSpeedCoef":        ("enableFlowmap", _truthy),
+        "flowmapSpeedCoefJitter":  ("enableFlowmap", _truthy),
+        "flowmapStrength":         ("enableFlowmap", _truthy),
+        "flowmapStrengthJitter":   ("enableFlowmap", _truthy),
+        "flowmapStrengthCoef":     ("enableFlowmap", _truthy),
+        "flowmapStrengthCoefJitter": ("enableFlowmap", _truthy),
+    },
+    "BILLBOARD3D": {
+        "colorRange":              ("useColorRange", _truthy),
+        "colorRangeCorrectColorNo": ("useColorRange", _truthy),
+        "brightness":              ("blendMode", _truthy),
+        "brightnessJitter":        ("blendMode", _truthy),
+    },
+    "BILLBOARD2D": {
+        "colorRange":              ("useColorRange", _truthy),
+        "colorRangeCorrectColorNo": ("useColorRange", _truthy),
+        "brightness":              ("blendMode", _truthy),
+        "brightnessJitter":        ("blendMode", _truthy),
+    },
+    "PLANE": {
+        "colorRange":              ("useColorRange", _truthy),
+        "colorRangeCorrectColorNo": ("useColorRange", _truthy),
+        "brightness":              ("blendMode", _truthy),
+        "brightnessJitter":        ("blendMode", _truthy),
+    },
+    "MESH": {
+        "colorRange":            ("useColorRange", _truthy),
+        "emissiveColor":         ("useEmissiveColor", _truthy),
+        "emissiveColorRange":    ("useEmissiveColorRange", _truthy),
     },
     # RANDOMFIX：randomSeedTable 由 tableSelectionGroup 还是 useRandomSeedTableCount 决定
     # 尚不明确，暂不门控（默认全显示）。

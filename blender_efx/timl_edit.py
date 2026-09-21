@@ -1,5 +1,5 @@
 """
-blender_efx/timl_edit.py  —  持久化 TIML 通道编辑（Phase 3：导入即建 fcurve，字节=结构权威）
+blender_efx/timl_edit.py  —  持久化 TIML 通道编辑（导入即建 fcurve，字节=结构权威）
 
 模型（见 memory timl-fcurve-persistence-refactor-plan / timl-phase3-persistent-fcurve-detail）
 ------------------------------------------------------------------------------------------

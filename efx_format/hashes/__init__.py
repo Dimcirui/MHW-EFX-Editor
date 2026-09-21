@@ -94,17 +94,20 @@ EXTERNPTBEHAVIOR    = 1610366518    # 0x5FFC3E36
 EXTERNRGBWATER      = 482524730     # 0x1CC2BE3A
 EXTERNVELOCITY3D    = 351887441     # 0x14F96051
 EXTERNEMITTERSHAPE3D= 1880343637    # 0x7013C455
-EXTERNVELOCITY3D5   = 705591903     # 0x2A0E7A5F
+# 2026-09-20 改名：曾以"VELOCITY3D 变体"命名，实为对应主属性的 Extern 覆盖版
+# （byte-size + 全语料 pack(unpack(x))==x 零反例验证坐实，见 memory
+# extern-velocity3d-misnomer-corrected）。
+EXTERNPARENTEMISSIVE= 705591903     # 0x2A0E7A5F   （原 EXTERNVELOCITY3D5）
 EXTERNSPAWN         = 28559457      # 0x01B3C861
 EXTERNRGBFIRE       = 2069124466    # 0x7B545572
-EXTERNVELOCITY3D1   = 839790967     # 0x320E3177
-EXTERNVELOCITY3D6   = 1879331968    # 0x70045480
+EXTERNTYPERIBBON    = 839790967     # 0x320E3177   （原 EXTERNVELOCITY3D1）
+EXTERNROTATEANIM    = 1879331968    # 0x70045480   （原 EXTERNVELOCITY3D6）
 EXTERNBILLBOARD3D   = 693979274     # 0x295D488A
 EXTERNSCALEANIM     = 786529163     # 0x2EE17B8B
-EXTERNVELOCITY3D0   = 1338793878    # 0x4FCC5F96
+EXTERNLIFE          = 1338793878    # 0x4FCC5F96   （原 EXTERNVELOCITY3D0）
 EXTERNUVSEQUENCE    = 2097096908    # 0x7CFF28CC
-EXTERNVELOCITY3D7   = 805496014     # 0x3002E4CE
-EXTERNVELOCITY3D2   = 283026906     # 0x10DEA5DA
+EXTERNTYPEPLANE     = 805496014     # 0x3002E4CE   （原 EXTERNVELOCITY3D7）
+EXTERNPLSNOW        = 283026906     # 0x10DEA5DA   （原 EXTERNVELOCITY3D2）
 
 # ── Root marker (not an attr hash; first int of a Root body) ─────────────────
 ROOT_MARKER         = 1228515738    # 0x4939A99A
@@ -324,7 +327,35 @@ ATTR_TYPE_DISPLAY_NAMES: dict = {
     "FAKEDOF": "FakeDOF",
     "REPEATAREA": "RepeatArea",
     "LAYOUT": "Layout",
+    # Root 子条目（伪装成 AttrBlock 的 EFX_ATTRIBUTE，见 blender_efx/io_tree.py
+    # 的 _root_entry_to_attr_block），不是常规渲染属性，但显示名同一套规则。
+    "UNITBOUNDARY": "UnitBoundary",
+    "RENDERTARGET": "RenderTarget",
+    "LAYOUTBANK": "LayoutBank",
 }
+
+# ── EXTERN* 的显示名：从对应主属性推导，不手抄 ────────────────────────────────
+# 绝大多数 EXTERN* 就是 "EXTERN" + 主属性名（EXTERNPTBEHAVIOR = EXTERN + PTBEHAVIOR），
+# 所以按主属性的显示名拼即可。推导而不是写死 28 条，是为了让主属性改名时自动跟上
+# ——手抄两份迟早有一份忘了改。
+#
+# 推导不出来的单列在下面：名字里多一截（TYPE-）或压根没有主属性对应物。
+_EXTERN_DISPLAY_OVERRIDES = {
+    "EXTERN":           "Extern",
+    "EXTERNITEM":       "ExternItem",
+    "BASICEXTERNITEM":  "BasicExternItem",
+    # 主属性是 RIBBON / PLANE，但 extern 名里多了 TYPE 一截（见
+    # efxfile.py::_extern_data_size 关于 2026-09-20 改名的说明）
+    "EXTERNTYPERIBBON": "ExternTypeRibbon",
+    "EXTERNTYPEPLANE":  "ExternTypePlane",
+}
+
+for _main_raw, _main_disp in list(ATTR_TYPE_DISPLAY_NAMES.items()):
+    _ext_raw = "EXTERN" + _main_raw
+    if _ext_raw not in ATTR_TYPE_DISPLAY_NAMES:
+        ATTR_TYPE_DISPLAY_NAMES[_ext_raw] = "Extern" + _main_disp
+ATTR_TYPE_DISPLAY_NAMES.update(_EXTERN_DISPLAY_OVERRIDES)
+del _main_raw, _main_disp, _ext_raw
 
 
 def pretty_type_name(raw_name: str) -> str:

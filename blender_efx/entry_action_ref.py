@@ -1,5 +1,5 @@
 """
-blender_efx/entry_action_ref.py  —  L2 #1d：补完 entry/action 引用层指针化
+blender_efx/entry_action_ref.py  —  补完 entry/action 引用层指针化
 
 涵盖三项：
   1. PtLife.relationIndex     → action 指针（int16，偏移 8）
@@ -7,7 +7,7 @@ blender_efx/entry_action_ref.py  —  L2 #1d：补完 entry/action 引用层指�
   3. eof_ints（End 段）       → 直接触发 entry 索引集合（嵌套集合归属）
 
 设计原则（参照 CLAUDE.md / extern_ref.py 模式）：
-  - Python 3.11 语法（目标 Blender 4.3.2）
+  - Python 3.10 语法（兼容 Blender 3.6～5.x）
   - bpy 只用稳定子集（PropertyGroup / CollectionProperty / PointerProperty /
     BoolProperty / IntProperty / Panel）
   - 不使用 5.x 新增 API
@@ -478,7 +478,7 @@ def apply_attribute_ref_overlays(
     play_index_map: dict,
 ) -> bytes:
     """
-    对单个 EFX_ATTRIBUTE 对象，按其类型应用 L2 #1d 的字段覆写：
+    对单个 EFX_ATTRIBUTE 对象，按其类型应用 entry_action_ref 的字段覆写：
       - PTLIFE      → overlay_ptlife_relation_index（action index，int16，偏移 8）
       - PTCOLLISION → overlay_ptcollision_ie_index（action index，int32，偏移 96）
       - 其他        → 原样返回

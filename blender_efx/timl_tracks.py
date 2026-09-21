@@ -1,11 +1,11 @@
 """
-blender_efx/timl_tracks.py  —  T1/T2/T2b：TIML 轨道增删复制
+blender_efx/timl_tracks.py  —  TIML 轨道增删复制
 
 UI 入口
 -------
-  T1  — Dope Sheet 侧栏「EFX TIML」→「Tracks」子面板：当前 entry 的轨道列表 + 删除/复制按钮
-  T2  — panels.py 字段标题行旁的 +A0/+A1 小按钮（仅六类"确认"字段显示）
-  T2b — 同上 Dope Sheet 面板下方：语料调色板 + 「开放所有组合」开关
+  轨道列表面板 — Dope Sheet 侧栏「EFX TIML」→「Tracks」子面板：当前 entry 的轨道列表 + 删除/复制按钮
+  字段内联按钮 — panels.py 字段标题行旁的 +A0/+A1 小按钮（仅六类"确认"字段显示）
+  语料调色板   — 同上 Dope Sheet 面板下方：语料调色板 + 「开放所有组合」开关
 
 约束（CLAUDE.md）：bpy 稳定子集；Python 3.10；包内相对导入；纯胶水层。
 """
@@ -464,11 +464,11 @@ class EFX_OT_timl_add_field_tracks(Operator):
             key = (self.block_type.upper(), self.field_name)
             entries = FIELD_TO_DT.get(key)
             if not entries:
-                self.report({"ERROR"}, f"No confirmed DT mapping for {key}")
+                self.report({"ERROR"}, f"'{self.field_name}' cannot be animated via a TIML track")
                 return {"CANCELLED"}
             tlp_hash = BLOCK_TO_TLP.get(self.block_type.upper())
             if tlp_hash is None:
-                self.report({"ERROR"}, f"No TLP mapping for attribute type '{self.block_type}'")
+                self.report({"ERROR"}, f"'{self.block_type}' does not support TIML tracks")
                 return {"CANCELLED"}
         ok, created = _ensure_timl_segment()   # 没有 TIML 段就现建一个空白的
         if not ok:
@@ -503,7 +503,7 @@ class EFX_OT_timl_add_field_tracks(Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Operator: T2b — 按 TLP+DT hash 添加单条（调色板按钮用）
+# Operator: 语料调色板 — 按 TLP+DT hash 添加单条（调色板按钮用）
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_timl_add_track(Operator):
@@ -642,7 +642,7 @@ class EFX_OT_timl_copy_track(Operator):
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Panel: EFX TIML Tracks（Dope Sheet 侧栏，EFX TIML 分类）
-# T1 轨道列表 + T2b 语料调色板
+# 轨道列表 + 语料调色板
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_entry_attribute_tlps(entry_obj) -> set:
@@ -791,7 +791,7 @@ def _draw_tracks_panel(layout, context):
                 dt_h = tf.datatype_hash & 0xFFFFFFFF
                 _draw_track_row(col, slot, tlp_h, dt_h, timl)
 
-    # ── T2b: 语料调色板（下拉选 TLP → 显示该 TLP 的 DT 列表）────────────────
+    # ── 语料调色板（下拉选 TLP → 显示该 TLP 的 DT 列表）────────────────
     layout.separator()
     add_box = layout.box()
 
@@ -827,7 +827,7 @@ def _draw_tracks_panel(layout, context):
 
 
 class EFX_PT_timl_tracks(Panel):
-    """Dope Sheet 侧栏：TIML 轨道增删（T1 删除/复制 + T2b 调色板）"""
+    """Dope Sheet 侧栏：TIML 轨道增删（轨道列表删除/复制 + 语料调色板）"""
 
     bl_space_type  = "DOPESHEET_EDITOR"
     bl_region_type = "UI"

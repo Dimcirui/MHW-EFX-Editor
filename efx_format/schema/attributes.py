@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-efx_format/attributes.py — 定长 attribute 块的 typed schema 定义
+efx_format/schema/attributes.py — 定长 attribute 块的 typed schema 定义
 
  hash 常量晚于此处导入 → Attribute 定义时 hash 留空，由 structs 装配层导入 hashes 后回填 + register。
 """
@@ -12,9 +12,11 @@ from .enums import (
     ENUM_SHAPE_TYPE3D, ENUM_RANGE_DIVIDE_AXIS, ENUM_RANGE_DIVIDE_AXIS_2D,
     ENUM_ROTATION_CORRECT_TYPE, ENUM_RAYCAST_DEPENDENCY,
     ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_IMPACT_PLAY_TRIGGER_MODE, ENUM_PTLIFE_STATUS,
-    ENUM_RAYCAST_DIR, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
+    ENUM_EXTERNREF_TRIGGER,
+    ENUM_RAYCAST_DIR, ENUM_RAYCAST_ID, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
     ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE, ENUM_REFRACTION_OFFSET,
+    ENUM_UNITBOUNDARY_TYPE,
     BITS_ENABLE_VELOCITY, BITS_ROTATEANIM_SPIN_FLAGS, BITS_RANDOMFIX_TABLE,
     BITS_FADEBYANGLE_FLAGS,
     BITS_SPAWN_FLAGS,
@@ -156,8 +158,8 @@ EXTERN_SPAWN_ATTR = Attribute(size=72, fields=[
     Int("intervalFrameJitter", label_zh="批次间隔抖动（帧）"),  # 原 burstIntervalJitter/randomizedDelay
     Int("loopNum", label_zh="每轮批次数"),  # 原 burstsPerCycle/durationOfSpawnerLifespan，三态模式选择+计数基准
     Int("loopNumJitter", label_zh="每轮批次数抖动"),  # 原 burstsPerCycleJitter/randomizedLifespan
-    Int("spawnFrame", label_zh="生成帧"),  # 原 instanceCountUnknLimit，假设即 UseSpawnFrame 的参数
-    Int("spawnFrameJitter", label_zh="生成帧抖动"),  # 原 instanceCountUnknLimitJitter
+    Int("spawnFrame", label_zh="生成总帧数"),  # 原 instanceCountUnknLimit，假设即 UseSpawnFrame 的参数
+    Int("spawnFrameJitter", label_zh="生成总帧数抖动"),  # 原 instanceCountUnknLimitJitter
     Int("emitterDelayFrame", label_zh="发射器启动延迟（帧）"),  # 原 emitterStartDelay/occur，发射器首次生成前的一次性延迟
     Int("emitterDelayFrameJitter", label_zh="发射器启动延迟抖动（帧）"),  # 原 emitterStartDelayJitter/occur2
     # BT 原标 uint32；实测全语料从未接近 2^31，改签名 int 换取原生数值控件（原字符串输入框）
@@ -250,17 +252,18 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Int("unknEnum1"),  # 不满足 section_length 公式(99.9%恒104,应为108)，未改名
     Int("spacer"),
     Bool("unknFlag2"),
-    # 深度修正机制（2026-09 实机逐值排查，详见 memory shadersettings-zdepth-modifier-mechanism）：
-    # 官方字段名疑为 LayerNegative/LayerPositive（非"起始/结束"这种时间先后关系）。
-    # 语料 98.5% 遵守 zDepthModifierStart<=0、zDepthModifierEnd>=0 的符号约定，
-    # 两者以 0（特效未经修正时的原始深度）为共同基准，各自独立定义"能往摄像机方向拉近
-    # 多少"和"能往画面深处推远多少"的上限，合起来构成一条以真实场景深度为参照的
-    # 淡出带：真实场景深度越过 start 端时特效开始半透，越过 end 端后才完全不透明
-    # （反之则被真实几何体完全遮挡）——不是两个独立可拆开解读的量，必须合看。
-    # 越界输入（同号、二者相对 0 的符号颠倒、绝对值远超语料常见的 ±500 量级等）
-    # 会导致这条淡出带表现异常（钳制/退化），推测是格式未设计要处理的边界情况。
-    Float("zDepthModifierStart", label_zh="Z 深度修正（拉近上限）"),
-    Float("zDepthModifierEnd", label_zh="Z 深度修正（推远上限）"),
+    # 深度修正机制（2026-09 实机逐值排查，详见 memory shadersettings-zdepth-modifier-mechanism；
+    # 原名 zDepthModifierStart/End，2026-09-20 按官方术语改名 DepthBias/SoftParticleDistance）：
+    # 语料 98.5% 遵守 depthBias<=0、softParticleDistance>=0 的符号约定，以 0（未经修正的
+    # 原始深度）为共同基准。DepthBias 是标准深度测试偏移量——负值把特效的有效深度往摄像机
+    # 方向拉近，实机验证越负越能穿透真实场景几何体，跟"深度偏移"的标准图形学语义完全一致。
+    # SoftParticleDistance 是标准的软粒子淡出距离——粒子跟真实几何体相交处按这个距离柔化
+    # 边缘，不是二元的"挡住/穿透"开关，所以之前固定 depthBias 扫 softParticleDistance
+    # 看不出明显变化（那批测试只对比了整体可见性，没有专门看相交边缘的渐变），跟这个语义
+    # 并不矛盾。越界输入（同号、二者相对 0 的符号颠倒、绝对值远超语料常见的 ±500 量级等）
+    # 会导致效果异常（钳制/退化），推测是格式未设计要处理的边界情况。
+    Float("depthBias", label_en="Depth Bias", label_zh="深度偏移"),  # 原 zDepthModifierStart
+    Float("softParticleDistance", label_en="Soft Particle Distance", label_zh="软粒子距离"),  # 原 zDepthModifierEnd
     Int("unknBitmask3_0"),
     # 暂不作 enum：RenderLayerMode 标签尚存疑；controlBitflag 官方语料见 5/7/8/9 等组合值
     # （5=1+4、9=1+8…），实为位掩码而非枚举，待 bitmask 编辑器再定。保持原始整数编辑。
@@ -447,50 +450,25 @@ VELOCITY3D_SCHEMA = EXTERN_VELOCITY3D_SCHEMA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EXTERNVELOCITY3D0 / EXTERNVELOCITY3D1 / EXTERNVELOCITY3D6（2026-07，纯统计推断）
+# EXTERNLIFE / EXTERNTYPERIBBON / EXTERNPLSNOW / EXTERNPARENTEMISSIVE /
+# EXTERNROTATEANIM / EXTERNTYPEPLANE（2026-09-20 改名坐实）
 #
-# 这三个编号变体在主属性里没有同名对象可抄（跟 EXTERN_VELOCITY3D_SCHEMA 不是
-# 同一类型），原先在 efxfile.py 里只标了字节数、字段全是占位 long unkn[N]。  
-# 下面的逐字段 int/float 类型判定纯粹来自对官方语料的统计推断（无主属性、无
-# 社区 .bt、无实机验证），方法：对每个 4 字节列，取该列在全部真实样本里的
-# 原始值集合，按下列规则分类：
-#   全部恒为 0                              → 判 'i'（保留位/未使用，按 int 编辑无害）  
-#   八字节 CD 掩码占多数（0xCD 填充特征）    → 判 'i'（保留填充，同 reserved-fill 惯例）  
-#   重新按 float32 解释后全部落在"正常浮点"区间
-#     （排除 subnormal——小整数按 float 位模式重解释总落在 1e-38 以下的极小
-#      denormal 区，那其实是"小整数误判成浮点"的假阳性，必须排除）           → 判 'f'  
-#   其余（大数值/看似哈希或位掩码）          → 判 'i'
-# 字段名一律 unkn{i}，不做语义命名——这批字段的具体含义未知，只是把"一坨
-# opaque 字节"换成"可编辑的、类型大概率正确的独立字段"，比继续 opaque 更有用，
-# 但语义置信度明显低于本文件其它有主属性/社区 .bt 支持的类型，需要实机验证。
-# 语料样本量：V0=567 元素/51 文件（较可靠）、V1=73 元素/25 文件（尚可）、
-# V6=15 元素/5 文件（偏少，谨慎对待）。V2(4元素)/V5(2元素)/V7(6元素) 样本
-# 过少，类型判定不可靠，暂不落 schema，继续 opaque（见 extern_props.py 注释）。
+# 曾以"VELOCITY3D 变体"命名（EXTERNVELOCITY3D0/1/2/5/6/7），当时判定"主属性里
+# 没有同名对象可抄"，字段全按纯统计推断给成 unkn{i}。2026-09-20 重新核对：这 6
+# 个其实是对应主属性（LIFE/RIBBON/PLSNOW/PARENTEMISSIVE/ROTATEANIM/PLANE）的
+# Extern 覆盖版，只是编号命名掩盖了对应关系——跟 EXTERNPLEMISSIVE 是同一类
+# （Extern 版与主属性同尺寸/同编码，直接复用主属性 schema/codec）。
+# 验证：① 字节数逐一精确匹配主属性定长部分（LIFE 48B/PLSNOW 84B/PARENTEMISSIVE
+# 72B/ROTATEANIM 80B 完全相等；RIBBON 360B+1/PLANE 156B+1 差一个空路径终止符）；
+# ② 全语料每个元素用主属性 schema/codec 解出的值全部语义合理（颜色、ID、系数、
+# 帧数都在正常范围，不是乱码）；③ 全语料 pack(unpack(x))==x 零反例（LIFE 567、
+# RIBBON 73、PLSNOW 4、PARENTEMISSIVE 2、ROTATEANIM 15、PLANE 6 个元素，全部
+# 精确重建）。四个定长类型（LIFE/PLSNOW/PARENTEMISSIVE/ROTATEANIM）复用下方/
+# 别处已有的 LIFE_SCHEMA/PLSNOW_SCHEMA/PARENTEMISSIVE_SCHEMA/ROTATEANIM_SCHEMA，
+# 不再需要本文件单独定义；RIBBON/PLANE 是变长类型（含内嵌路径字符串），复用
+# custom_codecs.py 的 unpack_ribbon/pack_ribbon、unpack_plane/pack_plane，
+# 尺寸计算见 efxfile.py::_extern_data_size。
 # ─────────────────────────────────────────────────────────────────────────────
-
-# EXTERNVELOCITY3D0：48B = 12 × int32（全部按 int 处理；语料里没有一列表现出
-# 正常浮点特征——12 列里 6 列恒为 0，其余 6 列是小范围变化的整数，像是延迟/计数  
-# 类参数，同 EXTERN_VELOCITY3D_SCHEMA 的 expansionDelay 等字段）。
-EXTERN_VELOCITY3D0_SCHEMA = [(f'unkn{_i}', 'i') for _i in range(12)]
-assert _schema_size(EXTERN_VELOCITY3D0_SCHEMA) == 48, \
-    f"EXTERN_VELOCITY3D0_SCHEMA size mismatch: {_schema_size(EXTERN_VELOCITY3D0_SCHEMA)}"
-
-# EXTERNVELOCITY3D1：361B = 90 × int32/float32（按上述统计规则逐列判定）+
-# 末尾 1B（语料里恒为 0）。  
-_V1_TYPES = (
-    'iiiiiiiffiffffffififiifiifiiiiiiiififffififiiiiiifiiiifififffiiiiiffffiffiiiiiiiiiiiiiiiii'
-)
-EXTERN_VELOCITY3D1_SCHEMA = [
-    (f'unkn{_i}', _t) for _i, _t in enumerate(_V1_TYPES)
-] + [('unkn_tail', 'B')]
-assert _schema_size(EXTERN_VELOCITY3D1_SCHEMA) == 361, \
-    f"EXTERN_VELOCITY3D1_SCHEMA size mismatch: {_schema_size(EXTERN_VELOCITY3D1_SCHEMA)}"
-
-# EXTERNVELOCITY3D6：80B = 20 × int32/float32。
-_V6_TYPES = 'iiffiiiiiifffififiii'
-EXTERN_VELOCITY3D6_SCHEMA = [(f'unkn{_i}', _t) for _i, _t in enumerate(_V6_TYPES)]
-assert _schema_size(EXTERN_VELOCITY3D6_SCHEMA) == 80, \
-    f"EXTERN_VELOCITY3D6_SCHEMA size mismatch: {_schema_size(EXTERN_VELOCITY3D6_SCHEMA)}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -686,15 +664,24 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Raw("fireColor", ('XYZ', 2), label_en="Fire (GreenCh) Color", label_zh="火焰（绿通道）颜色"),  # 原 color1；TIML DT 0x39A1E557("FireColor") 已确认
     Float("fireFactor", label_en="Fire (GreenCh) Factor", label_zh="火焰（绿通道）系数"),  # 原 brightness1；语料方向门证据见 sim/behaviors/rgbfire.py
     Raw("smokeColor", ('XYZ', 2), label_en="Smoke (RedCh) Color", label_zh="烟雾（红通道）颜色"),  # 原 color2；TIML DT 0x5A8C6820("SmokeColor") 已确认
-    Float("brightness2", label_zh="亮度2"),  # TIML DT 0x9F1E012E("ColorRate") 已确认；devlecture 里是独立于 Green/Red 分组之外的 ColorRate 行
+    # 2026-09-20 用户逐个改值实机测试订正：DT 哈希 0x9F1E012E 只能证明"ColorRate 这个
+    # 名字存在、可被 TIML 控制"，不能说明它绑在哪个字段上——当初把它挂在这里（原
+    # brightness2）是基于错误理解下的判断，现改值测出 ColorRate 实为 colorRate（原
+    # brightness4），哈希绑定同步挪过去（见 efx_format/timl/names.py FIELD_TO_DT）。
+    # brightness2 改按 devlecture 顺序定为 RedChFactor，跟 fireFactor(GreenChFactor)
+    # 镜像——同一识别度、同一实机测试批次（fireFactor 已确认门控火焰层）。
+    Float("redChFactor", label_en="Smoke (RedCh) Factor", label_zh="烟雾（红通道）系数"),  # 原 brightness2
     # devlecture 同一面板上紧邻的滑条 LerpAlphaToBlue：全语料 54028 块严格落在
     # [0.0, 1.0]（无一例外），是插值系数的典型特征，与滑条描述吻合。
     Float("lerpAlphaToBlue", label_en="Lerp Alpha To Blue", label_zh="Alpha 混入蓝通道比例"),  # 原 unkn4
-    # brightness3/brightness4：devlecture 面板上还有 RedCh Factor / AlphaFactor 两项待认领，
-    # 但已有的实机 tooltip 把这两个字段定性为「Color Balance 1/2」（互相牵制、任一为 0 会
-    # 让画面全部消失），跟 RedCh Factor/AlphaFactor 的语义对不上，暂不套用 devlecture 命名。
-    Float("brightness3", label_zh="亮度3"),
-    Float("brightness4", label_zh="亮度4"),
+    # alphaFactor/colorRate：跟 devlecture 顺序对齐（GreenCh Factor/RedCh Factor/
+    # AlphaFactor/ColorRate 四项一一对应 brightness1~4；面板原名是 AlphaFactor，不是
+    # AlphaRate——2026-09-20 曾错标成 alphaRate，随后订正）。此前实机 tooltip 记录的
+    # "Color Balance 1/2 互相牵制、任一为 0 全部消失"现象跟这组身份并不矛盾——
+    # AlphaFactor=0 令整体 alpha 归零、ColorRate=0 令整体颜色归零，两者都会导致画面
+    # 消失，正好吻合。
+    Float("alphaFactor", label_en="Alpha Factor", label_zh="透明度强度"),  # 原 brightness3；效果未接入模拟，只订正了名字
+    Float("colorRate", label_en="Color Rate", label_zh="亮度强度"),  # 原 brightness4；TIML DT 0x9F1E012E("ColorRate") 已确认，2026-09-20 实机改值验证
     # ColorParam fireColorParam (10 ints)：fireColor 的生命期时序块。
     # 内部名对齐官方 DTI（nEffect::MhEffectDecalBehavior 的 fire 段）：
     #   useLife←mUseFireLife / appearFrame(+Jitter)←mFireAppearFrame(range) /
@@ -719,7 +706,7 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     # vanishFrame 的总和都测过没有相关性（互斥共现，量级也对不上"总生命期帧数"假设），
     # 排除了"是 TotalFireLifeFrame"的可能。已有 tooltip 描述"设为 1 会消除火焰色"，
     # 与 EPV 槽位覆盖机制吻合（本地预览拿不到 .epv 数据，槽位非 0 时颜色显示为空）。
-    Int("fireColorParam_correctColorNo", label_en="Correct Fire Color No", label_zh="修正火焰颜色编号"),
+    Int("fireColorParam_correctColorNo", label_en="Correct Fire Color No", label_zh="EPV 颜色修正槽位"),
     # ColorParam smokeColorParam (10 ints)：smokeColor 的生命期时序块，与 fire 段同构
     # （mUseSmokeLife / mSmokeAppearFrame / KeepFrame / VanishFrame / mSmokeLighting /
     # mSmokeLifeType）。
@@ -732,7 +719,7 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Int("smokeColorParam_vanishFrameJitter", label_en="Smoke (RedCh) Vanish Jitter", label_zh="烟雾（红通道）淡出抖动"),
     Bool("smokeColorParam_lighting", label_en="Smoke (RedCh) Lighting", label_zh="烟雾（红通道）受光照"),
     Int("smokeColorParam_lifeType", label_en="Smoke (RedCh) Life Type", label_zh="烟雾（红通道）生命期模式"),
-    Int("smokeColorParam_correctColorNo", label_en="Correct Smoke Color No", label_zh="修正烟雾颜色编号"),  # 原 unkn9，理由同上
+    Int("smokeColorParam_correctColorNo", label_en="Correct Smoke Color No", label_zh="EPV 颜色修正槽位"),  # 原 unkn9，理由同上
 ])
 EXTERN_RGBFIRE_SCHEMA = EXTERN_RGBFIRE_ATTR.schema
 assert _schema_size(EXTERN_RGBFIRE_SCHEMA) == 112, \
@@ -1007,7 +994,7 @@ PLEMISSIVE_ATTR = Attribute(size=76, fields=[
     Byte("body_p", label_zh="关联 Body"),
     Byte("wp_p", label_zh="关联武器"),
     Short("NULL"),
-    Int("correctColorNo", label_zh="修正颜色编号"),  # 原 epv_color_slot；EPV 槽位覆盖机制
+    Int("correctColorNo", label_zh="EPV 颜色修正槽位"),  # 原 epv_color_slot；EPV 槽位覆盖机制
     Raw("emissive", ('XYZ', 2), label_zh="自发光颜色"),  # 原 color；TIML DT 0xFA79B1CD("Emissive") 已确认
     Float("intensity", label_zh="强度"),  # 原 unkn4；TIML DT 0x94BCC5CE("Intensity") 已确认
     Float("rimWidth", label_zh="边缘光宽度"),  # 原 area[0]；TIML DT 0xAC635CA9("RimWidth") 已确认
@@ -1056,7 +1043,7 @@ PARENTEMISSIVE_ATTR = Attribute(size=72, fields=[
     Int("typeFlag"),  # 原 unkn0
     Int("unknEnum1"),
     Float("blend", label_zh="混合"),  # 原 unkn2；同 PLEMISSIVE 的 Blend，众数 1.0(67.4%)
-    Int("correctColorNo", label_zh="修正颜色编号"),  # 原 unknEnum3；EPV 槽位模式
+    Int("correctColorNo", label_zh="EPV 颜色修正槽位"),  # 原 unknEnum3；EPV 槽位模式
     Raw("emissive", ('XYZ', 2), label_zh="自发光颜色"),  # 原 color；同 PLEMISSIVE 的 Emissive
     Float("intensity", label_zh="强度"),  # 原 brightness；弱假设，语料分布比 PLEMISSIVE 松散
     Float("rimWidth", label_zh="边缘光宽度"),  # 原 rimParam[0]
@@ -1106,7 +1093,7 @@ PLSNOW_ATTR = Attribute(size=84, fields=[
     Int("body_part_id", label_zh="身体部位 ID"),
     Int("weapon_id", label_zh="武器 ID"),
     Raw("color", 'colour', label_zh="颜色"),
-    Int("epvcolorslot", label_zh="EPV 颜色槽"),
+    Int("epvcolorslot", label_zh="EPV 颜色修正槽位"),
     Int("alpha_effect", label_zh="透明度效果"),
     Float("normal_map_strength", label_zh="法线贴图强度"),
     Float("alpha_threshold", label_zh="透明度阈值"),
@@ -1251,18 +1238,17 @@ assert _schema_size(DUMMY_SCHEMA) == 9, \
 EXTERNREFERENCE_ATTR = Attribute(size=36, fields=[
     Int("typeFlag"),  # 原 unkn0，语料恒为 0（该类型场景下无变体）
     Int("referenceIndex", label_zh="Extern 引用"),
-    # trigger_condition 语义已由实机测试坐实（查克贝盾/剑过热三态状态机，见 memory
-    # externreference-trigger-condition-cb-state），不因 OFFICIAL_DEFAULTS_AND_ENUMS.md
-    # §4.14 的 ExternFactorMode 猜测而改名——两者概念上可能相关（该文档提到 Lerp 可由
-    # "寿命"或"程序"驱动，跟这里的状态机选择不矛盾），但未到能合并命名的确定程度。
-    Int("trigger_condition", label_zh="触发条件"),
+    # trigger_condition 四态、transitionDuration/triggerDelay 语义 2026-09-20 经用户实机测试
+    # 坐实：0=默认（静态直选，lerp 恒 0）、1=随发射器生命周期变化（外部事件触发过渡）、
+    # 2=未知（全语料未出现该取值）、3=随粒子生命周期变化（自驱动，无需外部事件）。
+    Enum("trigger_condition", ENUM_EXTERNREF_TRIGGER, label_zh="触发条件"),
     # index0/index1/lerp：2026-09-19 核对，现有预设默认值 0/1/0.0 与官方讲座 §4.14
     # Index0=0／Index1=1／Lerp=0.0 逐字节精确匹配，坐实改名。
     Int("index0", label_zh="索引 0"),  # 原 unknEnum1_1
     Int("index1", label_zh="索引 1"),  # 原 unknEnum1_2
     Float("lerp", label_zh="插值系数"),  # 原 unkn1_3
-    Int("unkn1_4"),
-    Int("unkn1_5"),
+    Int("transitionDuration", label_zh="过渡时长（帧）"),  # 原 unkn1_4
+    Int("triggerDelay", label_zh="触发延迟（帧）"),  # 原 unkn1_5
     Bool("unknFlag1_6"),
 ])
 EXTERNREFERENCE_SCHEMA = EXTERNREFERENCE_ATTR.schema
@@ -1470,29 +1456,36 @@ assert _schema_size(FADEBYEMITTERANGLE_SCHEMA) == 28, \
 #     -1=NONE（截图唯一见到的取值），但只有单一取值证据，不建 Enum，保留原始整数。
 #   distanceMod0/prop1/distanceMod1（对应截图 MaxDistance/StartDistance/Speed）：
 #     三者数值区间高度重叠、prop1 与 distanceMod0 有 63.3% 概率相等、语料里没有一次
-#     取到官方默认值 650.0，靠语料统计无法区分身份。用户 2026-09-19 按此假设定名
-#     （未实机验证）：distanceMod0→startDistance、distanceMod1→maxDistance、
-#     prop1→speed。
+#     取到官方默认值 650.0，靠语料统计无法区分身份。2026-09-19 用户按截图字段顺序
+#     初步定名 distanceMod0→startDistance/distanceMod1→maxDistance/prop1→speed，
+#     随后用户实机测试推翻：把「速度」设 0、下调「最大距离」，粒子生成时机仍随之
+#     连续变化（越调越低生成越晚）——这是「数值越大到达越快」的**速率**特征，
+#     不是「数值越大延迟越久」的距离上限特征，说明原命名反了。改按截图顺序（跳过
+#     RayCastID）逐位对应 + 数量级比例校验（官方 MaxDistance=5000 是 StartDistance=10
+#     的 500 倍，本仓库 distanceMod0 中位数 4000 是 prop1 中位数 500 的 8 倍，明显
+#     更像"总射程 vs 起始点"这一对，而 distanceMod1 中位数 5000 与 distanceMod0 只差
+#     1.25 倍不像）**三向对调**：distanceMod0→maxDistance、prop1→startDistance、
+#     distanceMod1→speed。
 # ─────────────────────────────────────────────────────────────────────────────
 
 RAYCAST_ATTR = Attribute(size=78, fields=[
     Int("typeFlag"),  # 原 unknown0
     Int("section_length", label_zh="段长度"),  # 原 fixed70
     Int("spacer0"),
-    Float("startDistance", label_zh="起始距离"),  # 原 distanceMod0（假设，未实机验证）
-    Float("startDistanceJitter", label_zh="起始距离抖动"),  # 原 distanceMod0Jitter
-    Float("speed", label_zh="速度"),  # 原 prop1（假设，未实机验证）
-    Float("speedJitter", label_zh="速度抖动"),  # 原 prop1Jitter
+    Float("maxDistance", label_zh="最大距离"),  # 原 distanceMod0（原名 startDistance，2026-09-19 实机测试后三向对调）
+    Float("maxDistanceJitter", label_zh="最大距离抖动"),  # 原 distanceMod0Jitter
+    Float("startDistance", label_zh="起始距离"),  # 原 prop1（原名 speed，2026-09-19 实机测试后三向对调）
+    Float("startDistanceJitter", label_zh="起始距离抖动"),  # 原 prop1Jitter
     Int("spacer1"),
     Int("spacer2"),
     Int("spacer3"),
     Float("prop2", label_zh="属性2"),
     Raw("startOffset", ('XYZ', 3), label_zh="起始偏移"),  # 原 prop3
     Enum("direction", ENUM_RAYCAST_DIR, label_zh="方向"),
-    Float("maxDistance", label_zh="最大距离"),  # 原 distanceMod1（假设，未实机验证）
-    Float("maxDistanceJitter", label_zh="最大距离抖动"),  # 原 distanceMod1Jitter
+    Float("speed", label_zh="速度"),  # 原 distanceMod1（原名 maxDistance，2026-09-19 实机测试后三向对调）
+    Float("speedJitter", label_zh="速度抖动"),  # 原 distanceMod1Jitter
     Bitmask("rayCastAttr", BITS_RAYCAST_ATTR, strict=True, label_zh="射线属性"),  # 原 spacer
-    Int("rayCastID", label_zh="RayCast ID"),  # 原 unknownEnum1
+    Enum("rayCastID", ENUM_RAYCAST_ID, label_zh="RayCast ID"),  # 原 unknownEnum1；2026-09-19 改下拉，只列语料见过的 4 个值
     Bitmask("rayCastFlags", BITS_RAYCAST_FLAGS, backing='h', strict=True, label_zh="射线标志位"),  # 原 unknownBitmask2
 ])
 RAYCAST_SCHEMA = RAYCAST_ATTR.schema
@@ -2018,3 +2011,34 @@ FAKEDOF_ATTR = Attribute(size=32, fields=[
 FAKEDOF_SCHEMA = FAKEDOF_ATTR.schema
 assert _schema_size(FAKEDOF_SCHEMA) == 32, \
     f"FAKEDOF_SCHEMA size mismatch: {_schema_size(FAKEDOF_SCHEMA)}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UnitBoundary（Root 专属子条目之一，40B data；不是普通渲染属性，见 io_tree.py 的
+# _root_entry_to_attr_block——伪装成 AttrBlock 才能套用这份 schema）
+#
+# 全语料 2302 例统计（efx_samples/official）：
+#   ints[1]（boundaryType）三态分布 945(0) / 523(1) / 834(2)，按各态哪些浮点非零
+#   交叉统计倒出下面的字段划分：
+#     0(Sphere?)：只有 radius(86% 非零) + radius2(97% 非零) 有值，其余全 0。
+#     1(Box?)：boundaryMin/Max 六个分量几乎全非零(82~100%)，radius/radius2 也常非零。
+#     2(None?)：几乎全零（radius/radius2 也降到 12~14%），像是"不限制"。
+#   真实样本核对（bgn_ex_000.efx 等）：boundaryMin=(-3,-3,-2)、boundaryMax=(3,3,203)，
+#   min<max 逐分量成立，读作 AABB 完全自洽。
+#   ints[0]（unkn0）跟 boundaryType 无关联（三态里全都出现 0~29 各种值），也不是位
+#   掩码（无主导 bit，值分布是平滑小整数），像独立的计数/索引，语义未知。
+# 续作(MHWs) UnitCulling 是这个概念的后续版本（Center/Size/Rotation + Flags 位掩码 +
+# DrawDistance），字段数量和编码方式都变了，只能当"这确实是同一类概念"的旁证，不能
+# 照抄字段划分——本 schema 的字段名/枚举值全部未实机确认，标"?"。
+# ─────────────────────────────────────────────────────────────────────────────
+UNITBOUNDARY_ATTR = Attribute(size=40, fields=[
+    Int("unkn0"),  # 原 ints[0]：与 boundaryType 无关联的小整数(0~29 多为 0/1)，含义未知
+    Enum("boundaryType", ENUM_UNITBOUNDARY_TYPE, label_zh="边界类型?"),  # 原 ints[1]
+    Float("radius", label_zh="半径?"),          # 原 floats[0]
+    Raw("boundaryMin", ('XYZ', 3), label_zh="边界最小角?"),  # 原 floats[1..3]：纯 X/Y/Z 三分量，无 jitter
+    Raw("boundaryMax", ('XYZ', 3), label_zh="边界最大角?"),  # 原 floats[4..6]：纯 X/Y/Z 三分量，无 jitter
+    Float("radius2", label_zh="次级半径?"),      # 原 floats[7]
+])
+UNITBOUNDARY_SCHEMA = UNITBOUNDARY_ATTR.schema
+assert _schema_size(UNITBOUNDARY_SCHEMA) == 40, \
+    f"UNITBOUNDARY_SCHEMA size mismatch: {_schema_size(UNITBOUNDARY_SCHEMA)}"

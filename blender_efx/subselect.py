@@ -1,13 +1,13 @@
 """
-blender_efx/subselect.py  —  L2 #1a：Subselect 结构化存储 + 段局部索引映射地基
+blender_efx/subselect.py  —  Subselect 结构化存储 + 段局部索引映射地基
 
 设计原则（参照 CLAUDE.md）：
-  - Python 3.11 语法（目标 Blender 4.3.2）
+  - Python 3.10 语法（兼容 Blender 3.6～5.x）
   - bpy 只用稳定子集：PropertyGroup / CollectionProperty / PointerProperty /
     StringProperty / IntProperty / Operator / Panel / UIList
   - 不使用 5.x 新增 API
   - efx_format/ 是纯 Python 层，本文件是胶水层（不改 efx_format/）
-  - byte-perfect：Subselect 导出时重建的 entries 索引列表必须与原文件一致
+  - Subselect 导出时重建的 entries 索引列表要与原文件一致（未改动时）
 
 Subselect 结构（efx_format/efxfile.py SubselectTable）：
   table_type : uint32（4B）
@@ -20,7 +20,9 @@ Subselect 结构（efx_format/efxfile.py SubselectTable）：
   导入时：entries[i] → 找 Main 段里 efx_index==entries[i] 的 EFX_ENTRY 对象，存 PointerProperty。
   导出时：member.body_ptr → 通过段局部索引映射 → 还原整数 index → 重建 SubselectTable.entries。
 
-byte-perfect 保证：
+字节行为（⚠ 这是**当前行为的描述**，不是必须守住的契约。硬不变量只在 codec 层：
+`serialize(parse(x)) == x`。胶水层允许规范化，「导入→不编辑→导出」不要求逐字节
+相同——见 docs/TESTING_AND_INVARIANTS.md「核心不变量」。）
   - table_type / unkn0 原样存储（字符串，避免 uint32 溢出）。
   - entries 顺序由 members CollectionProperty 顺序决定，导入时按 entries 原序填入。
   - 悬空 member（body_ptr=None）导出时跳过；validate.py 统一扫描全部悬空指针报
@@ -427,7 +429,7 @@ class EFX_UL_subselect_members(bpy.types.UIList):
 def _draw_subselect_content(layout, context):
     """
     绘制 EFX_SUBSELECT 的归属内容。
-    被 EFX_PT_subselect（N 面板）和 EFX_PT_subselect_data/_object（属性编辑器）共用。
+    被 EFX_PT_subselect（N 面板）和 EFX_PT_subselect_data（属性编辑器 Data 标签）共用。
 
     选中 EFX_SUBSELECT 对象时显示：
       - table_type / unkn0 元数据（只读显示，显示原始十进制字符串）
@@ -505,7 +507,7 @@ class EFX_PT_subselect(bpy.types.Panel):
 
     设计理念（CLAUDE §4）：
       Subselect ↔ entry 归属关系是结构关系（工具功能），主入口放 N 面板；
-      属性编辑器 Data/Object 标签也加一份入口方便习惯用属性编辑器的用户。
+      属性编辑器 Data 标签也加一份入口方便习惯用属性编辑器的用户。
     """
 
     bl_space_type  = "VIEW_3D"
@@ -529,24 +531,6 @@ class EFX_PT_subselect_data(bpy.types.Panel):
     bl_space_type   = "PROPERTIES"
     bl_region_type  = "WINDOW"
     bl_context      = "data"
-    bl_label        = "EFX Subselect Ownership"
-    bl_options      = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        return obj is not None and obj.get("~TYPE") == "EFX_SUBSELECT"
-
-    def draw(self, context):
-        _draw_subselect_content(self.layout, context)
-
-
-class EFX_PT_subselect_object(bpy.types.Panel):
-    """Subselect 归属（属性编辑器 → Object Properties，保底版本）"""
-
-    bl_space_type   = "PROPERTIES"
-    bl_region_type  = "WINDOW"
-    bl_context      = "object"
     bl_label        = "EFX Subselect Ownership"
     bl_options      = {"DEFAULT_CLOSED"}
 
