@@ -1,22 +1,32 @@
 # -*- coding: utf-8 -*-
-"""NOISE —— 绕生成点的两组匀速圆周运动叠加。
+"""NOISE —— 以双重正弦振荡器为粒子的位置与运动附加摇曳。
 
-NOISE 为粒子叠加两组相互独立的匀速圆周运动。两组圆心均固定于**粒子的生成点**（spawn 时
-`p.pos` 的绝对值，此后不随发射器或其它运动更新），旋转平面的朝向随机，由两组各自在出生时抽取。
-两组的角速度与半径通常不同，叠加后呈准周期轨迹；noise 的视觉效果来自这一叠加，而非伪随机扰动。
+NOISE 与 BLINK 共用同一组字段与同一个振荡器：Low / High 两重，各有一个频率与一个振幅
+（Width）。NOISE 的输出作用于位置，BLINK 的输出作用于 alpha。
+
+每一重在粒子出生时抽取一个随机平面（正交基 e1、e2），在该平面内按
+
+    offset_k(t) = Width_k · (cos(ω_k·t)·e1 + sin(ω_k·t)·e2)
+
+做匀速圆周运动，两重相加即为总偏移。两重的角速度与半径通常不同，叠加后为准周期轨迹。
+ω 由 `_common.oscillator_omega` 按 `SimConfig.oscillator_freq_unit` 换算，t 为粒子年龄（帧）。
+
+偏移以**增量**叠加到位置上：每帧只施加本帧与上一帧偏移之差。因此摇曳附加在 VELOCITY3D、
+PARENTOPTIONS 等其它运动之上，而非取代它们；条带类渲染体的轴向随之向摇曳方向倾斜。出生时
+施加 t=0 的偏移，即生成位置本身也带有摇曳。
 
 字段职能：
 
-    lowFrequency / highFrequency            两组各自的角速度，单位度/秒
-    lowFrequencyWidth / highFrequencyWidth  两组各自的圆周半径，而非瞬移距离
+    lowFrequency / highFrequency            两重各自的频率，单位见 `oscillator_freq_unit`
+    lowFrequencyWidth / highFrequencyWidth  两重各自的振幅（圆周半径），游戏单位
     各字段的 Jitter                         仅在粒子出生时抽取一次
     typeFlag                                35 种取值均未观察到影响，不读取
 
 维护约束：
-- 位置在 CONSTRAIN 阶段直接覆写，而非写入切向速度后由 VELOCITY3D 积分：圆心固定、角速度恒定，
-  存在精确闭式解，直接覆写不会产生离散积分导致的半径漂移。
-- 直接覆写意味着 NOISE 独占位置，同一粒子上 VELOCITY3D / HOMING / PARENTOPTIONS 对位置的贡献
-  将被覆盖。目前没有同时启用这些属性的实机样本可供对照，本实现按 NOISE 独占位置处理。
+- 必须按增量施加偏移，不得以「生成点 + 偏移」覆写 `p.pos`：覆写会抹去同一粒子上其它属性对
+  位置的贡献。
+- 两重在出生时必须消耗相同数量的随机数，与振幅是否为 0 无关；否则一重的取值会改变另一重
+  抽到的平面。
 """
 
 import math
@@ -26,6 +36,7 @@ from ..registry import Behavior, register
 from ..rng import jitter
 from ..stages import CONSTRAIN
 from ..state import Vec3
+from ._common import oscillator_omega
 
 
 def _random_unit(rng):
@@ -50,42 +61,52 @@ def _random_perp(axis, rng):
     return e1.normalized(fallback=_fallback_perp(axis))
 
 
+def _offset(groups, t):
+    """返回年龄为 `t` 帧时两重振荡的总偏移。"""
+    out = Vec3()
+    for g in groups:
+        if not g["width"]:
+            continue
+        a = g["omega"] * t
+        out = out + g["e1"] * (g["width"] * math.cos(a)) + g["e2"] * (g["width"] * math.sin(a))
+    return out
+
+
 @register(NOISE)
 class Noise(Behavior):
-    """CONSTRAIN 阶段叠加两组随机取向的匀速圆周运动，并直接覆写 p.pos。"""
+    """CONSTRAIN 阶段将两重圆周振荡的偏移增量叠加到 p.pos。"""
 
     STAGE = CONSTRAIN
-    #: 必须排在 PARENTOPTIONS 之后：跟随发射器只提供基准位置，约束类属性在其后覆写。
+    #: 排在 PARENTOPTIONS 之后：跟随发射器的位移先施加，摇曳再叠加其上。
     ORDER = 20
 
     def on_particle_spawn(self, p, em, rng):
         f = em.f(NOISE, p)
         if f is None:
             return
-        mode = em.config.jitter_mode
+        cfg = em.config
+        mode = cfg.jitter_mode
         groups = []
         for prefix in ("low", "high"):
-            speed = jitter(f.get(prefix + "Frequency"),
-                           f.get(prefix + "FrequencyJitter"), rng, mode)
-            radius = jitter(f.get(prefix + "FrequencyWidth"),
-                            f.get(prefix + "FrequencyWidthJitter"), rng, mode)
+            freq = jitter(f.get(prefix + "Frequency"),
+                          f.get(prefix + "FrequencyJitter"), rng, mode)
+            width = jitter(f.get(prefix + "FrequencyWidth"),
+                           f.get(prefix + "FrequencyWidthJitter"), rng, mode)
             axis = _random_unit(rng)
             e1 = _random_perp(axis, rng)
-            e2 = axis.cross(e1)
             groups.append({
-                "e1": e1, "e2": e2,
-                "radius": radius, "speed": speed, "theta": 0.0,
+                "e1": e1, "e2": axis.cross(e1),
+                "width": width, "omega": oscillator_omega(cfg, freq),
             })
-        p.user[Noise] = {"center": p.pos.copy(), "groups": groups}
+        off = _offset(groups, 0)
+        p.pos = p.pos + off
+        p.user[Noise] = {"groups": groups, "t": 0, "last": off}
 
     def on_particle_step(self, p, em):
         st = p.user.get(Noise)
         if st is None:
             return
-        fps = max(1, em.config.fps)
-        offset = Vec3()
-        for g in st["groups"]:
-            g["theta"] += math.radians(g["speed"]) / fps
-            c, s = math.cos(g["theta"]), math.sin(g["theta"])
-            offset = offset + g["e1"] * (g["radius"] * c) + g["e2"] * (g["radius"] * s)
-        p.pos = st["center"] + offset
+        st["t"] += 1
+        off = _offset(st["groups"], st["t"])
+        p.pos = p.pos + (off - st["last"])
+        st["last"] = off

@@ -220,6 +220,8 @@ def _config_from_scene(scene):
         uvs_grid_v=int(getattr(scene, "efx_sim_uvs_grid", (8, 8))[1]),
         flowmap_speed_unit=getattr(scene, "efx_sim_flowmap_speed_unit", "per_second"),
         flowmap_phase=getattr(scene, "efx_sim_flowmap_phase", "cycle"),
+        oscillator_freq_unit=getattr(scene, "efx_sim_oscillator_freq_unit", "hz"),
+        blink_phase=getattr(scene, "efx_sim_blink_phase", "zero"),
         ribbon_subdiv_max=int(getattr(scene, "efx_sim_ribbon_subdiv_max", 0)),
         ribbon_rigid_dir=getattr(scene, "efx_sim_ribbon_rigid_dir", "static"),
         homing_compose=getattr(scene, "efx_sim_homing_compose", "pursuit"),
@@ -2842,6 +2844,8 @@ class EFX_PT_sim_unknowns(Panel):
         col.prop(scene, "efx_sim_flowmap_speed_unit")
         col.prop(scene, "efx_sim_flowmap_phase")
         col.prop(scene, "efx_sim_flowmap_gain")
+        col.prop(scene, "efx_sim_oscillator_freq_unit")
+        col.prop(scene, "efx_sim_blink_phase")
         col.prop(scene, "efx_sim_draw_order")
         col.prop(scene, "efx_sim_mesh_rot_space")
         col.prop(scene, "efx_sim_rgb_tint")
@@ -3039,6 +3043,22 @@ def register():
                ("per_frame", "Per frame",
                 "The stored speed is how many flow cycles pass in a single frame")],
         default="per_second")
+    S.efx_sim_oscillator_freq_unit = EnumProperty(
+        name="Noise/Blink frequency", update=_on_knob_changed,
+        items=[("hz", "Cycles per second",
+                "The stored frequency is how many full swings happen in a second"),
+               ("rad_per_second", "Radians per second",
+                "The stored frequency is an angle in radians covered each second"),
+               ("rad_per_frame", "Radians per frame",
+                "The stored frequency is an angle in radians covered each frame")],
+        default="hz")
+    S.efx_sim_blink_phase = EnumProperty(
+        name="Blink start", update=_on_knob_changed,
+        items=[("zero", "From birth",
+                "Every particle starts its blink cycle when it is born"),
+               ("random", "Random",
+                "Every particle starts at a random point in its blink cycle")],
+        default="zero")
     S.efx_sim_flowmap_phase = EnumProperty(
         name="Flowmap travel", update=_on_knob_changed,
         items=[("cycle", "Cycles",
@@ -3352,6 +3372,7 @@ def unregister():
         "efx_sim_particle_budget",
         "efx_sim_refraction_tex", "efx_sim_refraction_gain",
         "efx_sim_flowmap_gain", "efx_sim_flowmap_speed_unit", "efx_sim_flowmap_phase",
+        "efx_sim_oscillator_freq_unit", "efx_sim_blink_phase",
         "efx_sim_homing_compose",
         "efx_sim_homing_axial_falloff", "efx_sim_homing_retarget",
         "efx_sim_homing_lateral_tilt", "efx_sim_homing_axis_update",

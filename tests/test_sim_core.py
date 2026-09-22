@@ -23,7 +23,7 @@ if _ROOT not in sys.path:
 
 from efx_format.hashes import (ALPHACORRECTION, BILLBOARD2D, BILLBOARD3D, DUMMY,  # noqa: E402
                                EMITTERSHAPE3D, HOMING, LIGHTNING,
-                               LIFE, MESH, NOISE, PLANE, RIBBON, RIBBONBLADE,
+                               LIFE, MESH, NOISE, BLINK, PLANE, RIBBON, RIBBONBLADE,
                                PARENTOPTIONS, PTCOLLISION, PTLIFE, REFRACTION, RGBFIRE,
                                RGBWATER, ROTATEANIM, SCALEANIM,
                                SPAWN, TRANSFORM3D, TURBULENCE, UVSEQUENCE, VELOCITY3D)
@@ -344,6 +344,19 @@ def homing_fields(**kw):
 def noise_fields(**kw):
     f = {
         "typeFlag": 0, "section_length": 36, "spacer": 0,
+        "lowFrequency": 0.0, "lowFrequencyJitter": 0.0,
+        "lowFrequencyWidth": 0.0, "lowFrequencyWidthJitter": 0.0,
+        "highFrequency": 0.0, "highFrequencyJitter": 0.0,
+        "highFrequencyWidth": 0.0, "highFrequencyWidthJitter": 0.0,
+    }
+    f.update(kw)
+    return f
+
+
+def blink_fields(**kw):
+    f = {
+        "typeFlag": 0, "section_length": 44, "unkn1_0": 0.0,
+        "minRate": 0.0, "maxRate": 1.0,
         "lowFrequency": 0.0, "lowFrequencyJitter": 0.0,
         "lowFrequencyWidth": 0.0, "lowFrequencyWidthJitter": 0.0,
         "highFrequency": 0.0, "highFrequencyJitter": 0.0,
@@ -1726,13 +1739,46 @@ class TestHoming(unittest.TestCase):
 
 
 class TestNoise(unittest.TestCase):
-    """NOISE：两组各自随机取向的匀速圆周运动叠加，圆心固定在生成点。"""
+    """NOISE：两重随机取向的圆周振荡，以增量叠加到其它运动之上。"""
 
     @staticmethod
-    def _sim(fields, config=None):
+    def _sim(fields, config=None, velocity=None):
         return make_sim(spawn=spawn_fields(intervalFrame=1000),
                         life=life_fields(indefiniteLifespan=1),
+                        velocity=velocity,
                         extra=[(NOISE, fields)], config=config)
+
+    def test_sway_rides_on_velocity_instead_of_replacing_it(self):
+        """有 VELOCITY3D 时，粒子相对直线轨迹的偏移恒等于振幅，直线运动本身不被抹去。"""
+        sim = self._sim(noise_fields(lowFrequency=0.5, lowFrequencyWidth=10.0),
+                        velocity=velocity_fields(baseAxis=1, speed=2.0))
+        for n in range(1, 30):
+            sim.step()
+            straight = Vec3(0.0, 2.0 * n, 0.0)
+            self.assertAlmostEqual((sim.particles[0].pos - straight).length(), 10.0,
+                                   places=6)
+
+    def test_hz_frequency_returns_after_one_second(self):
+        """默认单位为每秒周期数：frequency=1 时，60 帧后回到同一位置。"""
+        sim = self._sim(noise_fields(lowFrequency=1.0, lowFrequencyWidth=10.0))
+        sim.step()
+        start = sim.particles[0].pos.copy()
+        for _ in range(60):
+            sim.step()
+        self.assertAlmostEqual((sim.particles[0].pos - start).length(), 0.0, places=6)
+        sim.step()
+        self.assertGreater((sim.particles[0].pos - start).length(), 0.1)
+
+    def test_rad_per_frame_unit(self):
+        """rad_per_frame 下 frequency=π/2 即每 4 帧一圈。"""
+        cfg = SimConfig(oscillator_freq_unit="rad_per_frame")
+        sim = self._sim(noise_fields(lowFrequency=math.pi / 2, lowFrequencyWidth=10.0),
+                        config=cfg)
+        sim.step()
+        start = sim.particles[0].pos.copy()
+        for _ in range(4):
+            sim.step()
+        self.assertAlmostEqual((sim.particles[0].pos - start).length(), 0.0, places=6)
 
     def test_single_group_orbits_spawn_point_at_constant_radius(self):
         """闭式解：只开一组时，每一帧到生成点的距离都精确等于 lowFrequencyWidth。"""
@@ -1767,6 +1813,55 @@ class TestNoise(unittest.TestCase):
             if abs(dist - 6.0) > 1e-3:
                 saw_non_trivial = True
         self.assertTrue(saw_non_trivial)
+
+
+class TestBlink(unittest.TestCase):
+    """BLINK：双重正弦钳制到 MinRate ~ MaxRate 后乘入 alpha。"""
+
+    @staticmethod
+    def _sim(fields, config=None, with_life=True):
+        return make_sim(spawn=spawn_fields(intervalFrame=1000),
+                        life=life_fields(indefiniteLifespan=1) if with_life else None,
+                        extra=[(BLINK, fields)], config=config)
+
+    def test_is_simulated(self):
+        sim = self._sim(blink_fields(lowFrequency=1.0, lowFrequencyWidth=1.0))
+        sim.step()
+        self.assertNotIn(BLINK, sim.em.unsupported)
+
+    def test_alpha_follows_clamped_sine(self):
+        """默认 0 ~ 1 钳制：alpha = clamp(sin(2π·age/60))，age 为 hook 执行时的年龄。"""
+        sim = self._sim(blink_fields(lowFrequency=1.0, lowFrequencyWidth=1.0))
+        for k in range(1, 70):
+            sim.step()
+            age = k - 1
+            want = min(1.0, max(0.0, math.sin(2.0 * math.pi * age / 60.0)))
+            self.assertAlmostEqual(sim.particles[0].alpha, want, places=6)
+
+    def test_min_rate_is_a_floor(self):
+        sim = self._sim(blink_fields(minRate=0.5, lowFrequency=1.0, lowFrequencyWidth=1.0))
+        for _ in range(90):
+            sim.step()
+            self.assertGreaterEqual(sim.particles[0].alpha, 0.5 - 1e-9)
+
+    def test_does_not_compound_without_life(self):
+        """没有 LIFE 重写 alpha 时，恒定系数 0.5 不能逐帧累乘成 0.5^n。"""
+        sim = self._sim(blink_fields(minRate=0.5, maxRate=0.5), with_life=False)
+        for _ in range(20):
+            sim.step()
+        self.assertAlmostEqual(sim.particles[0].alpha, 0.5, places=9)
+
+    def test_high_group_adds_to_low_group(self):
+        cfg = SimConfig(oscillator_freq_unit="rad_per_frame")
+        sim = self._sim(blink_fields(minRate=-10.0, maxRate=10.0,
+                                     lowFrequency=0.1, lowFrequencyWidth=0.3,
+                                     highFrequency=0.7, highFrequencyWidth=0.2),
+                        config=cfg)
+        for k in range(1, 30):
+            sim.step()
+            age = k - 1
+            want = 0.3 * math.sin(0.1 * age) + 0.2 * math.sin(0.7 * age)
+            self.assertAlmostEqual(sim.particles[0].alpha, want, places=6)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

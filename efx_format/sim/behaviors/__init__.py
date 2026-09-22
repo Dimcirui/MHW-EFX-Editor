@@ -16,6 +16,7 @@ registry / simulator / stages。
 
 from . import alphacorrection  # noqa: F401
 from . import billboard3d     # noqa: F401
+from . import blink          # noqa: F401
 from . import dummy            # noqa: F401
 from . import emittershape3d   # noqa: F401
 from . import homing           # noqa: F401
@@ -43,4 +44,4 @@ __all__ = ["spawn", "life", "emittershape3d", "velocity3d", "homing",
            "transform3d", "scaleanim", "rotateanim", "billboard3d",
            "dummy", "plane", "ribbon", "ribbonblade", "mesh", "uvsequence",
            "parentoptions", "ptlife", "ptcollision", "noise", "rgbfire", "rgbwater",
-           "alphacorrection", "uvcontrol", "refraction"]
+           "alphacorrection", "uvcontrol", "refraction", "blink"]

@@ -94,6 +94,19 @@ UNKNOWNS = {
         "位移有界；'linear' 一路累积，相位即位移倍数。",
         ("cycle", "linear"), "cycle",
     ),
+    "oscillator_freq_unit": (
+        "NOISE 与 BLINK 共用的双重正弦振荡器中，LowFrequency / HighFrequency 的单位。"
+        "'hz' 为每秒周期数；'rad_per_second' 为每秒弧度；'rad_per_frame' 为每帧弧度。"
+        "可用 BLINK（lowFrequency=1、lowFrequencyWidth=1、minRate=0、maxRate=1）实机计数"
+        "10 秒内的闪烁次数判定：约 10 次为 'hz'，约 1.6 次为 'rad_per_second'，"
+        "逐帧频闪为 'rad_per_frame'。",
+        ("hz", "rad_per_second", "rad_per_frame"), "hz",
+    ),
+    "blink_phase": (
+        "BLINK 两重正弦的初相位。'zero' 以粒子出生为相位 0，同一时刻出生的粒子同步闪烁；"
+        "'random' 每个粒子在出生时各自抽取初相位。",
+        ("zero", "random"), "zero",
+    ),
     "uvc_clock": (
         "UVCONTROL 的 UV 动画按哪个时钟走。'particle_age' 每个粒子从自己出生起算"
         "（与 UVSEQUENCE 一致）；'emitter_frame' 发射器时间轴，全体同步。",
@@ -198,6 +211,7 @@ class SimConfig(object):
         "uvs_speed_unit", "uvs_once_span", "uvs_start_wrap",
         "uvs_grid_h", "uvs_grid_v", "uvs_grid_scan",
         "flowmap_speed_unit", "flowmap_phase",
+        "oscillator_freq_unit", "blink_phase",
         "rot_order_applied", "ribbon_trail_source", "t3d_apply_base",
         "homing_speed_converge", "homing_speed_ramp_turns", "homing_ff_scale_mode",
         "homing_ff_recover_frames",
@@ -253,6 +267,8 @@ class SimConfig(object):
         self.uvc_clock = "particle_age"
         self.flowmap_speed_unit = "per_second"
         self.flowmap_phase = "cycle"
+        self.oscillator_freq_unit = "hz"
+        self.blink_phase = "zero"
         self.uvs_speed_unit = "per_frame"
         self.uvs_once_span = "to_end"
         self.uvs_start_wrap = "wrap"

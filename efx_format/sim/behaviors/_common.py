@@ -35,6 +35,8 @@ useColorRange / brightness / blendMode），统一在此实现，避免四处重
   对混合无意义，且会抵消 LIFE 的淡入淡出）。
 """
 
+import math
+
 from ..rng import jitter, jitter_int
 from ..state import Vec3
 from ..vecmath import ROT_ORDER_TRANSFORM, rot_order_name, rotate_euler
@@ -128,8 +130,6 @@ def oriented_basis(normal, spin_deg=0.0):
 
     法线退化时回退为世界 X/Y，不抛出异常。
     """
-    import math
-
     n = normal.normalized(fallback=Vec3(0.0, 0.0, 1.0))
     # 选取与 n 不平行的参考轴进行叉乘
     ref = Vec3(0.0, 1.0, 0.0)
@@ -239,6 +239,21 @@ def color_param_weight(st, age):
     if age >= v:
         return 0.0
     return 1.0 - float(age) / v
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 双重正弦振荡器 —— NOISE / BLINK 共用的频率换算
+# ─────────────────────────────────────────────────────────────────────────────
+
+def oscillator_omega(cfg, freq):
+    """将 LowFrequency / HighFrequency 换算为每帧弧度，单位由 `SimConfig.oscillator_freq_unit` 决定。"""
+    unit = getattr(cfg, "oscillator_freq_unit", "hz")
+    if unit == "rad_per_frame":
+        return float(freq)
+    fps = float(getattr(cfg, "fps", 60) or 60)
+    if unit == "rad_per_second":
+        return float(freq) / fps
+    return 2.0 * math.pi * float(freq) / fps
 
 
 def blend_two_colors(cfg, c0, w0, c1, w1):
