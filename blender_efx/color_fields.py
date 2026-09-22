@@ -1,40 +1,17 @@
-"""
-blender_efx/color_fields.py — 判定字段/属性是否"含颜色内容"
+"""颜色编辑器的字段与属性筛选。
 
-EFX Color Editor（导入 Only Colors 分支）的地基：判定哪些字段该在颜色编辑器里露出、
-哪些 attribute 该被判定为"含颜色"（进而其所在 entry 该被暴露）。纯判定函数，不碰
-bpy 数据结构本身（只读 ori_name/data_type 字符串 + type_hash 整数），可独立单测。
-
-判据（任一命中即算颜色字段）
-----------------------------
-1. data_type == "COLOR_RGBA"：由 schema spec（'colour' 或 ('XYZ',2)）在 decode 阶段
-   权威推出（见 fields.py::_spec_to_dtype），覆盖绝大多数颜色字段——
-   color/color1/color2/colorRange/emissiveColor/emissiveColorRange/fireColor/
-   smokeColor/EPVColorSlot 嵌套的 head.color1 等。零猜测，字段本身就是色块。
-2. (type_hash, ori_name) 特例：TUBELIGHT.headColor/tailColor 是打包 int32 RGBA，
-   dtype 是 INT 非 COLOR_RGBA（见 panels.py::_draw_tubelight_int_as_color 同一判据）。
-3. 名字表 `_COLOR_ADJACENT_NAMES`：亮度/强度/颜色开关/EPV 颜色槽——字段本身不是色块，
-   但和颜色/亮度显示直接绑定（用户原话："颜色、颜色范围、启用颜色范围、光强、
-   Epv Color Slot"）。按 `ori_name` 最后一个 "." 分段匹配（EPVColorSlot 嵌套字段
-   如 "head.epvColorSlot" 取 "epvColorSlot" 分段）。
-
-⚠ 已知不完整：这张名字表是根据当前已 schema 化的类型（RGBFIRE/BILLBOARD3D/
-PLEMISSIVE/PARENTEMISSIVE/MESH/TUBELIGHT/RGBWATER/LIGHTNING…）核对出来的起点，
-不保证覆盖每个属性类型的每个亮度/颜色关联字段——新增/核对以此表为准迭代补充，
-不影响已收录字段的行为（纯增量表，不改判定逻辑）。
+COLOR_RGBA 字段、已知的打包颜色字段及颜色相关字段名都会被收录。名称按 ori_name 的
+末段匹配，便于处理嵌套字段；规则表可随新增 schema 增量扩展。
 """
 
 from ..efx_format.hashes import TUBELIGHT as _TUBELIGHT
 
-# 名字精确匹配（按 schema 原始拼写，不做大小写/下划线归一化——ori_name 是权威原名）
-# 交叉核对来源：全部 67 个 ATTR_SCHEMA_MAP + CUSTOM_FIELD_SCHEMA_MAP 类型逐字段扫描
-# （2026-07-14），非纯拍脑袋列表。
+# 按 schema 原始拼写精确匹配，不做大小写或下划线归一化。
 _COLOR_ADJACENT_NAMES = frozenset({
-    # 亮度 / 强度
     "brightness",
     "brightnessSlot1", "brightnessSlot2",
     "brightnessSlotMultiplier1", "brightnessSlotMultiplier2",
-    "brightnessJitter", "bright",   # brightnessJitter 原名 randomBrightnessMult
+    "brightnessJitter", "bright",
     "lightIntensity", "lightIntensityJitter",
     "enableIntensity1", "enableIntensity2", "enableEmissiveIntensity",
     "emissiveMultiplier", "emissiveStrength",
@@ -42,63 +19,35 @@ _COLOR_ADJACENT_NAMES = frozenset({
     "emissiveColorRate", "emissiveColorRateJitter",
     "colorRate", "colorRateJitter",
     "colorScaler",
-    # RGBFIRE.fireFactor/redChFactor/alphaFactor（原 brightness1/2/3，2026-09-19/20 改名，
-    # 同一组强度字段；colorRate（原 brightness4）已并入上面通用的 colorRate 条目）
     "fireFactor", "redChFactor", "alphaFactor",
-    # 颜色范围 / 颜色相关开关 / 模式
     "useColorRange", "useEmissiveColor", "useEmissiveColorRange",
     "disableAllColorRange", "colourTransitionPoint",
-    # RGBFIRE.lerpAlphaToBlue（原 unkn4）：0-1 插值位置，跟 colourTransitionPoint
-    # 同一类——是"混合比例"不是"强度值"，归到这一组而非下面的 _BRIGHTNESS_NAMES。
     "lerpAlphaToBlue",
-    # ⚠ 2026-09-04 移除三项：STRAINRIBBON.colorModeFlag 查明是 EPV 颜色槽（已改名
-    #   epv_color_slot1，下面 EPV 那组已收）；TUBELIGHT 的 backFace/frontFaceTintMode
-    #   实为光照有效半径（已改名 tail/headEffectiveRadius），与颜色无关。
-    # EPV 颜色槽（含 EPVColorSlot 嵌套字段的 "head.epvColorSlot" 等，按末段匹配）
     "epv_color_slot", "epvcolorslot", "epv_color_slot1", "epv_color_slot2",
     "EPVColorSlot1", "EPVColorSlot2", "epvColorSlot",
     "epvcolor_0", "epvcolor_1",
     "headColorEpvSlot", "tailColorEpvSlot",
-    # BILLBOARD3D.correctColorNo（原 EPVColorSlot1，2026-09-19 改名，同一 EPV 槽位机制）
     "correctColorNo",
-    # BILLBOARD3D/BILLBOARD2D/PLANE.colorRangeCorrectColorNo（原 SlotOverride1/
-    # EPVColorSlot2，2026-09-20 按结构类推改名，同一 EPV 槽位机制，专属 colorRange 未确认）
     "colorRangeCorrectColorNo",
 })
 
-# 前缀匹配：火焰/烟雾色时序参数块（RGBFIRE，跟随 fireColor/smokeColor 通道生效/
-# 淡入淡出，含 unkn7/unkn8 等未完全确认的同块兄弟字段——同块即算颜色相关，不逐个列举）
-# RGBFIRE 的 fire/smoke 与 RGBWATER 的 specular/sheet 是同一套「颜色的生命期时序块」，
-# 靠前缀把整段归类为颜色相关（Color Editor 模式的过滤依据）。RGBWATER 三段此前一直漏在
-# 表外——它的段名 2026-09-03 才定下来（三段 2026-09-03 全部定死：高光 / 水膜 / 水色插值）。
+# 颜色时序参数块按前缀归类。
 _COLOR_ADJACENT_PREFIXES = ("fireColorParam_", "smokeColorParam_",
                             "specularColorParam_", "sheetColorParam_", "waterLerpParam_")
 
-# (type_hash, ori_name) 特例：打包 int32 RGBA，dtype 非 COLOR_RGBA
+# 打包 RGBA 的非 COLOR_RGBA 特例。
 _PACKED_INT_COLOR_FIELDS = frozenset({
     (_TUBELIGHT, "headColor"),
     (_TUBELIGHT, "tailColor"),
 })
 
 
-# 可整体乘算的"亮度/强度"浮点字段（_COLOR_ADJACENT_NAMES 的严格子集）：
-# 只收真正表示亮度/发光强度、乘一个系数语义成立的**浮点标量**。刻意排除——
-#   · 开关/布尔：enable*/use*/disableAllColorRange
-#   · 枚举/模式：colourTransitionPoint 一类
-#   · 位置/占比：colourTransitionPoint（0-1 过渡点，乘会越界）
-#   · 槽位索引：epv*Slot / brightnessSlot1/2（是槽编号不是强度值，含义不明保守排除）
-#   （已移除"饱和度"这条排除项：原 emissive_saturation* 查明是 color 通道的强度系数，
-#    详见 custom_codecs.py 的 _MOD3_PROPERTIES_SCHEMA 注释，已改名 colorRate* 并纳入下表。
-#    定为亮度而非饱和度的依据：① 全部 1259 个 schema 字段名里含 satur/hue/chroma 的
-#    是 0 条——格式的静态字段侧没有饱和度旋钮；② 引擎在 DT 命名空间里有
-#    mSaturationColor / mBaseColorSaturation，要表达饱和度会直接写进名字，ColorRate 不是；
-#    ③ 取值 p50=1.0 / p99=100 / max=10000，是 HDR 倍率形态。用户 2026-09-09 定调。）
-# 乘算时另有 data_type=="FLOAT" 的硬门控，双保险：即便名字命中、非浮点也跳过。
+# 可整体乘算的亮度/强度浮点字段；data_type 仍须为 FLOAT。
 _BRIGHTNESS_NAMES = frozenset({
     "brightness",
-    "fireFactor", "redChFactor",   # RGBFIRE 原 brightness1/2；alphaRate（原 brightness3）管 alpha 不管亮度，不收进来
+    "fireFactor", "redChFactor",
     "brightnessSlotMultiplier1", "brightnessSlotMultiplier2",
-    "brightnessJitter", "bright",   # brightnessJitter 原名 randomBrightnessMult
+    "brightnessJitter", "bright",
     "lightIntensity", "lightIntensityJitter",
     "emissiveMultiplier", "emissiveStrength",
     "emissionStrength", "emissionStrengthJitter",

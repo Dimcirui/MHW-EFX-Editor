@@ -1,14 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/material/resources.py -- mrl3 材质资源槽（贴图）编码表
+"""mrl3 材质资源编码与 CB 字段布局表。
 
-来源：master_material_dict.json 每种 shader 的 resourceDict（同 material/params.py
-头部注释的数据血缘）。mrl3 的 Material resource buffer 里每条资源用
-`resHash >> 12` 匹配 resourceDict 的 `hash` 字段（实测 md_wp11_000.mrl3 的
-VFX_EmissiveFog_Mt 材质 5 个贴图 + 2 个 CB + 5 个 Sampler State 全部按此规则
-精确命中，见 mrl3_reader.py::read_materials）。本表只收贴图资源（name 以 't'
-开头，如 tAlbedoMap），CB/Sampler State 不需要（读取贴图路径默认值用不上）。
-102 种 shader、1059 条贴图资源编码，同一 shader 内 `hash>>12` 无冲突（已复核）。
+资源哈希右移 12 位后按 shader 查表。贴图资源、CB 资源及字段布局使用同一资源块
+偏移模型；Sampler State 不在此表中。
 """
 
 MATERIAL_TEXTURE_RESOURCE_CODES = {
@@ -1279,34 +1273,12 @@ MATERIAL_TEXTURE_RESOURCE_CODES = {
 
 
 def texture_resource_codes(shader_hash):
-    """shader_hash → {resHash>>12: 贴图裸名}；未收录返回 None。"""
+    """返回 shader 的资源码到贴图名映射；未收录时返回 None。"""
     return MATERIAL_TEXTURE_RESOURCE_CODES.get(shader_hash & 0xFFFFFFFF)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CB 常量缓冲区字段布局——供"参考 mrl3 新建材质槽"读取真实参数默认值用
-# （此前只解析贴图路径，2026-09 扩展到非贴图参数）。
-#
-# 复刻 MHW_Model_Editor 的 ReadResourceBuffers/ReadPropertyBuffers 算法：
-#   1. 材质 resource buffer 里每条资源用 resHash>>12 匹配 MATERIAL_CB_RESOURCE_CODES
-#      找到 CB 名字（同贴图资源的匹配方式，见上方 MATERIAL_TEXTURE_RESOURCE_CODES）；
-#      匹配到的资源条目里的 resValue 字段就是该 CB 在这条材质自己的 resource
-#      buffer 里的字节偏移（不是 JSON 里声明的默认值——CB 偏移量本身对同一 shader
-#      的所有材质实例是常量，但仍按文件实际值读取，跟 MHWME 算法保持一致，不假设）。
-#   2. CB 内部按 property_dict 字段声明顺序累加各字段大小得到字段偏移（align*
-#      填充字段计入偏移但不导出——跳过它们会让后续字段全部错位）。
-#   3 绝对偏移 = 材质的 blockOffset（mrl3_reader 已读出）+ CB 的 resValue + 字段偏移。
-#
-# MATERIAL_CB_FIELD_LAYOUT[shader_hash][cb_bare_name] = [(t_hash, field_name,
-# type_str, field_offset_within_cb), ...]——t_hash 与 material/params.py 的
-# MATERIAL_SHADER_PARAMS 同源同键（jamcrc(field_name)），字段过滤规则一致
-# （只收 bbool/uint/float/float[2..4]，跳过 align*）。4637 条字段，与
-# MATERIAL_SHADER_PARAMS 总数一致（交叉验证）。
-#
-# 实测验证（md_wp11_000.mrl3，VFX_EmissiveFog_Mt）：按此算法读出
-# fRoughness__uiUNorm=1.0 / fMetalic__uiUNorm=0.0 / fSpecular__uiUNorm=0.0 /
-# bEmissive=True / fBaseMapFactor__uiColor=(1,1,1,1)，均为合理值。
-# ─────────────────────────────────────────────────────────────────────────────
+# CB 字段偏移基于声明顺序；align 字段必须计入偏移，不能作为可编辑参数公开。
+# 绝对偏移 = 材质块偏移 + CB 的资源值 + 字段相对偏移。
 
 MATERIAL_CB_RESOURCE_CODES = {
     44311557: {915632: 'CBMhMaterialOZK001Local', 730930: 'CBMaterialCommon'},
@@ -1833,13 +1805,12 @@ MATERIAL_CB_FIELD_LAYOUT = {
 
 
 def cb_resource_codes(shader_hash):
-    """shader_hash → {resHash>>12: CB 裸名}；未收录返回 None。"""
+    """返回 shader 的资源码到 CB 名映射；未收录时返回 None。"""
     return MATERIAL_CB_RESOURCE_CODES.get(shader_hash & 0xFFFFFFFF)
 
 
 def cb_field_layout(shader_hash, cb_name):
-    """（shader_hash, CB 裸名） → [(t_hash, field_name, type_str, field_offset), ...]；
-    未收录返回 None。"""
+    """返回 CB 字段布局；未收录的 shader 或 CB 返回 None。"""
     d = MATERIAL_CB_FIELD_LAYOUT.get(shader_hash & 0xFFFFFFFF)
     if d is None:
         return None

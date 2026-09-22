@@ -1,33 +1,8 @@
-"""
-blender_efx/uvs_io.py  —  UVS 编辑工具
+"""读取、编辑和导出 UVS 序列帧数据，并支持独立 UVS 载体。
 
-UVSEQUENCE 属性下的 .uvs 序列帧编辑工具栏，也服务 standalone.py 建的无主 UVS。
-
-功能：
-  - 解析 / 序列化 .uvs 文件（Import / Export / Reload）
-  - Group 列表（UIList）+ 增删与重排
-  - 选中 Group 的路径槽（Path 0-3）+ 类型 + Dynamic 可编辑
-  - Edit UVS：独立窗口的帧矩形可视编辑器（`EFX_OT_uvs_edit` + `EFX_PT_uvs_editor`，
-    含帧的增删改移与按网格批量生成）
-  - GIF to PNG Sprite Sheet：GIF 拆帧拼精灵表，可选自动回写当前 Group 的帧数据
-    （`EFX_OT_uvs_gif_to_png`）
-
-数据存储策略：
-  - EFXUVSProps 挂到 Object（efx_uvs）。谁持有它分两种情况：
-      · 无主 UVS（standalone.py 建的 Empty）：数据就在它自己身上。
-      · UVSEQUENCE 属性：属性自己**不再**存数据，只留一个 `efx_uvs_target`
-        指针指向外部 Empty（uvs_link.py::ensure_host_for_attribute 建的，
-        绿色集合，嵌在其所属 .efx 顶层集合内，导出天然忽略）。本文件所有
-        读写口子一律经 `_uvs_target`/`_uvs_props`（只读）或 `_ensure_uvs_target`
-        （需要时惰性新建）解析，不直接碰 `obj.efx_uvs`。
-  - raw_b64：序列化后的完整 UVS 字节，保证 frame data 等不可编辑字段原样往返
-  - groups CollectionProperty：可编辑字段（路径、类型、dynamic）
-  - 导出时：decode raw_b64 → 用 CollectionProperty 覆写可变字段 → 重序列化
-
-约束（CLAUDE.md）：
-  - Python 3.10 兼容语法
-  - bpy 只用稳定子集
-  - 不使用 5.x 新增 API
+维护约束：UVSEQUENCE 数据由外部 ``efx_uvs_target`` 宿主持有，所有读写必须先
+解析实际宿主；只读路径不得创建宿主。``raw_b64`` 保留不可编辑数据，编辑字段从
+PropertyGroup 合并后再序列化。更换 UVS 数据必须通知活跃模拟预览重建。
 """
 
 import base64
@@ -49,18 +24,12 @@ from .i18n import T
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_uvsequence_path(obj) -> str:
-    """返回 UVSEQUENCE 块的 path 字段（game-relative）；找不到时返回空字符串。
-
-    `obj` 可以是属性本身，也可以是它外挂的宿主 Empty——字段只存在属性身上，
-    选中宿主时先经 `_uvs_source_attribute` 折回属性（放宽点没什么风险：不是
-    合法属性 `_uvs_source_attribute` 就返回 None，跟原来"找不到"的结果一样）。
-    """
+    """返回 UVSEQUENCE 游戏路径；宿主对象会先解析回源属性。"""
     obj = _uvs_source_attribute(obj) or obj
     try:
         bp = obj.efx_block
         for item in bp.field_items:
-            # 'uvsPath' 是 2026-09-03 改名后的名字，'path' 是老 .blend 里的旧名
-            # （见 fields._PATH_ITEM_NAMES / field_rename_aliases）。
+            # 兼容旧场景中的 ``path`` 字段名。
             if item.ori_name in ("uvsPath", "path"):
                 raw = item.string_value
                 if isinstance(raw, bytes):
@@ -72,36 +41,17 @@ def _get_uvsequence_path(obj) -> str:
 
 
 def is_standalone_uvs(obj) -> bool:
-    """是否为**无宿主**的 UVS 载体对象（standalone.py 的「独立打开 .uvs」创建）。
-
-    UVS 数据本来就全在 `obj.efx_uvs`（挂在 Object 上的 PropertyGroup），谁当宿主
-    对编辑逻辑没有区别——无主载体只是一个带 ~TYPE="EFX_UVS" 标记的 Empty，不属于
-    任何 EFX_ROOT 集合，故导出/校验路径不会碰到它。
-    """
+    """判断对象是否为独立 UVS 数据载体。"""
     return obj is not None and obj.get("~TYPE") == "EFX_UVS"
 
 
 def _is_uvs_link_host(obj) -> bool:
-    """是否为 UVSEQUENCE 属性外挂的 UVS 载体 Empty（`uvs_link.ensure_host_for_attribute`
-    建的，~TYPE="EFX_UVS_LINK_ITEM"，与 `is_standalone_uvs` 的完全无主载体是两码事——
-    这个载体挂在某个 .efx 的绿色 `{efx}_uvs` 子集合里）。
-
-    数据同样直接存在它自己的 `efx_uvs` 上（`uvs_link.link_one` 写的就是
-    `host.efx_uvs`），选中它本人时理应和选中无主载体一样能进 UVS 编辑器——
-    这里不用从 uvs_link 顶层 import 常量（会和它 import 本模块循环），直接比字符串。
-    """
+    """判断对象是否为 UVSEQUENCE 的外部 UVS 宿主。"""
     return obj is not None and obj.get("~TYPE") == "EFX_UVS_LINK_ITEM"
 
 
 def _uvs_source_attribute(obj):
-    """`obj` 是外挂宿主 Empty 时，跟反向指针（`uvs_link.py::source_attribute_of`）
-    找回它是为哪个 UVSEQUENCE 属性建的；`obj` 本来就是属性就原样返回；无主 UVS
-    没有对应属性，返回 None。
-
-    游戏路径（`uvsPath`）、`sequenceNo` 这些字段只存在属性对象自己身上——直接
-    选中宿主时不经这一步，`_get_uvsequence_path` 之类读 `obj.efx_block` 的地方
-    永远读到空，UVS Edition 面板看起来"选中了但什么有用信息都没有"。
-    """
+    """将外部宿主解析回其 UVSEQUENCE 源属性；独立 UVS 返回 ``None``。"""
     if obj is None:
         return None
     if obj.get("~TYPE") == "EFX_ATTRIBUTE":
@@ -113,12 +63,7 @@ def _uvs_source_attribute(obj):
 
 
 def _is_uvsequence_attribute(obj) -> bool:
-    """该对象是否为 UVS 编辑的合法宿主：UVSEQUENCE 类型的 EFX_ATTRIBUTE、
-    它外挂的 UVS 载体 Empty，或完全无主的 UVS 载体。
-
-    UVS 编辑器的十余处门控全部走这一个判据，放宽它即等于整套编辑器对新增的
-    对象类型生效。
-    """
+    """判断对象是否可作为 UVS 编辑入口。"""
     if obj is None:
         return False
     if is_standalone_uvs(obj) or _is_uvs_link_host(obj):
@@ -133,15 +78,7 @@ def _is_uvsequence_attribute(obj) -> bool:
 
 
 def _uvs_target(obj):
-    """UVSEQUENCE 属性 / 它外挂的 UVS 载体 / 无主 UVS 对象 → 实际持有 `efx_uvs`
-    数据的对象。
-
-    数据不再直接存在属性对象自己身上（见 uvs_link.py 的 `ensure_host_for_attribute`）
-    ——属性只留一个 `efx_uvs_target` 指针指向外部载体；选中载体本人时它自己就是
-    数据持有者，不用再跟指针。这里只读解析，属性尚未建过宿主（还没 Import /
-    Quick Load 过）时返回 None，不产生任何副作用；真正需要"没有就建一个"的地方
-    只有 Import（execute 里落数据的时候才建，见 `_ensure_uvs_target`）。
-    """
+    """只读解析实际持有 ``efx_uvs`` 的对象；不会创建缺失宿主。"""
     if obj is None:
         return None
     if is_standalone_uvs(obj) or _is_uvs_link_host(obj):
@@ -159,10 +96,7 @@ def _uvs_props(obj):
 
 
 def _ensure_uvs_target(obj, context=None):
-    """UVSEQUENCE 属性缺外部宿主时惰性新建一个（绿色集合，嵌进其 EFX 根，见
-    uvs_link.py）；无主对象 / 外挂载体本人 / 已有宿主直接返回。只在真正要落数据的
-    算子（Import）里调用，draw()/poll() 一律用只读的 `_uvs_target`，不要在绘制时
-    创建数据块。"""
+    """按需创建缺失的外部宿主；只允许写入算子调用。"""
     if is_standalone_uvs(obj) or _is_uvs_link_host(obj):
         return obj
     from . import uvs_link as _ul
@@ -227,13 +161,12 @@ class EFXUVSGroupProp(PropertyGroup):
     type2: IntProperty(name="Type 2", min=0, default=1)
     type3: IntProperty(name="Type 3", min=0, default=1)
 
-    # 下拉展示层（真实数值仍在 typeN，见上方 _sync_type_ui/_make_type_ui_update）
+    # UI 下拉仅同步到实际存储的 typeN。
     type0_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(0))
     type1_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(1))
     type2_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(2))
     type3_ui: bpy.props.EnumProperty(name="Type", items=_TYPE_UI_ITEMS, default='1', update=_make_type_ui_update(3))
 
-    # 帧生成参数
     grid_h: IntProperty(name="H", min=1, default=1,
                         description="Sprite sheet horizontal cell count",
                         update=lambda self, ctx: setattr(self, "gen_frame_count", self.grid_h * self.grid_v))
@@ -245,10 +178,6 @@ class EFXUVSGroupProp(PropertyGroup):
         description="Actual frame count generated (trims trailing leftover grid cells when the frame "
                     "count doesn't divide H×V evenly; 0 or >=H×V means no trimming)",
     )
-    # 标签文字按用户实机复现结果对调过（0.2.102）：内部 scan 取值/_gen_frames_grid
-    # 生成逻辑没变，只是把标签+说明文字换到了实际匹配的那个取值上。RL_*/*_RL
-    # 四个是 0.2.103 补的镜像方向，纵向语义直接照抄对应的 LR_*/*_LR 项（已经过
-    # 实机验证），只把横向方向翻了过来——没有再重新猜纵向方向。
     grid_scan: bpy.props.EnumProperty(
         name="Scan",
         items=[
@@ -263,7 +192,7 @@ class EFXUVSGroupProp(PropertyGroup):
         ],
         default='LR_TB',
     )
-    # 当前选中帧（用于预览高亮）；导航切帧要立刻挪动高亮矩形，同样需要手动 tag_redraw
+    # 当前帧变化需要刷新编辑器高亮。
     frame_index: IntProperty(name="Frame", min=0, default=0,
                              update=lambda self, ctx: _tag_redraw_editor())
 
@@ -282,14 +211,13 @@ class EFXUVSProps(PropertyGroup):
     )
     is_loaded: BoolProperty(name="Loaded", default=False)
 
-    # 完整序列化字节 base64，用于 frame data 等不可编辑字段的往返
+    # 完整序列化字节，用于保留不可编辑字段。
     raw_b64: StringProperty(name="Raw Bytes (base64)", default="")
 
     groups: CollectionProperty(type=EFXUVSGroupProp)
     group_index: IntProperty(name="Group Index", default=0,
                              update=lambda self, ctx: _tag_redraw_editor())
 
-    # IMAGE_EDITOR 参考图名称（bpy.data.images 中的 name）
     ref_image_name: StringProperty(name="Reference Image", default="")
 
 
@@ -330,16 +258,14 @@ def _populate_props(props: EFXUVSProps, data: bytes) -> None:
             setattr(item, attr, types[i] if i < len(types) else 1)
             _sync_type_ui(item, i)
 
-        # 显示名：取第一条路径最后一段（兼容正反斜杠）
+        # 显示首个路径的末段，兼容两类路径分隔符。
         first_path = paths[0] if paths else ""
         last_seg = first_path.replace("\\", "/").split("/")[-1]
         item.display_name = last_seg or f"group_{len(props.groups) - 1}"
 
     props.is_loaded = True
 
-    # 粒子模拟播放器的序列帧表就是从这份字节来的——换了帧表要让它重建，否则预览
-    # 还在用网格兜底（见 sim_preview._uvs_state）。放在这里而不是各算子里：导入 /
-    # 重载 / uvs_link 链式载入三条路都要通知，漏一条就是"载入了但预览没变"。
+    # 所有 UVS 载入路径均经此处通知活跃模拟预览重建。
     try:
         from . import sim_preview as _sim
         _sim.invalidate_if_active()
@@ -358,7 +284,7 @@ def _rebuild_uvs(props: EFXUVSProps) -> bytes:
     data = base64.b64decode(props.raw_b64)
     uvs = UVSFile.parse(data)
 
-    # 从 PropertyGroup 收集所有 (path, type) → 去重重建字符串表
+    # 从编辑字段去重重建字符串表。
     path_type_pairs = []
     seen = {}
     for item in props.groups:
@@ -372,7 +298,7 @@ def _rebuild_uvs(props: EFXUVSProps) -> bytes:
 
     uvs.strings = [UVSString(path=p, type=t) for p, t in path_type_pairs]
 
-    # 更新每个 Group 的 dynamic + path_indices（frame data 从 raw 保留）
+    # 仅覆写可编辑元数据，帧数据保留自 raw 字节。
     for g_orig, item in zip(uvs.groups, props.groups):
         g_orig.dynamic = item.dynamic
         g_orig.map_count = item.map_count
@@ -405,15 +331,12 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
     filename_ext = ".uvs"
     filter_glob: StringProperty(default="*.uvs", options={"HIDDEN"})
 
-    # 拖入（FileHandler）调用约定：directory + files，而非 ImportHelper 的 filepath。
     files: CollectionProperty(
         type=bpy.types.OperatorFileListElement,
         options={"HIDDEN", "SKIP_SAVE"},
     )
     directory: StringProperty(subtype="DIR_PATH", options={"HIDDEN", "SKIP_SAVE"})
 
-    # 无主打开：不写进任何属性，建一个自带 efx_uvs 的独立载体（standalone.py）。
-    # 默认值在 invoke 里按"当前有没有 UVSEQUENCE 宿主"算，故 SKIP_SAVE。
     standalone: BoolProperty(
         name="Standalone (no .efx)",
         description="Open the .uvs on its own instead of loading it into a selected attribute",
@@ -421,7 +344,6 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
         options={"SKIP_SAVE"},
     )
 
-    # poll 恒 True：没有宿主时走无主打开，此算子总有事可做。
     def _target_host(self, context):
         """本次导入要载入的宿主对象；无主模式或没有宿主时返回 None。"""
         if self.standalone:
@@ -438,10 +360,8 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
         return self.filepath
 
     def invoke(self, context, event):
-        # 选中了 UVSEQUENCE 宿主就默认载进去，否则默认无主打开（File 菜单里的常态）。
         self.standalone = not _is_uvsequence_attribute(context.active_object)
-        # 拖入：载入会覆盖当前 UVS 编辑内容，先弹确认框（ImportHelper 默认 invoke
-        # 会再开一次文件浏览器，让拖入看起来"没反应"）。
+        # 拖入直接显示确认对话框，避免再次打开文件浏览器。
         if self.directory and self.files:
             return context.window_manager.invoke_props_dialog(self)
         return ImportHelper.invoke(self, context, event)
@@ -471,7 +391,7 @@ class EFX_OT_uvs_import(Operator, ImportHelper):
             self.report({"ERROR"}, T("uvs.import_failed").format(e))
             return {"CANCELLED"}
 
-        # ── 目标：载进选中的 UVSEQUENCE 属性（外部宿主，没有就建），还是无主打开 ──
+        # 载入现有属性宿主，或创建独立 UVS 载体。
         obj = self._target_host(context)
         if obj is None:
             from . import standalone as _sa
@@ -512,7 +432,6 @@ class EFX_OT_uvs_export(Operator, ExportHelper):
         return ok
 
     def invoke(self, context, event):
-        # 用已知路径预填对话框
         props = _uvs_props(context.active_object)
         if props.filepath:
             self.filepath = props.filepath
@@ -587,10 +506,7 @@ class EFX_UL_uvs_groups(UIList):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_uvs_edition(Panel):
-    """UVS Edition — 顶层面板，仅在选中 UVSEQUENCE 属性时显示
-
-    工具类特性 → 只放 N 面板（不放属性编辑器）；bl_order=0 压在 Attribute Properties 之上。
-    """
+    """UVS 编辑面板。"""
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
@@ -606,13 +522,12 @@ class EFX_PT_uvs_edition(Panel):
     def draw(self, context):
         layout = self.layout
         obj    = context.active_object
-        props  = _uvs_props(obj)   # 属性还没 Import/Quick Load 过时是 None（还没建外部宿主）
+        props  = _uvs_props(obj)
 
-        # 无主 UVS：标一行"独立文件"并给关闭入口（有宿主时这行不画）
         from . import standalone as _sa
         _sa.draw_standalone_header(layout, obj)
 
-        # ── UVS 游戏路径（只读显示，来自块字段）──────────────────────────────
+        # ── 游戏路径 ────────────────────────────────────────────────────────
         game_path = _get_uvsequence_path(obj)
         if game_path:
             box = layout.box()
@@ -620,8 +535,7 @@ class EFX_PT_uvs_edition(Panel):
             row.label(text=T("uvs.game_path"), icon="FILE")
             row.label(text=game_path)
 
-        # ── 一键载入：按上面那条游戏路径自动找 .uvs（并带上序列帧大图）─────────
-        # 手动一层层找 .efx → .uvs → .tex 太麻烦，这里照 mod3 联动那套做正层级载入。
+        # ── 一键载入 ────────────────────────────────────────────────────────
         from . import uvs_link as _link
         box = layout.box()
         row = box.row(align=True)

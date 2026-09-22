@@ -1,20 +1,10 @@
-"""
-blender_efx/operators.py  —  导入/导出算子 + 预设算子 + FileHandler
+"""EFX 导入、导出与辅助算子。
 
-约束（参照 CLAUDE.md）：
-  - Python 3.10 语法（兼容 Blender 3.6～5.x）
-  - bpy 只用稳定子集：Operator / ImportHelper / ExportHelper / register_class
-  - FileHandler：Blender 4.1+ 稳定 API（4.3.2 / 5.1 均有）
-  - 不使用 5.x 新增 API
-  - 不改 io_tree.py / efx_format/
-
-字段复用：efx.copy_attribute_fields / efx.paste_attribute_fields（即时内存剪贴板）。
-  （旧「字段值预设」算子 save/apply_attribute_preset 已移除，整属性预设见 attribute_ops。）
-
-拖入导入（FileHandler）：
-  EFX_FH_import  —  注册 .efx 文件拖入 3D 视口时调用 efx.import_efx
-  efx.import_efx 补充 files+directory 属性支持 FileHandler 调用约定，
-  同时保持原有"文件浏览器/按钮选文件导入"用法不变。
+维护约束：
+- FileHandler 和文件浏览器都必须复用同一导入执行路径。
+- 可选 mod3/UVS 联动失败不得影响 EFX 导入，未解析项目须汇总报告。
+- 导出目标按显式活动 EFX、活动对象所属根的顺序解析；没有明确目标时交由用户选择。
+- 导出选项只控制导出前修正，原始字段和未知结构仍由 io_tree/fields 的回退路径处理。
 """
 
 import os
@@ -33,22 +23,8 @@ from .i18n import T
 from . import root_collection as _rc
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 内部工具：从 context 解析 EFX_ROOT 集合
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _find_efx_root(context):
-    """
-    解析当前活动 EFX 顶层文件集合（root_col）。
-
-    优先 context.active_object 归属的集合（O(1)，见 root_collection.find_root_collection）；
-    若无活动对象或解析不到，退回 context.collection（大纲当前选中的集合，可能就是
-    某个 EFX_ROOT 集合本身，比如用户直接点了顶层紫色集合）。
-
-    返回
-    ----
-    bpy.types.Collection 或 None
-    """
+    """按活动对象、当前集合的顺序解析 EFX 根。"""
     obj = context.active_object
     if obj is not None:
         root = _rc.find_root_collection(obj)
@@ -62,10 +38,6 @@ def _find_efx_root(context):
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EFX_OT_import
-# ─────────────────────────────────────────────────────────────────────────────
-
 class EFX_OT_import(bpy.types.Operator, ImportHelper):
     """导入 MHW .efx 特效文件，在场景中建立对象树"""
 
@@ -74,7 +46,6 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
     bl_description = "Import an MHW EFX effect file (.efx)"
     bl_options     = {"REGISTER", "UNDO"}
 
-    # ImportHelper 所需：文件扩展名与过滤器
     filename_ext = ".efx"
     filter_glob: StringProperty(
         default="*.efx",
@@ -82,10 +53,7 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         maxlen=255,
     )
 
-    # FileHandler 支持：FileHandler 调用时传入 directory + files（OperatorFileListElement 列表）
-    # ImportHelper 提供的 filepath 在单文件菜单路径下使用；
-    # FileHandler 拖入时使用 directory + files 约定（Blender 4.1+ FileHandler 标准）。
-    # 两种调用路径均由同一个 execute 统一处理。
+    # 拖入使用 directory/files，文件浏览器使用 filepath。
     files: CollectionProperty(
         type=bpy.types.OperatorFileListElement,
         options={"HIDDEN", "SKIP_SAVE"},
@@ -95,8 +63,6 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         options={"HIDDEN", "SKIP_SAVE"},
     )
 
-    # 可勾选项（默认关）：导入时一并把 MESH 属性引用的 mod3（含 mrl3+材质）经 Model Editor 导入并绑定。
-    # Model Editor 缺席时此项无效（draw 里禁用）。
     import_meshes: BoolProperty(
         name="Import referenced meshes (mod3)",
         description="同时把每个 MESH 属性引用的 mod3（含 mrl3 与材质）经 MHW Model Editor 导入并绑定到预览。"
@@ -105,9 +71,6 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         options={"SKIP_SAVE"},
     )
 
-    # 可勾选项（默认关）：导入时顺着 UVSEQUENCE 的 uvsPath 把 .uvs 载进属性，并尽量
-    # 把它引用的 .tex 序列帧大图转出来绑成参考图（见 uvs_link.py 的三层引用说明）。
-    # 与 import_meshes 对称：Model Editor 缺席时只影响贴图那一步，.uvs 照样能载。
     import_uvs: BoolProperty(
         name="Import referenced .uvs (+ sprite sheets)",
         description="顺着每个 UVSEQUENCE 属性填的路径载入 .uvs；并按该属性的 sequenceNo 取对应 group 的"
@@ -116,10 +79,7 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
         options={"SKIP_SAVE"},
     )
 
-    # EFX Color Editor 分支：勾选后整个工具切换成"只管颜色"的傻瓜调色模式——
-    # 完整解析+建树完全不变（数据 100% 保留，导出仍是完整合法 .efx），只是把
-    # 非颜色内容从 Outliner 隐藏（View Layer 排除，不删数据）。见 io_tree.py
-    # ::import_efx_tree 的 color_editor_mode 参数 + _apply_color_editor_view。
+    # 颜色模式隐藏非颜色内容，但保留完整对象树用于导出。
     import_only_colors: BoolProperty(
         name="Import Only Colors",
         description="只暴露含颜色/亮度字段的 entry 与 attribute，其余内容（结构编辑/TIML/"
@@ -130,17 +90,11 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
     )
 
     def invoke(self, context, event):
-        # FileHandler 拖入：不再静默导入，弹一个属性对话框让用户确认 / 勾选是否一并导入 mesh。
-        # （ImportHelper 默认 invoke 总是开浏览器，会让拖入"无反应"——故拖入走 props_dialog。）
         if self.directory and self.files:
             return context.window_manager.invoke_props_dialog(self)
-        # 普通菜单/按钮：走 ImportHelper 的文件浏览器（选项显示在浏览器侧栏的 draw 里）。
         return ImportHelper.invoke(self, context, event)
 
     def draw(self, context):
-        # 文件浏览器侧栏 / 拖入对话框共用：仅颜色开关 + mesh 导入开关 + chunk root。
-        # 两者互斥（Color Editor 是傻瓜调色模式，不需要 mod3 相关控件）：勾了
-        # "仅导入颜色"就不再显示 mesh 导入选项。
         layout = self.layout
         layout.prop(self, "import_only_colors")
         if self.import_only_colors:
@@ -161,9 +115,6 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
     def execute(self, context):
         import os
 
-        # ── 收集要导入的路径列表 ─────────────────────────────────────────────
-        # 优先使用 files+directory（FileHandler 拖入路径）；
-        # 若 files 为空则退回到 ImportHelper 的 self.filepath（菜单选文件路径）。
         paths = []
         if self.files and self.directory:
             for f in self.files:
@@ -171,7 +122,6 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
                     paths.append(os.path.join(self.directory, f.name))
 
         if not paths:
-            # 菜单/按钮单文件路径
             if self.filepath:
                 paths = [self.filepath]
 
@@ -179,10 +129,9 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
             self.report({"ERROR"}, "EFX import: no file path specified")
             return {"CANCELLED"}
 
-        # ── 逐文件导入 ───────────────────────────────────────────────────────
         imported = []
         imported_roots = []
-        imported_paths = []   # 与 imported_roots 一一对应的源文件路径（用于 mod3 同目录兜底）
+        imported_paths = []
         errors = []
         for filepath in paths:
             try:
@@ -202,8 +151,6 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
                     "corrupted or use an unsupported format; see the system console for details.",
                 )
 
-        # ── 导入后按 TRANSFORM3D + 绑定骨骼(jointNo) 摆放各特效体 ────────────
-        # 骨架取 N 面板的 Scene.efx_armature（未选则以世界原点为基准）。
         if imported_roots:
             try:
                 from . import transform_sync
@@ -212,10 +159,9 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
                 for root_obj in imported_roots:
                     transform_sync.sync_all_transform3d(root_obj, armature, use_anchor=use_anchor)
             except Exception:
-                pass  # 摆位是可视化增强，失败不影响导入本身
+                pass
 
-        # ── 可勾选：一并导入 MESH 属性引用的 mod3（含 mrl3+材质）并绑定 ──────────────
-        # 默认关；仅当用户勾选 + Model Editor 在场时执行。失败不影响 EFX 导入本身。
+        # 可选资源联动不得阻断 EFX 导入。
         if imported_roots and self.import_meshes and not self.import_only_colors:
             from . import mod3_link
             if not mod3_link.model_editor_available():
@@ -239,8 +185,6 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
                     detail = "；".join(f"{n}（{r}）" for n, r in all_unresolved[:6])
                     self.report({"WARNING"}, f"{len(all_unresolved)} 个 mod3 未找到（检查 Chunk Root）：{detail}")
 
-        # ── 可勾选：顺着 UVSEQUENCE 的路径载入 .uvs（+ 序列帧大图）────────────────
-        # 默认关。失败不影响 EFX 导入本身，但**不静默**：未解决的逐条汇总提示。
         if imported_roots and self.import_uvs and not self.import_only_colors:
             from . import uvs_link
             chunk_root = getattr(context.scene, "efx_chunk_root", "") or ""
@@ -261,22 +205,12 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
             names = ", ".join(imported)
             self.report({"INFO"}, f"EFX import complete: {names}")
 
-        # 有任何成功导入则返回 FINISHED；全部失败才返回 CANCELLED
         if imported:
             return {"FINISHED"}
         return {"CANCELLED"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EFX_OT_export：目标 EFX 集合选择 + 文件名默认值/"记住自定义名"
-# ─────────────────────────────────────────────────────────────────────────────
-
-# 会话级记忆（模块全局，跨多次导出调用持续，Blender 重启清空）：
-#   _last_export_name  用户上次手动改过的导出文件名（不含扩展名）；None = 跟随目标集合名自动生成。
-#   _last_export_dir    用户上次导出用的目录，下次默认沿用；None = 回退到 .blend 所在目录。
-#   _last_export_target_seen  draw() 里检测"用户是否手动改了目标集合下拉"的基准值
-#     （WindowManager 属性的 update 回调收到的是 wm 而非算子实例，摸不到 self.filepath，
-#     故改在 draw() 里逐帧比对；invoke() 设默认值后同步这个值，避免首次绘制误判为用户改动）。
+# 导出名称、目录和目标选择的会话状态。
 _last_export_name = None
 _last_export_dir = None
 _last_export_target_seen = None
@@ -293,11 +227,7 @@ def _export_target_poll(self, col):
 
 
 def _default_export_basename(collection) -> str:
-    """
-    按集合名生成默认导出文件名（不含扩展名）：
-      去掉 Blender 因重名追加的 ".001" 等后缀，再去掉集合名里已带的 ".efx" 后缀。
-    collection 为 None（未选定目标）时返回 "untitled"。
-    """
+    """从集合名生成无 Blender 重名后缀和扩展名的默认文件名。"""
     if collection is None:
         return "untitled"
     name = re.sub(r'\.\d{3}$', '', collection.name)
@@ -307,12 +237,7 @@ def _default_export_basename(collection) -> str:
 
 
 def _resolve_default_export_collection(context):
-    """
-    导出目标集合的默认值解析：
-      1. Scene.efx_active_efx（N 面板 Active EFX 选择器）已指向合法 EFX 集合 → 用它。
-      2. 否则回退：当前活动对象所属的 EFX 顶层文件集合（_find_efx_root 解析）。
-      3. 都没有 → None（留给用户在导出弹窗里自己选）。
-    """
+    """按活动 EFX、活动对象所属根的顺序选择导出目标。"""
     scn = getattr(context, "scene", None)
     active_col = getattr(scn, "efx_active_efx", None) if scn is not None else None
     if _efx_root_in_collection(active_col) is not None:
@@ -332,7 +257,6 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
     bl_description = "Export the EFX object tree to an MHW .efx file"
     bl_options     = {"REGISTER", "UNDO"}
 
-    # ExportHelper 所需：文件扩展名
     filename_ext = ".efx"
     filter_glob: StringProperty(
         default="*.efx",
@@ -340,36 +264,26 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         maxlen=255,
     )
 
-    # 自动重算 filesize_double（doubleBuffer，header 偏移 68）。
-    # 勾选：导出后将其设为 max(Root 值, ceil16(2.0 × 文件大小))，防止增量编辑后缓冲偏小
-    # 导致特效消失。⚠ 系数曾用 2.75，实测 buffer 过大也会 CTD（wp09_050），已下调到 2.0。
-    # 不勾：原样使用 Root 里 hdr_double_buffer 的值（byte-perfect 往返）。
+    # 自动值不得小于已有值或 16 对齐的两倍文件大小。
     recompute_double_buffer: BoolProperty(
         name=T("export.recompute_db"),
         description=T("export.recompute_db_tip"),
         default=True,
     )
 
-    # 自动校正 header.is_3d（2D/3D 特效类型标志，header 偏移 32）。
-    # 勾选：文件内容只有 2D 或只有 3D 类型时，自动把 is_3d 设为匹配值（0/1）；
-    # 内容混用 2D+3D 时不动，交给导出校验的 WARN 提示手动处理。
-    # 不勾：原样使用 Root 里 hdr_is_3d 的值——刻意测试 mismatch 场景时应关闭。
+    # 仅在内容维度单一时自动校正 is_3d。
     auto_fix_is_3d: BoolProperty(
         name=T("export.auto_fix_is3d"),
         description=T("export.auto_fix_is3d_tip"),
         default=True,
     )
 
-    # 导出前按游戏惯用顺序静默重排每个 entry 内的属性（见 reorder.py::auto_sort_entry_attributes）。
-    # 不勾：保留用户自己排的属性顺序，不做任何调整。
     auto_sort_attributes: BoolProperty(
         name=T("export.auto_sort"),
         description=T("export.auto_sort_tip"),
         default=True,
     )
 
-    # 导出时把每条 TIML 动画长度精确设为 末关键帧+1（逐轴 A0/A1）。
-    # 理由：帧长 ≤ 实际结束帧会导致游戏内动画播不完，+1 刚好覆盖到末帧之后。
     recalc_timl_length: BoolProperty(
         name=T("export.recalc_timl_len"),
         description=T("export.recalc_timl_len_tip"),
@@ -382,8 +296,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         wm = context.window_manager
         layout.prop(wm, "efx_export_target", text=T("export.target_efx"))
 
-        # WindowManager 属性没法在 update 回调里摸到这个算子实例（收到的是 wm 不是 self），
-        # 改在 draw() 里逐帧比对：目标集合变了就刷新文件名为该集合默认名（放弃自定义名）。
+        # 目标变化时重置为对应的默认文件名。
         cur = wm.efx_export_target
         if cur is not _last_export_target_seen:
             _last_export_target_seen = cur
@@ -394,8 +307,6 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
         layout.prop(self, "recompute_double_buffer")
         if not self.recompute_double_buffer and cur is not None and "hdr_double_buffer" in cur:
-            # 不自动重算：手填 filesize_double（doubleBuffer）原样使用的值。
-            # 挪到导出弹窗里紧跟勾选框下面，免去单独开 ROOT 面板找这一个字段。
             box = layout.box()
             box.prop(cur, '["hdr_double_buffer"]', text=T("entry.double_buffer"))
             tip = box.row()
@@ -422,9 +333,6 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         return {"RUNNING_MODAL"}
 
     def execute(self, context):
-        # ── 1. 解析要导出的 EFX_ROOT ─────────────────────────────────────────
-        # 优先用导出弹窗里选的 efx_export_target；否则 N 面板的 Active EFX；否则活动对象所属的 EFX。
-        # 这样不必非得选中 EFX 内某个对象——选好任一个即可导出。
         from .add_ops import get_active_efx_root
         target_col = context.window_manager.efx_export_target
         root = _efx_root_in_collection(target_col) or get_active_efx_root(context) or _find_efx_root(context)
@@ -435,9 +343,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             )
             return {"CANCELLED"}
 
-        # ── 1.5 导出前校验（#4）：仅真正的 ERROR（重复 index / 互斥块等）取消导出 ──
-        # 悬空指针 / EOF 越界 raw 哨兵已降级为 WARN：导出端安全跳过/清理，不挡导出，
-        # 仅在导出后弹窗报告（让用户知道哪些引用被跳过/清理）。
+        # 仅 ERROR 级校验阻断导出；其他问题在成功后汇总报告。
         from .validate import validate_efx_tree, detect_dimension_entries
         problems = validate_efx_tree(root)
         errors = [p for p in problems if p["level"] == "ERROR"]
@@ -453,13 +359,10 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             self.report({"ERROR"}, f"EFX export cancelled: {len(errors)} validation error(s)")
             return {"CANCELLED"}
 
-        # 收集导出会跳过/清理的引用（悬空指针 + EOF 越界 raw），导出成功后报告
         skipped = [p for p in problems
                    if p.get("category") in ("dangling", "eof_raw")]
 
-        # ── 1.65 导出前规范化：efx_index 撞车重编号 + 满命名（结构权威下放）────────────
-        # 兜底原生 Shift+D 造成的同级 index 撞车（重编号成唯一 0..n-1）+ 给会话中新增/
-        # 未命名段补标签。放在 auto_sort 之前：先化解撞车，再由 auto_sort 施加类型顺序。
+        # 先规范索引与标签，再按类型排序属性。
         try:
             from . import normalize
             if normalize.normalize_root(root):
@@ -467,13 +370,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         except Exception:
             pass  # 规范化失败不阻断导出
 
-        # ── 1.66 导出前自动校正 header.is_3d（可通过 auto_fix_is_3d 关闭）───────────
-        # is_3d 是文件级 2D/3D 特效类型标志（见 memory header-is-3d-flag-discovery）：
-        # 语料库 10162 样本零例外——含 TRANSFORM2D 的 entry 只出现在 is_3d=0 文件，
-        # 含 TRANSFORM3D 的只出现在 is_3d=1 文件；实机确认 mismatch（尤其叠加
-        # SHADERSETTINGS/ALPHACORRECTION 等修饰属性后）会导致游戏闪退。
-        # 只在文件内容单一（只有 2D 或只有 3D）时才自动改；两者都有（混用）不动，
-        # 留给 validate 的 (5l) WARN 提示用户手动决定——这种情况没有"正确"的自动值。
+        # 混用 2D/3D 时没有安全的自动值，保留原设置。
         if self.auto_fix_is_3d:
             try:
                 dim_2d, dim_3d = detect_dimension_entries(root)
@@ -486,17 +383,15 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
                 if correct_is_3d is not None and str(root.get("hdr_is_3d", "")) != correct_is_3d:
                     root["hdr_is_3d"] = correct_is_3d
             except Exception:
-                pass  # 校正失败不阻断导出
+                pass
 
-        # ── 1.7 导出前静默规范化属性顺序（可通过 auto_sort_attributes 关闭）────────────
         if self.auto_sort_attributes:
             try:
                 from .reorder import auto_sort_entry_attributes
                 auto_sort_entry_attributes(root)
             except Exception:
-                pass  # 排序失败不阻断导出
+                pass
 
-        # ── 2. 导出为字节 ───────────────────────────────────────────────────
         try:
             data = io_tree.export_efx_tree(root, recalc_timl_length=self.recalc_timl_length)
         except Exception:
@@ -508,9 +403,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             )
             return {"CANCELLED"}
 
-        # root_attr_dropped 是本次 export_efx_tree 调用才算出来的（跟 eof_dropped
-        # 不同，不是导入时就有的），第 440 行那次 pre-export validate 看不到——
-        # 导出完直接读 root 上的最新值，并进 skipped 那个统一弹窗一起报。
+        # root 属性删除信息仅能在导出后取得。
         _root_attr_dropped = str(root.get("root_attr_dropped", ""))
         if _root_attr_dropped:
             skipped.append({
@@ -518,11 +411,6 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
                 "msg": f"Attribute(s) dropped (wrong entry type for their kind): {_root_attr_dropped}",
             })
 
-        # ── 2.5 自动重算 filesize_double（doubleBuffer @ header 偏移 68，uint LE）──
-        # 公式：max(原值, ceil16(2.0 × 文件大小))。原地覆写 4 字节（不改文件长度，
-        # 故 len(data) 即最终文件大小）。只增不减：未变大的文件仍保留原值。
-        # ⚠ 系数从 2.75 下调到 2.0：实测 buffer 过大同样会 CTD（wp09_050 原值 1.55×
-        #   工作正常，2.75×→21040 崩），2.75 并非安全上界；2.0 折中降低超额风险。
         _db_note = ""
         if self.recompute_double_buffer:
             import math
@@ -530,11 +418,10 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
             new_db = max(old_db, (math.ceil(2.0 * len(data)) + 15) // 16 * 16)
             if new_db != old_db:
                 data = data[:68] + struct.pack("<I", new_db) + data[72:]
-                # 同步回写 Root，保持 UI 显示与文件一致
+                # 保持 UI 与写出字节一致。
                 root["hdr_double_buffer"] = str(new_db)
             _db_note = f", filesize_double {old_db}→{new_db}"
 
-        # ── 3. 写文件 ───────────────────────────────────────────────────────
         try:
             with open(self.filepath, "wb") as f:
                 f.write(data)
@@ -545,7 +432,6 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
                                     "whether the file is open in another program.")
             return {"CANCELLED"}
 
-        # ── 3.5 报告被跳过/清理的引用（悬空指针 + EOF 越界 raw 哨兵）──────────────
         if skipped:
             def _draw_skipped(self_menu, ctx):
                 col = self_menu.layout.column()
@@ -561,9 +447,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
                 _draw_skipped, title=T("op.export_skipped_title"), icon="INFO",
             )
 
-        # ── 3.6 记住本次用的文件名/目录，供下次导出弹窗默认值使用 ─────────────────
-        # 与自动默认名一致 → 视为"跟随目标集合"，下次继续自动生成；
-        # 不一致 → 视为用户自定义，下次沿用（除非用户在弹窗里手动重选 efx_export_target）。
+        # 仅记忆不同于自动默认名的用户自定义文件名。
         global _last_export_name, _last_export_dir
         _last_export_dir = os.path.dirname(self.filepath)
         used_base = os.path.splitext(os.path.basename(self.filepath))[0]
@@ -577,14 +461,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         return {"FINISHED"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 即时复制/粘贴（内存剪贴板）
-#   （旧「字段值预设」算子 EFX_OT_save/apply_attribute_preset 已移除：属性预设改为
-#    attribute_ops 的整属性增删机制；字段复用保留为下方的即时复制/粘贴。）
-# ─────────────────────────────────────────────────────────────────────────────
-
-# 模块级内存剪贴板：{"type_hash": str, "fields": {...同 preset JSON fields 结构...}}
-# 不写磁盘，会话级生命周期（Blender 重启清空）。
+# 模块级字段剪贴板，不写磁盘。
 _FIELD_CLIPBOARD = {}
 
 
@@ -644,7 +521,7 @@ class EFX_OT_paste_attribute_fields(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        """剪贴板为空、或当前属性不可编辑、或类型不符时灰显。"""
+        """仅在剪贴板非空且活动属性类型匹配时启用。"""
         if not _FIELD_CLIPBOARD:
             return False
         obj = context.active_object
@@ -654,7 +531,6 @@ class EFX_OT_paste_attribute_fields(bpy.types.Operator):
             bp = obj.efx_block
             if not bp.is_editable:
                 return False
-            # 类型不匹配时灰显
             return _FIELD_CLIPBOARD.get("type_hash", "") == bp.type_hash_str
         except AttributeError:
             return False
@@ -667,8 +543,6 @@ class EFX_OT_paste_attribute_fields(bpy.types.Operator):
         clip_hash = _FIELD_CLIPBOARD.get("type_hash", "")
         fields_dict = _FIELD_CLIPBOARD.get("fields", {})
 
-        # 收集选中的、类型匹配且可编辑的 EFX_ATTRIBUTE；未多选（或选中里没有匹配类型）
-        # 时退化为只粘贴到 active（execute 再守一次类型校验，同 poll 逻辑）。
         targets = [
             o for o in context.selected_objects
             if o.get("~TYPE") == "EFX_ATTRIBUTE"
@@ -687,7 +561,7 @@ class EFX_OT_paste_attribute_fields(bpy.types.Operator):
                 return {"CANCELLED"}
             targets = [active]
 
-        # 写入字段值（复用 presets.py 的 _json_value_to_item + _LOADING 守卫）
+        # 加载守卫避免逐字段写入重复触发更新回调。
         total_written = 0
         old_loading = _fields._LOADING
         _fields._LOADING = True
@@ -725,10 +599,6 @@ class EFX_OT_paste_attribute_fields(bpy.types.Operator):
         return {"FINISHED"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# #2 字段说明 tooltip 算子
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _is_ptbehavior_attribute(obj) -> bool:
     """obj 是否为可编辑的 PTBEHAVIOR EFX_ATTRIBUTE。"""
     if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
@@ -741,8 +611,7 @@ def _is_ptbehavior_attribute(obj) -> bool:
         return False
 
 
-# 动态 EnumProperty items 引用保活（防 GC：见 memory enum-callback-gc-trap）。
-# identifier/name 全 ASCII（key 为十进制串、label 为已知英文名或 0x%08X），规避中文乱码。
+# 动态 EnumProperty 项必须由 Python 持有，避免 Blender 引用失效。
 _PTB_ADD_ENUM_CACHE = []
 
 
@@ -757,7 +626,6 @@ def _ptb_add_enum_items(self, context):
             ident = str(key)
             desc = "type=0x{:02X}".format(t)
             if dti_only:
-                # DTI 补项：引擎认识，但官方文件一次没写过（默认值全 0）
                 desc += "  ·  not used in any official file"
             items.append((ident, label, desc))
     if not items:
@@ -815,11 +683,7 @@ class EFX_OT_ptb_add_override(bpy.types.Operator):
 
 
 class EFX_OT_ptb_add_override_search(bpy.types.Operator):
-    """按名字模糊搜索要添加的覆盖属性（合并目录上百项，下拉翻不动时用这个）。
-
-    走 Blender 原生 `WindowManager.invoke_search_popup()`，跟
-    efx.attribute_add_search 同一套写法；选中后直接转调 efx.ptb_add_override，
-    新增逻辑只有一份。"""
+    """通过原生搜索弹窗选择并新增 PTBEHAVIOR 覆盖属性。"""
 
     bl_idname      = "efx.ptb_add_override_search"
     bl_label       = "Search Property"
@@ -845,12 +709,12 @@ class EFX_OT_ptb_add_override_search(bpy.types.Operator):
         return bpy.ops.efx.ptb_add_override(key_choice=self.key_choice)
 
 
-# b_type 下拉的 items 回调（同样要保活，见 enum-callback-gc-trap）
+# b_type 枚举项保活。
 _PTB_BTYPE_ENUM_CACHE = []
 
 
 def _ptb_btype_enum_items(self, context):
-    """b_type 下拉：列出所有已知行为类（语料见过的 + DTI 补的），当前值不在表里也补上。"""
+    """列出已知行为类，并保留当前未知值。"""
     global _PTB_BTYPE_ENUM_CACHE
     from ..efx_format.ptbehavior.edit import known_btypes, catalog_for_btype
 
@@ -875,10 +739,7 @@ def _ptb_btype_enum_items(self, context):
 
 
 class EFX_OT_ptb_set_btype(bpy.types.Operator):
-    """切换 PTBEHAVIOR 的行为类（b_type）。
-
-    换类等于换了一整张属性表：新表里没有的覆盖项会被丢掉（数量在结果里报出来），
-    保留下来的按新表的规范顺序重排。"""
+    """切换行为类；不在新类目录中的覆盖项会被删除并报告。"""
 
     bl_idname      = "efx.ptb_set_btype"
     bl_label       = "Behavior Type"
@@ -971,12 +832,6 @@ class EFX_OT_ptb_remove_override(bpy.types.Operator):
         return {"FINISHED"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MATERIAL 材质槽增删（Phase C，核心逻辑 fields.material_current_bytes /
-# reinit_material_from_bytes + efx_format/material_edit.py，对称于 PTBEHAVIOR
-# 覆盖项增删）
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _is_material_attribute(obj) -> bool:
     """obj 是否为可编辑的 MATERIAL EFX_ATTRIBUTE。"""
     if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
@@ -989,13 +844,12 @@ def _is_material_attribute(obj) -> bool:
         return False
 
 
-# 动态 EnumProperty items 引用保活（防 GC：见 memory enum-callback-gc-trap）。
+# 动态 EnumProperty 项保活。
 _MATERIAL_SHADER_ENUM_CACHE = []
 
 
 def _material_shader_enum_items(self, context):
-    """材质类型下拉：112 种已知类型（identifier=十进制 hash 串，规避中文乱码；
-    Blender 长列表原生自带搜索过滤框，不需要额外实现）。"""
+    """返回可搜索的材质类型枚举项。"""
     global _MATERIAL_SHADER_ENUM_CACHE
     from ..efx_format.material import meta as _mm
 
@@ -1048,9 +902,7 @@ class EFX_OT_material_add_block(bpy.types.Operator):
 
 
 def _material_bound_mesh_objects(material_obj):
-    """从同一 EFX_ENTRY 下的 MESH 属性 (efx_mesh_targets) 收集已联动导入绑定的
-    Blender 网格对象；没开「同时导入引用的 mesh」或还没导入时返回空列表
-    （见 blender_efx/mod3_link.py）。"""
+    """收集同一 Entry 内 MESH 属性绑定的网格对象。"""
     objs = []
     parent = getattr(material_obj, "parent", None)
     if parent is None:
@@ -1073,15 +925,12 @@ def _material_bound_mesh_objects(material_obj):
     return objs
 
 
-# 动态 EnumProperty items 引用保活（见 memory enum-callback-gc-trap）。
+# 动态 EnumProperty 项保活。
 _MATERIAL_NAME_ENUM_CACHE = []
 
 
 def _material_name_enum_items(self, context):
-    """从这个 MATERIAL 属性绑定的实际网格材质槽收集候选名字（去重排序），供下拉
-    直接选——比手打省事也不会打错字（mat_name_hash = jamcrc(name)，打错一个字符
-    整个覆盖层就悄无声息地失效，见 material/edit.py::set_block_material_name）。
-    没有绑定网格时返回空列表，UI 退化为纯手动输入。"""
+    """从绑定网格收集去重后的材质名候选。"""
     global _MATERIAL_NAME_ENUM_CACHE
     names = []
     seen = set()
@@ -1189,8 +1038,6 @@ class EFX_OT_material_set_shader(bpy.types.Operator):
         return _is_material_attribute(context.active_object)
 
     def invoke(self, context, event):
-        # block_index 由调用方（面板按钮）在弹窗前预设好，invoke_props_dialog
-        # 只弹 shader_choice 的选择框（原生长列表自带搜索）。
         return context.window_manager.invoke_props_dialog(self)
 
     def draw(self, context):
@@ -1257,13 +1104,7 @@ class EFX_OT_material_remove_block(bpy.types.Operator):
         return {"FINISHED"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MATERIAL 参考 .mrl3 新建材质槽（2026-09，取代此前的"独立过滤器"设计——用户
-# 明确要求从"只窄化材质类型下拉"改成"直接按 mrl3 里的具体材质新建"：选中一条
-# 具体材质后，新槽的材质类型/材质名/贴图路径默认值全部照抄该材质，不再需要
-# 手动逐项填。核心解析见 efx_format/material/mrl3_reader.py。跟 mod3/mesh 依旧
-# 完全解耦——不联动 efx_mesh_target，不需要 Model Editor 插件，纯读一个独立文件。
-# ─────────────────────────────────────────────────────────────────────────────
+# 参考 .mrl3 新建材质槽；独立于网格联动和 Model Editor。
 
 class EFX_OT_material_pick_mrl3_reference(bpy.types.Operator, ImportHelper):
     """选一个 .mrl3 文件作为参考，供"从 mrl3 添加材质槽"读取里面的具体材质"""
@@ -1296,10 +1137,7 @@ class EFX_OT_material_pick_mrl3_reference(bpy.types.Operator, ImportHelper):
             self.report({"WARNING"}, "No materials found in this .mrl3")
             return {"CANCELLED"}
 
-        # 同目录同名 .mod3 常和这份 .mrl3 是同一个资源导出的一对（如
-        # md_wp11_000.mrl3 + md_wp11_000.mod3）；.mod3 存着真实材质名字符串，
-        # .mrl3 只存 jamcrc 后的哈希——两者按 jamcrc 对上号就能精确复原真名，
-        # 不需要嵌入社区反查表（见 material_name_cache.py 的取舍说明）。
+        # 同名 mod3 可补充 mrl3 未携带的材质名。
         n_named = 0
         mod3_path = os.path.splitext(self.filepath)[0] + ".mod3"
         if os.path.isfile(mod3_path):
@@ -1342,7 +1180,7 @@ class EFX_OT_material_clear_mrl3_reference(bpy.types.Operator):
         return {"FINISHED"}
 
 
-# 动态 EnumProperty items 引用保活（见 memory enum-callback-gc-trap）。
+# 动态 EnumProperty 项保活。
 _MATERIAL_REF_ENUM_CACHE = []
 
 
@@ -1361,10 +1199,7 @@ def _read_ref_materials(context):
 
 
 def _material_ref_enum_items(self, context):
-    """参考 mrl3 里每条材质一个选项：[序号] 材质类型名（未知类型显示 hash），
-    若这次拾取时靠同名 .mod3 解出了真材质名（见 EFX_OT_material_pick_mrl3_reference）
-    则连同真名一起显示；tooltip 带材质名哈希和贴图/参数数，供"从 mrl3 添加
-    材质槽"选择。"""
+    """为参考 mrl3 的每条材质生成选择项。"""
     global _MATERIAL_REF_ENUM_CACHE
     from ..efx_format.material import meta as _mm
     from . import material_name_cache as _mnc
@@ -1439,8 +1274,7 @@ class EFX_OT_material_add_from_mrl3(bpy.types.Operator):
                 _me.fill_slot_path(block, s['t'], path)
                 n_filled += 1
 
-        # 着色器参数：mrl3 的 resource buffer 里读到真实默认值时才新建（凭空
-        # 编个 0 可能比游戏真实默认值更容易让材质显得"坏了"，见 add_param 文档）。
+        # 仅为参考文件提供的参数创建默认值。
         n_params = 0
         shader_hash = mat['mmtr_hash'] & 0xFFFFFFFF
         schema = _mp.MATERIAL_SHADER_PARAMS.get(shader_hash, {})
@@ -1463,11 +1297,7 @@ class EFX_OT_material_add_from_mrl3(bpy.types.Operator):
 
 
 class EFX_OT_field_help(bpy.types.Operator):
-    """
-    纯提示算子：执行无副作用，description 动态返回字段注释。
-    在 EFX_ATTRIBUTE 字段面板中，有注释的字段旁会显示 ⓘ 图标；
-    悬停该图标即可在 tooltip 中读取 BT 注释说明。
-    """
+    """只读字段说明提示算子。"""
 
     bl_idname      = "efx.field_help"
     bl_label       = "Field Description"
@@ -1495,7 +1325,6 @@ class EFX_OT_field_help(bpy.types.Operator):
         return ann if ann else ""
 
     def execute(self, context):
-        # 纯提示算子，不做任何修改
         return {"CANCELLED"}
 
 
@@ -1595,25 +1424,14 @@ class EFX_OT_randomfix_set_table_group(bpy.types.Operator):
         return {"CANCELLED"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FileHandler：拖入 3D 视口导入 .efx
-# ─────────────────────────────────────────────────────────────────────────────
-#
-# ⚠ 版本守卫：FileHandler 是 Blender 4.1+ API。3.6 等老版本 bpy.types.FileHandler
-# 不存在，直接 `class X(bpy.types.FileHandler)` 会在模块加载期 AttributeError，
-# 导致整个插件导入失败。故仅当存在时才定义 + 注册（老版本无拖入导入，菜单导入照常）。
+# FileHandler 仅在 Blender 提供该 API 时定义与注册。
 
 _HAS_FILEHANDLER = hasattr(bpy.types, "FileHandler")
 EFX_FH_import = None
 
 if _HAS_FILEHANDLER:
     class EFX_FH_import(bpy.types.FileHandler):
-        """
-        .efx 文件拖入 3D 视口时触发的 FileHandler（Blender 4.1+）。
-
-        把 .efx 拖到 3D 视口（VIEW_3D / WINDOW）即调用 efx.import_efx。
-        bl_import_operator 必须是已注册算子的 bl_idname；poll_drop 决定可拖放区域。
-        """
+        """将 3D 视口的 .efx 拖入转交给导入算子。"""
 
         bl_idname          = "EFX_FH_import"
         bl_label           = "Import EFX"
@@ -1622,7 +1440,7 @@ if _HAS_FILEHANDLER:
 
         @classmethod
         def poll_drop(cls, context):
-            """仅在 3D 视口（VIEW_3D）的 WINDOW 区域允许拖放。"""
+            """仅允许在 3D 视口内容区拖放。"""
             return (
                 context.area is not None
                 and context.area.type == "VIEW_3D"
@@ -1630,14 +1448,6 @@ if _HAS_FILEHANDLER:
                 and context.region.type == "WINDOW"
             )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 注册 / 注销
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 从零新建 EFX 集合（无需导入文件）
-# ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_new_efx(bpy.types.Operator):
     """新建一个空白 EFX 集合（根对象 + 4 个空子集合），之后可直接添加 Action/Extern/Entry"""
@@ -1661,17 +1471,15 @@ class EFX_OT_new_efx(bpy.types.Operator):
         stem = self.name.strip() or "new_efx"
         col_name = stem + ".efx"
 
-        # ── 顶层文件集合（紫色，~TYPE=EFX_ROOT，本身即"文件"，不再建 Empty）────────
         scene_col = context.scene.collection
         root_col = _rc.new_root_collection(col_name, scene_col)
 
-        # header：使用语料库最普遍值（从 78 精选样本统计）
-        root_col["hdr_signature"]       = "45465800"      # "EFX\x00"
+        root_col["hdr_signature"]       = "45465800"
         root_col["hdr_version"]         = "711800"
         root_col["hdr_constant"]        = "402786304,0,1254190883,402786304,402786304"
-        root_col["hdr_efxr"]            = "65667872"      # "efxr"
+        root_col["hdr_efxr"]            = "65667872"
         root_col["hdr_is_3d"]           = "1"
-        root_col["hdr_unkn1"]           = "4294967295"    # 0xFFFFFFFF
+        root_col["hdr_unkn1"]           = "4294967295"
         root_col["hdr_count_body"]      = "0"
         root_col["hdr_label_size"]      = "1"
         root_col["hdr_count_play"]      = "0"
@@ -1681,29 +1489,23 @@ class EFX_OT_new_efx(bpy.types.Operator):
         root_col["hdr_count_eof"]       = "0"
         root_col["hdr_double_buffer"]   = "15000"
 
-        # label_bytes：单 null 字节；labels_dirty=1 让导出端按实际内容重建
+        # 新文件的标签表由导出端按实际内容重建。
         root_col["label_bytes"]  = _b64.b64encode(b"\x00").decode("ascii")
         root_col["label_tail"]   = ""
         root_col["labels_dirty"] = 1
         root_col["eof_ints"]     = ""
         root_col["eof_tail"]     = ""
-        # per_entry 是唯一模型（见 entry_action_ref §3），新建文件同样如此，
-        # 使新增 entry 后可用 Direct Trigger 切换（efx.eof_toggle_entry）。
         root_col["eof_model"]    = "per_entry"
 
-        # ── 4 个空叶子子集合（与导入时命名一致，~TYPE + efx_root_ptr 反向指针）───────
         _rc.new_leaf_collection(stem + "_2 Entry",     root_col, "EFX_ENTRY")
         _rc.new_leaf_collection(stem + "_0 Action",    root_col, "EFX_ACTION")
         _rc.new_leaf_collection(stem + "_1 Extern",    root_col, "EFX_EXTERN")
         _rc.new_leaf_collection(stem + "_3 Subselect", root_col, "EFX_SUBSELECT")
 
-        # Entry 下预建两个对称子集合（Direct Trigger / Not Direct Trigger），跟导入
-        # 一致：即使还没有任何 entry，也先把结构摆出来，避免用户第一次加 entry 时
-        # 才第一次看到这套约定。
+        # 新 Entry 必须能归属到两个直接触发集合之一。
         _rc.ensure_direct_trigger_collection(root_col)
         _rc.ensure_not_direct_trigger_collection(root_col)
 
-        # Active EFX 自动切换到新建集合
         context.scene.efx_active_efx = root_col
 
         self.report({"INFO"}, f"New EFX created: {col_name}")
@@ -1714,8 +1516,6 @@ _CLASSES = (
     EFX_OT_import,
     EFX_OT_export,
     EFX_OT_new_efx,
-    # 旧字段值预设算子（save/apply_attribute_preset、open_preset_folder）已删：
-    # 属性预设改为 attribute_ops 整属性机制；字段复用保留为即时复制/粘贴。
     EFX_OT_copy_attribute_fields,
     EFX_OT_paste_attribute_fields,
     EFX_OT_ptb_add_override,
@@ -1738,13 +1538,10 @@ _CLASSES = (
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    # FileHandler 仅在 4.1+ 注册（老版本无此 API，跳过拖入导入）
     if _HAS_FILEHANDLER and EFX_FH_import is not None:
         bpy.utils.register_class(EFX_FH_import)
 
-    # 导出弹窗的目标 EFX 集合选择器：算子属性不支持 PointerProperty 指向 datablock
-    # 类型（Collection），故挂在 WindowManager 上（同 add_ops.py::efx_active_efx 的做法），
-    # 换来原生的 ID 搜索控件（图标+名字+清空按钮），而不是普通下拉框。
+    # WindowManager 属性提供原生 Collection ID 搜索控件。
     bpy.types.WindowManager.efx_export_target = PointerProperty(
         name=T("export.target_efx"),
         description=T("export.target_efx_tip"),
@@ -1753,7 +1550,7 @@ def register():
         options={"SKIP_SAVE"},
     )
 
-    # MATERIAL 参考 mrl3 状态（会话级，非 EFX 数据的一部分，挂 Scene）
+    # 参考 mrl3 是会话状态，不属于 EFX 数据。
     bpy.types.Scene.efx_material_ref_mrl3_path = StringProperty(
         name="Reference .mrl3",
         description="Path to a .mrl3 file whose materials can be added as material slots",

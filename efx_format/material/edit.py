@@ -1,31 +1,9 @@
-"""
-efx_format/material/edit.py  —  MATERIAL 结构化编辑核心
+"""编辑 unpack_material() 产生的 MATERIAL values dict。
 
-背景（见 memory 与 material/meta.py 顶部注释）：MATERIAL 是两层嵌套
-（Tex_Block「材质槽」→ Tex_Set「贴图/参数槽」），本模块在 unpack_material
-产出的 values dict 上做编辑/增删，再交给 pack_material 还原字节。已证
-pack_material(unpack_material(x)) == x（5792/5792 官方语料零反例，见
-tools/scan_material_slots.py），故本模块的“未触碰字段 verbatim 保留”策略
-在数学上等价于 PTBEHAVIOR 的逐字段 orig 兜底，不需要额外的 orig_b64 机制。
-
-设计（2026-07 与用户核实过的范围）：
-  - 材质槽（Tex_Block）数量真实可变（实测 0~7），增删走本模块的
-    add_block/remove_block。
-  - 每个材质槽的贴图路径槽位（Tex_Set type=0x80）数量/身份是 shader 类型的
-    固定函数（见 material_meta.MATERIAL_SHADER_SLOTS，24/112 种已实测），
-    **不做增删**——新建材质槽时一次性按 schema 铺满全部已知槽位（初始为空：
-    head=0, path=b''），后续编辑只是「填/清」已存在的槽位（fill_slot_path /
-    clear_slot_path），对应 head 字段在 0（空）↔ 606035435（非空）之间切换
-    （实测 43063/43071 非空槽为 606035435，8 例为罕见离群值 2013850128，
-    未触碰的槽位保留原值不受影响）。
-  - 非路径 set 类型（0x06/0x03/0x0A/0x0C/0x15）里，能按 material/params.py 的
-    (shader_hash, t) 查到名字+类型的（bbool/uint/float/float[2..4]）可编辑
-    （get_param_value/set_param_value），查不到的（t=0 占位、Sampler State
-    引用 0x06、未收录 shader）继续当黑盒，原样保留，不做增删——跟贴图槽位
-    同一个"没有实测/查表依据就不假设"的原则。
-  - shader_hash 的编辑是独立的标量覆盖，不联动改动已有 Tex_Set 列表（改了
-    shader 类型不会引发槽位重新生成，用户如故意选一个不匹配的类型，是其
-    自主选择，不强制一致性——游戏文件本身也没有强制这层一致性）。
+维护约束：
+- Tex_Block 可增删；已知贴图槽由 shader schema 决定，未知 Tex_Set 保持原样。
+- 新建或切换到已知 schema 时使用空路径槽；填充与清空同步更新 path、path_len 与 head。
+- 切换到未知 schema 时不得重建现有 sets，避免丢失无法解释的数据。
 """
 
 import struct
@@ -41,17 +19,7 @@ def _to_signed32(v: int) -> int:
 
 
 def add_block(values: dict, shader_hash: int, material_name: str = "") -> dict:
-    """新建一个材质槽（Tex_Block），append 到 values['blocks']，返回新 block dict。
-
-    按 material_meta.material_slot_schema(shader_hash) 一次性铺满该材质类型的
-    全部已知贴图槽位（初始为空）；无 schema 依据（未实测的 88 种材质类型）则
-    新建空材质槽（sets=[]，仅有 shader_hash，用户导入贴图前无槽位可填——
-    与"没有实测依据不假设完整性"的原则一致）。
-
-    material_name（可选）：目标 mesh 在其 .mrl3 里的材质槽名——留空时
-    mat_name_hash 写 0（在实机语料里不对应任何真实材质，等于"不绑定"，
-    引擎按名字找不到匹配槽就不会套用这个覆盖层，见 set_block_material_name）。
-    """
+    """新建并追加 Tex_Block；已知 shader 使用完整贴图槽 schema。"""
     from . import meta as mm
 
     shader_hash &= 0xFFFFFFFF
@@ -81,15 +49,7 @@ def add_block(values: dict, shader_hash: int, material_name: str = "") -> dict:
 
 
 def set_block_material_name(block: dict, name: str) -> None:
-    """把材质槽绑定到指定名字的 mrl3 材质槽：mat_name_hash = jamcrc(name)。
-
-    实测坐实（.mod3 的 materialNameList 字符串 → jamcrc → 与同名 .mrl3 里
-    MaterialInfo.materialNameHash 逐位相同，见 tools/verify_material_bind.py 的
-    交叉验证）：这个字段是 EFX MATERIAL 覆盖层"该套用到 mrl3 里哪个材质槽"的
-    唯一依据，游戏按这个哈希在 mrl3 材质表里查匹配项，查不到就跳过整个
-    Tex_Block（不报错，也不生效）——这正是"新建 Material Attr 不生效"的成因：
-    add_block 此前恒写 0，从不匹配任何真实材质槽。
-    """
+    """将 Tex_Block 绑定到指定 mrl3 槽名的 jamcrc 哈希。"""
     from ..hashes import jamcrc
     block['mat_name_hash'] = _to_signed32(jamcrc(name))
 
@@ -104,19 +64,10 @@ def remove_block(values: dict, index: int) -> bool:
 
 
 def set_block_shader(block: dict, new_shader_hash: int) -> None:
-    """把材质槽的材质类型换成 new_shader_hash，贴图槽位跟着换成新类型的 schema。
+    """切换材质类型，并按已知 schema 重建路径槽。
 
-    实测 5792 个官方 MATERIAL 属性里 shader_hash 和贴图槽位集合 100% 对应、零反例
-    （见 material_meta.MATERIAL_SHADER_SLOTS 的生成依据）——只改 shader_hash 不联动
-    槽位会产出真实语料里从未出现过的组合，故换类型必须同时重建槽位列表：
-      - 新旧 schema 都有的槽位（同一 t）：路径迁移过去，不用用户重填。
-      - 只有旧 schema 有的槽位：丢弃（对新类型没有意义，保留才是错的）。
-      - 只有新 schema 有的槽位：从空白建（head=0）。
-    非路径 set（0x06/0x03/0x0A/0x0C/0x15，黑盒）不受影响，原样保留。
-
-    新类型没有已知 schema（未实测过的材质类型）时**不触碰**现有 sets——没有目标
-    schema 依据就不能猜测性地丢弃用户已有数据（跟 add_block 新建空槽不同：那边是
-    全新数据没什么可保留的，这里是编辑已有数据，能不丢就不丢）。
+    同名槽位迁移路径，新增槽位为空，旧路径槽移除；非路径 set 保持原样。未知 schema
+    只更新哈希，不改现有 sets。
     """
     from . import meta as mm
 

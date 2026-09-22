@@ -1,7 +1,2 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/schema/ — 字段级 schema 解析子系统
-
-对外门面是 efx_format/structs.py（装配 + re-export），外部仍从 efx_format.structs 导入，
-本子包为其实现细节；外部不直接依赖本子包。
-"""
+"""字段级 schema：字段模型、枚举表、标签、核心 codec 与变长类型的成对 codec。"""

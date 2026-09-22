@@ -1,21 +1,7 @@
-"""
-blender_efx/session_core.py  —  会话/预览类的公共基础设施：标记式孤儿清理 + 生命周期缓存复位
+"""会话和预览对象的标记式清理与生命周期基础设施。
 
-设计原则（见 memory `timl-fcurve-persistence-refactor-plan` / `byte-perfect-doctrine-shift`）
---------------------------------------------------------------------------------------------
-预览/会话类此前把状态放在**不随 undo/reload/模块热重载走的 Python 全局 `_state`**，却驱动
-undo 追踪的真实场景数据（实例对象、隐藏态、约束）→ 两者脱钩即残留悬空引用/孤儿，表现为
-"频繁进出后越来越乱"。本模块把这类会话状态归约为**场景事实的派生量**：
-
-1. **真相在场景**：会话产物（实例对象、被隐藏的源）一律打**自定义属性标记**，"是否活跃 /
-   有哪些产物"由**标记扫描**（`iter_marked`）派生，不信任可能脱节的 `_state` 布尔。
-2. **清理按标记**（`purge_marked` / `restore_hidden`），不按缓存引用 → undo/reload/热重载
-   把 Python 状态清零也不会残留：下次进入先清场即根治累积。
-3. ⚠ **对象删除只在算子上下文做**（enter 先清场 / exit 清场），**不在 undo/redo/load handler
-   里删数据块**（handler 里改数据块有污染 undo 栈的风险）。本模块的 handler 只复位缓存 dict
-   （纯 Python，无对象操作，安全）。
-
-约束（CLAUDE.md）：bpy 稳定子集；Python 3.10；纯胶水层；包内相对导入。
+维护约束：场景对象及其自定义属性是会话状态的权威来源，Python 缓存只能派生。
+对象删除仅可在算子上下文执行；load handler 只处理 Python 侧状态。
 """
 
 import bpy
@@ -23,11 +9,11 @@ from bpy.app.handlers import persistent
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 标记式对象记账（真相源：场景里带标记的对象）
+# 场景中的标记对象是会话产物的权威记录。
 # ─────────────────────────────────────────────────────────────────────────────
 
 def iter_marked(marker_key):
-    """场景内所有带 `marker_key` 自定义属性的对象（值为 0 也算——`is not None` 判据）。"""
+    """返回带 marker_key 的对象；标记值为 0 时也属于结果。"""
     return [o for o in bpy.data.objects if o.get(marker_key) is not None]
 
 
@@ -41,7 +27,7 @@ def remove_object(name):
         bpy.data.objects.remove(obj, do_unlink=True)
     except Exception:
         return False
-    # es3d 等生成的临时几何：删对象后 mesh 无人引用则一并回收，避免 .blend 里堆孤儿 mesh
+    # 同时回收无用户的临时网格。
     try:
         if isinstance(data, bpy.types.Mesh) and data.users == 0:
             bpy.data.meshes.remove(data)
@@ -51,7 +37,7 @@ def remove_object(name):
 
 
 def purge_marked(marker_key, keep=None):
-    """删除所有带 `marker_key` 的对象（`keep` 名单除外）。返回删除数。**仅算子上下文调用。**"""
+    """删除标记对象（keep 除外）；仅可在算子上下文调用。"""
     keep = keep or set()
     removed = 0
     for o in list(iter_marked(marker_key)):
@@ -63,11 +49,7 @@ def purge_marked(marker_key, keep=None):
 
 
 def restore_hidden(flag_key):
-    """还原所有带 `flag_key` 的对象可见性并清除该标记。
-
-    隐藏源对象的预览类（如 mesh_align 隐藏源网格）把原 `hide_viewport` 值存进对象自定义属性
-    `flag_key`（而非 Python 快照），退出/清场时据此还原——即便 Python 状态早已脱节也能恢复。
-    """
+    """从对象标记恢复可见性，并清除该标记。"""
     for o in list(iter_marked(flag_key)):
         try:
             o.hide_viewport = bool(o.get(flag_key))
@@ -80,8 +62,7 @@ def restore_hidden(flag_key):
 
 
 def flag_hidden(obj, flag_key):
-    """隐藏 obj，并把其原 `hide_viewport` 值存进自定义属性 `flag_key`（供 restore_hidden 还原）。
-    已带标记则不覆盖（幂等：多次进入不把"已隐藏"当原态）。"""
+    """隐藏对象并记录原可见性；已有标记时不得覆盖原始状态。"""
     try:
         if obj.get(flag_key) is None:
             obj[flag_key] = int(bool(obj.hide_viewport))
@@ -114,12 +95,7 @@ def remove_collection_named(name):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 生命周期缓存复位分发器（load_post；只复位缓存 dict，绝不碰对象/数据块）
-# ─────────────────────────────────────────────────────────────────────────────
-# 设计为"各模块注册一个'清缓存'回调，换文件时统一触发"，但目前没有任何模块接入
-# 这个钩子（mesh_align/uvc_preview 等改无状态化后走的是标记扫描/
-# reconcile，不经过这里）——_on_load 目前是空列表上的空转。留着骨架，真要接回来
-# 再补 register_cache_reset/unregister_cache_reset 接口。
+# load_post 分发器只允许调用纯 Python 缓存复位函数。
 
 _cache_resets = []
 

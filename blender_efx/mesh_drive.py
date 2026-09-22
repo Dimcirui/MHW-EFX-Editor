@@ -1,28 +1,7 @@
-"""
-blender_efx/mesh_drive.py  —  绑定网格驱动「Mesh Drive」
+"""绑定网格的 UV、TIML 与静态摆放驱动编排层。
 
-这个面板管的是**entry 绑定的那个 mod3 网格对象**，不是特效本身的预览。特效长什么样
-去看 Particle Simulation 面板；这里三个开关只决定「那个真实的网格对象，按 EFX 里的
-哪些属性动起来」：
-
-    UV 滚动     UVCONTROL      →  驱动网格材质的 Mapping 节点     (efx.uvc_preview_*)
-    TIML 动画   TIML 句柄      →  网格加 Child-Of 跟随句柄动画    (efx.timl_edit_*)
-    静态摆放    TRANSFORM3D+MESH → 网格摆到该 entry 的位姿        (efx.mesh_align_*)
-
-三项都是「往场景对象上挂驱动」，退出即解挂，本身不改任何 EFX 数据。
-
-由来（0.7.1）
--------------
-本模块前身是「EFX Preview」——四个预览会话的统一入口。其中 ES3D 那项已退休（生成区域
-改由粒子模拟的线框叠加层画）；余下三项全都只作用于绑定网格，跟「预览特效」没有关系，
-故整体改名并按驱动类型重述。
-
-⚠ TIML 这项**不包含**「让 TIML 动起来」——TIML 曲线在导入时就持久化到句柄上了，拖时间轴
-就播，Dope Sheet 里随时可改、改完就是最终值。这个开关加的只是「让绑定网格跟着句柄跑」。
-
-实现为**编排层**：按勾选调用各模块既有的 enter/exit 算子，不重写各自的会话引擎。
-
-约束（CLAUDE.md）：bpy 稳定子集；Python 3.10；纯胶水层。
+驱动只作用于绑定网格，退出时由各自模块解除，不修改 EFX 数据。TIML 曲线本身始终可编辑；
+此处的 TIML 开关仅让网格跟随对应句柄。各驱动仍由其所属模块的 enter/exit 算子实现。
 """
 
 import bpy
@@ -31,14 +10,14 @@ from bpy.props import BoolProperty
 
 from .i18n import T
 
-# 驱动项 → (标识, enter 算子, exit 算子, 勾选 Scene 属性名, 该模块作用域 Scene 属性名|None)
+# 驱动项：(标识、enter、exit、启用属性、作用域属性)。
 _DRIVERS = [
     ("uv",    "efx.uvc_preview_enter", "efx.uvc_preview_exit", "efx_drive_uv",    "efx_uvc_preview_all"),
     ("timl",  "efx.timl_edit_enter",   "efx.timl_edit_exit",   "efx_drive_timl",  "efx_timle_all_bodies"),
     ("place", "efx.mesh_align_enter",  "efx.mesh_align_exit",  "efx_drive_place", "efx_align_all_efx"),
 ]
 
-#: 0.7.1 之前的 Scene 属性名（「EFX Preview」时期）。只在 unregister 里清理，不再读写。
+# 旧 Scene 属性仅在注销时清理。
 _LEGACY_PROPS = ("efx_prev_scope_all", "efx_prev_t_uvc", "efx_prev_t_timl",
                  "efx_prev_t_mesh", "efx_prev_t_es3d", "efx_es3d_preview_all")
 
@@ -64,10 +43,6 @@ def _any_active():
     return False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Operators：挂上 / 摘掉
-# ─────────────────────────────────────────────────────────────────────────────
-
 class EFX_OT_mesh_drive_start(Operator):
     """按勾选给绑定网格挂上驱动（统一作用域）"""
     bl_idname = "efx.mesh_drive_start"
@@ -85,7 +60,6 @@ class EFX_OT_mesh_drive_start(Operator):
         for key, enter, _ex, tprop, sprop in _DRIVERS:
             if not getattr(scene, tprop, False):
                 continue
-            # 把统一作用域写进各模块自己的作用域开关
             if sprop and hasattr(scene, sprop):
                 try:
                     setattr(scene, sprop, scope_all)
@@ -126,16 +100,8 @@ class EFX_OT_mesh_drive_stop(Operator):
         return {"FINISHED"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Panel
-# ─────────────────────────────────────────────────────────────────────────────
-
 class EFX_PT_mesh_drive(Panel):
-    """绑定网格驱动。`EFX_PT_mesh_binding`（选谁当绑定网格）用 bl_parent_id 挂在下面。
-
-    ⚠ 子面板要求父面板先注册——本模块的 register() 必须排在 uvc_preview / mesh_align
-    之前，unregister() 则相反（见 blender_efx/__init__.py 的注册顺序注释）。
-    """
+    """绑定网格驱动的父面板；其注册必须先于子面板。"""
 
     bl_idname = "EFX_PT_mesh_drive"
     bl_space_type = "VIEW_3D"
@@ -152,14 +118,12 @@ class EFX_PT_mesh_drive(Panel):
 
         layout.label(text=T("meshdrive.hint"), icon="INFO")
 
-        # ── 作用域 ─────────────────────────────────────────────────────────────
         box = layout.box()
         box.label(text=T("meshdrive.scope"), icon="RESTRICT_SELECT_OFF")
         row = box.row()
         row.enabled = not active
         row.prop(scene, "efx_drive_scope_all", text=T("meshdrive.scope_all"))
 
-        # ── 驱动项 ─────────────────────────────────────────────────────────────
         box = layout.box()
         box.label(text=T("meshdrive.drivers"), icon="OPTIONS")
         col = box.column(align=True)
@@ -168,7 +132,6 @@ class EFX_PT_mesh_drive(Panel):
         col.prop(scene, "efx_drive_timl",  text=T("meshdrive.d_timl"))
         col.prop(scene, "efx_drive_place", text=T("meshdrive.d_place"))
 
-        # ── 总开关 ─────────────────────────────────────────────────────────────
         r = layout.row()
         r.scale_y = 1.4
         if active:
@@ -177,10 +140,6 @@ class EFX_PT_mesh_drive(Panel):
         else:
             r.operator("efx.mesh_drive_start", text=T("meshdrive.start"), icon="PLAY")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 注册
-# ─────────────────────────────────────────────────────────────────────────────
 
 _CLASSES = (EFX_OT_mesh_drive_start, EFX_OT_mesh_drive_stop, EFX_PT_mesh_drive)
 

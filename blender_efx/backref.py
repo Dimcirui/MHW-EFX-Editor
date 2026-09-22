@@ -1,49 +1,9 @@
-"""
-blender_efx/backref.py  —  L2 反向引用视图（只读）
+"""同一 EFX 树内的只读引用导航与 Entry 激活状态摘要。
 
-功能概览
---------
-1. ``get_efx_tree_objects(obj)``
-   同树范围 helper：给场景中任意 EFX 对象，找到它所属的顶层 .efx 集合，
-   再收集该集合下全部 EFX 对象（按 ~TYPE 分类），供反向扫描使用。
-
-2. ``EFX_OT_select_object``（efx.select_object）
-   跳转算子：StringProperty 传目标对象名，execute 里清除当前选择、
-   选中目标对象并设为 active。供反向列表中的按钮调用。
-
-3. ``EFX_PT_extern_backref``
-   Extern 对象反向视图（VIEW_3D N 面板，poll: EFX_EXTERN）。
-   扫描同一 EFX 树内所有 EFX_ATTRIBUTE，找出 type_hash==EXTERNREFERENCE
-   且 efx_extern_ref.extern_ref_ptr == 当前 extern 的属性，
-   显示"被 N 个属性引用"+ 每个属性（属性名 + 所属 entry 名）+ 跳转按钮。
-
-4. ``EFX_PT_entry_backref``
-   Entry 对象反向视图（VIEW_3D N 面板，poll: EFX_ENTRY）。
-   扫描同一 EFX 树，列出引用该 entry 的：
-     - Subselect 表（其 members 有指向该 entry 的）
-     - Action emitter（其 entries[*].targets 有指向该 entry 的）
-   分组显示 + 跳转按钮。
-
-5. ``is_entry_action_triggered`` / ``count_entry_subselect_tables``
-   两个单点谓词：该 entry 有没有被某个 Action 指到、被几张 Subselect 表收录。
-   `classify_entry_activation` 与面板都建在它们之上。
-
-6. ``classify_entry_activation(entry_obj) -> dict``
-   汇总判定一个 entry 到底会不会被激活，以及经由哪条路径（EOF 直接触发 /
-   被 Action 召唤 / 只在 Subselect 表里 / 谁都没指它）。`panels.py` 也用这个
-   结果给 entry 打状态标。
-
-7. ``EFX_PT_root_states``
-   Root 状态总览（VIEW_3D N 面板）。对整棵树跑一遍上面的分类，按激活路径
-   分组列出全部 entry，一眼看出哪些 entry 是死的。
-
-约束
-----
-- 纯只读显示：不修改任何引用数据、不碰导出路径、不改 efx_format/。
-- Python 3.10 语法（兼容 Blender 3.6～5.x）。
-- bpy 稳定子集（Panel / Operator / StringProperty / layout.box 等）。
-- 不使用 5.x 新增 API。
-- 跳转算子不需要 UNDO（纯选择操作，不改场景数据）。
+维护约束：
+- 扫描必须限定在对象所属的根集合，不能跨 EFX 文件匹配引用。
+- 面板和跳转算子不修改引用数据或导出状态。
+- 激活状态仅根据 EOF、Action 和 Subselect 的可见关系归类；运行时状态选择不在此推断。
 """
 
 import base64
@@ -62,18 +22,12 @@ from . import root_collection as _rc
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _find_root_collection(obj: bpy.types.Object):
-    """给任意 EFX 对象，O(1) 找到它所属的顶层 EFX 集合（委托 root_collection，
-    2026-07 ROOT 集合化后的规范实现——反向指针，不再需要全场景按名字扫描）。"""
+    """返回对象所属的 EFX 根集合。"""
     return _rc.find_root_collection(obj)
 
 
 def _collect_all_from_collection(col, out_by_type: dict) -> None:
-    """
-    递归收集集合及子集合内所有 EFX 对象，按 ~TYPE 分类存入 out_by_type。
-
-    out_by_type : dict[str, list[bpy.types.Object]]
-        key = ~TYPE 字符串（如 'EFX_ATTRIBUTE'），value = 对象列表（按收集顺序）
-    """
+    """递归收集集合内对象，并按 ~TYPE 分类。"""
     for obj in col.objects:
         t = obj.get("~TYPE")
         if t:
@@ -85,21 +39,7 @@ def _collect_all_from_collection(col, out_by_type: dict) -> None:
 
 
 def get_efx_tree_objects(obj) -> dict:
-    """
-    给任意 EFX 对象**或**顶层文件集合本身，返回同一 EFX 树内按 ~TYPE 分类的全部对象。
-
-    返回
-    ----
-    dict[str, list[bpy.types.Object]]
-        key = ~TYPE 字符串（如 'EFX_ATTRIBUTE'、'EFX_ENTRY' 等）
-        value = 该类型的对象列表
-
-    若无法确定树根，返回空 dict（防御性）。
-
-    用途
-    ----
-    反向扫描只在同树内进行，避免多个导入的 EFX 文件之间混淆。
-    """
+    """返回对象或根集合所在 EFX 树的 ~TYPE 分组；无法定位根时为空。"""
     if isinstance(obj, bpy.types.Collection):
         root_col = obj if _rc.is_root_collection(obj) else None
     else:
@@ -116,19 +56,13 @@ def get_efx_tree_objects(obj) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_select_object(Operator):
-    """
-    跳转并选中目标 EFX 对象（反向引用列表专用）。
-
-    将目标对象设为 active 并唯一选中，方便在视口中定位。
-    纯选择操作，不修改任何场景数据，不在 UNDO 历史中留记录。
-    """
+    """唯一选中并激活反向引用列表中的目标对象。"""
 
     bl_idname      = "efx.select_object"
     bl_label       = "Jump to Object"
     bl_description = "Clear current selection, select and activate the target EFX object"
-    bl_options     = {"REGISTER"}  # 不含 UNDO：纯选择，不改场景数据
+    bl_options     = {"REGISTER"}
 
-    # 目标对象名（由面板按钮在调用时赋值）
     target_name: StringProperty(
         name="Target Object Name",
         description="Name of the Blender object to select",
@@ -150,7 +84,6 @@ class EFX_OT_select_object(Operator):
             self.report({"WARNING"}, f"Object not found: {target_name}")
             return {"CANCELLED"}
 
-        # 清除当前选择，选中并激活目标对象
         bpy.ops.object.select_all(action="DESELECT")
         target_obj.select_set(True)
         context.view_layer.objects.active = target_obj
@@ -162,21 +95,7 @@ class EFX_OT_select_object(Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _scan_extern_backrefs(extern_obj: bpy.types.Object) -> list:
-    """
-    扫描同一 EFX 树内所有 EXTERNREFERENCE 属性，
-    找出 efx_extern_ref.extern_ref_ptr == extern_obj 的属性。
-
-    返回
-    ----
-    list of dict：
-        {
-            'block_obj': bpy.types.Object,   # EFX_ATTRIBUTE 对象
-            'block_name': str,               # 属性对象名
-            'body_name': str,                # 所属 entry 名（parent 对象名）
-        }
-
-    只读扫描，不修改任何数据。
-    """
+    """返回同树内指向该 Extern 的 EXTERNREFERENCE 属性。"""
     results = []
 
     tree = get_efx_tree_objects(extern_obj)
@@ -188,7 +107,6 @@ def _scan_extern_backrefs(extern_obj: bpy.types.Object) -> list:
         return results
 
     for blk in block_objs:
-        # 检查是否是 EXTERNREFERENCE 类型
         try:
             bp = blk.efx_block
             if int(bp.type_hash_str) != EXTERNREFERENCE:
@@ -196,7 +114,6 @@ def _scan_extern_backrefs(extern_obj: bpy.types.Object) -> list:
         except (AttributeError, ValueError):
             continue
 
-        # 检查 extern_ref_ptr 是否指向当前 extern_obj
         try:
             ref_props = blk.efx_extern_ref
             if not ref_props.extern_ref_pointerized:
@@ -208,7 +125,6 @@ def _scan_extern_backrefs(extern_obj: bpy.types.Object) -> list:
         except AttributeError:
             continue
 
-        # 找所属 entry（attribute 的 parent 是 entry）
         body_name = ""
         if blk.parent is not None:
             body_name = blk.parent.name
@@ -223,14 +139,7 @@ def _scan_extern_backrefs(extern_obj: bpy.types.Object) -> list:
 
 
 class EFX_PT_extern_backref(bpy.types.Panel):
-    """
-    Extern 对象反向引用视图（VIEW_3D N 面板，选中 EFX_EXTERN 时显示）。
-
-    显示"被 N 个 EXTERNREFERENCE 属性引用"，
-    以及每个引用属性（属性名 + 所属 entry 名）+ 跳转按钮。
-
-    纯只读：不在此编辑引用关系，不触碰任何字节/导出路径。
-    """
+    """显示指向当前 Extern 的属性，并提供跳转。"""
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
@@ -247,7 +156,6 @@ class EFX_PT_extern_backref(bpy.types.Panel):
         layout = self.layout
         extern_obj = context.active_object
 
-        # ── Extern 基本信息 ──────────────────────────────────────────────────
         info_box = layout.box()
         ext_idx = extern_obj.get("efx_index", "?")
         info_row = info_box.row()
@@ -258,7 +166,6 @@ class EFX_PT_extern_backref(bpy.types.Panel):
 
         layout.separator()
 
-        # ── 扫描反向引用 ──────────────────────────────────────────────────────
         refs = _scan_extern_backrefs(extern_obj)
 
         header_row = layout.row()
@@ -274,16 +181,13 @@ class EFX_PT_extern_backref(bpy.types.Panel):
             )
             return
 
-        # ── 逐条显示引用属性 ────────────────────────────────────────────────────
         for ref in refs:
             ref_box = layout.box()
             col = ref_box.column(align=True)
 
-            # 属性名行
             row_name = col.row(align=True)
             row_name.label(text=T("backref.attribute") + f" {ref['block_name']}", icon="MODIFIER")
 
-            # 所属 entry 行
             row_entry = col.row(align=True)
             if ref["body_name"]:
                 row_entry.label(
@@ -293,7 +197,6 @@ class EFX_PT_extern_backref(bpy.types.Panel):
             else:
                 row_entry.label(text=T("backref.entry_unknown"), icon="QUESTION")
 
-            # 跳转按钮行
             row_jump = col.row(align=True)
             op = row_jump.operator(
                 "efx.select_object",
@@ -304,20 +207,10 @@ class EFX_PT_extern_backref(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §4  Entry 对象双向关系视图（Entry References）
-#
-# 把单纯的"被谁引用"升级为以 entry 为中心的双向关系导航（仍纯只读、不碰导出）：
-#   ⬇ 我触发谁     ：本 entry 的 PTLIFE（status 区分生成/结束型）/ PTCOLLISION（碰撞时）
-#                    属性 → action → 该 action 的子 entry(PLAYEMITTER targets) /
-#                    外部 efx(PLAYEFX path)
-#   ⬆ 谁触发我     ：哪些父 entry 的 PTLIFE / PTCOLLISION → 某个 targets 含本 entry 的 action
-#   ⬔ 我引用的 Extern：本 entry 的 EXTERNREFERENCE 属性 → extern 对象
-#   ⬓ 我所属的 Subselect：哪些 Subselect 表把本 entry 列为成员
-# 全部边最终都落在 entry 这个公共节点上（关系是 DAG，不是树），所以按"边的类型"
-# 分组列出 + 可跳转，天然处理多对一/共享，不需要枚举"谁套谁"。
+# §4  Entry 关系视图
 # ─────────────────────────────────────────────────────────────────────────────
 
-# PTLIFE status：short @ offset 4（0=生成时、4=结束时）
+# PTLIFE timing 的 short 字段偏移。
 _PTLIFE_TIMING_OFFSET = 4
 
 
@@ -370,12 +263,7 @@ def is_entry_action_triggered(entry_obj: bpy.types.Object) -> bool:
 
 
 def count_entry_subselect_tables(entry_obj: bpy.types.Object) -> int:
-    """本 entry 出现在同一 EFX 树的多少张 subselect 表里（每表至多计一次）。
-
-    subselect 是叠在激活集上的「状态掩码」：出现在某表里的 entry 只在选中该表的
-    状态下触发；不在任何表里的 direct-active entry 恒触发。参见
-    memory: subselect-is-active-set-mask。
-    """
+    """返回该 Entry 在同树中出现的 Subselect 表数量。"""
     tree = get_efx_tree_objects(entry_obj)
     n = 0
     for ss_obj in tree.get("EFX_SUBSELECT", []):
@@ -391,24 +279,9 @@ def count_entry_subselect_tables(entry_obj: bpy.types.Object) -> int:
 
 
 def classify_entry_activation(entry_obj: bpy.types.Object) -> dict:
-    """综合 EOF（direct）+ action 召唤 + subselect 门控，推断 entry 的「有效激活态」。
+    """汇总 EOF、Action 和 Subselect 的可见关系，供 UI 状态提示使用。
 
-    触发模型（用户确认）：
-      - **触发来源是「并」/OR**：direct（随 EFX 加载触发）与 action（被 Action 召唤触发）
-        各自独立生效；两者都有的属性在「加载时」和「被召唤时」都会触发。
-      - **subselect 是更上层的「与」/AND 门控**：在某 subselect 表里的属性，除来源条件外
-        还须满足该表对应的状态条件才触发；不在任何表里 = 无条件（来源满足即触发）。
-
-    返回 dict：
-      'source'    : str — 触发来源并集（both / direct / action / none）
-      'gated'     : bool — 是否被 subselect 门控（n_tables > 0）
-      'n_tables'  : int  — 出现在几张 subselect 表里
-      'in_eof'    : bool — 是否在直接触发列表（EOF）
-      'in_action' : bool — 是否被任意 Action target 召唤
-
-    注意：这是基于语料的**模型推断**，不是字节铁律——运行时由哪个状态选中哪张
-    subselect 表，取决于 EFX 之外的游戏逻辑（动画事件/战斗状态）。UI 文案据此用
-    "推测"口吻。
+    返回的 gated 状态只表示 Entry 被某张 Subselect 表收录，不能推断运行时的状态选择。
     """
     from .entry_action_ref import is_entry_in_eof
 
@@ -435,15 +308,7 @@ def classify_entry_activation(entry_obj: bpy.types.Object) -> dict:
 
 
 def _scan_entry_relations(entry_obj: bpy.types.Object) -> dict:
-    """
-    以 entry_obj 为中心扫描同一 EFX 树的四类关系（只读）。
-
-    返回 dict：
-      'triggers'     : list {play_obj, play_name, timing, children:[obj], paths:[str]}
-      'triggered_by' : list {entry_obj, body_name, play_obj, play_name, timing}
-      'externs'      : list {extern_obj, extern_name, block_name}
-      'subselects'   : list {ss_obj, ss_name}
-    """
+    """扫描 Entry 的触发、被触发、Extern 和 Subselect 关系。"""
     from ..efx_format.hashes import PTLIFE, PTCOLLISION, EXTERNREFERENCE
 
     tree = get_efx_tree_objects(entry_obj)
@@ -451,7 +316,6 @@ def _scan_entry_relations(entry_obj: bpy.types.Object) -> dict:
     plays   = tree.get("EFX_ACTION", [])
     result  = {"triggers": [], "triggered_by": [], "externs": [], "subselects": []}
 
-    # 本 entry 直属的属性（parent==entry_obj）
     my_attributes = [b for b in attrs if b.parent is entry_obj]
 
     def _ptlife_action(blk):
@@ -468,13 +332,12 @@ def _scan_entry_relations(entry_obj: bpy.types.Object) -> dict:
         except AttributeError:
             return None
 
-    # 触发属性种类表：(type_hash, kind 标识, 取 action 的函数, 取 timing 的函数)
+    # (type hash, relation label, action resolver, timing resolver)
     _TRIGGER_KINDS = (
         (PTLIFE,      "ptlife",      _ptlife_action,      _read_ptlife_timing),
         (PTCOLLISION, "ptcollision", _ptcollision_action, lambda _blk: None),
     )
 
-    # ── ⬇ 我触发谁：本 entry 的 PTLIFE / PTCOLLISION → action → 子 entry / 外部 efx ──
     for blk in my_attributes:
         th = _attribute_type_hash(blk)
         for type_hash, kind, get_action, get_timing in _TRIGGER_KINDS:
@@ -493,14 +356,11 @@ def _scan_entry_relations(entry_obj: bpy.types.Object) -> dict:
                 "paths": paths,
             })
 
-    # ── ⬆ 谁触发我：父 entry 的 PTLIFE / PTCOLLISION → 某个 targets 含本 entry 的 action ──
-    # 先找出 targets 含本 entry 的 action 集合
     plays_targeting_me = set()
     for play in plays:
         children, _ = _action_children(play)
         if entry_obj in children:
             plays_targeting_me.add(play)
-    # 再找哪些 entry 的 PTLIFE / PTCOLLISION 指向这些 action
     if plays_targeting_me:
         for blk in attrs:
             if blk.parent is None or blk.parent is entry_obj:
@@ -520,7 +380,6 @@ def _scan_entry_relations(entry_obj: bpy.types.Object) -> dict:
                         "timing": get_timing(blk),
                     })
 
-    # ── ⬔ 我引用的 Extern：本 entry 的 EXTERNREFERENCE 属性 → extern ─────────────
     for blk in my_attributes:
         if _attribute_type_hash(blk) != EXTERNREFERENCE:
             continue
@@ -538,7 +397,6 @@ def _scan_entry_relations(entry_obj: bpy.types.Object) -> dict:
                 "block_name": blk.name,
             })
 
-    # ── ⬓ 我所属的 Subselect ─────────────────────────────────────────────────
     for ss_obj in tree.get("EFX_SUBSELECT", []):
         try:
             props = ss_obj.efx_subselect
@@ -577,12 +435,7 @@ def _jump_button(row, target_name, text="", icon="VIEWZOOM"):
 
 
 class EFX_PT_entry_backref(bpy.types.Panel):
-    """
-    Entry 双向关系视图（VIEW_3D N 面板，选中 EFX_ENTRY 时显示）。
-
-    以本 entry 为中心展示四类关系（我触发谁 / 谁触发我 / 我引用的 Extern /
-    我所属的 Subselect），每条可跳转。纯只读，不碰任何字节/导出路径。
-    """
+    """显示当前 Entry 的只读关系图，并提供跳转。"""
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
@@ -601,7 +454,6 @@ class EFX_PT_entry_backref(bpy.types.Panel):
         layout = self.layout
         entry_obj = context.active_object
 
-        # ── Entry 基本信息 ────────────────────────────────────────────────────
         info_box = layout.box()
         body_idx = entry_obj.get("efx_index", "?")
         info_box.row().label(
@@ -619,7 +471,6 @@ class EFX_PT_entry_backref(bpy.types.Panel):
             layout.label(text=T("entryref.none"), icon="INFO")
             return
 
-        # ── ⬇ 我触发谁 ────────────────────────────────────────────────────────
         if triggers:
             box = layout.box()
             box.row().label(text=T("entryref.triggers_header"), icon="FORWARD")
@@ -638,7 +489,6 @@ class EFX_PT_entry_backref(bpy.types.Panel):
                     r.separator(factor=2.0)
                     r.label(text=p, icon="FILE_BLEND")
 
-        # ── ⬆ 谁触发我 ────────────────────────────────────────────────────────
         if triggered_by:
             box = layout.box()
             box.row().label(text=T("entryref.triggered_by_header"), icon="BACK")
@@ -650,7 +500,6 @@ class EFX_PT_entry_backref(bpy.types.Panel):
                 )
                 _jump_button(row, t["body_name"])
 
-        # ── ⬔ 我引用的 Extern ────────────────────────────────────────────────
         if externs:
             box = layout.box()
             box.row().label(text=T("entryref.externs_header") + f" ({len(externs)})", icon="LINKED")
@@ -659,7 +508,6 @@ class EFX_PT_entry_backref(bpy.types.Panel):
                 row.label(text=e["extern_name"], icon="FILE_BLEND")
                 _jump_button(row, e["extern_name"])
 
-        # ── ⬓ 我所属的 Subselect ─────────────────────────────────────────────
         if subselects:
             box = layout.box()
             box.row().label(text=T("entryref.subselect_header") + f" ({len(subselects)})", icon="OUTLINER_OB_EMPTY")
@@ -670,7 +518,7 @@ class EFX_PT_entry_backref(bpy.types.Panel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# §5  ROOT subselect 状态总览面板（把 subselect 表呈现为「状态/变体」）
+# §5  Root Subselect 总览
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _table_members(ss_obj):
@@ -687,23 +535,13 @@ def _table_members(ss_obj):
 
 
 def _eof_direct_bodies(root_obj):
-    """返回 root 的 EOF（直接触发）entry 对象列表（按 efx_index 顺序）。
-    委托 entry_action_ref.is_entry_in_eof——该函数已知道 per_entry（Direct Trigger
-    嵌套集合）/ opaque（非索引数据，恒空）两种模型，这里不需要关心内部载体。"""
+    """返回 Root 中直接触发的 Entry。"""
     from .entry_action_ref import is_entry_in_eof
     return [b for b in _rc.collect_top_level(root_obj, "EFX_ENTRY") if is_entry_in_eof(b)]
 
 
 class EFX_PT_root_states(bpy.types.Panel):
-    """
-    EFX_ROOT 的 subselect 状态总览（VIEW_3D N 面板，选中 EFX_ROOT 时显示）。
-
-    把每张 subselect 表呈现为一个「状态/变体」，列出其成员 entry（带跳转）；
-    再单列「恒触发」集合 = 在 EOF 直接触发列表里、却不在任何 subselect 表里的 entry。
-
-    纯只读、纯导航。文案用"推测模型"口吻——运行时由哪个状态被选中触发取决于
-    EFX 之外的游戏逻辑（见 memory: subselect-is-active-set-mask）。
-    """
+    """显示 Subselect 成员及未被 Subselect 收录的直接触发 Entry。"""
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
@@ -723,8 +561,7 @@ class EFX_PT_root_states(bpy.types.Panel):
         tree = get_efx_tree_objects(root_obj)
         ss_objs = tree.get("EFX_SUBSELECT", [])
 
-        # ── 状态（subselect 表）─────────────────────────────────────────────────
-        gated_bodies = set()   # 出现在任意表里的 entry，用于算「恒触发」
+        gated_bodies = set()
         if not ss_objs:
             layout.label(text=T("rootstate.no_states"), icon="INFO")
         else:
@@ -746,7 +583,6 @@ class EFX_PT_root_states(bpy.types.Panel):
                     r.label(text=f"[{bidx}] {b.name}", icon="OBJECT_DATA")
                     _jump_button(r, b.name)
 
-        # ── 恒触发：在 EOF 直接触发列表、却不在任何 subselect 表里 ───────────────
         always_on = [b for b in _eof_direct_bodies(root_obj) if b not in gated_bodies]
         box = layout.box()
         box.label(text=T("rootstate.always_on_header") + f" ({len(always_on)})",
@@ -767,15 +603,12 @@ class EFX_PT_root_states(bpy.types.Panel):
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 算子：可在 panels.register() 之前单独注册（无依赖）。
-# 面板：bl_parent_id="EFX_PT_entry"，必须在 EFX_PT_entry 之后注册（由 panels.py 统一处理）。
+# 面板依赖父面板，须由 panels.py 在父面板之后注册。
 
 _CLASSES_CORE = (
     EFX_OT_select_object,
 )
 
-# EFX_PT_extern_backref 和 EFX_PT_entry_backref 导出给 panels.py，
-# 由 panels.register() 在 EFX_PT_entry 之后注册。
 
 
 def register():

@@ -1,32 +1,14 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/rng.py  —  抖动抽取 + 确定性噪声
+"""抖动抽取与确定性噪声。
 
-两条规矩，都是结构性的（靠签名而不是靠注释保证）：
-
-1. **抖动只在 spawn/init 抽，抽完存进 `p.rolled`。**
-   `speedJitter = 2.0` 是每个粒子出生时定死的常量，不是每帧重抽。
-   `Behavior.on_particle_step(self, p, em)` 的签名里**没有 rng**，所以「每帧重抽」
-   在这套 API 下写不出来。
-
-2. **逐帧随机用确定性噪声，不用随机数抽取。**
-   NOISE/TURBULENCE 之类确实需要逐帧变化的，用 `noise1/noise3`——它们是
-   (seed, frame, channel) 的纯函数。这样重启必然复现，核心也能脱离 Blender 单测。
-   游戏本身要做到帧可复现，多半也是这个路子。
-
-抖动分布（2026-09 用户确认）
----------------------------
-确认的是「在 static 基础上**追加** [0, amount]」，即**单边**，不是 ±。
-具体怎么取值（均匀/高斯）未确认，先按均匀。故默认 `JITTER_ONESIDED`，另两种
-分布留在 `SimConfig.jitter_mode` 里当开关——标定出真实分布之后改一个默认值，
-不动任何 behavior。
-
-⚠ `amount == 0` 时**仍然抽一次**（结果当然等于 base）。故意的：这样把某个 jitter
-字段从 0 改成非 0 时，不会连带打乱其他所有字段抽到的值，编辑体验稳定。代价是
-随机数流跟游戏对不上——但逐帧对齐游戏本来就不可达（见评估 T5），不值得为它
-牺牲编辑期的稳定性。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10；零第三方依赖。
+维护约束：
+- 抖动只在 spawn / init 抽，抽完存进 `p.rolled`；`on_particle_step` 的签名里没有
+  rng，逐帧重抽在这套 API 下写不出来。
+- 逐帧变化的量用 `noise1` / `noise3`，它们是 (seed, frame, channel) 的纯函数，
+  重启必然复现。不要在 step 里抽随机数。
+- 所有抖动必须经 `jitter()`，分布由 `SimConfig.jitter_mode` 统一切换。
+- ⚠ `amount == 0` 时仍然抽一次。这是刻意的：把某个 jitter 从 0 改成非 0 时不会
+  连带打乱其他字段已抽到的值。省掉这次抽取会让编辑期的随机流不稳定。
 """
 
 import random
@@ -48,10 +30,7 @@ JITTER_LABELS = {
 
 
 def jitter(base, amount, rng, mode=JITTER_ONESIDED):
-    """`base` 上叠加 `amount` 规模的抖动。**所有抖动都必须走这里。**
-
-    `rng` 是 `random.Random` 实例（逐粒子播种，见 `particle_rng`）。
-    """
+    """在 base 上叠加 amount 规模的抖动；rng 由 particle_rng 逐粒子播种。"""
     base = float(base)
     amount = float(amount)
     if mode == JITTER_SYMMETRIC:
@@ -92,11 +71,9 @@ def _mix64(x):
 
 
 def emitter_seed(base_seed, randomfix_seeds=()):
-    """发射器级种子。`randomfix_seeds` 来自 RANDOMFIX 的 randomSeedTable0~7。
+    """发射器级种子；randomfix_seeds 来自 RANDOMFIX 的 randomSeedTable0~7。
 
-    ⚠ RANDOMFIX 的表怎么被游戏取用（`useRandomSeedTableCount` /
-    `tableSelectionGroup` 的确切语义）只有统计推断，没有实测。这里只是把它们
-    混进种子保证「改种子表 → 形态变化」这个可观察行为，不假装复现游戏的取用规则。
+    ⚠ 只是把这些值混进种子，使「改种子表 → 形态变化」可观察，不复现游戏的取用规则。
     """
     h = _mix64(int(base_seed) & _MASK64)
     for s in randomfix_seeds:
@@ -115,10 +92,9 @@ def particle_rng(em_seed, particle_index):
 
 
 def emitter_stream_rng(em_seed):
-    """发射器级的随机流（批次数量/间隔这类**每批**重抽的量）。
+    """发射器级随机流，供每批重抽的量（批次数量、间隔）使用。
 
-    刻意和逐粒子的流分开：改粒子数不会扰动发射节奏，改节奏也不会扰动粒子形态，
-    调参时观感稳定。reset 后从同一种子重建，所以照样确定性。
+    与逐粒子的流分开，使改粒子数不扰动发射节奏、改节奏不扰动粒子形态。
     """
     return random.Random(_mix64((int(em_seed) ^ 0x5EED_E177_5EED_E177) & _MASK64))
 
@@ -130,7 +106,7 @@ def emitter_stream_rng(em_seed):
 def noise1(seed, frame, channel=0):
     """(seed, frame, channel) → [-1, 1] 的白噪声。纯函数，逐帧独立。"""
     h = _mix64((int(seed) & _MASK64) ^ _mix64((int(frame) << 16) ^ int(channel)))
-    # h >> 11 取高 53 位 → [0, 2^53)，除以 2^53 得 [0, 1)，再映到 [-1, 1)
+    # 取高 53 位得 [0, 1)，再映到 [-1, 1)
     return (h >> 11) / float(1 << 53) * 2.0 - 1.0
 
 
@@ -142,9 +118,9 @@ def noise3(seed, frame, channel=0):
 
 
 def noise_smooth1(seed, t, channel=0, period=8.0):
-    """时间上连续的值噪声：整数节点间线性插值，`period` 帧一个节点。
+    """时间上连续的值噪声：整数节点间插值，period 帧一个节点。
 
-    TURBULENCE 这类需要「飘」而不是「抖」的效果用这个；白噪声逐帧跳变会像噪点。
+    需要「飘」而不是「抖」的效果用这个；白噪声逐帧跳变看起来像噪点。
     """
     if period <= 0.0:
         return noise1(seed, int(t), channel)

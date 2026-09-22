@@ -1,43 +1,10 @@
-"""
-blender_efx/extern_ref.py  —  ExternReference.referenceIndex → extern 指针化
+"""EXTERNREFERENCE 的 Extern 指针化。
 
-设计原则（参照 CLAUDE.md / subselect.py / action_emitter.py 模式）：
-  - Python 3.10 语法（兼容 Blender 3.6～5.x）
-  - bpy 只用稳定子集（PropertyGroup / PointerProperty / BoolProperty / Panel）
-  - 不使用 5.x 新增 API
-  - efx_format/ 是纯 Python 层，本文件是胶水层（不改 efx_format/）
-  - byte-perfect：死块/越界/count_extern=0 → pointerized=False → orig_b64 路径
-
-EXTERNREFERENCE 块的 data_bytes 布局（EXTERNREFERENCE_SCHEMA，共 36 字节）：
-  offset  0:  int  unkn0          (4 B)
-  offset  4:  int  referenceIndex (4 B, 有符号 int32)  ← 指针化目标字段
-  offset  8:  int  unkn1[7]       (28 B)
-
-referenceIndex 语义（实测，BLUEPRINT §9）：
-  -1                → 哨兵，无 extern 目标（22 个）
-  0 <= v < count_extern → 有效 extern 局部 index（指向 EFX_EXTERN 对象）
-  其他              → 死块/越界（count_extern=0 的文件中 15 个异常值）
-
-指针化路径：
-  导入（init_extern_ref_props）：
-    有效范围 → extern_ref_ptr 指向对应 EFX_EXTERN；pointerized=True
-    -1       → none=True；pointerized=True
-    越界/死块 → pointerized=False（保持 orig_b64 路径，byte-perfect）
-
-  导出（overlay_extern_ref_index）：
-    pointerized=True  → 用 extern_ref_ptr 经 build_local_index_map 解析 extern 局部 index，
-                         struct.pack_into('<i', ..., 4) 覆盖 data_bytes 偏移 4 的 4 字节
-    pointerized=False → 不覆盖（原样，byte-perfect）
-
-多对一天然支持：多个 EXTERNREFERENCE 块可指向同一 EFX_EXTERN 对象，
-PointerProperty 天然允许，build_local_index_map 解析得到相同 index，完全正确。
-
-字节行为（⚠ 这是**当前行为的描述**，不是必须守住的契约。硬不变量只在 codec 层：
-`serialize(parse(x)) == x`。胶水层允许规范化，「导入→不编辑→导出」不要求逐字节
-相同——见 docs/TESTING_AND_INVARIANTS.md「核心不变量」。）
-  - 死块（pointerized=False）：orig_b64 路径整体保留，完全不动。
-  - 哨兵（none=True）：导出写 -1（0xFFFFFFFF 的有符号补码），与原始文件完全一致。
-  - 有效指针（未变 extern）：extern 对象的 efx_index == 导出局部 index == 原值，byte-perfect。
+维护约束：
+- referenceIndex 位于 data_bytes 偏移 4，使用有符号 int32；-1 表示无目标。
+- 有效本地索引和 -1 才可指针化；越界值保持 pointerized=False，并保留原始字节。
+- 导出时无法解析的指针必须写为 -1，不能保留可能因段重排而失效的旧索引。
+- 指针选择限制在同一 EFX 根，多个引用可指向同一 Extern。
 """
 
 import struct
@@ -52,21 +19,12 @@ from .i18n import T
 from . import root_collection as _rc
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 常量：referenceIndex 在 data_bytes 中的字节偏移
-# ─────────────────────────────────────────────────────────────────────────────
+_REFERENCE_INDEX_OFFSET = 4
+_SENTINEL_VALUE = -1
 
-_REFERENCE_INDEX_OFFSET = 4   # bytes 4-7（int32 有符号，小端）
-_SENTINEL_VALUE = -1          # 哨兵：无 extern 目标
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# §1  poll 函数
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _extern_object_poll(self, obj):
-    """PointerProperty poll：只允许选 ~TYPE == 'EFX_EXTERN'，且限定为活动对象
-    所在 EFX 文件（同一 root_col）内的 extern——多 EFX 集合并存时防串文件。"""
+    """仅允许选择活动对象所属 EFX 根内的 Extern。"""
     if obj.get("~TYPE") != "EFX_EXTERN":
         return False
     editing = getattr(bpy.context, "active_object", None)
@@ -75,22 +33,8 @@ def _extern_object_poll(self, obj):
     return True
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# §2  PropertyGroup：ExternReference 指针存储
-# ─────────────────────────────────────────────────────────────────────────────
-
 class EFXExternRefProps(PropertyGroup):
-    """
-    挂在 EFX_ATTRIBUTE（EXTERNREFERENCE 类型）对象上（obj.efx_extern_ref）。
-
-    字段
-    ----
-    extern_ref_ptr       : PointerProperty → EFX_EXTERN 对象（poll=EFX_EXTERN）
-                           pointerized=True 且 none=False 时有效
-    extern_ref_none      : BoolProperty   — True = referenceIndex == -1（哨兵/无目标）
-    extern_ref_pointerized : BoolProperty — True = 已指针化（走新路径）；
-                                           False = 死属性（保持 orig_b64，byte-perfect 回退）
-    """
+    """挂在 EXTERNREFERENCE 属性对象上的指针状态。"""
 
     extern_ref_ptr: PointerProperty(
         name="Extern Reference",
@@ -115,138 +59,64 @@ class EFXExternRefProps(PropertyGroup):
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# §3  导入：从 data_bytes + extern 集合初始化 EFXExternRefProps
-# ─────────────────────────────────────────────────────────────────────────────
-
 def init_extern_ref_props(
     blk_obj: bpy.types.Object,
     data_bytes: bytes,
     extern_objs_by_index: dict,
     count_extern: int,
 ) -> None:
-    """
-    初始化 blk_obj.efx_extern_ref PropertyGroup。
-
-    参数
-    ----
-    blk_obj : bpy.types.Object
-        EFX_ATTRIBUTE Empty（EXTERNREFERENCE 类型）。
-    data_bytes : bytes
-        该块的 data_bytes（36 字节）。
-    extern_objs_by_index : dict[int, bpy.types.Object]
-        {efx_index → EFX_EXTERN 对象} 映射，由 import_efx_tree 构建。
-    count_extern : int
-        文件头的 count_extern 字段值（hdr.count_extern）。
-
-    副作用
-    ------
-    填写 blk_obj.efx_extern_ref.{extern_ref_ptr, extern_ref_none, extern_ref_pointerized}。
-
-    三种情况：
-      1. 0 <= v < count_extern → ptr 指向 efx_index==v 的 EFX_EXTERN 对象；pointerized=True
-      2. v == -1               → none=True；pointerized=True
-      3. 越界/死块              → pointerized=False（保持 orig_b64，byte-perfect）
-    """
+    """从原始索引初始化指针状态；越界值保持为未指针化。"""
     props = blk_obj.efx_extern_ref
 
-    # 防御性检查：data_bytes 至少要有 8 字节（offset 4-7）
     if len(data_bytes) < 8:
         props.extern_ref_pointerized = False
         return
 
-    # 读 referenceIndex（有符号 int32，小端）
     v = struct.unpack_from('<i', data_bytes, _REFERENCE_INDEX_OFFSET)[0]
 
     if v == _SENTINEL_VALUE:
-        # 哨兵 -1：无目标，指针化路径标记 none
         props.extern_ref_none = True
         props.extern_ref_pointerized = True
         return
 
     if count_extern > 0 and 0 <= v < count_extern:
-        # 有效范围：指向对应的 EFX_EXTERN 对象
         target_obj = extern_objs_by_index.get(v)
         if target_obj is not None:
             props.extern_ref_ptr = target_obj
             props.extern_ref_pointerized = True
         else:
-            # 理论上不该发生（extern 对象已建但映射缺失），安全回退
             props.extern_ref_pointerized = False
         return
 
-    # 死块/越界：count_extern=0 或 v >= count_extern 或其他异常值
-    # 保持 pointerized=False → 导出走 orig_b64（byte-perfect）
     props.extern_ref_pointerized = False
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# §4  导出：根据 EFXExternRefProps 覆写 data_bytes 中的 referenceIndex
-# ─────────────────────────────────────────────────────────────────────────────
 
 def overlay_extern_ref_index(
     data_bytes: bytes,
     blk_obj: bpy.types.Object,
     extern_index_map: dict,
 ) -> bytes:
-    """
-    若 blk_obj.efx_extern_ref.extern_ref_pointerized==True，
-    用指针解析结果覆写 data_bytes 中 referenceIndex 对应的 4 字节（偏移 4）。
-
-    参数
-    ----
-    data_bytes : bytes
-        已由 fields.get_attribute_data_bytes（或 orig_b64）得到的 EXTERNREFERENCE data_bytes。
-    blk_obj : bpy.types.Object
-        EFX_ATTRIBUTE Empty（EXTERNREFERENCE 类型）。
-    extern_index_map : dict[bpy.types.Object, int]
-        {EFX_EXTERN Object → extern 段局部 0-based index}，
-        由 build_local_index_map(col_extern, 'EFX_EXTERN') 构建。
-
-    返回
-    ----
-    bytes — 覆写后的 data_bytes（已替换 referenceIndex 4 字节）；
-            不指针化则原样返回。
-
-    注意
-    ----
-    - 使用 bytearray 做 pack_into，再转回 bytes（Python 3.10 兼容）。
-    - 覆写操作：struct.pack_into('<i', buf, 4, new_index)。
-    - 哨兵路径：none=True → 写 -1（struct pack '<i' 的 -1 = 0xFFFFFFFF 小端）。
-    - 悬空指针（ptr=None 且 none=False）：静默返回原始字节（安全回退）。
-    """
+    """按当前指针覆写索引；未指针化或悬空时保留原始字节。"""
     try:
         props = blk_obj.efx_extern_ref
     except AttributeError:
         return data_bytes
 
     if not props.extern_ref_pointerized:
-        # 死块/越界 → 不覆写，byte-perfect 原样返回
         return data_bytes
 
-    # 计算新的 referenceIndex 值
     if props.extern_ref_none:
-        new_index = _SENTINEL_VALUE  # -1
+        new_index = _SENTINEL_VALUE
     else:
-        # 从 extern_ref_ptr 经 extern_index_map 解析局部 index
         extern_obj = props.extern_ref_ptr
         if extern_obj is None:
-            # 悬空指针：安全回退（不覆写）
             return data_bytes
         new_index = extern_index_map.get(extern_obj)
         if new_index is None:
-            # 指向的 extern 不在本次导出的 Extern 段里。两种成因，处理相同：
-            #   - 它是空 EA，被导出端剔除了（io_tree §4a）
-            #   - 极端情况：指针指向别的文件的 extern（poll 本该拦住）
-            # **必须写 -1 哨兵，不能原样返回**：原样返回会保留旧的 referenceIndex，
-            # 而剔除会让后面的 EA 整体前移一位，于是这个引用静默指到另一个 EA 上，
-            # 不报任何错。-1 是格式本身的"无目标"哨兵（官方语料 1143 例）。
-            # 对未编辑文件无影响：那时每个指针都能在 map 里解析到，走不到这里。
+            # 段内索引改变后，旧索引可能错误指向另一项。
             new_index = _SENTINEL_VALUE
 
-    # 覆写 data_bytes 中 referenceIndex 的 4 字节（偏移 4）
     if len(data_bytes) < 8:
-        # 防御：字节太短，不覆写
         return data_bytes
 
     buf = bytearray(data_bytes)

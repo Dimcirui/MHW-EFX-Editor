@@ -1,42 +1,9 @@
-"""
-blender_efx/validate.py  —  导出前校验（仿 mrl3 checkMrl3Error）
+"""导出前检查 EFX 对象树，并将问题分为 ERROR 与 WARN。
 
-提供：
-  validate_efx_tree(root_obj) -> list[dict]  纯函数，扫描对象树返回问题列表
-  EFX_OT_validate                            校验算子（efx.validate），弹窗显示问题
-
-问题项结构：{"level": "ERROR"|"WARN", "msg": str, "obj": str}
-
-检查项
-------
-(1) 悬空指针（删除被引用对象后产生）—— **WARN**（category="dangling"），导出端安全跳过、不挡导出：
-    - Subselect 成员 member.body_ptr is None
-    - Action targets target.body_ptr is None
-    - ExternReference extern_ref_ptr is None（pointerized && !none）
-    悬空指针不再 ERROR：导出端各 export_* 早已对 None 指针安全跳过/回退（subselect/action
-    直接 skip，extern 原样保留旧字节）。降级为 WARN + 导出时报告即可，不应仅因引用悬空
-    就阻断导出。
-    PtLife.relation_play_ptr / PtCollision.ie_play_ptr **不**在此列——2026-07 简化后 None
-    是这两个字段的正常合法状态（无目标），导出时自动写 -1，不再是需要提醒的"悬空"。
-(1b) EOF 异常归属（per_entry 模型，Entry 下 Direct Trigger / Not Direct Trigger 两个
-    对称子集合）—— WARN，两种情况：
-    - 双重挂载（category="eof_dual_membership"）：同一 entry 同时 link 在两个子集合里。
-      只有手动 Ctrl+drag 追加链接才会出现，正常切换/拖拽是互斥移动。导出以 Direct
-      Trigger 为准（entry 仍算作直接触发）。
-    - 孤儿（category="eof_orphan_entry"）：entry 不在任何一个子集合里，误留在 Entry
-      叶子集合直接子级（拖拽失误）。导出 fail-safe 视为直接触发（宁可多触发不漏触发）。
-    两者都只是提醒用户清理，不挡导出。
-(3) 死属性 EXTERNREFERENCE（count_extern==0 却仍 pointerized）—— WARN（合法历史模式）
-(5f) 2D/3D 骨架与渲染主体不匹配（TRANSFORM2D+3D渲染主体 / TRANSFORM3D+BILLBOARD2D）
-     —— **ERROR**（挡导出；前者实机确认崩溃，后者按对称性预防性拦截，见该检查项内联注释）
-(5k) standard/extended entry 零属性 —— WARN（提示性；io_tree.py §4a0 已自动从导出剔除这类
-     残留空壳，这里只是提醒用户手动清理场景里的对象；见该检查项内联注释）
-
-约束（参照 CLAUDE.md）：
-  - Python 3.10 语法（兼容 Blender 3.6～5.x）
-  - bpy 只用稳定子集
-  - 不改 efx_format/，不改 io_tree.py
-  - 所有属性访问 getattr + try/except 防御（对象可能未初始化对应 PropertyGroup）
+维护约束：
+- 校验只报告，不修改对象树；属性 PropertyGroup 可能缺失，读取须可安全跳过。
+- 悬空引用与 EOF 归属异常为 WARN，因为导出端已有确定的跳过或回退语义。
+- 会产生无效结构的属性组合为 ERROR；证据不足的组合仅提示为 WARN。
 """
 
 import bpy
@@ -46,17 +13,10 @@ from .i18n import T
 from . import root_collection as _rc
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 工具：收集子对象
-# ─────────────────────────────────────────────────────────────────────────────
+# 对象收集与图分析。
 
 def _children_by_type(parent_obj, type_tag: str) -> list:
-    """
-    收集 parent_obj 下 ~TYPE == type_tag 的对象。
-    parent_obj 是顶层文件集合（Collection，entry/action/extern/subselect 场景）时走
-    集合归属收集；是 EFX_ENTRY 对象（attribute 场景）时走原 parent 收集（不受
-    ROOT 集合化影响）。
-    """
+    """按容器类型收集直属段对象或 Entry 的直属属性。"""
     if isinstance(parent_obj, bpy.types.Collection):
         return _rc.collect_top_level(parent_obj, type_tag)
     return [
@@ -66,18 +26,11 @@ def _children_by_type(parent_obj, type_tag: str) -> list:
 
 
 def _build_trigger_graph(bodies, plays):
-    """构建召唤触发有向图，返回 {obj: set(obj)} 邻接表。
-
-    边方向 = 召唤/触发方向：
-      Action → entry ：play.efx_play.entries[].targets[].body_ptr （action 生成 entry）
-      entry  → Action ：PTLIFE.relation_play_ptr / PTCOLLISION.ie_play_ptr （entry 触发 action）
-
-    只保留终点也在本 root 节点集内的边（指针经 poll 已限定同文件，外指针忽略）。
-    """
+    """构建 Entry 与 Action 的文件内触发有向图。"""
     node_set = set(bodies) | set(plays)
     adj = {n: set() for n in node_set}
 
-    # Action → entry
+    # Action → Entry。
     for play in plays:
         pp = getattr(play, "efx_play", None)
         if pp is None:
@@ -99,7 +52,7 @@ def _build_trigger_graph(bodies, plays):
                 if tgt in node_set:
                     adj[play].add(tgt)
 
-    # entry → Action
+    # Entry → Action。
     for body in bodies:
         for blk in _children_by_type(body, "EFX_ATTRIBUTE"):
             pl = getattr(blk, "efx_ptlife_ref", None)
@@ -121,17 +74,14 @@ def _build_trigger_graph(bodies, plays):
 
 
 def _find_cycles(adj):
-    """在邻接表上找有向环，返回去重后的环列表（每环是 obj 名字列表）。
-
-    DFS + 递归栈回边检测；环按"最小名字旋转到首位"规范化去重。
-    """
+    """返回去重的有向环；每个环按最小名称规范化。"""
     cycles = set()
     WHITE, GRAY, BLACK = 0, 1, 2
     color = {n: WHITE for n in adj}
     stack = []
 
     def _norm(path):
-        # path 是构成环的节点序列；旋转使字典序最小的节点在首位
+        # 旋转到字典序最小的节点，保证同一环只报告一次。
         names = [o.name for o in path]
         k = names.index(min(names))
         return tuple(names[k:] + names[:k])
@@ -139,9 +89,9 @@ def _find_cycles(adj):
     def dfs(u):
         color[u] = GRAY
         stack.append(u)
-        for v in adj.get(u, ()):  # 邻接确定性可不排序；环集去重
+        for v in adj.get(u, ()):
             if color[v] == GRAY:
-                # 回边：栈中从 v 到栈顶构成一个环
+                # 回边与当前递归栈构成有向环。
                 idx = stack.index(v)
                 cycles.add(_norm(stack[idx:]))
             elif color[v] == WHITE:
@@ -156,15 +106,7 @@ def _find_cycles(adj):
 
 
 def detect_dimension_entries(root_obj) -> tuple:
-    """
-    扫描 root_obj 下所有 EFX_ENTRY，返回 (dim_2d_entries, dim_3d_entries)：分别是
-    含 TRANSFORM2D / TRANSFORM3D 属性块的 entry 名字列表。
-
-    供两处复用：(5l) 一致性 WARN（本文件）+ 导出端 is_3d 自动校正
-    （operators.py EFX_OT_export_efx，仅内容单一时自动改，混用时不动、留给 WARN）。
-    见 memory header-is-3d-flag-discovery：语料库 10162 样本零例外，
-    TRANSFORM2D/TRANSFORM3D 是文件级 2D/3D 类型的可靠判据。
-    """
+    """返回含 TRANSFORM2D 与 TRANSFORM3D 的 Entry 名称，供校验和导出共用。"""
     try:
         from ..efx_format.hashes import TRANSFORM2D as _T2D, TRANSFORM3D as _T3D
     except ImportError:
@@ -189,17 +131,10 @@ def detect_dimension_entries(root_obj) -> tuple:
     return dim_2d, dim_3d
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 核心校验函数
-# ─────────────────────────────────────────────────────────────────────────────
+# 核心校验。
 
 def _extern_ref_state_indices(blk_obj) -> list:
-    """读 EXTERNREFERENCE 属性里的 index0 / index1（选哪两列做切换/插值）。
-
-    EXTERNREFERENCE 是 36B 定长：typeFlag(+0) / referenceIndex(+4) /
-    trigger_condition(+8) / index0(+12) / index1(+16) / ...
-    读不出来（字节不足/无数据）返回空列表——校验拿不到就不报，不猜。
-    """
+    """读取 EXTERNREFERENCE 的 index0 与 index1；数据不足时返回空列表。"""
     import base64
     import struct as _struct
 
@@ -217,14 +152,7 @@ def _extern_ref_state_indices(blk_obj) -> list:
 
 
 def validate_efx_tree(root_obj) -> list:
-    """
-    扫描 root_obj 对象树，返回问题列表。
-
-    返回
-    ----
-    list[dict]：每项 {"level": "ERROR"|"WARN", "msg": str, "obj": str}。
-                空列表表示无问题。
-    """
+    """扫描对象树，返回 ``level``、``msg`` 与 ``obj`` 组成的问题列表。"""
     problems = []
     if root_obj is None:
         problems.append({
@@ -234,16 +162,14 @@ def validate_efx_tree(root_obj) -> list:
         })
         return problems
 
-    # 段对象集合
+    # 段对象集合。
     bodies     = _children_by_type(root_obj, "EFX_ENTRY")
     plays      = _children_by_type(root_obj, "EFX_ACTION")
     externs    = _children_by_type(root_obj, "EFX_EXTERN")
     subselects = _children_by_type(root_obj, "EFX_SUBSELECT")
     count_extern = len(externs)
 
-    # ── (6) Extern 结构：空 EA / 指向被剔除 EA / 状态下标越界 ───────────────────
-    # 空 EA（0 item）官方语料 1477 个里一个都没有，导出端会剔除它（io_tree §4a）。
-    # 判据必须与导出端一致，否则会报了不删、或删了不报。
+    # Extern 结构：空项、指向会被剔除的项及状态下标越界。
     _empty_externs = set()
     for ext in externs:
         ep = getattr(ext, "efx_extern", None)
@@ -253,7 +179,7 @@ def validate_efx_tree(root_obj) -> list:
         if hdr is not None:
             try:
                 if int(str(hdr)) == 0:
-                    continue        # 导入时本就为空 → 导出端也原样保留，不报
+                    continue  # 导入时为空的段按导出端语义原样保留。
             except (ValueError, TypeError):
                 pass
         if len(ep.items) == 0:
@@ -281,7 +207,7 @@ def validate_efx_tree(root_obj) -> list:
                                 "exported file; this reference will be written as 'no target'"),
                         "obj": blk.name,
                     })
-                # 状态下标越界：删掉某一列后，引用里残留的 index0/index1 可能超范围
+                # 删除状态列后，引用中保留的 index0/index1 可能越界。
                 if (er.extern_ref_pointerized and not er.extern_ref_none
                         and ptr is not None):
                     pep = getattr(ptr, "efx_extern", None)
@@ -301,9 +227,9 @@ def validate_efx_tree(root_obj) -> list:
             except AttributeError:
                 pass
 
-    # ── (1) 悬空指针 ─────────────────────────────────────────────────────────
+    # 悬空引用：导出端可安全跳过或回退，故仅警告。
 
-    # Subselect 成员
+    # Subselect 成员。
     for ss in subselects:
         ss_props = getattr(ss, "efx_subselect", None)
         if ss_props is None:
@@ -324,7 +250,7 @@ def validate_efx_tree(root_obj) -> list:
             except AttributeError:
                 continue
 
-    # Action targets（结构：efx_play.entries[].targets[].body_ptr）
+    # Action 目标。
     for play in plays:
         play_props = getattr(play, "efx_play", None)
         if play_props is None:
@@ -353,10 +279,10 @@ def validate_efx_tree(root_obj) -> list:
                 except AttributeError:
                     continue
 
-    # 遍历全部属性（EFX_ATTRIBUTE）做引用检查
+    # 属性引用。
     for body in bodies:
         for blk in _children_by_type(body, "EFX_ATTRIBUTE"):
-            # ExternReference 悬空
+            # ExternReference 悬空。
             er = getattr(blk, "efx_extern_ref", None)
             if er is not None:
                 try:
@@ -372,7 +298,7 @@ def validate_efx_tree(root_obj) -> list:
                             ),
                             "obj": blk.name,
                         })
-                    # (3) 死属性 WARN：count_extern==0 却仍 pointerized
+                    # 无 Extern 段时保留的指针化引用仅提示。
                     if er.extern_ref_pointerized and count_extern == 0:
                         problems.append({
                             "level": "WARN",
@@ -385,16 +311,10 @@ def validate_efx_tree(root_obj) -> list:
                 except AttributeError:
                     pass
 
-            # PtLife.relation_play_ptr / PtCollision.ie_play_ptr：None 是正常的"无目标"
-            # 状态（2026-07 简化，见文件头说明），导出时自动写 -1，不再检查/报告悬空。
+            # PtLife 与 PtCollision 的空 Action 目标表示无目标，导出时写 -1。
 
-    # EOF 异常归属：per_entry 模型下 entry 应恰好属于 Direct Trigger / Not Direct
-    # Trigger 两个子集合之一。正常切换/拖拽是互斥移动，不会产生异常；只有手动
-    # Ctrl+drag 追加链接（双重挂载）或误把 entry 落在 Entry 叶子集合直接子级
-    # （孤儿）才会出现 —— 见 (1b) 说明。
-    # EOF 规范化告知：导入时丢弃了越界/重复索引，或把非升序顺序归一化了。
-    # 这类文件本来就是坏的（手工编辑/旧工具产物，official 语料 0 例），修好是
-    # 预期行为——但导出结果不再与原文件逐字节相同，必须报出来而不是静默。
+    # per_entry EOF 模型中，Entry 应恰好归属一个触发子集合。
+    # 导入时修复 EOF 索引或顺序会改变原始字节，必须提示用户。
     _eof_dropped = str(root_obj.get("eof_dropped", ""))
     if _eof_dropped:
         problems.append({
@@ -407,8 +327,7 @@ def validate_efx_tree(root_obj) -> list:
             ),
             "obj": "",
         })
-    # Root 专属子条目（UnitBoundary/RenderTarget/LayoutBank）跑到普通 entry 下面，
-    # 或普通渲染属性跑到 Root 下面——两边导出时都会丢弃，不是静默兼容。
+    # 放在错误 Entry 类型下的属性会在导出时剔除。
     _root_attr_dropped = str(root_obj.get("root_attr_dropped", ""))
     if _root_attr_dropped:
         problems.append({
@@ -461,18 +380,7 @@ def validate_efx_tree(root_obj) -> list:
                     "obj": b.name,
                 })
 
-    # efx_index 重复（如原生 Shift+D 复制后新旧对象撞号）不检查——已确认无害：
-    # 导出端从不直接按存储的 efx_index 写字节位置，而是先按 efx_index 排序
-    # （Python 稳定排序，撞号只影响并列时的相对顺序）再用 enumerate() 位置重算
-    # 真正的段局部 index（entry/action/extern/subselect 均如此，见 io_tree.py
-    # 的 collect_top_level → enumerate 模式）；attribute 更进一步——字节格式里
-    # 根本没有 index 字段，序列化顺序就是列表顺序。曾经在此报 ERROR 挡导出，
-    # 但这恰恰是原生复制的正常产物，不该拦——已移除。
-
-    # ── (4) 召唤回绕（entry↔action 触发图成环）—— WARN ────────────────────────────
-    # entry 的 PTLIFE/PTCOLLISION 触发 Action，Action 的 targets 又指回（祖先）entry，
-    # 形成递归召唤 → 每轮按扇出倍增（如 12→144→1728…）直接卡死游戏。
-    # 仅警告、不挡导出：保留刻意 loop 的自由，由用户判断该环是否有界。
+    # Entry 与 Action 的触发环可能递归生成粒子；保留为 WARN 以允许受控循环。
     try:
         adj = _build_trigger_graph(bodies, plays)
         for cyc in _find_cycles(adj):
@@ -486,11 +394,10 @@ def validate_efx_tree(root_obj) -> list:
                 "obj": cyc[0] if cyc else "",
             })
     except Exception:
-        # 环检测失败不应阻断其它校验/导出
+        # 图分析失败不阻断其他校验。
         pass
 
-    # ── (5) Attribute-level structural rules ──────────────────────────────────────
-    # 依赖 efx_format.hashes；导入失败则跳过整节（不影响其他检查）。
+    # 属性结构规则；哈希不可用时跳过本节。
     try:
         from ..efx_format.hashes import (
             HASH_TO_NAME as _H2N,
@@ -513,8 +420,7 @@ def validate_efx_tree(root_obj) -> list:
             _BB3D, _RIBBON, _MESH, _PLANE, _FAKEPLANE,
             _LIGHTNING, _DUMMY, _RIBBONBLADE, _SRBN, _TUBE, _BB2D,
         })
-        # 3D 系渲染主体（不含 FAKEPLANE——它已归渲染修饰，跟真正的 body 共存不互斥）。
-        # 用于 (5f) 2D/3D 骨架与渲染主体不匹配检查。
+        # FAKEPLANE 是渲染修饰，不作为 2D/3D 主体匹配依据。
         _RENDERER_BODY_3D = frozenset({
             _BB3D, _RIBBON, _MESH, _PLANE,
             _LIGHTNING, _DUMMY, _RIBBONBLADE, _SRBN, _TUBE,
@@ -540,7 +446,7 @@ def validate_efx_tree(root_obj) -> list:
                     hash_count[h] = hash_count.get(h, 0) + 1
                 hash_set = set(hashes)
 
-                # (5a) 重复属性类型 — ERROR
+                # 重复属性类型。
                 for h, cnt in hash_count.items():
                     if cnt > 1:
                         name = _H2N.get(h, f"0x{h:08X}")
@@ -553,7 +459,7 @@ def validate_efx_tree(root_obj) -> list:
                             "obj": body.name,
                         })
 
-                # (5b) RGBFIRE ✗ RGBWATER — ERROR
+                # 互斥颜色效果。
                 if _RGBFIRE in hash_set and _RGBWATER in hash_set:
                     problems.append({
                         "level": "ERROR",
@@ -564,7 +470,7 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5c) PLANE ✗ FAKEPLANE — ERROR
+                # 互斥渲染器。
                 if _PLANE in hash_set and _FAKEPLANE in hash_set:
                     problems.append({
                         "level": "ERROR",
@@ -575,9 +481,7 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5d) PTBEHAVIOR 与其他属性共存 — 全部 WARN
-                # 实测大量第三方特效让 PTBEHAVIOR 与任意属性（含渲染体）共存且不崩溃，
-                # 故不再区分 hard/soft，统一降级为 WARN（仅提示，不挡导出）。
+                # PTBEHAVIOR 通常独立使用，但共存仅提示。
                 if _PTBEHAVIOR in hash_set and len(hash_set) > 1:
                     conflicts = hash_set - {_PTBEHAVIOR}
                     names = "/".join(
@@ -594,7 +498,7 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5e) 多个渲染体 — WARN
+                # 多个渲染主体仅提示。
                 renderers_in_entry = hash_set & _RENDERERS
                 if len(renderers_in_entry) > 1:
                     names = "/".join(
@@ -609,12 +513,7 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5f) 2D/3D 骨架与渲染主体不匹配 — ERROR
-                # 官方语料（efx_samples/official 10084 文件）121 个 2D 文件、580 个
-                # 带属性的 2D entry，渲染主体 100% 是 BILLBOARD2D，从无例外。实机确认：
-                # TRANSFORM2D + RIBBON（2D 骨架配 3D 渲染主体）直接导致游戏崩溃。
-                # 按 entry 内骨架属性（TRANSFORM2D/TRANSFORM3D）判定，独立于文件级
-                # header.is_3d（该字段的一致性由 (5l) 另行检查），两个方向都挡导出。
+                # 骨架与渲染主体必须使用相同维度的管线。
                 if _T2D in hash_set:
                     bad = hash_set & _RENDERER_BODY_3D
                     if bad:
@@ -639,9 +538,7 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5m) HOMING without VELOCITY3D — WARN
-                # 全语料 212 个 HOMING 条目统计：95.3% 伴随 VELOCITY3D（另 95.8% 伴随
-                # EMITTERSHAPE3D）；归航行为强依赖粒子速度矢量才能计算转向。
+                # HOMING 缺少速度属性时仅提示。
                 if _HOMING in hash_set and _VEL3D not in hash_set:
                     problems.append({
                         "level": "WARN",
@@ -654,7 +551,7 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5g) UVCONTROL without MESH — WARN
+                # UVCONTROL 依赖 MESH。
                 if _UVCTL in hash_set and _MESH not in hash_set:
                     problems.append({
                         "level": "WARN",
@@ -665,7 +562,7 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5h) MATERIAL without MESH — WARN
+                # MATERIAL 覆盖 MESH 的材质属性。
                 if _MATERIAL in hash_set and _MESH not in hash_set:
                     problems.append({
                         "level": "WARN",
@@ -676,8 +573,7 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5i) ALPHACORRECTION without SHADERSETTINGS — WARN
-                # 738 文件统计：ALPHACORRECTION 100% 依附 SHADERSETTINGS，从不单独出现
+                # ALPHACORRECTION 需要 SHADERSETTINGS 的着色器上下文。
                 if _ALPHACORR in hash_set and _SHADERSET not in hash_set:
                     problems.append({
                         "level": "WARN",
@@ -689,16 +585,8 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5k) standard/extended entry 一个属性都没有 — WARN（提示性，不挡导出）
-                # 正常特效体至少有 1 个属性；0 属性的 standard/extended entry 几乎总是原生
-                # 「Delete Hierarchy」的残留空壳——2026-07-01 实测坐实：entry 这个 Empty
-                # 对象本身没被真正删除（残留在 bpy.data.objects，默认 Outliner「View
-                # Layer」视图不可见、Purge Unused Data 也清不掉，因为它仍链接在集合里、
-                # 不算孤儿），只有它的 EFX_ATTRIBUTE 子对象被删掉了。io_tree.py §4a0 已经会
-                # 在导出时自动把这类零属性 entry 当不存在（不写进文件），这里只是提示用户
-                # 场景里还留着这个空壳对象，建议手动清理（对导出结果无影响）。root 类型
-                # entry 本来就没有属性，不算在内。
-                if str(body.get("entry_kind", "")) in ("standard", "extended") and not blk_objs:
+                # 零属性 standard Entry 会在导出时剔除，故仅提示清理。
+                if str(body.get("entry_kind", "")) == "standard" and not blk_objs:
                     problems.append({
                         "level": "WARN",
                         "msg": (
@@ -711,9 +599,7 @@ def validate_efx_tree(root_obj) -> list:
                         "obj": body.name,
                     })
 
-                # (5j) 有渲染器但缺 SHADERSETTINGS — WARN
-                # 官方样本：BILLBOARD3D/RIBBON/PLANE/LIGHTNING 与 SHADERSETTINGS 100% 共现；
-                # MESH 78.7%（有合法的不可见 MESH，故豁免）；DUMMY 功能性体也豁免。
+                # 仅检查必须依赖 SHADERSETTINGS 的渲染主体。
                 _SHADERSET_REQUIRED = frozenset({_BB3D, _RIBBON, _PLANE, _LIGHTNING, _RIBBONBLADE, _SRBN})
                 has_required_renderer = bool(hash_set & _SHADERSET_REQUIRED)
                 if has_required_renderer and _SHADERSET not in hash_set:
@@ -731,14 +617,9 @@ def validate_efx_tree(root_obj) -> list:
                     })
 
             except Exception:
-                pass  # 单个 entry 检查失败不影响整体
+                pass  # 单个 Entry 检查失败不影响整体。
 
-        # ── (5l) header.is_3d 与 2D/3D 类型块一致性 — WARN ─────────────────────
-        # 语料库统计（efx_samples 全量 10162 样本）：580 个含 TRANSFORM2D 的 entry
-        # 100% 落在 is_3d=0 的文件里，0 个例外含任何 3D 类型块（TRANSFORM3D 等）；
-        # is_3d=1 的文件里则从未出现 TRANSFORM2D。实机验证：同一文件内 2D/3D 类型
-        # 混用、或类型与 is_3d 不匹配，在加上 SHADERSETTINGS/ALPHACORRECTION 等
-        # 修饰属性后会直接导致游戏闪退（2026-07 实机确认）。
+        # header.is_3d 必须与文件内的维度类型保持一致。
         _dim_2d_entries, _dim_3d_entries = detect_dimension_entries(root_obj)
         if _dim_2d_entries or _dim_3d_entries:
             is_3d_raw = root_obj.get("hdr_is_3d")
@@ -784,11 +665,7 @@ def validate_efx_tree(root_obj) -> list:
                     "obj": _dim_2d_entries[0],
                 })
 
-    # ── (6) TIML 关键帧插值类型校验 ─────────────────────────────────────────────
-    # 游戏 TIML 只支持固定多项式缓动（Constant/Linear/Quadratic/Cubic）。Blender 新建
-    # 关键帧默认的 BEZIER 无游戏对应 → 导出近似为 Cubic（WARN，不阻拦）；其余花式缓动
-    # （Sine/Expo/Back/Bounce/Elastic…）无对应 → ERROR 阻止导出，避免像旧版那样静默
-    # 降级成线性（用户"设二次得线性"的坑之一）。见 timl_edit.check_timl_interpolations。
+    # TIML 仅支持固定插值；BEZIER 有明确近似，其余不支持插值阻止导出。
     try:
         from . import timl_edit as _te
         from . import io_tree as _iot
@@ -823,17 +700,15 @@ def validate_efx_tree(root_obj) -> list:
                             "obj": body.name,
                         })
             except Exception:
-                pass  # 单个 entry 检查失败不影响整体
+                pass  # 单个 Entry 检查失败不影响整体。
 
     return problems
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 校验算子
-# ─────────────────────────────────────────────────────────────────────────────
+# 校验算子。
 
 class EFX_OT_validate(bpy.types.Operator):
-    """导出前校验：扫描悬空指针、重复索引、死属性，弹窗报告"""
+    """执行导出前校验并在弹窗中显示结果。"""
 
     bl_idname      = "efx.validate"
     bl_label       = "Pre-export Validation"
@@ -888,9 +763,7 @@ class EFX_OT_validate(bpy.types.Operator):
         return {"FINISHED"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 注册 / 注销
-# ─────────────────────────────────────────────────────────────────────────────
+# 注册。
 
 _CLASSES = (
     EFX_OT_validate,

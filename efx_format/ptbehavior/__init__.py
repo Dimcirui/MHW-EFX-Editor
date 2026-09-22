@@ -1,3 +1,2 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/ptbehavior/ — PTBEHAVIOR 块解析子系统。catalog / names / edit。"""
+"""PTBEHAVIOR 的目录、名称与稀疏覆盖编辑支持。"""

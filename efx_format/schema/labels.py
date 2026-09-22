@@ -1,24 +1,17 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/schema/labels.py — 字段中文标签（纯数据 + 单一 accessor）
+"""schema 字段的中英文显示标签与回退查询。
 
-标签归属统一在 schema 层：
-  · 定长块（走 typed Attribute）：标签就是 Field.label_zh，权威、单一声明处。
-  · custom-codec 块（字段仍是裸 tuple、不进 FIELD_REGISTRY）：标签存本模块的残余表；
-    将来 custom schema 若也升级成 Field，这两张表自然折入、随之退休。
-
-accessor field_label_zh(type_name, field_name)：
-  1. Field.label_zh（NAME_TO_HASH→FIELD_REGISTRY 反查）——定长块权威；
-  2. _LABELS_BY_TYPE[(type_name, field_name)]——同名字段跨类型语义不同时的专属覆盖；
-  3. _LABELS_GLOBAL[field_name]——跨类型通用中文名。
-  未命中返回 None（Blender 层据此回退英文友好名 _friendly_name）。
+维护约束：
+- typed Attribute 的 ``Field.label_zh`` 优先；本模块只补充 custom-codec 字段和按类型覆盖。
+- 查询顺序为 Field、类型专属表、全局表；未命中返回 ``None``，由 Blender 层生成友好英文名。
+- 冻结英文标签只用于内部字段改名后保持既有 UI 文案，不能用于表达新的字段语义。
 """
 
 from .fields_model import FIELD_REGISTRY
 from ..hashes import NAME_TO_HASH
 
 
-# 跨类型通用中文名（仅保留仍被 custom-codec 块字段用到的；定长块名已折入 Field.label_zh）。
+# custom-codec 字段的跨类型通用中文名
 _LABELS_GLOBAL = {
     'rotationOrder': '旋转顺序',
     'direction': '方向',
@@ -44,9 +37,7 @@ _LABELS_GLOBAL = {
     'emissiveColorRateJitter': '自发光强度抖动',
     'brightness': '亮度',
     'opacity': '不透明度',
-    # flowmap 8 件套 + 总开关：RIBBON / BILLBOARD2D / BILLBOARD3D / PLANE / LIGHTNING
-    # 共用同名同义字段，统一在此给通用中文名（RIBBONBLADE 的「流光贴图」措辞由下面的
-    # 按类型专属表覆盖；UVCONTROL 走 Field.label_zh 优先级更高，同样不受影响）。
+    # 共用字段的通用标签；类型专属表和 Field 标签可覆盖
     'enableFlowmap': '启用流动贴图',
     'flowmapSpeed': '流动贴图速度',
     'flowmapSpeedJitter': '流动贴图速度抖动',
@@ -56,7 +47,6 @@ _LABELS_GLOBAL = {
     'flowmapStrengthJitter': '流动贴图强度抖动',
     'flowmapStrengthCoef': '流动贴图强度加速度',
     'flowmapStrengthCoefJitter': '流动贴图强度加速度抖动',
-    # TUBELIGHT 全字段标签已折入 TUBELIGHT_ATTR 的 Field.label_zh，此处退休。
     'playSpeed': '动画速度',
     'width': '宽度',
     'widthJitter': '宽度抖动',
@@ -68,7 +58,6 @@ _LABELS_GLOBAL = {
     'visiblePreview': '可见性修正',
     'blendMode': '混合模式',
     'subdivisionCount': '细分数量',
-    # RIBBON 柔体链的弹簧-阻尼参数组（原 restitution/inertial_excess/springiness）。
     'restoreStrength': '归位强度',
     'restoreStrengthJitter': '归位强度抖动',
     'inertia': '惯性',
@@ -76,7 +65,7 @@ _LABELS_GLOBAL = {
     'springiness': '弹性',
     'springiness_jitter': '弹性抖动',
     'brightnessJitter': '亮度抖动',
-    # RIBBON flap 抖动组（原 base_flap_*/tip_flap_*；两组等效可叠加，非根部/尖端之分）。
+    # RIBBON 的两组可叠加抖动参数
     'flap1Frequency': '抖动1 频率',
     'flap1FrequencyJitter': '抖动1 频率抖动',
     'flap1Amount': '抖动1 幅度',
@@ -85,31 +74,26 @@ _LABELS_GLOBAL = {
     'flap2FrequencyJitter': '抖动2 频率抖动',
     'flap2Amount': '抖动2 幅度',
     'flap2AmountJitter': '抖动2 幅度抖动',
-    # RIBBON 两端的宽度收束与渐隐：opacity 是**端点**的不透明度（中间恒为实心），
-    # fade_length 是从端点回到实心所跨的长度（占全长比例）。
+    # RIBBON 两端的宽度与渐隐参数
     'base_width_multiplier': '后端宽度乘数',
     'base_opacity': '后端不透明度',
     'base_fade_length': '后端渐隐长度',
     'tip_width_multiplier': '前端宽度乘数',
     'tip_opacity': '前端不透明度',
     'tip_fade_length': '前端渐隐长度',
-    # RIBBON 自尾端施加的三向全局力（方向恒定，不随旋转变化）。
+    # RIBBON 尾端的全局力
     'unknGlobalForceEnable': '启用全局力',
     'unknGlobalForceX': '全局力 X',
     'unknGlobalForceY': '全局力 Y（竖直）',
     'unknGlobalForceZ': '全局力 Z',
     'loopingOrientation': '贴图朝向',
     'loopingPad': '保留',
-    # applicationRule/loopingMode 现为 Bitmask 字段（label 在 Field.label_zh），拆分子字段已退休。
 
-    # EPV 颜色修正槽位（MESH / STRAINRIBBON 共用同名字段；STRAINRIBBON 一侧已确认
-    # slot1 管 color、slot2 管 colorRange，MESH 一侧配对目标未定，公用同一个通用名）
+    # MESH / STRAINRIBBON 共用的 EPV 颜色修正槽位
     'epv_color_slot1': 'EPV 颜色修正槽位',
     'epv_color_slot2': 'EPV 颜色修正槽位',
 
-    # ── 路径槽（2026-09-03 由统一的 path / path1 / path2 改成按内容命名）──────
-    # 名字在 blender_efx/fields.py::_PATH_ITEM_NAMES 里定义（路径不在 schema，
-    # codec 按位置存取），每个名字全项目唯一，故一律进 GLOBAL 表。
+    # 路径槽由 Blender 层按位置读写，名称在全项目唯一
     'flowmapPath':  '流动贴图',
     'cubemapPath':  '环境反射贴图',
     'albedoPath':   '基础色贴图',
@@ -120,10 +104,9 @@ _LABELS_GLOBAL = {
     'plPath':       '摆位表（.pl）',
 }
 
-# 类型专属中文名（键 =(TYPE_NAME, field_name)），优先于 _LABELS_GLOBAL。
-# 仅 custom-codec 类型（定长块的 BY_TYPE 已折入各自 Field.label_zh）。
+# custom-codec 字段的类型专属中文名，优先于全局表
 _LABELS_BY_TYPE = {
-    # ── MESH ──（旋转/缩放这几个原先没中文，面板上跟「旋转」中英混排）
+    # ── MESH ──
     ('MESH', 'rotation2'): '附加旋转',
     ('MESH', 'rotation2Jitter'): '附加旋转抖动',
     ('MESH', 'scale'): '缩放',
@@ -186,8 +169,6 @@ _LABELS_BY_TYPE = {
     # ── RIBBONBLADE ──
     ('RIBBONBLADE', 'widthDirection'): '宽度延伸方向',
     ('RIBBONBLADE', 'length'): '拖尾长度',
-    # lengthMode 中文标签已改由 Field.label_zh="启用自定义长度" 提供（custom_codecs.py
-    # RIBBONBLADE_ATTR override，2026-08-18 改勾选框），此表项已让位、不再生效。
     ('RIBBONBLADE', 'flowmapSpeed'): '流光贴图速度',
     ('RIBBONBLADE', 'flowmapSpeedJitter'): '流光贴图速度抖动',
     ('RIBBONBLADE', 'flowmapSpeedCoef'): '流光贴图加速度',
@@ -196,11 +177,7 @@ _LABELS_BY_TYPE = {
     ('RIBBONBLADE', 'flowmapStrengthJitter'): '流光贴图强度抖动',
     ('RIBBONBLADE', 'flowmapStrengthCoef'): '流光贴图强度加速度',
     ('RIBBONBLADE', 'flowmapStrengthCoefJitter'): '流光贴图强度加速度抖动',
-    # ── RGBWATER（devlecture §10.1.2 P27 image15.PNG，结构与 RGBFIRE 平行但
-    #    颜色槽是 Specular/Sheet 不是 Fire/Smoke）。2026-09-20 比照 RGBFIRE 精简：
-    #    这张表实际上会被 custom_codecs.py::RGBWATER_ATTR 的 `labels=`/`overrides=`
-    #    盖过去（field_label_zh 查找顺序是 Field.label_zh 优先），这里只是保持
-    #    同步、不留矛盾条目，不是真正生效的那份。──
+    # ── RGBWATER ──
     ('RGBWATER', 'colorSpecular'): '颜色',
     ('RGBWATER', 'colorSheet'): '颜色',
     ('RGBWATER', 'waterLerpGtoB'): 'Alpha 混入蓝通道比例',
@@ -256,25 +233,15 @@ def field_label_zh(type_name, field_name):
     return _LABELS_GLOBAL.get(field_name)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 英文标签冻结表
-#
-# 英文标签默认是 Blender 层从 ori_name 现推的（camelCase 拆词，见 panels.py::_friendly_name），
-# 所以**改内部名会连带改掉英文界面**。内部名向官方 DTI 名对齐（Coef/Add/relation… 体系）时，
-# 界面措辞要保持不变——沿用多年的社区叫法不动——故此处把改名前的派生结果显式钉住。
-#
-# 只登记「内部名已改、但界面要维持旧称」的字段；新字段/未改名字段不进表，继续走派生。
-# ⚠ 表内 value 是**用户可见文案**，不写内部新名。
-# ─────────────────────────────────────────────────────────────────────────────
+# 冻结内部名改动前的派生英文标签；值为用户可见文案
 
 _LABELS_EN_GLOBAL = {
-    # flowmap 八件套（8 个类型共用同一套派生名）
     'flowmapSpeedCoef':              'Flowmap Acceleration',
     'flowmapSpeedCoefJitter':        'Flowmap Acceleration Jitter',
     'flowmapStrengthCoef':           'Flowmap Strength Acceleration',
     'flowmapStrengthCoefJitter':     'Flowmap Strength Acceleration Jitter',
 
-    # 路径槽：camelCase 派生对缩写词不友好（uvsPath → "Uvs Path"），显式钉住。
+    # 路径缩写使用固定大写
     'uvsPath':   'UVS Path',
     'tfaPath':   'TFA Path',
     'mod3Path':  'Mod3 Path',
@@ -324,14 +291,7 @@ _LABELS_EN_BY_TYPE = {
     ('PARENTOPTIONS', 'constRelease'):       'Lock To Position Frame',
     ('PARENTOPTIONS', 'constReleaseJitter'): 'Lock To Position Frame Jitter',
     ('PARENTOPTIONS', 'jointNo'):            'Bone lim',
-    # RGBFIRE 的 fire/smoke 生命期时序块旧措辞（"Fire/Smoke Color Param fade In/
-    # duration/fade Out"）已按 devlecture 原文精简为 Appear/Keep/Vanish + Fire
-    # (GreenCh)/Smoke(RedCh) 分组前缀，改在 attributes.py 的 Field.label_en 里
-    # 直接声明（优先级更高），此处冻结表条目退休。
-    # ── RGBWATER（custom-codec 块没有 Field.label_en，只能走这张表）。2026-09-20
-    #    比照 RGBFIRE 精简：面板按 [Specular]/[Sheet]/[Environment Reflection]/
-    #    [Lerp] 分组显示，组内字段不再重复分组前缀。`waterLerpGtoB` 的标签改成
-    #    描述实测行为（Alpha 混入 Blue），不用字面直译的"Lerp GtoB"。──
+    # ── RGBWATER（custom-codec 无 Field.label_en）──
     ('RGBWATER', 'colorSpecular'):                       'Color',
     ('RGBWATER', 'colorSheet'):                          'Color',
     ('RGBWATER', 'waterLerpGtoB'):                       'Lerp Alpha To Blue',

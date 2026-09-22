@@ -1,23 +1,19 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/life.py  —  LIFE（寿命与淡入淡出）
+"""LIFE —— 粒子寿命与淡入淡出。
 
-字段（efx_format/schema/attributes.py）：
-    fadeInDuration(+Jitter) / duration(+Jitter) / fadeOutDuration(+Jitter)
-    timeToDeath(+Jitter) / indefiniteLifespan
-    unknFrame(+Jitter) —— schema 注释写明「"Frame" 只是命名占位，不代表已确认是帧数」，
-                          这里不使用。
+字段职能：
 
-待标定（SimConfig.life_model）
------------------------------
-总寿命 = fadeIn + duration + fadeOut（'sum'，默认），还是 duration 本身就是总长、
-淡入淡出包含在内（'duration'）？语料里 fadeIn/fadeOut 多为 0，两种算法给出相同
-结果，区分不开——等有一个 fadeIn≠0 的样本实机对拍即可定。
+    fadeInDuration / duration / fadeOutDuration  三段时长，各带一个 Jitter
+    timeToDeath                                  语义未确认，不参与寿命计算
+    indefiniteLifespan                           置位时不按寿命判定死亡
+    unknFrame                                    名称中的 Frame 仅为占位，不使用
 
-`timeToDeath` 语义未确认（名字像「死亡时间」，但和 duration 的关系不明），
-当前**不参与**寿命计算，只在非 0 时记一条 note 提醒预览不完整。
+总寿命的计算方式由 `SimConfig.life_model` 选择：`'sum'`（默认）为 fadeIn + duration +
+fadeOut；`'duration'` 视 duration 为总长，淡入淡出包含在内。现有样本无法区分两种读法，
+故两者均保留。
 
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- `indefiniteLifespan` 以 `p.life = 0` 实现，其含义是不按寿命判定死亡，而非寿命为零。
 """
 
 from ...hashes import LIFE
@@ -28,10 +24,10 @@ from ..stages import SHADE
 
 @register(LIFE)
 class Life(Behavior):
-    """写 alpha（SHADE 阶段），并负责把粒子标成死亡。"""
+    """SHADE 阶段写入 alpha，并负责将粒子标记为死亡。"""
 
     STAGE = SHADE
-    ORDER = 10      # 淡入淡出是基准 alpha，别的调制（BLINK 等）排在后面
+    ORDER = 10      # 淡入淡出是基准 alpha，其它 alpha 调制必须排在其后
 
     def on_particle_spawn(self, p, em, rng):
         f = em.f(LIFE, p)
@@ -49,7 +45,7 @@ class Life(Behavior):
 
         if cfg.life_model == "duration":
             total = duration
-            # 淡出段贴着总长的尾巴
+            # 淡出段位于总长的末尾
             fade_out = min(fade_out, max(0, total - fade_in))
         else:                                    # 'sum'（默认）
             total = fade_in + duration + fade_out
@@ -61,7 +57,7 @@ class Life(Behavior):
 
         if f.i("indefiniteLifespan"):
             p.rolled["life_indefinite"] = True
-            p.life = 0                            # 0 = 不按寿命判死
+            p.life = 0
 
         if f.i("timeToDeath"):
             em.note("LIFE.timeToDeath 非 0，语义未确认，未参与寿命计算")

@@ -1,10 +1,7 @@
-"""
-blender_epv/ — MHW EPV3 编辑器 Blender 胶水层子包。
+"""EPV3 的 Blender 编辑适配层。
 
-与 blender_efx/ 平级、独立注册。纯格式逻辑在 epv_format/（零 bpy）。
-本包是唯一对 Blender 版本敏感的部分，刻意保持薄。
-
-导入策略同 blender_efx：包内相对导入（. / ..），不依赖 sys.path。
+负责将 .epv 数据映射为可编辑对象树，并维护与已导入 .efx 的引用关系。
+字节解析与序列化由 epv_format/ 负责；对象结构信息由 io_tree.py 管理。
 """
 from . import fields
 from . import operators
@@ -26,10 +23,9 @@ __all__ = [
 
 
 def register():
-    # fields 先注册：EPVRecordProps 挂到 Object，io_tree 导入与 panels 绘制都依赖它
     fields.register()
     operators.register()
-    efx_link.register()    # L1/L2 联动算子（panels 绘制时引用）
+    efx_link.register()
     panels.register()
 
 

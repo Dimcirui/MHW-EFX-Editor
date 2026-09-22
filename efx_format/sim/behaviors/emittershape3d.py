@@ -1,58 +1,54 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/emittershape3d.py  —  EMITTERSHAPE3D（生成位置）
+"""EMITTERSHAPE3D —— 生成位置。
 
-字段语义依作者的《特效教程·七：生成方式》，下面每条都对得上原文。
+字段职能：
 
-    shapeType         0=立方体 1=球体 2=圆柱体 3=点（点是 bug 值，正常不用）
-    rangeXYZ          FLOAT6 = 偏移 / 尺寸（见下）
-    localRotationX/Y/Z + rotationOrder   生成形状自身的整体旋转
-    scanAngleHorizontal   横向扫描角度：只有球/圆柱用，360=全向、180=一半、90=1/4
-    scanAngleVertical     纵向扫描角度：**只有球用**，0=全向、180=一半、360=不生成
-    rangeDivideVerticalNum    纵向等分数量：绕竖轴切扇形（立方体/球/圆柱都用）
-    rangeDivideHorizontalNum  横向等分数量：只有球/圆柱用（球=圆锥面，圆柱=水平切片）
-    radiusOrigin / radiusEnd  起始/结束半径：**只有圆柱用**，沿高度的锥度
-    rangeDivideAxis   0=X 1=Z 2=Y，立方体下决定 12 条边里哪一组参与
-    rotationCorrect   旋转修正方式：作用不明（会改变朝向，可能与摄像机有关），未模拟
+    shapeType                 0=立方体 1=球体 2=圆柱体 3=点（点为 bug 值，正常不使用）
+    rangeXYZ                  FLOAT6，解释为偏移 / 尺寸，见下
+    localRotationX/Y/Z +      生成形状自身的整体旋转
+    rotationOrder
+    scanAngleHorizontal       横向扫描角度。仅球与圆柱使用，360=全方向、180=一半、90=1/4
+    scanAngleVertical         纵向扫描角度。**仅球使用**，0=全方向、180=一半、360=不生成
+    rangeDivideVerticalNum    纵向等分数：绕竖轴划分扇区，立方体／球／圆柱均使用
+    rangeDivideHorizontalNum  横向等分数。仅球与圆柱使用：球划分为 n 个圆锥面（其中 2 个锥角
+                              为 0，退化为线段），圆柱沿高度划分为水平切片
+    radiusOrigin / radiusEnd  起始／结束半径。**仅圆柱使用**，为沿高度插值的半径倍率而非半径
+                              区间：两者均为 1 时为圆柱，缩小其一则为圆台乃至圆锥
+    rangeDivideAxis           0=X 1=Z 2=Y，决定立方体 12 条棱中参与的一组
+    rotationCorrect           旋转修正方式，作用不明（会改变朝向），未模拟
 
-生成范围 = 偏移 / 尺寸（不是 Min/Max）
---------------------------------------
-原文：「偏移决定这个形状从多大的**内边界**开始，尺寸是在这个内边界基础上**向外延伸
-的具体厚度**」。所以
+生成范围为**偏移 / 尺寸**而非 Min/Max：偏移决定形状的内边界，尺寸为在内边界基础上向外延伸的
+厚度。
 
-    内边界 = 偏移(idx 0/2/4)      外边界 = 偏移 + 尺寸(idx 1/3/5)
+    内边界 = 偏移(idx 0/2/4)        外边界 = 偏移 + 尺寸(idx 1/3/5)
 
-立方体给「偏移=10 尺寸=0」是一个立方体边框；再给尺寸=10 就是厚度 10、内部掏空的
-填充立方体。三种形状同一套读法。
+立方体取「偏移=10 尺寸=0」为立方体边框；尺寸取 10 时为厚度 10、内部中空的立方体壳。三种形状
+采用同一解释。
 
-⚠ RE DTI dump 的官方名是 `RangeMinX/RangeMaxX`，与实机行为对不上，别被官方名带回
-Min/Max（`SimConfig.es3d_range_mode='minmax'` 保留旧读法只作对照）。
+⚠ RE DTI dump 中的官方名为 `RangeMinX` / `RangeMaxX`，与实机行为不符，不得据此恢复 Min/Max
+解释（`SimConfig.es3d_range_mode='minmax'` 保留该解释仅供对照）。
 
-圆柱体多一次位置偏移
---------------------
-原文：「圆柱体…要比单纯的偏移+尺寸更复杂一些，他会在内部掏空的基础上、**再进行
-实际位置的偏移**」。这里实现为：横截面（XZ）是内径=偏移、厚度=尺寸的圆环；竖直方向
-（Y）**不是对称壳层**——偏移 Y 是底面位置、尺寸 Y 是往 +Y 长出去的高度：
+等分采用确定性分配：方位角或高度按粒子出生序号轮流分配到 n 份之一，而非随机落入。立方体没有
+半径概念，径向长度由拒绝采样取得，仅方位角按序号分配。
 
-    y ∈ [偏移Y, 偏移Y + 尺寸Y]
+线框（`outline`）表示**封闭区域**，而非两条独立轮廓：
 
-即尺寸 Y=20 就是从底面向 +Y 延伸 20，不是上下各 20（用户 2026-09-12 指出）。锥度的
-起始半径在底面（y=偏移Y）、结束半径在顶面。
+    立方体   内外两个盒子的 12 条棱，以及连接对应角的 8 条径向棱
+    球       内外两层的赤道／纬线环与经线，以及径向棱；扫描角度形成的两个截面由两端经线与
+             该处的径向棱封闭
+    圆柱     内外两个半径的上下底环与竖棱，以及上下底的径向棱；半径按起始／结束半径沿高度
+             插值
+    点       一个小十字
 
-等分数量：纵向切扇形，横向切纬度/高度
--------------------------------------
-原文：纵向等分「沿纵向等分成 n 份切片」，立方体/球/圆柱都是**从正上方看**分成 n 份
-（球侧面看是 n 个叶片）；横向等分只有球和圆柱用——圆柱是「正面看上去把圆柱等分
-切片」（沿高度），球是「6 等分 = 横向上拆成 6 个圆锥面（其中 2 个锥角为 0 退化成
-线段）」（沿极角）。
+径向棱不可省略：这类形状由「内边界 + 向外延伸的厚度」定义，只画内外两层而不连接，线框无法
+表示壳层厚度，扫描截面也不封闭。尺寸=0 时内外重合，径向棱长度为 0。
 
-起始/结束半径 = 锥度
---------------------
-原文：「只有圆锥会用，起始结束半径默认为 1 就是圆柱体，如果把其中一个缩小，就变成
-圆台甚至圆锥」。所以它是**沿高度插值的半径倍率**，不是半径区间：起始半径 0.2 →
-顶/底直径 5:1 的圆台。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- 圆柱的 Y 方向**不是对称壳层**：偏移 Y 为底面位置，尺寸 Y 为向 +Y 延伸的高度，即
+  `y ∈ [偏移Y, 偏移Y + 尺寸Y]`。X / Z 才是「内半径 + 厚度」的对称壳层，Y 不得按 ±尺寸处理。
+  锥度的起始半径位于底面（y=偏移Y），结束半径位于顶面。
+- `outline()` 必须与 `on_particle_spawn` 共用 `_region` 以及同一套旋转与摆放：线框与粒子
+  位置不一致时，线框会误导使用者。
 """
 
 import math
@@ -62,7 +58,7 @@ from ..registry import Behavior, register
 from ._common import emitter_place
 from ..stages import FORCE
 from ..state import Vec3
-#: 掏空盒子的拒绝采样最多试几次（试不出来就用最后一个点，形态略偏但不卡死）
+#: 中空盒子拒绝采样的最大尝试次数；未命中时使用最后一个点，分布略有偏差但不会阻塞
 _BOX_TRIES = 8
 
 
@@ -78,13 +74,13 @@ SHAPE_SPHERE = 1
 SHAPE_CYLINDER = 2
 SHAPE_POINT = 3
 
-#: rangeDivideAxis: 0=X 1=Z 2=Y（1 和 2 是反的，照 enums.ENUM_RANGE_DIVIDE_AXIS）
+#: rangeDivideAxis：0=X 1=Z 2=Y（1 与 2 的顺序相反，与 enums.ENUM_RANGE_DIVIDE_AXIS 一致）
 _DIVIDE_AXIS = {0: "x", 1: "z", 2: "y"}
 
 
 @register(EMITTERSHAPE3D)
 class EmitterShape3D(Behavior):
-    """只在出生时决定位置；不参与逐帧 step。"""
+    """只在出生时决定位置，不参与逐帧 step。"""
 
     STAGE = FORCE
     ORDER = 10
@@ -107,14 +103,14 @@ class EmitterShape3D(Behavior):
         shape = f.i("shapeType")
         local = center + self._sample(shape, inner, outer, f, rng, p.index)
 
-        # 局部旋转（rangeDivideAxis 不受它影响——annotations 里写明了）
+        # 局部旋转；rangeDivideAxis 不受其影响
         rot_order = rot_order_name(f.i("rotationOrder"), ROT_ORDER_TRANSFORM)
         local = rotate_euler(local,
                              f.get("localRotationX"), f.get("localRotationY"),
                              f.get("localRotationZ"),
                              order=rot_order, applied=cfg.rot_order_applied)
 
-        # 发射器自己的动态旋转/缩放（TRANSFORM3D 的 rotation_velocity / scale_velocity）
+        # 发射器自身的动态旋转与缩放
         local = emitter_place(em, local)
 
         p.spawn_pos = local
@@ -123,20 +119,20 @@ class EmitterShape3D(Behavior):
     # ── rangeXYZ → 内边界 / 外边界 ────────────────────────────────────────────
     @staticmethod
     def _region(f, cfg):
-        """返回 (中心, 内边界, 外边界)，逐轴。"""
+        """逐轴返回 (中心, 内边界, 外边界)。"""
         lo = f.xyz_lo("rangeXYZ")
         hi = f.xyz_hi("rangeXYZ")
         if cfg.es3d_range_mode == "minmax":
-            # 旧读法（官方通道名 RangeMin*/RangeMax*），留作对照
+            # 按官方通道名 RangeMin*/RangeMax* 的旧解释，仅供对照
             center = Vec3((lo.x + hi.x) * 0.5, (lo.y + hi.y) * 0.5, (lo.z + hi.z) * 0.5)
             half = Vec3((hi.x - lo.x) * 0.5, (hi.y - lo.y) * 0.5, (hi.z - lo.z) * 0.5)
             return center, Vec3(), half
-        # 'shell'（默认）：偏移=内边界、尺寸=向外延伸的厚度
+        # 'shell'（默认）：偏移为内边界，尺寸为向外延伸的厚度
         inner = lo
         outer = Vec3(lo.x + hi.x, lo.y + hi.y, lo.z + hi.z)
         return Vec3(), inner, outer
 
-    # ── 各形状在「内边界 → 外边界」的壳层内采样 ──────────────────────────────
+    # ── 各形状在内边界与外边界之间的壳层内采样 ─────────────────────────────
     def _sample(self, shape, inner, outer, f, rng, index):
         if shape == SHAPE_BOX:
             return self._sample_box(inner, outer, f, rng, index)
@@ -144,17 +140,11 @@ class EmitterShape3D(Behavior):
             return self._sample_sphere(inner, outer, f, rng, index)
         if shape == SHAPE_CYLINDER:
             return self._sample_cylinder(inner, outer, f, rng, index)
-        # Point（3）及未知值：退化成一个点，落在偏移处。教程说点「严格来讲是一个
-        # bug 值，并不能算」，所以这里只求一个确定的退化行为，不追求还原。
+        # Point（3）及未知值退化为偏移处的一个点。该值为 bug 值，只需确定的退化行为
         return inner.copy()
 
     def _sample_box(self, inner, outer, f, rng, index):
-        """内部掏空的盒子：落在外盒内、且不在内盒内（尺寸=0 时退化成盒子表面/边框）。
-
-        纵向等分（绕竖轴的扇形切片）用**拒绝采样**取径向长度，方位角改按粒子
-        出生序号轮转分配到 n 份切片之一——立方体没有半径概念，故只把方位角
-        换成确定性槽位，径向长度仍来自拒绝采样。
-        """
+        """在中空盒子内采样：位于外盒内且不在内盒内；尺寸=0 时退化为盒子表面。"""
         div_n = f.i("rangeDivideVerticalNum")
         for _ in range(_BOX_TRIES):
             v = Vec3((rng.random() * 2.0 - 1.0) * outer.x,
@@ -163,22 +153,22 @@ class EmitterShape3D(Behavior):
             if (abs(v.x) >= inner.x or abs(v.y) >= inner.y or abs(v.z) >= inner.z):
                 break
         if div_n > 1:
-            # 绕竖轴（Y）按出生序号轮转到等分切片上，半径与高度不动
+            # 绕竖轴（Y）按出生序号分配到等分扇区，半径与高度不变
             r = math.hypot(v.x, v.z)
             a = slice_fraction(index, div_n) * 2.0 * math.pi
             v = Vec3(math.cos(a) * r, v.y, math.sin(a) * r)
         return v
 
     def _sample_sphere(self, inner, outer, f, rng, index):
-        # 方位角：横向扫描角度限制范围，纵向等分数量按出生序号轮转分槽
+        # 方位角：由横向扫描角度限定范围，按纵向等分数与出生序号分配扇区
         az = sweep_fraction(rng, f.get("scanAngleHorizontal", 360.0),
                             f.i("rangeDivideVerticalNum"), index=index)
-        # 极角：横向等分数量 = 圆锥面（n 等分把球拆成 n 个圆锥面），同样轮转分槽
+        # 极角：横向等分数对应圆锥面数，同样按出生序号分配
         pt = rng.random() * 2.0 - 1.0
         h_div = f.i("rangeDivideHorizontalNum")
         if h_div > 1:
             pt = slice_fraction(index, h_div) * 2.0 - 1.0
-        # 纵向扫描角度：0=全向、180=一半、360=不生成 → 保留的极角带 = 1 - v/360
+        # 纵向扫描角度：0=全方向、180=一半、360=不生成，保留的极角范围为 1 - v/360
         v_sweep = f.get("scanAngleVertical", 0.0)
         if v_sweep > 0.0:
             pt *= max(0.0, 1.0 - min(1.0, v_sweep / 360.0))
@@ -189,21 +179,19 @@ class EmitterShape3D(Behavior):
                     d.z * _lerp(inner.z, outer.z, t))
 
     def _sample_cylinder(self, inner, outer, f, rng, index):
-        # 方位角：横向扫描角度限制范围，纵向等分数量按出生序号轮转分槽
+        # 方位角：由横向扫描角度限定范围，按纵向等分数与出生序号分配扇区
         az = sweep_fraction(rng, f.get("scanAngleHorizontal", 360.0),
                             f.i("rangeDivideVerticalNum"), index=index)
         a = az * 2.0 * math.pi
-        # 高度：横向等分数量 = 沿高度的水平切片，同样按出生序号轮转分槽。
-        # ⚠ 高度是**单向**的：偏移 Y 是底面位置、尺寸 Y 是往 +Y 长出去的高度，
-        # 即 y ∈ [偏移, 偏移+尺寸]。X/Z 那两轴是「内半径 + 厚度」的对称壳层，Y 不是
-        # ——别照着它写成 ±尺寸（用户 2026-09-12 指出：尺寸 Y=20 是向 +Y 延伸 20）。
+        # 高度：横向等分数对应沿高度的水平切片，同样按出生序号分配。
+        # 高度为**单向**，y ∈ [偏移, 偏移+尺寸]，见模块 docstring
         h_t = rng.random()
         h_div = f.i("rangeDivideHorizontalNum")
         if h_div > 1:
             h_t = slice_fraction(index, h_div)
         size_y = max(0.0, outer.y - inner.y)
         y = inner.y + h_t * size_y
-        # 半径：内径=偏移、厚度=尺寸的圆环，再乘沿高度插值的锥度（起始/结束半径）
+        # 半径：内径为偏移、厚度为尺寸的圆环，再乘以沿高度插值的锥度（起始／结束半径）
         t = self._shell_fraction(rng)
         taper = _lerp(f.get("radiusOrigin", 1.0), f.get("radiusEnd", 1.0),
                       (h_t + 0.0))
@@ -213,31 +201,14 @@ class EmitterShape3D(Behavior):
 
     @staticmethod
     def _shell_fraction(rng):
-        """在「内边界 → 外边界」之间取的比例。尺寸=0 时内外重合，自然退化成表面。"""
+        """返回内边界到外边界之间的插值比例；尺寸=0 时内外重合，退化为表面。"""
         return rng.random()
 
-    # ── 轮廓（给预览画线框用）────────────────────────────────────────────────
+    # ── 轮廓（用于预览线框）───────────────────────────────────────────────
     def outline(self, em, segments=28):
-        """生成区域的线框，返回**成对**的点（p0,p1, p0,p1, …），与粒子同一坐标空间。
+        """返回生成区域的线框：**成对**的点（p0,p1, p0,p1, …），与粒子处于同一坐标空间。
 
-        刻意和 `on_particle_spawn` 共用 `_region` 和同一套旋转/摆位——线框和粒子
-        真正落点必须来自同一份读法，否则「看着框在这儿、粒子却生在那儿」比不画
-        还糟。形状分支逐条对应 `_sample_*`，而且画的是**封闭的区域**、不是两条
-        孤立的轮廓：
-
-            立方体   内外两个盒子的 12 棱 + 8 条角对角的径向棱
-            球       内外两层的赤道/极带环 + 经线 + 径向棱；扫描角度切出来的两个
-                     切面由「两端的经线 + 那里的径向棱」封口
-            圆柱     内外两半径的上下底环 + 竖棱 + 上下底的径向棱，半径按
-                     起始/结束半径沿高度锥度插值
-            点       一个小十字
-
-        ⚠ 径向棱不是装饰。这一族形状是「内边界 + 向外延伸的厚度」，只画内外两层
-        却不连起来的话，**壳层这个概念在画面上根本不存在**——看着就是两个互不相干
-        的框，既读不出厚度，扫描角度切出来的切面也没有封口。尺寸=0 时内外重合，
-        径向棱自然退化成零长度，看到的就是一个面/框，符合预期。
-
-        `segments` 是圆/环的分段数，只影响线框精细度。
+        `segments` 为圆与环的分段数，只影响线框精度。
         """
         f = em.f(EMITTERSHAPE3D)
         if f is None:
@@ -270,10 +241,10 @@ class EmitterShape3D(Behavior):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 线框构造（纯几何，不抽随机数）
+# 线框构造（纯几何计算，不使用随机数）
 # ─────────────────────────────────────────────────────────────────────────────
 
-#: 立方体 12 条棱的顶点对（下标进 8 个角）
+#: 立方体 12 条棱的顶点对，下标指向 8 个角
 _BOX_EDGES = ((0, 1), (1, 3), (3, 2), (2, 0),
               (4, 5), (5, 7), (7, 6), (6, 4),
               (0, 4), (1, 5), (2, 6), (3, 7))
@@ -289,10 +260,7 @@ def _hollow(inner):
 
 
 def _box_lines(inner, outer):
-    """外盒 12 棱；掏空时再加内盒 12 棱 + **8 条角对角的径向棱**。
-
-    那 8 条是「这是个有厚度的壳、不是两个不相干的框」的唯一线索。
-    """
+    """返回外盒 12 条棱；中空时再加内盒 12 条棱与 8 条径向棱。"""
     out = []
     co = _box_corners(outer)
     for a, b in _BOX_EDGES:
@@ -310,7 +278,7 @@ def _box_lines(inner, outer):
 
 
 def _arc_pts(radius, n, frac, y_scale=0.0, elev=0.0):
-    """绕竖轴的一段水平弧（或整圈）上的点列。`elev` 是仰角的 sin 值。"""
+    """返回绕竖轴的一段水平弧（或整圈）上的点列；`elev` 为仰角的正弦值。"""
     cy = math.sqrt(max(0.0, 1.0 - elev * elev))
     yy = elev * y_scale
     span = 2.0 * math.pi * max(0.0, min(1.0, frac))
@@ -321,12 +289,12 @@ def _arc_pts(radius, n, frac, y_scale=0.0, elev=0.0):
         a = span * (i / float(steps))
         out.append(Vec3(math.cos(a) * radius.x * cy, yy, math.sin(a) * radius.z * cy))
     if closed:
-        out[-1] = out[0]        # 收口
+        out[-1] = out[0]        # 闭合
     return out
 
 
 def _strip(pts):
-    """点列 → 首尾相接的线段对。"""
+    """将点列转换为首尾相接的线段对。"""
     out = []
     for i in range(len(pts) - 1):
         out.append(pts[i])
@@ -335,8 +303,10 @@ def _strip(pts):
 
 
 def _azimuths(h_frac, full=4, swept=3):
-    """要在哪几个方位角上画经线/竖棱。扫描不满整圈时**必须包含两个端点**，
-    那两条经线加上径向棱就是切面的封口。"""
+    """返回绘制经线与竖棱的方位角列表。
+
+    扫描不满一整圈时**必须包含两个端点**，两端的经线与径向棱构成截面的边界。
+    """
     if h_frac >= 0.999:
         return [2.0 * math.pi * (k / float(full)) for k in range(full)]
     span = 2.0 * math.pi * h_frac
@@ -344,23 +314,20 @@ def _azimuths(h_frac, full=4, swept=3):
 
 
 def _sphere_lines(inner, outer, f, n):
-    """球壳：内外两层的赤道/极带环 + 经线，再用径向棱把两层连起来。
-
-    扫描角度切出来的两个切面由「两端的经线 + 那里的径向棱」封口。
-    """
+    """返回球壳线框：内外两层的赤道与纬线环、经线，以及连接两层的径向棱。"""
     h_frac = max(0.0, min(1.0, (f.get("scanAngleHorizontal", 360.0) or 360.0) / 360.0))
     v_keep = max(0.0, 1.0 - min(1.0, (f.get("scanAngleVertical", 0.0) or 0.0) / 360.0))
     hollow = _hollow(inner)
     shells = [outer] + ([inner] if hollow else [])
     azs = _azimuths(h_frac)
-    # 极角上取几个采样：中间 + 两端（纵向扫描把两端从极点收进来）
+    # 极角方向取中间与两端三处；纵向扫描使两端从极点向内收缩
     elevs = [0.0] if v_keep <= 0.0 else [-v_keep, 0.0, v_keep]
 
     out = []
     for r in shells:
         for ev in elevs:
             if abs(abs(ev) - 1.0) < 1e-6:
-                continue                    # 极点上的环退化成一个点
+                continue                    # 极点处的环退化为一个点
             out.extend(_strip(_arc_pts(r, n, h_frac, r.y, ev)))
         if v_keep > 0.0:
             for a in azs:                   # 经线
@@ -383,16 +350,15 @@ def _sphere_lines(inner, outer, f, n):
 
 
 def _cylinder_lines(inner, outer, f, n):
-    """圆柱/圆台壳：上下底的内外环 + 竖棱，再用径向棱把内外连起来。
+    """返回圆柱／圆台壳线框：上下底的内外环、竖棱，以及连接内外的径向棱。
 
-    半径按起始/结束半径沿高度锥度插值——底面用起始、顶面用结束，与
-    `_sample_cylinder` 里 `h_t=0 → y_lo` 的对应关系一致。
+    底面使用起始半径、顶面使用结束半径，与 `_sample_cylinder` 中 `h_t=0` 对应 `y_lo` 一致。
     """
     h_frac = max(0.0, min(1.0, (f.get("scanAngleHorizontal", 360.0) or 360.0) / 360.0))
     r0 = f.get("radiusOrigin", 1.0)
     r1 = f.get("radiusEnd", 1.0)
     size_y = max(0.0, outer.y - inner.y)
-    y_lo, y_hi = inner.y, inner.y + size_y      # 单向：底面在偏移处，往 +Y 长
+    y_lo, y_hi = inner.y, inner.y + size_y      # 单向：底面位于偏移处，向 +Y 延伸
     hollow = bool(inner.x or inner.z)
     shells = [outer] + ([inner] if hollow else [])
     azs = _azimuths(h_frac)
@@ -409,7 +375,7 @@ def _cylinder_lines(inner, outer, f, n):
             out.append(at(r, r0, y_lo, a))
             out.append(at(r, r1, y_hi, a))
 
-    if hollow:                              # 径向棱：上下底各一圈
+    if hollow:                              # 径向棱：上下底各一组
         for a in azs:
             out.append(at(inner, r0, y_lo, a))
             out.append(at(outer, r0, y_lo, a))
@@ -419,7 +385,7 @@ def _cylinder_lines(inner, outer, f, n):
 
 
 def _point_lines(at):
-    d = 5.0     # 游戏单位，纯显示尺寸
+    d = 5.0     # 游戏单位，仅用于显示
     return [Vec3(at.x - d, at.y, at.z), Vec3(at.x + d, at.y, at.z),
             Vec3(at.x, at.y - d, at.z), Vec3(at.x, at.y + d, at.z),
             Vec3(at.x, at.y, at.z - d), Vec3(at.x, at.y, at.z + d)]

@@ -1,39 +1,9 @@
-r"""
-blender_efx/uvs_link.py  —  UVSEQUENCE 引用的 .uvs（以及它引用的 .tex）链式自动载入
+"""载入 UVSEQUENCE 引用的 .uvs 与可选的 .tex 参考图。
 
-定位（与 mod3_link 对称）
-------------------------
-EFX 里序列帧是**三层引用**：
-
-    .efx（UVSEQUENCE.uvsPath） → .uvs（group 的贴图槽） → .tex（真正的序列帧大图）
-
-手动一层层找太麻烦，所以照 `mod3_link.py`（MESH → mod3 → mrl3 → 材质）那套「正
-层级快速载入」做一条链：解析路径 → 载入 .uvs → 取 sequenceNo 指的那个 group 的
-贴图路径 → 载入 .tex 转成 Blender 图像 → 回填到该属性的参考图槽
-（`EFXUVSProps.ref_image_name`，UVS 编辑器本来就用它当参考图）。
-之后用户照旧可以手动换 .uvs / 换图，这里只负责「一键先给个正确的默认」。
-
-路径解析
---------
-与 mod3_link 完全同一套根优先级（直接复用 `mod3_link.find_native_root`）：
-① 手设 `Scene.efx_chunk_root`（填了才用）② 从 .efx 位置向上追溯到的第一个
-nativePC（默认、自动）③ .efx 同目录兜底。找不到不静默失败，收集进 unresolved
-统一提示。**比 mod3_link 多一档**：中间插一条「Model Editor 里已存的 chunk 目录
-列表」——官方资源（vfx/uvs、vfx/dds）在游戏提取目录里，而 mod 工程目录里只有
-自己新做的那几个文件，装了 Model Editor 的人那边早就设过了，不必再填一遍。
-
-.tex → 图像
------------
-MHW 的 `.tex` 容器 Blender 读不了，得先转 DDS。这一步**不自己实现**：MHW Model
-Editor 已经有整条 tex→dds→(tif/tga)→`bpy.data.images` 的实现
-（`modules/tex/tex_function.loadTex`），它在场就借用，跟 mod3 联动同一个边界——
-**添头非依赖**，缺席就降级：退回「在 .tex 旁边/缓存目录里找一张已经转好的
-.dds/.png/.tga/.tif」，也找不到就只载 .uvs、如实报一句。
-
-约束（CLAUDE.md）
------------------
-- 纯胶水层；只读属性字段（不重序列化）→ 不碰 byte-perfect。
-- Python 3.10 兼容；bpy 稳定子集；对 Model Editor 的调用全部经在场检测 + try 守卫。
+维护约束：
+- 宿主 Empty 仅保存 UVS 编辑数据；游戏路径和 sequenceNo 始终由源属性持有。
+- 路径按配置根、nativePC、Model Editor 配置与 EFX 目录的优先级解析。
+- Model Editor 仅为可选转换器；不可用时尝试已转换图像，仍失败则保留已载入的 .uvs。
 """
 
 import os
@@ -47,13 +17,11 @@ from . import mod3_link as _mod3
 from . import root_collection as _rc
 from . import uvs_io as _uvs_io
 
-#: .tex 转不了时，退而求其次去找的已转好格式（按优先级）
+#: .tex 转换不可用时查找已转换图像的优先级。
 _IMAGE_EXTS = (".dds", ".png", ".tga", ".tif", ".tiff", ".exr")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 属性侧读取
-# ─────────────────────────────────────────────────────────────────────────────
+# 属性与外部宿主。
 
 def _is_uvsequence(obj):
     from ..efx_format.hashes import UVSEQUENCE
@@ -67,22 +35,16 @@ def _is_uvsequence(obj):
 
 
 def _resolve_attribute(obj):
-    """`obj` 本身是 UVSEQUENCE 属性就原样返回；是它外挂的宿主 Empty（选中大纲里
-    那个 `xxx [uvs]`）就跟 `efx_uvs_source` 反向指针找回属性；两者都不是返回
-    None。「单属性」这条 Quick Load 路径（游戏路径/序列号都存在属性身上）必须
-    先做这一步，否则选中宿主时 `obj.efx_block` 是空的，读不到任何路径。"""
+    """将 UVSEQUENCE 属性或其宿主解析为源属性；无有效来源时返回 None。"""
     if _is_uvsequence(obj):
         return obj
     src = source_attribute_of(obj)
     return src if _is_uvsequence(src) else None
 
 
-#: 批量导入/一键载入共用的外部 UVS 载体集合标记（绿色，嵌在其 EFX 根集合内，
-#: 导出/校验天然忽略，见 root_collection.ensure_linked_collection）。
+#: EFX 根内的外部 UVS 宿主集合标记。
 _UVS_LINK_MARKER = "EFX_UVS_LINK"
-#: 挂在载体 Empty 自己身上的标记：与 standalone.py 的 "EFX_UVS"（完全无主）区分开，
-#: 否则会被 standalone.is_standalone() 误认成「无主 UVS」而给出关闭入口/丢进
-#: 无 root 的独立场景（那边的判据是纯看 ~TYPE，不看 parent/归属）。
+#: 区分有源属性的宿主与 standalone.py 管理的无主 UVS。
 _UVS_LINK_ITEM_MARKER = "EFX_UVS_LINK_ITEM"
 
 
@@ -95,21 +57,11 @@ def _uvs_link_collection_name(root_col):
 
 
 def ensure_host_for_attribute(blk_obj, context=None):
-    """UVSEQUENCE 属性缺外部宿主（`efx_uvs_target`）时新建一个：数据不再存在属性
-    对象自己身上，而是一个独立 Empty，收进这个 .efx 的绿色 `{efx}_uvs` 子集合——
-    同一个 .efx 下批量导入的多个 UVSEQUENCE 共用这一个集合，不是各建各的。
-    已有宿主（不管是不是本函数建的）直接返回，不重复建。
-
-    同时在宿主身上写一个反向指针 `efx_uvs_source` 指回这个属性——游戏路径
-    （`uvsPath`/`sequenceNo` 这些字段）只存在属性对象自己身上，直接选中宿主
-    （大纲/视口里点这个外挂 Empty）时,不跟着这根指针找回属性,"游戏路径"
-    这行、以及"一键载入"这个属性专属按钮就都会读到空的（见 uvs_io.py
-    `_uvs_source_attribute`）。
-    """
+    """返回属性的外部宿主；缺失时创建，并保持宿主到源属性的反向指针。"""
     existing = getattr(blk_obj, "efx_uvs_target", None)
     if existing is not None:
         if getattr(existing, "efx_uvs_source", None) is None:
-            existing.efx_uvs_source = blk_obj    # 兼容旧场景：老宿主补上反向指针
+            existing.efx_uvs_source = blk_obj  # 兼容缺少反向指针的已有宿主。
         return existing
 
     host = bpy.data.objects.new("%s [uvs]" % blk_obj.name, None)
@@ -124,7 +76,7 @@ def ensure_host_for_attribute(blk_obj, context=None):
             root_col, _UVS_LINK_MARKER, _uvs_link_collection_name(root_col), "COLOR_04")
         col.objects.link(host)
     else:
-        # 理论上不会发生（属性必属于某个 EFX_ROOT）——退回场景根，好歹别丢东西
+        # 无根集合时仍保留宿主，避免丢失已载入的数据。
         (context or bpy.context).scene.collection.objects.link(host)
 
     blk_obj.efx_uvs_target = host
@@ -132,21 +84,19 @@ def ensure_host_for_attribute(blk_obj, context=None):
 
 
 def source_attribute_of(obj):
-    """宿主 Empty → 它反向指回的 UVSEQUENCE 属性对象；`obj` 本来就是属性、或者
-    是无主 UVS（没有对应属性）时返回 None。uvs_io.py 的 `_uvs_source_attribute`
-    是本函数唯一的门面，外部一律经那边调用。"""
+    """返回外部宿主指向的 UVSEQUENCE 属性；无来源时返回 None。"""
     if obj is None:
         return None
     return getattr(obj, "efx_uvs_source", None)
 
 
 def _uvs_relpath(blk_obj):
-    """UVSEQUENCE 属性的 .uvs 游戏相对路径（**读的是当前属性树，反映未保存的编辑**）。"""
+    """返回当前属性树中的 .uvs 相对路径，包含尚未保存的编辑。"""
     return (_uvs_io._get_uvsequence_path(blk_obj) or "").strip()
 
 
 def _sequence_no(blk_obj):
-    """该属性的 sequenceNo（= .uvs 里的 group 下标，用户确认）。读不到按 0。"""
+    """返回 sequenceNo 对应的 group 下标；缺失时为 0。"""
     try:
         for item in blk_obj.efx_block.field_items:
             if item.ori_name == "sequenceNo":
@@ -168,11 +118,7 @@ def iter_uvsequence_attributes(root_obj):
 
 
 def efx_dir_of(obj_or_col):
-    """这个 EFX 是从哪个目录导进来的（导入时记在 root 集合的 `src_path` 上）。
-
-    老 .blend 里没有这个自定义属性（0.6.5 之前导入的），那就返回 None，路径解析
-    退回「手设 Chunk Root」那一条——不猜。
-    """
+    """返回导入源目录；缺少有效 src_path 时返回 None，不猜测路径。"""
     col = obj_or_col
     if not isinstance(col, bpy.types.Collection):
         col = _rc.find_root_collection(obj_or_col)
@@ -185,17 +131,10 @@ def efx_dir_of(obj_or_col):
     return d if os.path.isdir(d) else None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 路径解析（.uvs / .tex 共用一套根优先级，见模块 docstring）
-# ─────────────────────────────────────────────────────────────────────────────
+# 路径解析。
 
 def model_editor_chunk_paths():
-    """MHW Model Editor 里用户已经存好的 chunk 目录列表（存在的那些）。
-
-    装了 Model Editor 的人基本都在那边设过提取目录了，再让他们在这里填一遍
-    Chunk Root 是重复劳动。按偏好里有没有 `chunkPathList_items` 认人，不写死
-    addon 名（扩展/老式 addon 装出来的名字不一样）。
-    """
+    """返回 Model Editor 偏好中有效的 chunk 目录，不依赖其 addon 名称。"""
     out = []
     try:
         addons = bpy.context.preferences.addons
@@ -230,8 +169,7 @@ def resolve_game_path(relpath, ext, chunk_root, efx_dir=None):
     native = _mod3.find_native_root(efx_dir)
     if native:
         candidates.append(os.path.join(native, rel))
-    # Model Editor 那边存的 chunk 目录：官方资源（.efx 引用的 vfx/uvs、vfx/dds）
-    # 基本都在游戏提取目录里，而 mod 工程目录里只有自己新做的那几个文件。
+    # 复用 Model Editor 配置的提取目录。
     for p in model_editor_chunk_paths():
         candidates.append(os.path.join(p, rel))
     if efx_dir:
@@ -243,16 +181,10 @@ def resolve_game_path(relpath, ext, chunk_root, efx_dir=None):
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# .tex → Blender 图像（借 MHW Model Editor 的实现；缺席则降级）
-# ─────────────────────────────────────────────────────────────────────────────
+# .tex 转换与回退加载。
 
 def _model_editor_tex_api():
-    """找 Model Editor 的 tex 载入实现，返回 (loadTex, Texconv, addon_name)；没有返回 None。
-
-    先扫 `sys.modules`（Model Editor 已启用时它就在里面），再退回遍历 addon 模块
-    按包名拼路径——同 Modding-Toolkit 借这份实现时的做法。
-    """
+    """返回可用的 Model Editor tex 载入接口；未安装或不可用时返回 None。"""
     import importlib
     import sys
 
@@ -300,20 +232,12 @@ def _model_editor_tex_api():
 
 
 def tex_loader_available():
-    """能不能把 .tex 直接转出来（决定 UI 上要不要提示装 Model Editor）。"""
+    """返回当前是否可通过 Model Editor 转换 .tex。"""
     return _model_editor_tex_api() is not None
 
 
 def _tex_cache_dir(addon_name):
-    """转换产物放哪。优先用 Model Editor 自己的贴图缓存目录（用户已经设过了，
-    而且那边转过的图能直接命中缓存）；读不到就用用户目录下的固定缓存文件夹。
-
-    ⚠ 不能退回 `bpy.app.tempdir`——那是 Blender **这一次启动**分配的临时目录
-    （形如 `.../Temp/blender_xxxxxx/`），进程一关就可能被系统/Blender 自己清掉。
-    没装 Model Editor 时全靠这条兜底路径，选临时目录会让每次重开 Blender 转换出
-    的 dds/贴图全部失踪，UVSEQUENCE 参考图跟着丢（表现为"重进 Blender 就没图了"）。
-    改用 `~/.efx_editor`，跨会话稳定存在，找不到时才退回临时目录。
-    """
+    """返回持久缓存目录；仅在无法创建用户缓存时退回 Blender 临时目录。"""
     if addon_name:
         try:
             prefs = bpy.context.preferences.addons[addon_name].preferences
@@ -331,8 +255,7 @@ def _tex_cache_dir(addon_name):
 
 
 def _use_dds(addon_name):
-    """4.2+ 的 Blender 能直接读 DDS，就不必再转 tif/tga（也就不依赖 texconv）。
-    Model Editor 的偏好里用户已经选过一次，尊重它；读不到按版本自动判。"""
+    """按当前 Blender 能力及 Model Editor 偏好决定是否直接读取 DDS。"""
     auto = bpy.app.version >= (4, 2, 0)
     if addon_name:
         try:
@@ -344,7 +267,7 @@ def _use_dds(addon_name):
 
 
 def _find_converted_sibling(texpath, cache_dir):
-    """.tex 旁边、或缓存目录里已经转好的同名图（Model Editor 缺席时的退路）。"""
+    """返回 .tex 同目录或缓存中的同名已转换图像。"""
     stem = os.path.splitext(os.path.basename(texpath))[0]
     dirs = [os.path.dirname(texpath)]
     if cache_dir and os.path.isdir(cache_dir):
@@ -358,13 +281,7 @@ def _find_converted_sibling(texpath, cache_dir):
 
 
 def _mark_persistent(img):
-    """给载入的图打上 fake user，防止它在 undo/撤销栈重建、或场景保存时因为
-    "0 个真实引用"（`ref_image_name` 只是个字符串自定义属性，Blender 的引用计数
-    认不出这算一次引用）被当成孤立数据清掉——那样的话哪怕缓存目录本身是永久的
-    （见 `_tex_cache_dir`），图还是会在某次 undo 或重新打开 .blend 后消失。
-    不 `.pack()`：不内嵌像素数据，不增加 .blend 体积，下次打开时 Blender 按
-    图片自己记的路径重新读一遍（该路径已经是永久缓存目录，读得到）。
-    """
+    """保留非真实引用的参考图，且不将像素数据打包进 .blend。"""
     if img is not None:
         try:
             img.use_fake_user = True
@@ -374,11 +291,7 @@ def _mark_persistent(img):
 
 
 def load_tex_image(texpath, rel_for_cache=None):
-    """.tex → `bpy.types.Image`；失败返回 None。
-
-    两条路：① Model Editor 在场 → 借它的 loadTex（tex→dds→图像，含色彩空间处理）；
-    ② 缺席 → 找一张已经转好的同名图直接 load。两条都不通就返回 None（调用方如实报）。
-    """
+    """载入 .tex 对应图像；优先使用转换器，随后查找已转换的同名图。"""
     if not texpath or not os.path.isfile(texpath):
         return None
 
@@ -416,24 +329,17 @@ def load_tex_image(texpath, rel_for_cache=None):
 
 
 def _dds_attempts(addon_name):
-    """先按偏好/版本试一次；若那次要走 texconv（DLL 可能缺）而 Blender 又能读 DDS，
-    再用 DDS 兜一次。"""
+    """返回转换尝试顺序，在可直接读取 DDS 时保留该回退。"""
     first = _use_dds(addon_name)
     if first or bpy.app.version < (4, 2, 0):
         return (first,)
     return (first, True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 一条链：属性 → .uvs → .tex → 参考图
-# ─────────────────────────────────────────────────────────────────────────────
+# 链式载入。
 
 def link_one(blk_obj, chunk_root, efx_dir=None, with_texture=True, uvs_cache=None):
-    """单个 UVSEQUENCE 属性走完整条链。
-
-    返回 dict：`{"uvs": bool, "tex": bool, "rel": str, "reason": str}`
-    —— `reason` 只在这一层没成时填，供调用方汇总提示。
-    """
+    """载入一个属性的 .uvs 与可选参考图，并返回可汇总的结果状态。"""
     out = {"uvs": False, "tex": False, "rel": "", "reason": ""}
     rel = _uvs_relpath(blk_obj)
     out["rel"] = rel
@@ -474,7 +380,7 @@ def link_one(blk_obj, chunk_root, efx_dir=None, with_texture=True, uvs_cache=Non
     if not with_texture:
         return out
 
-    # ── .uvs → .tex：取 sequenceNo 指的那个 group 的第一条贴图路径 ────────────
+    # sequenceNo 选择 group；该 group 的首个非空路径作为参考图。
     group_idx = _sequence_no(blk_obj)
     if not (0 <= group_idx < len(props.groups)):
         out["reason"] = "group_out_of_range"
@@ -500,8 +406,7 @@ def link_one(blk_obj, chunk_root, efx_dir=None, with_texture=True, uvs_cache=Non
         return out
     try:
         props.ref_image_name = img.name
-        # group_index 跟着 sequenceNo 走：一键载入之后编辑器直接停在这个特效真正
-        # 用的那一组上，不必用户自己去数第几组。
+        # 编辑器显示的组必须与属性实际引用的 sequenceNo 一致。
         props.group_index = group_idx
     except Exception:
         pass
@@ -510,11 +415,7 @@ def link_one(blk_obj, chunk_root, efx_dir=None, with_texture=True, uvs_cache=Non
 
 
 def link_root(root_col, chunk_root, efx_dir=None, with_texture=True):
-    """整个 EFX_ROOT 下所有 UVSEQUENCE 走一遍。
-
-    返回 (n_uvs, n_tex, problems)，`problems = [(属性名, 相对路径, reason)]`。
-    同一个 .uvs 只读盘一次（多个属性引用同一份很常见）。
-    """
+    """载入根下所有 UVSEQUENCE；同一路径的 .uvs 在本次操作中只读取一次。"""
     n_uvs = n_tex = 0
     problems = []
     cache = {}
@@ -530,7 +431,7 @@ def link_root(root_col, chunk_root, efx_dir=None, with_texture=True):
 
 
 def report_problems(op, problems, n_uvs, n_tex):
-    """把结果统一报给用户：成功计数一条 INFO，未解决的一条 WARNING（不静默失败）。"""
+    """报告载入计数及未解决项。"""
     if n_uvs or n_tex:
         op.report({"INFO"}, T("uvslink.done").format(n_uvs, n_tex))
     if problems:
@@ -541,9 +442,7 @@ def report_problems(op, problems, n_uvs, n_tex):
         op.report({"WARNING"}, T("uvslink.nothing"))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 算子
-# ─────────────────────────────────────────────────────────────────────────────
+# 算子。
 
 class EFX_OT_uvs_link_load(Operator):
     """按 UVSEQUENCE 的游戏路径自动载入 .uvs（并尽量把序列帧贴图一起载入）"""
@@ -579,9 +478,7 @@ class EFX_OT_uvs_link_load(Operator):
         obj = context.active_object
         chunk_root = getattr(context.scene, "efx_chunk_root", "") or ""
 
-        # 选中的可能是属性本身，也可能是它外挂的宿主 Empty——两者都该走"只重
-        # 载这一个"这条路，`_resolve_attribute` 把两种输入都归一到真正持有
-        # 游戏路径字段的那个属性对象上。
+        # 单属性路径始终使用持有游戏字段的源属性。
         attr = _resolve_attribute(obj)
         if self.scope == "ATTRIBUTE" and attr is not None:
             efx_dir = efx_dir_of(attr)
@@ -606,17 +503,13 @@ _CLASSES = (EFX_OT_uvs_link_load,)
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    # UVSEQUENCE 属性 → 外部 UVS 载体（数据不再存在属性对象自己身上，见
-    # ensure_host_for_attribute）。standalone.py 的 `efx_uvs` 本身仍留在 Object 上
-    # 不变，只是现在"谁的 efx_uvs 才算数"要经这层指针。
+    # 属性持有指向其外部 UVS 数据宿主的指针。
     bpy.types.Object.efx_uvs_target = bpy.props.PointerProperty(
         name="UVS Data Host",
         description="External object holding this UVSEQUENCE attribute's UVS data",
         type=bpy.types.Object,
     )
-    # 反向指针：宿主 Empty → 它是为哪个 UVSEQUENCE 属性建的。游戏路径/序列号等
-    # 字段只存在属性对象自己身上，直接选中宿主时没有这条指针就找不回去
-    # （见 `source_attribute_of` / uvs_io.py `_uvs_source_attribute`）。
+    # 宿主通过反向指针解析持有游戏字段的源属性。
     bpy.types.Object.efx_uvs_source = bpy.props.PointerProperty(
         name="UVS Source Attribute",
         description="The UVSEQUENCE attribute this external UVS host was created for",

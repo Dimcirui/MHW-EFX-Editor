@@ -1,30 +1,22 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/noise.py  —  NOISE（噪声：绕生成点的双组匀速圆周运动）
+"""NOISE —— 绕生成点的两组匀速圆周运动叠加。
 
-2026-09-17 用户实机描述定案：
-    · `typeFlag`（35 种取值）对表现**没有任何观测到的影响**，本 behavior 不读它。
-    · `lowFrequencyWidth`/`highFrequencyWidth`（原 teleport_radius/teleport_radius2）
-      是圆周运动的**半径**，不是真的瞬移。
-    · 效果是给粒子叠加**两组独立的匀速圆周运动**，每组的圆心都固定在**粒子的
-      生成点**（`p.pos` 在 spawn 那一刻的绝对值，出生之后不再跟随发射器/其它
-      运动重新定位），旋转平面朝向随机、每组各自独立抽一次。
-    · 两组转速/半径通常不同，叠加起来肉眼就看不出规律的圆周运动，这就是「noise」
-      的观感来源——不是伪随机抖动，是两个频率不同的圆叠加出的准周期轨迹。
+NOISE 为粒子叠加两组相互独立的匀速圆周运动。两组圆心均固定于**粒子的生成点**（spawn 时
+`p.pos` 的绝对值，此后不随发射器或其它运动更新），旋转平面的朝向随机，由两组各自在出生时抽取。
+两组的角速度与半径通常不同，叠加后呈准周期轨迹；noise 的视觉效果来自这一叠加，而非伪随机扰动。
 
-2026-09-19 devlecture 确认官方字段名是 `low/highFrequency`(+`Width`)，跟 BLINK
-共用同一套双重 sin 命名（BLINK 作用于 alpha，NOISE 作用于位置/运动）。
+字段职能：
 
-`low/highFrequency` 按本仓库既有惯例（HOMING.turnRate、ROTATEANIM.spin_velocity）
-当角速度读，单位度/秒；`Jitter` 一律走 `rng.jitter`，逐粒子只抽一次。
+    lowFrequency / highFrequency            两组各自的角速度，单位度/秒
+    lowFrequencyWidth / highFrequencyWidth  两组各自的圆周半径，而非瞬移距离
+    各字段的 Jitter                         仅在粒子出生时抽取一次
+    typeFlag                                35 种取值均未观察到影响，不读取
 
-因为圆心是绝对定住的生成点、半径匀速转动是精确闭式解，直接覆写 `p.pos`
-（CONSTRAIN 阶段）比「写一个近似的切向速度再靠 VELOCITY3D 积分」更准，不会有
-离散积分带来的半径漂移。代价是它会覆盖掉同一粒子上其它运动（VELOCITY3D/
-HOMING/PARENTOPTIONS 的跟随）对位置的贡献——目前没有同时开 NOISE 与它们的
-实机样本可对照，先按“NOISE 独占位置”实现，等有反例再改。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- 位置在 CONSTRAIN 阶段直接覆写，而非写入切向速度后由 VELOCITY3D 积分：圆心固定、角速度恒定，
+  存在精确闭式解，直接覆写不会产生离散积分导致的半径漂移。
+- 直接覆写意味着 NOISE 独占位置，同一粒子上 VELOCITY3D / HOMING / PARENTOPTIONS 对位置的贡献
+  将被覆盖。目前没有同时启用这些属性的实机样本可供对照，本实现按 NOISE 独占位置处理。
 """
 
 import math
@@ -52,7 +44,7 @@ def _fallback_perp(axis):
 
 
 def _random_perp(axis, rng):
-    """`axis` 垂面内一个随机方向的单位向量（当圆周运动的起始半径方向用）。"""
+    """返回 `axis` 垂面内随机方向的单位向量，用作圆周运动的起始半径方向。"""
     ref = _random_unit(rng)
     e1 = ref - axis * axis.dot(ref)
     return e1.normalized(fallback=_fallback_perp(axis))
@@ -60,11 +52,10 @@ def _random_perp(axis, rng):
 
 @register(NOISE)
 class Noise(Behavior):
-    """CONSTRAIN 阶段：两组各自随机取向的匀速圆周运动叠加，直接覆写 p.pos。"""
+    """CONSTRAIN 阶段叠加两组随机取向的匀速圆周运动，并直接覆写 p.pos。"""
 
     STAGE = CONSTRAIN
-    #: 排在 PARENTOPTIONS(10) 之后：跟随发射器只是给个基准位置，真正的约束类
-    #: （PATHCHAIN/REPEATAREA/碰撞/这里）再覆写它。
+    #: 必须排在 PARENTOPTIONS 之后：跟随发射器只提供基准位置，约束类属性在其后覆写。
     ORDER = 20
 
     def on_particle_spawn(self, p, em, rng):

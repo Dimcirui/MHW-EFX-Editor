@@ -1,52 +1,10 @@
-"""
-efx_format/timl/__init__.py  —  TIML 完整 4 层树解析 + 序列化
+"""TIML 完整树的解析、编辑与保真序列化。
 
-定位
-----
-[[timl_meta.py]] 只解析 TIML 头部三字段（animationLength/loopControl/loopStartPoint）做原地
-patch。本模块解析**完整 4 层关键帧树**，供「自建 TIML 编辑体系」（不依赖任何外部工具）
-的核心层使用：
-
-    TIML
-      └─ animations[≤2]            animation0=粒子发射轴 / animation1=粒子更新(寿命)轴
-           └─ TimlData             (animationLength / loopControl / labelHash …)
-                └─ types[]         timelineParameterHash（影响哪个对象：mesh/material…）
-                     └─ transforms[]  datatypeHash + dataType（哪个属性：pos:X / rot:Z / 颜色 / flag）
-                          └─ keyframes[]  value + frameTiming + interp（20 字节定长）
-
-实测结论（语料 6157 个 animation，见 PROGRESS）：永远只有这 4 层（无更深嵌套、无环、无共享
-节点），只有**扇出数量**变化（types≤4 / transforms≤9 / keyframes≤27）。故 TIML 不需要节点图，
-是一棵纯包含树。
-
-byte-perfect 策略（与本仓库 labels_dirty / eof_dirty / opaque 一致）
--------------------------------------------------------------------
-- 解析时**保留原始字节** `raw`。
-- `serialize()`：未编辑（`dirty=False`）→ 原样回吐 raw → **100% byte-perfect**。
-  已编辑 → 结构化重建（16 字节对齐布局）。
-- 全语料实测：clean 路径 6095/6095 byte-perfect；结构化重建对常规布局 ~99% 字节吻合，
-  极少数文件（~0.9%）头部 dataHeaders 偏移异常 + 含「未被引用的死数据」（按游戏读法
-  dataHeaders@32 即为空动画），重建会丢死字节——这类只要不编辑就走 verbatim，无损。
-
-字节结构（权威：refs/EFX_TIML.bt（010 BT 模板）+ 实测）
---------------------------------------------------------------------------
-    Header(28B): timl[4] signature[3×i32]=(402786304,402786304,0)恒定 enabled(i32)=32
-                 NULL(i32)=0 count(u32@24)
-    （2026-07-01 用 232 个真实 TIML 头核对修正：signature 是 3 个 int32、非 8 字节；
-    enabled 是 i32=32 不是 i64；NULL 紧跟在 enabled 后面。之前的字段切法凑够 28 字节但
-    顺序/宽度全错——parse_timl 只把这段当不透明字节存，真实文件不受影响，但
-    make_blank_timl() 曾经按错误切法手填这些字节，导致新建的 TIML 游戏内不生效。）
-    → align16 → dataHeaders: uint64[count]（各 animation 的 Data 绝对偏移，0=空）
-    → align16 → 各 Data 结构（按 BT 模板 TIML_Data 布局顺序）：
-        [pad16] Data(40B) [pad16] 所有 type 头(24B×) [pad16]
-        每 type 的 transform 头(24B×)+[pad16]
-        每 transform 的 keyframe(20B×)+[pad16]（末尾 pad 去掉）
-    Data(40B): offset(i64) count(i64) dataIx0(i32) dataIx1(i32) animLen(f) loopStart(f) loopControl(i32) labelHash(u32)
-    Type(24B): offset(i64) count(i64) timelineParameterHash(u32) NULL(i32)
-    Transform(24B): offset(i64) count(i64) datatypeHash(u32) dataType(i32)
-    Keyframe(20B): value(4) controlL(i32) controlR(i32) frameTiming(f) transition(i16) dataType(i16)
-    所有 offset 相对 timl 起点。dataType: 0=SInt 1=Int 2=Float 3=Color(ubyte[4]) 4=Bool。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10；long=4B/int64=8B，全小端。
+维护约束：
+- TIML 由 animation、data、type、transform 与关键帧组成；偏移均相对 TIML 起点并按小端读写。
+- 未编辑的 TIML 必须直接输出 ``raw``；编辑后才按 16 字节对齐布局重建。
+- 关键帧固定为 20 字节；Color 与 BIG_FLAGS 使用多子通道编码。
+- 本模块保持纯 Python，不能导入 bpy。
 """
 
 import struct
@@ -58,26 +16,19 @@ from .names import DT_TRANSFORM, dt_neutral_value
 
 _MAGIC = b"timl"
 
-# 各结构定长
+# 固定结构大小
 _HEADER_SIZE = 28
 _DATA_SIZE = 40
 _TYPE_SIZE = 24
 _TRANSFORM_SIZE = 24
 _KEYFRAME_SIZE = 20
 
-# dataType → 友好名
+# dataType 显示名
 DATATYPE_NAMES = {0: "SInt", 1: "Int", 2: "Float", 3: "Color", 4: "Bool"}
-# transition（= easingMethod，插值方式）整数 → 友好名（仅显示用）。
-# 权威：refs/EFX_Crimson.bt 的 easingMethod 注释（0-Binary/Stuck, 1-Constant,
-# 2-Linear, 3-Quadratic, 4-Cubic）+ refs/EFX_TIML.bt 记录的合法值范围
-# （Float/Color dataType 合法值 [0,1,2,3,4]，与 Crimson 的 0-4 恰好吻合）。
-# 5/6 仅在 Int/Flag dataType 出现（合法值 [1,4,5,6]），语义未确认。
-# ⚠ 旧表 ["CONSTANT","LINEAR","QUAD","CUBIC","QUART","EXPO","SINE"] 整个错位一格，
-#   会把 Blender 的「二次(QUAD)」写成整数 2，而游戏里 2=Linear → 表现为「设二次得线性」。
+# 插值显示名；5/6 的语义尚未确认
 INTERP_NAMES = ["STUCK", "CONSTANT", "LINEAR", "QUAD", "CUBIC", "UNK5", "UNK6"]
 
-# datatypeHash ∈ BIG_FLAGS → 该 transform 是「标志位」通道，value/controlL/controlR
-# 各按低/高 16 位拆成 2 条子通道（标志位 hash 表）。
+# BIG_FLAGS 的 value/controlL/controlR 分为高、低 16 位子通道。
 BIG_FLAGS = frozenset({
     150806694, 2575924291, 4027018852, 2154666731, 4150962813,
     1852046279, 503910216, 1762541534, 2768909048, 3787782803,
@@ -85,8 +36,7 @@ BIG_FLAGS = frozenset({
 
 
 def channel_sublabels(data_type: int, datatype_hash: int) -> List[str]:
-    """该 transform 拆成几条可编辑子通道及其标签：
-    Color(dataType3) → R/G/B/A；标志位(hash∈BIG_FLAGS) → lo/hi；其余 → 单通道。"""
+    """返回 transform 的可编辑子通道标签。"""
     if data_type == 3:
         return ["R", "G", "B", "A"]
     if datatype_hash in BIG_FLAGS:
@@ -95,15 +45,12 @@ def channel_sublabels(data_type: int, datatype_hash: int) -> List[str]:
 
 
 def _val_fmt(data_type: int) -> str:
-    """单值字段的 struct 格式（标量通道用；Color/Flag 另行处理）。"""
+    """返回标量通道的 struct 格式。"""
     return {0: "<i", 1: "<I", 2: "<f", 4: "<I"}.get(data_type, "<i")
 
 
 def decode_keyframe(raw: bytes, data_type: int, datatype_hash: int) -> dict:
-    """把 20 字节关键帧解码成可编辑结构：
-        {frame, transition, kf_dtype, subs:[{value, back, period}, ...]}
-    subs 按 channel_sublabels 顺序。value/back(controlL)/period(controlR) 已按
-    dataType/flag 语义解出（Color=0-255 各通道、Flag=低/高 16 位、标量=int/float）。"""
+    """将 20 字节关键帧解码为可编辑的子通道值。"""
     frame = struct.unpack_from("<f", raw, 12)[0]
     transition = struct.unpack_from("<h", raw, 16)[0]
     kf_dtype = struct.unpack_from("<h", raw, 18)[0]
@@ -130,7 +77,7 @@ def decode_keyframe(raw: bytes, data_type: int, datatype_hash: int) -> dict:
 
 
 def _u32_bits(data_type: int, x) -> int:
-    """把单值按 dataType 转成 32 位字节模式（float→IEEE 位，int→截断）。"""
+    """将标量转换为 32 位字节模式。"""
     if data_type == 2:
         return struct.unpack("<I", struct.pack("<f", float(x)))[0]
     return int(round(x)) & 0xFFFFFFFF
@@ -138,7 +85,7 @@ def _u32_bits(data_type: int, x) -> int:
 
 def encode_keyframe(data_type: int, datatype_hash: int, frame: float,
                     transition: int, kf_dtype: int, subs: List[dict]) -> bytes:
-    """decode_keyframe 的逆：重建 20 字节关键帧。subs 长度须与 channel_sublabels 一致。"""
+    """将子通道值编码为固定 20 字节关键帧。"""
     if data_type == 3:
         vb = bytes(int(round(subs[i]["value"])) & 0xFF for i in range(4))
         lraw = struct.pack("<f", float(subs[0]["back"]))
@@ -163,9 +110,7 @@ def _align16(pos: int) -> int:
     return (pos + 15) & ~15
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 数据模型
-# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class TimlKeyframe:
@@ -210,43 +155,39 @@ class TimlData:
 
 @dataclass
 class Timl:
-    """整个 TIML 块。`raw` 保留原始字节；未编辑序列化走 verbatim。"""
+    """整个 TIML 块；未编辑时以 ``raw`` 原样序列化。"""
     raw: bytes
-    header: bytes              # 原始 header[0:28]，verbatim 保留 signature/enabled
-    count: int = 0             # dataHeaders 槽位数（= animation 槽位数，含空槽）
-    animations: List[Optional[TimlData]] = field(default_factory=list)  # 槽位序，空槽=None
-    dirty: bool = False        # True=结构变（增删 type/transform/keyframe）→ 重建
+    header: bytes              # 原始 header，重建时仅更新 count
+    count: int = 0
+    animations: List[Optional[TimlData]] = field(default_factory=list)  # 空槽为 None。
+    dirty: bool = False        # 结构变更后必须重建
 
-    # ── 序列化 ────────────────────────────────────────────────────────────────
     def serialize(self) -> bytes:
-        """未编辑 → 原样回吐（byte-perfect）；已编辑 → 结构化重建。"""
+        """未编辑时原样输出；编辑后结构化重建。"""
         if not self.dirty:
             return self.raw
         return self._rebuild()
 
     def _header_bytes(self) -> bytes:
-        """原始 28 字节 header，但把 count(@24,uint32) patch 成当前 self.count
-        （animation 增删后 count 变，header 须同步，否则 dataHeaders 数对不上）。"""
+        """返回 count 与 animation 槽位数一致的 header。"""
         return self.header[:24] + struct.pack("<I", self.count & 0xFFFFFFFF)
 
     def _rebuild(self) -> bytes:
-        """结构化重建（BT 模板布局 + 16 字节对齐）。"""
+        """按 16 字节对齐布局重建。"""
         datas = [d for d in self.animations if d is not None]
         if self.count == 0 or not datas:
-            # 空 TIML：header(count 同步) + 对齐填充
             return self._header_bytes() + b"\x00" * (_align16(_HEADER_SIZE) - _HEADER_SIZE)
 
-        # —— pass 1：按 BT 模板布局顺序排布、计算每个结构的绝对偏移 ——
-        # 布局项：('pad',) / ('data',d) / ('type',t) / ('tf',f) / ('kfg',f)
+        # 第一阶段计算所有结构的偏移
         items = []
         items.append(("hdr", None))
         items.append(("pad", None))
         items.append(("dh", None))
-        for d in self.animations:           # 含空槽（None）→ 只占 dataHeaders 一个 0
+        for d in self.animations:
             if d is None:
                 continue
             items.append(("pad", None))
-            items.append(("pad", None))     # 循环的 pad + 布局起始 pad（连续两 pad，第二个为 0）
+            items.append(("pad", None))
             items.append(("data", d))
             items.append(("pad", None))
             for t in d.types:
@@ -261,11 +202,10 @@ class Timl:
                     items.append(("kfg", f))
                     items.append(("pad", None))
             if items and items[-1][0] == "pad":
-                items.pop()                 # 去掉最后一个关键帧 pad（与 BT 布局一致）
+                items.pop()
 
-        # 分配偏移
         pos = 0
-        offmap = {}                          # id(obj) → 绝对偏移
+        offmap = {}
         for kind, obj in items:
             if kind == "pad":
                 pos = _align16(pos)
@@ -283,7 +223,7 @@ class Timl:
             elif kind == "kfg":
                 offmap[("kfg", id(obj))] = pos; pos += _KEYFRAME_SIZE * len(obj.keyframes)
 
-        # —— pass 2：发射字节，回填各结构的 offset 字段 ——
+        # 第二阶段输出字节并回填偏移
         out = bytearray()
         for kind, obj in items:
             if kind == "pad":
@@ -313,28 +253,18 @@ class Timl:
         return bytes(out)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 解析
-# ─────────────────────────────────────────────────────────────────────────────
 
 def make_blank_timl() -> bytes:
-    """生成最小合法 TIML 字节（count=0，32 字节）作为从头新建的起点。
-    可在此基础上用 enable_axis 启用轴、再用 add_transform 添加轨道。
-
-    header 中间 20 字节（signature/enabled/NULL）不是随便填的占位——2026-07-01 用
-    232 个真实 TIML 头核对：signature（3×int32）恒为 (402786304, 402786304, 0)，
-    enabled（int32）恒为 32，NULL（int32）恒为 0，全语料无一例外。之前这里错填成
-    全零 signature + 顺序/宽度都错的 enabled/NULL，游戏引擎会拒绝识别，新建的 TIML
-    完全不生效——parse_timl 对真实文件只是把这段当不透明字节保留，从没验证过具体
-    数值，所以这个 bug 一直没被现有 roundtrip 测试发现。"""
+    """生成最小合法 TIML，供从零创建动画轴和轨道。"""
     header = (
-        _MAGIC                                          # b"timl"  [4]
-        + struct.pack("<3i", 402786304, 402786304, 0)    # signature [12]，全语料恒定
-        + struct.pack("<i", 32)                          # enabled  [4]，全语料恒定 = 0x20
-        + struct.pack("<i", 0)                           # NULL     [4]，全语料恒定
-        + struct.pack("<I", 0)                           # count=0  [4]
-    )  # = _HEADER_SIZE = 28 bytes
-    return header + b"\x00" * (_align16(_HEADER_SIZE) - _HEADER_SIZE)  # → 32 bytes
+        _MAGIC
+        + struct.pack("<3i", 402786304, 402786304, 0)
+        + struct.pack("<i", 32)
+        + struct.pack("<i", 0)
+        + struct.pack("<I", 0)
+    )
+    return header + b"\x00" * (_align16(_HEADER_SIZE) - _HEADER_SIZE)
 
 
 def is_timl(data: bytes) -> bool:
@@ -342,11 +272,9 @@ def is_timl(data: bytes) -> bool:
 
 
 def parse_timl(data: bytes) -> Optional[Timl]:
-    """解析完整 TIML 树。非 timl 返回 None。
+    """解析完整 TIML 树；非 TIML 返回 ``None``。
 
-    指针读法与游戏一致（dataHeaders @32，各级按 offset 字段间接寻址）。保留 raw
-    供 byte-perfect verbatim。极少数文件 dataHeaders@32 为 0 但含未引用死数据 → 按空动画
-    解析（与游戏一致），死字节由 raw verbatim 保留。
+    不可达数据不会结构化，但未编辑时仍由 ``raw`` 保留。
     """
     if not is_timl(data):
         return None
@@ -415,23 +343,13 @@ def _parse_transform(data: bytes, off: int, n: int) -> TimlTransform:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 轨道增删复制（供 Blender 胶水层调用；timl.dirty=True 门控序列化走重建）
-# ─────────────────────────────────────────────────────────────────────────────
-
-# label_hash / data_ix0 / data_ix1 的 dataclass 默认值是 0，但 2026-07-01 用 6180 条
-# 真实 animation 核对：label_hash 恒非 0（0/6180），同一 TIML 内 A0/A1 两条轴的
-# label_hash 恒不相同（0/116 相同）；data_ix0/data_ix1 也恒非 0（min=1）。具体数值
-# 看起来是原作者工具里任意的曲线/剪辑书签（同一 hash 会被完全不同的 body 复用，
-# 如全语料最高频的一个 label_hash 出现在 267 个语义无关的文件里），推测引擎不校验
-# 具体数值、但把 0 当"未初始化"处理而跳过——从零新建的 TimlData 若留 0 默认值，
-# 很可能是"新建 TIML / 新增轨道游戏内不生效"的头号嫌疑。只是从语料统计推出的
-# 头号嫌疑，不是实机确认的定论，修复效果有待实机验证。
+# 新建动画轴使用非零元数据标识，避免 dataclass 的零值默认值。
 _NEW_LABEL_HASH = {0: jamcrc(b"EFX_EDITOR_NEW_TIMELINE_A0"), 1: jamcrc(b"EFX_EDITOR_NEW_TIMELINE_A1")}
 _NEW_DATA_IX = (1, 2)
 
 
 def make_blank_animdata(slot: int) -> "TimlData":
-    """新建一条空动画数据（供 enable_axis 无源可复制 / add_transform 从零建轴使用）。
-    label_hash/data_ix0/data_ix1 用非零占位值，而非 dataclass 默认的 0（见上方注释）。"""
+    """新建一条带非零元数据标识的空动画数据。"""
     lbl = _NEW_LABEL_HASH.get(slot, _NEW_LABEL_HASH[0])
     return TimlData(anim_index=slot, animation_length=30.0,
                     data_ix0=_NEW_DATA_IX[0], data_ix1=_NEW_DATA_IX[1], label_hash=lbl)
@@ -440,20 +358,14 @@ def make_blank_animdata(slot: int) -> "TimlData":
 def _make_default_keyframes(data_type: int, dt_hash: int,
                             anim_length: float = 30.0,
                             seed=None) -> "List[TimlKeyframe]":
-    """生成两个默认关键帧（frame=0 和 frame=anim_length），作为新轨道起始内容。
+    """生成覆盖动画长度的两个默认关键帧。
 
-    首帧取值优先级（见 names.DT_NEUTRAL 的说明）：
-      1. seed —— 调用方给的当前静态字段值（标量或 Color 的 4 通道序列）。加轨道
-         因此不改变特效当下的外观，绝对量级字段（SizeY/Radius…）也能拿到正确量级。
-      2. DT_NEUTRAL 表 —— 乘算类属性的恒等值 1.0 等。
-      3. 0.0 / Color 白色不透明。
-    seed 的单位与字节里一致（游戏单位），不做 game↔blender 换算——TIML 关键帧值
-    本身也存游戏单位，换算只发生在驱动 Blender fcurve 那一层。
+    初值优先使用 ``seed``，否则回退至 DT 中性值；TIML 值保持游戏单位。
     """
     frames = [0.0, max(1.0, anim_length)]
     kfs = []
     for fr in frames:
-        if data_type == 3:  # Color RGBA
+        if data_type == 3:
             if seed is not None:
                 try:
                     chans = [max(0, min(255, int(round(float(c))))) for c in seed][:4]
@@ -462,9 +374,9 @@ def _make_default_keyframes(data_type: int, dt_hash: int,
                 while len(chans) < 4:
                     chans.append(255)
             else:
-                chans = [255, 255, 255, 255]   # 白色不透明
+                chans = [255, 255, 255, 255]
             subs = [{"value": chans[i], "back": 0.0, "period": 0.0} for i in range(4)]
-        else:               # Float/SInt/Int/Bool
+        else:
             if seed is not None:
                 try:
                     v = float(seed[0] if isinstance(seed, (list, tuple)) else seed)
@@ -473,21 +385,20 @@ def _make_default_keyframes(data_type: int, dt_hash: int,
             else:
                 v = dt_neutral_value(dt_hash)
             subs = [{"value": v, "back": 0.0, "period": 0.0}]
-        raw = encode_keyframe(data_type, dt_hash, fr, 2, data_type, subs)  # transition=2=LINEAR
+        raw = encode_keyframe(data_type, dt_hash, fr, 2, data_type, subs)
         kfs.append(TimlKeyframe(raw=raw, frame_timing=fr, transition=2, data_type=data_type))
     return kfs
 
 
 def add_transform(timl: "Timl", slot: int, tlp_hash: int,
                   dt_hash: int, data_type: int, seed=None) -> bool:
-    """在 slot 轴（0=A0, 1=A1）下新增 (tlp_hash, dt_hash) 通道。
-    已存在返回 False；成功返回 True 并设 timl.dirty=True。
+    """新增一条 transform；已有同 hash 的通道时返回 ``False``。
 
-    seed：该属性当前的静态字段值（标量，或 Color 的 4 通道序列），用作两个默认
-    关键帧的取值，使新轨道起点等于当下外观。None → 回退 DT_NEUTRAL 表。"""
+    ``seed`` 用作初始关键帧值，缺失时回退至 DT 中性值。
+    """
     tlp_hash &= 0xFFFFFFFF
     dt_hash &= 0xFFFFFFFF
-    # 补槽（None 占位，count 跟随）
+    # 补齐动画槽位
     while len(timl.animations) <= slot:
         timl.animations.append(None)
     timl.count = max(timl.count, slot + 1)
@@ -497,7 +408,6 @@ def add_transform(timl: "Timl", slot: int, tlp_hash: int,
     anim = timl.animations[slot]
     anim.anim_index = slot
 
-    # 查找或创建 TimlType
     tlp = None
     for t in anim.types:
         if (t.timeline_param_hash & 0xFFFFFFFF) == tlp_hash:
@@ -507,7 +417,6 @@ def add_transform(timl: "Timl", slot: int, tlp_hash: int,
         tlp = TimlType(timeline_param_hash=tlp_hash)
         anim.types.append(tlp)
 
-    # 检查 dt_hash 是否已存在
     for tf in tlp.transforms:
         if (tf.datatype_hash & 0xFFFFFFFF) == dt_hash:
             return False
@@ -547,7 +456,6 @@ def copy_transform(timl: "Timl", src_slot: int, dst_slot: int,
     import copy as _copy
     tlp_hash &= 0xFFFFFFFF
     dt_hash &= 0xFFFFFFFF
-    # 找源 transform
     if src_slot >= len(timl.animations) or timl.animations[src_slot] is None:
         return False
     src_tf = None
@@ -563,10 +471,10 @@ def copy_transform(timl: "Timl", src_slot: int, dst_slot: int,
     if src_tf is None:
         return False
 
-    # 先删目标（若存在）；delete_transform 会设 dirty，但我们总会再设一次
+    # 先移除目标中已有的同名通道
     delete_transform(timl, dst_slot, tlp_hash, dt_hash)
 
-    # 补槽
+    # 补齐动画槽位
     while len(timl.animations) <= dst_slot:
         timl.animations.append(None)
     timl.count = max(timl.count, dst_slot + 1)

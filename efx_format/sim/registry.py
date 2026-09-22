@@ -1,29 +1,13 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/registry.py  —  Behavior 协议 + 注册表
+"""Behavior 协议与注册表。
 
-加一个属性 = 新建一个文件 + `@register(HASH)`，不改任何现有代码。这是「后续补充
-语义」这条需求的落点。
+加一个属性只需新建一个文件并 `@register(HASH)`，不改现有代码。
 
-六个钩子（作用域/时机，与 stage 正交）
---------------------------------------
-    on_emitter_init (em, rng)                 一次
-    on_emitter_step (em)                      每帧 ×1
-    on_particle_spawn(p, em, rng)             每粒子一次
-    on_particle_step (p, em)                  每帧 ×N   ← 签名里没有 rng，故意的
-    on_particle_death(p, em) -> [SpawnRequest]
-    build_render    (p, em, view, item) -> item
-
-三条结构性保证（见各自出处的详细说明）
---------------------------------------
-    (a) step 拿不到 rng                 —— rng.py
-    (b) 字段只能通过 p.f(HASH) 读        —— resolve.py
-    (c) step 必须与视角无关              —— simulator.py
-
-未注册的属性类型不进逐帧流程，但会被记进 `em.unsupported`，UI 上列出「本 entry 有
-N 个未模拟属性」。预览不静默撒谎——跟 validate.py 报 WARN 不阻断是同一套做法。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- 三条结构性保证由签名而非注释保证：step 拿不到 rng（rng.py）、字段只能通过
+  `em.f(HASH, p)` 读（resolve.py）、step 与视角无关（simulator.py）。
+- 未注册的属性类型不进逐帧流程，但必须记进 `em.unsupported` 并在 UI 列出，
+  预览不得静默忽略。
 """
 
 from . import stages as _stages
@@ -49,9 +33,8 @@ class Behavior(object):
     #: schema 块名（给 resolve.py 查 TIML 映射用；由 @register 填）
     BLOCK_NAME = ""
 
-    #: 声明「我要逐帧的位置历史」。任一 behavior 打开它，Simulator 就开始给每个
-    #: 粒子记 `p.trail`。条带类渲染体（RIBBON 轨迹跟随 / RIBBONBLADE）要用。
-    #: 默认关，因为绝大多数属性不需要，记录是白白的拷贝开销。
+    #: 声明需要逐帧位置历史。任一 behavior 打开，Simulator 即给每个粒子记
+    #: `p.trail`。默认关，因为记录对不需要它的属性是纯拷贝开销。
     NEEDS_TRAIL = False
 
     def __init__(self, type_hash, block_name):
@@ -72,18 +55,14 @@ class Behavior(object):
         """每帧、每个活着的粒子。注意签名里没有 rng：逐帧随机用 `em.noise*`。"""
 
     def on_particle_death(self, p, em):
-        """粒子死亡。返回 `[SpawnRequest]` 或 None（PTLIFE 将来住这儿）。"""
+        """粒子死亡。返回 `[SpawnRequest]` 或 None。"""
         return None
 
     def pre_render(self, em, view):
-        """渲染 pass 开始前一次，**在逐粒子循环之外**。
+        """渲染 pass 开始前一次，在逐粒子循环之外，用于整批预计算。
 
-        用来做「每个粒子算式一样、只是数据不同」的整批预计算——典型是条带的轨迹
-        重采样：逐粒子一趟是纯 Python 热循环，整批拉成数组过 numpy 能快一个量级
-        （见 `behaviors/ribbon.py::Ribbon.pre_render`）。算完的东西自己存进
-        `p.user[本类]`，`build_render` 再取走。
-
-        ⚠ 不许改模拟状态——渲染 pass 必须可重复调用且不影响推进。"""
+        结果自行存入 `p.user[本类]`，`build_render` 再取走。
+        ⚠ 不得修改模拟状态：渲染 pass 必须可重复调用且不影响推进。"""
 
     def build_render(self, p, em, view, item):
         """渲染 pass。RENDER_BODY 阶段 `item` 为 None、负责产出；

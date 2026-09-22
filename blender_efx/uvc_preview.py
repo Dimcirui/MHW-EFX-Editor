@@ -1,22 +1,8 @@
-"""
-blender_efx/uvc_preview.py  —  UVCONTROL 视口 UV 滚动动画预览
+"""预览 UVCONTROL 对绑定网格材质 UV 的滚动和缩放。
 
-设计（与用户确认的边界）
-------------------------
-- **绑定责任全交用户**：用户自行导入网格、上好材质（材质里需含一个 Mapping 节点），
-  然后在 MESH 属性上手选目标网格对象（`Object.efx_mesh_target`）。本模块不生成几何、
-  不创建/修改材质节点结构，只在预览期间写 Mapping 节点的 Location/Scale。
-- **UVCONTROL → MESH 关联**：UVCONTROL 与 MESH 是同一 entry（EFX_ENTRY）下的兄弟 EFX_ATTRIBUTE。
-  预览时对每个 UVCONTROL 属性，在同 entry 找 MESH 兄弟属性，读其绑定网格。
-- **根级单会话，全播**：进入预览=收集本 EFX_ROOT 下所有 (UVCONTROL↔已绑定网格) 配对，
-  全部一起驱动；共享时间轴 → 天然同步。一个场景同时只有一个会话。
-- **进入/退出状态**（类似 UVS 编辑器）：进入时快照各 Mapping 节点原值并注册
-  frame_change_post handler；退出时注销 handler 并还原所有原值。非侵入。
-
-约束（CLAUDE.md）
------------------
-- 纯胶水层，绝不 import efx_format 解析以外的东西；不碰 byte-perfect 底线。
-- Python 3.10 兼容；bpy 只用长期稳定子集（app.handlers.frame_change_post 自 2.8 稳定）。
+维护约束：UVCONTROL 与 MESH 从同一 Entry 的属性配对；预览只临时驱动 Mapping
+节点和材质状态，退出时必须恢复快照。一个根集合只运行一个共享时间轴会话；本模块
+不解析或修改 EFX 字节数据。
 """
 
 import math
@@ -28,7 +14,7 @@ from bpy.props import PointerProperty, BoolProperty
 from bpy.types import Operator, Panel
 from bpy.app.handlers import persistent
 
-from .i18n import T  # 运行时双语查表（draw / report 文案）
+from .i18n import T
 from . import transform_sync as _tsync
 from . import root_collection as _rc
 
@@ -62,11 +48,7 @@ def _is_mesh_attribute(obj) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _read_field(obj, name):
-    """从 EFX_ATTRIBUTE 的 field_items 读取指定字段，返回 python 值（标量或 tuple）。
-
-    覆盖 UVCONTROL 用到的类型：FLOAT / INT / FLOAT2/3/4，以及 *_STR 字符串数组兜底。
-    找不到字段返回 None。
-    """
+    """从属性 field_items 读取 UVCONTROL 字段，找不到时返回 ``None``。"""
     bp = getattr(obj, "efx_block", None)
     if bp is None:
         return None
@@ -109,13 +91,7 @@ def _comp(val, idx, default=0.0):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _advance(init, speed, accel, t):
-    """位置随时间演化。
-
-    annotations 确认 acceleration = "每秒对速度做乘法"（速度按 accel 的指数增长）。
-    - accel≈1（无加速）：pos = init + speed·t（线性滚动，最常见）。
-    - accel>0 且 ≠1：speed(τ)=speed·accel^τ，位移 = ∫₀ᵗ = speed·(accel^t−1)/ln(accel)。
-    - accel≤0（异常/无意义）：退回线性。
-    """
+    """按指数速度系数计算位置；无效系数回退线性运动。"""
     if accel is None or accel <= 0.0 or abs(accel - 1.0) < 1e-6:
         return init + speed * t
     try:
@@ -125,11 +101,9 @@ def _advance(init, speed, accel, t):
 
 
 def _compute_channel(ch, t):
-    """单通道 → ((loc_u, loc_v), (scale_u, scale_v))。
+    """计算单通道在时刻 ``t`` 的偏移和缩放。
 
-    ⚠ UVCONTROL 的 ('f',4) 字段布局是 [U值, ?, V值, ?]——U 在 index 0、V 在 **index 2**
-    （index 1/3 实测恒为 0，疑似 jitter/保留）。实证：uv1_scale=(4,0,4,0)=U/V 各 4 倍，
-    uv1_offset=(0,0,0.6,0)=V 偏移 0.6。早期误读 index 1 致 V 方向塌缩成条纹。
+    UVCONTROL 四分量字段的 U/V 分量固定取索引 0/2。
     """
     init = ch["init"]
     speed = ch["speed"]
@@ -145,11 +119,7 @@ def _compute_channel(ch, t):
 
 
 def _compute_uv(params, t):
-    """多通道叠加 → ((loc_u, loc_v), (scale_u, scale_v))。
-
-    两套 UV 共用同一套贴图（布局一致），同时启用时效果叠加：偏移相加、缩放相乘
-    （滚动以偏移为主，scale≈1 时偏移叠加即精确）。
-    """
+    """叠加启用通道的偏移和缩放。"""
     loc_u = loc_v = 0.0
     s_u = s_v = 1.0
     for ch in params["channels"]:
@@ -162,10 +132,7 @@ def _compute_uv(params, t):
 
 
 def _channel_enabled(uvc_obj, prefix) -> bool:
-    """该通道(uv1/uv2)是否启用（实测的逐通道启用开关）。
-
-    字段名两个通道不对称：uv1 是 unknFlag（原 unkn0），uv2 是官方名 enable。
-    """
+    """判断 uv1/uv2 通道是否启用；两者使用不同字段名。"""
     field = prefix + ("_unknFlag" if prefix == "uv1" else "_enable")
     v = _read_field(uvc_obj, field)
     return int(v) == 1 if v is not None else False
@@ -183,13 +150,7 @@ def _read_channel(uvc_obj, prefix):
 
 
 def _extract_params(uvc_obj):
-    """抽取启用的通道并叠加；决定 Mapping 的 UV 源。
-
-    逐通道启用开关 = <prefix>_unkn0==1。两套 UV 共用同一批贴图、布局一致：
-      - uv1、uv2 都启用 → 两者叠加（同用第一套 UV 即可，布局一致）。
-      - 仅 uv2 启用 → 用 uv2 + 第二套 UV。
-      - 仅 uv1 / 都不启用 → 用 uv1 + 第一套 UV（都不启用时为静态 base）。
-    """
+    """返回启用通道和所用 UV 层；仅 uv2 启用时使用第二层 UV。"""
     uv1_on = _channel_enabled(uvc_obj, "uv1")
     uv2_on = _channel_enabled(uvc_obj, "uv2")
 
@@ -199,9 +160,8 @@ def _extract_params(uvc_obj):
     if uv2_on:
         channels.append(_read_channel(uvc_obj, "uv2"))
     if not channels:
-        channels.append(_read_channel(uvc_obj, "uv1"))  # 都不启用 → uv1 静态
+        channels.append(_read_channel(uvc_obj, "uv1"))
 
-    # UV 源：仅 uv2 启用时取第二套 UV；否则（含两者叠加）取第一套
     use_second = uv2_on and not uv1_on
     return {"channels": channels, "use_second_uv": use_second}
 
@@ -255,14 +215,7 @@ def _material_previewable(mesh_obj):
 
 
 def _force_blended(mat):
-    """把材质渲染方式临时切到 Blended（真 alpha 混合），返回 (attr, orig) 供还原。
-
-    Dithered/Hashed 透明靠 TAA 累积，时间轴一动采样重置成 1 → 半透明区变稀疏噪点近乎不可见。
-    Blended 不依赖采样累积，运动时稳定。版本守卫：
-      - 4.2+ EEVEE Next：material.surface_render_method ∈ {'DITHERED','BLENDED'}
-      - <4.2 旧 EEVEE：material.blend_method ∈ {'OPAQUE','CLIP','HASHED','BLEND'}
-    返回 None 表示无可切属性（不报错）。
-    """
+    """临时切换材质到稳定的 Blended 透明模式，返回可还原的属性记录。"""
     if mat is None:
         return None
     if hasattr(mat, "surface_render_method"):
@@ -301,22 +254,14 @@ def _uv_layer_name(mesh_obj, use_second):
 
 
 def _prepare_material(mat, mesh_obj, use_second_uv):
-    """为材质准备可驱动的 Mapping 节点 + 临时切 Blended 渲染方式。
+    """准备可驱动 Mapping 节点及完整还原记录。
 
-    - 已有 Mapping → 复用（mode='existing'，退出时只还原其 Location/Scale 数值）。
-    - 无 Mapping → 新建 UV Map(指定 UV 层) + Mapping，接到所有 Vector 口空着的图像纹理
-      （mode='created'，退出时删除新建节点、连接随节点移除自动断开还原）。
-      use_second_uv=True 时 UV Map 指向网格第二套 UV，实现 uv2 通道预览。
-
-    返回 (mapping_node, restore_record) 或 (None, None)（无可驱动目标）。
+    复用节点时仅恢复数值；创建节点时退出删除节点。纹理回绕和渲染方式均需还原。
     """
     tree = mat.node_tree
-    # 渲染方式临时切 Blended（快照原值供还原）。
     render_method = _force_blended(mat)
 
-    # UV 滚动前提是贴图回绕：对材质里**所有**图像纹理强制 Extension=REPEAT（快照原值，
-    # 退出还原）。非 Repeat（Clip/Extend）会让偏移超出 [0,1] 后采样到透明/边缘 →
-    # 网格随时间淡出消失。无论复用已有 Mapping 还是新建，都要覆盖（含已连线的纹理）。
+    # UV 滚动要求图像纹理回绕；退出时恢复每个纹理的原设置。
     tex_ext = []
     for node in tree.nodes:
         if node.type == "TEX_IMAGE":
@@ -353,12 +298,10 @@ def _prepare_material(mat, mesh_obj, use_second_uv):
 
     targets = _image_texture_targets(tree)
     if not targets:
-        # 没有可接的图像纹理 → 还原刚才改的 extension/渲染方式，放弃
         _abort_restore()
         return None, None
 
-    # UV 源：用 UV Map 节点显式指定 UV 层（uv1=第一套 / uv2=第二套），
-    # 而非 TexCoord（只能取活动套），这样 uv2 能正确驱动第二套 UV。
+    # UV Map 显式选择 UV 层，支持 uv2 使用第二套 UV。
     uvmap = tree.nodes.new("ShaderNodeUVMap")
     uvmap.uv_map = _uv_layer_name(mesh_obj, use_second_uv)
     mapping = tree.nodes.new("ShaderNodeMapping")
@@ -398,7 +341,7 @@ def _find_sibling_mesh_target(uvc_obj):
 # 网格变换动画：TRANSFORM3D（base + 速度/加速度）+ ROTATEANIM（自转）→ mesh matrix_world
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ROTATEANIM spin_velocity 量纲不是度/秒（实测偏慢）；疑为度/帧（×游戏 tick 60fps=度/秒）→ 试 60×。
+# ROTATEANIM 自转速度按游戏 tick 换算。
 _ROTATEANIM_SPIN_SCALE = 60.0
 
 
@@ -432,14 +375,7 @@ def _read_triple(block, name, default=(0.0, 0.0, 0.0)):
 
 
 def _collect_transform_entries(roots, armature):
-    """收集需要做变换动画的 entry：每个有绑定网格、且含 TRANSFORM3D 或 ROTATEANIM 的 entry。
-
-    返回 (entries, snaps)：
-      entries = [dict(mesh, bone_base, base_*, *_vel, spin_*)]
-      snaps   = [(mesh, 原 matrix_world)]   —— 退出还原
-    无 TRANSFORM3D 也无 ROTATEANIM → 跳过（mesh 不动，等价"原点局部系、不重建"）。
-    同一网格只收一次（去重）。
-    """
+    """收集有绑定网格及变换来源的 Entry，并快照其世界矩阵。"""
     from ..efx_format.hashes import TRANSFORM3D, ROTATEANIM
     entries = []
     snaps = []
@@ -454,11 +390,9 @@ def _collect_transform_entries(roots, armature):
             t3d = _entry_attribute(body, TRANSFORM3D)
             rot = _entry_attribute(body, ROTATEANIM)
             if t3d is None and rot is None:
-                continue  # 无可定位/动画来源 → fallback 原点，不动网格
+                continue
 
-            # 只取骨骼世界位置（head），不继承骨骼 rest 朝向：
-            # Blender 骨骼默认沿 +Y，指向 +Z 的 MhBone 其 matrix_local 内嵌 +90°X 伪旋转，
-            # 整体继承会把网格莫名转 +90°X。朝向统一交给 M_G2B 轴交换。
+            # 骨骼只提供世界位置；朝向统一由游戏到 Blender 轴变换处理。
             bone_base = _tsync.bone_base_matrix(armature, _tsync._entry_joint_no(body))
             bone_pos = bone_base.to_translation() if bone_base is not None else None
 
@@ -467,8 +401,7 @@ def _collect_transform_entries(roots, armature):
                 ent["base_translate"] = _read_triple(t3d, "translate")
                 ent["base_rotate"] = _read_triple(t3d, "rotate")
                 ent["base_scale"] = _read_triple(t3d, "resize", (1.0, 1.0, 1.0))
-                # 速度总开关：enableVelocityBitflag bit0(&1) 置位才启用速度（base 定位不受影响）。
-                # 参考 EFX_*.bt：Pos0=Enable Velocity, Pos1=Enable Acceleration。
+                # bit 0 决定是否应用速度，基础变换始终保留。
                 flag = _read_field(t3d, "enableVelocityBitflag")
                 vel_on = bool(int(flag) & 1) if flag is not None else False
                 if vel_on:
@@ -514,7 +447,7 @@ def _transform_matrix(ent, t):
     sc = tuple(bs[i] + sv[i] * t for i in range(3))
     spin = tuple(sp[i] * _ROTATEANIM_SPIN_SCALE * t for i in range(3))
 
-    # 朝向统一用 M_G2B 轴交换（不依赖骨骼 rest 朝向，避免 +Z 骨骼的 +90°X 伪旋转）。
+    # 朝向统一通过游戏到 Blender 的轴变换计算。
     loc = Vector(_tsync.game_loc_to_blender(*tr))
     rot_m = Euler(_tsync.game_rot_to_blender(*ro), "XYZ").to_matrix().to_4x4()
     spin_m = Euler(_tsync.game_rot_to_blender(*spin), "XYZ").to_matrix().to_4x4()
@@ -522,7 +455,7 @@ def _transform_matrix(ent, t):
 
     scl_m = Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
     local = Matrix.Translation(loc) @ rot_m @ spin_m @ scl_m
-    # 绑骨骼时只把骨骼世界位置作为平移基准叠加（不继承骨骼朝向）
+    # 绑定骨骼时仅叠加其世界位置。
     if ent["bone_pos"] is not None:
         return Matrix.Translation(ent["bone_pos"]) @ local
     return local
@@ -532,16 +465,14 @@ def _transform_matrix(ent, t):
 # 预览会话状态（模块级，生命周期与 handler 绑定）
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ⚠ uvc 是 handler+还原数据模型（持活节点引用），非实例对象——session_core 的对象标记模型不适用。
-# 但同样怕状态脱节：热重载/undo 后 _state 是新模块的空 dict，却有**旧模块的 _on_frame** 还挂在
-# frame_change_post 上驱动真实节点（"越用越黏"）。故 handler 一律**按函数名+模块识别**移除（不靠
-# 缓存引用），"是否活跃"也由 handler 是否在册派生——跨热重载都能认出并清掉旧 handler。
+# 会话持有节点引用，不能使用对象标记模型。handler 必须按名称和模块识别并移除，
+# 以清理热重载或 undo 后残留的旧函数。
 _state = {
-    "handler": None,       # frame_change_post handler 引用（仅本模块内用；清理不靠它）
-    "pairs": [],           # [(params_dict, mapping_node)]  —— UV 驱动
-    "restore": [],         # [restore_record]（见 _prepare_material）
-    "xform": [],           # [entry]  —— 网格变换动画（见 _collect_transform_entries）
-    "xform_snaps": [],     # [(mesh, 原 matrix_world)]
+    "handler": None,
+    "pairs": [],
+    "restore": [],
+    "xform": [],
+    "xform_snaps": [],
     "start_frame": 0,
 }
 
@@ -594,20 +525,17 @@ def _apply_frame(scene):
             loc.default_value[1] = lv
             scl.default_value[0] = su
             scl.default_value[1] = sv
-            touched.add(node.id_data)  # 节点所属的 NodeTree（材质）
+            touched.add(node.id_data)
         except Exception:
-            # 单个节点出错不影响其余配对的预览
             continue
 
-    # 网格变换动画：TRANSFORM3D（base+速度）+ ROTATEANIM（自转）→ mesh.matrix_world
     for ent in _state["xform"]:
         try:
             ent["mesh"].matrix_world = _transform_matrix(ent, t)
         except Exception:
             continue
 
-    # ⚠ 从 handler 改 default_value，EEVEE 视口不会自动重绘 → 看似淡出/消失，
-    # 拖边框（强制重绘）才正常。手动给材质打更新标记 + 标记所有 3D 视口重绘。
+    # handler 改节点值后显式更新材质和 3D 视口。
     for nt in touched:
         try:
             nt.update_tag()
@@ -624,25 +552,20 @@ def _apply_frame(scene):
 
 @persistent
 def _on_frame(scene, depsgraph=None):
-    # handler 在册即活跃；有 pairs/xform 才有活可干（热重载残留的旧 handler 其 _state 为空 → 空转无害）
+    # 残留 handler 的空状态无需处理。
     if _state["pairs"] or _state["xform"]:
         _apply_frame(scene)
 
 
 def _collect_pairs(roots):
-    """收集多个 EFX_ROOT 下所有 (UVCONTROL params, Mapping 节点) 配对，按需自动插入节点。
+    """收集根集合内的 UVCONTROL/Mapping 配对及其还原记录。
 
-    roots：EFX_ROOT 对象列表（单 EFX 传 [root]，多 EFX 传全部）。
-    返回 (pairs, restore, missing)：
-      pairs   = [(params, mapping_node)]
-      restore = [restore_record]   —— 退出时据此删节点/还原数值
-      missing = [(网格名, 原因)]   —— 已绑定但材质无法预览
-    同一材质只准备一次（按 material dedupe，跨 root 也共享，避免重复插 Mapping）。
+    同一材质仅准备一次；无法预览的已绑定网格加入 ``missing``。
     """
     pairs = []
     restore = []
     missing = []
-    prepared = {}  # material → mapping_node（去重，跨 root 共享）
+    prepared = {}
     for root_obj in roots:
         if root_obj is None:
             continue
@@ -652,7 +575,7 @@ def _collect_pairs(roots):
                     continue
                 mesh_obj = _find_sibling_mesh_target(blk)
                 if mesh_obj is None:
-                    continue  # 同 entry 没有绑定网格的 MESH 属性 → 跳过
+                    continue
                 tree = _active_node_tree(mesh_obj)
                 if tree is None:
                     missing.append((mesh_obj.name, "uvc.reason_no_node_mat"))
@@ -680,16 +603,14 @@ def _all_efx_roots():
 
 
 def _restore():
-    """据 restore 记录还原：删除新建节点 / 还原已有节点数值。"""
+    """根据快照还原材质节点、材质状态及网格矩阵。"""
     for rec in _state["restore"]:
         try:
-            # 还原图像纹理 Extension（两种模式通用；created 模式须在删节点前）
             for tex, orig_ext in rec.get("tex_ext", []):
                 try:
                     tex.extension = orig_ext
                 except Exception:
                     pass
-            # 还原渲染方式
             rm = rec.get("render_method")
             if rm is not None:
                 try:
@@ -711,7 +632,6 @@ def _restore():
         except Exception:
             continue
 
-    # 还原网格变换（matrix_world）
     for mesh, mw in _state["xform_snaps"]:
         try:
             mesh.matrix_world = mw
@@ -720,7 +640,7 @@ def _restore():
 
 
 def _stop_preview():
-    """退出预览：注销 handler（含热重载残留）、还原节点、清空状态。可重复安全调用。"""
+    """停止预览、移除残留 handler、还原状态并清空会话。"""
     _remove_our_frame_handlers()
     _restore()
     _state["handler"] = None
@@ -776,7 +696,7 @@ class EFX_OT_uvc_preview_enter(Operator):
         pairs, restore, missing = _collect_pairs(roots)
 
         if missing:
-            # 已为部分材质插了节点 → 回滚，避免半残留
+            # 任何材质不可预览时回滚已准备的临时状态。
             _state["restore"] = restore
             _restore()
             _state["restore"] = []
@@ -784,7 +704,7 @@ class EFX_OT_uvc_preview_enter(Operator):
             self.report({"ERROR"}, T("uvc.missing_header").format(detail))
             return {"CANCELLED"}
 
-        # 网格变换动画（TRANSFORM3D + ROTATEANIM），可与 UV 独立存在
+        # 网格变换动画可独立于 UV 配对存在。
         armature = getattr(context.scene, "efx_armature", None)
         xform, xform_snaps = _collect_transform_entries(roots, armature)
 
@@ -801,10 +721,10 @@ class EFX_OT_uvc_preview_enter(Operator):
         _state["xform_snaps"] = xform_snaps
         _state["start_frame"] = context.scene.frame_current
         _state["handler"] = _on_frame
-        _remove_our_frame_handlers()   # 先清任何残留（含热重载旧模块 handler），杜绝重复/黏连
+        _remove_our_frame_handlers()
         bpy.app.handlers.frame_change_post.append(_on_frame)
 
-        # 立即按当前帧应用一次（不必等用户拖动时间轴）
+        # 立即应用当前帧状态。
         _apply_frame(context.scene)
         self.report({"INFO"}, T("uvc.entered").format(len(pairs), len(xform)))
         return {"FINISHED"}
@@ -828,13 +748,12 @@ class EFX_OT_uvc_preview_exit(Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# load_post：换文件/重载时强制清理残留会话（防 handler 悬挂）
+# load_post：清理残留会话。
 # ─────────────────────────────────────────────────────────────────────────────
 
 @persistent
 def _on_load(*_args):
-    # 新文件里旧的 node 引用全失效，直接清状态（不调用 _restore，节点已不存在）。
-    # handler 按名+模块移除（含热重载残留），不靠缓存引用。
+    # 新文件中的旧节点引用无效，不尝试还原，直接清理 handler 和会话状态。
     _remove_our_frame_handlers()
     _state["handler"] = None
     _state["pairs"] = []
@@ -845,7 +764,7 @@ def _on_load(*_args):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Panel：MESH 属性 → 网格绑定（顶层 N 面板，仅选中 MESH 属性时显示）
+# MESH 属性的网格绑定面板。
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_mesh_binding(Panel):
@@ -855,7 +774,7 @@ class EFX_PT_mesh_binding(Panel):
     bl_region_type = "UI"
     bl_category = "EFX"
     bl_label = "Mesh Binding"
-    bl_parent_id = "EFX_PT_mesh_drive"    # 绑定网格驱动父面板（mesh_drive.py，注册在前）
+    bl_parent_id = "EFX_PT_mesh_drive"
     bl_order = 0
     bl_options = {"DEFAULT_CLOSED"}
 
@@ -882,8 +801,7 @@ class EFX_PT_mesh_binding(Panel):
                 box.label(text=T("uvc.not_previewable").format(T(reason)), icon="ERROR")
                 box.label(text=T("uvc.need_texture"))
 
-        # mod3_link 按 visconIndex/Jitter 范围自动绑的多网格（同一个 Visible
-        # Condition 组常有好几个 Sub 网格）；只读展示，不在这里手动增删。
+        # 可展示由 mod3_link 自动绑定的 viscon 网格组。
         targets = getattr(obj, "efx_mesh_targets", None)
         if targets:
             box = layout.box()
@@ -905,8 +823,7 @@ _CLASSES = [
     EFX_OT_uvc_preview_enter,
     EFX_OT_uvc_preview_exit,
     EFX_PT_mesh_binding,
-    # 本模块只出「Mesh Binding」一个子面板。预览的进入/退出控件在统一的
-    # 「Mesh Drive」面板里（mesh_drive.py），它直接驱动下面这两个算子。
+    # 预览控制由 mesh_drive.py 的父面板提供。
 ]
 
 

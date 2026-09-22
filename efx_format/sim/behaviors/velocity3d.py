@@ -1,31 +1,31 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/velocity3d.py  —  VELOCITY3D（初速度 + 逐帧积分）
+"""VELOCITY3D —— 初速度与逐帧积分。
 
-语义来源：blender_efx/annotations.py 的 ("VELOCITY3D", ...) 条目（已实测）。
+字段职能：
 
-    baseAxis      六个基准轴之一，不是自由方向向量。游戏坐标系 +X=左 +Y=上 +Z=前，
-                  0=左 1=上 2=前 3=右 4=下 5=后。仅 velocityType=Directional 有意义。
-    rotOrder      **另一套**取值→顺序映射（_ROT_ORDER6），跟 TRANSFORM3D 的不是一套。
-    speedCoef     「逐帧速度倍率：对应的速度每帧乘一次这个值」
-                  → 1=匀速、>1 加速、<1 减速。这是整个模型是**逐帧乘法递推**而非
-                    dt 积分的直接证据，别改成 dt。
-    velocityType  0=Directional（baseAxis+rotation 定方向）
-                  1=DirectionalSpread（Vi=(divergence-1)*生成坐标+velocity，归一化）
-                  2=Radial（始终向外，rotation/velocity/divergence 均无效）
-                  3=EmitterMotion（继承发射器自身移动，受 minMovementThreshold 门控）
-                  ⚠ 4/5 也出现过，含义未知 → 按 0 处理并记 note
-    gravity       「不论 Velocity Type 如何，始终生效」
+    baseAxis                六个基准轴之一，而非任意方向向量。游戏坐标系 +X=左 +Y=上 +Z=前，
+                            取值 0=左 1=上 2=前 3=右 4=下 5=后。
+                            仅在 velocityType=Directional 时有效
+    rotOrder                取值到旋转顺序的映射为 `_ROT_ORDER6`，与 TRANSFORM3D 不同
+    speed(+Jitter)          初速度大小
+    speedCoef(+Jitter)      逐帧速度倍率，速度每帧乘以此值。1 为匀速，大于 1 加速，小于 1 减速
+    velocityType            0=Directional：由 baseAxis 与 rotation 确定方向
+                            1=DirectionalSpread：Vi=(size-1)·生成坐标+offset，再归一化
+                            2=Radial：始终向外，rotation / velocity / divergence 均无效
+                            3=EmitterMotion：继承发射器自身的运动，受 minMovementThreshold 限制
+                            4 / 5 在语料中出现，含义未知，按 0 处理并记录 note
+    gravity(+Jitter)        与 velocityType 无关，始终生效，方向为 -Y
+    movementDelay /         各自生效前的延迟帧数
+    gravityDelay(+Jitter)
 
-    movementDelay / gravityDelay（+Jitter）：起效前的帧数延迟。
-
-待标定
-------
-- 旋转顺序串里「先写的先作用」还是相反：SimConfig.rot_order_applied。
-- 重力方向按 +Y=上 取 -Y；`minMovementThreshold` 的比较对象（速度还是位移）未确认，
-  当前按发射器**每帧位移**长度比较。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- `speedCoef` 为**逐帧乘法递推**，而非 dt 积分；改为按 dt 缩放会改变整条速度曲线。
+- `speedCoef` 与 `gravity` 必须同时作用于两条速度通道：`p.vel` 为总速度（自由速度与 HOMING
+  本帧的指令速度之和），`p.vel_free` 仅为自由速度。作用于 `p.vel` 意味着 speedCoef 对粒子
+  总速度生效，HOMING 驱动的部分同样受影响；HOMING 每帧重写 `p.vel`，因此对该部分而言是单帧
+  倍率，而非几何累积。没有 HOMING 时两条通道逐帧一致。
+- 两项未确定的读法以 `SimConfig` 保留：`rot_order_applied`（旋转顺序串中先写的轴先作用还是
+  后作用）与 `minMovementThreshold` 的比较对象（当前按发射器每帧位移的长度比较）。
 """
 
 import math
@@ -46,8 +46,7 @@ VT_EMITTER_MOTION = 3
 
 @register(VELOCITY3D)
 class Velocity3D(Behavior):
-    """INTEGRATE 阶段：把速度积到位置上。改速度的（NOISE/TURBULENCE/HOMING）排在
-    FORCE 阶段，自动跑在本阶段之前。"""
+    """INTEGRATE 阶段将速度积分到位置；修改速度的属性均位于更早的 FORCE 阶段。"""
 
     STAGE = INTEGRATE
     ORDER = 100
@@ -76,15 +75,14 @@ class Velocity3D(Behavior):
         p.rolled["v_type"] = vtype
 
         direction = self._initial_direction(vtype, f, p, em, rng, cfg)
-        # 发射器自己在转 → 初速度方向跟着转（静态朝向由宿主的 entry 矩阵负责）
+        # 发射器自身旋转时，初速度方向随之旋转；静态朝向由宿主的 entry 矩阵负责
         direction = emitter_rotate(em, direction)
         p.vel = direction * p.rolled["v_speed"]
-        # 自由速度通道：HOMING 把自己那份**加**在它上面（见 Particle.vel_free）。
+        # 自由速度通道，HOMING 的指令速度叠加在其上
         p.vel_free = p.vel.copy()
 
     def _initial_direction(self, vtype, f, p, em, rng, cfg):
         if vtype == VT_DIRECTIONAL_SPREAD:
-            # Vi = (size - 1) * 生成坐标 + offset，再归一化
             div = Vec3(f.get("sizeX", 1.0), f.get("sizeY", 1.0),
                        f.get("sizeZ", 1.0))
             base = Vec3(f.get("offsetX"), f.get("offsetY"), f.get("offsetZ"))
@@ -94,7 +92,6 @@ class Velocity3D(Behavior):
             return v.normalized(fallback=BASE_AXES[1])
 
         if vtype == VT_RADIAL:
-            # 始终向外；rotation/velocity/divergence 均无效
             return p.spawn_pos.normalized(fallback=self._random_unit(rng))
 
         if vtype == VT_EMITTER_MOTION:
@@ -104,7 +101,6 @@ class Velocity3D(Behavior):
                 return Vec3()
             return mv.normalized()
 
-        # VT_DIRECTIONAL：baseAxis 经 rotationX/Y/Z（带抖动）旋转
         axis_idx = f.i("baseAxis")
         axis = BASE_AXES[axis_idx] if 0 <= axis_idx < len(BASE_AXES) else BASE_AXES[1]
         mode = cfg.jitter_mode
@@ -117,7 +113,7 @@ class Velocity3D(Behavior):
 
     @staticmethod
     def _random_unit(rng):
-        """spawn_pos 恰好在原点时 Radial 没有方向可用，退回一个随机方向。"""
+        """返回随机单位向量，用于 spawn_pos 恰为原点、Radial 无方向可取的情形。"""
         z = rng.uniform(-1.0, 1.0)
         a = rng.uniform(0.0, 2.0 * math.pi)
         r = math.sqrt(max(0.0, 1.0 - z * z))
@@ -125,14 +121,6 @@ class Velocity3D(Behavior):
 
     # ── 逐帧 ─────────────────────────────────────────────────────────────────
     def on_particle_step(self, p, em):
-        # speedCoef / gravity 对**两条通道同样施加**：
-        #   `vel`      = 总速度（自由那份 + HOMING 本帧的指令速度）
-        #   `vel_free` = 只有自由那份
-        # 对 `vel` 施加 ⇒ speedCoef 乘的是**粒子总速度、HOMING 驱动的速度也照乘**
-        # （memory velocity3d-speedcoef-is-global-damping，2026-09-05 实机确认）；
-        # HOMING 下一帧会重写 `vel`，所以对它那份是「当帧一次性倍率」而非几何累积。
-        # 对 `vel_free` 施加 ⇒ 自由那份该有的**累积**衰减与重力累加照旧。
-        # 没有 HOMING 时两条通道逐帧完全同步，行为与从前逐字节一致。
         coef = p.rolled.get("v_coef", 1.0)
         if coef != 1.0:
             p.vel *= coef

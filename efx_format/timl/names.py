@@ -1,25 +1,14 @@
-"""
-efx_format/timl/names.py  —  TIML hash → 可读名 + game↔Blender 坐标换算
+"""TIML hash 的显示名、字段映射和 game/Blender 坐标换算。
 
-TIML 通道名由两段 hash 组成：
-  - timelineParameterHash：这条动画**影响哪个对象/块**（Transform3D / RgbFire / TypeRibbon…）。
-    来源：Ezekial711 MHW Modding wiki + DTI dump（refs/dti_effect_fields.json）逐一验证。
-    hash 公式（语料反推 + DTI 28 条全验证）：
-        jamcrc("nEffect::nTimelineParam::<DTI短名>") & 0x7FFFFFFF
-    未知 hash（15 条，语料出现但 DTI dump 缺项）保留十六进制，部分有共现推断注释。
-  - datatypeHash：动画的**哪个属性**（pos:X / rot:Z / 颜色…）。wiki 未列；transform 九条来自
-    hash（jamcrc）。未知 hash 回退十六进制。
-
-供 timl 通道编辑/预览的友好命名与（后续）transform3d → 真实属性映射使用。
+维护约束：
+- 未知 TLP 或 DT hash 必须回退为十六进制显示，不能据名称推测字段映射。
+- 调色板候选、字段映射和原生 animation 轴是不同置信层的数据；不得用任一表剪除其它表项。
+- 新建轨道优先使用静态字段 seed；无 seed 时才使用 DT 中性值。
 """
 
-# ── timelineParameterHash → 名称 ──────────────────────────────────────────────
-# hash 公式：jamcrc("nEffect::nTimelineParam::<DTI短名>") & 0x7FFFFFFF
-# 已验证：
+# timelineParameterHash 显示名
 TLP_NAMES = {
-    # 材质 timl 用（bow023.timl 实例），不出现在 efx 语料里
     0x3AC1EACA: "Uber_Mt",
-    # ── 已确认 ──
     0x65004e2a: "MhEffectDecalBehavior",
     0x6da6e5d1: "MhPointLightBehavior",
     0x75963575: "MhSpotLightBehavior",
@@ -45,7 +34,6 @@ TLP_NAMES = {
     0x42e48dde: "PointLightBehavior",
     0x582ba062: "RadialBlurFilterBehavior",
     0x2ed89bcc: "ParentMaterial",
-    # ── 已确认（但实际未见）──
     0x4cdb308a: "Item",
     0x3f2b8294: "EffectEvent",
     0x06e8d4c3: "DecalBehavior",
@@ -54,36 +42,25 @@ TLP_NAMES = {
     0x2c154dca: "FilterBehavior",
     0x13a0f54f: "TonemapFilter",
     0x096cabc4: "ColorCorrectFilter",
-    # ── 未知（语料出现，但不清楚名称；括号为共现推断，低置信度）──
-    0x399db6a9: "VFX_Flood_Mt",        # 384次，无强信号
-    0x598272e1: "PlEmissive",        # 278次，PARENTEMISSIVE/PLEMISSIVE 共现(3.5x)
-    0x66c62149: "VFX_Ice_Mt",        # 76次，无强信号
-    0x5e8d9ee9: "VFX_EmissiveFog_Mt",        # 72次，EMITTERSHAPEMESH 共现(8.1x)
-    0x2c78b827: "VFX_Tornado_Mt",        # 66次，无强信号
-    0x4e64d91c: "Burn_Mt",        # 59次，PLANE 共现(1.4x)
-    0x09c466dc: "Standard_Mt",        # 59次，PTCOLLISION 共现(2.1x)
-    0x5752ed69: "VFX_DispWave_Mt",        # 51次，无强信号
-    0x0b8924da: "EM106_Mt",        # 43次，PTTRIGGER 共现(6.9x)
-    0x70c7b1f1: "VFX_SandFall_Mt",        # 12次，无强信号
-    0x3e880466: "VFX_Water_Mt",        # 9次，无强信号
-    0x17359e0c: "VFX_Aurora_Mt",        # 6次，UVCONTROL 共现(1.2x)
-    0x465acf70: "VFX_DistDisp_Mt",        # 3次，无强信号
-    0x7e51f5bd: "LightTimelineParam",        # 2次，EMITTERBOUNDARY 共现(2.9x)
-    0x0fe12549: "VFX_VATDist_Mt",        # 1次，EXTERNREFERENCE 共现(1.8x)
+    # 材质或其它非 EFX TLP 名称也可用于显示
+    0x399db6a9: "VFX_Flood_Mt",
+    0x598272e1: "PlEmissive",
+    0x66c62149: "VFX_Ice_Mt",
+    0x5e8d9ee9: "VFX_EmissiveFog_Mt",
+    0x2c78b827: "VFX_Tornado_Mt",
+    0x4e64d91c: "Burn_Mt",
+    0x09c466dc: "Standard_Mt",
+    0x5752ed69: "VFX_DispWave_Mt",
+    0x0b8924da: "EM106_Mt",
+    0x70c7b1f1: "VFX_SandFall_Mt",
+    0x3e880466: "VFX_Water_Mt",
+    0x17359e0c: "VFX_Aurora_Mt",
+    0x465acf70: "VFX_DistDisp_Mt",
+    0x7e51f5bd: "LightTimelineParam",
+    0x0fe12549: "VFX_VATDist_Mt",
 }
 
-# ── TLP_FULLNAMES：官方 TimelineParam 类全名（157 条）────────────────────────
-# 来源：官方 dump（十进制哈希 → 全限定类名）。**157/157 逐条验证**
-#   jamcrc(全名) & 0x7FFFFFFF == 哈希
-# 命名空间有四种，这也是此前反查一直失败的原因（只试了 nEffect:: 一种）：
-#   nTimelineParam::                 68   动作 / 事件 / 系统
-#   nDraw::MaterialAnimation::       49   **材质动画** —— TLP 就是「主材质类型」
-#   nEffect::nTimelineParam::        22   特效（我们原有的那批）
-#   nTimelineParam::nWwiseTimeline:: 17   音频事件
-#   nMhEffect::nTimelineParam::       1   PlEmissive
-# 材质那 49 条坐实了「没有独立属性块的 TLP 打的是材质」——bow023.timl 的
-# 0x3AC1EACA 正是 nDraw::MaterialAnimation::Uber_Mt，而 bow023.mrl3 的主材质
-# 类型就是 Uber_Mt，闭环。
+# TLP 全限定类名
 TLP_FULLNAMES = {
     0x01739779: 'nTimelineParam::nWwiseTimeline::GameParameter',
     0x03CE7F12: 'nTimelineParam::Em110Motion',

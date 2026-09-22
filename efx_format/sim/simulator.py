@@ -1,31 +1,14 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/simulator.py  —  顶层驱动（EmitterState + Simulator）
+"""顶层驱动：EmitterState 与 Simulator。
 
-逐帧流程
---------
-    frame += 1
-    1. on_emitter_step      —— SPAWN 在这里决定这一帧生几个
-    2. 消化生成队列          —— 新粒子逐个跑 on_particle_spawn（唯一能抽 rng 的地方）
-    3. on_particle_step      —— 按 stage 顺序，逐个活着的粒子
-    4. age++ / delay--
-    5. 收割死亡              —— on_particle_death 收集 SpawnRequest
-
-**step() 与 build_render(view) 是两个独立调用。** 逐帧模拟与视角无关（FADEBY* 这类
-依赖相机的只能进渲染 pass），所以暂停时转视角只要重跑 build_render，不用步进；
-核心也因此能没有相机就单测。
-
-已定的取舍（会影响观感，标定时优先复核）
-----------------------------------------
-- **出生当帧就参与 step**：frame N 生成的粒子，在 frame N 以 age=0 跑一次 step。
-  故 life=1 的粒子正好活 1 帧。另一种可能是「出生帧不动、下一帧才开始」，未验证。
-- **先生成、后收割**：本帧要死的粒子，在本帧做生成决策时仍然占着 maxParticles 的
-  名额。可见后果是「满编 + 集体同龄」时会出现一帧空窗（老的还占着位所以没补新的，
-  紧接着老的全死）。反过来先收割则要求提前知道谁会死，而死是 LIFE 在 step 里判的。
-  两种都说得通，未验证；换顺序只需调整 step() 里这两段的位置。
-- **不做子步**：EFX 全程整数帧，逐帧乘法递推没有 dt 的位置，不要引入。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- `step()` 与 `build_render(view)` 是两个独立调用。逐帧模拟必须与视角无关，依赖相机的
+  属性只能进渲染 pass；暂停时转视角因此只需重跑 build_render。
+- 不做子步。EFX 全程整数帧，逐帧乘法递推没有 dt 的位置，不要引入。
+- 出生当帧就参与 step（frame N 生成的粒子在 frame N 以 age=0 跑一次），故 life=1 的
+  粒子正好活 1 帧。这是未经验证的取舍。
+- 先生成、后收割：本帧要死的粒子在本帧的生成决策里仍占着 maxParticles 名额。同为未经
+  验证的取舍；换顺序只需调整 step() 里两段的位置。
 """
 
 from . import registry as _reg
@@ -42,20 +25,16 @@ from .uvs_table import SimResources
 #: 纯显示默认值，不来自文件——真实尺寸只有渲染体属性（BILLBOARD3D 等）知道。
 FALLBACK_SIZE = 10.0
 
-#: categories.py 里不属于 "renderer_body" 分类、但自带完整渲染的类型（TUBELIGHT：
-#: 自持光柱渲染，绕开共享渲染管线，见 categories.py 该条注释）——判断「这个 entry
-#: 有没有主体」时要当作有，不能因为它不在 renderer_body 分类里就当成无主体。
+#: 不属于 "renderer_body" 分类但自带完整渲染的类型，判断 entry 有无主体时要算作有
 _SELF_RENDERING_EXTRA = frozenset({int(TUBELIGHT)})
 
 
 def _has_renderer_body(blocks):
-    """这个 entry 的属性里有没有「渲染主体」——决定退化点 vs 干脆不画（见 build_render）。
+    """这个 entry 有没有渲染主体；决定 build_render 给退化点还是干脆不画。
 
-    PTBEHAVIOR 是独立行为系统，语义上与常规渲染/物理互斥（categories.py 原话），
-    真实语料里也从不与 renderer_body 类属性共存——一个只有 PTBEHAVIOR（或者只有
-    SPAWN/LIFE/PTLIFE 这类骨架属性、纯当 Action 召唤枢纽用）的 entry 本来就没有
-    视觉主体，画一个退化点反而是凭空捏造。TUBELIGHT 虽然也归在 pt_behavior 分类，
-    但它自带完整光柱渲染（categories.py 该条注释），排除在外照常给退化点。
+    只有 PTBEHAVIOR、或只有 SPAWN/LIFE/PTLIFE 这类骨架属性（纯当 Action 召唤枢纽）的
+    entry 本来就没有视觉主体，给它画退化点是凭空捏造。TUBELIGHT 自带完整渲染，
+    虽同归 pt_behavior 分类但要算作有主体。
     """
     for h, _fields in blocks:
         h = int(h)
@@ -89,31 +68,21 @@ class EmitterState(object):
         #: 恒非 None——behavior 不必到处判空。
         self.resources = resources if resources is not None else SimResources()
 
-        # 发射器位置拆成两份，每帧合成 origin = host_origin + drift：
-        #   host_origin —— **宿主**报进来的发射器位置（Blender 里就是 entry empty
-        #                  相对播放起点的位移）。宿主不报就恒为 0。
-        #   drift       —— 模拟层自己算出来的漂移（TRANSFORM3D 的 translation_velocity）。
-        # 分开存是因为两者都会动：合并成一个 origin 的话，宿主每帧写一次就把
-        # TRANSFORM3D 累积的漂移冲掉了。
+        # origin = host_origin + drift，每帧合成。两者都会动，必须分开存：合成一个
+        # 的话，宿主每帧写一次就会冲掉 TRANSFORM3D 累积的 drift。
         self.host_origin = Vec3()
         self.drift = Vec3()
         self.origin = Vec3()
         self.rotation = Vec3()
         self.scale = Vec3(1.0, 1.0, 1.0)
 
-        #: PTLIFE 子实例从**父实例**继承来的旋转（父的 rot_dynamic + 父自己的
-        #: host_rotation，逐帧由 SimScene._follow 刷新）。根实例上恒为零——它没有
-        #: 父实例。与 rot_dynamic 分开存的理由同 origin/host_origin：子实例自己的
-        #: TRANSFORM3D.rotation_velocity 累积在 rot_dynamic 里，父链传下来的这份
-        #: 不能覆盖它，两者要能相加。见 _common.emitter_rotate。
+        #: PTLIFE 子实例从父实例继承来的旋转，逐帧由 SimScene._follow 刷新；根实例恒零。
+        #: 与 rot_dynamic 分开存的理由同 origin：两者要能相加，不能互相覆盖。
         self.host_rotation = Vec3()
 
-        # 旋转/缩放也拆成「全量」与「动态」两份，理由同 origin/host_origin：
-        #   rotation / scale         —— 全量，给宿主和调试看
-        #   rot_dynamic / scale_dynamic —— **只有模拟层该自己套的那部分**
-        # Blender 里 entry 的 empty 已经按静态 rotate/resize 摆好了（transform_sync），
-        # 模拟层再套一次就是双份；所以默认动态部分从「无旋转 / 1 倍」起步，只被
-        # rotation_velocity / scale_velocity 推动（t3d_apply_base 打开时才含静态部分）。
+        # rotation / scale 是全量（给宿主与调试看），rot_dynamic / scale_dynamic 只含
+        # 模拟层该自己套的那部分。宿主已按静态 rotate/resize 摆好位，模拟层再套一次就是
+        # 双份，故动态部分从无旋转 / 1 倍起步，只被 *_velocity 推动。
         self.rot_dynamic = Vec3()
         self.scale_dynamic = Vec3(1.0, 1.0, 1.0)
         #: TRANSFORM3D.rotationOrder 解析出的顺序串（发射器旋转按它作用）
@@ -123,13 +92,12 @@ class EmitterState(object):
 
         self.particles = []
         self.spawned_total = 0        # 累计生成数（逐粒子播种的序号）
-        self.spawn_requests = []      # 子发射请求（PTLIFE/PTCOLLISION，T4）
+        self.spawn_requests = []      # 子发射请求（PTLIFE / PTCOLLISION）
 
         self.unsupported = []         # [(type_hash, name)]，未模拟的属性
         self.user = {}                # 发射器级的 behavior 私有状态
         self.cycle = 0                # 当前轮次（SPAWN 的「换位置」计数）
-        #: 发射器自己的位置历史（旧→新）。RIBBON 的 annotations 原话是「沿**发射器**
-        #: 实际划过的轨迹绘制」——刀光/条带画的是发射器的路径，不是某个粒子的。
+        #: 发射器自己的位置历史（旧→新），供条带沿发射器路径绘制时使用。
         #: 与 p.trail 同样受 NEEDS_TRAIL 门控。
         self.trail = []
         self.finished = False         # 发射器不再生成且粒子清空
@@ -158,8 +126,7 @@ class EmitterState(object):
 
     # ── 生成队列 ─────────────────────────────────────────────────────────────
     def request_spawn(self, n):
-        """排队生成 n 个粒子（本帧结算）。上限由调用方（SPAWN）按 maxParticles 把关，
-        这里只挡硬上限。"""
+        """排队生成 n 个粒子，本帧结算。maxParticles 由调用方把关，这里只挡硬上限。"""
         if n > 0:
             self._pending_spawn += int(n)
 
@@ -208,11 +175,10 @@ class Simulator(object):
         self._has_body = _has_renderer_body(self.blocks)
         self.timl_bytes = bytes(timl_bytes or b"")
         self.config = config or SimConfig()
-        #: 属性块里没有、必须由宿主给的外部数据（UVSEQUENCE 的 .uvs 帧表）。
-        #: 换资源要重建/reset——帧表在 on_emitter_init 里解一次就缓存。
+        #: 属性块里没有、必须由宿主提供的外部数据。帧表在 on_emitter_init 解一次即缓存，
+        #: 换资源必须 reset。
         self.resources = resources if resources is not None else SimResources()
-        # `tracks` 给了就复用：同一个 entry 被 PTLIFE 实例化几十次时，没必要把
-        # 同一段 TIML 反复解析（见 sim/scene.py 的 EntryTemplate）。
+        # tracks 给了就复用，避免同一个 entry 被 PTLIFE 实例化多次时反复解析 TIML。
         self.tracks = tracks if tracks is not None else TimlTracks.parse(self.timl_bytes)
 
         self.bound = []
@@ -249,8 +215,7 @@ class Simulator(object):
         self._h_render.sort(key=lambda b: (cfg.render_stage_order.index(b.stage), b.order,
                                            b.attr_index))
 
-        # 任一 behavior 声明 NEEDS_TRAIL → 全局开启逐帧位置历史（条带类渲染体要用）。
-        # 开销是每粒子每帧一次 Vec3 拷贝 + 一次 pop，只在真需要时付。
+        # 任一 behavior 声明 NEEDS_TRAIL 即全局开启位置历史；开销是每粒子每帧一次拷贝。
         self._record_trail = any(type(b.behavior).NEEDS_TRAIL for b in self.bound)
 
         init_rng = _rng.particle_rng(em_seed, 0)
@@ -279,9 +244,8 @@ class Simulator(object):
         for b in self._h_emitter_step:
             b.behavior.on_emitter_step(em)
 
-        # 2. 合成发射器位置，并算出这一帧的位移。
-        #    **必须在生成之前**——本帧出生的粒子要用它（velocityType=3 继承发射器
-        #    移动；条带类渲染体的轨迹也从这里起头），放到生成之后就变成读上一帧的值。
+        # 2. 合成发射器位置并算出本帧位移。必须在生成之前：本帧出生的粒子要读它，
+        #    放到生成之后就成了上一帧的值。
         em.origin = em.host_origin + em.drift
         em.velocity = em.origin - em.prev_origin
         if self._record_trail:
@@ -377,20 +341,13 @@ class Simulator(object):
             if item is not None and item.kind == "NONE":
                 continue      # 渲染体明说「我不该有视觉输出」（DUMMY），不走退化点
             if item is not None and "layers" in p.rolled and item.kind != "RIBBON":
-                # 双层染色（RGBFIRE/RGBWATER）在 SHADE 阶段算好两层，留在 p.rolled 里。
-                # 渲染体不必认识这些属性，由这里统一转交给贴图 glue 的 fragment shader；
-                # 没贴图的用 item.color（已经压成一个代表色了）。
+                # 双层染色（RGBFIRE/RGBWATER）在 SHADE 阶段算好两层留在 p.rolled 里，
+                # 这里统一转交给贴图 glue 的 fragment shader，靠 `*_lerp` 键选 shader
+                # 分支；两个键都没有时退回按贴图亮度插值。没贴图的用 item.color。
                 #
-                # RGBFIRE/RGBWATER 各自的贴图通道语义不同（G=火焰 / R×mix(A,B,lerp)=烟雾，
-                # 对 mix(A,B,lerp)=水膜 / R×G×A=高光），靠各自的 `*_lerp` 键告诉 glue
-                # 走哪条 shader 分支；两个键都不在时退回通用的「按贴图亮度插值」模型。
-                #
-                # ⚠ RIBBON 排除在外：这套模型是给 BILLBOARD3D 那种单张贴图设计的，
-                # RIBBON 的贴图是沿长度走的序列帧，没有这层语义。RIBBON 自己的
-                # build_render 已经把 RGBFIRE 的 p.color 正确乘进 item.color 里了
-                # （见 ribbon.py），这里再叠一层会整个替换掉——RGBFIRE 两层若是白色
-                # （无染色意图），结果就是贴图原色不受调制地透出来，实测表现为
-                # "设的蓝色显示成了贴图本身的颜色（比如绿色）"。
+                # ⚠ RIBBON 必须排除：这套模型针对单张贴图，而 RIBBON 的贴图是沿长度走的
+                # 序列帧。RIBBON 自己的 build_render 已经把 p.color 乘进 item.color，
+                # 这里再叠一层会整个替换掉，表现为设定的颜色变成贴图原色。
                 item.extra.setdefault("layers", p.rolled["layers"])
                 if "rgbfire_lerp" in p.rolled:
                     item.extra.setdefault("rgbfire_lerp", p.rolled["rgbfire_lerp"])
@@ -398,14 +355,11 @@ class Simulator(object):
                     item.extra.setdefault("rgbwater_lerp", p.rolled["rgbwater_lerp"])
             if item is None:
                 if not self._has_body:
-                    # 这个 entry 压根没有「渲染主体」类属性（PTBEHAVIOR / 纯 Action
-                    # 召唤枢纽等）——不是「有主体但没实现」，是本来就不该有画面，
-                    # 同 DUMMY 一样明确不画，不走退化点（见 _has_renderer_body）。
+                    # 没有渲染主体类属性：不是「有主体但没实现」，而是本来就不该有画面，
+                    # 同 DUMMY 一样明确不画（见 _has_renderer_body）。
                     continue
-                # 有渲染主体类属性、只是没实现（比如渲染体是 LIGHTNING）
-                # → 退化成一个点，至少能看见「有多少、在哪、多大、多亮」。
-                # 尺寸用一个**显示用**的默认值（游戏单位）乘 p.scale：真实尺寸只有
-                # 渲染体属性知道，这里没有，所以不假装知道。
+                # 有渲染主体类属性但尚未实现，退化成一个点。尺寸用显示默认值乘 p.scale：
+                # 真实尺寸只有渲染体属性知道，此处没有，不假装知道。
                 item = RenderItem(kind="POINT", pos=p.pos.copy(),
                                   size=p.scale * FALLBACK_SIZE)
                 item.color = [p.color[0], p.color[1], p.color[2], p.alpha]
@@ -442,8 +396,7 @@ class Simulator(object):
             idx = em.spawned_total
             em.spawned_total += 1
             p = Particle(idx, _rng.particle_seed(em.seed, idx), em.frame)
-            # 默认出生在发射器原点。EMITTERSHAPE3D 会覆写成「原点 + 形状内采样点」，
-            # 但没有生成方式属性的 entry 也得站在发射器上，不能留在世界原点。
+            # 默认出生在发射器原点；有生成方式属性时由它覆写。
             p.pos = em.origin.copy()
             prng = _rng.particle_rng(em.seed, idx)
             for b in self._h_spawn:

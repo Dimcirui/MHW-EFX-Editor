@@ -1,13 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-blender_efx/workspace_preset.py — 一键添加"MHW VFX"工作区预设
+"""追加内置 MHW VFX 工作区预设。
 
-模板是随包分发的 assets/mhw_vfx_workspace.blend（只含一个 Workspace 数据块，
-Dope Sheet 在上、3D 视口+大纲视图+属性编辑器在下，跟官方讲座截图的布局一致）。
-算子把这个 Workspace 追加进当前文件并切到它，不改动用户已有的任何工作区。
-
-重复点击不会重复追加：先只读模板里的工作区名字，若当前文件已有同名工作区就直接
-切过去；否则才真的 append（避免 Blender 对同名数据块默认加 .001 后缀，越点越多）。
+维护约束：追加前必须只读模板的工作区名称；当前文件已有同名工作区时直接切换，
+不得再次 append，以避免重复数据块和 Blender 自动改名。
 """
 
 import os
@@ -24,7 +19,7 @@ def _template_path() -> str:
 
 
 class EFX_OT_add_mhw_vfx_workspace(bpy.types.Operator):
-    """追加内置的 MHW VFX 工作区预设并切换过去"""
+    """追加内置工作区，或切换到现有同名工作区。"""
 
     bl_idname  = "efx.add_mhw_vfx_workspace"
     bl_label   = "Add MHW VFX Workspace"
@@ -36,9 +31,7 @@ class EFX_OT_add_mhw_vfx_workspace(bpy.types.Operator):
             self.report({"ERROR"}, T("entry.workspace_missing"))
             return {"CANCELLED"}
 
-        # 先只读模板里的工作区名字（不赋值给 data_to 就不会真的导入），已存在同名工作区
-        # 就直接切过去，不重复 append——否则 Blender 对同名数据块的默认处理是自动加
-        # .001 后缀新建一份，连点几次工作区列表里就会堆出一串重复项。
+        # 读取模板名称不会导入数据块，可用于避免重复追加。
         with bpy.data.libraries.load(path, link=False) as (data_from, _data_to):
             template_names = list(data_from.workspaces)
         if not template_names:

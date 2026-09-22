@@ -1,20 +1,13 @@
-"""
-blender_epv/io_tree.py — EPV3 文件 ↔ Blender 对象树 互转。
+"""在 .epv3 文件与 Blender 对象树之间导入、导出。
 
-对象树结构（COLOR_04 绿色集合，~TYPE 标记类型）：
-  EPV 集合 (文件名, color_tag='COLOR_04')
-    ├── EPV_ROOT  Empty   (~TYPE='EPV_ROOT')      存 signature + trail 段全部数据
-    └── <groupID 集合>    (~TYPE='EPV_GROUP', ~GID=groupID, ~GIDX=组序)   每 group 一个子集合
-          └── Record Empty (~TYPE='EPV_RECORD', ~RIDX=组内序)            每条 record 一个对象
+对象树为根集合下的一个 EPV_ROOT Empty 与若干 EPV_GROUP 子集合，每条 record 是组内
+一个 EPV_RECORD 对象。
 
-byte-perfect 关键
------------------
-- group 顺序由集合自定义属性 ~GIDX 决定；record 顺序由对象 ~RIDX 决定（导出时排序还原）。
-- position / rotation 驱动对象 transform（location / rotation_euler，无单位换算），导出时
-  从 transform 读回；float32→double→float32 往返精确，未改动的 record 保持 byte-perfect。
-- 其余全部字段（含 jitter / 各 param / epvColor / trail）存自定义属性，原值无损。
-
-⚠ 本模块依赖 bpy，是版本敏感胶水层；纯拆拼逻辑在 epv_format/flatten.py（已脱离 bpy 验证）。
+维护约束：
+- group 顺序由集合的 ~GIDX 决定，record 顺序由对象的 ~RIDX 决定，导出时据此排序还原。
+- position 与 rotation 由对象 transform 承载，不做单位换算；float32 经 Python float
+  往返取值不变，未编辑的 record 导出后与原字节一致。
+- 字节拆拼归 epv_format/flatten.py，本模块只负责 Blender 映射。
 """
 from __future__ import annotations
 import os
@@ -49,7 +42,7 @@ def _new_empty(name: str, col) -> bpy.types.Object:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def import_epv_tree(filepath: str, context=None) -> bpy.types.Object:
-    """读取 .epv3 → 构建对象树，返回 EPV_ROOT Empty。"""
+    """读取 .epv3 并建立对象树；返回 EPV_ROOT Empty。"""
     if context is None:
         context = bpy.context
 
@@ -63,13 +56,13 @@ def import_epv_tree(filepath: str, context=None) -> bpy.types.Object:
 
     scene_col = context.scene.collection
     root_col = _new_collection(file_name, scene_col)
-    root_col.color_tag = "COLOR_04"   # 绿，区别于 EFX(紫 06)、mrl3(蓝 05)
+    root_col.color_tag = "COLOR_04"   # 绿；EFX 用紫 06，mrl3 用蓝 05
 
     # ── EPV_ROOT Empty：signature + trail 段 ─────────────────────────────────
     root_obj = _new_empty(file_stem + " [EPV_ROOT]", root_col)
     root_obj["~TYPE"] = "EPV_ROOT"
-    # signature(uint64) 超 32 位、trail 段整型可能 ≥2^31 → Blender 32 位 int 属性会溢出，
-    # 故 signature 存 hex 字符串、trail 段整体存 JSON 字符串（精确无损）。
+    # signature 是 uint64、trail 段整型可超 32 位，写入 Blender 整型属性会溢出，
+    # 因此分别以十六进制字符串和 JSON 字符串保存。
     root_obj["~SIG"] = "0x%X" % root_props["signature"]
     trail_props = {k: v for k, v in root_props.items() if k != "signature"}
     root_obj["~TRAIL"] = json.dumps(trail_props)
@@ -85,10 +78,8 @@ def import_epv_tree(filepath: str, context=None) -> bpy.types.Object:
             robj = _new_empty("%s G%03d R%03d" % (file_stem, gi, ri), gcol)
             robj["~TYPE"] = "EPV_RECORD"
             robj["~RIDX"] = ri
-            # transform 承载 position / rotation（无单位换算）
             robj.location = tuple(rd["position"])
             robj.rotation_euler = tuple(rd["rotation"])
-            # 其余字段写入 EPVRecordProps（含 8 槽颜色）
             _record_io.dict_to_props(robj.epv_record, rd)
 
     return root_obj
@@ -112,11 +103,9 @@ def export_epv_tree(root_obj: bpy.types.Object) -> bytes:
 
     root_col = _root_collection_of(root_obj)
 
-    # root_props（trail 段 + signature）：从 ~SIG(hex) + ~TRAIL(JSON) 还原
     root_props = {"signature": int(str(root_obj["~SIG"]), 16)}
     root_props.update(json.loads(str(root_obj["~TRAIL"])))
 
-    # group 集合：按 ~GIDX 排序
     gcols = [c for c in root_col.children if c.get("~TYPE") == "EPV_GROUP"]
     gcols.sort(key=lambda c: c.get("~GIDX", 0))
 

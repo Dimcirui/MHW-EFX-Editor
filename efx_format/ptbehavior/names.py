@@ -1,27 +1,7 @@
-"""
-efx_format/ptbehavior/names.py  —  PTBEHAVIOR 属性 key 哈希 → 名（自动生成，勿手改主体）
+"""PTBEHAVIOR 参数哈希到显示名的表。
 
-key = jamcrc(属性名)。来源：RE Engine DTI 属性 dump（dti_prop_dump.h + wip_dump，权威）
-+ 少量 "m/mp 前缀 + mrl3 槽名" jamcrc 爆破补充。哈希全局共享，同名跨 b_type 通用。
-未知 key 在 UI 显示 0x%08X。
-
-2026-09-12 补 7 条（RadialBlurFilterBehavior 目录里剩下的未知 key）：把 DTI dump 里
-出现过的全部字段名做 m/mp 前缀 jamcrc 爆破，逐个唯一命中——
-  0x05A87D45 mBrightThreshold      0x30676711 mChromaticAberration
-  0x42629FCF mEndW                 0x6409650F mStartW
-  0xCF6A923A mEndH                 0xE90168FA mStartH
-  0x4970F55B mWPos
-其中 mBrightThreshold 另有独立佐证：DTI 的
-nEffect::nTimelineParam::RadialBlurFilterBehavior 本就列着 BrightThreshold，
-且 timl/names.py 的 0x0ECBFA29 BrightThreshold 轨道只挂在这个 TLP 下。
-该 b_type 仍余 0x5A636C3C（bool，44 次）未爆出。
-
-2026-09-14 补 nEffect::MhEffectDecalBehavior 的 0x3E5CBC12 → mPlayOrder：
-DTI 只列了 mPlayOrderEnum（class，枚举镜像，见 dti_extra.py 顶部说明），跟
-已确认的 mPlayType/mPlayTypeEnum 是同一种"真实字段不带 Enum 后缀"模式——
-jamcrc('mPlayOrder') 精确命中语料里这个 t=0x06(u32)、出现 1408 次的未知 key，
-且位置正落在 mPlaySpeed/mPlaySpeedCoef/mPlayType 这一簇播放参数里，非巧合。
-含义未实机验证，但从命名看很可能是播放顺序（正放/倒放）开关。
+键为参数名的 jamcrc，名称跨 b_type 复用；未知键由调用方显示为十六进制。请通过生成
+流程维护表项，不要手改主体。
 """
 
 PTBEHAVIOR_NAMES = {
@@ -188,11 +168,7 @@ def name_for(key: int) -> str:
     return PTBEHAVIOR_NAMES.get(key, f"0x{key:08X}")
 
 
-# ── 颜色型参数判定 ───────────────────────────────────────────────────────────
-# t==0x15（4×float32）的参数默认拆成四个独立 float 行；名字以 Color 结尾的（目前只有
-# mColor）改画成色轮 + A 滑块，跟其余颜色字段的观感一致（见 fields._init_ptbehavior_attribute
-# / panels 的 PTBEHAVIOR 分支）。注意值域不是 0-1：语料里 mColor 最大到 20（HDR 倍率），
-# 故底层仍原样存 float，色块只是显示层。
+# 颜色参数仍保留原始浮点值域；色轮仅为显示和编辑控件。
 
 def is_color_param(key: int) -> bool:
     """key 对应的参数是否为颜色（名字以 Color 结尾）。未知 key 一律 False。"""

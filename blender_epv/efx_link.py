@@ -1,14 +1,7 @@
-"""
-blender_epv/efx_link.py — EPV ↔ EFX 联动（L1 导航 + L2 路径选择器）。
+"""按文件名匹配 EPV 记录路径与已导入的 EFX，提供跳转与路径填写。
 
-约束：EFX 导入只保留文件名（basename），不存原始游戏路径，故 epv 路径
-（含 vfx\\efx\\... 前缀）与已导入 efx 只能按**文件名干(stem)**匹配。
-
-L1：record 路径 stem → 找同名 efx 根集合 → 选中激活（跳转）。
-L2：路径仍是可编辑字符串（保 byte-perfect）；提供匹配指示 + 从已导入 efx 拾取
-    （替换文件名部分、保留目录前缀）。
-
-不触及序列化，零 byte-perfect 风险。
+EFX 导入后只保留文件名，不保留原始游戏路径，因此匹配只能按路径末段进行。
+路径槽始终是可编辑字符串，填写时只替换其文件名部分并保留目录前缀。
 """
 import bpy
 from bpy.props import IntProperty, EnumProperty
@@ -21,7 +14,7 @@ from ..blender_efx import root_collection as _rc
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _efx_roots():
-    """返回场景中所有 EFX：[(stem, root_col), ...]（root_col 本身即 ~TYPE==EFX_ROOT 集合）。"""
+    """返回场景中全部 EFX 根集合及其去扩展名的名称。"""
     out = []
     for col in _rc.all_root_collections():
         name = col.name
@@ -31,13 +24,13 @@ def _efx_roots():
 
 
 def _path_stem(path):
-    """取 epv 路径的文件名干（无扩展名；epv 用反斜杠）。"""
+    """取路径的最后一段；EPV 路径使用反斜杠分隔。"""
     p = str(path).replace("/", "\\")
     return p.rsplit("\\", 1)[-1]
 
 
 def find_efx_for_path(path):
-    """按 stem 找匹配的 efx 根集合；找不到返回 None。"""
+    """按文件名匹配 EFX 根集合；无匹配返回 None。"""
     if not path:
         return None
     stem = _path_stem(path)
@@ -48,7 +41,7 @@ def find_efx_for_path(path):
 
 
 def _find_layer_collection(view_layer, target_col):
-    """在 view_layer 的图层集合树里找 target_col 对应的 LayerCollection（递归）。"""
+    """在 view_layer 的集合树中查找 target_col 对应的 LayerCollection。"""
     def _walk(lc):
         if lc.collection is target_col:
             return lc
@@ -84,9 +77,7 @@ class EPV_OT_jump_to_efx(bpy.types.Operator):
             self.report({"WARNING"}, f"No imported EFX matches '{path}'")
             return {"CANCELLED"}
 
-        # ROOT 是集合（2026-07 起不再是 Empty 对象），没有"选中它"这个概念——
-        # 改把它设为大纲的活动集合（触发 EFX Root/Direct Trigger 等 N 面板），
-        # 并额外选中/激活它下面的第一个 entry（保证视口里有可见的落点）。
+        # EFX 根是集合而非对象，只能设为活动集合；另选中其下首个 Entry 作为视口落点。
         lc = _find_layer_collection(context.view_layer, root)
         if lc is not None:
             context.view_layer.active_layer_collection = lc
@@ -106,7 +97,7 @@ class EPV_OT_jump_to_efx(bpy.types.Operator):
 # L2：从已导入 EFX 拾取路径
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 动态 EnumProperty 的 items 需常驻引用，防 GC 导致条目失效（见项目记忆 enum-callback-gc-trap）
+# 动态 items 必须由常驻引用持有，否则枚举条目会在回调返回后失效。
 _EFX_ENUM_CACHE = []
 
 
@@ -149,7 +140,7 @@ class EPV_OT_pick_efx_path(bpy.types.Operator):
         key = "path%d" % self.slot
         cur = str(getattr(obj.epv_record, key, "")).replace("/", "\\")
         if "\\" in cur:
-            new_path = cur.rsplit("\\", 1)[0] + "\\" + stem   # 保留目录前缀
+            new_path = cur.rsplit("\\", 1)[0] + "\\" + stem
         else:
             new_path = stem
         setattr(obj.epv_record, key, new_path)

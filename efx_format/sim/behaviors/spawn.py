@@ -1,51 +1,35 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/spawn.py  —  SPAWN（发射节奏）
+"""SPAWN —— 发射节奏。
 
-模型照搬 efx_format/schema/attributes.py 里 2026-07-26 实机测试记下的三层结构
-（SPAWN 属性 → emitter 实例/轮次 → particle 个体）。字段内部名 2026-09-19 按官方讲座
-截图改名（外部标签 label_zh 不变，仍是三层模型考据出来的精确措辞）：
-  particlesPerBurst→spawnNum、burstInterval→intervalFrame、burstsPerCycle→loopNum、
-  emitterStartDelay→emitterDelayFrame、particleSpawnDelay→spawnWaitFrame。
+三层结构：SPAWN 属性 → emitter 实例／轮次 → particle 个体。
 
-  - `maxParticles`：**同时存活**软上限（不是终身总量）。
-  - `loopNum`(+Jitter)：每轮（每次换位置）重抽，三态——
-        0  → 永不换位置，按 intervalFrame 节奏无限生成
-        1  → 改用 altBurstInterval 节奏
-        ≥2 → 仍用 intervalFrame 节奏
-    非 0 时总批次数 = 该值 + emitterRepeatCount - 1，最后一批固定按粒子寿命
-    （LIFE.duration + fadeOutDuration）节奏，随后立即换位置。
-  - `emitterRepeatCount`：0 = 无论 loopNum 是什么都永不换位置。无 Jitter 搭档。
-  - `spawnWaitFrame`(+Jitter)：唯一的 particle 层字段，逐粒子独立延迟。
+字段职能：
 
-`intervalFrame` 的抖动每批重抽
-------------------------------
-`SimConfig.spawn_interval_jitter`（默认 `per_burst`）。`spawnNum` 的抖动本来就是
-每批重抽的，间隔没理由是另一套；而且「每批重抽」会让一串粒子的间距参差不齐，这与
-`intervalFrameJitter` 非 0 的特效在游戏里看到的不均匀排布一致。`per_cycle` 保留改动前的
-行为（一轮只抽一次，整轮等距）。
+    maxParticles                **同时存活**数量的软上限，而非总生成数
+    spawnNum(+Jitter)           每批的粒子数，每批重新抽取
+    intervalFrame(+Jitter)      批间隔
+    altBurstInterval(+Jitter)   loopNum 取 1 时使用的批间隔
+    loopNum(+Jitter)            每轮（每次换位置）重新抽取，取值分三种情形：
+                                  0  不换位置，按 intervalFrame 节奏持续生成
+                                  1  改用 altBurstInterval 节奏
+                                  ≥2 仍用 intervalFrame 节奏
+                                非 0 时总批次数 = 该值 + emitterRepeatCount − 1；最后一批之后
+                                按粒子寿命（LIFE.duration + fadeOutDuration）等待，随后换位置
+    emitterRepeatCount          取 0 时无论 loopNum 如何都不换位置。无对应的 Jitter 字段
+    emitterDelayFrame(+Jitter)  发射器自身的起始延迟
+    spawnWaitFrame(+Jitter)     唯一的 particle 层字段，逐粒子独立延迟
 
-未使用的字段：`spawnFrame`(+Jitter)（原 instanceCountUnknLimit）——语料显示它与
-`spawnFlags` 的 UseSpawnFrame 位强相关（该位置位时 93% 的块此字段非零），大概率是那个
-开关对应的参数，但具体控制什么行为仍未测，这里不猜。
-`spawnFlags`（原 unknBitmask31）的 6 个位对应官方截图的 6 个勾选框（UseSpawnFrame/
-RingBufferMode/RayCastHitOnly/RayCastDependency/InitializeFull/InterporatePos），
-但都还没测过实际效果，模拟层同样不看。
+`spawnFrame`(+Jitter) 与 `spawnFlags` 的六个位（UseSpawnFrame / RingBufferMode /
+RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos）的实际效果均未测试，
+模拟层不读取。
 
-发射会停
---------
-`emitterRepeatCount` 非 0 **且** `loopNum` 非 0 时，那 `per_cycle + repeat - 1`
-批发完就**不再发了**（`SimConfig.spawn_after_cycle`，默认 `stop`）。这是实机行为：
-用户的 `05 spell` 是 10 批、游戏里就只有 10 个符文，之后再没有新的。
-
-两个「无限」态照旧永不停：`loopNum == 0`、或 `emitterRepeatCount == 0`
-（后者的「否决权」语义见 schema 注释）。`repeat` 开关值切到 `recycle` 可以退回改动前的
-行为（等一个粒子寿命后换位置、重抽、再开一轮）。
-
-发射器级的随机（每批重抽的数量/间隔）走 `em` 自己的随机流，不占用逐粒子的流，
-见 rng.emitter_stream_rng 的说明。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- `emitterRepeatCount` 与 `loopNum` 均非 0 时，发完 `loopNum + repeat − 1` 批后停止发射
+  （`SimConfig.spawn_after_cycle`，默认 `stop`），这是实机行为。`loopNum == 0` 或
+  `emitterRepeatCount == 0` 两种情形持续发射，不会停止。
+- `intervalFrame` 的抖动默认每批重新抽取（`SimConfig.spawn_interval_jitter='per_burst'`），
+  与 `spawnNum` 的抽取方式一致；`per_cycle` 档则整轮等距。
+- 发射器级的随机数（每批的数量与间隔）必须使用 `em` 自身的随机流，不得占用逐粒子的随机流。
 """
 
 from ...hashes import LIFE, SPAWN
@@ -56,7 +40,7 @@ from ..stages import FORCE
 
 @register(SPAWN)
 class Spawn(Behavior):
-    """只跑发射器时间轴；不参与逐粒子 step，故 STAGE 取什么都行。"""
+    """只处理发射器时间轴，不参与逐粒子 step，因此 STAGE 的取值不影响结果。"""
 
     STAGE = FORCE
     ORDER = 0
@@ -73,16 +57,16 @@ class Spawn(Behavior):
                                 f.get("emitterDelayFrameJitter"),
                                 srng, em.config.jitter_mode),
             "wait": 0,
-            "bursts_left": None,     # None = 本轮不计数（永不换位置，无限生成）
+            "bursts_left": None,     # None 表示本轮不计数：不换位置，持续生成
             "burst_index": 0,
             "interval": 0,
-            "done": False,           # 有限轮次跑完 = 这个发射器不再发了
+            "done": False,           # 有限轮次结束后，该发射器停止发射
         }
         em.user[Spawn] = st
         self._begin_cycle(em, st)
 
     def _begin_cycle(self, em, st):
-        """开一轮：重抽 loopNum，定这一轮的节奏与批次数。"""
+        """开始新一轮：重新抽取 loopNum，确定本轮的节奏与批次数。"""
         f = em.f(SPAWN)
         cfg = em.config
         rng = st["rng"]
@@ -92,13 +76,11 @@ class Spawn(Behavior):
                                rng, mode)
         repeat = f.i("emitterRepeatCount")
 
-        # 三态之二（per_cycle==1）：节奏改用 altBurstInterval
         st["interval_field"] = ("altBurstInterval", "altBurstIntervalJitter")             if per_cycle == 1 else ("intervalFrame", "intervalFrameJitter")
         interval = self._roll_interval(em, st)
 
         if per_cycle == 0 or repeat == 0:
-            # 三态之一 / emitterRepeatCount=0：永不换位置，按节奏无限生成
-            st["bursts_left"] = None
+            st["bursts_left"] = None        # 不换位置，按节奏持续生成
         else:
             st["bursts_left"] = max(1, per_cycle + repeat - 1)
 
@@ -106,7 +88,7 @@ class Spawn(Behavior):
         st["burst_index"] = 0
 
     def _roll_interval(self, em, st):
-        """抽一次批间隔。`per_burst` 下每批都会重新调用这里（见模块 docstring）。"""
+        """抽取一次批间隔；`per_burst` 下每批调用一次。"""
         f = em.f(SPAWN)
         key, jkey = st["interval_field"]
         v = jitter_int(f.get(key), f.get(jkey), st["rng"], em.config.jitter_mode)
@@ -119,7 +101,7 @@ class Spawn(Behavior):
         return self._roll_interval(em, st)
 
     def _last_burst_interval(self, em):
-        """最后一批之后的等待：按粒子寿命（LIFE.duration + fadeOutDuration）。"""
+        """返回最后一批之后的等待帧数，即粒子寿命（LIFE.duration + fadeOutDuration）。"""
         lf = em.f(LIFE)
         if lf is None:
             return 0
@@ -152,17 +134,17 @@ class Spawn(Behavior):
 
         st["burst_index"] += 1
 
-        # 本轮最后一批 → 按粒子寿命等一段，然后换位置、开下一轮
-        # （`bursts_left is None` 就是「永不换位置」那两态，一直按 interval 走）
+        # 本轮最后一批之后按粒子寿命等待，然后换位置开始下一轮；
+        # bursts_left 为 None 对应不换位置的两种情形，始终按 interval 发射
         if st["bursts_left"] is not None and st["burst_index"] >= st["bursts_left"]:
             if getattr(cfg, "spawn_after_cycle", "stop") == "stop":
-                st["done"] = True       # 批次发完就收工（见模块 docstring「发射会停」）
+                st["done"] = True
                 return
             st["wait"] = self._gap(self._last_burst_interval(em))
             em.cycle += 1
             if em.cycle == 1:
-                # ⚠ 「换位置」本身要靠 TRANSFORM3D/RANDOMFIX 决定新原点，那部分语义
-                # 还没模拟；这里只推进轮次号，供别的 behavior 据此换一批采样。
+                # 换位置所需的新原点由 TRANSFORM3D / RANDOMFIX 决定，该部分未模拟；
+                # 此处只推进轮次号，供其它 behavior 据此重新采样
                 em.note("SPAWN 进入多轮模式（换位置的实际偏移未模拟）")
             self._begin_cycle(em, st)
         else:
@@ -170,10 +152,10 @@ class Spawn(Behavior):
 
     @staticmethod
     def _gap(interval):
-        """`interval` 帧的间隔 → 倒计时初值。
+        """将 `interval` 帧的间隔换算为倒计时初值。
 
-        倒计时是「先判 >0 再减」，所以初值要少 1 才能得到正好 `interval` 帧的间距：
-        interval=10 时 frame0 发一批、frame10 发下一批。interval=0 → 每帧都发。
+        倒计时先判断 >0 再递减，初值须减 1 才能得到恰好 `interval` 帧的间距：interval=10 时
+        第 0 帧发一批、第 10 帧发下一批；interval=0 时每帧发射。
         """
         return max(0, int(interval) - 1)
 

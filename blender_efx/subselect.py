@@ -1,33 +1,8 @@
-"""
-blender_efx/subselect.py  —  Subselect 结构化存储 + 段局部索引映射地基
+"""在 Blender 属性与 ``SubselectTable`` 之间转换 Subselect 成员关系。
 
-设计原则（参照 CLAUDE.md）：
-  - Python 3.10 语法（兼容 Blender 3.6～5.x）
-  - bpy 只用稳定子集：PropertyGroup / CollectionProperty / PointerProperty /
-    StringProperty / IntProperty / Operator / Panel / UIList
-  - 不使用 5.x 新增 API
-  - efx_format/ 是纯 Python 层，本文件是胶水层（不改 efx_format/）
-  - Subselect 导出时重建的 entries 索引列表要与原文件一致（未改动时）
-
-Subselect 结构（efx_format/efxfile.py SubselectTable）：
-  table_type : uint32（4B）
-  unkn0      : uint32[3]（12B）
-  entry_count: int32（4B）
-  entries    : int32[entry_count]  ← 每个值是 Main 段的局部 0-based entry 索引
-
-索引映射约定（已实测，BLUEPRINT §9）：
-  entries[i] 是 Main 段的 0-based entry 序号（efx_index == 该序号的 EFX_ENTRY 对象）。
-  导入时：entries[i] → 找 Main 段里 efx_index==entries[i] 的 EFX_ENTRY 对象，存 PointerProperty。
-  导出时：member.body_ptr → 通过段局部索引映射 → 还原整数 index → 重建 SubselectTable.entries。
-
-字节行为（⚠ 这是**当前行为的描述**，不是必须守住的契约。硬不变量只在 codec 层：
-`serialize(parse(x)) == x`。胶水层允许规范化，「导入→不编辑→导出」不要求逐字节
-相同——见 docs/TESTING_AND_INVARIANTS.md「核心不变量」。）
-  - table_type / unkn0 原样存储（字符串，避免 uint32 溢出）。
-  - entries 顺序由 members CollectionProperty 顺序决定，导入时按 entries 原序填入。
-  - 悬空 member（body_ptr=None）导出时跳过；validate.py 统一扫描全部悬空指针报
-    WARN（不阻断导出，导出后弹窗报告）——这是既定设计，不是待补的校验缺口。
-  - entries 未变时：entries[i] == 该对象的 efx_index == Main 段局部序号，精确往返。
+维护约束：``entries`` 是 Main 段的零基局部 Entry 索引，导入/导出均通过
+``efx_index`` 映射；成员顺序即导出顺序。缺失结构化属性时从 ``raw_b64`` 回退，
+悬空或不属于当前 Main 段的成员在导出时跳过，由校验模块报告。
 """
 
 import bpy
@@ -48,43 +23,16 @@ from . import root_collection as _rc
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_local_index_map(segment_collection, type_tag: str) -> dict:
-    """
-    构建段局部索引映射：{Object → 0-based local index}。
-
-    参数
-    ----
-    segment_collection : bpy.types.Collection
-        段集合（如 col_entry），包含该段全部 Empty 对象。
-        函数会递归收集集合及子集合里的所有对象。
-    type_tag : str
-        对象的 ~TYPE 自定义属性值（如 'EFX_ENTRY'）。
-
-    返回
-    ----
-    dict[bpy.types.Object, int]
-        键：段内对象；值：按 efx_index 排序后的 0-based 序号。
-
-    用法示例（导出 Subselect 段之前）：
-        entry_index_map = build_local_index_map(col_entry, 'EFX_ENTRY')
-        # entry_index_map[some_entry_obj] → 该 entry 在 Main 段的局部序号
-
-    注意
-    ----
-    - 只收集拥有 efx_index 自定义属性的对象（防御性过滤）。
-    - 排序依据是 int(obj['efx_index'])，与导出路径对 body_objs.sort() 完全一致。
-    - 返回值序号 == 导出 Main 数组里该 entry 的最终位置 == SubselectTable.entries 期望值。
-    """
-    # 递归收集集合内全部匹配 type_tag 的对象
+    """构建对象到段内零基索引的映射，排序必须与 Main 段导出保持一致。"""
     raw_objs = []
     _collect_typed_objects(segment_collection, type_tag, raw_objs)
 
-    # 只保留有 efx_index 的对象（防御）
+    # 仅可确定导出次序的对象能参与映射。
     valid = [o for o in raw_objs if o.get("efx_index") is not None]
 
-    # 按 efx_index 升序排序（与 export_efx_tree 中 body_objs.sort() 逻辑一致）
+    # ``efx_index`` 是导出段内次序。
     valid.sort(key=lambda o: int(o["efx_index"]))
 
-    # 枚举：局部 index = 排序后的位置
     return {obj: idx for idx, obj in enumerate(valid)}
 
 
@@ -102,14 +50,7 @@ def _collect_typed_objects(col, type_tag: str, out: list) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _table_type_hint(table_type_str: str) -> str:
-    """把十进制 table_type 字符串解读成 hex + bit 分解提示（只读展示用）。
-
-    例：
-      "4"          → "0x00000004  bit 2"
-      "3"          → "0x00000003  bits 0,1"
-      "4294967295" → "0xFFFFFFFF  all bits (全选)"
-      非法/空      → "—"
-    """
+    """返回 table_type 十进制字符串的只读十六进制与置位提示。"""
     try:
         v = int(str(table_type_str)) & 0xFFFFFFFF
     except (ValueError, TypeError):
@@ -126,9 +67,7 @@ def _table_type_hint(table_type_str: str) -> str:
 
 
 def _entry_object_poll(self, obj):
-    """PointerProperty poll：只允许选 ~TYPE == 'EFX_ENTRY'，且限定为活动对象
-    所在 EFX 文件（同一 root_col）内的 entry——多 EFX 集合并存时防串文件。
-    已从所有集合解链的孤儿对象（Purge 可清除）排除。"""
+    """仅接受当前 EFX 根集合内、仍被集合引用的 EFX_ENTRY 对象。"""
     if obj.get("~TYPE") != "EFX_ENTRY":
         return False
     if not obj.users_collection:
@@ -140,11 +79,7 @@ def _entry_object_poll(self, obj):
 
 
 class EFXSubselectMember(PropertyGroup):
-    """
-    SubselectTable 的单条成员：指向一个 EFX_ENTRY 对象的指针。
-
-    CollectionProperty 元素，挂在 EFXSubselectProps.members 上。
-    """
+    """Subselect 的单个 Entry 指针成员。"""
     body_ptr: PointerProperty(
         name="Entry Object",
         description="EFX_ENTRY object referenced by this Subselect table",
@@ -154,16 +89,9 @@ class EFXSubselectMember(PropertyGroup):
 
 
 class EFXSubselectProps(PropertyGroup):
-    """
-    挂在 EFX_SUBSELECT Empty 对象上（obj.efx_subselect）的 PropertyGroup。
+    """挂在 EFX_SUBSELECT 对象上的结构化表数据。
 
-    字段
-    ----
-    table_type_str  : 十进制字符串（uint32，避免 Blender int32 溢出）
-    unkn0_str       : 三个 uint32，逗号分隔十进制字符串
-    members         : CollectionProperty[EFXSubselectMember]
-                      每个元素对应 SubselectTable.entries 里的一个 entry 索引
-    active_member_index : 当前激活的 member 序号（供 template_list 使用）
+    uint32 字段以十进制字符串保存，避免 Blender 有符号整数范围限制。
     """
     table_type_str: StringProperty(
         name="Table Type",
@@ -210,43 +138,22 @@ class EFXSubselectProps(PropertyGroup):
 def init_subselect_props(ss_obj: bpy.types.Object,
                          tbl,
                          main_bodies_by_index: dict) -> None:
-    """
-    把解析好的 SubselectTable 内容写入 ss_obj.efx_subselect PropertyGroup。
-
-    参数
-    ----
-    ss_obj : bpy.types.Object
-        EFX_SUBSELECT Empty 对象（将被写入 .efx_subselect）。
-    tbl : SubselectTable
-        已解析的 SubselectTable 数据对象（来自 efx_format/efxfile.py）。
-    main_bodies_by_index : dict[int, bpy.types.Object]
-        {efx_index → EFX_ENTRY bpy Object} 映射（由 import_efx_tree 构建）。
-        用于将 tbl.entries 的整数索引解析为具体的 entry 对象。
-
-    副作用
-    ------
-    - 填写 ss_obj.efx_subselect.{table_type_str, unkn0_str, members}。
-    - 保留自定义属性 raw_b64（由 io_tree 写入，作为 byte-perfect 回退）。
-    """
+    """将 SubselectTable 写入对象属性，并按 ``entries`` 原序解析成员指针。"""
     props = ss_obj.efx_subselect
 
-    # ── table_type（uint32 → 十进制字符串）────────────────────────────────────
     props.table_type_str = str(tbl.table_type)
 
-    # ── unkn0（3个 uint32）────────────────────────────────────────────────────
     props.unkn0_0_str = str(tbl.unkn0[0])
     props.unkn0_1_str = str(tbl.unkn0[1])
     props.unkn0_2_str = str(tbl.unkn0[2])
 
-    # ── members：按 entries 原序填入 PointerProperty ──────────────────────────
     props.members.clear()
     for entry_idx in tbl.entries:
         item = props.members.add()
         entry_obj = main_bodies_by_index.get(entry_idx)
         if entry_obj is not None:
             item.body_ptr = entry_obj
-        # 若找不到对应 entry（异常情况），body_ptr 留 None
-        # 导出时悬空成员会被跳过；validate.py 统一扫描报 WARN（不阻断导出）
+        # 未解析的索引保留为空成员，供校验模块报告。
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -255,47 +162,24 @@ def init_subselect_props(ss_obj: bpy.types.Object,
 
 def export_subselect_table(ss_obj: bpy.types.Object,
                            entry_index_map: dict):
-    """
-    从 EFX_SUBSELECT 对象重建 SubselectTable 数据对象。
+    """从对象属性重建 SubselectTable。
 
-    参数
-    ----
-    ss_obj : bpy.types.Object
-        EFX_SUBSELECT Empty 对象。
-    entry_index_map : dict[bpy.types.Object, int]
-        {EFX_ENTRY Object → Main 段局部 0-based index}，
-        由 build_local_index_map(col_entry, 'EFX_ENTRY') 构建。
-
-    返回
-    ----
-    SubselectTable（来自 efx_format.efxfile）
-
-    回退策略
-    --------
-    若 ss_obj 不存在 efx_subselect 属性（旧场景/兼容），
-    则从自定义属性 raw_b64 还原原始字节（byte-perfect 回退）。
-
-    悬空 member 处理
-    -----------------
-    body_ptr 为 None（指针悬空）的成员跳过（不写入 entries），以保证导出不崩溃。
-    validate.py 的 validate_efx_tree 统一扫描全部悬空指针报 WARN（导出后弹窗报告，
-    不阻断导出）——这是 0.2.57 定型的既定设计，不是待补的校验缺口。
+    旧场景缺少结构化属性或 uint32 解析失败时，从 ``raw_b64`` 回退；悬空成员及
+    不在当前 Main 段映射内的成员不写入 ``entries``。
     """
     from ..efx_format.efxfile import SubselectTable
 
     try:
         props = ss_obj.efx_subselect
     except AttributeError:
-        # 回退：直接走 raw_b64（不应发生在新导入的场景，但兼容旧 .blend）
+        # 兼容没有结构化属性的旧场景。
         return _fallback_raw_subselect(ss_obj)
 
-    # ── table_type ────────────────────────────────────────────────────────────
     try:
         table_type = int(str(props.table_type_str))
     except (ValueError, TypeError):
         return _fallback_raw_subselect(ss_obj)
 
-    # ── unkn0（三个 uint32）──────────────────────────────────────────────────
     try:
         unkn0 = (
             int(str(props.unkn0_0_str)),
@@ -305,16 +189,15 @@ def export_subselect_table(ss_obj: bpy.types.Object,
     except (ValueError, TypeError):
         return _fallback_raw_subselect(ss_obj)
 
-    # ── entries：从 members 的 body_ptr 解析回局部整数索引 ──────────────────
     entries = []
     for item in props.members:
         entry_obj = item.body_ptr
         if entry_obj is None:
-            # 悬空指针：静默跳过，validate.py 统一扫描报 WARN（既定设计，非待办）
+            # 悬空成员不导出。
             continue
         local_idx = entry_index_map.get(entry_obj)
         if local_idx is None:
-            # entry_obj 不在当前文件的 Main 段里（极端情况：跨文件拖拽等），同样跳过
+            # 其他文件的 Entry 没有当前 Main 段索引，不能导出。
             continue
         entries.append(local_idx)
 
@@ -326,16 +209,12 @@ def export_subselect_table(ss_obj: bpy.types.Object,
 
 
 def _fallback_raw_subselect(ss_obj: bpy.types.Object):
-    """
-    兼容回退：从自定义属性 raw_b64 原样还原 SubselectTable（旧 opaque 路径）。
-    用于 ss_obj 没有 efx_subselect PropertyGroup 数据的情况。
-    """
+    """从 ``raw_b64`` 还原 SubselectTable，供旧场景兼容回退。"""
     import base64
     from ..efx_format.efxfile import SubselectTable
     import struct
 
     raw = base64.b64decode(str(ss_obj["raw_b64"]))
-    # 手动解析（与 efxfile._parse_subselect 逻辑一致）
     table_type = struct.unpack_from('<I', raw, 0)[0]
     unkn0 = struct.unpack_from('<3I', raw, 4)
     entry_count = struct.unpack_from('<i', raw, 16)[0]
@@ -348,7 +227,7 @@ def _fallback_raw_subselect(ss_obj: bpy.types.Object):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_subselect_member_add(Operator):
-    """向当前 Subselect 表新增一个空成员（body_ptr 待用户指定）"""
+    """向当前 Subselect 表追加空成员。"""
 
     bl_idname      = "efx.subselect_member_add"
     bl_label       = "Add Member"
@@ -393,7 +272,7 @@ class EFX_OT_subselect_member_remove(Operator):
         idx = props.active_member_index
         if 0 <= idx < len(props.members):
             props.members.remove(idx)
-            # 激活序号钳制
+            # 删除后将活动索引限制在有效范围。
             props.active_member_index = min(idx, max(0, len(props.members) - 1))
         return {"FINISHED"}
 
@@ -403,10 +282,7 @@ class EFX_OT_subselect_member_remove(Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_UL_subselect_members(bpy.types.UIList):
-    """
-    UIList 显示 EFXSubselectMember 列表。
-    每行显示：序号 + body_ptr 指向的对象名（悬空时显示 <未设置>）。
-    """
+    """显示和编辑 Subselect 成员列表。"""
 
     bl_idname = "EFX_UL_subselect_members"
 
@@ -418,7 +294,7 @@ class EFX_UL_subselect_members(bpy.types.UIList):
         if entry_obj is not None:
             row.prop(item, "body_ptr", text="", icon="OBJECT_DATA")
         else:
-            # 悬空状态：显示可编辑的指针槽（允许用户选择）
+            # 悬空成员仍显示可编辑指针槽。
             row.prop(item, "body_ptr", text=T("sub.unset"), icon="ERROR")
 
 
@@ -427,15 +303,7 @@ class EFX_UL_subselect_members(bpy.types.UIList):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _draw_subselect_content(layout, context):
-    """
-    绘制 EFX_SUBSELECT 的归属内容。
-    被 EFX_PT_subselect（N 面板）和 EFX_PT_subselect_data（属性编辑器 Data 标签）共用。
-
-    选中 EFX_SUBSELECT 对象时显示：
-      - table_type / unkn0 元数据（只读显示，显示原始十进制字符串）
-      - members 列表（可编辑：增删成员、改 body_ptr 指向）
-      - 当前成员的 body_ptr 对象名（方便确认指向）
-    """
+    """绘制 N 面板和 Data 面板共用的 Subselect 编辑内容。"""
     obj = context.active_object
 
     try:
@@ -444,11 +312,11 @@ def _draw_subselect_content(layout, context):
         layout.label(text=T("sub.no_data"), icon="ERROR")
         return
 
-    # ── 元数据（可编辑）──────────────────────────────────────────────────
+    # ── 元数据 ─────────────────────────────────────────────────────────────
     meta_box = layout.box()
     meta_box.label(text=T("sub.table_meta"), icon="INFO")
     meta_box.prop(props, "table_type_str")
-    # 只读提示：把十进制 table_type 展示成 hex + bit 分解（纯展示，不改存储）。
+    # 只读展示 table_type 的十六进制和置位信息。
     hint_row = meta_box.row()
     hint_row.enabled = False
     hint_row.label(text=_table_type_hint(props.table_type_str))
@@ -462,35 +330,33 @@ def _draw_subselect_content(layout, context):
 
     layout.separator()
 
-    # ── members 列表 ────────────────────────────────────────────────────────
+    # ── 成员列表 ───────────────────────────────────────────────────────────
     list_box = layout.box()
     list_box.label(text=f"{T('sub.members')}({len(props.members)})", icon="OUTLINER_OB_EMPTY")
 
-    # template_list：UIList + 增删按钮
     row = list_box.row()
     row.template_list(
-        "EFX_UL_subselect_members",   # UIList bl_idname
-        "",                            # list_id（空字符串即可）
-        props,                         # data（含 members 的 PropertyGroup）
-        "members",                     # propname（CollectionProperty 字段名）
-        props,                         # active_data
-        "active_member_index",         # active_propname
+        "EFX_UL_subselect_members",
+        "",
+        props,
+        "members",
+        props,
+        "active_member_index",
         rows=4,
     )
 
-    # 增删按钮列（右侧垂直排列）
     col = row.column(align=True)
     col.operator("efx.subselect_member_add",    text="", icon="ADD")
     col.operator("efx.subselect_member_remove", text="", icon="REMOVE")
 
-    # ── 激活成员详情 ─────────────────────────────────────────────────────────
+    # ── 活动成员 ────────────────────────────────────────────────────────────
     idx = props.active_member_index
     if 0 <= idx < len(props.members):
         active_item = props.members[idx]
         detail_row = list_box.row()
         detail_row.prop(active_item, "body_ptr", text=T("sub.entry_object"))
 
-    # ── 悬空成员警告 ─────────────────────────────────────────────────────────
+    # ── 悬空成员警告 ────────────────────────────────────────────────────────
     dangling = sum(1 for m in props.members if m.body_ptr is None)
     if dangling > 0:
         warn_row = layout.row()
@@ -502,13 +368,7 @@ def _draw_subselect_content(layout, context):
 
 
 class EFX_PT_subselect(bpy.types.Panel):
-    """
-    Subselect 归属面板（VIEW_3D N 面板 EFX 标签）。
-
-    设计理念（CLAUDE §4）：
-      Subselect ↔ entry 归属关系是结构关系（工具功能），主入口放 N 面板；
-      属性编辑器 Data 标签也加一份入口方便习惯用属性编辑器的用户。
-    """
+    """VIEW_3D N 面板中的 Subselect 成员编辑入口。"""
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
@@ -547,8 +407,7 @@ class EFX_PT_subselect_data(bpy.types.Panel):
 # 注册 / 注销
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 注册顺序：PropertyGroup 子类先于容器类；UIList/Operator 次之；
-# EFX_PT_subselect 依赖 EFX_PT_entry（bl_parent_id），故单独由 panels.py 注册。
+# PropertyGroup 必须先于依赖它的 UIList/Operator 注册。
 _CLASSES_CORE = (
     EFXSubselectMember,
     EFXSubselectProps,
@@ -557,17 +416,11 @@ _CLASSES_CORE = (
     EFX_OT_subselect_member_remove,
 )
 
-# EFX_PT_subselect 导出给 panels.py，由 panels.register() 在 EFX_PT_entry 之后注册。
-# 这样确保 bl_parent_id = "EFX_PT_entry" 的父面板已存在。
+# EFX_PT_subselect 由 panels.py 在父面板之后注册。
 
 
 def register():
-    """
-    注册 Subselect 核心类（PropertyGroup + UIList + Operator）。
-    并把 EFXSubselectProps 挂到 Object 上。
-
-    注意：EFX_PT_subselect 面板由 panels.py 在 EFX_PT_entry 之后注册。
-    """
+    """注册 Subselect 数据与编辑核心；面板由 panels.py 注册。"""
     for cls in _CLASSES_CORE:
         bpy.utils.register_class(cls)
 
@@ -579,10 +432,7 @@ def register():
 
 
 def unregister():
-    """
-    注销 Subselect 核心类并清理 PointerProperty。
-    EFX_PT_subselect 由 panels.py 先注销。
-    """
+    """注销核心类并移除对象 PointerProperty。"""
     try:
         del bpy.types.Object.efx_subselect
     except AttributeError:

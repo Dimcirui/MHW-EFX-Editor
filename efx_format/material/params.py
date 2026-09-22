@@ -1,42 +1,10 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/material/params.py -- MATERIAL 非贴图 Tex_Set（着色器参数）的名字+类型查表
+"""MATERIAL 非贴图 Tex_Set 的参数名称与声明类型表。
 
-来源：master_material_dict.json（每种 shader 的 resourceDict）+ property_dict.json
-（各 CB 常量缓冲区的逐字段 name+type），均来自 MHW_Model_Editor 对 ShaderPackage.sdf
-的反查表（同 material/meta.py 头部注释的数据血缘）。
-
-按 (shader_hash, t) 二元查表——不能只按 t 查：同名属性在不同 shader 的 CB 里可以
-声明成不同的数组长度（如 fEmissiveMapFactor__uiColor 有的 shader 是 float[3]、
-有的是 float[4]），必须按具体 shader 的 resourceDict 解析，全局按 name 合并会把
-两种声明弄混。
-
-全量语料交叉验证（efx_samples/official/，362079 个非贴图 Tex_Set，2026-09）：
-除 t=0（未知含义的占位值，常见于 Standard_Mt 等重度使用的 shader，作用未知）外，
-其余全部按此表精确命中对应的 (name, type)，且 type 与 Tex_Set.type 编码一一对应、
-零反例：
-
-    Tex_Set.type   payload                    对应声明类型
-    0x03           int32[3]（12B，值在第3字）   bbool
-    0x0A           int32[3]（12B，值在第3字）   uint
-    0x0C           int32[3]（12B，值在第3字）   float（第3字重解释为 IEEE754）
-    0x15           float[6]（24B）              float[2]/float[3]/float[4]
-
-⚠ 0x15 的负载不能按声明 N 截断：全量语料复核（229539 个已命中 param，get→set
-原值回填零字节差异）发现声明 float[3] 的属性，第 4 个尾槽也可能非零存有实际
-数据（如 fCubeMapFactor__uiColor 在 cm_hm_dmgfloor_000.efx 里第4槽=1.0，不是
-padding）——只有开头 2 个 float 是恒 0 的固定 padding，值恒占**后 4 个槽**，
-跟声明的数组长度 N 无关。故 material/edit.py::get_param_value/set_param_value
-一律按 4 个 float 读写（`payload = [0,0] + value[0:4]`），UI 也统一按 FLOAT4
-控件展示，不按 N 折叠成 2/3 分量。
-
-0x06（int64+int32，12B）是 Sampler State 引用（如 SSAlbedo），不是标量值——
-resourceDict 里这类资源没有 property_dict 字段展开，本表不收录，保持 opaque。
-
-本表只包含已在 property_dict.json 里声明为标量/小数组类型的字段（bbool/uint/
-float/float[2..4]），跳过 CB/SS 顶层资源名本身、跳过 align* 填充字段。101 种
-shader（112 种主材质类型的子集——其余未见于 property_dict 覆盖范围）、4637 条
-参数名。
+维护约束：
+- 查找键必须为 ``(shader_hash, t)``；同一参数名可在不同 shader 中具有不同类型。
+- type 0x15 的有效负载固定使用末尾四个 float，不能按声明数组长度截断。
+- Sampler State 与未收录资源保持 opaque；align 字段只参与布局，不作为参数公开。
 """
 
 MATERIAL_SHADER_PARAMS = {
@@ -4883,35 +4851,14 @@ MATERIAL_SHADER_PARAMS = {
 
 
 def param_name_type(shader_hash, t_hash):
-    """(shader_hash, t) -> (参数名, 声明类型) | None；shader 未收录或 t 不认识都返回 None。
-
-    声明类型是 'bbool' / 'uint' / 'float' / 'float[2]' / 'float[3]' / 'float[4]' 之一，
-    供 material/edit.py 的 get_param_value/set_param_value 按此解码/编码 Tex_Set 的负载。
-    """
+    """返回参数名称与声明类型；未知 shader 或 t 返回 None。"""
     lut = MATERIAL_SHADER_PARAMS.get(shader_hash & 0xFFFFFFFF)
     if lut is None:
         return None
     return lut.get(t_hash & 0xFFFFFFFF)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 面板默认过滤：哪些已解析参数不值得展示为"可调"控件
-#
-# 用户需求（2026-09）：材质槽面板里贴图路径旁的参数展开区，只展示"实例间真的
-# 会变的非派生量"——不是每条能查到名字+类型的参数都值得展示为控件。两类过滤：
-#
-# 1. 全量语料统计出的"实例固定值"——扫 efx_samples/official/ 全部 MATERIAL 属性，
-#    按 (shader_hash, t) 记录观测到的值集合；样本数 ≥3 且从未变化过的记为常量
-#    （461/810 个有 ≥3 样本的 key 属于此类，且很多是几千次样本仍恒定同一个值，
-#    如 iGBufferId/fFurNormalBlend__uiUNorm 之类），说明它们是这个 shader 类型
-#    的固定默认值/编译期常量，不是作者会去调的旋钮。样本数 <3 的不下结论、
-#    默认展示（宁可多展示不确定的，不做没有实测依据的隐藏）。
-# 2. 名字判定的"派生量"——G-buffer/描边 ID 这类渲染管线自动分配的簿记字段，
-#    显然不是视觉调节参数，不管有没有变化过都隐藏。
-#
-# 隐藏只影响面板默认展示，不影响数据——这些参数仍在 field_items 里正常创建、
-# 可编辑（不像 t=0/未收录类型那样整个不建 item），只是 UI 默认折叠/跳过。
-# ─────────────────────────────────────────────────────────────────────────────
+# 面板默认隐藏派生量与稳定默认值；隐藏不改变已解析参数的数据或可编辑性。
 
 MATERIAL_PARAM_DERIVED_NAMES = frozenset({
     'iGBufferId', 'iGBufferIdMask', 'bGBufferIdMaskEnable', 'iOutlineId',
@@ -5383,10 +5330,7 @@ MATERIAL_PARAM_CONSTANT = frozenset({
 
 
 def param_is_notable(shader_hash, t_hash) -> bool:
-    """这个已解析参数是否"值得在面板默认展示"（见上方过滤说明）。
-
-    仅供 UI 展示过滤——不影响 field_item 是否创建/是否可编辑。
-    """
+    """返回已解析参数是否默认显示；不影响其创建或可编辑性。"""
     hit = param_name_type(shader_hash, t_hash)
     if hit is None:
         return False
@@ -5397,13 +5341,7 @@ def param_is_notable(shader_hash, t_hash) -> bool:
     return key not in MATERIAL_PARAM_CONSTANT
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tex_Set.set 字段（着色器参数版，同 meta.py::TEXTURE_SLOT_SET_TAG 的贴图版）：
-# 实测（全量语料 303 个非贴图 t 值，t=0 占位除外）该字段是 t 的固定伴生标签，
-# 100% 恒定、零反例（跟贴图槽同款规律）。新建参数 Tex_Set（"参考 mrl3 新建材质槽"
-# 顺带创建参数覆盖项）时用作 set 字段默认值。存的是有符号值，与 pack_material 的
-# '<i' 直接匹配。
-# ─────────────────────────────────────────────────────────────────────────────
+# 参数 Tex_Set 的 set 标签按 t 查表；值以有符号 int32 存储。
 
 PARAM_SET_TAG = {
     27586345: 835218120,
@@ -5713,5 +5651,5 @@ PARAM_SET_TAG = {
 
 
 def param_set_tag(t_hash: int) -> int:
-    """t → 该参数的 set 字段默认值（新建条目用）；无实测依据返回 0。"""
+    """返回新建参数 Tex_Set 的 set 默认值；未知 t 返回 0。"""
     return PARAM_SET_TAG.get(t_hash & 0xFFFFFFFF, 0)

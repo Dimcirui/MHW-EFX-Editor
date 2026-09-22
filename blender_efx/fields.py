@@ -1,66 +1,11 @@
-"""
-blender_efx/fields.py  —  通用属性字段模型 + 脏标记 + 逐字段无损性 + 路径编辑 + 颜色色轮
+"""EFX 属性字段的 Blender 表示、编辑和字节重建。
 
-设计原则（参照 CLAUDE.md）：
-  - Python 3.10 语法（兼容 Blender 3.6～5.x）
-  - bpy 只用稳定子集：PropertyGroup / CollectionProperty / PointerProperty /
-    FloatVectorProperty / IntVectorProperty / BoolProperty / StringProperty /
-    EnumProperty / IntProperty
-  - 不使用 5.x 新增 API
-  - efx_format/ 是纯 Python 层，本文件是胶水层
-  - byte-perfect：拿不准的结构全部 is_editable=False + base64
-
-无损性策略：
-  每个 EFXFieldItem 存储：
-    orig_b64  : StringProperty — 该字段原始字节切片的 base64（导入时填入）
-    edited    : BoolProperty  — 用户实际编辑过该字段时置 True
-    read_only : BoolProperty  — 原始字节不能被值槽精确往返的字段（NaN/inf 等）
-
-  导出重建 data_bytes 时（rebuild_data_bytes）：
-    - edited=False 或 read_only=True → 直接用 b64decode(orig_b64)（bit 精确）
-    - edited=True 且 read_only=False → 用字段 spec 重新 pack 新值
-
-  健壮性闸门（roundtrip gate）：
-    dict_to_items 完成后，立即用"全未编辑"路径重建 data_bytes，
-    与原始 data_bytes 断言相等；不等则该属性退回 is_editable=False。
-
-数据类型映射（EFXFieldItem.data_type → 值槽）：
-  FLOAT    → float_value   (单精度浮点)
-  INT      → int_value     (int32 / int16 / int8)
-  UINT     → uint_str      (uint32/uint64 十进制字符串，避免 Blender C int 溢出)
-  BOOL     → bool_value
-  FLOAT2   → float2_value  (FloatVectorProperty size=2)
-  FLOAT3   → float3_value  (FloatVectorProperty size=3)
-  FLOAT4   → float4_value  (FloatVectorProperty size=4)
-  FLOAT6   → float6_value  (FloatVectorProperty size=6)
-  COLOUR   → colour_value  (4 × ubyte，存为 IntVectorProperty size=4 [0,255])
-  COLOR_RGBA → color_rgba_value  (4 × ubyte r,g,b,a → FloatVectorProperty size=4 subtype='COLOR' [0,1])
-               用于 spec='colour' 和 spec=('XYZ',2)（第4字节为 alpha，实测：255 主导、偶 16/50、从不为 0）
-  COLOR_RGB  → color_rgb_value   (保留值槽，当前无 spec 映射到此类型；旧数据兼容)
-  INT2     → int2_value    (IntVectorProperty size=2)
-  INT3     → int3_value    (IntVectorProperty size=3)
-  INT4     → int4_value    (IntVectorProperty size=4)
-  INT10    → int10_str     (StringProperty，逗号分隔十进制)
-  INT16    → int16_str     (StringProperty，逗号分隔十进制，for ('f',16) or ('i',16))
-  FLOAT2_STR  → float2_str    (StringProperty，逗号分隔，用于 size=2 float array)
-  FLOAT3_STR  → float3_str    (用于 ('f',3) float 数组)
-  FLOAT5_STR  → float5_str    (用于 ('f',5) float 数组)
-  FLOAT8_STR  → float8_str    (用于 ('f',8) float 数组)
-  FLOAT16_STR → float16_str   (用于 ('f',16) float 数组)
-  INT_PAIR    → int_pair_str  (2个int，逗号分隔，用于 ('i',2) 等)
-  BYTE1    → byte1_value   (单个 uint8，用 IntProperty [0,255])
-  SHORT1   → short1_value  (单个 int16)
-  OPAQUE   → opaque_str    (base64，用于不可表示的复杂结构)
-  STRING   → string_value (路径字符串，用于 custom-codec 含路径类型的路径字段)
-
-颜色色轮策略（byte-perfect）：
-  COLOR_RGBA（spec='colour' 或 spec=('XYZ',2)）：
-    导入：[r, g, b, a] (0-255) → [r/255, g/255, b/255, a/255] (0-1)
-    重建：clamp(round(c*255), 0, 255) × 4（全4通道均从 picker 取值）
-    往返检测：ubyte → float → ubyte 精确（ubyte 不存在 NaN/精度问题，100% 通过）
-    注：('XYZ',2) 第4字节是 alpha（实测：1030 个字段中 255×1017、50×10、16×3、0×0），
-        BT 模板标注的 "NULL" 是误名，实为透明度，用户可在色块中编辑。
-        未编辑时 orig_b64 恒等还原（bit 精确），不受影响。
+维护约束：
+- 字段保留原始字节；仅 edited 且非 read_only 的字段重新打包，其他字段原样导出。
+- 字段展开后必须通过原字节重建检查；失败的属性保持不可编辑。
+- 加载期不得触发脏标记。值槽、路径与颜色显示层均须通过 PropertyGroup 更新，以触发
+  导出和预览失效处理。
+- 坐标显示转换只能改变显示值；未改变的分量必须保留原始精确值。
 """
 
 import base64
@@ -85,25 +30,13 @@ from bpy.types import PropertyGroup
 # ─────────────────────────────────────────────────────────────────────────────
 
 _LOADING: bool = False
-"""
-全局加载守卫。
-在 io_tree.import_efx_tree 的属性字段填充阶段置 True，
-填充完成后（导入末尾）重置为 False。
-所有 update 回调检查此标志，加载期间直接返回不置脏。
-"""
 
 
 def _mark_attribute_dirty(self, context):
-    """
-    通用脏标记回调：编辑任何字段值 → 把所属 EFXAttributeProps 的 efx_dirty 置 True，
-    同时把该字段项的 edited 置 True（逐字段无损性：仅编辑过的字段走重新 pack 路径）。
-    加载期间（_LOADING=True）跳过，避免填充字段时误置脏。
-    """
+    """标记字段和属性已编辑，并使相关视图或预览失效。"""
     if _LOADING:
         return
-    # self 是 EFXFieldItem 实例；id_data 是挂该 CollectionProperty 的 Object
     try:
-        # 标记该字段已被编辑（rebuild_data_bytes 会用新值 pack 此字段）
         self.edited = True
         obj = self.id_data
         if obj is not None and hasattr(obj, "efx_block"):
@@ -113,40 +46,28 @@ def _mark_attribute_dirty(self, context):
                 blk_hash = int(obj.efx_block.type_hash_str)
                 body = obj.parent
                 is_entry = body is not None and body.get("~TYPE") == "EFX_ENTRY"
-                # TRANSFORM3D 的 translate/rotate/resize 编辑 → 实时重摆 entry empty（单向、纯可视）
                 if (blk_hash == TRANSFORM3D and is_entry
                         and self.ori_name in ("translate", "rotate", "resize")):
                     from . import transform_sync
                     scene = getattr(context, "scene", None) or bpy.context.scene
                     armature = getattr(scene, "efx_armature", None) if scene else None
                     use_anchor = getattr(scene, "efx_anchor_placement", True) if scene else True
-                    # 锚定感知：被锚 entry 编辑 transform3d 仍以基点为基准，不掉回原点
                     transform_sync.place_single_entry(body, armature, use_anchor=use_anchor)
-                    # 网格对齐会话进行中 → entry empty 移动后，重对齐其实例
                     from . import mesh_align
                     mesh_align.realign_entry_if_active(body)
-                # MESH 的 rotation/scale/global_scale 编辑 →
-                #   ① 直接作用到绑定对象本身（持久、实时反映旋转/缩放）
-                #   ② 若对齐预览会话进行中，重对齐其实例
                 elif blk_hash == MESH and self.ori_name in ("rotation", "scale", "global_scale"):
                     from . import mesh_align
                     mesh_align.apply_mesh_rotscale_to_object(obj)
                     if is_entry:
                         mesh_align.realign_entry_if_active(body)
-                # EMITTERSHAPE3D：**任何**字段都可能改变生成区域的形状 → 线框叠加层
-                # 一律标脏。⚠ 别在这里列白名单：localRotation*/rotationOrder/
-                # rangeDivide*/radius*/scanAngleVertical 全都进线框，漏一个就是
-                # 「改了参数框不动」（曾经只列了三个字段，localRotation 就漏在外面）。
+                # 任意 EMITTERSHAPE3D 字段都可能改变线框。
                 elif blk_hash == EMITTERSHAPE3D:
                     from . import es3d_overlay
                     es3d_overlay.invalidate()
             except Exception:
                 pass
 
-            # 粒子模拟播放中 → 任何属性的任何字段改动都可能影响结果，一律标脏。
-            # 独立 try：上面那条 if/elif 链里任何一支出错都不该让模拟预览跟着失效。
-            # 这里**只置一个标志**（本回调是每改一个字段就触发一次的热路径），真正的
-            # 重建推迟到播放器的下一个定时器 tick。
+            # 预览重建延后到播放器 tick，保持字段回调轻量。
             try:
                 from . import sim_preview
                 sim_preview.invalidate_if_active(obj)

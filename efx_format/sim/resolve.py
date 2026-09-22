@@ -1,30 +1,13 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/resolve.py  —  字段解析（原始值 → EXTERN 覆盖 → TIML A0 → TIML A1）
+"""字段解析：原始值 → EXTERN 覆盖 → TIML A0 → TIML A1。
 
-**behavior 不许直接读原始字段 dict**，一律走 `em.f(TYPE_HASH, p).字段名`。
-
-这条规矩是为「语义待补」准备的。举个具体的未知点：发射器第 50 帧生的粒子，它的
-`speed` 取 A0@50（出生时冻结）还是每帧跟着 A0 走？不知道。现在它是
-`SimConfig.a0_sample` 一个开关；如果当初让 behavior 直接读原始字段，等标定出
-答案要改几十个文件。
-
-TIML 的两条轴（见 efx_format/timl/__init__.py）
------------------------------------------------
-    animation0 = 发射轴（emitter time）   → 按 a0_sample 取「出生帧」或「当前帧」
-    animation1 = 更新/寿命轴（particle age）→ 一律按粒子 age 取
-
-这个双轴结构本来就是粒子系统的 emitter-time / particle-age 两条曲线，不用另造。
-
-尚未覆盖
---------
-- Color 通道（data_type == 3）：四个子通道挤在一个关键帧里，等 RENDER 层要用时再补。
-- BIG_FLAGS 标志位通道：语义未知，跳过。
-- EXTERN 覆盖：接口已经留好（`extern_overrides`），但 EXTERN 的触发条件是运行时
-  状态（见 README「Extern：某些条件满足时替换参数」），预览里没有那些条件，
-  故当前只支持 glue 层显式传入一张覆盖表。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- behavior 不得直接读原始字段 dict，一律走 `em.f(TYPE_HASH, p).字段名`。取值时机
+  这类未定语义因此集中在这里，靠 SimConfig 的开关切换，不必改各 behavior。
+- TIML 两条轴各有取样规则：animation0 是发射轴，按 `SimConfig.a0_sample` 取出生帧
+  或当前帧；animation1 是寿命轴，一律按粒子 age 取。
+- 当前不处理 Color 通道与 BIG_FLAGS 通道。EXTERN 的触发条件是运行时状态，预览里
+  没有，故只支持宿主显式传入 `extern_overrides` 覆盖表。
 """
 
 from .state import Vec3

@@ -1,43 +1,21 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/schema/fields_model.py — typed field-object schema 模型
+"""带语义的字段模型与注册表。
 
-设计
-────────────────────────────────────────────────────────────────────────────
-参照 RE-Engine-Lib EFX：把 structs.py 里裸 tuple `('name', 'i')` 升级成**带语义的
-Field 对象**（Enum/Bool/Bitmask/Float…），**类型即语义**，标签 / tooltip / 枚举选项 /
-位定义全挂在字段声明这一处，不再靠 field_labels.py / annotations.py 两张并行表补。
-
-核心不变量：**Field 只是元数据层，降级(lower)成现有 structs.py codec 认识的
-`(name, spec)` tuple**。codec（unpack / pack / _schema_size）一行都不用改——lower 后的
-spec 与手写 tuple 逐字节等价，故 `serialize(parse(x)) == x` 由构造保证。
-
-用法
-────
-    ax = EnumDef("AxisDirection6", [(0, "Left", "左"), (1, "Up", "上"), ...])
-    attr = Attribute(size=108, fields=[
-        Int("typeFlag"),
-        Enum("baseAxis", ax, label_zh="基准轴"),
-        Float("speed", label_zh="速度"),
-        ...
-    ])
-    attr.schema     # → [('typeFlag','i'), ('baseAxis','i'), ('speed','f'), ...]
-                    #    直接喂给 ATTR_SCHEMA_MAP / structs.unpack / structs.pack
-
-迁移期新旧共存：ATTR_SCHEMA_MAP 里既可放 Attribute.schema（新），也可放手写 tuple
-list（旧），逐块迁移，codec 无感。
+维护约束：
+- Field 是元数据层，``Attribute.schema`` 必须降级为 codec 兼容的 ``(name, spec)`` 序列，
+  且保持字节等价。
+- ``name`` 是字段元数据、预设和 TIML 映射的稳定键，重命名前必须同步全部消费者。
+- 新旧 tuple schema 可共存；typed Attribute 是逐步迁移的派生视图。
 """
 
 from __future__ import annotations
 from typing import Any, Callable, List, Optional, Tuple
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 枚举 / 位定义（语义元数据，可跨字段复用）
-# ─────────────────────────────────────────────────────────────────────────────
+# 枚举与位定义
 
 class EnumOption(object):
-    """单个枚举取值：value=底层整数，en/zh=显示标签。"""
+    """一个枚举取值。"""
     __slots__ = ("value", "en", "zh")
 
     def __init__(self, value, en, zh=""):
@@ -47,7 +25,7 @@ class EnumOption(object):
 
 
 class EnumDef(object):
-    """命名枚举定义。options 元素接受 (value, en[, zh]) 或 EnumOption。"""
+    """可复用的枚举定义。"""
     __slots__ = ("name", "options")
 
     def __init__(self, name, options):
@@ -58,7 +36,7 @@ class EnumDef(object):
         ]
 
     def label(self, value, zh=False):
-        """value→标签；超出集合返回 None（UI 层据此回退显示原值）。"""
+        """返回取值标签；未知值返回 ``None``。"""
         for o in self.options:
             if o.value == value:
                 return o.zh if zh else o.en
@@ -66,7 +44,7 @@ class EnumDef(object):
 
 
 class BitDef(object):
-    """单个位定义（**可混合** toggle 位）：bit=位掩码整数，en/zh=显示标签。UI 渲成勾选框。"""
+    """可组合的单个位定义。"""
     __slots__ = ("bit", "en", "zh")
 
     def __init__(self, bit, en, zh=""):
@@ -76,14 +54,11 @@ class BitDef(object):
 
 
 class BitEnum(object):
-    """**互斥**位组：mask 覆盖的（通常连续）几位编码一个 one-of-N 值，UI 渲成下拉（同 enum）。
-    options 元素接受 (subval, en[, zh]) 或 EnumOption；subval 是 (value & mask) >> shift 后的值。
-    en/zh 是这一组的显示名（组标签）。"""
+    """由 mask 编码的互斥位组。"""
     __slots__ = ("mask", "shift", "en", "zh", "options")
 
     def __init__(self, mask, options, en="", zh=""):
         self.mask = int(mask)
-        # shift = mask 最低置位的位号
         self.shift = (self.mask & -self.mask).bit_length() - 1 if self.mask else 0
         self.en = en
         self.zh = zh or en
@@ -93,22 +68,10 @@ class BitEnum(object):
         ]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Field 基类 + 便捷子类
-# ─────────────────────────────────────────────────────────────────────────────
+# Field 基类与便捷子类
 
 class Field(object):
-    """
-    带语义的字段声明。降级成 codec 认识的 (name, spec) tuple。
-
-    属性
-      name       : ori_name —— 全仓库锚点（标签表 / 预设 key / TIML DT 映射都靠它）
-      spec       : 降级后的 legacy spec atom（'i'/'f'/('XYZ',0)/'colour'…）
-      widget     : Blender 层控件提示（'int'/'float'/'uint'/'enum'/'bool'/'bitmask'/'raw'）
-      label_en/zh: 显示标签（可选；未来取代 field_labels.py）
-      tip_en/zh  : tooltip（可选；未来取代 annotations.py；只写结论不写研究记录）
-      readonly   : 只读（0xCD 填充 / padding 等）
-    """
+    """带语义的字段声明，可降级为 codec 使用的 ``(name, spec)``。"""
     widget = "raw"
 
     def __init__(self, name, spec, *, label_en=None, label_zh=None,
@@ -128,7 +91,7 @@ class Field(object):
 
 
 class _Scalar(Field):
-    """标量便捷基类：子类设 _SPEC / _WIDGET。"""
+    """标量字段基类。"""
     _SPEC = None
     _WIDGET = "raw"
 
@@ -136,51 +99,42 @@ class _Scalar(Field):
         super().__init__(name, self._SPEC, widget=self._WIDGET, **kw)
 
 
-class Int(_Scalar):    _SPEC = 'i';  _WIDGET = "int"     # int32
-class UInt(_Scalar):   _SPEC = 'I';  _WIDGET = "uint"    # uint32（存字符串避免溢出）
-class Short(_Scalar):  _SPEC = 'h';  _WIDGET = "int"     # int16
-class UShort(_Scalar): _SPEC = 'H';  _WIDGET = "int"     # uint16
-class Byte(_Scalar):   _SPEC = 'B';  _WIDGET = "int"     # uint8
-class SByte(_Scalar):  _SPEC = 'b';  _WIDGET = "int"     # int8
-class Float(_Scalar):  _SPEC = 'f';  _WIDGET = "float"   # float32
-class Int64(_Scalar):  _SPEC = 'q';  _WIDGET = "uint"    # int64（存字符串）
-class UInt64(_Scalar): _SPEC = 'Q';  _WIDGET = "uint"    # uint64（存字符串）
+class Int(_Scalar):    _SPEC = 'i';  _WIDGET = "int"
+class UInt(_Scalar):   _SPEC = 'I';  _WIDGET = "uint"
+class Short(_Scalar):  _SPEC = 'h';  _WIDGET = "int"
+class UShort(_Scalar): _SPEC = 'H';  _WIDGET = "int"
+class Byte(_Scalar):   _SPEC = 'B';  _WIDGET = "int"
+class SByte(_Scalar):  _SPEC = 'b';  _WIDGET = "int"
+class Float(_Scalar):  _SPEC = 'f';  _WIDGET = "float"
+class Int64(_Scalar):  _SPEC = 'q';  _WIDGET = "uint"
+class UInt64(_Scalar): _SPEC = 'Q';  _WIDGET = "uint"
 
 
 class Enum(Field):
-    """枚举字段：底层整数（默认 int32），UI 渲成下拉。"""
+    """底层整数的枚举字段。"""
     def __init__(self, name, enum_def, *, backing='i', **kw):
         super().__init__(name, backing, widget="enum", **kw)
         self.enum = enum_def
 
 
 class EnumVec3(Field):
-    """
-    逐轴枚举字段：底层是一组 3 个整数（默认 ('XYZ', 1) = 3×int32），每个分量各自是同一
-    EnumDef 的独立枚举取值。UI 渲成 X/Y/Z 三个并排下拉。
-    典型：PARENTOPTIONS 的 translation/angle/scale tracking（每轴独立的跟随模式）。
-    """
+    """每个分量独立取值的三轴枚举字段。"""
     def __init__(self, name, enum_def, *, spec=('XYZ', 1), **kw):
         super().__init__(name, spec, widget="enum_vec3", **kw)
         self.enum = enum_def
 
 
 class Bool(Field):
-    """布尔字段：底层整数（默认 int32），UI 渲成勾选框。"""
+    """底层整数的布尔字段。"""
     def __init__(self, name, *, backing='i', **kw):
         super().__init__(name, backing, widget="bool", **kw)
 
 
 class Bitmask(Field):
-    """位掩码字段：底层整数，UI 渲成弹窗（勾选框 = 可混合 BitDef，下拉 = 互斥 BitEnum；
-    段外残留位默认保留并可编辑）。bits 是有序列表，元素可为 BitDef / BitEnum / (bit,en[,zh]) 元组。
-    strict=True：已穷举确认段外位从不使用，编辑弹窗不再显示"其余位"整数框（读到的残留值仍
-    原样保留写回，只是不给编辑入口，不是强制清零）。
-    all_value：可选"全选"哨兵值（如 0xFF），跟其余位不是简单并集关系（可能置了一个从未
-    单独出现过的位）——弹窗底部单独隔开放一个"全部"勾选框，跟上面各独立位互斥；勾选即整
-    体写为 all_value，取消则按上面各勾选框正常组合。
-    gate_first：第一个 BitDef 是总开关，未勾选时其余 BitDef 勾选框弹窗内置灰不可编辑
-    （已有值保留，只是不给新编辑入口）——用于"bit0 关闭时其余位无意义"这类场景。"""
+    """位掩码字段。
+
+    未建模的残留位必须原样保留；``strict`` 只限制 UI 编辑入口，不能清零残留位。
+    """
     def __init__(self, name, bits, *, backing='i', strict=False, all_value=None,
                  gate_first=False, **kw):
         super().__init__(name, backing, widget="bitmask", **kw)
@@ -194,30 +148,15 @@ class Bitmask(Field):
 
 
 class Raw(Field):
-    """
-    任意 legacy spec 原样包装（('XYZ',n) / 'colour' / 'EPVColorSlot' / ('f',N) 数组…）。
-    迁移期的逃生舱：让任何块都能先迁进模型，专用字段类（Vec/Color…）作为语法糖后补。
-    """
+    """原样包装任意 legacy spec，供渐进迁移使用。"""
     def __init__(self, name, spec, **kw):
         super().__init__(name, spec, widget="raw", **kw)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Attribute 记录（hybrid：list-of-Field + 每块专属元数据集中一处）
-# ─────────────────────────────────────────────────────────────────────────────
+# Attribute 模型
 
 class Attribute(object):
-    """
-    一个 EFX attribute 块类型的 typed 声明。
-
-      hash             : 块类型哈希（可选；structs.py 里 hash 常量晚于 schema 定义导入，
-                         故允许定义时留空、导入后回填）
-      size             : data_bytes 字节数（不含 4 字节类型哈希）；变长块传 None
-      fields           : List[Field]
-      label_zh         : 块级中文名（可选）
-      native_timl_axis : TIML 动画锁定轴（见记忆 timl-block-native-axis）
-      validate         : 可选的每块校验钩子 validate(values: dict) -> None
-    """
+    """一个 EFX attribute 块的 typed 声明。"""
     __slots__ = ("hash", "size", "fields", "label_zh",
                  "native_timl_axis", "validate", "_schema_cache")
 
@@ -233,8 +172,7 @@ class Attribute(object):
 
     @property
     def schema(self):
-        """降级成 codec 认识的 [(name, spec), ...]。缓存单一 list 对象（供按身份反查
-        hash / 避免每次重建；schema 定义后 fields 不再变动，缓存安全）。"""
+        """返回 codec schema，并缓存单一 list 对象供 identity 反查。"""
         if self._schema_cache is None:
             self._schema_cache = [(f.name, f.spec) for f in self.fields]
         return self._schema_cache
@@ -246,16 +184,14 @@ class Attribute(object):
         return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 全局注册表（供 Blender 层 / 标签 shim 按 hash 反查字段元数据）
-# ─────────────────────────────────────────────────────────────────────────────
+# 全局注册表
 
-ATTR_REGISTRY = {}                    # type_hash -> Attribute
-FIELD_REGISTRY = {}                   # (type_hash, field_name) -> Field
+ATTR_REGISTRY = {}
+FIELD_REGISTRY = {}
 
 
 def register(attr):
-    """把已回填 hash 的 Attribute 登记进全局注册表；返回该 attr（便于链式）。"""
+    """将已设置 hash 的 Attribute 登记到全局注册表。"""
     if attr.hash is None:
         raise ValueError("register(): Attribute.hash 未回填，无法登记")
     ATTR_REGISTRY[attr.hash] = attr
@@ -265,13 +201,9 @@ def register(attr):
 
 
 def register_alias(hash_value, attr):
-    """把已登记的 Attribute 追加登记到另一个共用同一 schema 的 hash 下，不改动 attr.hash 本身。
+    """将 Attribute 的字段元数据注册到复用 schema 的另一 hash。
 
-    用于 Extern 覆盖版块（EXTERNSPAWN/EXTERNLIFE/…）跟主属性块（SPAWN/LIFE/…）字节布局完全
-    相同、直接复用同一份 schema 的场景——两者的 hash 不同，若不额外登记，Extern 一侧按自己的
-    hash 反查 FIELD_REGISTRY 会全部落空，label_zh/Enum/Bitmask 控件在 Extern 实例上静默退化
-    成裸整数框（2026-09-20 用户实机截图发现：EXTERNSPAWN 面板中文标签全部缺失、Spawn Flags
-    没有渲染成 Bitmask 弹窗）。返回 attr（便于链式）。
+    该操作不得修改原 Attribute 的 ``hash``。
     """
     ATTR_REGISTRY[hash_value] = attr
     for f in attr.fields:
@@ -279,9 +211,7 @@ def register_alias(hash_value, attr):
     return attr
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# legacy tuple schema → typed Attribute 的机械降级
-# ─────────────────────────────────────────────────────────────────────────────
+# legacy schema 的机械降级
 
 _SPEC_TO_FIELD = {
     'i': Int, 'I': UInt, 'h': Short, 'H': UShort,
@@ -290,16 +220,10 @@ _SPEC_TO_FIELD = {
 
 
 def attr_from_legacy(size, schema, *, labels=None, overrides=None, hash=None):
-    """把 legacy `(name, spec)` tuple schema **机械**降级成 typed Attribute：
-    标量单字符 spec 映射到对应 Field 子类，其余（('XYZ',n) / 'EPVColorSlot' / ('f',N)
-    / 嵌套数组…）包 Raw，spec 一律原样保留 → `.schema` 与输入逐字节等价。
+    """将 legacy tuple schema 机械降级为 typed Attribute。
 
-    用途：尚未逐字段手写语义的 custom 变长块——只需把固定段字段注册进 FIELD_REGISTRY
-    即可解锁标签/控件/过滤，无需一次性把上百个 unkn 字段手写成显式 Field。已确认语义的
-    字段可后续逐一改成显式 Enum/Bool 等（tuple 仍是该块 on-disk 权威，ATTR 是派生视图）。
-    labels: 可选 {name: 中文标签}。
-    overrides: 可选 {name: Field}，对指定字段用显式 Field 取代自动降级（如 Enum/Bitmask）。
-      override Field 的 spec 必须与 tuple spec 一致，否则报错——保证字节等价不被破坏。"""
+    override 的 spec 必须与原 schema 相同，以保持字节等价。
+    """
     labels = labels or {}
     overrides = overrides or {}
     fields = []

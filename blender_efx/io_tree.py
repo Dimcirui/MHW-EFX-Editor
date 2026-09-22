@@ -1,29 +1,12 @@
-"""
-blender_efx/io_tree.py  —  EFX ↔ Blender 对象树 导入/导出
+"""在 EFX 二进制结构与 Blender 对象树之间导入、导出。
 
-设计原则（参照 CLAUDE.md）：
-  - 只使用 Python 3.10 语法（兼容 Blender 3.6～5.x）
-  - bpy 只用稳定子集：collections.new / objects.new(Empty) / collection.objects.link
-    / obj.parent / obj["key"] / empty_display_size
-  - 不使用 5.x 新增 API
-  - efx_format/ 是纯 Python 层，本文件是胶水层（不改 efx_format/）
-  - byte-perfect：拿不准的结构全部 base64 原样保存
-
-对象树结构（COLOR_06 紫色，~TYPE 标记类型）：
-  <文件名集合> [COLOR_06]  (~TYPE='EFX_ROOT')   # 顶层集合本身即"文件"，存 header 全字段
-  ├── _0 Action  子集合 (~TYPE='EFX_ACTION_COLLECTION')
-  │   └── EFX_ACTION  (~TYPE='EFX_ACTION')
-  ├── _1 Extern  子集合 (~TYPE='EFX_EXTERN_COLLECTION')
-  │   └── EFX_EXTERN  (~TYPE='EFX_EXTERN')
-  ├── _2 Entry   子集合 (~TYPE='EFX_ENTRY_COLLECTION')
-  │   └── EFX_ENTRY  (~TYPE='EFX_ENTRY')  # 每个 Main body
-  │       └── <hash_name>  (~TYPE='EFX_ATTRIBUTE')  # 每个 AttrBlock（.parent=entry，嵌套关系不变）
-  └── _3 Subselect 子集合 (~TYPE='EFX_SUBSELECT_COLLECTION')
-      └── EFX_SUBSELECT (~TYPE='EFX_SUBSELECT')
-
-2026-07 起 EFX_ROOT 不再是 Empty 对象——"entry/action/extern/subselect 属于哪个文件"
-不再靠 `obj.parent == root_obj`，改靠集合归属（见 root_collection.py）。
-attribute→entry / EFX_TIML→entry 这两层嵌套 parent 完全不受影响。
+维护约束：
+- EFX_ROOT 是顶层集合而非对象；段对象通过集合归属解析所属文件，属性和 TIML
+  句柄仍以 parent 连接到 Entry。
+- Header、未知 body、标签尾部及无法安全结构化的字节必须保留原始表示，以支持
+  未编辑路径的原样导出。
+- 导出依据对象树重新组织可编辑段；跨段引用使用各自段内索引，不能依赖显示名。
+- efx_format 负责二进制模型，本模块只负责 Blender 映射。
 """
 
 import bpy
@@ -40,7 +23,6 @@ from ..efx_format.efxfile import (
     ExternDataItem,
     AttrBlock,
     EntryData,
-    EntryDataExtended,
     RootBody,
     RootUnitBoundary,
     ROOT_SUBENTRY_HASHES,
@@ -49,8 +31,7 @@ from ..efx_format.efxfile import (
 from ..efx_format.hashes import HASH_TO_NAME
 from ..efx_format.hashes import pretty_type_name as _pretty_type_name
 
-# 导入字段模型模块（延迟导入，避免注册顺序问题）
-# init_attribute_props 和 get_attribute_data_bytes 在实际调用时才被解析
+# 字段模型在调用处使用，避免模块注册顺序形成循环依赖。
 from . import fields as _fields
 from . import subselect as _subselect
 from . import action_emitter as _action_emitter
@@ -74,12 +55,7 @@ def _b64dec(s: str) -> bytes:
 
 
 def _root_entry_to_attr_block(e) -> AttrBlock:
-    """把 RootBody 的一个子条目（RootUnitBoundary / RootOpaqueEntry）转成 AttrBlock。
-
-    两者的 serialize() 都是「4B 类型 + 剩余字节」，跟 AttrBlock 的编码同构，
-    只是把「剩余字节」的来源换一下：UnitBoundary 现算 ints+floats，
-    RootOpaqueEntry 直接砍掉已有 raw 的前 4 字节。
-    """
+    """将可按 AttrBlock 编码表示的 Root 子条目映射为属性块。"""
     if isinstance(e, RootUnitBoundary):
         data = struct.pack('<2i', *e.ints) + struct.pack('<8f', *e.floats)
         return AttrBlock(type_hash=RootBody.UNITBOUNDARY, data_bytes=data)
@@ -98,19 +74,11 @@ def _new_empty(name: str, collection: bpy.types.Collection) -> bpy.types.Object:
 # ─────────────────────────────────────────────────────────────────────────────
 # EFX_TIML 句柄对象（TIML 统一入口）
 # ─────────────────────────────────────────────────────────────────────────────
-# TIML 在字节上从属于 body（timl_length 界定，先于 attr_blocks），不是独立 attr block。
-# 为收敛割裂的 TIML 入口（导入导出 / 长度循环 / 预览），给每个**含 TIML 的 body** 建一个
-# ~TYPE="EFX_TIML" 子 Empty 作 UI 句柄：选中它即可在面板里访问全部 TIML 操作。
-# 它**不持有数据**——timl_bytes/timl_length 仍权威存于 body（导出字节逻辑原封不动，
-# 故 byte-perfect 不受影响；EFX_TIML 既非 EFX_ENTRY 也非 EFX_ATTRIBUTE，被导出/重排/删除/校验
-# 的类型过滤天然忽略）。所有面板/算子经 resolve_timl_entry() 把句柄解析回父 body 后操作。
+# TIML 字节归 Entry 所有；EFX_TIML 只是面板和算子的子对象句柄，必须先解析回父
+# Entry，且不能作为独立属性块参与段操作。
 
 def find_timl_handle(entry_obj: bpy.types.Object):
-    """返回 body 下的 EFX_TIML 句柄对象，无则 None。
-
-    entry_obj 本身就是无主 EFX_TIML 句柄时返回它自己——无主 TIML（standalone.py）
-    把句柄同时当数据载体，故 resolve_timl_entry 与本函数在那条路径上是同一个对象。
-    """
+    """返回 body 的 TIML 句柄；独立 TIML 句柄本身也可作为结果。"""
     if entry_obj is None:
         return None
     if entry_obj.get("~TYPE") == "EFX_TIML":
@@ -139,12 +107,12 @@ def make_timl_handle(entry_obj: bpy.types.Object, collection: bpy.types.Collecti
     return h
 
 
-# 导出时是否把 TIML 长度重算为末帧+1（由 export_efx_tree 的 recalc_timl_length 逐次设置）
+# 由本次导出选项控制，导出过程不重入。
 _EXPORT_RECALC_TIML_LEN = False
 
 
 def _recalc_timl_length(data: bytes) -> bytes:
-    """把每条存在的 TIML 动画的 animation_length 精确设为 末关键帧+1（逐轴）。定长原地 patch。"""
+    """将存在的 TIML 动画长度更新为各自最后关键帧加一。"""
     from ..efx_format.timl import meta as _tm
     try:
         anims = _tm.parse_animations(data)
@@ -160,9 +128,7 @@ def _recalc_timl_length(data: bytes) -> bytes:
 
 
 def _export_timl_bytes(entry_obj: bpy.types.Object) -> bytes:
-    """导出用 TIML 字节（TIML fcurve 持久化机制，见 timl_edit.py）：句柄有持久 fcurve → 从 fcurve 同步回字节（含用户编辑）；
-    无 fcurve / 空 / 非-timl → 存储的 timl_bytes verbatim（sync_fcurves_to_bytes 内部已兜底）。
-    最后若开启 recalc_timl_length，逐轴把长度设为末帧+1。"""
+    """导出 TIML 字节；同步失败时保留 Entry 中的原始字节。"""
     stored = _b64dec(str(entry_obj.get("timl_bytes", "")))
     if not stored:
         return stored
@@ -185,21 +151,7 @@ def _hash_display_name(type_hash: int) -> str:
 
 
 def split_labels_tail(label_bytes: bytes, n_max: int):
-    """
-    切分 EFX_Type 标签区为 (labels, tail)。
-
-    标签区真实结构（实测 78/78 byte-perfect）：
-        [k 个 null 结尾标签] + [tail 不透明尾字节]
-      - 标签位置性映射到 [Play|Extern|Main] 顺序的前 k 个条目（k ≤ n_max）；
-        第 k 个之后的条目没有标签（不占字节，非空槽）。
-      - tail 是标签耗尽后剩余的字节，可能含非零字节（如 0x3c/0x3e，
-        旧 split+filter 会误当成单字符标签 '<'/'>'）。
-
-    切分规则：逐个读 null 结尾串，遇第一个空串即停，剩余即 tail。
-    最多读 n_max 个（= count_play + count_extern + count_body）。
-
-    重建（byte-perfect）：b''.join(s + b'\\x00' for s in labels) + tail == label_bytes
-    """
+    """将标签区拆成连续标签前缀和必须原样保留的不透明尾部。"""
     labels = []
     pos = 0
     while len(labels) < n_max:
@@ -220,28 +172,7 @@ def split_labels_tail(label_bytes: bytes, n_max: int):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False) -> bpy.types.Collection:
-    """
-    解析 .efx 文件，在场景里建立对象树。
-
-    参数
-    ----
-    filepath : str
-        .efx 文件的绝对路径。
-    context : bpy.types.Context, optional
-        Blender 上下文。若为 None，用 bpy.context。
-    color_editor_mode : bool, optional
-        True＝"仅导入颜色"（EFX Color Editor）。完整解析/建树完全不变（数据
-        100% 保留、导出路径不动，byte-perfect 天然保住）；仅在建树完成后追加一步
-        UI 精简：含颜色字段的 entry/attribute 额外 link 进 root_col 本身（多重
-        归属，不从原叶子集合 unlink），其余四个正常叶子集合从当前场景全部 View
-        Layer 排除（仅隐藏 Outliner 显示）。见 `_apply_color_editor_view`。
-
-    返回
-    ----
-    bpy.types.Collection
-        顶层文件集合（root_col，~TYPE=='EFX_ROOT'）。2026-07 起 ROOT 不再是
-        Empty 对象，调用方若期望 Object 需相应更新（见 root_collection.py）。
-    """
+    """解析 EFX 并建立顶层文件集合；颜色模式仅改变当前视图呈现。"""
     ctx = context if context is not None else bpy.context
 
     # ── 1. 解析文件 ─────────────────────────────────────────────────────────
@@ -251,23 +182,18 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     hdr = efx.header
 
     file_stem = os.path.splitext(os.path.basename(filepath))[0]
-    file_name = os.path.basename(filepath)   # 含 .efx 后缀，用作顶层集合名（仿 mrl3）
+    file_name = os.path.basename(filepath)
 
-    # ── 2. 建顶层集合（紫色 COLOR_06，本身即"文件"，~TYPE=EFX_ROOT）────────────
     scene_col = ctx.scene.collection
-    # Color Editor 模式：集合名加 "_color" 后缀区分（同样紫色 COLOR_06，用户
-    # 描述的"一个紫色的 XXX_color.efx 集合"——root_col 本身即是它）。
+    # 颜色编辑器导入使用独立根集合，避免与完整编辑器视图混淆。
     root_col_name = f"{file_stem}_color.efx" if color_editor_mode else file_name
     root_col = _rc.new_root_collection(root_col_name, scene_col)
     root_col["color_editor_mode"] = 1 if color_editor_mode else 0
-    # 源文件绝对路径：导入后还想按游戏相对路径去找同 chunk 里的别的文件
-    # （.uvs / .tex / mod3）时，就靠它向上追溯 nativePC。纯辅助信息，导出不读。
+    # 仅供关联资源解析使用，导出不读取源路径。
     root_col["src_path"] = os.path.abspath(filepath)
 
     # ── 3. header 全部字段直接存 root_col 自定义属性（不再建 Empty）────────────
-    # header 字段：signature/efxr 存 hex；
-    # 所有 uint32 字段存十进制字符串（避免 Blender C int 32 位溢出）；
-    # constant（5 × uint32）存逗号分隔十进制字符串。
+    # uint32 以字符串保存，避免 Blender C int 溢出。
     root_col["hdr_signature"]       = hdr.signature.hex()          # "45465800"
     root_col["hdr_version"]         = str(hdr.version)
     root_col["hdr_constant"]        = ",".join(str(x) for x in hdr.constant)
@@ -283,28 +209,24 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     root_col["hdr_count_eof"]       = str(hdr.count_eof)
     root_col["hdr_double_buffer"]   = str(hdr.double_buffer)
 
-    # label_bytes：整段 base64（label 表是 opaque blob，导出默认 verbatim 走它）
+    # 未修改标签时导出原始 blob；重建时仅替换连续标签前缀。
     root_col["label_bytes"]         = _b64enc(efx.label_bytes)
-    # 干净切分标签 + tail（重建路径用）：标签位置性映射到 [Play|Extern|Main] 前 k 个条目，
-    # tail 是不透明尾字节（含非零字节，须 verbatim 保留）。详见 split_labels_tail。
+    # 标签按 Action、Extern、Entry 的连续前缀映射；尾部不参与标签解析。
     _clean_labels, _label_tail = split_labels_tail(
         efx.label_bytes, hdr.count_play + hdr.count_extern + hdr.count_body)
     root_col["label_tail"]          = _b64enc(_label_tail)
-    # labels_dirty：0=未编辑标签/结构 → 导出 emit verbatim blob；1=改名/增删 → 重建。
+    # 标签或相关结构变更后必须从对象树重建标签区。
     root_col["labels_dirty"]        = 0
     _n_labels                       = len(_clean_labels)  # 全局有标签条目数 k
-    # eof_ints：每个元素是 uint32，存逗号分隔十进制字符串；空列表存 ""
     root_col["eof_ints"]            = ",".join(str(x) for x in efx.eof_ints)
-    # eof 后不透明 footer（部分游戏文件有，如 jichu1.efx 末尾 4 字节）；多数为空
+    # EOF 后的不透明字节必须保留。
     root_col["eof_tail"]            = _b64enc(efx.eof_tail)
 
-    # main 段不可解析的 opaque 回退文件：整段（main 起点→EOF）无法逐块解析，
-    # 存整文件原始字节，导出时 verbatim 透传（保证 byte-perfect，但此文件只读）。
+    # Main 段无法解析时保留整文件，供只读原样导出回退。
     if getattr(efx, "main_opaque", False):
         root_col["main_opaque_file_b64"] = _b64enc(raw_data)
 
-    # ── 4. 建 4 个叶子子集合（含序号前缀，控制大纲排序；~TYPE + efx_root_ptr 反向指针）──
-    # 按 EFX 文件段顺序：0 Action、1 Extern、2 Entry、3 Subselect
+    # 固定的段集合顺序也是导出段顺序。
     col_entry     = _rc.new_leaf_collection(file_stem + "_2 Entry",     root_col, "EFX_ENTRY")
     col_action    = _rc.new_leaf_collection(file_stem + "_0 Action",    root_col, "EFX_ACTION")
     col_extern    = _rc.new_leaf_collection(file_stem + "_1 Extern",    root_col, "EFX_EXTERN")
@@ -312,11 +234,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
 
     # ── 5. Main：每个 body 建 Empty ─────────────────────────────────────────
     #
-    # 标签顺序：efx.labels 对应 [Play | Extern | Main] 三段顺序拼合的 labels。
-    # Play 段标签数 = count_play；Extern 段标签数 = count_extern；
-    # Main 段标签从 (count_play + count_extern) 起。
-    # 注：实际上 labels 的构建方式是 label_bytes.split('\0')，
-    #   其中包含 Play + Extern + Main 全部标签，顺序与各段条目一一对应。
+    # 标签前缀按 Action、Extern、Entry 的段顺序分配。
     play_label_count   = hdr.count_play
     extern_label_count = hdr.count_extern
     main_label_offset  = play_label_count + extern_label_count
@@ -324,7 +242,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     from ..efx_format import categories as _cat
 
     for body_idx, body in enumerate(efx.main):
-        # 全局位置 = [Play|Extern|Main] 顺序的偏移；前 _n_labels 个条目才有标签
+        # 只有全局连续标签前缀中的条目拥有原始标签。
         label_idx = main_label_offset + body_idx
         has_label = label_idx < _n_labels
         if has_label:
@@ -332,68 +250,31 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         else:
             label_name = f"body_{body_idx}"  # 合成名（不进标签表）
 
-        # 序号前缀：零填充 2 位（>99 时自动扩展），控制大纲排序
-        # 仅影响 Blender 显示名，不影响 efx_index（导出排序依据）
         nn = str(body_idx).zfill(2) if body_idx < 100 else str(body_idx)
         raw_label = label_name or f"body_{body_idx}"
-        # 渲染主体后缀（如 " (Mesh)"）：不展开子对象即可看出 entry 的表现风格
         _attr_blocks = getattr(body, "attr_blocks", None) or []
         renderer_suffix = _cat.renderer_suffix(blk.type_hash for blk in _attr_blocks)
         display_name = f"{nn} {raw_label}{renderer_suffix}"
 
-        # Blender 会自动给重名对象加 .001 后缀，这里不做额外处理
         entry_obj = _new_empty(display_name, col_entry)
-        entry_obj.empty_display_type = 'ARROWS'   # XYZ 三色轴，使特效体朝向直观可见
+        entry_obj.empty_display_type = 'ARROWS'
         entry_obj["~TYPE"]         = "EFX_ENTRY"
-        entry_obj["efx_index"]     = body_idx  # 原始顺序，还原时用
-        entry_obj["efx_raw_label"] = raw_label  # reorder.py：原始标签，重排重建显示名用
-        entry_obj["efx_has_label"] = int(has_label)  # 1=有原始标签, 0=合成标签
-        # 归属靠 col_entry（其 efx_root_ptr 指回 root_col），不再额外 parent 到 ROOT
+        entry_obj["efx_index"]     = body_idx
+        entry_obj["efx_raw_label"] = raw_label
+        entry_obj["efx_has_label"] = int(has_label)
 
         if isinstance(body, RootBody):
             entry_obj["entry_kind"] = "root"
             if body.raw is not None:
-                # 整段不可解析（理论上不该出现，见 degraded-count-chase-to-zero）：
-                # 原样只读存底，没有子对象可拆。
+                # 无法拆分的 Root body 仅保留原始字节。
                 entry_obj["raw"] = _b64enc(body.raw)
             else:
-                # UnitBoundary / RenderTarget / LayoutBank 统一"伪装"成 AttrBlock
-                # 建 EFX_ATTRIBUTE 子对象——三者的 serialize() 都只是「4B 类型 +
-                # 剩余字节」，跟 AttrBlock 的编码完全同构，可以直接复用整套属性
-                # 子对象基建（命名/排序/删除/Entry Inspector 显示），不用另起一套
-                # "Root 专属"机制。RenderTarget/LayoutBank 本身仍未逆向到能拆字段，
-                # 落地后跟其它 opaque 属性类型一样只读显示原始字节。
+                # 可按 AttrBlock 表示的 Root 子项复用属性对象和编辑路径。
                 attr_blocks = [_root_entry_to_attr_block(e) for e in body.entries]
                 _build_attr_attribute_children(attr_blocks, entry_obj, col_entry, raw_label)
 
-        elif isinstance(body, EntryDataExtended):
-            # 扩展头（body_type < 256，36B 头）
-            # 所有数值字段存十进制字符串（uint32 可 ≥ 2^31，Blender C int 会溢出）
-            entry_obj["entry_kind"]    = "extended"
-            entry_obj["body_type"]    = str(body.body_type)
-            entry_obj["unkn0"]        = str(body.unkn0)
-            entry_obj["null0"]        = str(body.null0)
-            entry_obj["null1"]        = str(body.null1)
-            entry_obj["unkn1"]        = str(body.unkn1)
-            entry_obj["unkn2"]        = str(body.unkn2)
-            entry_obj["attr_count"]   = str(body.attr_count)
-            entry_obj["null2"]        = str(body.null2)
-            entry_obj["timl_length"]  = str(body.timl_length)
-            entry_obj["timl_bytes"]   = _b64enc(body.timl_bytes)
-            # AttrBlock 子对象（extern 指针化在 §7b 二次 pass 完成）
-            _build_attr_attribute_children(body.attr_blocks, entry_obj, col_entry, raw_label)
-            if body.timl_length > 0:
-                _h = make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
-                # timl_edit.py：导入即把 TIML 持久化为句柄上的原生 fcurve（值编辑面；导出时同步回字节）
-                try:
-                    from . import timl_edit as _te
-                    _te.build_persistent_fcurves(_h, entry_obj)
-                except Exception:
-                    pass
-
         elif isinstance(body, EntryData):
-            # 标准头（20B 头）
-            # 所有数值字段存十进制字符串（uint32 可 ≥ 2^31，Blender C int 会溢出）
+            # 数值字段以字符串保存，避免 uint32 溢出。
             entry_obj["entry_kind"]   = "standard"
             entry_obj["body_type"]   = str(body.body_type)
             entry_obj["unkn0"]       = str(body.unkn0)
@@ -401,11 +282,9 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
             entry_obj["null"]        = str(body.null)
             entry_obj["timl_length"] = str(body.timl_length)
             entry_obj["timl_bytes"]  = _b64enc(body.timl_bytes)
-            # AttrBlock 子对象（extern 指针化在 §7b 二次 pass 完成）
             _build_attr_attribute_children(body.attr_blocks, entry_obj, col_entry, raw_label)
             if body.timl_length > 0:
-                _h = make_timl_handle(entry_obj, col_entry)   # TIML 统一入口句柄
-                # timl_edit.py：导入即把 TIML 持久化为句柄上的原生 fcurve（值编辑面；导出时同步回字节）
+                _h = make_timl_handle(entry_obj, col_entry)
                 try:
                     from . import timl_edit as _te
                     _te.build_persistent_fcurves(_h, entry_obj)
@@ -417,11 +296,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
             entry_obj["entry_kind"] = "unknown"
             entry_obj["raw"]       = _b64enc(body.serialize())
 
-    # ── 6. Action：action_emitter.py 结构化存储（替换纯 opaque）────────────────────────────
-    #
-    # main_bodies_by_index 在 §8（Subselect）构建前暂不可用，
-    # 但 §5 Main 段已建完——提前在此处用相同逻辑构建一次，供 PlayEmitter 解析用。
-    # （Subselect 的 main_bodies_by_index 在 §8 再次独立构建，逻辑不重叠）
+    # Action 解析依赖已创建的 Entry 映射。
     _action_entries_by_index = {
         int(_bo["efx_index"]): _bo
         for _bo in _rc.collect_top_level(root_col, "EFX_ENTRY")
@@ -461,9 +336,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         obj["efx_raw_label"] = extern_label     # 标签重建用
         obj["efx_has_label"] = int(has_label)   # 1=有原始标签, 0=合成名（不进标签表）
         obj["raw_b64"]       = _b64enc(ea.serialize())
-        # 导入时的 item 数快照。导出端据此区分"本来就是空的"（原样保留）和"被删空/
-        # 新建后还没填"（丢弃），判据同 §4a0 对合法空 entry 的处理——那次就是因为
-        # 判据只看"现在是不是空"而误伤了合法空 entry，导致后续索引整体错位。
+        # 原始 item 数区分文件中的空 Extern 与编辑后变空的 Extern。
         obj["hdr_item_count"] = len(ea.items)
         try:
             from . import extern_props as _ep
@@ -471,13 +344,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         except Exception:
             pass  # 任何异常安全跳过，raw_b64 保底
 
-    # ── 7b. ExternReference 指针化二次 pass（extern_ref.py）──────────────────────────
-    #
-    # §5 Main 段建立时 Extern 对象尚未存在，所以 init_attribute_props 当时拿不到
-    # extern_objs_by_index。现在 §7 Extern 段已建完，补做二次 pass：
-    # 遍历所有 EXTERNREFERENCE 块，调用 extern_ref.init_extern_ref_props 完成指针化。
-    #
-    # 构建 {efx_index → EFX_EXTERN 对象} 映射
+    # Main 在 Extern 前创建；现有 Extern 对象后再解析 EXTERNREFERENCE 指针。
     _extern_objs_by_index = {
         int(_eo["efx_index"]): _eo
         for _eo in _rc.collect_top_level(root_col, "EFX_EXTERN")
@@ -485,11 +352,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
 
     _count_extern = hdr.count_extern  # 文件头的 count_extern
 
-    # 遍历所有 EFX_ATTRIBUTE，找 EXTERNREFERENCE 类型补做指针化
-    # 只扫 col_entry.objects（本次导入这一个文件的 Entry 叶子集合，attribute 与其
-    # 所属 entry 同挂在这里）——不扫全场景 bpy.data.objects。曾经错误地扫全场景，
-    # 导入耗时随场景里已加载的其它 EFX 文件数量线性增长，累计多文件导入接近
-    # O(n²)，已修（find_root_collection 校验因此也变得多余，直接删掉）。
+    # 只扫描当前文件的 Entry 集合，避免跨文件错误绑定。
     try:
         from ..efx_format.hashes import EXTERNREFERENCE as _EXTERNREFERENCE_HASH
         for _blk_obj in col_entry.objects:
@@ -513,14 +376,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     except (ImportError, Exception):
         pass
 
-    # ── 7c. PTLIFE/PTCOLLISION 指针化二次 pass（entry_action_ref.py）─────────────────────────
-    #
-    # Main 段已建完（§5），Play 段已建完（§6）——现在可以做 PTLIFE / PTCOLLISION 块
-    # 的引用指针化：
-    #   PTLIFE.relationIndex     → play(action) 指针（Play 局部 index）
-    #   PTCOLLISION.ieIndex      → play 指针（Play 局部 index）
-    #
-    # 构建 {efx_index → EFX_ENTRY} 和 {efx_index → EFX_ACTION} 映射
+    # Action 已创建后，才能将 PTLIFE/PTCOLLISION 的段内索引解析为指针。
     _main_bodies_by_index_1d = {
         int(_bo["efx_index"]): _bo
         for _bo in _rc.collect_top_level(root_col, "EFX_ENTRY")
@@ -533,7 +389,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     _count_body_1d = hdr.count_body
     _count_play_1d = hdr.count_play
 
-    # 同上：只扫 col_entry.objects，不扫全场景（见 §7b 同款修复说明）。
+    # 只扫描当前文件的属性对象。
     try:
         from ..efx_format.hashes import (
             PTLIFE as _PTLIFE_HASH,
@@ -567,9 +423,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     except (ImportError, Exception):
         pass
 
-    # ── 8. Subselect：subselect.py 结构化存储（替换 opaque）──────────────────────────
-    #
-    # 构建 {efx_index → EFX_ENTRY 对象} 映射，供 init_subselect_props 解析 entries。
+    # Subselect 的引用目标是 Entry 段的局部索引。
     main_bodies_by_index = {
         int(entry_obj["efx_index"]): entry_obj
         for entry_obj in _rc.collect_top_level(root_col, "EFX_ENTRY")
@@ -580,7 +434,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         obj = _new_empty(f"{nn} subselect_{i}", col_subselect)
         obj["~TYPE"]     = "EFX_SUBSELECT"
         obj["efx_index"] = i
-        # raw_b64：byte-perfect 回退（始终写入；结构化导出优先）
+        # 结构化解析失败时使用原始字节回退。
         obj["raw_b64"]   = _b64enc(tbl.serialize())
 
         # ── subselect.py：结构化初始化 ──────────────────────────────────────────────
@@ -590,15 +444,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
             # 任何异常均安全回退：raw_b64 保证 byte-perfect
             pass
 
-    # ── 9. eof：载体下放到 entry 归属的嵌套集合（结构权威下放重构）──────────────
-    #
-    # 一律 per_entry：EOF 先规范化成索引集合（丢弃越界/重复、升序归一，依据是
-    #   official 10084 文件全量实测该段纯为集合语义），再把每个 entry 分流进
-    #   Direct Trigger / Not Direct Trigger 子集合之一，悬空指针从原理上消失。
-    #   被丢弃的值记在 root_col["eof_dropped"]，validate + N 面板报 WARN。
-    #   （2026-08 前"不干净就回退 opaque 只读"的分支已撤，它在官方语料上不可达，
-    #     只让 ~12 个畸形社区文件失去可编辑性。）
-    #   main_bodies_by_index 已在 §8 构建完毕。
+    # EOF 以 Entry 归属的嵌套集合表示；导入时规范为唯一、升序且范围内的索引集合。
     try:
         _entry_action_ref.init_eof_per_entry(
             root_col,
@@ -610,10 +456,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         # 任何异常安全跳过：root_col["eof_ints"] 字符串仍在，导出回退路径保证 byte-perfect
         pass
 
-    # ── 10. 满命名（结构权威下放）：给未命名 action/extern/entry 补标签 ─────────
-    # 只写标签层（has_label/raw_label/显示名），不动 body_type/play_type 身份哈希
-    # （未命名段的哈希是权威身份，语料实证保留即可）。满命名后标签前缀恒满，
-    # copy/duplicate 不再破坏前缀。有补名 → labels_dirty=1 使导出按全命名重建标签表。
+    # 补齐标签时只更新标签层，身份哈希保持原值，并标记标签表需要重建。
     try:
         from . import normalize
         if normalize.ensure_all_named(root_col):
@@ -647,26 +490,7 @@ def _find_layer_collection(layer_coll: bpy.types.LayerCollection, target: bpy.ty
 
 
 def _apply_color_editor_view(root_col: bpy.types.Collection, ctx) -> None:
-    """
-    Color Editor 模式收尾（仅在 color_editor_mode=True 时调用）：
-
-    1. 含颜色字段的 entry/attribute 额外 link 进 root_col 本身（多重归属，不从
-       原叶子集合 unlink）。`collect_top_level(root_col, type_tag)` 从叶子集合
-       起 walk，从不扫 root_col.objects 直接子级，故本步骤对导出路径零影响，
-       byte-perfect 天然保住（同 opaque 兜底一个道理：没碰的东西必然没变）。
-    2. 四个正常叶子集合（Entry/Action/Extern/Subselect，含 Entry 下嵌套的
-       Direct/Not Direct Trigger）从当前场景全部 View Layer 排除——只影响
-       Outliner 显示（LayerCollection.exclude 是纯 View Layer 状态，不是集合
-       归属，find_root_collection/collect_top_level/export 都不看这个），
-       不删/不动任何数据。
-
-    entry→attribute 子对象查找避免 `obj.children`（全场景反查扫描，同
-    onchange-full-scene-scan-perf-bug 教训）：改一次性用 `col_entry.all_objects`
-    建 parent→children map。
-
-    失败安全：任何异常都不该让导入失败——本步骤只是 UI 精简，出错最坏情况是
-    退化成看起来像普通编辑器视图，不影响数据完整性。
-    """
+    """仅调整颜色编辑器的 View Layer 呈现，不改变集合归属或导出数据。"""
     from . import color_fields as _cf
 
     try:
@@ -716,33 +540,17 @@ def _build_attr_attribute_children(
     extern_objs_by_index: dict = None,
     count_extern: int = 0,
 ) -> None:
-    """
-    为 Entry 对象建 AttrBlock 子 Empty 列表（EFX_ATTRIBUTE）。
-    子属性保持原始顺序（存 efx_index）。
-    必须把子对象也 link 到同一集合里（Blender 要求对象必须在集合里才可见）。
+    """创建 Entry 属性子对象并初始化字段模型。
 
-    字段模型初始化（fields.py）：
-      - 调用 fields.init_attribute_props 初始化 obj.efx_block PropertyGroup
-        （含字段展开或 opaque 回退，加载完后 efx_dirty=False）
-      - 继续保留自定义属性 data_bytes 用于不依赖 PropertyGroup 的场景
-
-    extern 指针化（extern_ref.py）：
-      - extern_objs_by_index / count_extern 传入 init_attribute_props，
-        供 EXTERNREFERENCE 属性的 extern 指针化使用。
-
-    命名方案（显示用，不影响导出顺序）：
-      [父Entry标签] NN 类型名
-      NN = 属性在该 Entry 内的序号（零填充 2 位，>99 则自动 3 位）
+    属性的 ``efx_index`` 与父子关系决定导出顺序；显示名不参与序列化。
     """
     if extern_objs_by_index is None:
         extern_objs_by_index = {}
 
     for blk_idx, blk in enumerate(attr_blocks):
         type_name = _hash_display_name(blk.type_hash)
-        display_type_name = _pretty_type_name(type_name)  # 大纲显示用，非内部标识
-        # 序号前缀（同 body 命名规则）
+        display_type_name = _pretty_type_name(type_name)
         nn = str(blk_idx).zfill(2) if blk_idx < 100 else str(blk_idx)
-        # 父标签前缀（方括号包裹，用于大纲分组识别）
         if parent_label:
             blk_name = f"[{parent_label}] {nn} {display_type_name}"
         else:
@@ -750,14 +558,12 @@ def _build_attr_attribute_children(
         blk_obj  = _new_empty(blk_name, collection)
         blk_obj["~TYPE"]          = "EFX_ATTRIBUTE"
         blk_obj["efx_index"]      = blk_idx
-        blk_obj["type_hash"]      = str(blk.type_hash)   # uint32：存十进制字符串防溢出
+        blk_obj["type_hash"]      = str(blk.type_hash)
         blk_obj["data_bytes"]     = _b64enc(blk.data_bytes)
-        blk_obj["efx_type_name"]  = type_name  # 原始大写，reorder.py：内部标识/重排重建显示名用
+        blk_obj["efx_type_name"]  = type_name
         blk_obj.parent            = parent_obj
 
-        # ── 初始化 efx_block PropertyGroup（fields.py + extern_ref.py）──────────────────
-        # init_attribute_props 内部管理 _LOADING 守卫，填完后重置 efx_dirty=False。
-        # extern_ref.py：extra args extern_objs_by_index/count_extern 供 EXTERNREFERENCE 使用。
+        # 传入 Extern 映射以解析 EXTERNREFERENCE；失败保留原始属性字节。
         try:
             _fields.init_attribute_props(
                 blk_obj, blk,
@@ -774,36 +580,17 @@ def _build_attr_attribute_children(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool = False) -> bytes:
-    """
-    从 EFX_ROOT 对象树还原 .efx 文件字节。
-
-    参数
-    ----
-    root_object : bpy.types.Collection
-        由 import_efx_tree 创建的顶层文件集合（root_col，2026-07 起 ROOT
-        不再是 Empty 对象；形参名沿用 root_object 只是历史命名，不改调用方签名）。
-    recalc_timl_length : bool
-        True 时导出把每条 TIML 动画的 animation_length 精确设为 末关键帧+1（逐轴 A0/A1）。
-        理由：帧长 ≤ 实际结束帧会导致游戏内动画播不完，+1 刚好覆盖到末帧之后。
-
-    返回
-    ----
-    bytes
-        完整 .efx 文件字节（byte-perfect）。
-    """
+    """从顶层 EFX 集合序列化文件；可选地按最后关键帧重算 TIML 长度。"""
     global _EXPORT_RECALC_TIML_LEN
-    r = root_object  # 简写
-    _EXPORT_RECALC_TIML_LEN = bool(recalc_timl_length)  # _export_timl_bytes 读取（导出非重入）
+    r = root_object
+    _EXPORT_RECALC_TIML_LEN = bool(recalc_timl_length)
 
-    # ── 0. main 段不可解析的 opaque 回退文件：整文件 verbatim 透传 ───────────
-    # 这类文件 main 段含我们无法定界的块，导入时整段存为 opaque blob。无法重建
-    # 结构，直接重发原始字节（byte-perfect）。此文件在 Blender 内为只读透传。
+    # 无法解析 Main 段的文件没有可安全重建的结构，只能原样导出。
     _opaque_file = r.get("main_opaque_file_b64")
     if _opaque_file:
         return _b64dec(str(_opaque_file))
 
-    # ── 1. 重建 EFXHeader ───────────────────────────────────────────────────
-    # 所有 uint32 字段存的是十进制字符串，需先 str() 再 int()
+    # uint32 自定义属性以十进制字符串保存。
     hdr = EFXHeader(
         signature       = bytes.fromhex(str(r["hdr_signature"])),
         version         = int(str(r["hdr_version"])),
@@ -821,51 +608,23 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
         double_buffer   = int(str(r["hdr_double_buffer"])),
     )
 
-    # ── 2. label_bytes 占位（§4a 后重建）
-    label_bytes = None  # 占位，§4a 之后重建
-    label_size  = None  # 占位
+    label_bytes = None
+    label_size  = None
 
-    # ── 3. 还原 eof_ints（hybrid：export_eof_per_entry 从 Direct Trigger 嵌套集合
-    #    归属还原 / opaque 字符串原样）────────────────────────────────────────
-    # 注意：eof_ints 依赖 entry_index_map，该 map 在 §4 收集 body_objs 后才能构建。
-    # 故此处先占位，§4b 补填；最终在 §6 拼接字节前使用。
-    eof_ints = None  # 占位，§4b 补填
+    # EOF 依赖 Main 段局部索引，待收集 Entry 后再生成。
+    eof_ints = None
 
-    # ── 4. 收集 Main body 对象（按 efx_index 排序）────────────────────────
-    #   子对象通过集合归属（root_col 下 _2 Entry 叶子集合）+ ~TYPE == EFX_ENTRY 来找
+    # 段对象经集合归属和类型标记定位。
     body_objs = _rc.collect_top_level(r, "EFX_ENTRY")
-    # Root 恒排第一：不管存的 efx_index 是多少（手动重排/原生 Shift+D 都可能
-    # 打乱），导出时强制把 entry_kind=="root" 的条目挪到最前面，其余保持原有
-    # 相对顺序。下面 entry_index_map / body_index_map_export 都基于这个排好的
-    # body_objs 重新按位置编号，不需要再单独改 efx_index 属性本身。
+    # Root body 必须位于 Main 段首位；其余条目维持既有相对顺序。
     body_objs.sort(key=lambda o: 0 if str(o.get("entry_kind", "")) == "root" else 1)
 
-    # 一次性建 {entry: [attribute 子对象]} 映射，本函数下面多处按 entry 逐个取
-    # attribute 子对象都查这张表（O(1)），不再各自现场扫全场景 bpy.data.objects——
-    # 那样是 O(entry 数 × 场景对象数)，随场景里已加载的其它 EFX 文件数量增长明显变慢。
+    # 预建属性映射供导出循环复用，且限定在当前 EFX 集合。
     _attr_children_map = _build_attr_children_map(_rc.get_leaf_collection(r, "EFX_ENTRY"))
 
-    # ── 4a0. 剔除零块的 standard/extended body（原生 Delete Hierarchy 的残留空壳）──
-    # 2026-07-01 实测坐实：Blender 原生「Delete Hierarchy」在某些集合结构下只删掉
-    # body 的子对象（EFX_ATTRIBUTE/EFX_TIML），body 这个 Empty 本身却原样留在
-    # bpy.data.objects 里（默认 Outliner「View Layer」视图不可见，Purge Unused Data
-    # 也清不掉——它仍链接在集合里，不算孤儿），把它当"真删掉了"完全是错觉。这类零块
-    # body 在真实游戏内容里没有意义（不做任何事），直接在导出时当它不存在：不写进
-    # 文件。root 类型 body 本来就没有块，不受影响。
-    # 引用它的 Play/PtLife/PtCollision/Subselect/EOF 一律走既有的悬空指针安全路径
-    # （保留原字节/跳过，见各 export_* 与 validate.py 的"悬空不阻断导出"设计），
-    # 不需要额外清理——跟"真的用插件删除按钮删掉这个 body"效果一致。
-    #
-    # ⚠ 2026-07 修正：判据从"零块"收紧为"零块 **且 导入时 attr_count>0**"。
-    # 成因：原判据误伤 **合法的空 entry**——如 evc 事件特效 evc1005_008 的 entry[13]
-    # 本就 attr_count==0（格式层 byte-perfect 已证其合法），却被当成删除残留丢掉，
-    # 导致 count_body 少 1、后续 eof/引用索引整体错位。区分依据：
-    #   - 合法空 entry：导入时 attr_count==0（文件本就无块）→ 保留。
-    #   - 原生 Delete Hierarchy 残留：导入时 attr_count>0（原本有块），原生删子对象
-    #     不更新此快照，故 children==0 而 attr_count>0 → 剔除。
-    #   - attr_count 为负（evc 哨兵）视同非正 → 保留。
+    # 仅删除后遗留的空壳（导入时属性数为正）可过滤；原生合法空 Entry 必须保留。
     def _is_native_delete_leftover(o):
-        if str(o.get("entry_kind", "")) not in ("standard", "extended"):
+        if str(o.get("entry_kind", "")) != "standard":
             return False
         if _collect_children_by_type(o, "EFX_ATTRIBUTE", _attr_children_map):
             return False  # 还有块 → 不是空壳
@@ -875,17 +634,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             return False
     body_objs = [o for o in body_objs if not _is_native_delete_leftover(o)]
 
-    # ── 4a. 收集 Extern + 剔除空 EA + 构建 extern_index_map（extern_ref.py）────────────
-    # 需要在遍历 main_bodies 时传给 _resolve_attribute_data_bytes，
-    # 所以在 §4 主循环开始前先收集并排序 EFX_EXTERN 对象。
-    #
-    # ⚠ 剔除必须发生在 extern_index_map 构建**之前**：这一个列表同时决定了
-    # ① EXTERNREFERENCE 的 referenceIndex 取值（extern_index_map）
-    # ② 实际写出的字节顺序（§5 extern_raw）
-    # ③ header 的 count_extern（§6）
-    # ④ 标签表重建时 Extern 段占的位置（§2b 的 _ordered）
-    # 在这里过滤，四者自动保持一致；若改到 §5 写出时才跳过，索引会整体前移而
-    # referenceIndex 不变 → 所有指向后面 EA 的引用静默指错，且没有任何报错。
+    # 过滤必须先于建索引：写出顺序、引用索引、header 计数和标签位置必须共用此列表。
     def _extern_bytes(o):
         """一个 EFX_EXTERN 对象最终写出的字节（结构化失败则回退原始字节）。"""
         try:
@@ -895,14 +644,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             return _b64dec(str(o["raw_b64"]))
 
     def _is_empty_extern(o):
-        """是否是该丢弃的空 EA（item_count==0）。
-
-        判据同 §4a0 对"原生删除残留空壳"的处理：**只丢那些本来不空、现在被删空的，
-        以及本会话新建后还没填内容的**。导入时就是空的（hdr_item_count==0）一律原样
-        保留——§4a0 那次正是因为判据只看"现在空不空"，误伤了合法的空 entry，导致
-        count 少 1、后续引用索引整体错位。官方语料 1477 个 EA 无一为空，所以这条
-        保留分支实际上只是防御。
-        """
+        """判断是否应丢弃编辑后为空的 Extern；源文件中的空 Extern 必须保留。"""
         hdr = o.get("hdr_item_count")
         if hdr is not None:
             try:
@@ -932,46 +674,29 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
     # subselect_objs 在 §5b 才用，这里提前收集只为下面的结构变化检测；§5b 直接复用。
     subselect_objs_prescan = _rc.collect_top_level(r, "EFX_SUBSELECT")
 
-    # ── 4d. 结构变化自动兜底（原生 Blender 删除的安全网）──────────────────────
-    # labels_dirty/subselect_dirty 只由本插件自己的删除/增删算子显式置位（eof 不需要，
-    # 归属靠集合成员关系，entry 被删自动从其所在集合消失）；用户若改用 Blender 原生
-    # 删除（选中对象按 X，或 Delete Hierarchy）删掉 body/play/extern/subselect，这几个
-    # 自定义属性根本不会被触碰，但 §6 的 count_* 早已无条件按实际对象数重算——如果
-    # label_bytes/subselect_size 仍走 verbatim 分支，就会和已经变化的 count_* 对不上，
-    # 产出结构错误的文件。
-    # hdr_count_body/play/extern/subselect 只在导入时写一次、之后再不更新，天然
-    # 就是"最后一次已知结构"的快照，不需要额外状态：跟当前实际对象数一比对，
-    # 不管是走自定义算子还是原生删除/增加触发的变化，都能查出来。
+    # 与导入时的 header 快照比较，确保绕过插件算子的结构改动也会重建关联数据。
     _entry_count_changed = len(body_objs) != int(str(r.get("hdr_count_body", len(body_objs))))
     _play_count_changed = len(play_objs_prescan) != int(str(r.get("hdr_count_play", len(play_objs_prescan))))
     _extern_count_changed = len(extern_objs) != int(str(r.get("hdr_count_extern", len(extern_objs))))
     _subselect_count_changed = len(subselect_objs_prescan) != int(str(r.get("hdr_count_subselect", len(subselect_objs_prescan))))
     _labels_need_rebuild = _entry_count_changed or _play_count_changed or _extern_count_changed
-    # subselect 表内部会跳过 body_ptr 悬空的成员（见 subselect.py），所以 body 数变化
-    # 也可能让某张表的字节变短，即使没有直接增删 subselect 对象本身，同样要重算。
+    # Entry 数变化也会改变 Subselect 中可写出的成员。
     _subselect_need_rebuild = _subselect_count_changed or _entry_count_changed
 
-    # ── 2b. 决定 label_bytes（play/extern/body 对象均已收集）──────────────────
-    # 混合策略（契合本仓库"未编辑走 verbatim"哲学）：
-    #   labels_dirty==0（未改名/未增删）→ emit 原始 blob，保证 byte-perfect。
-    #   labels_dirty==1（改名/增删/结构变）→ 从对象重建 = join(有标签条目) + tail。
-    # 重建已证明对未编辑文件 == verbatim（78/78），故增删走重建路径安全。
+    # 未改标签和结构时保留原始 blob；否则从连续标签前缀和原始尾部重建。
     if int(r.get("labels_dirty", 0)) or _labels_need_rebuild:
-        # 顺序：[Play | Extern | Main]，按全局位置取 efx_has_label==1 的条目标签。
-        # has_label 是前缀性质（增删保持前缀），所以拼出来仍是合法标签前缀。
+        # 仅写有标签的连续前缀，顺序为 Action、Extern、Entry。
         _ordered = list(play_objs_prescan) + list(extern_objs) + list(body_objs)
         _labels  = [str(o.get("efx_raw_label", ""))
                     for o in _ordered if int(o.get("efx_has_label", 1))]
         _tail    = _b64dec(str(r.get("label_tail", "")))
         label_bytes = b''.join(s.encode('utf-8') + b'\x00' for s in _labels) + _tail
     else:
-        # verbatim：原始整段 blob（含 tail，byte-perfect）
+        # 原始 blob 包含不透明尾部。
         label_bytes = _b64dec(str(r["label_bytes"]))
     label_size = len(label_bytes)
 
-    # ── 4c. 还原 eof_ints（body 归属的 Direct Trigger 嵌套集合 → 局部 index）───────
-    # per_entry：collect Direct Trigger 子集合成员，升序重建（悬空/越界从原理上不存在，
-    # entry 被删即从其所在集合消失，无需额外 sanitize 逻辑）。opaque：字符串原样。
+    # EOF 由 Entry 归属集合重建为 Main 段局部索引；旧数据使用字符串回退。
     try:
         eof_ints = _entry_action_ref.export_eof_per_entry(r, body_index_map_export)
     except Exception:
@@ -979,22 +704,14 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
         _eof_str = str(r["eof_ints"]).strip()
         eof_ints = [int(x) for x in _eof_str.split(",") if x] if _eof_str else []
 
-    # 0-body EFX 不应有任何顶层 body 引用：强制清空 eof，否则残留的越界原始值
-    # （如删光 body 后留下的 [16]）会让游戏访问不存在的 body → 闪退。
-    # 实测两个正常 0-body 游戏文件 eof 均为空；多 body 文件不受影响（byte-perfect 保持）。
+    # 没有 Main body 时不能写出 EOF 引用。
     if len(body_objs) == 0:
         eof_ints = []
     elif len(eof_ints) > len(body_objs):
-        # count_eof > count_body → 游戏闪退。
-        # 成因：被删 body 的 eof 槽是哨兵原始值（非 body 指针），无法随 body 删除自动消失。
-        # 例：fine 的 body[3] eof 值=16（越界哨兵），删 body[3] 后哨兵残留 → ceof=4>cb=3。
-        # 修复：截断到 n_entry，丢弃尾部多余条目（哨兵总在末尾；已有指针的 body 删除
-        # 会走悬空跳过路径，不产生此问题）。78/78 不受影响（未编辑文件 len==count_body）。
+        # 防止遗留的越界 EOF 值使 count_eof 超出可引用的 Entry 数。
         eof_ints = eof_ints[:len(body_objs)]
 
-    # 误放的属性：root 专属子条目（UnitBoundary/RenderTarget/LayoutBank）混进了
-    # 普通 entry，或普通渲染属性混进了 root——两边都不认，导出时丢弃，记下来
-    # 供 validate.py + 导出后弹窗报 WARN（不静默，见 root_attr_dropped 用法）。
+    # Root 专属子项与普通属性不能跨 Entry 类型写出；丢弃记录供校验界面报告。
     _root_attr_dropped = []
 
     main_bodies = []
@@ -1002,11 +719,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
         kind = str(entry_obj["entry_kind"])
 
         if kind == "root":
-            # 子条目现在是伪装成 AttrBlock 的 EFX_ATTRIBUTE 子对象（见导入端
-            # _root_entry_to_attr_block）；AttrBlock.serialize() 本身就是
-            # RootUnitBoundary/RootOpaqueEntry 那套「4B 类型+剩余字节」编码，
-            # 直接喂给 RootBody(entries=...) 即可，不用转回具体的子类。
-            # 没有子对象（整段不可解析的旧回退）才退回原样 raw。
+            # Root 子项使用 AttrBlock 的等价编码；没有可编辑子项时回退原始字节。
             blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
             if blk_objs:
                 blk_objs.sort(key=lambda o: int(o["efx_index"]))
@@ -1035,45 +748,6 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
                 raw = _b64dec(str(entry_obj["raw"]))
                 main_bodies.append(RootBody(raw=raw))
 
-        elif kind == "extended":
-            # 收集 AttrBlock 子对象（过滤掉误放进来的 Root 专属子条目类型）
-            blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
-            blk_objs.sort(key=lambda o: int(o["efx_index"]))
-            good_objs = []
-            for blk in blk_objs:
-                if int(str(blk["type_hash"])) in ROOT_SUBENTRY_HASHES:
-                    _root_attr_dropped.append(
-                        f"{blk.get('efx_type_name', blk.name)} on non-root entry "
-                        f"'{entry_obj.name}' (Root-only sub-entry type)"
-                    )
-                else:
-                    good_objs.append(blk)
-            blk_objs = good_objs
-            attr_blocks = [
-                AttrBlock(
-                    type_hash  = int(str(blk["type_hash"])),
-                    data_bytes = _resolve_attribute_data_bytes(
-                        blk, extern_index_map,
-                        body_index_map_export, play_index_map_export,
-                    ),
-                )
-                for blk in blk_objs
-            ]
-            _ext_timl = _export_timl_bytes(entry_obj)   # timl_edit.py：句柄有 fcurve → 同步回字节
-            main_bodies.append(EntryDataExtended(
-                body_type   = int(str(entry_obj["body_type"])),
-                unkn0       = int(str(entry_obj["unkn0"])),
-                null0       = int(str(entry_obj["null0"])),
-                null1       = int(str(entry_obj["null1"])),
-                unkn1       = int(str(entry_obj["unkn1"])),
-                unkn2       = int(str(entry_obj["unkn2"])),
-                attr_count  = len(attr_blocks),  # delete_ops.py：从实际属性数重算（增删属性后正确）
-                null2       = int(str(entry_obj["null2"])),
-                timl_length = len(_ext_timl),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
-                timl_bytes  = _ext_timl,
-                attr_blocks = attr_blocks,
-            ))
-
         elif kind == "standard":
             blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
             blk_objs.sort(key=lambda o: int(o["efx_index"]))
@@ -1097,13 +771,13 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
                 )
                 for blk in blk_objs
             ]
-            _std_timl = _export_timl_bytes(entry_obj)   # timl_edit.py：句柄有 fcurve → 同步回字节
+            _std_timl = _export_timl_bytes(entry_obj)
             main_bodies.append(EntryData(
                 body_type   = int(str(entry_obj["body_type"])),
                 unkn0       = int(str(entry_obj["unkn0"])),
-                attr_count  = len(attr_blocks),  # delete_ops.py：从实际属性数重算（增删属性后正确）
+                attr_count  = len(attr_blocks),
                 null        = int(str(entry_obj["null"])),
-                timl_length = len(_std_timl),  # 从实际 timl 字节重算（支持编辑后变长；未编辑 == 原值）
+                timl_length = len(_std_timl),
                 timl_bytes  = _std_timl,
                 attr_blocks = attr_blocks,
             ))
@@ -1113,20 +787,15 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             raw = _b64dec(str(entry_obj["raw"]))
             main_bodies.append(RootBody(raw=raw))
 
-    # 诊断记录：本次导出丢弃的"放错位置"属性（同 eof_dropped 的约定——记在
-    # root 集合上，validate.py + 导出后弹窗读取报 WARN，不静默）。
+    # 将无法写出的错位属性记录在根集合，供校验界面报告。
     if _root_attr_dropped:
         r["root_attr_dropped"] = "; ".join(_root_attr_dropped)
     elif "root_attr_dropped" in r:
         del r["root_attr_dropped"]
 
-    # ── 5. Action：action_emitter.py 结构化导出（PLAYEMITTER targets 经 entry_index_map 重算）──
-    #   body_objs 已在 §4 按 efx_index 排序；entry_index_map 在 §4b 构建。
-    #   此处提前构建，以便 Play 导出也能用（Play 段在 Subselect 之前）。
-    #   extern_objs 已在 §4a 收集并排序；extern_index_map 已在 §4a 构建。
+    # Action 导出使用已按 Main 段顺序建立的 Entry 局部索引。
     play_objs = play_objs_prescan  # §4b 已收集并排序，复用
 
-    # entry_index_map：{EFX_ENTRY Object → main_local_index}（§4b 已构建）
     _action_entry_index_map = body_index_map_export
 
     play_raw = b""
@@ -1135,19 +804,14 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             pd = _action_emitter.export_action_data(po, _action_entry_index_map)
             play_raw += pd.serialize()
         except Exception:
-            # 回退：用 raw_b64 原样拼接（byte-perfect 保底）
+            # 结构化导出失败时保留原始 Action 字节。
             play_raw += _b64dec(str(po["raw_b64"]))
 
-    # _extern_bytes 在 §4a 定义（剔除空 EA 时就要用它算出实际写出的字节）
     extern_raw = b"".join(_extern_bytes(o) for o in extern_objs)
 
-    # ── 5b. Subselect：subselect.py 结构化导出 ─────────────────────────────────────
-    #   构建 Main 段局部索引映射，供 export_subselect_table 解析 body_ptr → 整数 index。
-    #   §4d 已收集排序过（结构变化检测用），直接复用。
+    # Subselect 使用 Main 段局部索引，结构化导出失败时回退原始字节。
     subselect_objs = subselect_objs_prescan
 
-    # 构建 {EFX_ENTRY object → main_local_index} 映射
-    # body_objs 已在 §4 按 efx_index 排序并 enumerate → 局部 index == enumerate 序号
     entry_index_map = {obj: idx for idx, obj in enumerate(body_objs)}
 
     subselect_raw = b""
@@ -1156,11 +820,10 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
             tbl = _subselect.export_subselect_table(ss_obj, entry_index_map)
             subselect_raw += tbl.serialize()
         except Exception:
-            # 回退：用 raw_b64 原样拼接（byte-perfect 保底）
+            # 结构化导出失败时保留原始 Subselect 字节。
             subselect_raw += _b64dec(str(ss_obj["raw_b64"]))
 
-    # ── 6. header 计数/size 重算（delete_ops.py：增删后必须重算）────────────────────
-    # 计数（count_*）对全 78 样本恒 == 实际条目数，安全重算（删除后即为新计数）。
+    # 所有段计数必须由实际写出的对象数重算。
     hdr.count_body      = len(body_objs)
     hdr.count_play      = len(play_objs)
     hdr.count_extern    = len(extern_objs)
@@ -1168,9 +831,7 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
     hdr.count_eof       = len(eof_ints)
     hdr.label_size      = label_size           # = len(label_bytes)，verbatim 或重建
 
-    # subselect_size 是不透明值：实测 4 个文件原始值 ≠ 实际段字节长（164 vs 188 等，
-    # 差值不固定，与 double_buffer 同类）。故默认 verbatim 保留原值，仅 subselect
-    # 段被编辑（删/增条目）时才重算。double_buffer 公式未知，恒原样保留。
+    # subselect_size 和 double_buffer 的含义未完全结构化；前者仅在段变化时重算，后者保留原值。
     if int(r.get("subselect_dirty", 0)) or _subselect_need_rebuild:
         hdr.subselect_size = len(subselect_raw)
     # else：hdr.subselect_size 保持 §1 从 hdr_subselect_size 读入的原值
@@ -1194,27 +855,10 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
                               extern_index_map: dict = None,
                               entry_index_map: dict = None,
                               play_index_map: dict = None) -> bytes:
-    """
-    fields.py + extern_ref.py + entry_action_ref.py：决定导出时 EFX_ATTRIBUTE 的 data_bytes 来源。
+    """取得属性导出字节。
 
-    2026-07 退休 block 级 efx_dirty 门控（结构权威下放收尾，见 memory
-    attribute-dirty-gate-retired）：
-      1. is_editable=True → 永远走 fields.get_attribute_data_bytes（不再看 efx_dirty）。
-         安全性由 rebuild_data_bytes 的**逐字段** orig_b64 兜底保证——未编辑字段
-         （item.edited=False）本就重建为原字节，block 级"整体走 raw 还是走重建"
-         这道外层开关在数学上是冗余的短路优化。语料实测 650 官方文件 83045 个
-         可编辑属性强制重建 0 处不一致，与逐字段兜底的架构保证一致（非偶然）。
-         对 EXTERNREFERENCE/PTLIFE/PTCOLLISION + pointerized=True 额外覆写字段。
-      2. is_editable=False（opaque）→ 自定义属性 data_bytes（base64 原始，唯一回退；
-         对 EXTERNREFERENCE/PTLIFE/PTCOLLISION + pointerized=True 同样覆写）。
-
-    efx_dirty 本身保留（仍是面板"● 已修改"徽章的唯一数据源），只是不再影响
-    本函数的路径选择——与 efx_format.timl.Timl.dirty 的转型（"有模型就强制重建"）
-    同一哲学。
-
-    extern_index_map : dict[bpy.types.Object, int] | None — extern_ref.py
-    entry_index_map   : dict[bpy.types.Object, int] | None — entry_action_ref.py PTLIFE
-    play_index_map   : dict[bpy.types.Object, int] | None — entry_action_ref.py PTCOLLISION
+    可编辑属性始终由字段模型重建；opaque 或编码失败时使用原始字节。两条路径都
+    会叠加已指针化的 Extern、Entry 与 Action 段内索引。
     """
     try:
         bp = blk_obj.efx_block
@@ -1227,7 +871,7 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
             )
     except Exception:
         pass
-    # 回退：opaque（is_editable=False）或编码异常 → 原始自定义属性，再走 extern_ref.py / entry_action_ref.py overlay
+    # Opaque 或编码异常时仍需应用已指针化引用的索引覆盖。
     data = _b64dec(str(blk_obj["data_bytes"]))
     if extern_index_map is not None:
         data = _fields._apply_extern_ref_overlay(blk_obj, data, extern_index_map)
@@ -1239,12 +883,7 @@ def _resolve_attribute_data_bytes(blk_obj: bpy.types.Object,
 
 
 def _build_attr_children_map(entry_col) -> dict:
-    """一次性递归扫 entry_col（含嵌套的 Direct Trigger/Not Direct Trigger 子集合），
-    按 .parent 分组 EFX_ATTRIBUTE 子对象，返回 {parent_entry: [attrs]}。
-
-    供导出主循环替代"每个 entry 各扫一遍全场景 bpy.data.objects"的写法——后者是
-    O(entry 数 × 场景对象数)，场景里已加载的其它 EFX 文件越多，单次导出越慢
-    （跟 import 端 §7b/§7c 是同一类 bug，一并修）。"""
+    """按父对象收集 Entry 集合及其嵌套集合中的属性，供导出主循环复用。"""
     out = {}
     if entry_col is None:
         return out
@@ -1265,14 +904,7 @@ def _collect_children_by_type(
     type_tag: str,
     children_map: dict = None,
 ) -> list:
-    """
-    收集 parent_obj 的直接子对象中 ~TYPE == type_tag 的所有对象。
-
-    children_map（可选）：_build_attr_children_map() 的结果，仅当 type_tag ==
-    "EFX_ATTRIBUTE" 时可用；传了就直接查表（O(1)），不传则现场全量扫
-    bpy.data.objects（注意：批量场景——如导出主循环里对多个 entry 逐个调用——
-    不传会退化成 O(entry 数 × 场景对象数)，务必传）。
-    """
+    """收集 parent_obj 的指定直接子对象；属性优先使用预建映射。"""
     if children_map is not None and type_tag == "EFX_ATTRIBUTE":
         return list(children_map.get(parent_obj, []))
     results = []
@@ -1282,27 +914,8 @@ def _collect_children_by_type(
     return results
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# roundtrip_corpus  —  测试用，供主会话通过 MCP 调用
-# ─────────────────────────────────────────────────────────────────────────────
-
 def roundtrip_corpus(samples_dir: str) -> dict:
-    """
-    对 samples_dir 下全部 .efx 文件执行往返测试：
-      import_efx_tree → export_efx_tree → 断言 == 原文件字节。
-
-    每个文件处理完后删除创建的集合和对象，避免场景爆炸。
-
-    参数
-    ----
-    samples_dir : str
-        包含 .efx 文件的目录路径。
-
-    返回
-    ----
-    dict
-        {"total": N, "passed": N, "failed": [(name, reason), ...]}
-    """
+    """返回目录中 EFX 文件往返序列化的统计与失败详情。"""
     import os
 
     efx_files = [
@@ -1319,21 +932,13 @@ def roundtrip_corpus(samples_dir: str) -> dict:
     for filepath in efx_files:
         name = os.path.basename(filepath)
         try:
-            # ── 读原始字节 ────────────────────────────────────────────────
             with open(filepath, "rb") as f:
                 original = f.read()
-
-            # ── 导入 → 建立对象树 ─────────────────────────────────────────
             root_obj = import_efx_tree(filepath)
-
-            # ── 导出 → 还原字节 ───────────────────────────────────────────
             result = export_efx_tree(root_obj)
-
-            # ── 断言 byte-perfect ─────────────────────────────────────────
             if result == original:
                 passed += 1
             else:
-                # 找出第一个不同字节的位置
                 diff_pos = _first_diff(original, result)
                 failed.append((
                     name,
@@ -1346,7 +951,6 @@ def roundtrip_corpus(samples_dir: str) -> dict:
             failed.append((name, f"异常：{exc}\n{traceback.format_exc()}"))
 
         finally:
-            # ── 清理：删除本次创建的集合和对象 ──────────────────────────
             _cleanup_efx_tree(name)
 
     return {"total": total, "passed": passed, "failed": failed}
@@ -1361,28 +965,19 @@ def _first_diff(a: bytes, b: bytes) -> int:
 
 
 def _cleanup_efx_tree(file_stem_or_name: str) -> None:
-    """
-    清理由 import_efx_tree 创建的所有集合和对象。
-    根据顶层集合名（文件 stem）定位，递归删除其下全部对象和集合。
-    """
-    # 顶层集合名 = 完整文件名（含 .efx）；兼容传入 stem 的情况
+    """删除指定导入树及其递归子集合；接受文件名或 stem。"""
     root_col = (bpy.data.collections.get(file_stem_or_name)
                 or bpy.data.collections.get(os.path.splitext(file_stem_or_name)[0]))
     if root_col is None:
         return  # 不存在则跳过
 
-    # 收集集合内全部对象（递归子集合）
     all_objects = _collect_all_objects_in_collection(root_col)
-
-    # 先解除父子关系（防止删除时报错）
     for obj in all_objects:
         obj.parent = None
 
-    # 删除对象
     for obj in all_objects:
         bpy.data.objects.remove(obj, do_unlink=True)
 
-    # 递归删除子集合，再删顶层集合
     _remove_collection_recursive(root_col)
 
 

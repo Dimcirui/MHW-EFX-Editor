@@ -1,58 +1,53 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/ribbon.py  —  RIBBON（条带）
+"""RIBBON —— 条带。
 
-`ribbonMode` 三态，annotations 里有用户实机写下的描述，对应关系也很直白：
+`ribbonMode` 的三种取值：
 
-    0 轨迹跟随  沿**发射器**实际划过的轨迹绘制     ≈ Unity Trail Renderer / UE Ribbon
-                （粒子自己动过就改用粒子的轨迹，见 _common.pick_trail）
-    1 定长面片  刚性矩形，只靠单个轴转动朝相机   ≈ Unity Stretched Billboard
-                （所以相机经过侧边时会整体翻 180°，是该构造的固有表现；伸展方向
-                默认出生时按 baseAxis+rotationX/Y/Z 定死，`SimConfig.ribbon_rigid_dir`
-                calibration 开成 'velocity' 后改为逐帧跟随当前运动方向，见
-                `on_particle_step`）
-    2 柔体链    从发射器向外延伸并带弹性         ≈ UE Niagara 的 spring/chain
+    0 轨迹跟随  沿**发射器**实际经过的轨迹绘制；粒子自身有位移时改用粒子轨迹（见
+                `_common.pick_trail`）。需要逐帧位置历史，因此 `NEEDS_TRAIL = True`
+    1 定长面片  刚性矩形，仅绕单个轴旋转以朝向相机。相机经过侧面时整条翻转 180°，是该构造的
+                固有表现。伸展方向默认在出生时由 baseAxis 与 rotationX/Y/Z 确定；
+                `SimConfig.ribbon_rigid_dir='velocity'` 时改为逐帧跟随当前运动方向
+    2 柔体链    自发射器向外延伸，带有弹性
 
-模式 0 需要逐帧位置历史 → `NEEDS_TRAIL = True`，Simulator 据此开始记 `p.trail`。
+几何与外观字段：
 
-几何与外观
-----------
-    length / width          游戏单位；`scale`(+jitter) 是两者共同的倍率（同 BILLBOARD3D
-                            的 SizeScalar 约定）
-    subdivisionCount        沿长度方向的**切边**数：N 条边分 N-1 段（annotations 原话）
+    length / width               游戏单位；`scale`(+jitter) 为两者共同的倍率
+    subdivisionCount             沿长度方向的**分段边**数，N 条边构成 N-1 段
+    base_/tip_width_multiplier   后端／前端的宽度乘数（tip 为前进方向一端），沿全长插值。
+                                 base=1 / tip=0 时为三角形
+    base_/tip_opacity            两端**端点**的不透明度，中间部分始终不透明
+    base_/tip_fade_length        各自在该长度（占全长比例）内过渡到端点值
+    spawnAnchorOffset            生成点在条带长度方向上的位置，以条带自身跨度为单位
+    enableFlap +                 旗帜式摆动，两组叠加
+    flap1/flap2(Frequency,Amount)
+    restoreStrength /            柔体链专用：恢复平直形态的强度 / 弹簧刚度 / 分段惯性
+    springiness / inertia
 
-轨迹跟随的总长（`SimConfig.ribbon_length_mode`）
------------------------------------------------
-用户实测：跟随条带的长短**跟着细分数走**（宽=长=1、细分=2 是一个矩形）。定长面片
-那边则相反——语料里 mode 1 的 subdiv 90.6% 恒为 2 而 length 被逐个细调，mode 0 的
-length 59% 留在默认 100 不动、变化的是 subdiv。所以两个模式对 length 的用法不同。
+轨迹跟随的总长默认按**每段定长**计算：总长 = length × (subdiv − 1)，每段一个 length
+（`SimConfig.ribbon_length_mode='total'` 时 length 即总长）。
 
-默认按「每段定长」：**总长 = length × (subdiv - 1)**，一段一个 length。另一种读法是
-「每段一帧历史」（长度随运动速度变），要改 p.trail 的记录长度才能做，先不实现；
-`ribbon_length_mode='total'` 保留改动前的行为（length 即总长）。
-    base_/tip_width_multiplier   后端/前端的宽度乘数（tip = 前进方向那一端），沿全长
-                            插值——base=1/tip=0 就是一个三角形
-    base_/tip_opacity            后端/前端**端点**的不透明度；中间恒为实心，只有两端
-    base_/tip_fade_length        各自在这段长度（占全长比例）里渐变到端点值
-    spawnAnchorOffset       生成点落在条带长度方向上的位置，以条带自身跨度为单位
-                            （0=前端贴住生成点；越大整条带越往身后拖，柔体链/
-                            刚性矩形没有"历史"这层含义，方向相反——见 `_strip_py`/
-                            `_build_strips` 的 anchor 处理）
-    enableFlap + flap1/flap2(Frequency, Amount)   旗帜式来回摆动，两组叠加
+两端渐隐：`base_/tip_opacity` 为**端点值**，而非整条带的不透明度——两端均取 0 时中间仍不透明，
+仅两端渐隐。每一端在 base_/tip_fade_length 的跨度内由端点值过渡到 1；两端取 `min` 而非相乘，
+跨度不重叠时两者等价，重叠时相乘会使中间部分变暗。跨度不大于 0 时为硬边，端点值不起作用。
+宽度乘数一对才是沿全长插值。
 
-柔体链的模型（推断，无实测）
-----------------------------
-三个参数的 annotations 描述刚好对应一个阻尼弹簧链：
+柔体链的弹簧模型为推断：每个节点的静止目标在「完全平直」与「保持当前朝向」之间按
+restoreStrength 插值，以 springiness 为劲度系数拉向目标，以 inertia 为速度保留率。
 
-    restoreStrength  回归平直形态的力度（0 = 无回复力，表现接近轨迹跟随）
-    springiness      弹簧刚度（高 → 果冻般弹跳）
-    inertia          分段惯性（高 → 撑住伸展形状、振荡持续久）
-
-故实现为：每个节点的**静止目标**在「完全平直」与「维持当前朝向」之间按
-restoreStrength 混合，用 springiness 当劲度系数拉向目标，用 inertia 当速度保留率。
-三条描述都能从这个模型里读出来，但没有拿真实数值对过账。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- 轨迹跟随模式下发射器静止时条带**完全消失**，必须返回显式的 `kind='NONE'`。返回 None 时
+  Simulator 会补绘调试点，出现「静止时反而多一个点」，与实机相反。
+- `spawnAnchorOffset` 对轨迹跟随模式**不生效**：tip 始终等于粒子当前位置，沿首尾方向平移会使
+  条带超前于发射器，或在轨迹历史不足时将 tip 固定在出生点，直至达到理论长度。两种结果都与
+  「自出生起始终贴合运动」不符。该字段只对刚性矩形与柔体链生效，二者没有轨迹历史，仅沿自身
+  长度方向平移。
+- 长度须乘 `p.scale.y`，宽度乘 `p.scale.x`：RIBBON 的约定为 X=width / Y=length。长度未乘时，
+  SCALEANIM 的 scaleSpeedY（沿长度方向拉伸）完全不生效。
+- RIBBON 的 rotationX/Y/Z 为三个**标量**字段，各配一个 Jitter，不是 PLANE / TRANSFORM3D 使用的
+  XYZ type 0 六元组。
+- 伸展方向须对 `axis_normal` 的结果取负：该函数按 PLANE 的面法线设计，RIBBON 以同一组
+  baseAxis 与 rotation 表示伸展方向，实机对比结果恰好相反。
 """
 
 import math
@@ -70,43 +65,34 @@ MODE_TRAIL = 0
 MODE_RIGID = 1
 MODE_CHAIN = 2
 
-#: 轨迹弧长低于这个值（游戏单位）就当发射器没动 —— 静止时条带彻底消失（实机确认）。
-#: 不取 0 是因为绑骨的发射器总有一点数值抖动，取 0 会让本该消失的条带留一条丝。
+#: 轨迹弧长低于该值（游戏单位）时视为发射器静止。不取 0，因为绑定骨骼的发射器存在微小的
+#: 数值抖动，取 0 会使应当消失的条带残留一条细线。
 _STATIC_ARC_EPS = 1e-4
 
-#: 两端渐隐长度的缺省值（占全长比例）——语料众数，字段缺失时用。
+#: 两端渐隐长度的缺省值（占全长比例），字段缺失时使用。
 _DEF_BASE_FADE = 0.3
 _DEF_TIP_FADE = 0.4
 
 
 def _fade_alpha(u, base_a, tip_a, base_span, tip_span):
-    """两端渐隐剖面：端点取 base_/tip_opacity，**中间恒为 1**。
-
-    ⚠ 不是「沿全长从 base_opacity 插到 tip_opacity」。用户实机：两端都填 0 时中间
-    并不透明，只是两边渐隐——所以这两个字段是**端点值**，不是整条带子的不透明度。
-    宽度那一对才是真的全长插值（base=1/tip=0 得到一个三角形）。
-
-    每一端各自从端点值爬回 1，跨度是 base_/tip_fade_length（占全长比例）。两端取
-    `min` 而不是相乘：跨度不重叠时两者等价，重叠时相乘会把中间也压暗。
-    跨度 <= 0 = 硬边，端点值不起作用。
-    """
+    """返回沿长度参数 `u` 处的 alpha 系数：端点取 base_/tip_opacity，中间为 1。"""
     rb = 1.0 if base_span <= 0.0 else min(1.0, u / base_span)
     rt = 1.0 if tip_span <= 0.0 else min(1.0, (1.0 - u) / tip_span)
     return min(base_a + (1.0 - base_a) * rb, tip_a + (1.0 - tip_a) * rt)
 
 
 def _per_segment(em):
-    """轨迹跟随的 length 是「每段」还是「总长」（见模块 docstring）。"""
+    """轨迹跟随的 length 是否按每段计算。"""
     return getattr(em.config, "ribbon_length_mode", "per_segment") != "total"
 
 
 @register(RIBBON)
 class Ribbon(Behavior):
-    """RENDER_BODY：产出 kind='RIBBON' 的顶点串，glue 层撑成三角带。"""
+    """RENDER_BODY 阶段产出 kind='RIBBON' 的顶点序列，由 glue 层展开为三角带。"""
 
     STAGE = RENDER_BODY
     ORDER = 100
-    NEEDS_TRAIL = True          # 模式 0 要用；开着不影响另两个模式
+    NEEDS_TRAIL = True          # 模式 0 需要；开启不影响另两种模式
 
     _has_tracks = False
 
@@ -142,27 +128,21 @@ class Ribbon(Behavior):
         p.rolled["rb_rgba"], p.rolled["rb_coff"] = roll_rgba(f, rng, cfg)
         p.rolled["rb_blend"] = blend_name(f)
 
-        # 条带的基准伸展方向（定长面片/柔体链的「平直形态」）。
-        # ⚠ RIBBON 的 rotationX/Y/Z 是三个**标量**字段各配一个 Jitter，
-        #   不是 PLANE/TRANSFORM3D 那种 XYZ type 0 的六元组，别套错。
+        # 条带的基准伸展方向，即定长面片与柔体链的平直形态
         rolled_rot = (jitter(f.get("rotationX"), f.get("rotationXJitter"), rng, mode),
                       jitter(f.get("rotationY"), f.get("rotationYJitter"), rng, mode),
                       jitter(f.get("rotationZ"), f.get("rotationZJitter"), rng, mode))
-        # ⚠ axis_normal 是给 PLANE 的「面法线」设计的；RIBBON 借同一套 baseAxis+
-        # rotation 表达「伸展方向」，实机对比发现刚好反一位，取负号（用户实测确认）。
+        # 取负的原因见模块 docstring
         direction = -axis_normal(f, cfg, rolled=rolled_rot)
-        # 触发者（PtLife 父实例）自己在转 → 子 entry 的伸展方向要跟着转，只叠加
-        # 这一份**整体**旋转，其余（baseAxis/rotationX-Y-Z 定的本地朝向）不变——
-        # 同 VELOCITY3D 的初速度方向一个套路（见 velocity3d.py::on_particle_spawn）。
-        # 静态朝向（entry 自己的 TRANSFORM3D.rotate）由宿主的 entry 矩阵负责，这里
-        # 不重复处理。
+        # 父实例旋转时，子 entry 的伸展方向随之旋转；只叠加这一项整体旋转，
+        # 由 baseAxis 与 rotationX/Y/Z 确定的本地朝向不变
         direction = emitter_rotate(em, direction)
 
         ribbon_mode = f.i("ribbonMode")
         n = max(2, f.i("subdivisionCount") or 2)
         cap = int(getattr(cfg, "ribbon_subdiv_max", 0) or 0)
         if cap and n > cap:
-            n = max(2, cap)             # 预览降载，见 SimConfig.ribbon_subdiv_max
+            n = max(2, cap)             # 降低预览负载
         st = {"mode": ribbon_mode, "n": n, "dir": direction,
               "restore": jitter(f.get("restoreStrength"), f.get("restoreStrengthJitter"),
                                 rng, mode),
@@ -191,9 +171,8 @@ class Ribbon(Behavior):
             return
 
         if st["mode"] == MODE_RIGID:
-            # 定长面片：calibration 选 velocity 时，伸展方向跟着当前运动方向走
-            # （粒子自己速度优先，粒子不动看发射器位移），都为零就保留上一个有效
-            # 方向——不会因为一瞬间静止就弹回出生时的静态朝向。
+            # velocity 档下伸展方向跟随当前运动方向（优先取粒子速度，粒子静止时取发射器位移）；
+            # 两者均为零时保留上一个有效方向，不因短暂静止恢复为出生时的朝向
             if getattr(em.config, "ribbon_rigid_dir", "static") == "velocity":
                 v = p.vel if p.vel.length() > 1e-6 else em.velocity
                 if v.length() > 1e-6:
@@ -211,11 +190,11 @@ class Ribbon(Behavior):
         inertia = st["inertia"]
         straight_dir = st["dir"]
 
-        nodes[0] = p.pos.copy()             # 首节点被粒子拖着走
+        nodes[0] = p.pos.copy()             # 首节点跟随粒子位置
         for i in range(1, len(nodes)):
             prev = nodes[i - 1]
             cur_dir = (nodes[i] - prev).normalized(fallback=straight_dir)
-            # 静止朝向：在「完全平直」和「保持现状」之间按 restoreStrength 混合
+            # 静止朝向：在完全平直与保持当前朝向之间按 restoreStrength 插值
             rest_dir = (straight_dir * restore + cur_dir * (1.0 - restore))
             rest_dir = rest_dir.normalized(fallback=straight_dir)
             target = prev + rest_dir * seg
@@ -227,18 +206,7 @@ class Ribbon(Behavior):
 
     # ── 渲染 ─────────────────────────────────────────────────────────────────
     def _dims(self, p, em, st, f):
-        """(尺寸 f, 长度, 宽度, 采样点数)。
-
-        挂了 TIML 就逐帧重解尺寸：语料里 RIBBON 的 Length/Width 确实有曲线
-        （场景里 15 line 那条的 length 静态值 10、曲线给 1），只在出生时取一次
-        会把「条带随寿命伸缩」整个丢掉。同 BILLBOARD3D 的 has_tracks 分支
-        ——那边也是重解时不再叠抖动偏移。
-
-        ⚠ 长度要乘 `p.scale.y`——同 BILLBOARD3D/PLANE 的 X=width/Y=height 约定，
-        RIBBON 是 X=width/Y=length。之前只有宽度那条路乘了 `p.scale.x`
-        （见 `_strip_py`/`_build_strips`），长度这边漏乘，导致 SCALEANIM 只在
-        scaleSpeedX 时才看得出效果、scaleSpeedY（沿长度方向拉伸）完全不生效。
-        """
+        """返回 `(属性字段 f, 长度, 宽度, 采样点数)`；带 TIML 时逐帧重新求值尺寸。"""
         if self._has_tracks and f is not None:
             scale = f.get("scale", 1.0)
             length = f.get("length", 1.0) * scale * p.scale.y
@@ -251,14 +219,11 @@ class Ribbon(Behavior):
         return f, length, width, st["n"]
 
     def pre_render(self, em, view):
-        """整批做轨迹裁剪 + 重采样 + 粗细/透明度剖面（见 `trail.clip_resample_batch`）。
+        """批量完成轨迹裁剪、重采样与粗细／透明度剖面计算，并缓存各粒子的尺寸。
 
-        逐粒子走一趟 clip+resample 是渲染 pass 里最贵的一段，而每条带的算式一模
-        一样、只是数据不同——正好整批拉成数组算。结果**留在数组里**交给
-        `RibbonStrip`：条带顶点串在核心层造出来、到 glue 层又被逐个拆回 float，
-        一条 50 细分的条带就是上百个短命对象，上千条时这两趟纯搬运比算术还贵。
-
-        顺手把尺寸也解出来存着，`build_render` 直接取，`em.f()` 一个粒子一帧只过一次。
+        逐粒子执行 clip+resample 是渲染过程中开销最大的部分，而各条带的算式相同、仅数据不同，
+        因此整批以数组计算。结果以数组形式交给 `RibbonStrip`：一条 50 分段的条带若转换为 Vec3，
+        将产生上百个临时对象，条带数量上千时，这一转换的开销超过计算本身。
         """
         numpy = _trail.numpy_backend()
         pend = []
@@ -276,7 +241,7 @@ class Ribbon(Behavior):
             st.pop("_pre", None)
             st.pop("_flap_pts", None)
             if st["mode"] != MODE_TRAIL:
-                # 柔体链/刚性矩形不看轨迹，照旧逐粒子算（strip=None, pts=None）
+                # 柔体链与刚性矩形不使用轨迹，仍逐粒子计算
                 st["_pre"] = (f, length, width, n, None, None)
                 continue
             pend.append((p, st, f, length, width, n))
@@ -286,15 +251,15 @@ class Ribbon(Behavior):
         if not pend:
             return
 
-        # 弧长不到阈值 → 空 = 发射器没动过 → 没有条带（不是画一条直线）
+        # 弧长低于阈值时返回空：发射器未运动即没有条带，而非绘制一条直线
         got = None if numpy is None else _trail.clip_resample_batch(
             trails, max_lens, counts, min_arc=_STATIC_ARC_EPS, reverse=True)
-        if got is None:                 # 没有 numpy：退回逐条标量路
+        if got is None:                 # 没有 numpy 时退回逐条标量计算
             pts_all = _trail.clip_resample_many(trails, max_lens, counts,
                                                 min_arc=_STATIC_ARC_EPS)
             for rec, pts in zip(pend, pts_all):
                 rec[1]["_pre"] = (rec[2], rec[3], rec[4], rec[5], None,
-                                  pts[::-1])          # 新→旧 翻成 base→tip
+                                  pts[::-1])          # 由新到旧反转为 base→tip
             return
 
         Q, starts, sizes = got
@@ -307,11 +272,10 @@ class Ribbon(Behavior):
 
     @staticmethod
     def _build_strips(numpy, Q, starts, sizes, pend):
-        """给批量重采样的结果补上锚点平移和粗细/透明度剖面，包成 `RibbonStrip`。
+        """为批量重采样的结果补充粗细／透明度剖面，封装为 `RibbonStrip`。
 
-        整批一次算完：Q 的行本来就按 `pend` 的顺序首尾相接，所以逐粒子的标量
-        （半宽基数、两端倍率）用 `repeat` 摊到行上即可。逐条带过 numpy 是不划算的
-        ——每条要二十来次数组调用，调度开销比算术还大。
+        Q 的行已按 `pend` 的顺序首尾相接，逐粒子的标量（半宽基数、两端倍率）以 `repeat` 展开到
+        各行即可。逐条带调用 numpy 并不划算：每条约需二十次数组调用，调度开销超过计算本身。
         """
         out = [None] * len(pend)
         keep = [k for k in range(len(pend)) if starts[k] >= 0]
@@ -348,15 +312,9 @@ class Ribbon(Behavior):
         arr = lambda seq: numpy.array(seq, dtype="f8")
         rep = lambda seq: numpy.repeat(arr(seq), ns)
 
-        # ⚠ spawnAnchorOffset 对轨迹跟随模式**不生效**：tip 恒等于粒子当前位置，
-        # 沿首尾方向平移它就必然要么把条带甩到发射器还没到的前方，要么在粒子
-        # 刚出生、历史还没积累够时把 tip 钉死在出生点直到追上理论长度才开始动
-        # （两种都跟实机"从出生起就一直贴着走"矛盾，用户核对过——见
-        # `on_particle_spawn` 里 MODE_TRAIL 分支对该字段的 note）。刚性矩形/
-        # 柔体链没有"历史"这层含义，各自在 `_strip_py`/`on_particle_spawn` 里
-        # 单独处理，不受这条限制。
+        # 仅轨迹跟随使用此路径，因此不处理 spawnAnchorOffset，见模块 docstring
 
-        # 沿长度的归一化参数 u（0=base，1=tip），逐行算
+        # 沿长度的归一化参数 u（0=base，1=tip），逐行计算
         total = int(ns.sum())
         run = numpy.zeros(len(ns), dtype=numpy.intp)
         numpy.cumsum(ns[:-1], out=run[1:])
@@ -364,12 +322,12 @@ class Ribbon(Behavior):
              / numpy.repeat((ns - 1).astype("f8"), ns))
         half = rep(wbases) * (rep(base_ws) + rep(dws) * u)
 
-        # 两端渐隐（逐点，见 `_fade_alpha`）：端点取 base_/tip_opacity，中间恒 1。
+        # 两端渐隐，逐点计算，与 `_fade_alpha` 的算式相同
         sb = rep(base_spans)
         stp = rep(tip_spans)
         rb = numpy.clip(u / numpy.where(sb > 1e-6, sb, 1.0), 0.0, 1.0)
         rt = numpy.clip((1.0 - u) / numpy.where(stp > 1e-6, stp, 1.0), 0.0, 1.0)
-        rb[sb <= 1e-6] = 1.0            # 跨度 0 = 硬边
+        rb[sb <= 1e-6] = 1.0            # 跨度为 0 即硬边
         rt[stp <= 1e-6] = 1.0
         ba_ = rep(base_as)
         ta_ = rep(tip_as)
@@ -380,8 +338,7 @@ class Ribbon(Behavior):
             e = s + sizes[k]
             strip = RibbonStrip(Q[s:e], half[s:e], alpha[s:e])
             if flaps[j]:
-                # 旗帜摆动是逐点的正弦位移，没有数组写法（而且极少见）：物化成
-                # Vec3 交给纯 Python 路，摆完再逐点拼 points
+                # 旗帜摆动为逐点正弦位移，无数组实现：转换为 Vec3 后交由纯 Python 路径处理
                 pend[k][1]["_flap_pts"] = strip.vecs()
             else:
                 out[k] = strip
@@ -393,8 +350,8 @@ class Ribbon(Behavior):
         if st is None or "rb_rgba" not in rolled:
             return item
 
-        # pre_render 算过就取走（pop：别让这一帧的结果留到下一帧）；没算过就
-        # 就地补一趟——behavior 必须能脱离 Simulator 单独调用
+        # pre_render 已计算时取出并移除，避免本帧结果残留到下一帧；未计算时就地补算，
+        # behavior 必须能脱离 Simulator 单独调用
         pre = st.pop("_pre", None)
         flap_pts = st.pop("_flap_pts", None)
         if pre is None:
@@ -406,18 +363,14 @@ class Ribbon(Behavior):
             strip, pts = None, flap_pts
 
         if strip is not None:
-            # 快路：锚点与剖面都已在 pre_render 里整批算完
             points = strip
             tip = strip.vec(-1)
         else:
             if pts is None:
                 pts = self._sample_points(p, em, st, length, n)   # base→tip
             if len(pts) < 2:
-                # 轨迹跟随 + 发射器静止 → **彻底消失**（实机确认）。返回显式的
-                # kind='NONE' 而不是 None：后者会让 Simulator 退化成调试点，那就
-                # 变成「静止时反而多出一个点」，与实机相反。
+                # 轨迹跟随且发射器静止时完全消失，见模块 docstring
                 return RenderItem(kind="NONE", pos=p.pos.copy())
-            # 锚点在 _build_strips 里已经批量加过了，物化出来的那条别再加一次
             points, tip = self._strip_py(p, em, st, f, pts, length, width,
                                          skip_anchor=flap_pts is not None)
 
@@ -441,21 +394,16 @@ class Ribbon(Behavior):
         return item
 
     def _strip_py(self, p, em, st, f, pts, length, width, skip_anchor=False):
-        """纯 Python 的条带成形（没有 numpy、柔体链/刚性矩形、或旗帜摆动时走）。
+        """以纯 Python 构造条带，返回 `([(Vec3, 半宽, alpha), …], 末点)`。
 
-        返回 `([(Vec3, 半宽, alpha), …], 末点)`。
+        用于没有 numpy、柔体链／刚性矩形或带旗帜摆动的情形。
         """
-        # ⚠ spawnAnchorOffset 对轨迹跟随模式**不生效**：tip 恒等于粒子当前
-        # 位置，沿首尾方向平移它要么把条带甩到发射器还没到的前方，要么在粒子
-        # 刚出生、历史还没积累够时把 tip 钉死在出生点直到追上理论长度才开始动，
-        # 两种都跟实机"从出生起就一直贴着走"矛盾（用户核对过）。只对刚性矩形/
-        # 柔体链生效——它们没有"历史"这层含义，纯粹是沿自身长度方向平移。
+        # spawnAnchorOffset 只对刚性矩形与柔体链生效，见模块 docstring
         anchor = 0.0 if (skip_anchor or st["mode"] == MODE_TRAIL) else (
             (f.get("spawnAnchorOffset") if f is not None else 0.0) or 0.0)
         if anchor:
-            # 生成点在条带长度方向上的位置：0=前端贴住生成点，1=后端贴住。
-            # 位移量按**这一条实际的首尾跨度**（不归一化、不套配置的 `length`）：
-            # 刚性矩形/柔体链的实际跨度本就等于配置长度，两者应等价。
+            # 0=前端对齐生成点，1=后端对齐。位移量按该条带实际的首尾跨度计算，刚性矩形与
+            # 柔体链的实际跨度即等于配置长度
             span = pts[-1] - pts[0]
             shift = span * anchor
             sx, sy, sz = shift.x, shift.y, shift.z
@@ -476,11 +424,11 @@ class Ribbon(Behavior):
         tip_span = (f.get("tip_fade_length", _DEF_TIP_FADE)
                     if f is not None else _DEF_TIP_FADE)
 
-        # pts 是 base→tip（index 0 = 后端 = 远离前进方向的一端）
+        # pts 按 base→tip 排列（index 0 为后端，即远离前进方向的一端）
         wbase = 0.5 * width * p.scale.x
         dw = tip_w - base_w
         if dw == 0.0 and base_a == 1.0 and tip_a == 1.0:
-            # 宽度不变、两端也不渐隐（语料里的常态）：整条一组数，不必逐点算 u
+            # 宽度不变且两端不渐隐：整条使用同一组值，无需逐点计算 u
             hw = wbase * base_w
             points = [(q, hw, 1.0) for q in pts]
         else:
@@ -492,30 +440,29 @@ class Ribbon(Behavior):
 
     # ── 三种取点方式 ─────────────────────────────────────────────────────────
     def _sample_points(self, p, em, st, length, n):
-        """返回 base→tip 顺序的顶点串（index 0 = 后端）；**空列表 = 不该画**。"""
+        """返回按 base→tip 排列的顶点序列（index 0 为后端）；空列表表示不绘制。"""
         mode = st["mode"]
 
         if mode == MODE_CHAIN:
-            # 复制一份：节点是模拟状态（`on_particle_step` 每帧就地改），而调用方
-            # 会把返回的点当自己的（锚点平移是原地改的）
-            return [q.copy() for q in st["nodes"]]   # 首节点在粒子身上 = base
+            # 必须复制：节点属于模拟状态（`on_particle_step` 每帧原地修改），调用方会原地
+            # 修改返回的点（锚点平移）
+            return [q.copy() for q in st["nodes"]]   # 首节点位于粒子处，即 base
 
         if mode == MODE_TRAIL:
             total = length * (n - 1) if _per_segment(em) else length
-            # 裁剪+重采样合并成一趟（见 trail.clip_resample）：弧长不到阈值就
-            # 提前返回空 = 发射器没动过 → 没有条带（不是画一条直线）
+            # 弧长低于阈值时提前返回空：发射器未运动即没有条带
             pts, _arc = _trail.clip_resample(pick_trail(p, em), total, n,
-                                             min_arc=_STATIC_ARC_EPS)  # 新→旧
-            return pts[::-1]                                # 翻成 base→tip
+                                             min_arc=_STATIC_ARC_EPS)  # 由新到旧
+            return pts[::-1]                                # 反转为 base→tip
 
-        # MODE_RIGID：刚性矩形，沿基准方向伸出去
+        # MODE_RIGID：刚性矩形，沿基准方向延伸
         return _trail.straight(p.pos, st["dir"], length, n)
 
     @staticmethod
     def _apply_flap(pts, st, p, em):
-        """旗帜式摆动：沿条带长度做正弦横向位移，两组参数叠加。
+        """原地施加旗帜式摆动：沿条带长度做正弦横向位移，两组参数叠加。
 
-        相位用 `em.frame`（不是随机数）——step/render 都必须是确定性的。
+        相位必须取自 `em.frame` 而非随机数：step 与 render 均须是确定性的。
         """
         if len(pts) < 3:
             return
@@ -526,11 +473,11 @@ class Ribbon(Behavior):
         side = side.normalized(fallback=Vec3(1.0, 0.0, 0.0))
 
         last = len(pts) - 1
-        phase0 = p.seed % 628 / 100.0        # 每个粒子错开相位，免得整齐划一
+        phase0 = p.seed % 628 / 100.0        # 各粒子相位错开，避免同步摆动
         for freq, amount in st["flap"]:
             if not freq or not amount:
                 continue
             w = em.frame * freq * 0.1 + phase0
-            for i in range(1, last + 1):     # base 端固定，越往 tip 摆幅越大
+            for i in range(1, last + 1):     # base 端固定，摆幅向 tip 端递增
                 u = i / float(last)
                 pts[i] = pts[i] + side * (math.sin(w + u * math.pi) * amount * u)

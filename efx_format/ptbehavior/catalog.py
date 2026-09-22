@@ -1,11 +1,7 @@
-"""
-efx_format/ptbehavior/catalog.py  —  PTBEHAVIOR 属性目录（自动生成，勿手改）
+"""PTBEHAVIOR 参数目录数据。
 
-由 tools/gen_ptbehavior_catalog.py 从全量语料推导。PTBEHAVIOR 是类型化稀疏
-覆盖结构：每个 b_type 一张有序属性表，实例只存被覆盖的子集（保持子序列）。
-
-PTBEHAVIOR_CATALOG[b_type] = [(key_hash, value_type_t, corpus_freq), ...]
-  按规范声明顺序排列；插入新覆盖项时据此定位以保持字节级子序列不变量。
+每个 b_type 的条目按声明顺序排列；稀疏实例只能保存其有序子序列。表项为
+``(key_hash, value_type_t, frequency)``，请通过生成流程更新而非手改。
 """
 
 PTBEHAVIOR_CATALOG = {

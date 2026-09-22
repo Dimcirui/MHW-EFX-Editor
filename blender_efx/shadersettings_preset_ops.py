@@ -1,8 +1,6 @@
-"""
-blender_efx/shadersettings_preset_ops.py  —  SHADERSETTINGS.presetId 已知预设名下拉
+"""为 SHADERSETTINGS 的 ``presetId`` 提供已知名称选择菜单。
 
-presetId 本身仍是普通 int32 字段（见 blender_efx/fields.py 的 preset_name_display
-影子属性），这里只提供一个"选个已知名字直接填进去"的快捷菜单，不涉及底层存储。
+维护约束：本模块只写字段模型的显示属性，不拥有或改变底层 int32 存储。
 """
 
 import bpy
@@ -20,7 +18,7 @@ def _find_field_item(bp, ori_name):
 
 
 class EFX_OT_shadersettings_set_preset(Operator):
-    """把 presetId 的显示文本设为给定名字/数值（转发到 preset_name_display 的 get/set）"""
+    """通过字段显示属性设置预设名称或数值。"""
 
     bl_idname      = "efx.shadersettings_set_preset"
     bl_label       = "Set Preset"
@@ -46,7 +44,7 @@ class EFX_OT_shadersettings_set_preset(Operator):
 
 
 class EFX_MT_shadersettings_preset_picker(Menu):
-    """presetId 已知预设下拉：4 个已知名字 + 4 个原始数值（名字未知）。"""
+    """显示已命名预设及尚未命名的原始值。"""
 
     bl_idname = "EFX_MT_shadersettings_preset_picker"
     bl_label  = "Presets"

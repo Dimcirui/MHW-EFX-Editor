@@ -1,14 +1,7 @@
-"""
-blender_efx/bitmask_ops.py  —  通用位掩码弹窗编辑器（泛化自 part_mask_ops）
+"""通用位掩码编辑器。
 
-由 typed Field 模型驱动：字段标 widget='bitmask'、`Field.bits` 是有序段列表，元素两类：
-  · **BitDef（可混合 toggle 位）** → 勾选框；
-  · **BitEnum（互斥位组）** → 下拉（同 enum，选项即该组编码的 one-of-N 值）。
-段外的**残留位**（不在任何段 mask 内）另用整数框暴露并保留——确保未定义位零丢失、可精确
-还原（bitmask 版的越界回退）。BitEnum 子值若越出选项集，下拉动态注入原值合成项（同 enum_proxy）。
-
-值存于 field_item 的 int 背板槽（int_value/byte1_value/…，由 fields._enum_backing_read/write
-按 data_type 选槽），其 update 回调自动置脏 → 导出重 pack。
+Field.bits 由可组合的 BitDef 和互斥的 BitEnum 组成。未定义残留位与未知枚举值必须
+无损保留；值通过 fields 的背板读写接口更新，以触发属性重新导出。
 """
 
 import bpy
@@ -17,7 +10,7 @@ from bpy.props import BoolProperty, IntProperty, StringProperty, EnumProperty
 _MAX_BITS  = 16   # toggle 勾选框池上限
 _MAX_ENUMS = 8    # 互斥组下拉池上限（当前最多 loopingMode 4 组，留余量）
 
-# BitEnum 下拉的 items 缓存（避免动态 EnumProperty 的 GC 陷阱：持有 list 对象引用）。
+# 保持动态 EnumProperty 的 items 列表引用。
 _BENUM_ITEMS_CACHE = {}
 
 
@@ -31,14 +24,7 @@ def _find_item(bp, ori_name):
 
 
 def _field_container(obj, type_name):
-    """返回承载 field_items 的容器：主属性是 obj.efx_block，Extern 是当前状态列里
-    对应类型的那个实例。拿不到返回 None。
-
-    Extern 的字段挂在 efx_extern.items[i].instances[j] 上，不在对象的 efx_block
-    上——位掩码编辑器最初只按主属性写，于是在 Extern 面板里按钮画得出来、点下去
-    却报 "Not a bitmask field"。这里按「类型 + 当前状态列」定位，与面板正在显示的
-    那一份一致（同一 EA 内不会有两个同类型 item，新增时已查重）。
-    """
+    """返回字段容器；Extern 使用当前状态列的对应 item 实例。"""
     if obj is None:
         return None
     t = obj.get("~TYPE")
@@ -100,8 +86,7 @@ def _defined_mask(field):
 
 
 def _benum_items_factory(idx):
-    """生成第 idx 个 BitEnum 下拉的 items 回调（闭包捕获 idx）。回调据当前字段与语言返回
-    选项；当前子值越界则注入合成项。列表缓存进 _BENUM_ITEMS_CACHE 防 GC。"""
+    """生成第 idx 个 BitEnum 的动态 items 回调，并保留未知当前值。"""
     def _items(self, context):
         field = _bitmask_field(self.type_name, self.field)
         benums = _bitenums(field) if field else []
@@ -111,7 +96,7 @@ def _benum_items_factory(idx):
         from .i18n import get_lang
         zh = (get_lang() == "ZH")
         items = [(str(o.value), (o.zh if zh else o.en), '') for o in be.options]
-        # 当前子值（从 item 背板读）越界 → 注入原值合成项，避免 setattr 失败
+        # 将未知当前值注入选项，避免编辑时丢失。
         obj = (context.blend_data.objects.get(self.obj_name) if self.obj_name
                else (context.active_object if context else None))
         if obj is not None:
@@ -167,12 +152,10 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
                           description="段外未定义位（原值保留，可编辑）")
     all_toggle: BoolProperty(name="All", default=False,
                               description="整体写为 all_value（如全位 0xFF），跟上面各独立位互斥")
-    # bit_0..bit_{_MAX_BITS-1} 勾选框池在类定义后追加（见下）；draw 时按字段实际位数用前 N 个。
+    # 类定义后注入的勾选框池仅按字段实际位数使用。
 
     def _resolve_obj(self, context):
-        """obj_name 指定则按名查（供非 active_object 场景用），否则回退 active_object。
-        poll() 是 classmethod，拿不到本实例的 obj_name（Blender 限制，按钮属性在 poll 时
-        尚未绑定），故有效性校验挪到这里，无效时 invoke/execute 报错取消而非灰显按钮。"""
+        """优先按 obj_name 查找目标，否则使用活动对象。"""
         if self.obj_name:
             return context.blend_data.objects.get(self.obj_name)
         return context.active_object
@@ -184,7 +167,7 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
     def invoke(self, context, event):
         obj = self._resolve_obj(context)
         field = _bitmask_field(self.type_name, self.field)
-        # 容器解析得到就放行——主属性和 Extern 实例都支持，不再按 ~TYPE 硬判
+        # 主属性与 Extern 实例都由容器解析统一处理。
         if field is None or _field_container(obj, self.type_name) is None:
             self.report({"ERROR"}, "Not a bitmask field")
             return {"CANCELLED"}
@@ -233,7 +216,7 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
                     col.prop(self, "benum_%d" % ei, text=(b.zh if zh else b.en))
                 ei += 1
         resid_mask = _defined_mask(field)
-        # strict 字段（已穷举确认段外位不用）不显示残留框，即使 32 位里仍有未覆盖的位。
+        # strict 字段不暴露残留位编辑。
         if not getattr(field, "strict", False) and resid_mask != -1 and (~resid_mask) & 0xFFFFFFFF:
             col.separator()
             row = col.row()
@@ -266,14 +249,14 @@ class EFX_OT_edit_bitmask(bpy.types.Operator):
                 val |= (sub << be.shift) & be.mask
             val |= int(self.residual)
         from .fields import _enum_backing_write
-        _enum_backing_write(item, val)   # update=_mark_attribute_dirty 自动置脏
+        _enum_backing_write(item, val)
         return {"FINISHED"}
 
 
-# toggle 勾选框池：给类追加 bit_0..bit_{_MAX_BITS-1} 布尔属性（label 在 draw 里动态覆盖）。
+# 注入复用的 toggle 属性池；标签由 draw() 提供。
 for _i in range(_MAX_BITS):
     EFX_OT_edit_bitmask.__annotations__["bit_%d" % _i] = BoolProperty(name="bit %d" % _i, default=False)
-# 互斥组下拉池：benum_0..benum_{_MAX_ENUMS-1}，每个 items 由 _benum_items_factory 动态给出。
+# 注入复用的 BitEnum 属性池。
 for _i in range(_MAX_ENUMS):
     EFX_OT_edit_bitmask.__annotations__["benum_%d" % _i] = EnumProperty(
         name="enum %d" % _i, items=_benum_items_factory(_i))

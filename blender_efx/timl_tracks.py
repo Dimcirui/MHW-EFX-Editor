@@ -1,13 +1,8 @@
-"""
-blender_efx/timl_tracks.py  —  TIML 轨道增删复制
+"""添加、删除和复制 TIML 轨道，并提供字段与轨道面板入口。
 
-UI 入口
--------
-  轨道列表面板 — Dope Sheet 侧栏「EFX TIML」→「Tracks」子面板：当前 entry 的轨道列表 + 删除/复制按钮
-  字段内联按钮 — panels.py 字段标题行旁的 +A0/+A1 小按钮（仅六类"确认"字段显示）
-  语料调色板   — 同上 Dope Sheet 面板下方：语料调色板 + 「开放所有组合」开关
-
-约束（CLAUDE.md）：bpy 稳定子集；Python 3.10；包内相对导入；纯胶水层。
+维护约束：结构编辑先提交持久 F 曲线，随后经 ``set_entry_timl`` 重建。新增轨道
+应以字段当前静态值作为首帧种子，避免改变当前外观；无 TIML 的可支持 Entry 可在
+添加时创建空段。
 """
 
 import base64
@@ -43,40 +38,26 @@ def _is_zh() -> bool:
         return False
 
 
-# 新增轨道首帧的 seed：从属性当前静态字段值读取，使"加一条轨道"不改变外观。
-# 只有标量/向量/颜色几种值槽有意义；其余（字符串数组、枚举、路径等）返回 None
-# 交给 DT_NEUTRAL 兜底。
+# 新轨道首帧种子来自静态字段值；无法读取时由 DT_NEUTRAL 回退。
 _SEED_SCALAR = {
     "FLOAT":  lambda it: [float(it.float_value)],
     "INT":    lambda it: [float(it.int_value)],
     "BYTE1":  lambda it: [float(it.byte1_value)],
     "SHORT1": lambda it: [float(it.short1_value)],
     "FLOAT2": lambda it: [float(v) for v in it.float2_value],
-    # FLOAT3 = XYZ type 3，背板按游戏序 [gx, gy, gz]
     "FLOAT3": lambda it: [float(v) for v in it.float3_value],
     "FLOAT4": lambda it: [float(v) for v in it.float4_value],
-    # FLOAT6 = XYZ type 0，背板按游戏序逐轴成对交错 [x_a, x_b, y_a, y_b, z_a, z_b]。
-    # 这一对是什么取决于字段：多数是"值/抖动"（translate/rotate/resize），
-    # EMITTERSHAPE3D.rangeXYZ 则是"offset/size"。返回全部 6 个，由
-    # _field_seed_values 按该字段挂了几条 DT 决定怎么对齐。
     "FLOAT6": lambda it: [float(v) for v in it.float6_value],
     "INT2":   lambda it: [float(v) for v in it.int2_value],
     "INT3":   lambda it: [float(v) for v in it.int3_value],
     "INT4":   lambda it: [float(v) for v in it.int4_value],
-    # 颜色两种值槽：COLOUR 已是 0-255 ubyte；COLOR_RGBA 是 picker 的 0-1 float
     "COLOUR":     lambda it: [float(v) for v in it.colour_value],
     "COLOR_RGBA": lambda it: [float(v) * 255.0 for v in it.color_rgba_value],
 }
 
 
 def _field_seed_values(block_type: str, field_name: str, n_dt: int):
-    """读活动 EFX_ATTRIBUTE 上 field_name 字段的当前值，返回长度 n_dt 的 seed 列表
-    （每个元素喂给一条 DT 轨道）；拿不到则返回 None（由 DT_NEUTRAL 兜底）。
-
-    向量字段按分量对齐 DT：FIELD_TO_DT 里向量条目就是游戏分量顺序（X,Y,Z），
-    如 TRANSFORM3D.translate → pos:X/pos:Y/pos:Z，故 seed[i] 直接给 entries[i]。
-    Color 字段只有一条 DT，整个 4 通道序列作为该条的 seed。
-    """
+    """读取字段当前值作为新增轨道种子；不可读时返回 ``None``。"""
     import bpy
     obj = bpy.context.active_object
     if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
@@ -102,21 +83,16 @@ def _field_seed_values(block_type: str, field_name: str, n_dt: int):
     if not vals:
         return None
     if n_dt == 1:
-        # 单条 DT：标量给标量，颜色给整个通道序列
         return [vals if len(vals) > 1 else vals[0]]
     if n_dt == 3 and len(vals) == 6:
-        # FLOAT6 挂 3 条 DT：成对交错里只有前一个是"值"，后一个是抖动
-        # （translate → pos:X/Y/Z）。取 0/2/4，否则会把 X 的抖动当成 Y 的值。
+        # 三条 DT 取 FLOAT6 成对值中的 0/2/4，而非抖动分量。
         return [vals[0], vals[2], vals[4]]
-    # 其余按位置直接对齐（含 FLOAT6 挂 6 条 DT 的 rangeXYZ → offset/size 交错）；
-    # 分量不够则用最后一个值补齐
+    # 其余按位置对齐，缺少分量时重复最后一项。
     return [vals[i] if i < len(vals) else vals[-1] for i in range(n_dt)]
 
 
 def _resolve_for_edit():
-    """持久化模型：解析"要编辑哪个 Timl 模型"。**先提交进行中的关键帧编辑**（commit
-    fcurves→字节），再从字节解析——否则随后 set_entry_timl 重建会用旧字节冲掉正在改的关键帧。
-    返回 (body, timl)；无 entry / 解析失败 (None, None)。"""
+    """提交当前 F 曲线后解析待编辑 TIML，返回 ``(body, timl)``。"""
     body = _active_entry()
     if body is None:
         return None, None
@@ -127,23 +103,15 @@ def _resolve_for_edit():
 
 
 def _ensure_timl_segment():
-    """确保当前 entry 有 TIML 段——没有就现建一个空白的，返回 (成功, 是否新建)。
-
-    「加一条轨道」在用户眼里是一个动作，不该要求先手动点一次「新建 TIML」再回来。
-    真正需要显式确认的是**替换/删除**已有 TIML（破坏性），新建空段不丢任何东西。
-    已有段则原样返回，绝不覆盖。
-
-    走 timl_edit.set_entry_timl 这个咽喉点写字节（同 efx.create_entry_timl），空白段的
-    头部常量由 make_blank_timl 统一产出——那些常量有过写错的历史，不在别处另起一份。
-    """
+    """确保活动 Entry 有 TIML 段，必要时通过统一入口创建空段。"""
     if _active_entry() is not None:
-        return True, False                      # 已有非空 TIML，什么都不做
+        return True, False
     body = _timl_capable_entry()
     if body is None:
         return False, False
     if body.get("~TYPE") == "EFX_ENTRY" and \
-            str(body.get("entry_kind", "")) not in ("standard", "extended"):
-        return False, False                     # 该 entry 类型不支持 TIML 段
+            str(body.get("entry_kind", "")) != "standard":
+        return False, False
     from ..efx_format.timl import make_blank_timl
     from . import timl_edit as _te
     _te.set_entry_timl(body, make_blank_timl())
@@ -151,23 +119,20 @@ def _ensure_timl_segment():
 
 
 def _commit_edit(body, timl):
-    """落实结构性改动：经咽喉点存字节 + 从新字节重建持久 fcurve（含新增/删除的轨道）。"""
+    """通过 TIML 统一入口提交结构编辑并重建持久 F 曲线。"""
     from . import timl_edit as _te
     _te.set_entry_timl(body, timl.serialize())
 
 
 def _read_for_display():
-    """面板展示用：从 timl_bytes 解析（持久化模型下字节即结构权威）。返回 (body, timl)。"""
+    """从当前 Entry 字节读取供面板展示的 TIML。"""
     body = _active_entry()
     if body is None:
         return None, None
     return body, _timl.parse_timl(_entry_timl_bytes(body))
 
 
-# 「该字段已经在做动画吗」——字段行上 ♫ 按钮的按下态。逐行去解 TIML 字节太贵
-# （Inspector 一次重绘要画几十行），所以按 (entry 名, 字节长度) 缓存一份 (tlp,dt) 集合，
-# 并在 set_entry_timl 这个咽喉点显式失效。没有 TIML 的 entry（全语料 94.8%）直接空集返回，
-# 连解析都不做。
+# 字段动画状态缓存按 Entry 名和字节长度失效，由 ``set_entry_timl`` 显式清理。
 _ANIM_CACHE = {"key": None, "set": frozenset()}
 
 
@@ -208,12 +173,7 @@ def entry_animated_channels():
 
 
 def _timl_capable_entry():
-    """当前活动对象解析出的 EFX_ENTRY，**不要求它已经有 TIML**（`_active_entry` 要求）。
-
-    ♫ 按钮据此决定是否可点：还没有 TIML 的 entry 也该能点开，缺的段由
-    `_ensure_timl_segment()` 在真正加轨道时顺手补上。
-    ⚠ 依赖 `resolve_timl_entry` 认得 EFX_ATTRIBUTE——♫ 只在选中属性时可见，
-    那条以前漏了，导致这个按钮恒灰。"""
+    """返回可承载 TIML 的活动 Entry，不要求其已存在 TIML 段。"""
     try:
         from .timl_io import resolve_timl_entry, _entry_is_timl_capable
         obj = resolve_timl_entry(bpy.context.active_object)
@@ -242,16 +202,7 @@ _PTB_COMPONENTS = {"FLOAT4": 4, "FLOAT3": 3, "FLOAT2": 2,
 
 
 def _ptbehavior_channel(attr_obj, item):
-    """PTBEHAVIOR 参数行 → (tlp_hash, [(dt_hash, data_type), ...])；不可动画则 None。
-
-    PTBEHAVIOR 不是普通块：TLP 由它自己的 b_type（DTI 类名字符串）算出，DT 由参数名
-    去掉前导 m 后取 jamcrc —— 两条规则都在语料上验证过，故这一整类无需静态映射表
-    （详见 efx_format/timl/names.py 的 ptbehavior_* 说明）。
-
-    2026-09-12 放宽：不再只放行 FLOAT/COLOR_RGBA。判据改成「算出来的 DT 在该 TLP 的
-    调色板里」（DT_PALETTE 已并入 DTI dump 的全部 TLP 参数），dataType 也直接取调色板的，
-    于是整型/布尔/向量参数一并有了按钮。向量按 X/Y/Z/W 拆成多条轨道。
-    """
+    """解析 PTBEHAVIOR 参数对应的 TLP 与 DT 通道；不可动画时返回 ``None``。"""
     from ..efx_format.timl.names import ptbehavior_param_channels
 
     name = getattr(item, "hint_name", "") if item else ""
@@ -271,8 +222,7 @@ def _ptbehavior_channel(attr_obj, item):
         return None
     tlp, entries = res
 
-    # Mh* 子类可能把轨道挂在自身 TLP 或基类 TLP 下（从不并存）——优先复用该 TIML 里
-    # 已经存在的那个，避免把同一属性的轨道拆到两个 TLP。
+    # 子类/基类候选中优先复用已有 TLP，避免同一属性分裂到两处。
     from ..efx_format.timl.names import ptbehavior_tlp_candidates
     cands = ptbehavior_tlp_candidates(b_type)
     if len(cands) > 1:
@@ -311,15 +261,14 @@ def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
     if tname == "PTBEHAVIOR":
         if item is None:
             return
-        # 属性对象取 item.id_data 而非 active_object——Entry Inspector 里画的是
-        # 非活动的属性对象，用 active_object 会拿到 entry 本身而白白跳过按钮。
+        # Inspector 可绘制非活动属性对象，必须使用 ``item.id_data``。
         obj = item.id_data
         if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return
         ch = _ptbehavior_channel(obj, item)
         if ch is None:
             return
-        # 向量参数拆成多条分量轨道，故 dt_hex 编码成 "hash:dataType,hash:dataType"
+        # 向量参数编码为多个 ``hash:dataType`` 通道。
         tlp_hex = "%08X" % ch[0]
         dt_hex = ",".join("%08X:%d" % (dt & 0xFFFFFFFF, dtp) for dt, dtp in ch[1])
         data_type = ch[1][0][1]
@@ -337,8 +286,7 @@ def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
                            for dt, _dtype in entries)
 
     sub = row.row(align=True)
-    # 还没有 TIML 的 entry 也放行——弹窗里第一步就是"先建 TIML 段"。
-    # （全语料只有 5.2% 的 entry 自带 TIML，卡在这里等于按钮基本永远是灰的。）
+    # 可支持的 Entry 即使尚无 TIML 也可触发添加。
     sub.enabled = (_timl_capable_entry() is not None)
     op = sub.operator("efx.timl_field_add_menu", text="", icon="ANIM", depress=animated)
     op.block_type = tname
@@ -353,7 +301,7 @@ def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_timl_field_add_menu(Operator):
-    """点击后弹出小菜单，选择将该字段的 TIML 轨道加到 A0（发射轴）还是 A1（寿命轴）"""
+    """显示字段轨道应添加到 A0 或 A1 的菜单。"""
 
     bl_idname = "efx.timl_field_add_menu"
     bl_label  = "+TIML"
@@ -361,8 +309,7 @@ class EFX_OT_timl_field_add_menu(Operator):
 
     block_type: StringProperty(default="")
     field_name: StringProperty(default="")
-    # PTBEHAVIOR 专用：TLP/DT 在绘制时已按 b_type + 参数名算好，直接透传给添加算子
-    # （该块没有静态 FIELD_TO_DT 条目）。普通块留空。
+    # PTBEHAVIOR 通道在绘制时解析并直接透传。
     tlp_hash_hex: StringProperty(default="")
     dt_hash_hex:  StringProperty(default="")
     dt_data_type: IntProperty(default=0)
@@ -378,16 +325,14 @@ class EFX_OT_timl_field_add_menu(Operator):
         layout = self.layout
         layout.label(text=f"{self.block_type} · {self.field_name}", icon="ANIM")
         layout.separator()
-        # 这个 entry 还没有 TIML 段：不再要求用户先点一次"新建 TIML"再回来点轴——
-        # 直接照常列出 A0/A1，缺的段由 EFX_OT_timl_add_field_tracks 在建轨道前顺手补上。
-        # 只在这里提示一句会顺带新建，让动作可预期。
+        # 添加操作会按需创建缺失的 TIML 段。
         if _active_entry() is None:
             layout.label(text=T("timl.will_create_segment"), icon="INFO")
             layout.separator()
-        native = block_native_axis(self.block_type)   # 0=A0 母轴 / 1=A1 母轴 / None=两轴都行
+        native = block_native_axis(self.block_type)
 
         specs = {0: ("+A0  (Emission)", "ANIM"), 1: ("+A1  (Lifetime)", "PARTICLES")}
-        # 母轴排第一并标推荐；非母轴排后面并加"该属性在此轴通常不生效"提示。两轴都行→原序。
+        # 原生轴优先显示，另一轴仍可供用户选择。
         order = [native, 1 - native] if native in (0, 1) else [0, 1]
         for slot in order:
             txt, icon = specs[slot]
@@ -417,7 +362,7 @@ class EFX_OT_timl_field_add_menu(Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_timl_add_field_tracks(Operator):
-    """为确认字段在指定轴添加所有 DT 通道（向量一次添3条，Color 添1条）"""
+    """为字段在指定轴添加其所有 DT 通道。"""
 
     bl_idname = "efx.timl_add_field_tracks"
     bl_label  = "Add Field TIML Tracks"
@@ -433,16 +378,12 @@ class EFX_OT_timl_add_field_tracks(Operator):
 
     @classmethod
     def poll(cls, context):
-        # 与 timl_field_add_menu 保持一致：不要求已有 TIML，缺段由 execute 里的
-        # _ensure_timl_segment() 补上。以前这里卡 _active_entry() 会让弹窗里的
-        # +A0/+A1 在无 TIML 的 entry 上仍然点不动。
+        # 不要求已有 TIML，执行时会创建缺失段。
         return _timl_capable_entry() is not None
 
     def execute(self, context):
         if self.tlp_hash_hex and self.dt_hash_hex:
-            # PTBEHAVIOR 路径：TLP/DT 已由 b_type + 参数名算出。dt_hash_hex 是
-            # "hash:dataType[,hash:dataType...]"（向量参数逐分量一条），
-            # 旧式纯 hash 串也照收（dataType 取 dt_data_type）。
+            # PTBEHAVIOR 通道允许多组 ``hash:dataType``，兼容旧式纯 hash。
             try:
                 tlp_hash = int(self.tlp_hash_hex, 16)
                 entries = []
@@ -470,18 +411,16 @@ class EFX_OT_timl_add_field_tracks(Operator):
             if tlp_hash is None:
                 self.report({"ERROR"}, f"'{self.block_type}' does not support TIML tracks")
                 return {"CANCELLED"}
-        ok, created = _ensure_timl_segment()   # 没有 TIML 段就现建一个空白的
+        ok, created = _ensure_timl_segment()
         if not ok:
             self.report({"ERROR"}, "This entry cannot carry a TIML segment")
             return {"CANCELLED"}
-        body, timl = _resolve_for_edit()   # 已 commit 进行中关键帧编辑
+        body, timl = _resolve_for_edit()
         if timl is None:
             self.report({"ERROR"}, "No valid TIML found on active entry")
             return {"CANCELLED"}
 
-        # 新轨道首帧用该属性当前的静态字段值，使"加一条轨道"不改变特效当下的外观
-        # （绝对量级字段如 SizeY/Radius 因此也能拿到正确量级）。读不到则由
-        # DT_NEUTRAL 兜底（乘算类 → 1.0，其余 → 0.0）。
+        # 新轨道以静态字段值为首帧，读取失败时使用 DT_NEUTRAL。
         seeds = _field_seed_values(self.block_type.upper(), self.field_name, len(entries))
 
         added = 0
@@ -503,7 +442,7 @@ class EFX_OT_timl_add_field_tracks(Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Operator: 语料调色板 — 按 TLP+DT hash 添加单条（调色板按钮用）
+# Operator: 按 TLP/DT 添加单条轨道。
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_timl_add_track(Operator):
@@ -513,15 +452,14 @@ class EFX_OT_timl_add_track(Operator):
     bl_label  = "Add TIML Track"
     bl_options = {"REGISTER", "UNDO"}
 
-    tlp_hash_hex: StringProperty(default="")  # e.g. "4D111433"
-    dt_hash_hex:  StringProperty(default="")  # e.g. "8E8AFE06"
-    data_type:    IntProperty(default=2)       # 2=Float, 3=Color
-    slot:         IntProperty(default=0)       # 0=A0, 1=A1
+    tlp_hash_hex: StringProperty(default="")
+    dt_hash_hex:  StringProperty(default="")
+    data_type:    IntProperty(default=2)
+    slot:         IntProperty(default=0)
 
     @classmethod
     def poll(cls, context):
-        # 不要求已有 TIML —— 缺段时 execute 会先建（同 add_field_tracks）。
-        # ⚠ 删除/复制轨道不能照抄这条：那两个操作以「已有轨道」为前提。
+        # 添加可在无 TIML 时创建空段；删除和复制则要求已有轨道。
         return _timl_capable_entry() is not None
 
     def execute(self, context):
@@ -641,13 +579,11 @@ class EFX_OT_timl_copy_track(Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Panel: EFX TIML Tracks（Dope Sheet 侧栏，EFX TIML 分类）
-# 轨道列表 + 语料调色板
+# TIML 轨道面板。
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_entry_attribute_tlps(entry_obj) -> set:
-    """返回 entry 下所有 EFX_ATTRIBUTE 子对象对应的 TLP hash 集合（经 BLOCK_TO_TLP 映射）。
-    同时包含该 entry TIML 中已存在的 TLP hash（兼容手动添加或导入的已有轨道）。"""
+    """返回 Entry 属性对应的 TLP hash 集合。"""
     from ..efx_format.hashes import HASH_TO_NAME
     tlps = set()
     for child in entry_obj.children:
@@ -664,14 +600,12 @@ def _get_entry_attribute_tlps(entry_obj) -> set:
     return tlps
 
 
-# 全局缓存：防止 Blender EnumProperty 动态回调因 GC 丢引用导致下拉乱码
+# 动态 EnumProperty 回调必须返回持久列表。
 _tlp_enum_cache = [("NONE", "— 无匹配属性 —", "")]
 
 
 def _tlp_enum_items(self, context):
-    """TLP 下拉 EnumProperty 回调。
-    open_all=False：只列当前 entry 有对应 EFX_ATTRIBUTE 的 TLP + TIML 已有的 TLP。
-    open_all=True ：列出 DT_PALETTE 中所有已知 TLP。"""
+    """返回 TLP 下拉项；默认限制为当前 Entry，开放模式按分类列出。"""
     global _tlp_enum_cache
     if context is None:
         return _tlp_enum_cache
@@ -681,8 +615,7 @@ def _tlp_enum_items(self, context):
     body = _active_entry()
 
     if open_all or body is None:
-        # 「开放全部」= 列出所选**分类**下的全部 TLP。162 个里只有 28 个是特效，
-        # 其余是材质 / 动作 / 音频，编特效时全列出来纯属噪声，故按分类收窄。
+        # 开放模式仍按分类筛选。
         cat = getattr(wm, "efx_timl_tracks_category", "ALL")
         items = sorted(
             [("%08X" % h, timeline_param_name(h),
@@ -692,9 +625,9 @@ def _tlp_enum_items(self, context):
             key=lambda x: x[1],
         )
     else:
-        # 过滤：只列 entry 属性类型对应 TLP（+ TIML 已有 TLP）
+        # 保留 Entry 属性类型对应的 TLP。
         allowed = _get_entry_attribute_tlps(body)
-        # 也补入 TIML 中已有的 TLP（避免手动添加的 TLP 从下拉消失）
+        # 同时保留 TIML 中已有的 TLP。
         try:
             tb = _entry_timl_bytes(body)
             t = _timl.parse_timl(tb)
@@ -705,7 +638,7 @@ def _tlp_enum_items(self, context):
                             allowed.add(typ.timeline_param_hash & 0xFFFFFFFF)
         except Exception:
             pass
-        # 只保留 DT_PALETTE 中有数据的
+        # 仅列出有调色板数据的 TLP。
         items = sorted(
             [("%08X" % h, timeline_param_name(h),
               "%s  ·  0x%08X" % (timeline_param_fullname(h), h))
@@ -724,12 +657,10 @@ def _draw_track_row(layout, slot: int, tlp_hash: int, dt_hash: int, timl_obj):
     """绘制一条轨道行：通道名 + [X删除] [→复制] 按钮。"""
     row = layout.row(align=True)
     row.label(text=datatype_name(dt_hash), icon="KEYFRAME")
-    # 删除按钮
     op = row.operator("efx.timl_delete_track", text="", icon="X")
     op.tlp_hash_hex = "%08X" % (tlp_hash & 0xFFFFFFFF)
     op.dt_hash_hex  = "%08X" % (dt_hash  & 0xFFFFFFFF)
     op.slot = slot
-    # 跨轴复制按钮（方向箭头）
     dst = 1 - slot
     icon = "TRIA_DOWN" if dst == 1 else "TRIA_UP"
     op2 = row.operator("efx.timl_copy_track", text="", icon=icon)

@@ -1,9 +1,6 @@
-"""
-blender_epv/operators.py — EPV3 导入 / 导出算子（+ FileHandler 拖入）。
+"""EPV3 的导入、导出算子与拖放入口。
 
-镜像 blender_efx/operators.py 的稳定 API 子集：
-  - Operator / ImportHelper / ExportHelper / register_class
-  - FileHandler：4.1+ 才有，用 _HAS_FILEHANDLER 守卫类定义 + 注册（3.6 无此 API）。
+FileHandler 仅在 Blender 提供该类型时定义并注册，以兼容不支持拖放的版本。
 """
 import os
 
@@ -19,12 +16,11 @@ from . import io_tree
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parent_collection_of(target_col):
-    """返回 target_col 的父集合（扫描法；找不到返回 None）。"""
+    """返回 target_col 的父集合，包括场景根集合；找不到返回 None。"""
     for col in bpy.data.collections:
         for child in col.children:
             if child == target_col:
                 return col
-    # 也可能直接挂在 scene 根集合下
     for scene in bpy.data.scenes:
         for child in scene.collection.children:
             if child == target_col:
@@ -38,14 +34,13 @@ def find_epv_root(context):
     if obj is not None:
         if obj.get("~TYPE") == "EPV_ROOT":
             return obj
-        # record 对象：其集合(group)的父集合即根集合，内含 EPV_ROOT empty
+        # record 在 group 集合内，其父集合才是根集合，EPV_ROOT 挂在那里
         for gcol in obj.users_collection:
             root_col = _parent_collection_of(gcol)
             if root_col is not None:
                 for o in root_col.objects:
                     if o.get("~TYPE") == "EPV_ROOT":
                         return o
-    # 兜底：全场景唯一 EPV_ROOT
     roots = [o for o in bpy.data.objects if o.get("~TYPE") == "EPV_ROOT"]
     if len(roots) == 1:
         return roots[0]
@@ -148,7 +143,7 @@ class EPV_OT_export(bpy.types.Operator, ExportHelper):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FileHandler 拖入（4.1+ 守卫）
+# FileHandler 拖入
 # ─────────────────────────────────────────────────────────────────────────────
 
 _HAS_FILEHANDLER = hasattr(bpy.types, "FileHandler")

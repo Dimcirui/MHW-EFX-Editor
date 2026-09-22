@@ -1,20 +1,10 @@
-"""
-efx_format/ptbehavior/dti_extra.py  —  DTI 有、语料里从没出现过的 PTBEHAVIOR 属性
+"""PTBEHAVIOR 目录的 DTI 补项。
 
-来源：`refs/dti_effect_fields.json`（RE Engine DTI dump）。catalog.py 是从 10084 个官方
-文件推出来的**实际用过**的属性表；这里补的是**引擎认识、官方文件一次没写过**的那批。
-
-DTI 类型 → EFX_Behav.t 的映射在语料上逐项验证过（三个类里同名字段的 t 完全一致）：
-  bool→0x03  u32→0x06  f32→0x0C  color→0x0F  vector3→0x14  vector4→0x15
-  range→0x36(2×int32)  rangef→0x37(2×float32)  vector2/float2→0x40(2×float32)
-跳过两类：`class`（枚举镜像，如 mPlayTypeEnum，语料写的是不带 Enum 的那版，t 未知）、
-`::` 方法项（getTotal*LifeFrame）、以及 hermitecurve（编码未知）。
-
-⚠ 这些条目**没有任何实例做参照**：位置（anchor）取 DTI 表里的前一个已知字段，
-默认值一律 0（见 edit._default_param_fields）。引擎认不认只能实机试。
+补项使用已知的 DTI 类型到 EFX_Behav.t 映射；class、方法与未知编码类型不纳入。补项
+按 anchor 插入目录，默认值由 edit.py 提供，且不应被视为已有实例的推荐配置。
 """
 
-# {b_type: [(key, t, anchor_key 或 None), ...]} —— anchor 表示插在这个已知 key 之后
+# ``anchor`` 表示插在该已知 key 之后。
 DTI_EXTRA_FIELDS = {
     'nEffect::PointLightBehavior': [
         (0x21BA894E, 0x0C, 0xA3D00CD9),   # mShadowDepthBias           f32
@@ -56,8 +46,7 @@ DTI_EXTRA_FIELDS = {
     ],
 }
 
-# 语料里从未出现过的 b_type（DTI 有完整字段表）。PointLight 是「裸版 + Mh 版」两套都在用，
-# SpotLight 只见 Mh 版，裸版的字段表照 DTI 原序收下。
+# 仅由 DTI 提供字段表的 b_type。
 DTI_EXTRA_BTYPES = {
     'nEffect::SpotLightBehavior': [
         (0x9074DE04, 0x06),   # mGroup                   u32
@@ -90,7 +79,7 @@ DTI_EXTRA_BTYPES = {
 
 
 def _build():
-    """把 DTI 补项并进 catalog，返回 (合并后的目录, DTI-only key 集合)。"""
+    """合并目录与 DTI 补项，并返回 DTI-only key 集合。"""
     from .catalog import PTBEHAVIOR_CATALOG
     merged = {}
     dti_only = set()
@@ -117,5 +106,5 @@ PTBEHAVIOR_CATALOG_FULL, DTI_ONLY_KEYS = _build()
 
 
 def is_dti_only(b_type: str, key: int) -> bool:
-    """该 (b_type, key) 是否属于「DTI 有、官方文件从没写过」的补项。"""
+    """返回该键是否仅由 DTI 补项提供。"""
     return (b_type, key & 0xFFFFFFFF) in DTI_ONLY_KEYS

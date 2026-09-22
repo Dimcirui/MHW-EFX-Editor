@@ -1,32 +1,24 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/ptlife.py  —  PTLIFE（粒子在某个生命阶段触发一个 Action）
+"""PTLIFE —— 粒子在指定生命阶段触发一个 ACTION。
 
-一个 PTLIFE 属性说的是：**本 entry 的每个粒子**，在指定的生命阶段，触发
-`relationIndex` 指的那个 ACTION —— 那个 action 里的 PLAYEMITTER 再点名一组目标
-entry，于是「粒子生出来又生出一堆子特效」。
+PTLIFE 表示：**本 entry 的每个粒子**在指定生命阶段触发 `relationIndex` 所指的 ACTION；该
+ACTION 中的 PLAYEMITTER 再指定一组目标 entry，由此形成「粒子派生子特效」的结构。
 
-字段
-----
-    status(Trigger On)   ENUM_PTLIFE_STATUS：0=生成时 1=淡入时 2=持续时 3=淡出时 4=死亡时
-                         官方语料 8904 块里 0 占 92%（8188），其余 3/2/4/1 合计 716。
-    relationIndex        ACTION 段的局部下标；-1 = 不触发（语料 416 块）。
-                         语料里**没有越界值**，8488 块全部落在 action 数内。
-    unknFrame0/1(+Jitter) 疑似延迟/间隔的帧数对，99.4% 为 0，本 behavior 暂不参与计算
-                         （非 0 时 note 一条，别让人以为算进去了）。
+字段职能：
 
-阶段判定复用 LIFE 已经算好的边界（`p.rolled` 里的 life_fade_in / life_total /
-life_fade_out），所以本 behavior 排在 LIFE 之后（SHADE / ORDER=200）。每个粒子
-**只触发一次**（子特效是一次性生出来的，不是每帧刷一个）。
+    status（Trigger On）    0=生成时 1=淡入时 2=持续时 3=淡出时 4=死亡时
+    relationIndex           ACTION 段的局部下标，-1 表示不触发
+    unknFrame0/1(+Jitter)   疑似延迟或间隔的帧数对，不参与计算，非 0 时记录 note
 
-「淡入时」这一档的确切时机（进入淡入段 = 出生那一刻，还是淡入**结束**那一刻）
-没有实测依据；这里按**进入该阶段**统一处理，于是 fadeIn=0 时它与「生成时」等价。
-语料里这一档只有 15 块，先不为它加开关。
+「淡入时」按**进入该阶段**的时刻处理，因此 fadeIn=0 时与「生成时」等价。
 
-本 behavior 只**产出请求**（`em.spawn_requests`），真正建子实例、让子实例跟着父粒子
-走、父粒子死后失去 parent 就地留下——全在 `sim/scene.py`。
+本 behavior 只产生请求（`em.spawn_requests`）。子实例的创建、子实例跟随父粒子、父粒子死亡后
+子实例脱离并留在原处，均由 `sim/scene.py` 负责。
 
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- 阶段判定使用 LIFE 计算的边界（`p.rolled` 中的 life_fade_in / life_total / life_fade_out），
+  因此必须排在 LIFE 之后。
+- 每个粒子只触发一次：子特效一次性生成，而非每帧生成。
 """
 
 from ...hashes import PTLIFE
@@ -41,20 +33,20 @@ ON_SUSTAIN = 2
 ON_FADE_OUT = 3
 ON_DEATH = 4
 
-#: 需要在 step 里等阶段边界的那几档（0 在 spawn 里发、4 在 death 里发）
+#: 需在 step 中等待阶段边界的取值；0 在 spawn 中触发，4 在 death 中触发
 _PHASE_STATUS = (ON_FADE_IN, ON_SUSTAIN, ON_FADE_OUT)
 
 
 @register(PTLIFE)
 class PtLife(Behavior):
-    """SHADE 阶段（排在 LIFE 之后）：按生命阶段产出 action 触发请求。"""
+    """SHADE 阶段按粒子的生命阶段产出 ACTION 触发请求。"""
 
     STAGE = SHADE
     ORDER = 200
 
     _status = ON_SPAWN
     _action = -1
-    _armed = False          # relationIndex 有效才需要干活
+    _armed = False          # 仅在 relationIndex 有效时启用
 
     def on_emitter_init(self, em, rng):
         f = em.f(PTLIFE)
@@ -80,7 +72,7 @@ class PtLife(Behavior):
         if not self._armed or self._status not in _PHASE_STATUS:
             return
         if p.user.get(PtLife):
-            return                      # 一个粒子只触发一次
+            return
         if p.age >= self._phase_start(p):
             self._fire(p, em)
 
@@ -89,20 +81,20 @@ class PtLife(Behavior):
             return None
         if p.user.get(PtLife):
             return None
-        # 死亡这一档直接产出（返回值由 Simulator 收进 em.spawn_requests）
+        # 死亡阶段以返回值产生请求，由 Simulator 收入 em.spawn_requests
         p.user[PtLife] = True
         return [self._request(p)]
 
     # ── 内部 ─────────────────────────────────────────────────────────────────
     def _phase_start(self, p):
-        """该 status 对应的阶段**起始** age。"""
+        """该 status 对应的阶段起始 age。"""
         rolled = p.rolled
         fade_in = rolled.get("life_fade_in", 0)
         if self._status == ON_FADE_IN:
             return 0
         if self._status == ON_SUSTAIN:
             return fade_in
-        # ON_FADE_OUT：无限寿命没有淡出段，退化成「淡出段起点 = 永不到达」
+        # ON_FADE_OUT：无限寿命没有淡出段，起点取为不可达
         if rolled.get("life_indefinite", False):
             return 1 << 30
         total = rolled.get("life_total", 0)

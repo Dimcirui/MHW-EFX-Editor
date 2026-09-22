@@ -1,65 +1,9 @@
-"""
-epv_format/epv.py — MHW EPV3 (.epv3) 解析 / 序列化。
+"""MHW .epv3 文件的解析与序列化。
 
-格式全貌（全小端、全定长、无偏移表，纯顺序读取）
---------------------------------------------------------------------
-header:
-    signature   uint64
+字节布局由本文件的 struct 格式串定义，按顺序读取，没有偏移表。record 含四个变长
+CString 路径槽，因此长度不固定。
 
-body (blockSection):
-    count       uint32                 group 数量
-    groups[count]:
-        recordCount uint32
-        groupID     ushort
-        records[recordCount]:          见 EPVRecord，每条定长
-
-trail:
-    padding     uint64
-    trailCount  uint32
-    trails[trailCount]:
-        trailID  int32
-        blockID  uint32
-        recordID uint32
-    epvPath     CString utf-8          (null 结尾)
-    ONE         byte
-    NULL        uint32
-
-EPVRecord 布局
---------------------------------------------------------------------
-    packed_path   CString utf-8 × 4    指向 efx 的路径槽（空槽=空串），各以 \0 结尾
-    padding       int32
-    unknownID     int32                通常 0 或 5
-    recordID      ushort
-    parameterBlock1:
-        paramU0   int32[3]
-        paramU1   float32
-        paramU2   int32[4]
-        EFXSubIndex   short[2]         指向 efx 内部子索引
-        paramU3   short[2]
-        EFXSubIndex2  short[2]
-        paramU4   short[2]
-    position        float32[3]
-    positionJitter  float32[3]
-    rotation        float32[3]
-    rotationJitter  float32[3]
-    paramW3       int32[2]
-    boneID        int32                挂点骨骼，通常 -1
-    paramW4       int32[3]
-    epvColor      EPVColor × 8         efx 外观覆盖 slot 表
-    paramW5       float32[2]
-    parameterBlock2:
-        f1 float32; b1..b4 byte; i1 int32; f2 float32; i2 int32; i3 int32
-    paramV        int32[4]
-
-EPVColor (epvc) 布局
---------------------------------------------------------------------
-    efxslot     int32
-    hexcolor    ubyte[4]   (RGBA)
-    saturation  float32
-    size        int32
-    frequency   float32
-
-注：record 不存 trailID；trail 段通过 (blockID, recordID) 反向关联。
+record 不保存 trailID；trail 段通过 (blockID, recordID) 反向关联到 record。
 """
 from __future__ import annotations
 import struct
@@ -73,7 +17,7 @@ from typing import List, Tuple
 
 @dataclass
 class EPVColor:
-    """epvc — 一个 efx 外观覆盖槽（截图里的一行 EFX Slot）。"""
+    """一个 efx 外观覆盖槽。"""
     efxslot: int = 0
     hexcolor: Tuple[int, int, int, int] = (255, 255, 255, 255)  # RGBA, 0-255
     saturation: float = 0.0
@@ -135,7 +79,7 @@ class EPVRecord:
 
 @dataclass
 class EPVGroup:
-    """一个 block / group：共享 groupID 的一批 record。"""
+    """共享同一 groupID 的一批 record。"""
     groupID: int
     records: List[EPVRecord] = field(default_factory=list)
 
@@ -153,9 +97,10 @@ class EPVFile:
     groups: List[EPVGroup] = field(default_factory=list)
     trails: List[EPVTrail] = field(default_factory=list)
     epvPath: str = ""
-    trail_padding: int = 0   # trail 段开头的 uint64，通常 0
-    trail_one: int = 1       # ONE byte
-    trail_null: int = 0      # NULL uint32
+    # 保留 trail 尾部字段，确保未编辑数据可完整往返。
+    trail_padding: int = 0
+    trail_one: int = 1
+    trail_null: int = 0
 
     # ── parse ──────────────────────────────────────────────────────────────
     @classmethod

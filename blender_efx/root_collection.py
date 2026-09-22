@@ -1,38 +1,12 @@
-"""
-blender_efx/root_collection.py  —  ROOT 集合化：文件归属改由 Collection 承载
+"""管理 EFX 根集合、段叶集合及其归属关系。
 
-2026-07 结构权威下放的收尾：EFX_ROOT 不再是一个 Empty 对象。取而代之，每个
-.efx 文件对应的顶层紫色集合（root_col，import 时以文件名建立，COLOR_06）
-本身即"文件"——header/label/eof(legacy 或 opaque) 字段直接存在 root_col 的
-自定义属性上；"entry/action/extern/subselect 属于哪个文件"不再靠
-`obj.parent == root_obj` 判断，改靠**集合归属**判断。
-
-标记约定
---------
-- `root_col["~TYPE"] = "EFX_ROOT"`：顶层文件集合。
-- 四个叶子子集合各自：
-    `col["~TYPE"] = "EFX_xxx_COLLECTION"`（见 _TYPE_TO_MARKER）
-    `col.efx_root_ptr = root_col`（真正的 PointerProperty，指回 root_col）
-  entry/action/extern/subselect/attribute/EFX_TIML 对象全部直接 link 进这些
-  叶子集合（跟以前一样，这一层"对象在哪个集合里"从来没变过——变的只是不再
-  额外维护一份 `.parent==root_obj` 的冗余关系）。
-- EOF 嵌套集合（2026-07 二期）：Entry 叶子集合下再嵌两个对称子集合 "Direct Trigger" /
-  "Not Direct Trigger"（`get_direct_trigger_collection`/`ensure_direct_trigger_collection`
-  及其 `not_direct_trigger` 对应版本），同样有 `efx_root_ptr` 反向指回 root_col。
-  entry（per_entry 模型）100% 分流进其中一个，Entry 叶子集合自身直接子级永远清空——
-  大纲拖拽即编辑。误留在 Entry 集合直接子级的（异常/拖拽失误）导出时 fail-safe 视为
-  直接触发（entry_action_ref.py::export_eof_per_entry / is_entry_in_eof 处理）。
-
-查找是 O(1)：`obj.users_collection` 通常只有 1 个叶子集合，读它的
-`efx_root_ptr` 直接拿到 root_col，不需要扫场景、不需要递归集合树。
-（对比 backref.py 里旧的 `_find_root_collection`——那是按名字含 ".efx" 全场景
-扫 `bpy.data.collections` 的兜底实现，正确但是 O(集合数×每集合对象数)；
-本模块的版本是维护型反向指针，供全仓库统一复用，backref.py 已改为委托本模块。）
-
-attribute→entry、EFX_TIML→entry 这两层嵌套 parent **完全不受影响**——只是
-"顶层段→文件"这一层的归属载体从 parent 换成集合，嵌套层级不动。
-
-约束（CLAUDE.md）：Python 3.10 语法、bpy 稳定子集、不改 efx_format/。
+维护约束：
+- EFX_ROOT 是顶层文件集合；Header、标签和 EOF 数据归根集合所有。
+- 段对象通过所在集合的 ``efx_root_ptr`` 解析所属根，属性与 TIML 仍以 parent
+  连接到 Entry。
+- Entry 的 Direct Trigger 与 Not Direct Trigger 嵌套集合均须保留根反向指针；
+  收集 Entry 时需要递归并去重，以免异常多重归属重复写出。
+- 无法确定根归属的对象不得被跨文件引用限制误拒绝。
 """
 
 import bpy
@@ -47,11 +21,7 @@ _TYPE_TO_MARKER = {
     "EFX_SUBSELECT": "EFX_SUBSELECT_COLLECTION",
 }
 
-# 反向：子集合标记 → 段类型（供人类可读场景用，正向表已够用，此表暂不需要）
-
-# EOF 嵌套集合：挂在 Entry 叶子集合下的两个对称子集合，entry 100% 分流进其中一个
-# （Entry 叶子集合自身直接子级永远清空）。误留在 Entry 集合直接子级的（异常/手动
-# 拖拽失误）按 fail-safe 规则在导出时视为直接触发（entry_action_ref.py 处理）。
+# EOF 的两个嵌套集合都属于 Entry 段并保留根反向指针。
 _DIRECT_TRIGGER_MARKER = "EFX_DIRECT_TRIGGER_COLLECTION"
 _DIRECT_TRIGGER_NAME = "Direct Trigger"
 _NOT_DIRECT_TRIGGER_MARKER = "EFX_NOT_DIRECT_TRIGGER_COLLECTION"
@@ -68,12 +38,7 @@ def new_root_collection(name: str, parent_col) -> bpy.types.Collection:
 
 
 def new_leaf_collection(name: str, root_col: bpy.types.Collection, type_tag: str) -> bpy.types.Collection:
-    """
-    建一个叶子子集合（Entry/Action/Extern/Subselect 之一），link 进 root_col，
-    标记 ~TYPE + 设 efx_root_ptr 反向指针指回 root_col。
-
-    type_tag : "EFX_ENTRY" / "EFX_ACTION" / "EFX_EXTERN" / "EFX_SUBSELECT"
-    """
+    """创建段叶集合并设置类型标记和指向根集合的反向指针。"""
     marker = _TYPE_TO_MARKER.get(type_tag)
     if marker is None:
         raise ValueError("new_leaf_collection：未知 type_tag %r" % (type_tag,))
@@ -98,7 +63,7 @@ def get_leaf_collection(root_col: bpy.types.Collection, type_tag: str):
 
 
 def ensure_leaf_collection(name: str, root_col: bpy.types.Collection, type_tag: str) -> bpy.types.Collection:
-    """find-or-create：已存在则直接返回，否则新建（供"新增段"类算子在section缺失时按需建）。"""
+    """取得段叶集合，缺失时创建。"""
     existing = get_leaf_collection(root_col, type_tag)
     if existing is not None:
         return existing
@@ -107,15 +72,9 @@ def ensure_leaf_collection(name: str, root_col: bpy.types.Collection, type_tag: 
 
 def ensure_linked_collection(root_col: bpy.types.Collection, marker: str, name: str,
                               color_tag: str) -> bpy.types.Collection:
-    """find-or-create 一个嵌在 root_col 直接子级下的**旁支资产**集合（非 EFX 叶子集合）。
+    """取得或创建根下的旁支资产集合。
 
-    供 mod3_link（导入的 mod3 网格，红）、uvs_link（外部化的 UVS 载体，绿）这类
-    "自动导入、镜像这个 .efx 但本身不是 .efx 结构一部分" 的对象使用：marker 不出现
-    在 `_TYPE_TO_MARKER` 里，故 `get_leaf_collection` / `collect_top_level` 天然
-    跳过它——导出/校验对它完全隐形，不需要额外过滤。
-
-    同一 root_col、同一 marker 只会建一份：重复调用（同一个 .efx 里多个属性各自
-    需要一个宿主）直接复用已建好的集合，不会每次都新建一个。
+    其 marker 不得属于 EFX 段集合标记，因此导出与校验会自然忽略其对象。
     """
     for c in root_col.children:
         if c.get("~TYPE") == marker:
@@ -140,9 +99,7 @@ def _get_nested_entry_collection(root_col: bpy.types.Collection, marker: str):
 
 
 def _ensure_nested_entry_collection(root_col: bpy.types.Collection, marker: str, name: str):
-    """find-or-create：嵌套在 Entry 叶子集合下（不是 root_col 的直接子集合），
-    同样设 efx_root_ptr 反向指回 root_col，使其内的 entry 仍能被 find_root_collection 找到。
-    Entry 叶子集合不存在时返回 None（不该发生，任何文件都有 Entry 段）。"""
+    """取得或创建 Entry 下的嵌套集合，并写入根反向指针。"""
     existing = _get_nested_entry_collection(root_col, marker)
     if existing is not None:
         return existing
@@ -181,16 +138,7 @@ def is_root_collection(col) -> bool:
 
 
 def find_root_collection(obj: bpy.types.Object):
-    """
-    给任意 EFX 对象（entry/attribute/action/extern/subselect/EFX_TIML 句柄），
-    O(1) 找到它所属的顶层文件集合（root_col）。
-
-    机制：obj 直接 link 在某个叶子集合里（entry 和它的 attribute/TIML 句柄
-    都直接 link 在同一个 Entry 叶子集合里，嵌套关系纯靠 .parent 表达，跟
-    集合归属无关）——读该叶子集合的 efx_root_ptr 反向指针即得，不扫场景。
-
-    找不到（对象未挂在任何 EFX 叶子集合下，或叶子集合缺反向指针）返回 None。
-    """
+    """通过对象所属集合的反向指针查找 EFX 根集合。"""
     if obj is None:
         return None
     for col in obj.users_collection:
@@ -203,19 +151,9 @@ def find_root_collection(obj: bpy.types.Object):
 
 
 def collect_top_level(root_col: bpy.types.Collection, type_tag: str) -> list:
-    """
-    收集 root_col 下某类型的全部顶层对象（entry/action/extern/subselect），
-    按 efx_index 升序排列。
+    """递归收集指定段对象并按索引排序。
 
-    递归子集合（不仅扫叶子集合的直接 .objects，也扫其子集合）——Entry 类型下
-    还会扫到嵌套的 "Direct Trigger"/"Not Direct Trigger" 子集合，entry 无论挂在
-    哪一层（含误留在 Entry 叶子集合直接子级的异常/孤儿情况）都能被收集到。
-
-    去重（`seen`）：正常情况下一个对象只会出现在其中一层，但异常状态——entry
-    被手动 Ctrl+drag 同时链进 Direct Trigger 和 Not Direct Trigger 两个子集合
-    （validate.py 的 eof_dual_membership 警告专门检测这种情况）——会让递归遍历
-    在两层各命中一次。不去重会导致该 entry 在导出的 Main 段里重复写入两遍
-    （数据损坏，不只是列表里的视觉重复），故这里防御性去重。
+    必须按对象身份去重，避免异常多重归属导致重复导出。
     """
     col = get_leaf_collection(root_col, type_tag)
     if col is None:
@@ -237,8 +175,7 @@ def collect_top_level(root_col: bpy.types.Collection, type_tag: str) -> list:
 
 
 def same_root(obj_a: bpy.types.Object, obj_b: bpy.types.Object) -> bool:
-    """判断两个 EFX 对象是否属于同一个文件（同一 root_col）。任一方找不到 root 时保守返回 True
-    （不限制，与旧 _same_root_as_active 的保守策略一致，只在确属不同文件时才排除）。"""
+    """判断对象是否同属一个根；未知归属时保守允许。"""
     root_a = find_root_collection(obj_a)
     root_b = find_root_collection(obj_b)
     if root_a is not None and root_b is not None and root_a is not root_b:
@@ -252,21 +189,13 @@ def all_root_collections() -> list:
 
 
 def is_color_editor_mode(obj: bpy.types.Object) -> bool:
-    """obj 所属 EFX 文件是否处于 Color Editor 模式（导入时勾选"仅导入颜色"，见
-    io_tree.py::import_efx_tree 的 color_editor_mode 参数）。找不到归属或未设置
-    该自定义属性 → False（普通编辑器模式，向后兼容旧导入）。
-
-    供各面板 poll() 判断是否该在颜色模式下隐藏——放在 root_collection.py（而非
-    panels.py）是为了让 backref.py / entry_action_ref.py 等已依赖本模块的文件
-    直接复用，不引入循环导入。"""
+    """判断对象所属根是否处于颜色编辑器模式；未知根时返回 False。"""
     root = find_root_collection(obj)
     return root is not None and int(root.get("color_editor_mode", 0)) == 1
 
 
 def root_is_color_editor_mode(root_col: bpy.types.Collection) -> bool:
-    """同 is_color_editor_mode，但直接接受 root_col 本身（供 poll 已拿到
-    root_col 而非 object 的场景，如 Add Section / Direct Trigger List /
-    Subselect States 这类按"当前活动集合"而非"当前活动对象"判断的面板）。"""
+    """直接判断根集合是否处于颜色编辑器模式。"""
     return root_col is not None and int(root_col.get("color_editor_mode", 0)) == 1
 
 

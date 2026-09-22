@@ -111,12 +111,7 @@ def get_user_preferences(context=None):
         context = bpy.context
     prefs = None
 
-    # ⚠ 不能 split(".")[0]：老式 addon 的 __package__ 无点（如 "efx_editor"），截断无害；
-    # 但 4.2+ 扩展系统里 context.preferences.addons 的 key 是**完整模块路径**
-    # （如 "bl_ext.user_default.efx_editor"），split 后只剩 "bl_ext"，查不到 → prefs=None
-    # → 面板报 "Error getting updater preferences"。改用完整 __package__ 两边都对得上
-    # （也与 EFX_UpdaterPreferences.bl_idname = __name__ 一致，根 __init__ 的 __name__
-    # 在扩展下同样是完整路径）。
+    # do not use split(".")[0]
     package_name = __package__
 
     if hasattr(context, "user_preferences"):

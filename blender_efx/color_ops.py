@@ -1,24 +1,9 @@
-"""
-blender_efx/color_ops.py  —  EFX Color Editor 全局改色工具
+"""Color Editor 的全局颜色与亮度工具。
 
-仅在 Color Editor 模式（导入时勾"仅导入颜色"，见 io_tree.py::_apply_color_editor_view）
-下暴露的两个全局改色算子，面向"完全不懂 efx"的调色用户：
-
-  · 色系偏移 (Shift)——相对色相旋转。算全体颜色的主色相 → 目标色相的差 Δ，每个颜色
-    的色相各转同一个 Δ，饱和度/明度原样保留。红芯黄边 → 蓝芯青边：主色相精确落到目标，
-    而内部明暗结构与色相层次全部保留。近中性色（S·V≈0）旋转色相后 RGB 不变，天然不被染色。
-  · 直接替换 (Replace)——所有颜色的 RGB 直接设为目标色，各自 alpha 保留。
-
-写值走 EFXFieldItem.color_rgba_value（COLOR_RGBA 字段）或 int_as_color_display
-（TUBELIGHT headColor/tailColor 打包 int32），其 update 回调（_mark_attribute_dirty）
-自动置 edited=True → 导出时该字段重新 pack；未触及的字段仍走 orig_b64 原样还原。
-因此本工具不破坏 byte-perfect：改过的重打包、没改的逐字节原样（同普通字段编辑）。
-
-作用域：Scene.efx_active_efx 指向的那个 EFX 文件（N 面板 Active EFX 选择器，导入时
-已自动指向新导入的 root）。只处理颜色的 RGB 三通道，亮度/强度类标量（is_color_field
-命中但非 RGB）与 alpha 通道不动。TIML 动画色 / mrl3 内联材质色不在 v1 范围。
-
-纯色彩数学（shift_hue / _dominant_hue）只用 colorsys 标准库、零 bpy，可独立单测。
+维护约束：
+- 仅修改可编辑颜色字段的 RGB，保留 alpha；字段更新走 PropertyGroup 以标记导出重打包。
+- 颜色根优先显式目标、活动对象所属根，最后才接受场景唯一的颜色根。
+- 色彩数学不依赖 bpy。
 """
 
 import colorsys
@@ -32,19 +17,10 @@ from . import root_collection as _rc
 from .i18n import T
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 纯色彩数学（零 bpy，可单测）
-# ─────────────────────────────────────────────────────────────────────────────
+# 色彩数学
 
 def _dominant_hue(colors):
-    """全体颜色按 S·V 加权的圆周平均色相（0-1）。
-
-    权重取 S·V：高饱和、高亮度的颜色主导整体观感，近中性/近黑（S·V≈0）几乎不参与。
-    色相是圆周量，直接算术平均会在 0/1 接缝出错，故转单位向量求和再取角。
-    全部为中性色（累计向量为零）时无主色相，返回 None。
-
-    colors：[(r, g, b), ...]，各分量 0-1。
-    """
+    """返回按 S×V 加权的圆周平均色相；全中性时返回 None。"""
     sx = sy = 0.0
     for r, g, b in colors:
         h, s, v = colorsys.rgb_to_hsv(r, g, b)
@@ -60,14 +36,7 @@ def _dominant_hue(colors):
 
 
 def shift_hue(colors, target_hue):
-    """相对色相旋转（色系偏移）：主色相精确落到 target_hue，其余颜色各转同一个 Δ，
-    S/V 保留——保留内部明暗结构与色相层次（红芯黄边 → 蓝芯青边）。
-
-    返回 (new_colors, dominant_hue)。dominant_hue 为 None（全中性、无主色相）时
-    原样返回 colors 副本，由调用方决定如何提示。
-
-    colors：[(r, g, b), ...]；target_hue：0-1。
-    """
+    """将主色相旋转至目标色相，保留每个颜色的 S/V。"""
     dom = _dominant_hue(colors)
     if dom is None:
         return [tuple(c) for c in colors], None
@@ -80,14 +49,7 @@ def shift_hue(colors, target_hue):
 
 
 def align_hue(colors, target_hue):
-    """绝对对齐（使用单一颜色）：每个颜色的色相直接设为 target_hue，S/V 保留。
-
-    所有颜色收敛到同一个色相，只保留各自的明暗/饱和差异——红芯与黄边都变成目标色相
-    的深浅两档（PS"着色"式）。近中性色（S≈0）色相无意义、设 hue 后 RGB 仍不变，
-    故黑白/灰不被染色（与相对偏移一致，避免中性烟雾/黑边被莫名上色）。
-
-    colors：[(r, g, b), ...]；target_hue：0-1。
-    """
+    """将每个颜色的色相对齐到目标值，保留 S/V。"""
     out = []
     for r, g, b in colors:
         _h, s, v = colorsys.rgb_to_hsv(r, g, b)
@@ -95,21 +57,10 @@ def align_hue(colors, target_hue):
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# bpy 胶水：收集颜色字段 + 读写 RGB
-# ─────────────────────────────────────────────────────────────────────────────
+# Blender 数据访问
 
 def _iter_color_items(root_col):
-    """遍历 root_col 下全部 attribute，产出携带 RGB 的 (field_item, kind)。
-
-    kind ∈ {'rgba', 'packed'}：
-      'rgba'   → COLOR_RGBA 字段，值在 color_rgba_value（4 float，第4通道 alpha）。
-      'packed' → TUBELIGHT headColor/tailColor 打包 int32，经 int_as_color_display 影子属性。
-
-    遍历方式复用 io_tree._apply_color_editor_view 的 col_entry.all_objects（一次性、
-    不做全场景反查，见 [[onchange-full-scene-scan-perf-bug]]）。read_only 字段跳过
-    （其导出恒走 orig_b64，写值无效且会误导）。
-    """
+    """遍历根内可编辑的 RGB 项；read_only 项不得写入。"""
     col_entry = _rc.get_leaf_collection(root_col, "EFX_ENTRY")
     if col_entry is None:
         return
@@ -131,11 +82,7 @@ def _iter_color_items(root_col):
 
 
 def _iter_brightness_items(root_col):
-    """遍历 root_col 下全部 attribute，产出可乘算的亮度/强度浮点 field_item。
-
-    判据用 color_fields.is_brightness_field（含 FLOAT 硬门控）；read_only 跳过。
-    遍历方式同 _iter_color_items。
-    """
+    """遍历根内可编辑的亮度或强度 FLOAT 项。"""
     col_entry = _rc.get_leaf_collection(root_col, "EFX_ENTRY")
     if col_entry is None:
         return
@@ -160,7 +107,7 @@ def _read_rgb(item, kind):
 
 
 def _write_rgb(item, kind, rgb):
-    """写回 RGB 三通道，保留原 alpha（第4通道）。触发 update → edited=True。"""
+    """写入 RGB 并保留 alpha。"""
     if kind == "packed":
         v = item.int_as_color_display
         item.int_as_color_display = (rgb[0], rgb[1], rgb[2], v[3])
@@ -170,13 +117,7 @@ def _write_rgb(item, kind, rgb):
 
 
 def _resolve_root(context):
-    """当前操作的 Color Editor 根，按优先级解析（找不到 → None）：
-
-      1. Scene.efx_active_efx（N 面板 Active EFX 选择器）指向的颜色根；
-      2. 当前活动对象所属的颜色根；
-      3. 场景中唯一的颜色根——「仅导入颜色」后通常只有一个文件，导入算子并不会
-         自动把它设成 active_efx，靠这条兜底让面板/算子导入后即可用，无需手动选。
-    """
+    """按显式目标、活动对象、唯一颜色根的顺序解析根；歧义时返回 None。"""
     scn = getattr(context, "scene", None)
     root = getattr(scn, "efx_active_efx", None) if scn is not None else None
     if root is not None and _rc.root_is_color_editor_mode(root):
@@ -194,15 +135,10 @@ def _resolve_root(context):
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # 算子
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _prep_target(op, context):
-    """三个算子共用的前置：解析颜色根 + 校验目标色有色相 + 收集颜色字段。
-
-    成功返回 (root, target_hue, pairs)；失败已 report 并返回 None。
-    """
+    """解析目标根和色相，并收集颜色项；失败时报告并返回 None。"""
     root = _resolve_root(context)
     if root is None:
         op.report({"ERROR"}, T("colortool.no_root"))
@@ -337,18 +273,16 @@ class EFX_OT_recolor_brightness(bpy.types.Operator):
         return {"FINISHED"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 面板（VIEW_3D N 面板 → EFX 标签，仅 Color Editor 模式）
-# ─────────────────────────────────────────────────────────────────────────────
+# 面板
 
 class EFX_PT_color_tool(bpy.types.Panel):
-    """全局改色工具（仅 Color Editor 模式出现）"""
+    """Color Editor 的全局改色工具。"""
 
     bl_space_type  = "VIEW_3D"
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "Color Tool"
-    bl_order       = -3   # 紧跟主面板 MHW EFX(-4) 之后
+    bl_order       = -3
 
     @classmethod
     def poll(cls, context):
@@ -358,12 +292,10 @@ class EFX_PT_color_tool(bpy.types.Panel):
         layout = self.layout
         layout.prop(context.scene, "efx_recolor_target", text=T("colortool.target"))
         layout.separator(factor=0.3)
-        # 三个平行操作：色系偏移 → 仅修改色相 → 直接替换全部
         layout.operator("efx.recolor_shift",   text=T("colortool.shift"),   icon="COLOR")
         layout.operator("efx.recolor_align",   text=T("colortool.align"),   icon="MOD_HUE_SATURATION")
         layout.operator("efx.recolor_replace", text=T("colortool.replace"), icon="BRUSH_DATA")
 
-        # ── 亮度/强度乘数（独立于颜色，乘所有亮度字段）─────────────────────────
         layout.separator()
         layout.label(text=T("colortool.brightness_header"))
         layout.prop(context.scene, "efx_brightness_mult", text=T("colortool.brightness_mult"))

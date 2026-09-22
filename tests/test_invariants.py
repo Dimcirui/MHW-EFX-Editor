@@ -204,5 +204,37 @@ class TestPackagingComplete(unittest.TestCase):
                          % (manifest_ver, init_ver))
 
 
+class TestHashHexCommentsAgree(unittest.TestCase):
+    """`hashes/__init__.py` 里 `NAME = <十进制>  # 0xHEX` 的两种写法必须一致。
+
+    十进制是代码实际用的值，十六进制只是给人对照 .bt 模板用的——**手抄的**，会错。
+    2026-09-20 首次全量核对：93 条里 7 条对不上（7.5%），全是错位/多打一位；
+    其中两条还带着 "(actually 0x…)" 的二次订正，**而二次订正也是错的**。
+    这类错误肉眼极难发现，但机械一比就出来。
+    """
+
+    _DECL = re.compile(r'^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(\d+)\s*#(.*)$')
+    _HEX = re.compile(r'0x([0-9A-Fa-f]+)')
+
+    def test_hex_matches_decimal(self):
+        path = os.path.join(ROOT, "efx_format", "hashes", "__init__.py")
+        bad, checked = [], 0
+        for lineno, line in enumerate(_read(path).splitlines(), 1):
+            m = self._DECL.match(line)
+            if not m:
+                continue
+            dec, comment = int(m.group(2)), m.group(3)
+            hexes = self._HEX.findall(comment)
+            if not hexes:
+                continue
+            checked += 1
+            if not any(int(h, 16) == dec for h in hexes):
+                bad.append("hashes/__init__.py:%d  %s = %d  注释写 %s，应为 0x%08X"
+                           % (lineno, m.group(1), dec,
+                              " / ".join("0x" + h for h in hexes), dec))
+        self.assertGreater(checked, 50, "解析到的带十六进制注释常量太少，正则可能失配了")
+        self.assertEqual(bad, [], "十六进制注释与十进制值对不上：\n  " + "\n  ".join(bad))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

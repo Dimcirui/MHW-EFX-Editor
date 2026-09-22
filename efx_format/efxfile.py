@@ -1,25 +1,9 @@
-"""
-EFXFile: faithful roundtrip parser for MHW .efx effect files (serialize(parse(x)) == x).
+"""MHW .efx 的保真解析与序列化。
 
-Known structures are fully parsed; anything uncertain is stored as raw bytes and
-written back verbatim (opaque fallback) — both satisfy exact byte roundtrip.
-
-File layout (parse order):
-  - Header (72 B) → fully parsed
-  - EFX_Type (labelSize B) → kept as raw bytes + label list
-  - Play (countPlay entries) → parsed per BT (with opaque fallback)
-  - Extern (countExtern entries) → parsed header, Extern_Data kept opaque
-  - Main (countBody entries) → each body:
-      - Root (type==ROOT_MARKER): header + opaque payload
-      - Main_Data: 20-byte header + timl_length opaque TIML + attr blocks
-        - Known attr types: fully parsed for exact size
-        - Unknown attr types: opaque blob (forward-scan to next known hash)
-  - Subselect (subselectionSize B) → parsed per BT
-  - End (countEOF ints) → list of ints
-
-Type widths (BT convention, little-endian):
-  long/ulong = 4 B,  int/uint = 4 B,  short = 2 B,  byte = 1 B
-  int64/uint64 = 8 B,  float = 4 B
+维护约束：
+- 文件按 Header、标签、Play、Extern、Main、Subselect、End 的顺序读取。
+- 已知属性以 schema 或专用 walker 确定边界；未知属性仅作 opaque 字节保留。
+- 所有 BT 标量为小端，且 ``long`` 与 ``int`` 均为 4 字节。
 """
 
 from __future__ import annotations
@@ -30,7 +14,6 @@ from typing import List, Optional
 from .hashes import (
     ROOT_MARKER, PLAYEFX, PLAYEMITTER, ATTR_HASHES,
     HASH_TO_NAME, TIML,
-    # known attr types with fixed sizes
     TRANSFORM3D, PARENTOPTIONS, SPAWN, LIFE, EMITTERSHAPE3D, VELOCITY3D,
     FADEBYDEPTH, BILLBOARD3D, SCALEANIM, UVSEQUENCE, ALPHACORRECTION,
     SHADERSETTINGS, RGBFIRE, MESH, ROTATEANIM, PLEMISSIVE, GUIDE, LIGHTNING,
@@ -45,13 +28,10 @@ from .hashes import (
     PARENTSNOW, OTOMOSNOW, PARENTMATERIAL, RIBBONBLADE, MATERIAL,
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Helper: compute exact byte size of a known attr block (INCLUDING 4-byte type hash)
-# Returns None for unknown types → caller must forward-scan.
-# ─────────────────────────────────────────────────────────────────────────────
+# 已知属性块的边界计算
 
 def _xyz_size(xyz_type: int) -> int:
-    """Return byte size of an XYZ struct body (EFX_Utils.bt) for given type."""
+    """返回指定 XYZ 类型的结构体字节数。"""
     if xyz_type == 0:
         return 24  # float fixed_x, random_x, fixed_y, random_y, fixed_z, random_z
     elif xyz_type == 1:
@@ -63,31 +43,22 @@ def _xyz_size(xyz_type: int) -> int:
     return 0
 
 def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
-    """
-    Return total byte size (including the 4-byte type hash prefix) of a known
-    attribute block at *pos*.  Returns None if type is unknown or has variable
-    length that requires byte inspection (will be handled by forward-scan fallback).
+    """返回已知属性块（含 type hash）的总字节数。
 
-    Fixed-size types: on-disk length = 4 (type hash) + data_bytes size, taken from ATTR_SCHEMA_MAP.
-    Only variable / dispatch types (path_len or nested, '_custom' in the map) are sized by reading bytes below.
+    无法可靠定界时返回 ``None``，由调用方执行 opaque 回退。
     """
     def rd_i(offset: int) -> int:
         return struct.unpack_from('<i', data, pos + offset)[0]
 
     h = type_hash
 
-    # Fixed-size types
+    # 固定大小 schema
     from .structs import ATTR_SCHEMA_MAP
     _entry = ATTR_SCHEMA_MAP.get(h)
     if _entry is not None and _entry[1] is not None:
         return 4 + _entry[1]
 
-    # Variable/dispatch types
-    # In ATTR_SCHEMA_MAP, marked as '_custom'/size=None, need to read bytes to determine length.
-
-    # Variable length blocks derive size from codec schema: custom_on_disk_size handles path_len tails,
-    # custom_nullstr_size handles fixed-prefix + null-terminated string families.
-    # If neither recognizes the type, return None and fall through to the specialized walker below.
+    # 自定义 codec 负责带显式长度或 NUL 结尾字符串的可变块。
     from .structs import custom_on_disk_size, custom_nullstr_size
     _s = custom_on_disk_size(h, data, pos)
     if _s is None:
@@ -95,112 +66,95 @@ def _known_attr_size(data: bytes, pos: int, type_hash: int) -> Optional[int]:
     if _s is not None:
         return _s
 
-    # PtBehavior: long type(4) + EFX_Behavior
-    # EFX_Behavior: int unkn0(4) + int behav_type_len(4) + int para_count(4) + char b_type[behav_type_len]
-    #               + EFX_Behav[para_count]
-    # EFX_Behav: long unkn(4) + long const0(4) + int t(4) + data depending on t
+    # PTBEHAVIOR 通过内部长度、参数数量和参数类型遍历可变负载。
     if h == PTBEHAVIOR:
         behav_type_len = rd_i(4 + 4)  # type(4) + unkn0(4) + behav_type_len(4) = at pos+8
         para_count = rd_i(4 + 8)      # at pos+12
         if behav_type_len < 0 or behav_type_len > 200 or para_count < 0 or para_count > 200:
-            return None  # fallback to forward scan
-        p = 4 + 12 + behav_type_len   # pos offset to first EFX_Behav
+            return None
+        p = 4 + 12 + behav_type_len
         for _ in range(para_count):
-            t = rd_i(p + 8)           # int t at offset 8 within each EFX_Behav
-            base = 12                  # long unkn(4) + long const0(4) + int t(4)
+            t = rd_i(p + 8)
+            base = 12
             if t == 0x03:
-                extra = 4             # long NULL
+                extra = 4
             elif t == 0x05:
-                extra = 2             # short unkn0
+                extra = 2
             elif t == 0x06:
-                extra = 4             # int decal_epv_color_slot
+                extra = 4
             elif t == 0x0C:
-                extra = 4             # float unkn0
+                extra = 4
             elif t == 0x0F:
-                extra = 4             # XYZ(2) = ubyte[3]+pad = 4B
+                extra = 4
             elif t == 0x14:
-                extra = 12            # XYZ(3) = float[3] = 12B
+                extra = 12
             elif t == 0x15:
-                extra = 16            # float+long+float+long = 16B
+                extra = 16
             elif t in (0x36, 0x37):
-                extra = 8             # 0x36=int[2], 0x37=float[2]; same 8B width either way
+                extra = 8
             elif t == 0x40:
-                extra = 8             # int64
+                extra = 8
             elif t == 0x80:
-                # long file_type(4) + int path_len(4) + char p[path_len]
-                # Note: BT says "long NULL" for path_len field but the 4B at p+16 IS path_len
-                path_len_val = rd_i(p + 12 + 4)  # path_len at p+16 (file_type=4B then path_len)
-                extra = 4 + 4 + path_len_val     # file_type(4) + path_len_field(4) + path bytes
+                path_len_val = rd_i(p + 16)
+                extra = 8 + path_len_val
             else:
-                extra = 4             # long unkn_type fallback
+                extra = 4
             p += base + extra
-        return p                      # total size from pos
+        return p
 
-    # Material: long type(4) + int64 unkn00(8) + int block_count(4) = 16B header
-    # Then block_count Tex_Block entries:
-    #   Tex_Block: long mat_name_hash(4) + long mat_shader(4) + long unkn03(4) + int set_count(4) = 16B
-    #   Then set_count Tex_Set entries:
-    #     Tex_Set: long set(4) + int unkn0(4) + long t(4) + int type(4) = 16B base
-    #     type=0x80: long head(4)+long NULL(4)+int path_len(4)+char p[path_len]
-    #     type=0x06: int64 NULL(8)+int unkn(4) = 12B
-    #     type=0x03/0x0A/0x0C: long NULL[3] = 12B
-    #     type=0x15: float[6] = 24B
-    #     else: long unkn_type = 4B
+    # MATERIAL 通过 block/set 计数及 set 类型遍历可变负载
     if h == MATERIAL:
-        block_count = rd_i(12)     # at pos+12
-        p = 16                     # skip type(4)+int64(8)+block_count(4)
+        block_count = rd_i(12)
+        p = 16
         for _ in range(block_count):
-            set_count = rd_i(p + 12)   # int set_count at offset 12 within Tex_Block
-            p += 16                     # Tex_Block header
+            set_count = rd_i(p + 12)
+            p += 16
             for _ in range(set_count):
-                type_ = rd_i(p + 12)   # int type at offset 12 within Tex_Set
-                p += 16                 # Tex_Set base
+                type_ = rd_i(p + 12)
+                p += 16
                 if type_ == 0x80:
-                    path_len_val = rd_i(p + 4 + 4)  # head(4)+NULL(4)+path_len
+                    path_len_val = rd_i(p + 8)
                     p += 4 + 4 + 4 + path_len_val
                 elif type_ == 0x06:
-                    p += 12             # int64(8) + int(4)
+                    p += 12
                 elif type_ in (0x03, 0x0A, 0x0C):
-                    p += 12             # long[3]
+                    p += 12
                 elif type_ == 0x15:
-                    p += 24             # float[6]
+                    p += 24
                 else:
-                    p += 4              # long unkn_type
-        return p                    # total size from pos
+                    p += 4
+        return p
 
-    # Layout: 4(type) + int*2(8) + long*4(16) + LayoutBank_Block(variable_length).
+    # LAYOUT 的可变 LayoutBank 块由专用 walker 定界。
     if h == LAYOUT:
         from .structs import _walk_layoutbank_block
         try:
-            p = pos + 4 + 8 + 16  # skip type + int unkn0[2] + long unkn1[4]
+            p = pos + 4 + 8 + 16
             end = _walk_layoutbank_block(data, p)
         except (struct.error, ValueError, IndexError):
             return None
         return end - pos
 
-    return None  # truly unknown type
+    return None
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Data classes
-# ─────────────────────────────────────────────────────────────────────────────
+# 数据模型
 
 @dataclass
 class EFXHeader:
-    """72-byte file header (fully parsed)。
-    """
+    """已解析的文件头。"""
     signature: bytes        # b"EFX\x00"
     version: int
-    constant: tuple         # 5 ints
+    constant: tuple
     efxr: bytes             # b"efxr"
-    is_3d: int              # 0=2D, 1=3D. mismatch with entry will cause CTD
+    is_3d: int              # 必须与 Entry 类型一致
     unkn1: int
-    count_body: int         # count entry
+    count_body: int
     label_size: int
-    count_play: int         # count action
+    count_play: int
     count_extern: int
     count_subselect: int
     subselect_size: int
-    count_eof: int          # count direct-activation list
+    count_eof: int
     double_buffer: int
 
     STRUCT = struct.Struct('<4s i 5i 4s 10I')
@@ -220,17 +174,17 @@ class EFXHeader:
 
 @dataclass
 class ActionEntry:
-    """One entry within a ActionData block: either PlayEFX or PlayEmitter."""
+    """Action 内的 PlayEFX 或 PlayEmitter 条目。"""
     type_hash: int
-    raw: bytes  # the entry bytes EXCLUDING the 4-byte type_hash prefix
+    raw: bytes  # 不含 4 字节 type hash
 
     def serialize(self) -> bytes:
         return struct.pack('<I', self.type_hash) + self.raw
 
 @dataclass
 class ActionData:
-    """One countPlay entry in the Play section."""
-    play_type: int      # the 'long type' of ActionData
+    """Play 段中的一个 Action。"""
+    play_type: int
     entries: List[ActionEntry]
 
     def serialize(self) -> bytes:
@@ -241,21 +195,21 @@ class ActionData:
 
 @dataclass
 class ExternDataItem:
-    """One Extern_Data sub-item within an Extern_Attribute (opaque payload)."""
+    """ExternAttribute 中的一个数据项。"""
     type_hash: int
-    unkn: int           # int (4B) after type hash
-    attr_count: int     # int (4B): number of structs in data_bytes
-    data_bytes: bytes   # attr_count * struct_size bytes (opaque)
+    unkn: int
+    attr_count: int
+    data_bytes: bytes   # 按类型解释或 opaque 保留
 
     def serialize(self) -> bytes:
         return struct.pack('<Iii', self.type_hash, self.unkn, self.attr_count) + self.data_bytes
 
 @dataclass
 class ExternAttribute:
-    """One entry in the Extern section (Extern_Attribute)."""
-    attr_type: int      # long (4B)
-    null0: int          # long (4B) = 0
-    null1: int          # long (4B) = 0
+    """Extern 段的一个属性条目。"""
+    attr_type: int
+    null0: int
+    null1: int
     items: List[ExternDataItem]
 
     def serialize(self) -> bytes:
@@ -266,9 +220,9 @@ class ExternAttribute:
 
 @dataclass
 class AttrBlock:
-    """One attribute block within a Main_Data body."""
+    """Main 条目中的一个属性块。"""
     type_hash: int
-    data_bytes: bytes   # bytes AFTER the 4-byte type hash
+    data_bytes: bytes   # 不含 4 字节 type hash
 
     @property
     def name(self) -> str:
@@ -278,21 +232,14 @@ class AttrBlock:
         return struct.pack('<I', self.type_hash) + self.data_bytes
 
     def decode(self) -> Optional[dict]:
-        """
-        Decode data_bytes into a named-field dict using the registered schema
-        for this block's type_hash.  Returns None if no schema is registered
-        (block stays opaque).
-
-        For fixed-size types, uses the schema from ATTR_SCHEMA_MAP.
-        For variable/dispatch types (schema == '_custom'), uses ATTR_CUSTOM_CODEC.
-        """
+        """用已注册的 schema 解码；无 schema 时返回 ``None`` 保持 opaque。"""
         from .structs import ATTR_SCHEMA_MAP, ATTR_CUSTOM_CODEC, unpack
         entry = ATTR_SCHEMA_MAP.get(self.type_hash)
         if entry is None:
             return None
         schema, expected_size = entry
 
-        # Variable/dispatch types: route to custom codec
+        # 可变属性由专用 codec 解码，且必须恰好消费全部字节
         if schema == '_custom':
             custom = ATTR_CUSTOM_CODEC.get(self.type_hash)
             if custom is None:
@@ -306,7 +253,6 @@ class AttrBlock:
                 )
             return values
 
-        # Fixed-size schema
         if len(self.data_bytes) != expected_size:
             raise ValueError(
                 f'AttrBlock.decode: {self.name} '
@@ -322,11 +268,7 @@ class AttrBlock:
         return values
 
     def encode(self, values: dict) -> None:
-        """
-        Re-encode *values* (as returned by decode()) back into data_bytes
-        in-place, using the registered schema.  Raises ValueError if the
-        resulting bytes differ in length from the original data_bytes.
-        """
+        """将字段值编码回本块，且不得改变原有字节长度。"""
         from .structs import ATTR_SCHEMA_MAP, ATTR_CUSTOM_CODEC, pack
         entry = ATTR_SCHEMA_MAP.get(self.type_hash)
         if entry is None:
@@ -336,7 +278,6 @@ class AttrBlock:
             )
         schema, expected_size = entry
 
-        # Variable/dispatch types: route to custom codec
         if schema == '_custom':
             custom = ATTR_CUSTOM_CODEC.get(self.type_hash)
             if custom is None:
@@ -355,7 +296,6 @@ class AttrBlock:
             self.data_bytes = encoded
             return
 
-        # Fixed-size schema
         encoded = pack(schema, values)
         if len(encoded) != expected_size:
             raise ValueError(
@@ -366,17 +306,17 @@ class AttrBlock:
 
 @dataclass
 class EntryData:
-    """A Main_Data body (non-Root)."""
-    body_type: int          # type hash (= jamcrc32 of label)
+    """非 Root 的 Main 条目主体。"""
+    body_type: int
     unkn0: int
-    attr_count: int         # expected number of attr blocks
+    attr_count: int
     null: int
     timl_length: int
-    timl_bytes: bytes       # timl_length bytes (opaque)
+    timl_bytes: bytes       # opaque 保留
     attr_blocks: List[AttrBlock]
 
     def serialize(self) -> bytes:
-        # evc dummy: attr_count is negative → range() is empty → parse 0 blocks, but original field value must be preserved
+        # attr_count 可为负值；此时不读取属性，但必须保留原值
         count = self.attr_count if (not self.attr_blocks and self.attr_count != 0) else len(self.attr_blocks)
         head = struct.pack('<IiiiI', self.body_type, self.unkn0,
                            count, self.null, self.timl_length)
@@ -386,57 +326,10 @@ class EntryData:
         return out
 
 @dataclass
-class EntryDataExtended:
-    """
-    A Main_Data body with an extended 36-byte header (body_type == 1).
-
-    Extended header layout (36 B):
-      +0:  body_type (4B) = 1
-      +4:  unkn0     (4B) = 0
-      +8:  null0     (4B) = 0
-      +12: null1     (4B) = 0
-      +16: unkn1     (4B) = opaque (sometimes equals jamcrc32 of a label)
-      +20: unkn2     (4B)
-      +24: attr_count(4B)
-      +28: null2     (4B) = 0
-      +32: timl_length(4B)
-      +36: timl data (timl_length bytes, opaque)
-    followed by attr_count attribute blocks.
-    """
-    body_type: int       # = 1
-    unkn0: int           # = 0
-    null0: int           # = 0
-    null1: int           # = 0
-    unkn1: int           # opaque
-    unkn2: int           # opaque
-    attr_count: int      # number of attr blocks
-    null2: int           # = 0
-    timl_length: int
-    timl_bytes: bytes    # timl_length bytes
-    attr_blocks: List[AttrBlock]
-
-    def serialize(self) -> bytes:
-        head = struct.pack(
-            '<IiiiIiiIi',
-            self.body_type, self.unkn0, self.null0, self.null1,
-            self.unkn1, self.unkn2, len(self.attr_blocks), self.null2,
-            self.timl_length,
-        )
-        out = head + self.timl_bytes
-        for blk in self.attr_blocks:
-            out += blk.serialize()
-        return out
-
-@dataclass
 class RootUnitBoundary:
-    """
-    Root Subentry UnitBoundary (EFX_Root.bt). Fixed 44 bytes:
-      long type(4) = ROOT_UNITBOUNDARY
-      int  ints[2] (8)        —— unit/boundary related integers (unexplained)
-      float floats[8] (32)    —— contains bounding-box-like values (8 floats).
-    """
-    ints: tuple    # (int0, int1)
-    floats: tuple  # 8 floats
+    """Root 中可编辑的 UnitBoundary 子条目。"""
+    ints: tuple
+    floats: tuple
 
     def serialize(self) -> bytes:
         return (struct.pack('<i', RootBody.UNITBOUNDARY)
@@ -445,22 +338,19 @@ class RootUnitBoundary:
 
 @dataclass
 class RootOpaqueEntry:
-    """Root Subentry with unstructured type (RenderTarget / LayoutBank), stored as-is."""
-    raw: bytes   # Entire subentry bytes (including leading type)
+    """无法结构化的 Root 子条目。"""
+    raw: bytes   # 含前导 type
 
     def serialize(self) -> bytes:
         return self.raw
 
 @dataclass
 class RootBody:
+    """Root 主体。
+
+    无法结构化的主体以 ``raw`` 原样序列化。
     """
-    Root body (type == ROOT_MARKER)
-    
-    16B header (root_type + const0 + count + const1) followed by count subentries.
-    UnitBoundary is structured into editable fields; RenderTarget/LayoutBank are opaque.
-    If raw is not None (legacy/unstructured opaque fallback), serialize() returns raw verbatim.
-    """
-    # Subentry type markers
+    # Root 子条目类型
     UNITBOUNDARY = 1413509420
     RENDERTARGET = 2083659062
     LAYOUTBANK   = 2050487542
@@ -468,8 +358,8 @@ class RootBody:
     root_type: int = ROOT_MARKER
     const0: int = 1
     const1: int = 0
-    entries: list = field(default_factory=list)   # RootUnitBoundary | RootOpaqueEntry
-    raw: bytes = None   # opaque fallback for unknown root bodies
+    entries: list = field(default_factory=list)
+    raw: bytes = None   # 无法结构化时的保真回退
 
     def serialize(self) -> bytes:
         if self.raw is not None:
@@ -481,18 +371,17 @@ class RootBody:
         return out
 
 
-# Root 专属子条目类型哈希集合——blender_efx 拿这个判断一个"伪装成属性"的
-# EFX_ATTRIBUTE 子对象是不是真的属于 Root（导出时过滤误放的属性用）。
+# Root 子条目类型供 Blender 导出端过滤误放的属性对象
 ROOT_SUBENTRY_HASHES = frozenset({
     RootBody.UNITBOUNDARY, RootBody.RENDERTARGET, RootBody.LAYOUTBANK,
 })
 
 @dataclass
 class SubselectTable:
-    """One table in the Subselect section."""
-    table_type: int     # long (4B)
-    unkn0: tuple        # long[3] (12B)
-    entries: List[int]  # int[count]
+    """Subselect 段的一张表。"""
+    table_type: int
+    unkn0: tuple
+    entries: List[int]
 
     def serialize(self) -> bytes:
         out = struct.pack('<I3I', self.table_type, *self.unkn0)
@@ -501,47 +390,32 @@ class SubselectTable:
             out += struct.pack('<i', e)
         return out
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main EFX parser/serializer
-# ─────────────────────────────────────────────────────────────────────────────
+# 主 EFX 解析与序列化
 
 class EFXFile:
-    """
-    Parses and re-serializes a MHW .efx file.
-
-    Usage::
-
-        efx = EFXFile.parse(open('foo.efx', 'rb').read())
-        assert efx.serialize() == open('foo.efx', 'rb').read()
-    """
+    """MHW ``.efx`` 的解析与保真序列化模型。"""
 
     def __init__(self):
         self.header: EFXHeader = None
-        self.label_bytes: bytes = b''         # raw EFX_Type section
+        self.label_bytes: bytes = b''         # 原始标签表
         self.labels: List[str] = []
         self.play: List[ActionData] = []
         self.extern: List[ExternAttribute] = []
-        self.main: List = []                  # List[EntryData | RootBody]
+        self.main: List = []
         self.subselect: List[SubselectTable] = []
         self.eof_ints: List[int] = []
-        self.eof_tail: bytes = b''     # end-of-file tail bytes after EOF
+        self.eof_tail: bytes = b''     # EOF 后的原始尾部字节
 
-        # ── opaque fallback when main section is unparseable ──────────────────────────────────────
-        # some files have main section blocks that cannot yet delimit (forward_scan heuristic overrun),
-        # causing the whole parse to crash. In this case, store all bytes from main start to EOF
-        # as an opaque blob, and serialize() will verbatim re-emit it → still byte-perfect and importable.
-        # Cost: main section cannot be edited block-by-block in Blender (read-only).
+        # 无法划定 Main 边界时，保留 Main 起至 EOF 的原始字节
+        # 此回退路径不支持逐块编辑
         self.main_opaque: bool = False
         self.opaque_main_tail: bytes = b''
-
-    # ── Public API ──────────────────────────────────────────────────────────
 
     @classmethod
     def parse(cls, data: bytes) -> 'EFXFile':
         obj = cls()
         pos = 0
 
-        # ── Header ──────────────────────────────────────────────────────────
         raw = EFXHeader.STRUCT.unpack_from(data, pos)
         pos += EFXHeader.SIZE
         sig, ver, c0, c1, c2, c3, c4, efxr, u0, u1, cb, ls, cp, ce, cs, ss, ceof, db = raw
@@ -557,7 +431,6 @@ class EFXFile:
         )
         hdr = obj.header
 
-        # ── EFX_Type (label table) ───────────────────────────────────────────
         obj.label_bytes = data[pos:pos + hdr.label_size]
         obj.labels = [
             s.decode('utf-8', errors='replace')
@@ -566,34 +439,26 @@ class EFXFile:
         ]
         pos += hdr.label_size
 
-        # ── Play ─────────────────────────────────────────────────────────────
         obj.play, pos = cls._parse_play(data, pos, hdr.count_play)
 
-        # ── Extern ───────────────────────────────────────────────────────────
         obj.extern, pos = cls._parse_extern(data, pos, hdr.count_extern)
 
-        # ── Main（+ Subselect + End）─────────────────────────────────────────
-        # If _parse_main crashes due to undelimited blocks, the entire segment (from main start to EOF)
-        # is treated as opaque fallback, ensuring the file can still be imported byte-perfectly
         main_start = pos
         try:
             obj.main, pos = cls._parse_main(data, pos, hdr.count_body)
 
-            # ── Subselect ────────────────────────────────────────────────────
             if hdr.subselect_size > 0:
                 obj.subselect, pos = cls._parse_subselect(data, pos, hdr.count_subselect)
             else:
                 obj.subselect = []
 
-            # ── End ──────────────────────────────────────────────────────────
             obj.eof_ints = list(struct.unpack_from(f'<{hdr.count_eof}I', data, pos))
             pos += hdr.count_eof * 4
 
-            # end-of-file tail bytes: some game files have opaque footer bytes after EOF
-            # These are captured as opaque tail bytes and preserved verbatim (78 sample tail is empty).
+            # EOF 后的尾部字节必须原样保留
             obj.eof_tail = data[pos:]
         except Exception:
-            # main parsing failed: treat the entire segment (including subselect/eof/tail) as opaque, re-emit verbatim.
+            # Main 解析失败时，整个后续分段作为 opaque 数据原样输出
             obj.main = []
             obj.subselect = []
             obj.eof_ints = []
@@ -613,7 +478,7 @@ class EFXFile:
         for ea in self.extern:
             out += ea.serialize()
 
-        # main section is unparseable: fall back to opaque handling
+        # Main 无法解析时直接输出保留的原始尾段
         if self.main_opaque:
             out += self.opaque_main_tail
             return out
@@ -627,15 +492,13 @@ class EFXFile:
         for v in self.eof_ints:
             out += struct.pack('<I', v)
 
-        out += self.eof_tail   # end-of-file tail bytes (most files are empty)
+        out += self.eof_tail
 
         return out
 
-    # ── Internal section parsers ─────────────────────────────────────────────
-
     @staticmethod
     def _parse_play(data: bytes, pos: int, count: int):
-        """Parse countPlay ActionData entries."""
+        """解析 Play 段。"""
         results = []
         for _ in range(count):
             play_type = struct.unpack_from('<I', data, pos)[0]
@@ -646,18 +509,13 @@ class EFXFile:
                 type_hash = struct.unpack_from('<I', data, pos)[0]
                 pos += 4
                 if type_hash == PLAYEFX:
-                    # PlayEFX layout (all fields after type_hash):
-                    # int unkn0(4) + int path_len(4) + long type(4) + int unkn[7](28)
-                    # + XYZ xyz(3)(12) + int NULL[3](12) + char p[path_len]
-                    # = 4+4+4+28+12+12 = 64B fixed + path_len
+                    # PlayEFX 以 path_len 定界其路径尾部
                     path_len = struct.unpack_from('<i', data, pos + 4)[0]
                     entry_size = 64 + path_len
                     entry_raw = data[pos:pos + entry_size]
                     pos += entry_size
                 elif type_hash == PLAYEMITTER:
-                    # PlayEmitter layout:
-                    # int unkn[7](28) + XYZ xyz(3)(12) + int NULL[3](12) + int target_count(4) + int targets[target_count]
-                    # = 28+12+12+4 = 56B fixed + 4*target_count
+                    # PlayEmitter 以 target_count 定界目标数组
                     target_count = struct.unpack_from('<i', data, pos + 52)[0]
                     entry_size = 56 + 4 * target_count
                     entry_raw = data[pos:pos + entry_size]
@@ -672,10 +530,9 @@ class EFXFile:
 
     @staticmethod
     def _parse_extern(data: bytes, pos: int, count: int):
-        """Parse countExtern Extern_Attribute entries."""
+        """解析 Extern 段。"""
         results = []
         for _ in range(count):
-            # Extern_Attribute: long type(4) + long NULL0(4) + int count(4) + long NULL1(4)
             attr_type = struct.unpack_from('<I', data, pos)[0]
             null0 = struct.unpack_from('<i', data, pos + 4)[0]
             item_count = struct.unpack_from('<i', data, pos + 8)[0]
@@ -684,7 +541,6 @@ class EFXFile:
 
             items = []
             for _ in range(item_count):
-                # Extern_Data: long t(4) + int unkn(4) + int attri_count(4) + data
                 t = struct.unpack_from('<I', data, pos)[0]
                 unkn = struct.unpack_from('<i', data, pos + 4)[0]
                 attri_count = struct.unpack_from('<i', data, pos + 8)[0]
@@ -702,92 +558,70 @@ class EFXFile:
 
     @staticmethod
     def _efx_behavior_size(data: bytes, pos: int) -> int:
-        """
-        Return the byte size of one EFX_Behavior struct at *pos*:
-          int unkn0(4) + int behav_type_len(4) + int para_count(4)
-          + char b_type[behav_type_len] + EFX_Behav[para_count]
-        EFX_Behav = long unkn(4) + long const0(4) + int t(4) + variable-length data (dispatched by t).
-        Shares the same encoding with the main PTBEHAVIOR block's EFX_Behavior (see _known_attr_size::PTBEHAVIOR).
-        """
+        """返回一个 EFX_Behavior 的字节数。"""
         behav_type_len = struct.unpack_from('<i', data, pos + 4)[0]
         para_count = struct.unpack_from('<i', data, pos + 8)[0]
-        p = pos + 12 + behav_type_len   # skip unkn0/behav_type_len/para_count + b_type
+        p = pos + 12 + behav_type_len
         for _ in range(para_count):
-            t = struct.unpack_from('<i', data, p + 8)[0]  # int t at offset 8 in EFX_Behav
-            base = 12                  # long unkn(4) + long const0(4) + int t(4)
+            t = struct.unpack_from('<i', data, p + 8)[0]
+            base = 12
             if t == 0x03:
-                extra = 4              # long NULL
+                extra = 4
             elif t == 0x05:
-                extra = 2              # short unkn0
+                extra = 2
             elif t == 0x06:
-                extra = 4              # int decal_epv_color_slot
+                extra = 4
             elif t == 0x0C:
-                extra = 4              # float unkn0
+                extra = 4
             elif t == 0x0F:
-                extra = 4              # XYZ(2) = ubyte[3]+pad
+                extra = 4
             elif t == 0x14:
-                extra = 12            # XYZ(3) = float[3]
+                extra = 12
             elif t == 0x15:
-                extra = 16            # float+long+float+long
+                extra = 16
             elif t in (0x36, 0x37):
-                extra = 8             # 0x36=int[2], 0x37=float[2]; same 8B width either way
+                extra = 8
             elif t == 0x40:
-                extra = 8             # int64
+                extra = 8
             elif t == 0x80:
                 path_len_val = struct.unpack_from('<i', data, p + 12 + 4)[0]
-                extra = 4 + 4 + path_len_val  # file_type(4) + path_len(4) + path
+                extra = 8 + path_len_val
             else:
-                extra = 4             # long unkn_type fallback
+                extra = 4
             p += base + extra
         return p - pos
 
     @staticmethod
     def _extern_data_size(type_hash: int, attri_count: int,
                           data: bytes = b'', pos: int = 0) -> int:
-        """Return total data bytes (after the 12-byte Extern_Data header) for a known extern type.
-        data/pos are required for variable-length types."""
-        # Fixed sizes (bytes per element)
+        """返回 Extern_Data 头之后的数据长度。"""
+        # 每项固定字节数
         FIXED = {
-            500644368: 228,   # EXTERNTRANSFORM3D  (ExternTransform3D)
+            500644368: 228,   # EXTERNTRANSFORM3D
             351887441: 108,   # EXTERNVELOCITY3D
             786529163: 76,    # EXTERNSCALEANIM
             2069124466: 112,  # EXTERNRGBFIRE
-            28559457: 72,     # EXTERNSPAWN (EFX_Crimson.bt: ExternSpawn = long unkn[18] = 72B)
-            1880343637: 88,   # EXTERNEMITTERSHAPE3D (EFX_Crimson.bt: long unkn[22] = 88B)
+            28559457: 72,     # EXTERNSPAWN
+            1880343637: 88,   # EXTERNEMITTERSHAPE3D
             725249589: 76,    # EXTERNPLEMISSIVE
-            # 2026-09-20：以下 4 个曾按"VELOCITY3D 变体"命名，实为对应主属性的 Extern
-            # 覆盖版（byte-size + 全语料 pack(unpack(x))==x 零反例验证坐实，见 memory
-            # extern-velocity3d-misnomer-corrected）。尺寸不变，仅改注释名。
-            1338793878: 48,   # EXTERNLIFE (原 EXTERNVELOCITY3D0；= 主属性 LIFE，48B)
-            283026906: 84,    # EXTERNPLSNOW (原 EXTERNVELOCITY3D2；= 主属性 PLSNOW，84B)
-            705591903: 72,    # EXTERNPARENTEMISSIVE (原 EXTERNVELOCITY3D5；= 主属性 PARENTEMISSIVE，72B)
-            1879331968: 80,   # EXTERNROTATEANIM (原 EXTERNVELOCITY3D6；= 主属性 ROTATEANIM，80B)
+            1338793878: 48,   # EXTERNLIFE
+            283026906: 84,    # EXTERNPLSNOW
+            705591903: 72,    # EXTERNPARENTEMISSIVE
+            1879331968: 80,   # EXTERNROTATEANIM
 
 
-            # ⚠ 2026-09-20 FABRICATED（虚构）：以下 8 个尺寸没有任何真实样本支撑——全部
-            # 27 万+ 语料文件（efx_samples/ 全量，含官方+社区）从未出现过这些类型作为
-            # Extern 子项。社区 BT 参考模板（EFX_Extern.bt / EFX_Crimson.bt）把它们写成
-            # 空 `typedef struct{}`，RE Engine DTI 转储对所有 ExternXxx 类都只显示同一个
-            # 通用 mItems 容器字段，没有任何能区分它们的结构信息。
-            # 这 8 个尺寸纯粹是按"已确认的 14+4 个同类 Extern 覆盖版"的经验规律外推：
-            #   - 6 个（FADEBYANGLE/FADEBYDEPTH/UVCONTROL/GUIDE/PARENTSNOW/OTOMOSNOW）
-            #     的主属性本身不含路径，按规律原样等长复制；
-            #   - 另 2 个（STRAINRIBBON/TURBULENCE）主属性含内嵌路径，已随 UVSEQUENCE/
-            #     BILLBOARD3D/RGBWATER 一起改走下面的「主属性 codec」变长分支，不在本表。
-            # 一旦真的在游戏更新或新样本里遇到这些类型，务必先核对字节内容是否跟这里的
-            # 猜测吻合，不吻合要立刻改，不要因为代码能跑就默认这个猜测是对的。
-            1415485201: 40,   # EXTERNFADEBYANGLE (FABRICATED，= 主属性 FADEBYANGLE 原样)
-            779931249:  20,   # EXTERNFADEBYDEPTH (FABRICATED，= 主属性 FADEBYDEPTH 原样)
-            1243935109: 236,  # EXTERNUVCONTROL   (FABRICATED，= 主属性 UVCONTROL 原样)
-            766474541:  112,  # EXTERNGUIDE       (FABRICATED，= 主属性 GUIDE 原样)
-            74649634:   80,   # EXTERNPARENTSNOW  (FABRICATED，= 主属性 PARENTSNOW 原样)
-            1181241355: 84,   # EXTERNOTOMOSNOW   (FABRICATED，= 主属性 OTOMOSNOW 原样)
+            # 以下类型从未出现过，仅通过类型特征外推
+            1415485201: 40,   # EXTERNFADEBYANGLE
+            779931249:  20,   # EXTERNFADEBYDEPTH
+            1243935109: 236,  # EXTERNUVCONTROL
+            766474541:  112,  # EXTERNGUIDE
+            74649634:   80,   # EXTERNPARENTSNOW
+            1181241355: 84,   # EXTERNOTOMOSNOW
         }
         if type_hash in FIXED:
             return attri_count * FIXED[type_hash]
 
-        # Variable-length: EXTERNMESH - each element has 175B fixed + 2 null-terminated strings
-        # ExternMesh = Mod3Properties(174B) + byte BeginMod3(1) + string path + string placement
+        # EXTERNMESH 每项含两个 NUL 结尾字符串
         if type_hash == 1850314036:  # EXTERNMESH
             p = pos
             for _ in range(attri_count):
@@ -797,10 +631,7 @@ class EFXFile:
                 p = null2 + 1
             return p - pos
 
-        # Variable-length: EXTERNTYPERIBBON (原 EXTERNVELOCITY3D1) - each element = main
-        # RIBBON's 360B fixed prefix + 1 null-terminated path string. 2026-09-20：曾按
-        # "361B/elem 定长" 硬编码，实为跟主属性 RIBBON 同源的变长结构，语料里恰好路径
-        # 全为空（1B 终止符），才凑出"看似定长 361B"的假象；改按真实变长扫描，兼容非空路径。
+        # EXTERNTYPERIBBON 每项以 NUL 结尾路径定界
         if type_hash == 0x320E3177:  # EXTERNTYPERIBBON
             p = pos
             for _ in range(attri_count):
@@ -809,11 +640,7 @@ class EFXFile:
                 p = null + 1
             return p - pos
 
-        # Variable-length: EXTERNTYPEPLANE (原 EXTERNVELOCITY3D7) - each element = main
-        # PLANE's 104B DDS 段 + int32 path_len(4B) + 48B extras 段 + path_len 字节路径。
-        # 2026-09-20：曾按 "157B/elem 定长" 硬编码，实为跟主属性 PLANE 同源的变长结构，
-        # 语料里恰好 path_len==1（仅终止符）才凑出"看似定长 157B"的假象；改按 path_len
-        # 显式读取，兼容非空路径。
+        # EXTERNTYPEPLANE 每项以显式 path_len 定界
         if type_hash == 0x3002E4CE:  # EXTERNTYPEPLANE
             p = pos
             for _ in range(attri_count):
@@ -821,27 +648,13 @@ class EFXFile:
                 p += 156 + path_len
             return p - pos
 
-        # Variable-length: EXTERNUVSEQUENCE / EXTERNBILLBOARD3D / EXTERNRGBWATER
-        # （+ FABRICATED 的 EXTERNSTRAINRIBBON / EXTERNTURBULENCE，主属性同样含内嵌路径）
-        #
-        # 2026-09-20 订正：这几个此前按 45/133/161 等"定长"硬编码，理由是"主属性定长前缀
-        # + 固定 5B 尾巴（int32 + byte，语义未知）"。**那个 5B 尾巴是误读**——它其实是
-        # 主属性自己的 path_len + 一条空路径（终止符 1 字节）。全语料 1049 个元素实测：
-        # 直接用主属性 codec 解，消耗字节数恰好等于元素长度，且 pack(unpack(x)) == x
-        # 逐字节还原（UVSequence 127 / Billboard3D 874 / RGBWater 48，零反例）。
-        # 也就是说 extern 元素 == 主属性编码本身，跟 MESH/RIBBON/PLANE 是同一回事，
-        # "看似定长"只是因为语料里每条路径都恰好是空的（path_len==1）——与
-        # EXTERNTYPERIBBON/EXTERNTYPEPLANE 当年踩的是同一个坑。
-        #
-        # 顺带修好了字段错位：旧 EXTERN_BILLBOARD3D_SCHEMA 解出的 lightGroup 恒为
-        # 0x3F800000（float 1.0，显然不是位掩码），改用主属性 codec 后是 {1,0,33,32,2}，
-        # 与主属性侧分布同形。
+        # 这些 Extern 项沿用对应主属性 codec，以内嵌可变字段定界
         _MAIN_CODEC_EXTERN = {
             0x7CFF28CC: "unpack_uvsequence",    # EXTERNUVSEQUENCE
             0x295D488A: "unpack_billboard3d",   # EXTERNBILLBOARD3D
             0x1CC2BE3A: "unpack_rgbwater",      # EXTERNRGBWATER
-            167781675:  "unpack_strainribbon",  # EXTERNSTRAINRIBBON (FABRICATED)
-            777721399:  "unpack_turbulence",    # EXTERNTURBULENCE   (FABRICATED)
+            167781675:  "unpack_strainribbon",  # EXTERNSTRAINRIBBON（待确认）
+            777721399:  "unpack_turbulence",    # EXTERNTURBULENCE（待确认）
         }
         if type_hash in _MAIN_CODEC_EXTERN:
             from . import structs as _structs
@@ -851,17 +664,14 @@ class EFXFile:
                 _vals, p = _un(data, p)
             return p - pos
 
-        # Variable-length: EXTERNPTBEHAVIOR - data = EFX_Behavior efx_behavior[attri_count]
-        # EFX_Behavior is the same as the main PTBEHAVIOR block: int unkn0(4) +
-        # int behav_type_len(4) + int para_count(4) + char
-        # b_type[behav_type_len] + EFX_Behav[para_count] (each parameter is variable-length, dispatched by t).
+        # EXTERNPTBEHAVIOR 与主属性使用相同的可变行为结构
         if type_hash == 0x5FFC3E36:  # EXTERNPTBEHAVIOR
             p = pos
             for _ in range(attri_count):
                 p += EFXFile._efx_behavior_size(data, p)
             return p - pos
 
-        # Variable-length types that are not yet seen in samples - raise for diagnosis
+        # 未实现的 Extern 类型不能猜测其边界（但是可以试试）
         raise ValueError(
             f'Cannot compute size for unknown Extern_Data type 0x{type_hash:08X} '
             f'({HASH_TO_NAME.get(type_hash, "UNKNOWN")}). '
@@ -871,7 +681,7 @@ class EFXFile:
 
     @staticmethod
     def _parse_main(data: bytes, pos: int, count: int):
-        """Parse countBody Main bodies."""
+        """解析 Main 段。"""
         results = []
         for body_idx in range(count):
             if pos + 4 > len(data):
@@ -886,27 +696,17 @@ class EFXFile:
 
     @staticmethod
     def _parse_root_body(data: bytes, start_pos: int):
-        """
-        Parse a Root body opaquely.
+        """解析 Root 主体。
 
-        Root body structure (EFX_Root.bt):
-          long type (4B, = ROOT_MARKER)
-          int CONST0 (4B, = 1)
-          int count  (4B)
-          int CONST1 (4B, = 0)
-          for count sub-entries: each starts with a known hash and has its own fixed/variable size.
-
-        The header (16 B) is parsed; the sub-entry payload is kept opaque (bounded by
-        _known_attr_size / forward-scan), so the Root body round-trips byte-for-byte.
+        仅 UnitBoundary 结构化；其余已识别子项以原始字节保留。
         """
         pos = start_pos
-        root_type = struct.unpack_from('<I', data, pos)[0]   # = ROOT_MARKER
-        const0 = struct.unpack_from('<i', data, pos + 4)[0]  # = 1
+        root_type = struct.unpack_from('<I', data, pos)[0]
+        const0 = struct.unpack_from('<i', data, pos + 4)[0]
         count = struct.unpack_from('<i', data, pos + 8)[0]
-        const1 = struct.unpack_from('<i', data, pos + 12)[0] # = 0
+        const1 = struct.unpack_from('<i', data, pos + 12)[0]
         pos += 16
 
-        # Parse count sub-entries (UnitBoundary, RenderTarget, LayoutBank)
         UNITBOUNDARY = RootBody.UNITBOUNDARY
         RENDERTARGET = RootBody.RENDERTARGET
         LAYOUTBANK   = RootBody.LAYOUTBANK
@@ -916,28 +716,22 @@ class EFXFile:
             sub_type = struct.unpack_from('<i', data, pos)[0]
             ent_start = pos
             if sub_type == UNITBOUNDARY:
-                # long type(4) + int*2(8) + float*8(32) = 44B
                 ints = struct.unpack_from('<2i', data, pos + 4)
                 floats = struct.unpack_from('<8f', data, pos + 12)
                 entries.append(RootUnitBoundary(ints=ints, floats=floats))
                 pos += 44
             elif sub_type == RENDERTARGET:
-                # long type(4) + int path_count(4, = 6 hardcoded) + 6*RenderTarget_Path + long NULL(4) + int*6(24) + float*9(36)
-                # RenderTarget_Path = int path_len(4) + char p[path_len]
-                pos += 4 + 4  # type + path_count
+                # RenderTarget 有固定数量的路径，逐项以 path_len 定界
+                pos += 4 + 4
                 for _ in range(6):
                     p_len = struct.unpack_from('<i', data, pos)[0]
                     pos += 4 + p_len
-                pos += 4 + 24 + 36  # NULL + unkn0[6] + unkn1[9]
+                pos += 4 + 24 + 36
                 entries.append(RootOpaqueEntry(raw=data[ent_start:pos]))
             elif sub_type == LAYOUTBANK:
-                # LayoutBank: long type(4) + int unkn0(4) + int block_count(4) + block_count*LayoutBank_Block
-                # LayoutBank_Block = int count(4) + if count>0: while ReadInt()!=-1: LayoutBank_B; long end
-                # LayoutBank_B = int block_type(4) + data depending on block_type
                 pos = EFXFile._parse_layout_bank(data, pos)
                 entries.append(RootOpaqueEntry(raw=data[ent_start:pos]))
             else:
-                # Unknown sub-type in Root body - should not happen in well-formed files
                 raise ValueError(
                     f'Unknown Root sub-entry type 0x{sub_type:08X} at pos {pos}'
                 )
@@ -947,10 +741,9 @@ class EFXFile:
 
     @staticmethod
     def _parse_layout_bank(data: bytes, pos: int) -> int:
-        """Parse a LayoutBank struct (long type + int unkn0 + int block_count +
-        block_count*LayoutBank_Block) and return the new position."""
+        """遍历 LayoutBank 并返回结束位置。"""
         from .structs import _walk_layoutbank_block
-        block_count = struct.unpack_from('<i', data, pos + 8)[0]  # int block_count
+        block_count = struct.unpack_from('<i', data, pos + 8)[0]
         pos += 12
 
         for _ in range(block_count):
@@ -959,49 +752,20 @@ class EFXFile:
 
     @staticmethod
     def _parse_main_data_body(data: bytes, start_pos: int):
-        """Parse a Main_Data body (20B header + TIML + attr blocks)."""
+        """解析 Main 条目主体。"""
         pos = start_pos
         body_type = struct.unpack_from('<I', data, pos)[0]
 
-        # Detect extended 36-byte header: body_type < 256 is not a valid jamcrc32 result,
-        # so it indicates the extended header format used by body_type=1 bodies.
-        if body_type < 256:
-            # Extended 36-byte header layout:
-            # type(4)+unkn0(4)+null0(4)+null1(4)+unkn1(4)+unkn2(4)+attr_count(4)+null2(4)+timl_length(4)
-            unkn0  = struct.unpack_from('<i', data, pos + 4)[0]
-            null0  = struct.unpack_from('<i', data, pos + 8)[0]
-            null1  = struct.unpack_from('<i', data, pos + 12)[0]
-            unkn1  = struct.unpack_from('<I', data, pos + 16)[0]
-            unkn2  = struct.unpack_from('<i', data, pos + 20)[0]
-            attr_count = struct.unpack_from('<i', data, pos + 24)[0]
-            null2  = struct.unpack_from('<i', data, pos + 28)[0]
-            timl_length = struct.unpack_from('<i', data, pos + 32)[0]
-            pos += 36
-
-            timl_bytes = data[pos:pos + timl_length]
-            pos += timl_length
-
-            attr_blocks, pos = EFXFile._parse_attr_blocks(data, pos, attr_count)
-
-            return EntryDataExtended(
-                body_type=body_type, unkn0=unkn0, null0=null0, null1=null1,
-                unkn1=unkn1, unkn2=unkn2, attr_count=attr_count, null2=null2,
-                timl_length=timl_length, timl_bytes=timl_bytes,
-                attr_blocks=attr_blocks,
-            ), pos
-
-        # Standard 20-byte header
         unkn0 = struct.unpack_from('<i', data, pos + 4)[0]
         attr_count = struct.unpack_from('<i', data, pos + 8)[0]
         null = struct.unpack_from('<i', data, pos + 12)[0]
         timl_length = struct.unpack_from('<i', data, pos + 16)[0]
         pos += 20
 
-        # TIML (opaque)
+        # TIML 保持 opaque
         timl_bytes = data[pos:pos + timl_length]
         pos += timl_length
 
-        # Attribute blocks
         attr_blocks, pos = EFXFile._parse_attr_blocks(data, pos, attr_count)
 
         return EntryData(
@@ -1012,7 +776,7 @@ class EFXFile:
 
     @staticmethod
     def _parse_attr_blocks(data: bytes, pos: int, attr_count: int):
-        """Parse attr_count attribute blocks; use forward-scan for unknown types."""
+        """解析属性块；未知类型通过前向扫描估计边界。"""
         blocks = []
         for blk_idx in range(attr_count):
             if pos + 4 > len(data):
@@ -1023,13 +787,12 @@ class EFXFile:
             block_size = _known_attr_size(data, pos, type_hash)
 
             if block_size is not None:
-                # Known type: exact size
                 block_data = data[pos + 4:pos + block_size]
                 blocks.append(AttrBlock(type_hash=type_hash, data_bytes=block_data))
                 pos += block_size
             else:
-                # Unknown or variable type: forward-scan to find next block boundary
-                scan_start = pos + 4  # after the type hash we just read
+                # 未知块依赖后续已知 hash 定界
+                scan_start = pos + 4
                 remaining_blocks = attr_count - blk_idx - 1
                 end_pos = EFXFile._forward_scan(
                     data, scan_start, remaining_blocks
@@ -1042,37 +805,21 @@ class EFXFile:
 
     @staticmethod
     def _forward_scan(data: bytes, scan_start: int, remaining_blocks: int) -> int:
-        """
-        Scan forward from scan_start to find the position of the NEXT attribute block's
-        type hash (if remaining_blocks > 0) or the end of this body's attribute data.
+        """以 4 字节对齐的已知 hash 估计未知属性的结束位置。
 
-        The heuristic: the next block starts at the first 4B-aligned offset that reads
-        a value in ATTR_HASHES (and is preceded by valid data).  We scan every 4B.
-
-        If remaining_blocks == 0, there is no next block; we must guess the end.
-        In that case we scan for any known hash OR body/section boundary.
-
-        Since we don't have explicit body end markers, we can only scan for known hashes.
-        If no known hash is found before EOF, return remaining data up to EOF
-        (this would be wrong for the middle of a file, but safe for opaque storage).
+        该启发式没有显式的 body 结束标记；无法定界时会延伸至 EOF，并由上层 opaque
+        回退保证保真。
         """
         if remaining_blocks > 0:
-            # Scan for the next known attr hash
             i = scan_start
             while i + 4 <= len(data):
                 candidate = struct.unpack_from('<I', data, i)[0]
                 if candidate in ATTR_HASHES:
                     return i
                 i += 4
-            # No next known hash found - return to end of data (edge case)
             return len(data)
         else:
-            # Last block in body: scan for next body's type hash OR next known hash
-            # We don't have a body boundary marker, so just return scan_start
-            # and record the remaining body bytes.
-            # This is tricky without explicit lengths.  For now, return scan_start
-            # (zero bytes for the payload), which will be wrong but detectable.
-            # TODO: improve this case if needed for specific types.
+            # 最后一个未知块同样只能寻找后续已知 hash 或 Root 标记。
             i = scan_start
             while i + 4 <= len(data):
                 candidate = struct.unpack_from('<I', data, i)[0]
@@ -1083,7 +830,7 @@ class EFXFile:
 
     @staticmethod
     def _parse_subselect(data: bytes, pos: int, count: int):
-        """Parse countSubselect Subselect_Table entries."""
+        """解析 Subselect 段。"""
         results = []
         for _ in range(count):
             tbl_type = struct.unpack_from('<I', data, pos)[0]

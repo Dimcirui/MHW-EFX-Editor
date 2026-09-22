@@ -1,16 +1,9 @@
-"""
-blender_epv/panels.py — EPV 工具 / 字段 N 面板。
-
-3D 视口 N 面板「EPV」标签页：
-  EPV_PT_main      — 导入 / 导出 + 当前选中信息
-  EPV_PT_group     — 选中 record 所属 group 的 groupID（可编辑）
-  EPV_PT_record    — record 字段：EFX 路径、EFX Slots 8 槽颜色表、空间、raw 字段
-"""
+"""3D 视口 N 面板的 EPV 标签页：导入导出、group ID 与 record 字段。"""
 import bpy
 
 
 def _record_group_collection(obj):
-    """返回 record 对象所在的 EPV_GROUP 集合（找不到返回 None）。"""
+    """返回 record 对象所在的 EPV_GROUP 集合；不在任何组内返回 None。"""
     if obj is None:
         return None
     for col in obj.users_collection:
@@ -58,7 +51,7 @@ class EPV_PT_group(bpy.types.Panel):
             layout.label(text="(group collection not found)", icon="ERROR")
             return
         layout.label(text=gcol.name, icon="OUTLINER_COLLECTION")
-        # 集合自定义属性 ~GID 直接编辑（id-property 路径）
+        # id-property 路径，直接编辑集合的自定义属性
         layout.prop(gcol, '["~GID"]', text="Group ID")
 
 
@@ -78,7 +71,7 @@ class EPV_PT_record(bpy.types.Panel):
         layout = self.layout
         rp = context.active_object.epv_record
 
-        # ── EFX 路径槽（+ L1/L2 联动）────────────────────────────────────────
+        # ── EFX 路径槽 ──────────────────────────────────────────────────────
         from . import efx_link
         box = layout.box()
         box.label(text="EFX Paths", icon="FILE")
@@ -112,7 +105,7 @@ class EPV_PT_record(bpy.types.Panel):
             row.prop(it, "size", text="")
             row.prop(it, "frequency", text="")
 
-        # ── 空间（transform 驱动 + jitter）─────────────────────────────────────
+        # ── 空间 ────────────────────────────────────────────────────────────
         box = layout.box()
         box.label(text="Transform", icon="ORIENTATION_GLOBAL")
         obj = context.active_object
@@ -122,7 +115,7 @@ class EPV_PT_record(bpy.types.Panel):
         box.prop(rp, "rotationJitter")
         box.prop(obj, '["~RIDX"]', text="Record Order")
 
-        # ── raw 字段（语义后补）─────────────────────────────────────────────
+        # ── 未定名字段 ──────────────────────────────────────────────────────
         box = layout.box()
         box.label(text="Raw Fields", icon="SCRIPT")
         box.prop(rp, "boneID")
@@ -141,7 +134,7 @@ class EPV_PT_record(bpy.types.Panel):
         col.prop(rp, "paramW4")
         col.prop(rp, "paramV")
 
-        # ── Effect Scale（特效大小总控：fixed + random）──────────────────────
+        # ── Effect Scale ────────────────────────────────────────────────────
         sub = box.column(align=True)
         sub.label(text="Effect Scale (1=unchanged, 0.5=half)")
         sub.prop(rp, "paramW5", index=0, text="Fixed")

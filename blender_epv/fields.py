@@ -1,11 +1,8 @@
-"""
-blender_epv/fields.py — EPV record 字段的 PropertyGroup。
+"""EPV record 字段的 PropertyGroup。
 
-EPVRecordProps 挂到 Object 上（仅 EPV_RECORD 对象使用），承载除 position/rotation
-（由 transform 承载）外的全部 record 字段，含 8 槽 epvColor 表（CollectionProperty）。
-
-字段宽度：bpy IntProperty/FloatProperty 均为 32 位，与 EPV record 内字段（int32/float32，
-recordID 为 ushort 在范围内）一致，无溢出风险（仅 root 的 uint64/uint32 特殊处理，见 io_tree）。
+EPVRecordProps 挂在 Object 上，仅供 EPV_RECORD 对象使用，承载除 position 与 rotation
+之外的全部 record 字段。record 内字段均为 int32、short 或 float32，可直接由 bpy 的
+32 位属性承载；root 与 trail 段含 uint64 与 uint32，必须由 io_tree.py 另行保存。
 """
 import bpy
 from bpy.props import (
@@ -15,7 +12,7 @@ from bpy.props import (
 
 
 class EPVColorItem(bpy.types.PropertyGroup):
-    """epvColor 一槽（EFX 外观覆盖 slot）。"""
+    """一个 epvColor 槽，覆盖目标 EFX 槽位的外观参数。"""
     efxslot: IntProperty(name="EFX Slot", default=0)
     color: FloatVectorProperty(
         name="Color", subtype="COLOR", size=4,
@@ -27,14 +24,12 @@ class EPVColorItem(bpy.types.PropertyGroup):
 
 
 class EPVRecordProps(bpy.types.PropertyGroup):
-    """一条 EPV record 的全部可编辑字段（position/rotation 见对象 transform）。"""
-    # 路径槽（指向 efx）
+    """一条 EPV record 的可编辑字段。"""
     path0: StringProperty(name="EFX Path 0", default="")
     path1: StringProperty(name="EFX Path 1", default="")
     path2: StringProperty(name="EFX Path 2", default="")
     path3: StringProperty(name="EFX Path 3", default="")
 
-    # 标量
     padding: IntProperty(name="padding", default=0)
     unknownID: IntProperty(name="unknownID", default=0)
     recordID: IntProperty(name="recordID", default=0)
@@ -50,7 +45,6 @@ class EPVRecordProps(bpy.types.PropertyGroup):
     pb2_i2: IntProperty(name="i2", default=512)
     pb2_i3: IntProperty(name="i3", default=-1)
 
-    # 向量
     pb1_paramU0: IntVectorProperty(name="paramU0", size=3)
     pb1_paramU2: IntVectorProperty(name="paramU2", size=4)
     pb1_EFXSubIndex: IntVectorProperty(name="EFXSubIndex", size=2, default=(-1, -1))
@@ -70,7 +64,7 @@ class EPVRecordProps(bpy.types.PropertyGroup):
     )
     paramV: IntVectorProperty(name="paramV", size=4)
 
-    # epvColor[8]
+    # 固定 8 槽，由 _record_io 重建
     epv_colors: CollectionProperty(type=EPVColorItem)
 
 

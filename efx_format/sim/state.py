@@ -1,26 +1,17 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/state.py  —  模拟器的数据结构（Vec3 / Particle / EmitterState / RenderItem）
+"""模拟器的数据结构：Vec3、Particle、RenderItem、ViewContext 等。
 
-坐标系
-------
-本层**全程使用游戏坐标系**（+X=左，+Y=上，+Z=前，见 annotations.py 的
-VELOCITY3D.baseAxis 条目）。到 Blender 坐标的换算是 glue 层的事，核心层不碰——
-这样核心可以脱离 Blender 单测，也能被别的前端原样复用。
-
-时间单位
---------
-全程用**整数帧**（EFX 的所有 duration/interval/delay 都是 int）。一帧 = 1/`SimConfig.fps`
-秒，默认 60。逐帧乘法递推（speedCoef 每帧乘一次）不是 dt 积分，不要引入 dt。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10；零第三方依赖。
+维护约束：
+- 全程使用游戏坐标系（+X 左、+Y 上、+Z 前）。到 Blender 坐标的换算归宿主。
+- 时间全程用整数帧，一帧为 1/`SimConfig.fps` 秒。递推是逐帧乘法（speedCoef 每帧
+  乘一次），不是 dt 积分，不要引入 dt。
 """
 
 import math
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Vec3 —— 极简三维向量（几百粒子规模下比 tuple + 函数更可读，且够快）
+# Vec3
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Vec3(object):
@@ -135,7 +126,7 @@ ZERO = Vec3()
 # ─────────────────────────────────────────────────────────────────────────────
 
 class RibbonStrip(object):
-    """条带的顶点串，对外**表现得像** `[(Vec3, 半宽, alpha), …]`，内部是三条数组。
+    """条带的顶点串，对外表现得像 `[(Vec3, 半宽, alpha), ...]`，内部是三条数组。
 
     为什么要这层：一条 50 细分的条带在 Python 里是 50 个 `Vec3` 加 50 个元组，
     上千条同时活着就是十几万个对象——而它们在核心层被造出来、到 glue 层又被逐个
@@ -168,12 +159,12 @@ class RibbonStrip(object):
         return self._mat
 
     def vec(self, i):
-        """第 i 个顶点的位置，**不触发物化**（`item.pos` 只要末点一个）。"""
+        """第 i 个顶点的位置，不触发物化。"""
         r = self.pos[i]
         return Vec3(r[0], r[1], r[2])
 
     def vecs(self):
-        """位置的 `Vec3` 列表（走不了数组的那些改法用，比如 RIBBON 的旗帜摆动）。"""
+        """位置的 Vec3 列表，供无法在数组上完成的改动使用。"""
         return [Vec3(r[0], r[1], r[2]) for r in self.pos.tolist()]
 
     def __len__(self):
@@ -189,8 +180,7 @@ class RibbonStrip(object):
         return "<RibbonStrip n=%d>" % len(self.pos)
 ONE = Vec3(1.0, 1.0, 1.0)
 
-#: VELOCITY3D.baseAxis 的六个基准轴（游戏坐标系：+X=左 +Y=上 +Z=前）
-#: 0=左 1=上 2=前 3=右 4=下 5=后（annotations.py ("VELOCITY3D","baseAxis")）
+#: VELOCITY3D.baseAxis 的六个基准轴，下标 0~5 依次为 左 上 前 右 下 后
 BASE_AXES = (
     Vec3(1.0, 0.0, 0.0),
     Vec3(0.0, 1.0, 0.0),
@@ -239,13 +229,11 @@ class Particle(object):
         self.alive = True
 
         self.pos = Vec3()
-        #: **总速度**——所有人（渲染体、PARENTOPTIONS、调试导出）读的都是这一份，
-        #: 位移也由它积分。
+        #: 总速度：渲染体、PARENTOPTIONS、调试导出读的都是这一份，位移也由它积分
         self.vel = Vec3()
-        #: 总速度里**不属于 HOMING 的那一份**（V3D 初速度 + 重力累积 + speedCoef 衰减）。
-        #: HOMING 每帧把自己的指令速度**加**在它上面写回 `vel`，于是两者能同时作用
-        #: （2026-09-12 用户实机：开着 HOMING 给 V3D 初速度，整团会先向外扩张）。
-        #: 没有 HOMING 时 `vel_free` 与 `vel` 逐帧完全同步，行为与从前一模一样。
+        #: 总速度里不属于 HOMING 的那一份（V3D 初速度 + 重力累积 + speedCoef 衰减）。
+        #: HOMING 每帧把自己的指令速度加在它上面再写回 vel，两者因此能同时作用。
+        #: 没有 HOMING 时 vel_free 与 vel 逐帧同步。
         self.vel_free = Vec3()
         self.spawn_pos = Vec3()  # 出生位置（相对发射器原点）；velocityType 1/2 要用
 
@@ -254,8 +242,7 @@ class Particle(object):
         self.color = [1.0, 1.0, 1.0]
         self.alpha = 1.0
 
-        #: 最近若干帧的位置（旧→新，末尾是当前帧）。条带类渲染体要用；
-        #: 不需要的时候恒为空列表，不占成本。
+        #: 最近若干帧的位置（旧→新）。仅在有 behavior 声明 NEEDS_TRAIL 时记录
         self.trail = []
 
         self.rolled = {}
@@ -263,7 +250,7 @@ class Particle(object):
 
     @property
     def active(self):
-        """已出生且过了 spawnWaitFrame —— 只有 active 的粒子参与 step / 渲染。"""
+        """已出生且过了 spawnWaitFrame；只有 active 的粒子参与 step 与渲染。"""
         return self.alive and self.delay_left <= 0
 
     def __repr__(self):
@@ -272,7 +259,7 @@ class Particle(object):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SpawnRequest —— 粒子死亡/碰撞触发的子发射（PTLIFE / PTCOLLISION，T4 用）
+# SpawnRequest —— 粒子死亡或碰撞触发的子发射（PTLIFE / PTCOLLISION）
 # ─────────────────────────────────────────────────────────────────────────────
 
 class SpawnRequest(object):
@@ -290,7 +277,7 @@ class SpawnRequest(object):
 
     def __init__(self, kind, target, pos=None, scale=None, delay=0, source_hash=0,
                  particle=None):
-        self.kind = kind            # 'action'（PTLIFE）| 'entry' | 'efx'（PLAYEFX，未做）
+        self.kind = kind            # 'action'（PTLIFE）| 'entry' | 'efx'（PLAYEFX）
         self.target = target
         self.pos = pos or Vec3()
         self.scale = scale or Vec3(1.0, 1.0, 1.0)
@@ -313,9 +300,9 @@ class RenderItem(object):
                  "blend", "tex_key", "extra", "points", "axis_u", "axis_v")
 
     def __init__(self, kind="BILLBOARD", pos=None, size=None, rot=0.0):
-        #: 'BILLBOARD'（面朝相机的片）| 'PLANE'（固定朝向的片）| 'RIBBON'（条带）
-        #: | 'MESH'（宿主绑定的网格）| 'POINT'（无渲染体时的退化显示）
-        #: | 'NONE'（**显式**不渲染，例如 DUMMY——与「没有渲染体」不是一回事）
+        #: 'BILLBOARD' 面朝相机的片 | 'PLANE' 固定朝向的片 | 'RIBBON' 条带
+        #: | 'MESH' 宿主绑定的网格 | 'POINT' 无渲染体时的退化显示
+        #: | 'NONE' 显式不渲染（如 DUMMY），与「没有渲染体」不是一回事
         self.kind = kind
         self.pos = pos or Vec3()
         self.size = size or Vec3(1.0, 1.0, 1.0)
@@ -323,21 +310,18 @@ class RenderItem(object):
         self.color = [1.0, 1.0, 1.0, 1.0]    # RGBA
         self.uv_rect = (0.0, 0.0, 1.0, 1.0)  # (u0, v0, u1, v1)，v 向下（同 .uvs）
 
-        #: 四个角的 UV，序为 BL, BR, TR, TL（同 sim_preview._quad_verts 的顶点序）。
-        #: UVSEQUENCE 写它——序列帧的翻转/90° 旋转塞不进一个矩形，只有四个角能表达。
-        #: None = 没有序列帧信息，照 uv_rect 整张图用。
+        #: 四个角的 UV，序为 BL, BR, TR, TL，与 sim_preview._quad_verts 对齐。
+        #: 序列帧的翻转与 90° 旋转塞不进一个矩形，故由 UVSEQUENCE 写这里。
+        #: None 表示没有序列帧信息，照 uv_rect 用整张图。
         self.uv_corners = None
         self.blend = "ALPHA"                 # 'ALPHA' | 'ADDITIVE' | 'MULTIPLY'
         self.tex_key = None                  # 贴图标识，由 glue 层解释
 
-        #: 条带类（kind='RIBBON'）的顶点串：`[(pos, half_width, alpha_mul), ...]`，
-        #: 从尾到头。glue 层按相机方向把它撑成三角带。
-        #: 可能是**普通列表**，也可能是 `RibbonStrip`（数组形态，见那个类）——
-        #: 两者迭代出来的东西一样，消费方不必区分；想走快路的才去看 `.pos`。
+        #: 条带顶点串 `[(pos, half_width, alpha_mul), ...]`，从尾到头。
+        #: 可能是普通列表也可能是 RibbonStrip，两者迭代结果一致，消费方不必区分。
         self.points = None
 
-        #: 面片的朝向。为 None 时 glue 层按**面朝相机**画（BILLBOARD3D）；
-        #: 给了就用这一对作为面片的横/纵轴（PLANE 这类固定朝向的渲染体）。
+        #: 面片朝向的横/纵轴；None 表示由宿主按面朝相机绘制
         self.axis_u = None
         self.axis_v = None
 
@@ -352,8 +336,8 @@ class RenderItem(object):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ViewContext(object):
-    """相机信息，由 glue 层填。**step() 拿不到它**——逐帧模拟必须与视角无关，
-    这样暂停时转视角只需重跑 build_render，核心也能没有相机就单测。"""
+    """相机信息，由宿主填写。step() 拿不到它：逐帧模拟必须与视角无关，
+    使暂停时转视角只需重跑 build_render。"""
 
     __slots__ = ("cam_pos", "cam_forward", "cam_up", "cam_right", "viewport")
 

@@ -1,20 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/material/meta.py — MATERIAL 块的哈希→名称查表（纯数据）
+"""MATERIAL 材质类型与贴图槽哈希的名称表。
 
-来源：MHW_Model_Editor 的 mrl3 字典（master_material_dict.json / various_hash_dict.json，
-皆解包自 MHW ShaderPackage.sdf）。EFX 的 MATERIAL 块与 mrl3 共享同一套材质系统：
-  - Tex_Block.material_shader_id_hash → 主材质类型（master material type）
-  - Tex_Set.t                         → 贴图槽资源名（tAlbedoMap / tNormalMap / ...）
-本表仅收录用于**只读标注**的子集：112 个主材质类型 + 318 个 t*Map 贴图槽。
-名称已去除 "__disclosure" 后缀。生成脚本见 git 历史（一次性，非运行期依赖）。
-2026-07-29 用户提供 ShaderPackage.sdf 完整反查字典（master_material_dict.json 全量），
-交叉验证：既有 304 条全部吻合（jamcrc(name+"__disclosure") 与本表哈希一致），零冲突；
-新增 13 条本表此前缺失的贴图槽（tSnowMap/tHeightMap/tVertexColorMap 等）。全量官方语料
-（5989 个 MATERIAL 块/52956 个贴图槽）扫描确认：Tex_Set 用两套并存的哈希约定——
-'set' 字段 = jamcrc(裸名)，'t' 字段 = jamcrc(名+"__disclosure")，两套值都以同一个
-显示名收进本表（如 tAlbedoMap 有 991242969 和 2990329967 两个键）；扫描只剩 1 个真正
-未收录的哈希（724528908 = jamcrc("tSnowMap") 裸名），已补上，全量语料 0 未解析残留。
+Tex_Block 的材质类型哈希与 Tex_Set 的贴图槽哈希共用该表作只读标注。贴图槽的 ``set``
+与 ``t`` 可使用不同哈希约定，因此同一显示名可对应多个键。
 """
 
 # 主材质类型：shader_id_hash(uint32) → 类型名
@@ -585,4 +573,3 @@ def texture_slot_set_tag(t_hash):
 #         type 0x03/0x0A/0x0C: u32[3]       (12B)
 #         type 0x15: float[6]               (24B)
 # ─────────────────────────────────────────────────────────────────────────────
-

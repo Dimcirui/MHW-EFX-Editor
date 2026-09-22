@@ -1,36 +1,19 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/ptcollision.py  —  PTCOLLISION（粒子撞地→停在地面，可选触发一次 Action）
+"""PTCOLLISION —— 粒子落地后停留在地面，可选触发一次 ACTION。
 
-范围收窄（用户 2026-09-13 定调，2026-09-13 追加"停留地面"）：PTCOLLISION 的
-绝大多数字段（反弹次数/弹性/水平弹跳/触发模式次数……）语义或收尾行为都还没
-实机坐实，全部实现风险太高。这里做两件事，都不涉及那些未坐实字段：
+模拟只实现两项：落地即停止，以及落地当帧触发一次 `ieIndex` 指向的 ACTION。反弹次数、弹性、
+水平弹跳、触发模式与次数等字段的语义与结束行为均未确认，不予模拟。停留地面是反弹弹性为 0 时
+唯一确定的终态，因此作为落地行为。
 
-    1. **落地即停**：粒子越过地面（游戏坐标系 Y=0，对应 Blender Z=0，见
-       `state.py` 顶部坐标系说明 + `sim_preview.py::_to_blender` 的
-       (X,Y,Z)→(X,-Z,Y) 换算）那一刻，位置整体冻结在落地那一帧的坐标（Y 钳到
-       0），速度清零——之后不再继续下落/滑动。**不做真正的反弹**（弹性、多次
-       回弹、水平弹跳都不模拟），"停留"是反弹被压到 0 次弹性之后唯一确定的
-       终态，因此拿它当第一版落地行为。
-    2. **触发一次 Action**：落地那一帧，若 `ieIndex` 有效，触发它指向的 ACTION
-       一次。
+地面为游戏坐标系的 Y=0。落地时位置固定在落地当帧（Y 限定为 0），速度清零，此后不再下落或
+滑动。`ieIndex` 为 ACTION 段下标，取 -1 时不触发 ACTION，但仍固定落地位置：固定位置是物理
+表现，触发是附加效果，两者相互独立。
 
-字段
-----
-    ieIndex   ACTION 段下标（同 PTLIFE.relationIndex 的用法，见 PROGRESS.md
-              「eof_ints」条：ieIndex→action(int32,offset 96)）；-1 = 不触发
-              Action（但落地冻结仍然发生——两者是独立的：冻结是物理表现，
-              触发是附加效果）。
-
-触发判据：**必须是「越过」**，不是「当前 ≤0」——记一份上一帧的 Y，只有「上一帧
-Y>0 且这一帧 Y<=0」才算撞地。粒子一出生就在地面（含地面以下）永远满足不了
-「上一帧 Y>0」，因此天然不触发（用户要求的边缘情况）。整个生命只落地一次。
-
-落地后要覆写 `p.pos`/`p.vel`，因此本 behavior 放在 CONSTRAIN 阶段（INTEGRATE
-算完这一帧的位置之后、XFORM/SHADE 之前覆写回落地点）；ACTION 触发只是产出
-`SpawnRequest`，哪个阶段都能做，跟着挪过来一起写更简单。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- 触发判据必须是「越过地面」而非「当前 Y <= 0」：记录上一帧的 Y，仅当上一帧 Y>0 且本帧 Y<=0
+  时判定落地。因此在地面或地面以下出生的粒子不会触发，且每个粒子一生只落地一次。
+- 必须位于 CONSTRAIN 阶段：须在 INTEGRATE 计算本帧位置之后、XFORM 之前覆写 `p.pos` /
+  `p.vel`。
 """
 
 from ...hashes import PTCOLLISION
@@ -41,7 +24,7 @@ from ..state import SpawnRequest, Vec3
 
 @register(PTCOLLISION)
 class PtCollision(Behavior):
-    """CONSTRAIN 阶段：粒子越过地面（Y=0）时冻结在落地点，可选触发一次 ACTION。"""
+    """CONSTRAIN 阶段在粒子越过地面时固定其位置，可选触发一次 ACTION。"""
 
     STAGE = CONSTRAIN
     ORDER = 200
@@ -67,7 +50,7 @@ class PtCollision(Behavior):
         if st is None:
             return
         if st["landed"]:
-            # 冻结：不管这一帧 VELOCITY3D/重力算出了什么，都按落地点钉死。
+            # 无论本帧积分结果如何，均固定在落地点
             p.pos = st["rest_pos"].copy()
             p.vel = Vec3(0.0, 0.0, 0.0)
             return

@@ -1,29 +1,11 @@
-r"""
-blender_efx/mod3_link.py  —  EFX MESH 属性引用的 mod3 自动导入 + 绑定（联动 MHW Model Editor，添头功能）
+"""导入 MESH 属性引用的 mod3，并按 Visible Condition 范围绑定网格。
 
-定位（与用户确认的边界）
-------------------------
-- **可勾选、非默认**：导入 EFX 时「同时导入引用的 mesh」是导入算子上的一个开关，**默认关**。
-  拖入导入也不静默——弹窗让用户勾选后才导（见 operators.py 的 invoke）。
-- **Model Editor 是添头非依赖**：检测到 `mhw_mod3.import_mhw_mod3` 才解锁；缺席则开关禁用、提示安装。
-- **一个算子搞定 mod3+mrl3+材质**：Model Editor 的导入算子带 `loadMaterials`（默认开）+ `mrl3Path`
-  留空自动找——正是「一键装备」式联动。本模块只负责：把 EFX MESH 属性的相对路径解析成磁盘上的
-  .mod3，调它导入，再按该属性的 visconIndex/visconIndexJitter（Visible Condition 组号 + 随机范围）
-  从导入出的网格里挑出落在范围内的那些，写进 `efx_mesh_targets`（多网格；见 `_bind_viscon_range`）。
-  `efx_mesh_target`（单体，与 UVC / TIML 浏览共用绑定）仍指向第一个命中对象，供尚未走多网格
-  路径的消费方（mesh_align 等）兼容用。
-
-路径解析
---------
-- MESH 属性 path1 形如 `vfx\mod\wp\wp03\md_wp03_000`（游戏内相对路径，反斜杠，**无扩展名**）；path2 多为空。
-- 解析 = `<根>/vfx/mod/.../md_wp03_000.mod3`。根的优先级：① 手设 `Scene.efx_chunk_root`（填了才用）
-  ② **从 efx 位置向上追溯到的第一个 nativePC（默认、自动）** ③ efx 同目录兜底。
-  全找不到 → 收集到 unresolved 列表，导入结束统一提示，**不静默失败**。
-
-约束（CLAUDE.md）
------------------
-- 纯胶水层；只读 EFX 解析（extract_paths），不重序列化 → 不碰 byte-perfect。
-- Python 3.10 兼容；bpy 稳定子集；Model Editor 调用经 `_model_editor_available` 守卫，缺席即降级。
+维护约束：
+- MHW Model Editor 是可选依赖；不可用时必须降级。
+- 相对路径依次从手设根、EFX 所在 nativePC、EFX 目录解析；无法解析项返回 unresolved。
+- 同一 mod3 只导入一次；每个 MESH 属性按自己的 viscon 范围绑定多个网格，同时保留首个
+  命中对象以兼容单目标消费者。
+- 仅解析 EFX 原始路径，不重序列化 EFX 数据。
 """
 
 import os
@@ -39,10 +21,6 @@ from ..efx_format.structs import extract_paths
 from . import root_collection as _rc
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 多网格绑定：一个 MESH 属性可能要绑同一 mod3 里好几个 Visible Condition 组
-# ─────────────────────────────────────────────────────────────────────────────
-
 class EFXMeshTargetItem(PropertyGroup):
     """`efx_mesh_targets` 的一项：一个绑定网格 + 它所属的 Visible Condition 组号。"""
 
@@ -54,22 +32,17 @@ class EFXMeshTargetItem(PropertyGroup):
     viscon: IntProperty(name="Visible Condition", default=0)
 
 
-#: mod3 网格命名里的组号（Model Editor 命名约定：`[LOD_n_]Group_<id>_Sub_<m>__<material>`，
-#: 见 mod3_functions.py::exportMod3 与其 re.search(r"Group_(\d+)", ...) 反查）。
 _GROUP_RE = re.compile(r"Group_(\d+)")
 
 
 def _parse_group_id(name):
-    """从导入网格对象名解析它所属的 Visible Condition 组号；解析不到返回 None
-    （自定义命名 / 非 Model Editor 生成的网格）。"""
+    """从导入网格名解析 Visible Condition 组号。"""
     m = _GROUP_RE.search(name or "")
     return int(m.group(1)) if m else None
 
 
 def _attribute_viscon_range(blk):
-    """读 MESH 属性的 visconIndex（static）/ visconIndexJitter（random，ONESIDED 抖动，
-    见 efx_format/sim/rng.py::jitter_int），返回运行时可能选中的组号闭区间 (lo, hi)。
-    没有 jitter 就是单点 (v, v)。"""
+    """返回 MESH 属性可选择的 Visible Condition 闭区间。"""
     lo = hi = 0
     try:
         for item in blk.efx_block.field_items:

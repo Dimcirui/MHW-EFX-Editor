@@ -1,24 +1,9 @@
-"""
-efx_format/categories.py  —  table of attribute type categories
+"""属性类型的分类、推荐顺序与 UI 建议数据。
 
-Purpose: Group attribute types by function, for
-  - two-level dropdown of attribute presets (first select category, then select attribute within category; some categories are further subdivided into subgroups)
-  - saving attribute presets by category (presets/__attributes__/<slug>/[<subgroup>/]<NAME>.json)
-
-key: type_hash. Non-registered types default to "misc" in ATTRIBUTE_CATEGORY_OF; 
-only types that are further subdivided within their category have entries in ATTRIBUTE_SUBGROUP_OF.
-
-Abstract of the category/subgroup structure (for reference):
-  skeleton          — every entry must have
-  extern_reference  — always first in entry
-  renderer_body     — mutually exclusive; subgroups uvs/mesh/dummy/special (by host system)
-  renderer_modifier — attached to body, stackable; subgroups uvs/mesh/dummy/generic
-  spawn_method      — set at spawn time (EMITTERSHAPE3D/RAYCAST…)
-  motion_visibility — frame-by-frame behavior; subgroups motion/visibility
-  action_trigger    — trigger Action segments
-  pt_behavior       — independent behavior system, mutually exclusive with regular rendering/physics workflows (PTBEHAVIOR)
-  misc              — fallback category; subgroups post_process (screen post-processing filters) / others (insufficient evidence/pending classification)
-  custom            — for user-defined preset
+维护约束：
+- 未登记类型归入 ``misc``；未细分的类型不返回 subgroup。
+- 规范顺序和缺失属性建议仅用于创建、排序与 UI 提示，不能作为格式合法性验证。
+- 分类 slug 同时决定属性预设的相对目录，修改时须保持与预设读写端一致。
 """
 
 from .hashes import (
@@ -136,7 +121,7 @@ ATTRIBUTE_CATEGORY_OF = {
     GUIDE:             "motion_visibility",
     PATHCHAIN:         "motion_visibility",
     VELOCITY2D:        "motion_visibility",   # 2D version of VELOCITY3D
-    REPEATAREA:        "motion_visibility",   # 跟 VELOCITY3D 共现 91.9%，本质是运动/空间重复行为
+    REPEATAREA:        "motion_visibility",   # 跟 VELOCITY3D 共现 91.9%
     FADEBYDEPTH:       "motion_visibility",
     FADEBYANGLE:       "motion_visibility",
     FADEBYEMITTERANGLE:"motion_visibility",
@@ -152,9 +137,6 @@ ATTRIBUTE_CATEGORY_OF = {
 
     # ── PtBehavior（independent behavior system） ────────────────
     PTBEHAVIOR:        "pt_behavior",
-    # 自持渲染：唯一 SHADERSETTINGS 共现为 0 的类型（0/22），自带完整光柱渲染、
-    # 绕开共享着色器/材质管线；RAYCAST 共现 95.5% 顶掉发射形状；只与 DUMMY 共存
-    # （3/22），与真渲染主体共现 0 —— 与 PTBEHAVIOR 同一模式，故不列入 renderer_body
     TUBELIGHT:         "pt_behavior",
 
     # ── Misc ──────────────────────────────
@@ -211,8 +193,6 @@ ATTRIBUTE_SUBGROUP_OF = {
     PATHCHAIN:             "motion",
     VELOCITY2D:            "motion",
     REPEATAREA:            "motion",
-    # 屏幕空间碰撞：与 VELOCITY3D 共现 1224/1224 = 100%，是碰撞反弹（运动），
-    # 不是 alpha 渐隐门控 —— 曾误归 "visibility"
     SCREENSPACECOLLISION:  "motion",
     FADEBYDEPTH:           "visibility",
     FADEBYANGLE:           "visibility",
@@ -247,28 +227,7 @@ SUFFIX_DISPLAY_TYPES = frozenset({
 })
 
 
-# ── Canonical attribute order within an entry ────────────────────────────────
-#
-# Derived from the official corpus (10084 files / 112573 entries), 2026-08-18.
-#
-# Attribute order inside an entry is a STRICT TOTAL ORDER, not a loose layering:
-# of the 884 attribute pairs co-occurring >=20 times, 878 agree on direction at
-# >=99%, 6 at 90-99%, and NONE below 90%. Topologically sorting the dominance
-# graph yields the table below; replaying it over the whole corpus leaves only
-# 545 / 112573 entries (0.48%) with any adjacent inversion, concentrated in
-# SHADERSETTINGS->body (182 / 62785 = 0.3%, noise level).
-#
-# ⚠ This is a CONVENTION (99.5%), not a hard format constraint — whether the game
-# tolerates an out-of-order entry has never been tested. Use it to place newly
-# added attributes and to drive an explicit "sort" action; do NOT treat a
-# deviation as an export-blocking error.
-#
-# ⚠ Ranks for these types rest on very few samples and should not be trusted as
-# conclusions: RIBBONBLADE (n=50), TUBELIGHT (n=22), CHECKPUREATTRIBUTE (n=16),
-# PLSNOW (n=5), PARENTSNOW (n=3), OTOMOSNOW (n=2), TONEMAPFILTER /
-# PARENTMATERIAL / SPAWNBYOCCLUSION (n=1).
-#
-# Rationale/evidence: docs/ATTRIBUTE_STATS.md "Entry 内属性的规范顺序".
+# Entry 内属性的推荐显示/插入顺序，不是格式约束
 ATTRIBUTE_CANONICAL_ORDER = {
     EXTERNREFERENCE:         0,
     RANDOMFIX:               1,
@@ -340,27 +299,19 @@ ATTRIBUTE_CANONICAL_ORDER = {
     GUIDE:                  67,
 }
 
-# Unregistered/unknown types sort to the very end; they are never seen in the
-# official corpus, so there is no evidence for placing them anywhere earlier.
+# 未登记类型始终排在末尾
 CANONICAL_ORDER_DEFAULT = 999
 
 
 def canonical_rank(type_hash: int) -> int:
-    """
-    return the canonical position of the attribute type within an entry
-    (smaller = earlier); unknown types return CANONICAL_ORDER_DEFAULT.
-    """
+    """返回属性的推荐顺序；未知类型使用末尾默认值。"""
     return ATTRIBUTE_CANONICAL_ORDER.get(type_hash, CANONICAL_ORDER_DEFAULT)
 
 
 def canonical_insert_index(existing_hashes, new_hash: int) -> int:
-    """
-    Given the type_hashes of an entry's existing attributes IN CURRENT ORDER,
-    return the list position at which new_hash should be inserted so the result
-    follows the canonical order.
+    """返回按推荐顺序插入属性的位置。
 
-    Ties (same rank) and unknown types append after the existing run of equal
-    rank, so repeated adds keep a stable, predictable order.
+    同 rank 的属性追加至现有同级之后，保证重复添加的稳定顺序。
     """
     rank = canonical_rank(new_hash)
     pos = len(existing_hashes)
@@ -370,14 +321,7 @@ def canonical_insert_index(existing_hashes, new_hash: int) -> int:
             break
     return pos
 
-# ── Entry 主模块（骨架属性）────────────────────────────────────────────────
-#
-# 这几种属性 100% / 100% / 99.5% / 99.4% 地出现在每个 entry 上（official 语料
-# 112573 entry，2026-08-18），是"任何特效都得有"的骨架——对应 Unity ParticleSystem
-# 的 main module。UI 把它们归到 Inspector 顶部一条「主模块」带里，跟其余按需添加的
-# 属性区分开。TRANSFORM2D 一并收进来：2D 特效里它顶替 TRANSFORM3D 的位置。
-#
-# ⚠ 只是**显示**上的归并——底层仍是各自独立的属性对象，增删/重排/引用都不受影响。
+# Entry 主模块仅用于 Inspector 显示归类
 ENTRY_MAIN_MODULE = (
     TRANSFORM3D,
     TRANSFORM2D,
@@ -388,22 +332,11 @@ ENTRY_MAIN_MODULE = (
 
 
 def is_main_module(type_hash: int) -> bool:
-    """该属性类型是否属于 entry 骨架（Inspector 顶部的「主模块」带）。"""
+    """判断属性是否归入 Inspector 的主模块显示区。"""
     return type_hash in ENTRY_MAIN_MODULE
 
 
-# ── Per-body-line attribute recipes ──────────────────────────────────────────
-#
-# "这条渲染主体线上，官方 entry 通常还带哪些属性" —— 用于在 UI 里提示常用但缺失的
-# 属性（模块栈面板的灰色"待添加"行），以及给 archetype 模板定属性集。
-#
-# 来源：official 语料 10084 文件 / 112573 entry（2026-08-18），按 entry 的
-# renderer_body 分线，值 = 该属性在该线 entry 中的出现率（百分数，四舍五入到整数）。
-# 只收 20 以上的；键 None = 无渲染主体的 entry（八成是 PTBEHAVIOR 那一类）。
-#
-# ⚠ 这是"官方怎么写"不是"必须怎么写"，只做建议、不做校验。
-# 完整分布（含字段级取值区间）见 docs/ATTRIBUTE_VALUE_RANGES.md 与
-# docs/ATTRIBUTE_STATS.md「配方模板」。
+# 渲染主体对应的属性建议；仅供 UI 提示和模板构建
 ATTRIBUTE_LINE_RECIPES = {
     BILLBOARD3D: (  # n=62785
         (TRANSFORM3D, 100),
@@ -535,21 +468,14 @@ ATTRIBUTE_LINE_RECIPES = {
 
 
 def line_recipe(body_hash):
-    """
-    return the recipe list [(type_hash, rate_percent), ...] for the given renderer
-    body type; body_hash=None means an entry with no renderer body.
-    Unknown body types return an empty tuple.
-    """
+    """返回渲染主体的属性建议；未知主体返回空元组。"""
     return ATTRIBUTE_LINE_RECIPES.get(body_hash, ())
 
 
 def suggest_missing_attributes(body_hash, present_hashes, min_rate=40):
-    """
-    Given the renderer body of an entry and the type_hashes it already has,
-    return [(type_hash, rate_percent), ...] for attributes that are common on
-    this body line (rate >= min_rate) but absent, most-common first.
+    """返回当前主体常见但尚未存在的属性建议。
 
-    Purely advisory — never treat the result as a validation error.
+    结果仅供建议，不能作为验证错误。
     """
     present = set(present_hashes)
     return [(h, r) for h, r in line_recipe(body_hash)
@@ -557,33 +483,24 @@ def suggest_missing_attributes(body_hash, present_hashes, min_rate=40):
 
 
 def category_of(type_hash: int) -> str:
-    """
-    return the top-level category slug of the attribute type; unregistered types default to 'misc'.
-    """
+    """返回顶层分类 slug；未知类型归入 ``misc``。"""
     return ATTRIBUTE_CATEGORY_OF.get(type_hash, "misc")
 
 
 def subgroup_of(type_hash: int) -> str:
-    """
-    return the subgroup slug of the attribute type; returns an empty string if the category has no subgroups or the type is not registered.
-    """
+    """返回子分类 slug；未细分或未知类型返回空字符串。"""
     return ATTRIBUTE_SUBGROUP_OF.get(type_hash, "")
 
 
 def attribute_preset_relpath(type_hash: int) -> tuple:
-    """
-    return the relative path segments for the attribute preset (relative to __attributes__/), e.g.,
-    ("skeleton",) or ("renderer_body", "uvs"); for use in attribute_ops.py to construct save/scan paths.
-    """
+    """返回属性预设在 ``__attributes__`` 下的相对路径片段。"""
     cat = category_of(type_hash)
     sub = subgroup_of(type_hash)
     return (cat, sub) if sub else (cat,)
 
 
 def category_label(slug: str, lang: str = "ZH") -> str:
-    """
-    slug → display name (lang: 'EN'/'ZH'); unknown slug returns as-is.
-    """
+    """返回分类显示名；未知 slug 原样返回。"""
     entry = ATTRIBUTE_CATEGORY_LABELS.get(slug)
     if entry is None:
         return slug
@@ -591,21 +508,14 @@ def category_label(slug: str, lang: str = "ZH") -> str:
 
 
 def subgroup_label(slug: str, lang: str = "ZH") -> str:
-    """
-    subgroup slug → display name (lang: 'EN'/'ZH'); unknown slug returns as-is.
-    """
+    """返回子分类显示名；未知 slug 原样返回。"""
     entry = ATTRIBUTE_SUBGROUP_LABELS.get(slug)
     if entry is None:
         return slug
     return entry.get(lang) or entry.get("EN") or slug
 
-# for quickly seeing the key features of this entry
 def renderer_suffix(type_hashes) -> str:
-    """
-    Given a sequence of type_hashes within an entry (in original order), return a display name suffix,
-    e.g., " (Mesh)" / " (Ribbon, Dummy)" / " (ExternReference, Billboard3D, PtLife)";
-    returns an empty string if none of the types are in SUFFIX_DISPLAY_TYPES.
-    """
+    """从条目中的关键类型生成显示后缀。"""
     from .hashes import HASH_TO_NAME, pretty_type_name
     names = []
     for type_hash in type_hashes:

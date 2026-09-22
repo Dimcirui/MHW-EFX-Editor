@@ -1,11 +1,6 @@
-"""
-efx_format/jamcrc_names.py  —  jamcrc(name) → name 反查字典（自动生成，勿手改）
+"""jamcrc(name) → name 反查字典（自动生成，勿手改）。
 
-由 tools/gen_jamcrc_names.py 扫描 efx_samples/ 全语料（official + 社区样本）的
-全部标签字符串生成。供未命名 action/entry 满命名时反查真实名字，使
-body_type/play_type 身份哈希与显示名天然自洽（无需重算哈希）。
-
-重新生成：python tools/gen_jamcrc_names.py
+重新生成：python tools/gen_jamcrc_names.py（来源与用途见该脚本）
 """
 
 JAMCRC_TO_NAME = {

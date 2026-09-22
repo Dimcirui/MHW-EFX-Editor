@@ -1,35 +1,38 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/_common.py  —  渲染主体之间共享的小件
+"""渲染主体之间共用的函数。
 
-BILLBOARD3D / PLANE / RIBBON / MESH 都有同一组颜色字段（color / colorRange /
-useColorRange / brightness / blendMode），语义也一致，抽出来免得四份各写一遍、
-各错一处。
+BILLBOARD3D / PLANE / RIBBON / MESH 具有同一组语义相同的颜色字段（color / colorRange /
+useColorRange / brightness / blendMode），统一在此实现，避免四处重复及由此产生的不一致。
 
-染色模型：color / colorRange 是 RGBA 四元组的 static / random 对
---------------------------------------------------------------
-每个通道**各自独立**在 color 与 colorRange 之间抽一个值，**alpha（第 4 字节）
-同样参与**：
+染色模型：`color` 与 `colorRange` 构成 RGBA 四元组的固定值与随机范围，各通道**独立**在两者
+之间取值，**alpha（第 4 字节）同样参与**：
 
-    通道值 = color[i] + (colorRange[i] - color[i]) × t[i]，t[i] 逐通道独立抽
+    通道值 = color[i] + (colorRange[i] − color[i]) × t[i]，t[i] 逐通道独立抽取
 
-（`useColorRange=1` 时才抽；关着就用 color 原样。MESH 另有 disableAllColorRange 总闸。）
+仅在 `useColorRange=1` 时抽取，否则直接使用 color；MESH 另有总开关 `disableAllColorRange`。
+不采用「color + 随机[0, colorRange]」的加法读法，依据是 `colorRange` 的第 4 字节绝大多数为
+255：视作第二个颜色的 alpha 合理，视作 alpha 的随机量则不合理。`SimConfig.color_range_mode`
+提供三档：`'channel'`（默认，逐通道各抽一个 t）、`'shared'`（所有通道共用一个 t）、`'add'`
+（加法读法）。
 
-为什么不是「color + 随机[0, colorRange]」的加法量读法：那要求作者把
-color+colorRange 控制在 255 以内，而官方语料里 BILLBOARD3D 只有 6.1% 满足、
-RIBBON 0.9%；且 colorRange 的第 4 字节绝大多数是 255——当「第二个颜色的 alpha」
-讲得通，当「alpha 的随机量」讲不通。故按「范围的另一端」读。
-`SimConfig.color_range_mode` 可切：
-    'channel'（默认）逐通道各抽一个 t
-    'shared'        整条通道共用一个 t（改动前的行为）
-    'add'           加法量读法 color + 随机[0, colorRange]
+发射器动态旋转：`rot_dynamic` 为发射器自身的旋转量，`host_rotation` 为从 PTLIFE 父实例继承的
+旋转量。父发射器旋转时，其派生的子发射器（包括生成位置与初速度）须随之旋转，否则子特效始终朝
+同一方向发射。两者使用同一 `rot_order`，按同一欧拉顺序相加，与先后无关。静态旋转由宿主负责。
 
-抽到的系数存进 `p.rolled`，挂了 TIML 的块逐帧重解静态色之后按同一组系数重算，
-这样「曲线改色」和「逐粒子随机」能共存。RGB 不夹取（加法混合下越界就是更亮，
-brightness/ColorRate 本来就能到 50），alpha 夹到 [0,1]（>1 对混合无意义，
-还会把 LIFE 的淡入淡出顶掉）。
+条带轨迹来源：RIBBON 的字段说明为「沿**发射器**实际经过的轨迹」，而带 VELOCITY3D 的条带粒子
+各自有独立轨迹，两种用法均存在。因此 `pick_trail` 默认 `'auto'`：粒子自身有位移时使用粒子
+轨迹，否则（完全依靠骨骼绑定运动的情形）使用发射器轨迹；`SimConfig.ribbon_trail_source` 可
+强制指定。
 
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+两层颜色的合成：渲染链中每个粒子只有一个颜色，而 RGBFIRE / RGBWATER 有两层，按贴图通道分层
+需在 fragment shader 中完成。`blend_two_colors` 按权重合成代表色，两层颜色仍保存在
+`p.rolled` 中供 shader 使用。
+
+维护约束：
+- 抽取的系数必须保存在 `p.rolled`：带 TIML 的属性逐帧重新求值静态色后，须按同一组系数重新
+  计算，否则随机结果会因曲线的存在而每帧变化。
+- RGB 不做截断（加法混合下超出范围即更亮，brightness 可达 50），alpha 截断到 [0,1]（大于 1
+  对混合无意义，且会抵消 LIFE 的淡入淡出）。
 """
 
 from ..rng import jitter, jitter_int
@@ -41,10 +44,10 @@ BLEND_ADDITIVE = 1
 
 
 def rgba(seq, missing=1.0):
-    """XYZ type 2 的四个字节（`<4B`）→ 0-1 浮点四元组。
+    """将 XYZ type 2 的四个字节（`<4B`）转换为 0-1 浮点四元组。
 
-    第四字节在 codec 里叫 pad、在 annotations 里叫 RGBA 的 A，这里当 alpha 用。
-    `missing` 是字节数不足时的补值：颜色补 1.0（不透明白），随机量那一侧补 0。
+    第四字节在 codec 中名为 pad，此处用作 alpha。`missing` 为字节数不足时的补充值：颜色取
+    1.0（不透明白色），随机量取 0。
     """
     if not isinstance(seq, (list, tuple)) or len(seq) < 3:
         return (missing, missing, missing, missing)
@@ -52,7 +55,7 @@ def rgba(seq, missing=1.0):
     return (float(seq[0]) / 255.0, float(seq[1]) / 255.0, float(seq[2]) / 255.0, a)
 
 
-#: 不随机时的抽签结果（四通道系数全 0 → 就用 color 原样）
+#: 不启用随机时的抽取结果：四通道系数均为 0，即直接使用 color
 NO_ROLL = ("lerp", (0.0, 0.0, 0.0, 0.0))
 
 
@@ -61,7 +64,7 @@ def _clamp01(v):
 
 
 def _mix(base, other, roll):
-    """把出生时抽好的系数套到（可能刚被 TIML 改过的）静态色上。"""
+    """将出生时抽取的系数应用于静态色（可能已由 TIML 更新）。"""
     kind, k = roll
     if kind == "add":
         out = [base[i] + k[i] for i in range(4)]
@@ -72,10 +75,10 @@ def _mix(base, other, roll):
 
 def roll_rgba(f, rng, cfg, color_field="color", range_field="colorRange",
               gate="useColorRange", disable=None):
-    """本粒子的 RGBA + 抽签结果。返回 `(rgba4, roll)`。
+    """返回本粒子的 RGBA 与抽取结果 `(rgba4, roll)`。
 
-    `roll` 原样存进 `p.rolled`，之后 `pick_color(f, roll)` 可在 TIML 改过静态色
-    之后用同一组系数重算——随机形态不会因为挂了曲线就每帧重抽。
+    `roll` 须原样保存在 `p.rolled`，供 `pick_color(f, roll)` 在 TIML 更新静态色后按同一组
+    系数重新计算。
     """
     base = rgba(f.raw(color_field))
     on = not (disable and f.i(disable)) and (not gate or f.i(gate))
@@ -89,28 +92,27 @@ def roll_rgba(f, rng, cfg, color_field="color", range_field="colorRange",
     elif mode == "shared":
         t = rng.random()
         roll = ("lerp", (t, t, t, t))
-    else:                                    # 'channel'（默认）：逐通道独立
+    else:                                    # 'channel'（默认）：各通道独立抽取
         roll = ("lerp", tuple(rng.random() for _ in range(4)))
     return _mix(base, rgba(f.raw(range_field)), roll), roll
 
 
 def pick_color(f, roll=NO_ROLL, color_field="color", range_field="colorRange"):
-    """（TIML 逐帧重解用）当前静态色 + 出生时抽好的系数。"""
+    """以当前静态色与出生时抽取的系数计算颜色，供 TIML 逐帧重新求值使用。"""
     if roll is None:
         roll = NO_ROLL
     return _mix(rgba(f.raw(color_field)), rgba(f.raw(range_field)), roll)
 
 
 def blend_name(f, field="blendMode"):
-    """ENUM_BLEND_MODE: 0=Alpha 混合，1=Add 叠加。"""
+    """ENUM_BLEND_MODE：0=Alpha 混合，1=加法混合。"""
     return "ADDITIVE" if f.i(field) == BLEND_ADDITIVE else "ALPHA"
 
 
 def epv_note(f, em, block, *slots):
-    """EPV 颜色槽位非 0 时，游戏内颜色来自 .epv，本地 color 不生效。
+    """任一 EPV 颜色槽位非 0 时记录 note：游戏内颜色取自 .epv，本地 color 不生效。
 
-    预览拿不到 .epv，照常用本地值，但记一条 note——免得用户以为「改了颜色没反应」
-    是预览的 bug，那恰恰是游戏内的真实行为。
+    预览无法读取 .epv，仍使用本地值；修改颜色无效是游戏内的实际行为，而非预览缺陷。
     """
     if any(f.i(s) for s in slots if f.has(s)):
         em.note("%s 绑了 EPV 颜色槽位：游戏内颜色来自 .epv，本地 color 不生效"
@@ -118,18 +120,18 @@ def epv_note(f, em, block, *slots):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 固定朝向面片的基（PLANE / RIBBON 的定长面片模式都要）
+# 固定朝向面片的基（PLANE 与 RIBBON 的定长面片模式共用）
 # ─────────────────────────────────────────────────────────────────────────────
 
 def oriented_basis(normal, spin_deg=0.0):
-    """由法线构造一对正交的横/纵轴；`spin_deg` 是绕法线的自转。
+    """由法线构造一对正交的横纵轴 `(u, v)`，`spin_deg` 为绕法线的自转角。
 
-    返回 (u, v)。法线退化时退回世界 X/Y，不抛。
+    法线退化时回退为世界 X/Y，不抛出异常。
     """
     import math
 
     n = normal.normalized(fallback=Vec3(0.0, 0.0, 1.0))
-    # 选一个和 n 不平行的参考轴来叉乘
+    # 选取与 n 不平行的参考轴进行叉乘
     ref = Vec3(0.0, 1.0, 0.0)
     if abs(n.dot(ref)) > 0.99:
         ref = Vec3(1.0, 0.0, 0.0)
@@ -145,10 +147,10 @@ def oriented_basis(normal, spin_deg=0.0):
 
 def axis_normal(f, cfg, axis_field="baseAxis", rot_prefix="rotation",
                 order_field="rotationOrder", rolled=None):
-    """baseAxis（AxisDirection6）经 rotationX/Y/Z 旋转后的朝向向量。
+    """返回 baseAxis（AxisDirection6）经 rotationX/Y/Z 旋转后的朝向向量。
 
-    `rolled` 给了就用里面抽好的三个角（逐粒子抖动过的），否则直接读静态字段。
-    旋转顺序用 _TRANSFORM_ROT_ORDER（PLANE 的 rotationOrder 实机确认与 MESH 同款）。
+    给出 `rolled` 时使用其中逐粒子抽取的三个角，否则读取静态字段。旋转顺序使用
+    `_TRANSFORM_ROT_ORDER`，与 PLANE、MESH 一致。
     """
     from ..state import BASE_AXES
 
@@ -165,13 +167,7 @@ def axis_normal(f, cfg, axis_field="baseAxis", rot_prefix="rotation",
 
 
 def emitter_rotate(em, v):
-    """按发射器的**动态**旋转转一个方向向量（静态部分由宿主负责，见 transform3d）。
-
-    `rot_dynamic` 是这个发射器自己转的量；`host_rotation` 是从 PTLIFE 父实例继承
-    来的那份（见 scene.py::SimScene._follow）——父发射器转起来，它召唤出的子发射器
-    （及其生成方式/初速度）要跟着一起转，否则子特效永远只朝同一个方向发射，'
-    看不出父的旋转。两者按同一套 Euler 顺序相加，不分先后（都是同一个 rot_order）。
-    """
+    """按发射器的动态旋转（自身与继承之和）旋转方向向量 `v`；无旋转时原样返回。"""
     hr = em.host_rotation
     rx = em.rot_dynamic.x + hr.x
     ry = em.rot_dynamic.y + hr.y
@@ -183,11 +179,7 @@ def emitter_rotate(em, v):
 
 
 def emitter_place(em, local):
-    """发射器局部偏移 → 相对发射器原点的偏移：先动态缩放，再动态旋转。
-
-    生成方式（EMITTERSHAPE3D）算出来的采样点是发射器局部的，发射器自己在转/缩放时
-    这个点得跟着走，否则「转着喷」看起来像「原地喷」。
-    """
+    """将发射器局部偏移转换为相对发射器原点的偏移：先施加动态缩放，再施加动态旋转。"""
     s = em.scale_dynamic
     if s.x != 1.0 or s.y != 1.0 or s.z != 1.0:
         local = Vec3(local.x * s.x, local.y * s.y, local.z * s.z)
@@ -195,13 +187,7 @@ def emitter_place(em, local):
 
 
 def pick_trail(p, em):
-    """条带类渲染体该沿谁的轨迹画。
-
-    RIBBON 的 annotations 原话是「沿**发射器**实际划过的轨迹」，可 ribbon_particle
-    那种带 VELOCITY3D 的条带粒子显然各画各的。两种用法都真实存在，故默认 'auto'：
-    粒子自己动过就用粒子的轨迹，没动过（blade_trail 那种整个靠绑骨挥动的）就退回
-    发射器的轨迹。`SimConfig.ribbon_trail_source` 可强制其一。
-    """
+    """返回条带类渲染体使用的轨迹：粒子轨迹或发射器轨迹。"""
     mode = em.config.ribbon_trail_source
     if mode == "particle":
         return p.trail
@@ -215,19 +201,18 @@ def pick_trail(p, em):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ColorParam —— RGBFIRE / RGBWATER 共用的「一种颜色的生命期时序块」
+# ColorParam —— RGBFIRE / RGBWATER 共用的单色生命期时序块
 #
-# 10 个 int 一段，逐位同构（RGBWATER 的第三段只有 9 位，没有 correctColorNo）：
+# 每段 10 个 int，各段结构相同（RGBWATER 的第三段只有 9 个，没有 correctColorNo）：
 #     useLife │ appearFrame(+J) │ keepFrame(+J) │ vanishFrame(+J) │ lighting │ lifeType
-# useLife=0 时整段不生效——语料里 RGBFIRE 的 fire 段只有 10.7% 开、smoke 段 22.3%，
-# 关着的那些 keep/vanish 仍停在 20/40 这组默认值上，是惰性的。
-# `lighting`（是否受光照）与 `lifeType`（99.6% 为 0）作用未知，不参与计算。
+# useLife=0 时整段不生效，段内 keep/vanish 保持默认值，不具参考意义。
+# `lighting`（是否受光照）与 `lifeType` 作用未知，不参与计算。
 # ─────────────────────────────────────────────────────────────────────────────
 
 def roll_color_param(f, rng, cfg, prefix):
-    """出生时抽定一段 ColorParam。返回 dict，喂给 `color_param_weight`。"""
+    """出生时抽取一段 ColorParam，返回供 `color_param_weight` 使用的 dict。"""
     if not f.i(prefix + "useLife"):
-        return None                 # 整段不生效 → 权重恒 1
+        return None                 # 整段不生效，权重恒为 1
     mode = cfg.jitter_mode
     appear = max(0, jitter_int(f.get(prefix + "appearFrame"),
                                f.get(prefix + "appearFrameJitter"), rng, mode))
@@ -239,7 +224,7 @@ def roll_color_param(f, rng, cfg, prefix):
 
 
 def color_param_weight(st, age):
-    """这一段颜色在 `age` 帧时的权重（0~1）：淡入 appear → 持续 keep → 淡出 vanish。"""
+    """返回该段颜色在 `age` 帧时的权重（0~1），依次为淡入 appear、保持 keep、淡出 vanish。"""
     if st is None:
         return 1.0
     a, k, v = st["appear"], st["keep"], st["vanish"]
@@ -257,12 +242,7 @@ def color_param_weight(st, age):
 
 
 def blend_two_colors(cfg, c0, w0, c1, w1):
-    """两种颜色 → 一个 tint。`SimConfig.rgb_tint_mode` 选怎么合。
-
-    我们的渲染链每个粒子只有一个颜色，而 RGBFIRE/RGBWATER 是两层（外缘/内部、
-    高光/水膜），真照实机那样按贴图亮度分层要进 fragment shader。这里先按权重合成
-    一个代表色，两种颜色本身仍原样留在 `p.rolled` 里，等 shader 那一步直接取用。
-    """
+    """按权重将两种颜色合成为一个 tint，合成方式由 `SimConfig.rgb_tint_mode` 决定。"""
     mode = getattr(cfg, "rgb_tint_mode", "weighted")
     if mode == "first":
         return list(c0)

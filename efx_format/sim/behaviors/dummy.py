@@ -1,21 +1,12 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/dummy.py  —  DUMMY（**显式**无视觉输出的渲染主体）
+"""DUMMY —— 占用渲染主体位、但不产生视觉输出的功能性宿主。
 
-categories.py 对它的定性：「无视觉输出的功能性宿主（PTLIFE/SHOVEL/PLEMISSIVE
-宿主）」。也就是说它占着「渲染主体」这个互斥位，但它的作用是**当别的属性的载体**，
-自己不画任何东西——对应 Unity 里给粒子挂逻辑却关掉 Renderer 的用法。
+DUMMY 作为其它属性（PTLIFE / SHOVEL / PLEMISSIVE 等）的载体，自身不绘制任何内容。其字段
+（typeFlag、section_length）均非可调参数，因此本 behavior 除声明不绘制外不执行任何操作。
 
-所以它需要一个显式的 behavior，而不是「没实现所以退化成点」：
-
-  - 不实现 → 预览把它画成点（凭空多出视觉），并列进「未模拟属性」（凭空多出待办）。
-    两条都在骗用户。
-  - 实现成返回 `kind='NONE'` → 预览什么都不画，列表里也干净。
-
-字段只有 typeFlag（官方语料恒为 1）和 section_length，都不是可调参数，所以本
-behavior 除了「明说不画」之外不做任何事。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- 必须显式实现并返回 `kind='NONE'`。若不实现，预览会补绘一个退化点，并将其列为未模拟属性，
+  两者均与实际不符。
 """
 
 from ...hashes import DUMMY
@@ -26,12 +17,12 @@ from ..state import RenderItem
 
 @register(DUMMY)
 class Dummy(Behavior):
-    """占着渲染主体位，但明说自己没有视觉输出。"""
+    """占用渲染主体位，并声明没有视觉输出。"""
 
     STAGE = RENDER_BODY
     ORDER = 100
 
     def build_render(self, p, em, view, item):
-        # kind='NONE' 与 `return None` 不是一回事：返回 None 会让 Simulator 以为
-        # 「这个 entry 没有渲染体」，进而补一个退化点。这里要的是「明确不画」。
+        # kind='NONE' 与 return None 含义不同：返回 None 时 Simulator 判定该 entry 没有
+        # 渲染体并补绘退化点，此处需要的是明确不绘制
         return RenderItem(kind="NONE")

@@ -1,37 +1,32 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/rgbwater.py  —  RGBWATER（高光/水膜两层染色）
+"""RGBWATER —— 高光层与水膜层两层染色。
 
-与 RGBFIRE 同构，字段名全部是实机对齐官方 TimelineParam 的（见 custom_codecs.py）：
+结构与 RGBFIRE 相同，区别在于两层各自的强度均为已确认的具名字段，代表色的 'weighted' 合成
+直接依据这两个字段。
 
-    colorSpecular / intensitySpecular   高光层的颜色与强度
-    colorSheet    / intensitySheet      水膜层的颜色与强度
-    colorRate                           整体亮度倍率（= RGBFIRE 的 colorRate）
-    intensityAlpha                      透明度强度，乘在 p.alpha 上（夹到 1）
-    waterLerpGtoB                       贴图 Alpha↔Blue 插值系数（水膜遮罩用，见下）
-    specularColorParam_* / sheetColorParam_*   两层各自的生命期时序块
+字段职能：
 
-比 RGBFIRE 好的一点：两层各自的强度都是**具名确认过的字段**，不用像那边一样靠
-统计去认 fireFactor，所以 'weighted' 合成在这里是直接照字段来的。
+    colorSpecular / intensitySpecular         高光层的颜色与强度
+    colorSheet / intensitySheet               水膜层的颜色与强度
+    colorRate                                 整体亮度倍率
+    intensityAlpha                            透明度强度，乘入 p.alpha 并限定不超过 1
+    waterLerpGtoB                             水膜遮罩中 Alpha 与 Blue 的插值系数。
+                                              名称为 GtoB，实际混合的是 Alpha 与 Blue
+    specularColorParam_* /                    两层各自的生命期时序块
+    sheetColorParam_*
 
-贴图通道语义（2026-09-20 用户拿 ABCD 四通道测试贴图实机逐条测出，见
-custom_codecs.py 的 `_RGBWATER_FIXED_SCHEMA` 注释）：
+有贴图时两层遮罩为：
 
-    水膜(Sheet)遮罩    = mix(Alpha, Blue, waterLerpGtoB)     ← 跟 RGBFIRE 的
-                          smoke_mask 同构，0 时纯 Alpha 形状、1 时纯 Blue 形状
-    高光(Specular)遮罩 = R × G × Alpha                        ← 三通道交集；
-                          R/G 同时也在喂法线重建，Alpha 是共享的整体范围
+    水膜(Sheet)遮罩     = mix(Alpha, Blue, waterLerpGtoB)   取 0 时为 Alpha 形状，取 1 时为 Blue
+    高光(Specular)遮罩  = R × G × Alpha                     三通道之交。R/G 同时用于法线重建，
+                                                            Alpha 为两层共用的整体范围
 
-跟下游对接方式与 RGBFIRE 一致：`p.rolled["layers"] = (水膜色, 高光色)`，
-`p.rolled["rgbwater_lerp"] = waterLerpGtoB`；有贴图时 glue 的 fragment shader
-按上面两条遮罩公式分别取用（见 sim_preview.py `_FRAG_SRC`）。
+`intensityCubeMap`（水面反射，依赖环境贴图）、`waterLerpParam_*`（插值系数自身的生命期块，
+作用未知）、`normalSharpness`（法线锐度，依赖真实法线贴图）三项不参与计算。
 
-未参与计算（作用与我们的渲染无关或未知）：
-    intensityCubeMap                    水面反射相关，需要环境贴图才谈得上
-    waterLerpParam_*                    水膜插值系数自己的生命期块，作用未知
-    normalSharpness（原 unknownFloat）   法线锐度，devlecture 确认，需要真实法线贴图才谈得上
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- `p.rolled["layers"]` 的顺序为 (水膜色, 高光色)，glue 侧两条遮罩公式按位置对应，调换顺序会使
+  两层遮罩互换。该顺序与 RGBFIRE 的 (火焰色, 烟雾色) 不是同一种排列。
 """
 
 from ...hashes import RGBWATER
@@ -43,13 +38,13 @@ from .rgbfire import _rgb
 
 @register(RGBWATER)
 class RgbWater(Behavior):
-    """SHADE 阶段：写 p.color，并把 intensityAlpha 乘进 p.alpha。"""
+    """SHADE 阶段写入 p.color，并将 intensityAlpha 乘入 p.alpha。"""
 
     STAGE = SHADE
     ORDER = 61
 
-    #: colorSpecular/colorSheet/intensity*/colorRate 有 FIELD_TO_DT 映射——挂了
-    #: TIML 就每帧重解，同 RGBFIRE/MESH 的模式。
+    #: 颜色、强度与 colorRate 可由 TIML 驱动，存在轨道时逐帧重新求值；
+    #: 仅在出生时采样会使颜色停留在 age=0 的取值。
     _has_tracks = False
 
     def on_emitter_init(self, em, rng):
@@ -97,8 +92,7 @@ class RgbWater(Behavior):
         w1 = sheet_i * color_param_weight(st["hp"], p.age)
         tint = blend_two_colors(em.config, spec, w0, sheet, w1)
         p.color = [tint[0] * rate, tint[1] * rate, tint[2] * rate]
-        # (水膜色, 高光色)。贴图 shader 按 mix(A,B,lerp)/R×G×A 两个遮罩分别取用，
-        # 见文件顶部说明与 sim_preview.py 的 `_FRAG_SRC`。
+        # (水膜色, 高光色)，由贴图 shader 按两个遮罩分别使用
         p.rolled["layers"] = ([c * w1 * rate for c in sheet],
                               [c * w0 * rate for c in spec])
         p.rolled["rgbwater_lerp"] = lerp

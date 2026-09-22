@@ -1,66 +1,10 @@
-"""
-blender_efx/extern_props.py — Extern 段字段展开
+"""Extern 段的实例字段展开、编辑与导出。
 
-EFX_EXTERN 对象上挂 efx_extern (EFXExternProps)：
-  items: CollectionProperty(EFXExternItemProps)        ← 对应 ExternDataItem
-    instances: CollectionProperty(EFXExternInstanceProps) ← 对应每个元素实例
-      field_items: CollectionProperty(EFXFieldItem)    ← 复用体块字段基础设施
-
-已有完整 schema 的 14 个定长 EXTERN 类型支持字段展开（flat schema，一次性按
-elem_size 等分）：
-  EXTERNSPAWN / EXTERNVELOCITY3D / EXTERNSCALEANIM /
-  EXTERNEMITTERSHAPE3D / EXTERNRGBFIRE / EXTERNTRANSFORM3D / EXTERNPLEMISSIVE /
-  EXTERNUVSEQUENCE / EXTERNBILLBOARD3D / EXTERNRGBWATER /
-  EXTERNLIFE / EXTERNPLSNOW / EXTERNPARENTEMISSIVE / EXTERNROTATEANIM
-（EXTERNPLEMISSIVE 与主属性 PLEMISSIVE 尺寸/布局完全相同，76B 语料验证零反例；
- EXTERNUVSEQUENCE / EXTERNBILLBOARD3D / EXTERNRGBWATER 与各自主属性的定长前缀
- 同构，多出固定 5B 尾巴（int32+byte，语义未知），语料验证零反例，见
- schema/attributes.py 对应 SCHEMA 上方注释与 memory extern-tier1-plus5-byte-tail。
- EXTERNLIFE/PLSNOW/PARENTEMISSIVE/ROTATEANIM 原以"VELOCITY3D0/2/5/6"命名当 opaque
- 处理，实为对应主属性 LIFE/PLSNOW/PARENTEMISSIVE/ROTATEANIM 的 Extern 覆盖版
- （尺寸精确匹配，pack(unpack(x))==x 全语料零反例），直接复用主属性 schema，见
- schema/attributes.py 对应位置注释与 memory extern-velocity3d-misnomer-corrected。）
-
-另外 4 个变长 EXTERN 类型（每元素尺寸不定，不能等分）复用同名主属性的现成
-编解码 + Blender 侧字段展开函数（EFXExternInstanceProps 与 EFXAttributeProps
-共享 field_items/raw_b64/is_editable 接口，可直接传 inst 代替 bp）：
-  EXTERNMESH        → 每元素 = unpack_mesh/pack_mesh（Mod3Properties 174B +
-                      BeginMod3 + 2 条 null 结尾路径），init 走
-                      fields._init_path_attribute_props
-  EXTERNPTBEHAVIOR  → 每元素 = unpack_ptbehavior/pack_ptbehavior（与主属性
-                      PTBEHAVIOR 同源 EFX_Behavior 编码），init 走
-                      fields._init_path_attribute_props（内部会分派到 Phase B）
-  EXTERNTYPERIBBON  → 每元素 = unpack_ribbon/pack_ribbon（主属性 RIBBON 的
-                      360B 定长前缀 + 1 条 null 结尾路径），曾以
-                      "EXTERNVELOCITY3D1"命名、按 361B 定长硬编码——语料里路径
-                      恰好全为空才凑出"看似定长"的假象，2026-09-20 改按真实
-                      变长处理，见 efxfile.py::_extern_data_size
-  EXTERNTYPEPLANE   → 每元素 = unpack_plane/pack_plane（主属性 PLANE 的
-                      104B DDS 段 + int32 path_len + 48B extras + 显式长度
-                      路径），曾以"EXTERNVELOCITY3D7"命名、按 157B 定长硬编码，
-                      2026-09-20 同上改按真实变长处理
-四者导出统一走 fields.rebuild_extern_instance_bytes(inst, type_hash)。
-语料验证（tools/ 内脚本，未入库）：PLEMISSIVE 36/36、MESH 285/285、
-PTBEHAVIOR 127/127、RIBBON 73/73、PLANE 6/6 元素级 pack(unpack(x))==x 零反例。
-
-⚠ 另外 8 个类型是 FABRICATED（虚构，无真实样本）——全部 efx_samples/ 语料从未出现过，
-社区 BT 参考模板把它们写成空 typedef、RE Engine DTI 转储也不提供可区分的结构信息。
-尺寸/布局是照抄"已确认"条目的规律外推猜测的（详见 efxfile.py::_extern_data_size
-顶部大段注释），当作 FIXED 类型接进同一套 flat schema 展开路径：
-  EXTERNFADEBYANGLE / EXTERNFADEBYDEPTH / EXTERNUVCONTROL / EXTERNGUIDE /
-  EXTERNPARENTSNOW / EXTERNOTOMOSNOW —— 主属性本身不含路径，原样等长复制。
-  EXTERNSTRAINRIBBON / EXTERNTURBULENCE —— 主属性含内嵌路径，仿照 UVSEQUENCE/
-  BILLBOARD3D/RGBWATER 的"路径换 5 字节尾巴"规律外推，尾巴全填 0。
-这 8 个在 UI 里名字带 "?" 后缀（见 panels.py 用 structs.FABRICATED_EXTERN_HASHES
-判断），提醒用户这不是坐实结论。一旦真的遇到样本，先核对字节是否吻合再决定要不要改。
-
-其余类型（EXTERNITEM 等）显示 "Not supported yet"——连主属性 schema 都没有，
-没有任何依据可以外推，不勉强猜。
-
-Export 策略：
-  - is_editable=True 的实例：rebuild_data_bytes（逐字段；edited=True 的才 repack）
-  - 其余：raw_b64 原样（byte-perfect 保底）
-  - 任何 except：整个 ExternAttribute 回退到 efx_extern.raw_b64
+维护约束：
+- 每个 Extern item 的实例数由 orig_attr_count 定义；同一状态列必须跨全部 item 对齐。
+- 定长类型按元素大小拆分；变长类型必须使用对应主属性 codec 切分，不能按固定长度猜测。
+- 无法展开或未编辑的实例保留 raw_b64；重建失败时整个 ExternAttribute 回退原始数据。
+- 仅纯定长 schema 映射可直接复用；标为 FABRICATED 的映射必须在 UI 中保持不确定标识。
 """
 
 import base64
@@ -113,20 +57,12 @@ def _get_extern_schema_map() -> dict:
             EXTERNEMITTERSHAPE3D:  (EXTERN_EMITTERSHAPE3D_SCHEMA,   88),
             EXTERNRGBFIRE:         (EXTERN_RGBFIRE_SCHEMA,          112),
             EXTERNTRANSFORM3D:     (EXTERN_TRANSFORM3D_SCHEMA,      228),
-            # 与主属性 PLEMISSIVE 尺寸/布局完全相同（76B，无 path），语料验证零反例。
             EXTERNPLEMISSIVE:      (PLEMISSIVE_SCHEMA,              76),
-            # 与主属性 fixed schema 前缀完全同构 + 固定 5B 尾巴（int32+byte，语义未知，
-            # 语料验证：值恒定/取值集合稳定，零反例），见 structs.py 对应 SCHEMA 注释。
-            # 曾以 EXTERNVELOCITY3D0/2/5/6 命名、按纯统计推断处理，2026-09-20 查明是
-            # 对应主属性的 Extern 覆盖版，尺寸精确匹配 + 全语料 pack(unpack(x))==x
-            # 零反例，直接复用主属性 schema，见 schema/attributes.py 对应位置注释。
             EXTERNLIFE:            (LIFE_SCHEMA,                    48),
             EXTERNPLSNOW:          (PLSNOW_SCHEMA,                  84),
             EXTERNPARENTEMISSIVE:  (PARENTEMISSIVE_SCHEMA,          72),
             EXTERNROTATEANIM:      (ROTATEANIM_SCHEMA,              80),
-            # ⚠ FABRICATED（虚构，无真实样本）：从未在任何语料里出现过，尺寸/布局是按
-            # 上面这些"已确认"条目的规律外推猜测的，见 efxfile.py::_extern_data_size
-            # 顶部大段注释与 memory extern-alias-field-registry-gap。
+            # FABRICATED 映射仍须由 UI 标为不确定。
             EXTERNFADEBYANGLE:     (FADEBYANGLE_SCHEMA,             40),
             EXTERNFADEBYDEPTH:     (FADEBYDEPTH_SCHEMA,             20),
             EXTERNUVCONTROL:       (UVCONTROL_SCHEMA,              236),
@@ -139,10 +75,7 @@ def _get_extern_schema_map() -> dict:
     return _EXTERN_SCHEMA_MAP_CACHE
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 变长 EXTERN 类型（每元素尺寸不定）→ (元素分割函数, 主属性 type_hash) 映射
-# 分割函数签名：(data: bytes, off: int) -> (element_bytes, new_off)
-# ─────────────────────────────────────────────────────────────────────────────
+# 变长 EXTERN 类型：元素切分函数与对应主属性类型。
 
 _EXTERN_VARLEN_MAP_CACHE = None
 
@@ -201,20 +134,11 @@ def _get_extern_varlen_map() -> dict:
         _EXTERN_VARLEN_MAP_CACHE = {
             EXTERNMESH:       (_split_mesh,       MESH),
             EXTERNPTBEHAVIOR: (_split_ptbehavior, PTBEHAVIOR),
-            # 2026-09-20 订正：这 5 个此前当"主属性定长前缀 + 5B 未知尾巴"按定长处理。
-            # 那个尾巴是误读——它是主属性自己的 path_len + 一条空路径。全语料 1049 个
-            # 元素实测：直接用主属性 codec 解，消耗字节恰好等于元素长度且 pack(unpack(x))
-            # == x 零反例，即 extern 元素就是主属性编码本身。改走变长后顺带修好了字段
-            # 错位（旧 schema 解出的 lightGroup 恒为 0x3F800000=float 1.0，明显不是位
-            # 掩码；现在是 {1,0,33,32,2}，与主属性侧同形）。见 efxfile.py::_extern_data_size。
             EXTERNUVSEQUENCE:   (_split_uvsequence,  UVSEQUENCE),
             EXTERNBILLBOARD3D:  (_split_billboard3d, BILLBOARD3D),
             EXTERNRGBWATER:     (_split_rgbwater,    RGBWATER),
             EXTERNSTRAINRIBBON: (_split_strainribbon, STRAINRIBBON),
             EXTERNTURBULENCE:   (_split_turbulence,  TURBULENCE),
-            # 曾以 EXTERNVELOCITY3D1/7 命名、按定长硬编码（语料里内嵌路径恰好全为空才
-            # 凑出"看似定长"的假象），2026-09-20 查明是主属性 RIBBON/PLANE 的 Extern
-            # 覆盖版，改按真实变长处理，见 efxfile.py::_extern_data_size。
             EXTERNTYPERIBBON: (_split_ribbon,     RIBBON),
             EXTERNTYPEPLANE:  (_split_plane,      PLANE),
         }
@@ -223,9 +147,7 @@ def _get_extern_varlen_map() -> dict:
     return _EXTERN_VARLEN_MAP_CACHE
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # PropertyGroup 层次结构
-# ─────────────────────────────────────────────────────────────────────────────
 
 class EFXExternInstanceProps(PropertyGroup):
     """ExternDataItem 中的单个元素实例（attr_count 个之一）。"""
@@ -240,8 +162,7 @@ class EFXExternInstanceProps(PropertyGroup):
         default=False,
     )
 
-    # field_items 在 register() 里通过延迟注解挂上，以避免循环引用问题。
-    # 实际在类体外用 __annotations__ 注入。
+    # field_items 延迟注入，避免循环引用。
 
 
 class EFXExternItemProps(PropertyGroup):
@@ -278,8 +199,6 @@ class EFXExternItemProps(PropertyGroup):
         default=False,
     )
 
-    # raw_b64: 该 item 所有实例的原始数据（不含 12B header），
-    # 供只读或未编辑时导出使用。
     raw_b64: StringProperty(
         name="Item Raw Bytes",
         description="该项的原始数据（base64），只读或未编辑时导出直接使用",
@@ -302,9 +221,7 @@ class EFXExternProps(PropertyGroup):
     null0: IntProperty(name="null0", default=0)
     null1: IntProperty(name="null1", default=0)
 
-    # EA 级的"状态/列"下标：同一个 EFX_EXTERN 下所有 item（Spawn/Velocity3D/...）
-    # 共用一个下标，一次切换让全部 item 同步切到第 N 个实例（同一列=一个完整状态）。
-    # 少数 EA 各 item 槽数不一致时，各 item 按自己的范围 clamp，见 panels.py。
+    # 所有 item 共用的状态列索引。
     active_instance: IntProperty(
         name="Active State",
         description="当前编辑的状态（列）索引，作用于此 Extern 下的所有项",
@@ -317,7 +234,6 @@ class EFXExternProps(PropertyGroup):
         name="Items",
     )
 
-    # 整个 Extern 的原始数据（最终兜底）
     raw_b64: StringProperty(
         name="Raw Bytes",
         description="整个 Extern 的原始数据（base64），只读或未编辑时导出直接使用",
@@ -329,12 +245,7 @@ class EFXExternProps(PropertyGroup):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _unsplit_extern_items(ep) -> list:
-    """返回没有拆成独立槽的 item 的显示名（instances 数与权威的 orig_attr_count 对不上）。
-
-    两种成因：类型不在 schema_map/varlen_map 里（整块 opaque），或变长类型拆分失败
-    降级成了单个 opaque instance（见 _init_varlen_extern_item 的 except 分支）。
-    这类 item 的"某一列"在工具层面取不出来，任何按列增删都必须先排除它们。
-    """
+    """返回无法按状态列拆分的 item；列编辑必须拒绝它们。"""
     from ..efx_format.hashes import HASH_TO_NAME, pretty_type_name
     out = []
     for it in ep.items:
@@ -393,16 +304,7 @@ class EFX_OT_extern_instance_next(Operator):
 
 
 def _init_varlen_extern_item(it, item_data, varlen_entry, _fields) -> None:
-    """
-    处理变长 EXTERN 类型（EXTERNMESH / EXTERNPTBEHAVIOR）：按 attr_count 把
-    data_bytes 拆成独立元素，每个元素包一层 AttrBlock(type_hash=同名主属性)，
-    复用 fields._init_path_attribute_props 展开字段（该函数只认 field_items/
-    raw_b64/is_editable 接口，EFXExternInstanceProps 与 EFXAttributeProps 都满足，
-    不需要额外适配）。
-
-    任何一步不满足（拆分异常/越界剩余字节）→ 整体退回单个 opaque instance，
-    与其余未落 schema 类型的兜底行为一致。
-    """
+    """用主属性 codec 拆分变长元素；失败时整体回退 opaque 实例。"""
     from ..efx_format.efxfile import AttrBlock
 
     split_fn, main_type_hash = varlen_entry
@@ -436,15 +338,7 @@ def _init_varlen_extern_item(it, item_data, varlen_entry, _fields) -> None:
             inst.field_items.clear()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# create_extern_item — 新建/编辑用：给某个 EA 加一个 item（ExternDataItem）
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ── 变长类型的空白元素模板 ────────────────────────────────────────────────────
-# 变长元素不能像定长那样"补零到 elem_size"——定长头、内嵌路径的终止符都得在，
-# 空字节喂给 unpack_* 必然抛异常。这里各存一份从 efx_samples/official 抓的**最小**
-# 真实元素（均已验证 pack(unpack(x)) == x），新建 item 无种子时用它起手。
-# 路径字段在这些模板里本来就是空的（全语料 491 个 extern 变长元素路径无一非空）。
+# 变长类型的新建元素模板；必须包含 codec 所需的合法结构。
 _BLANK_VARLEN_B64 = {
     "EXTERNMESH":       "AAAAAKcAAAAAzc3NAACgQAAAAAAAQJxFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAP///////////////wAAAP8AAAAAAAAAAAQAAAAAAAAAAgAAAAEAAAABAAAACQAAAAAAAAAJAAAAAAAAAAAAAQEAAQEAAAAAAAAAAAAA",  # noqa: E501
     "EXTERNPTBEHAVIOR": "AAAAABUAAAABAAAATWhQb2ludExpZ2h0QmVoYXZpb3IAKNLim+LZ8KsPAAAACAQE/w==",
@@ -454,19 +348,14 @@ _BLANK_VARLEN_B64 = {
 
 
 def _blank_varlen_element(extern_type_hash: int) -> bytes:
-    """变长类型的空白元素字节；没有模板时返回 b""（调用方的实例会退成不可编辑）。"""
+    """返回变长元素模板；缺失时返回空字节。"""
     from ..efx_format.hashes import HASH_TO_NAME
     b64 = _BLANK_VARLEN_B64.get(HASH_TO_NAME.get(extern_type_hash, ""))
     return base64.b64decode(b64) if b64 else b""
 
 
 def fill_extern_instance(inst, base: bytes, extern_type_hash: int) -> None:
-    """把 base 这段字节灌进一个 instance（槽），并展开成可编辑字段。
-
-    新建 item、复制状态列都走这一份——两处各写一遍迟早会漂开，而且字段展开的
-    roundtrip 闸门（重建字节 ≠ 原字节就退回不可编辑）必须处处一致，否则会出现
-    "看着能编辑、导出却和显示的值对不上"。
-    """
+    """以字节初始化实例；重建不一致时保持不可编辑。"""
     from . import fields as _fields
     from ..efx_format.structs import unpack
     from ..efx_format.efxfile import AttrBlock
@@ -481,7 +370,6 @@ def fill_extern_instance(inst, base: bytes, extern_type_hash: int) -> None:
             ok = _fields.dict_to_items(values, schema, inst, data_bytes=base)
             inst.is_editable = bool(ok)
             if inst.is_editable:
-                # roundtrip 闸门，同 init_extern_props 导入路径同一套纪律
                 if _fields.rebuild_data_bytes(inst, schema) != base:
                     inst.is_editable = False
                     inst.field_items.clear()
@@ -505,11 +393,7 @@ def fill_extern_instance(inst, base: bytes, extern_type_hash: int) -> None:
 
 
 def extern_instance_bytes(it, inst) -> bytes:
-    """一个槽当前的实际字节——可编辑的按字段重建（反映用户改过的值），否则用原始字节。
-
-    与 export_extern_data 取字节的口径保持一致：复制出来的新列必须等于导出时会写
-    出去的那一份，不能是导入时的旧值。
-    """
+    """返回实例当前导出字节；不可编辑时使用原始字节。"""
     from . import fields as _fields
 
     if inst.is_editable:
@@ -531,44 +415,13 @@ def extern_instance_bytes(it, inst) -> bytes:
 
 def create_extern_item(ep, extern_type_hash: int, seed_bytes: bytes = None,
                         n_slots: int = None) -> "EFXExternItemProps":
-    """
-    在 ep（EFXExternProps，某 EFX_EXTERN 对象的 efx_extern）下新建一个 item
-    （对应一个 ExternDataItem），补齐所有槛位并同步 orig_attr_count（导出权威值，
-    见 export_extern_data 顶部注释——两者不一致会产出崩游戏的文件，2026-07 修的
-    GitHub issue #1 就是这个坑）。
-
-    参数
-    ----
-    ep : EFXExternProps
-        目标 EA。
-    extern_type_hash : int
-        新 item 的类型（EXTERN* 哈希）。必须在 `_get_extern_schema_map()` 或
-        `_get_extern_varlen_map()` 里，否则退化为不可编辑的单槛 opaque item
-        （调用方应先按这两张表筛选候选，不要把不支持的类型传进来）。
-    seed_bytes : bytes | None
-        单槛的种子字节：
-          - flat schema 类型（14 个，含 8 个 FABRICATED）：按 elem_size 补 0 /
-            截断——"同尺寸"和"+5B 尾巴"两档统一处理：尾巴档种子天然比 elem_size
-            短 5B，补 0 后正好等价于"补上 5B 尾巴"。
-          - 变长类型（4 个）：原样整段使用（一个元素本身就是主属性的完整编码，
-            不需要额外处理）。
-          - None：等价于全 0 字节（空白 item）。
-        所有槛用同一份种子（状态 A=B=…=现值），用户再自行改其它槛。
-    n_slots : int | None
-        新 item 的槛数。None 时：EA 已有 item → 取现有最大槛数（对齐既有列）；
-        EA 还是空的 → 默认 2（语料 93.3% 的槛数）。
-
-    返回
-    ----
-    新建的 EFXExternItemProps。
-    """
+    """创建 item 并同步所有状态列与 orig_attr_count。"""
     from . import fields as _fields
     from ..efx_format.structs import unpack
     from ..efx_format.efxfile import AttrBlock
 
     if n_slots is None:
-        # 用权威的 orig_attr_count 对齐既有列数，而不是 len(instances)——不可拆的
-        # opaque item 只有 1 个显示用 instance，拿它当列数会让新 item 比实际列数短。
+        # opaque item 的显示实例数不能代表实际列数。
         n_slots = max((int(i.orig_attr_count) for i in ep.items), default=0) or 2
     n_slots = max(1, int(n_slots))
 
@@ -576,7 +429,6 @@ def create_extern_item(ep, extern_type_hash: int, seed_bytes: bytes = None,
     it.type_hash_str = str(int(extern_type_hash))
     it.unkn_str = "0"
     it.ui_expand = True
-    # 权威值——下面两个分支各自填 n_slots 个 instance，必须与之同步。
     it.orig_attr_count = n_slots
 
     schema_map = _get_extern_schema_map()
@@ -599,9 +451,7 @@ def create_extern_item(ep, extern_type_hash: int, seed_bytes: bytes = None,
 
     varlen_entry = varlen_map.get(extern_type_hash)
     if varlen_entry is not None:
-        # 变长类型没有"补零到 elem_size"这回事——一个元素至少要有合法的定长头和
-        # 路径终止符，空字节喂进 unpack 必然抛异常，实例会被标成不可编辑，
-        # 表现就是"新加的 ExternMesh 显示只读"。所以无种子时用真实样本模板起手。
+        # 变长元素需要完整模板，不能用零字节补齐。
         base = seed_bytes if seed_bytes is not None else _blank_varlen_element(extern_type_hash)
         it.is_editable = True
         it.raw_b64 = base64.b64encode(base * n_slots).decode("ascii")
@@ -609,9 +459,7 @@ def create_extern_item(ep, extern_type_hash: int, seed_bytes: bytes = None,
             fill_extern_instance(it.instances.add(), base, extern_type_hash)
         return it
 
-    # 未落 schema 的类型：调用方本不该把这种类型传进来，这里只做安全兜底——
-    # 退化为不可编辑的 opaque 单槛，槛数强制回 1，保持 orig_attr_count 与实际
-    # instances 数量一致（同上，这是不能破的不变量）。
+    # 未支持类型以单个 opaque 实例保留。
     it.is_editable = False
     it.orig_attr_count = 1
     it.ui_expand = False
@@ -624,8 +472,7 @@ def create_extern_item(ep, extern_type_hash: int, seed_bytes: bytes = None,
 
 
 def _extern_item_candidate_hashes() -> set:
-    """"添加 Item" 的候选类型全集：schema_map ∪ varlen_map（含 FABRICATED，
-    与主属性一键覆盖入口不同——那里只用 18 个坐实类型，见 _get_main_to_extern_map）。"""
+    """返回可手动添加的定长与变长 Extern 类型。"""
     return set(_get_extern_schema_map()) | set(_get_extern_varlen_map())
 
 
@@ -633,12 +480,7 @@ _EXTERN_ITEM_CANDIDATE_ITEMS_CACHE = None
 
 
 def _get_extern_item_candidate_items(self, context):
-    """EFX_OT_extern_item_add_search 的动态 EnumProperty items 回调。
-
-    候选类型集合只取决于 schema_map/varlen_map（进程启动后不变），缓存一次即可，
-    不需要 attribute_ops.py 那套 TTL 失效（那边缓存的是随时可能被用户编辑的
-    预设文件目录，这里没有对应的外部可变状态）。
-    """
+    """返回可缓存的 Extern 类型枚举项。"""
     global _EXTERN_ITEM_CANDIDATE_ITEMS_CACHE
     if _EXTERN_ITEM_CANDIDATE_ITEMS_CACHE is None:
         try:
@@ -666,13 +508,20 @@ def _get_main_to_extern_map() -> dict:
     "?" 后缀提醒）。
 
     命名规则：extern 类型名去掉 "EXTERN" 前缀 == 对应主属性名，hashes 模块里两边
-    都有对应常量，直接靠名字反查，不需要额外维护一张手写表。
+    都有对应常量，直接靠名字反查，不需要额外维护一张手写表——但 EXTERNTYPERIBBON/
+    EXTERNTYPEPLANE 是例外：历史遗留的 "TYPE" 中缀让名字反查落空（"TYPERIBBON"/
+    "TYPEPLANE" 在 hashes 模块里都不存在），这两个已确认（非 FABRICATED，byte-size
+    + 全语料 pack/unpack 验证过，见 efx_format/structs.py 的 EXTERN_HASH_ALIASES）
+    却因为这个命名反查漏洞一直没能"一键"，2026-09-21 补上显式覆盖。
     """
     global _MAIN_TO_EXTERN_CACHE
     if _MAIN_TO_EXTERN_CACHE is not None:
         return _MAIN_TO_EXTERN_CACHE
     try:
-        from ..efx_format.hashes import HASH_TO_NAME, NAME_TO_HASH
+        from ..efx_format.hashes import (
+            HASH_TO_NAME, NAME_TO_HASH, RIBBON, PLANE,
+            EXTERNTYPERIBBON, EXTERNTYPEPLANE,
+        )
         from ..efx_format.structs import FABRICATED_EXTERN_HASHES
         out = {}
         for h in _extern_item_candidate_hashes():
@@ -683,6 +532,9 @@ def _get_main_to_extern_map() -> dict:
                 main_hash = NAME_TO_HASH.get(name[len("EXTERN"):])
                 if main_hash is not None:
                     out[main_hash] = h
+        # 命名反查够不到的例外，直接补：
+        out[RIBBON] = EXTERNTYPERIBBON
+        out[PLANE] = EXTERNTYPEPLANE
         _MAIN_TO_EXTERN_CACHE = out
     except Exception:
         _MAIN_TO_EXTERN_CACHE = {}

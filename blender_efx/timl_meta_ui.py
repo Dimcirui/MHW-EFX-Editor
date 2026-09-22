@@ -1,22 +1,8 @@
-"""
-blender_efx/timl_meta_ui.py  —  TIML 头部元字段编辑（Dope Sheet 侧栏「EFX TIML」）
+"""在 Dope Sheet 与曲线编辑器侧栏编辑 TIML 元字段。
 
-直接编辑选中 EFX_ENTRY 的 TIML 头部元字段（无需任何外部工具）：
-
-  - Animation Length（每条动画）—— 可内联编辑 + 「贴合最后关键帧」按钮（grow-only）。
-  - Loop Control —— 四值英文下拉（No Loop / Loop / Unkn / Unkn Loop）。
-  - 「编辑时自动增长长度」开关（per-entry，默认开）—— TIML 回写/导入时把长度增长到末关键帧。
-
-实现要点
---------
-- 源数据始终是 `body["timl_bytes"]`（base64）。编辑字段用 bpy 属性的 **get/set 回调**直接
-  读写 timl_bytes，无需镜像状态、无 draw 期同步问题。
-- 三个元字段都是**定长 4 字节原地 patch**（见 efx_format/timl_meta），改它们不改 timl 长度
-  → 不碰 byte-perfect。`timl_length` 仍同步重写（导出端也会重算，双保险）。
-- 语料实测一条 timl 多为 2 条 animation（max 2），故面板逐条平铺，算子带 anim_index。
-- 面板放 DOPESHEET_EDITOR 的 N 面板独立侧栏，随选中特效体/动作切换显示。
-
-约束（CLAUDE.md）：bpy 稳定子集；Python 3.10；包内相对导入；纯胶水层。
+维护约束：TIML 字节归 Entry（或独立 TIML 载体）所有；属性回调直接读写该字节。
+长度、循环和循环起点使用定长 patch。结构改动前必须提交 F-Curve，随后经
+timl_edit 的入口写回以重建持久曲线。A0、A1 是固定槽位而非可任意增删的列表。
 """
 
 import base64
@@ -26,7 +12,7 @@ from bpy.types import Operator, Panel
 
 from .i18n import T
 from ..efx_format.timl import meta as tm
-from ..efx_format import timl as _timl   # 完整解析/序列化（animation 增删用）
+from ..efx_format import timl as _timl
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -34,8 +20,7 @@ from ..efx_format import timl as _timl   # 完整解析/序列化（animation �
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _resolve_active_entry(obj):
-    """从活动对象解析出 TIML 字节的载体：无主 TIML 句柄即其自身（standalone.py），
-    否则自身是 entry 即取、再否则沿 parent 上溯找 EFX_ENTRY。"""
+    """解析活动对象的 TIML 字节载体；独立 TIML 句柄本身也是载体。"""
     from .timl_io import is_standalone_timl
     if is_standalone_timl(obj):
         return obj
@@ -55,7 +40,7 @@ def _entry_timl_bytes(body) -> bytes:
 
 
 def _active_entry():
-    """当前活动对象解析出的、带非空 TIML 的 EFX_ENTRY；否则 None。"""
+    """返回活动对象解析出的有效 TIML 载体。"""
     body = _resolve_active_entry(bpy.context.active_object)
     if body is None:
         return None
@@ -67,15 +52,14 @@ def _active_entry():
 
 def _store_timl(body, data: bytes):
     body["timl_bytes"] = base64.b64encode(data).decode("ascii")
-    body["timl_length"] = str(len(data))   # 导出端也会再重算，双保险
+    body["timl_length"] = str(len(data))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # get/set 回调工厂（按 anim_index 绑定，挂在 WindowManager 上，瞬态不保存）
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 持久化模型（见 timl_edit.py）：无独立编辑会话。元字段(长度/循环/循环起点)不进 fcurve，
-# 直接轻量 patch timl_bytes——导出 sync 只覆盖关键帧、保留这些结构字段，故安全高效、无需重建 fcurve。
+# WindowManager 回调属性是瞬态 UI 入口；元字段不进入 F-Curve。
 def _make_length_get(idx):
     def _get(self):
         body = _active_entry()
@@ -153,7 +137,7 @@ _LOOP_ENUM_ITEMS = [
     ("V3", "Unkn Loop", "Loop playback (variant)",  "", 3),
 ]
 
-# 支持的最大 animation 条数（语料实测 max=2，留 4 余量）
+# UI 为固定轴槽预留的最大回调属性数。
 _MAX_ANIMS = 4
 
 
@@ -162,7 +146,7 @@ _MAX_ANIMS = 4
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_timlm_fit_last_keyframe(Operator):
-    """把该动画的长度增长到其最后一个关键帧（grow-only：不缩短已有长度）"""
+    """将轴长度增长到最后关键帧，绝不缩短已有长度。"""
 
     bl_idname = "efx.timlm_fit_last_keyframe"
     bl_label = "Fit to Last Keyframe"
@@ -179,7 +163,7 @@ class EFX_OT_timlm_fit_last_keyframe(Operator):
         if body is None:
             self.report({"ERROR"}, T("timlm.no_entry"))
             return {"CANCELLED"}
-        # 先把进行中的关键帧编辑从 fcurve 提交进字节，末帧才准
+        # 末帧计算前必须提交尚未写回的曲线编辑。
         from . import timl_edit as _te
         _te.commit_fcurves_to_bytes(body)
         lk = _live_last_kf(body, self.anim_index)
@@ -192,13 +176,13 @@ class EFX_OT_timlm_fit_last_keyframe(Operator):
         if lk <= cur:
             self.report({"INFO"}, T("timlm.grow_only"))
             return {"CANCELLED"}
-        # 长度是结构字段、不进 fcurve，直接 patch 字节（导出 sync 保留）
+        # 长度是结构字段，直接 patch 字节。
         _store_timl(body, tm.set_animation_length(data, self.anim_index, lk))
         self.report({"INFO"}, T("timlm.last_kf").format(f=lk))
         return {"FINISHED"}
 
 
-# A0/A1 是两个固定独立的时间轴槽（非可增删的动画列表）。实测主流形态是 [空, A1](4242 文件)。
+# A0/A1 是两个固定的独立时间轴槽。
 _AXIS_LABEL = {0: "timlm.axis0", 1: "timlm.axis1"}
 
 
@@ -213,7 +197,7 @@ def _set_anim_indices(t):
 
 
 class EFX_OT_timlm_enable_axis(Operator):
-    """启用某条轴（A0 发射 / A1 寿命）：在该槽建数据，复制另一条轴作起点（无则空）"""
+    """启用固定轴槽，以另一有效轴或空动画初始化。"""
 
     bl_idname = "efx.timlm_enable_axis"
     bl_label = "Enable Axis"
@@ -230,28 +214,27 @@ class EFX_OT_timlm_enable_axis(Operator):
         if body is None:
             return {"CANCELLED"}
         import copy
-        # 结构改动（增轴 → 新通道）：先提交进行中关键帧编辑，再改字节、经咽喉点重建 fcurve
+        # 结构改动前提交曲线，写回后由统一入口重建曲线。
         from . import timl_edit as _te
         _te.commit_fcurves_to_bytes(body)
         t = _te.read_model(body)
         if t is None:
             return {"CANCELLED"}
         slot = max(0, min(self.slot, 1))
-        while len(t.animations) <= slot:        # 补槽（如启用 A1 时 A0 占位为空 → [None, ...]）
+        while len(t.animations) <= slot:
             t.animations.append(None)
-        # 复制另一条已存在的轴作起点；没有则建空
         other = next((a for i, a in enumerate(t.animations) if a is not None and i != slot), None)
         t.animations[slot] = copy.deepcopy(other) if other is not None else _timl.make_blank_animdata(slot)
         t.count = len(t.animations)
         _set_anim_indices(t)
         t.dirty = True
-        _te.set_entry_timl(body, t.serialize())   # 存 + 重建持久 fcurve
+        _te.set_entry_timl(body, t.serialize())
         self.report({"INFO"}, T("timlm.enabled_axis").format(T(_AXIS_LABEL.get(slot, ""))))
         return {"FINISHED"}
 
 
 class EFX_OT_timlm_clear_axis(Operator):
-    """清空某条轴（置空该槽；末端空槽自动收尾，前导空槽合法保留，如 [None, A1]）"""
+    """清空固定轴槽；仅移除末端连续空槽。"""
 
     bl_idname = "efx.timlm_clear_axis"
     bl_label = "Clear Axis"
@@ -280,7 +263,7 @@ class EFX_OT_timlm_clear_axis(Operator):
         t.count = len(t.animations)
         _set_anim_indices(t)
         t.dirty = True
-        _te.set_entry_timl(body, t.serialize())   # 存 + 重建持久 fcurve
+        _te.set_entry_timl(body, t.serialize())
         self.report({"INFO"}, T("timlm.cleared_axis").format(T(_AXIS_LABEL.get(slot, ""))))
         return {"FINISHED"}
 
@@ -290,14 +273,13 @@ class EFX_OT_timlm_clear_axis(Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _live_axis_present(body):
-    """[A0存在, A1存在]：从 timl_bytes 读（结构字段；持久化模型下字节即结构权威）。"""
+    """返回两个固定轴槽是否在 TIML 字节中存在。"""
     anims = tm.parse_animations(_entry_timl_bytes(body))
     return [_axis_present(anims, s) for s in (0, 1)]
 
 
 def _live_last_kf(body, slot):
-    """该轴最后关键帧时间（从字节算，无 → None）。⚠ 展示用可能略滞后于未提交的 fcurve 编辑；
-    需精确时（如 fit 算子）调用方先 commit_fcurves_to_bytes(body)。"""
+    """返回字节中的最后关键帧；精确读取前调用方须先提交曲线。"""
     return tm.last_keyframe_time(_entry_timl_bytes(body), slot)
 
 
@@ -353,7 +335,7 @@ def _draw_meta_panel(layout, context):
 
 
 class EFX_PT_timl_meta(Panel):
-    """Dope Sheet 侧栏：编辑选中 EFX 特效体 TIML 的长度 / 循环控制"""
+    """Dope Sheet 侧栏中的 TIML 长度和循环控制。"""
 
     bl_space_type = "DOPESHEET_EDITOR"
     bl_region_type = "UI"
@@ -361,12 +343,7 @@ class EFX_PT_timl_meta(Panel):
     bl_label = "EFX TIML"
 
     def draw(self, context):
-        # ⚠ 无条件诊断标记：Dope Sheet 侧栏内容曾整体消失而曲线编辑器正常（2026-07-01
-        # 用户报告）。这行在 draw() 一进来就画，跟内容无关——若 Dope Sheet 连这行都不显示，
-        # 说明 draw() 根本没被调用（注册/空间类型问题）；若显示了但下面还是空，说明是
-        # 内容绘制被吞。定位后即可删。
         self.layout.label(text="· EFX TIML v0.2.77", icon="ANIM")
-        # 兜底：异常直接显示在面板里而不是静默空白。
         try:
             _draw_meta_panel(self.layout, context)
         except Exception:
@@ -376,7 +353,7 @@ class EFX_PT_timl_meta(Panel):
 
 
 class EFX_PT_timl_meta_graph(EFX_PT_timl_meta):
-    """曲线编辑器侧栏：与 Dope Sheet 完全相同的 EFX TIML 元字段面板。"""
+    """曲线编辑器侧栏中的同一 TIML 元字段面板。"""
     bl_space_type = "GRAPH_EDITOR"
 
 
@@ -397,14 +374,12 @@ def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
-    # per-entry 自动增长开关（保存在 entry 对象上，默认开）
     bpy.types.Object.efx_timl_auto_grow = bpy.props.BoolProperty(
         name="Auto-grow length on edit",
         description=T("timlm.auto_grow_desc"),
         default=True,
     )
 
-    # 每条 animation 一组 get/set 属性（瞬态，挂 WindowManager）
     for i in range(_MAX_ANIMS):
         setattr(bpy.types.WindowManager, "efx_timlm_length_%d" % i,
                 bpy.props.FloatProperty(

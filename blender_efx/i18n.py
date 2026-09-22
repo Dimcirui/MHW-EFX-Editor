@@ -1,20 +1,10 @@
-"""
-blender_efx/i18n.py  —  中英双语化基础设施（自定义面板内切换，不依赖 Blender 原生翻译）
+"""自定义面板的中英双语选择与字符串表。
 
-设计
-----
-- 语言状态是模块级全局 _LANG（'EN' / 'ZH'），默认 'EN'。
-  用模块全局而非 PropertyGroup 字段，好处是 T() 在算子里也能用、无需 context。
-- 持久化：写入 Blender 用户配置目录下的 efx_editor_lang.txt（跨版本稳定、可写）。
-  register() 时读回；切换算子写入。
-- T(key) 按当前语言查 STRINGS 表；缺键回退英文、再回退 key 本身。
-- UI 绘制（draw 里的 text=）、动态 tooltip、下拉项标签都走 T()/查表，运行时即时切换。
-- 注册期静态值（Panel.bl_label / Operator.bl_label / 属性 name=）切不了，统一用英文。
-
-约束（CLAUDE.md）
-----------------
-- Python 3.10+ 语法；bpy 只用稳定子集；本文件属胶水层，可 import bpy。
-- efx_format/ 仍保持零 bpy；分类的双语标签作为纯数据放 efx_format/categories.py，本层只取用。
+维护约束：
+- 当前语言是无需 context 的模块状态，并持久化到 Blender 配置目录。
+- T() 依次回退当前语言、英文和键本身，缺失翻译不得让 UI 为空。
+- 运行时绘制文本走 T()；注册期静态 RNA 标签保持英文。
+- STRINGS 是用户可见文案数据，不按普通代码注释处理。
 """
 
 import os
@@ -23,16 +13,12 @@ import bpy
 from bpy.props import StringProperty
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 语言状态 + 持久化
-# ─────────────────────────────────────────────────────────────────────────────
-
-_LANG = "EN"          # 当前语言：'EN' / 'ZH'
+_LANG = "EN"
 _DEFAULT_LANG = "EN"
 
 
 def _config_path() -> str:
-    """语言偏好持久化文件路径（用户配置目录，跨 Blender 版本稳定）。"""
+    """返回语言偏好的配置文件路径。"""
     try:
         cfg = bpy.utils.user_resource("CONFIG")
     except Exception:
@@ -41,7 +27,7 @@ def _config_path() -> str:
 
 
 def load_lang() -> str:
-    """从配置文件读回语言偏好（register 时调用）。"""
+    """加载语言偏好；缺失或无效时使用默认语言。"""
     global _LANG
     try:
         with open(_config_path(), "r", encoding="utf-8") as f:
@@ -74,10 +60,7 @@ def set_lang(lang: str) -> None:
 
 
 def T(key: str) -> str:
-    """
-    翻译查表：按当前语言返回字符串。
-    缺键时回退英文，再回退 key 本身（便于发现漏翻）。
-    """
+    """按当前语言查表，并回退英文和键本身。"""
     entry = STRINGS.get(key)
     if entry is None:
         return key
@@ -85,10 +68,7 @@ def T(key: str) -> str:
 
 
 def type_label(type_name: str) -> str:
-    """
-    返回属性类型的本地化友好标签，如 'TRANSFORM3D（位置/变换）' / 'TRANSFORM3D – Position/Transform'。
-    用于属性预设下拉项；type_name 始终保留（玩家需要类型名）。
-    """
+    """返回保留类型名的本地化友好标签。"""
     lab = TYPE_LABELS.get(type_name, {})
     cn = lab.get("ZH")
     en = lab.get("EN")
@@ -96,10 +76,6 @@ def type_label(type_name: str) -> str:
         return f"{type_name}（{cn}）" if cn else type_name
     return f"{type_name} – {en}" if en else type_name
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 语言切换算子（两个小按钮 / 一个循环切换）
-# ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_set_language(bpy.types.Operator):
     """Toggle EFX editor UI language between English and 中文"""
@@ -116,7 +92,6 @@ class EFX_OT_set_language(bpy.types.Operator):
         if target not in ("EN", "ZH"):
             target = "ZH" if get_lang() == "EN" else "EN"
         set_lang(target)
-        # 触发所有区域重绘
         try:
             for win in context.window_manager.windows:
                 for area in win.screen.areas:
@@ -136,10 +111,7 @@ def draw_language_toggle(layout):
     op_zh.lang = "ZH"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 属性类型友好标签（type_name → {EN, ZH}）
-# 来源：docs/BLOCK_TYPES.md。用于属性预设下拉、（可选）属性标题。
-# ─────────────────────────────────────────────────────────────────────────────
+# 属性类型友好标签。
 
 TYPE_LABELS = {
     "TRANSFORM3D":          {"EN": "Position/Transform", "ZH": "位置/变换"},
@@ -574,9 +546,6 @@ STRINGS = {
     "extern.force_unlock":       {"EN": "Force Unlock (dangling)", "ZH": "强制解锁（悬空指针）"},
 
     # ── EOF 指针面板（entry_action_ref.py）───────────────────────────────────────
-    # PtLife/PtCollision 的 relationIndex/ieIndex 指针选择器已合并进 Attribute
-    # Properties 面板内联渲染（_draw_ptlife_ref_field/_draw_ptcollision_ref_field），
-    # 不再有独立面板，相关 i18n key 已删除。
     "ptref.game_activated_entries":{"EN": "Entries triggered directly on EFX load", "ZH": "EFX 加载时直接触发的 Entry"},
     "ptref.eof_empty":           {"EN": "(Empty - effect will not be triggered directly on load)",
                                   "ZH": "（空——EFX 加载时不会直接触发任何 Entry）"},
@@ -612,7 +581,7 @@ STRINGS = {
     "entryref.timing_other":        {"EN": "timing", "ZH": "timing"},
     "entryref.trigger_collision":   {"EN": "on collision", "ZH": "碰撞时"},
 
-    # ── ROOT subselect 状态总览（backref.py §5；模型推测）──────────────────────
+    # ── ROOT subselect 状态总览（backref.py）────────────────────────────────────
     "rootstate.no_states":        {"EN": "No subselect tables (no state gating)", "ZH": "无 subselect 表（无状态门控）"},
     "rootstate.header":           {"EN": "Subselect states (variants)", "ZH": "Subselect 状态（变体）"},
     "rootstate.state_prefix":     {"EN": "State",  "ZH": "状态"},
@@ -632,7 +601,7 @@ STRINGS = {
     "entry.game_active_no":   {"EN": "Direct trigger: No",   "ZH": "直接触发：否"},
     "entry.action_trigger_yes": {"EN": "Action trigger: Yes",  "ZH": "动作触发：是"},
     "entry.action_trigger_no":  {"EN": "Action trigger: No",   "ZH": "动作触发：否"},
-    # ── 有效激活态（派生，backref.classify_body_activation；模型推测）─────────────
+    # ── 有效激活态（backref.classify_body_activation）───────────────────────────
     "entry.effective_label":    {"EN": "Effective behavior:", "ZH": "有效行为："},
     # 触发来源（direct 与 action 是「并」/OR：两者都有则两种时机都触发）
     "entry.src_both":           {"EN": "Fires on load AND when summoned", "ZH": "加载时与被召唤时均触发"},
@@ -659,23 +628,21 @@ STRINGS = {
                                 "ZH": "需先命名前面的条目"},
     "entry.type_label":       {"EN": "Type: ",               "ZH": "类型："},
     "entry.type_standard":    {"EN": "Standard",             "ZH": "标准"},
-    "entry.type_extended":    {"EN": "Extended",             "ZH": "扩展"},
 
     # ── 校验按钮（panels 删除/校验面板）──────────────────────────────────────
     "validate.run_btn":      {"EN": "Pre-export Validation", "ZH": "导出前校验"},
 
     # ── 字段绘制 + 面板内通用提示（panels.py）────────────────────────────────
-    # 固定/随机 pair 统一措辞（2026-07）：Static/Random，取代旧的 Value/Jitter、
-    # Fixed/Random 混用；全仓库所有"固定值+随机抖动量"配对控件统一走这两个 key。
+    # 固定/随机字段配对。
     "field.static":          {"EN": "Static",               "ZH": "固定"},
     "field.random":          {"EN": "Random",               "ZH": "随机"},
-    # EMITTERSHAPE3D.rangeXYZ 的两个值不是 static+random，而是 offset+size（全形状通用）。
+    # EMITTERSHAPE3D.rangeXYZ 使用 offset/size 语义。
     "field.offset":          {"EN": "Offset",               "ZH": "偏移"},
     "field.size":            {"EN": "Size",                 "ZH": "尺寸"},
     "field.read_only":       {"EN": "(read-only)",          "ZH": "（只读）"},
     "field.unknown_type":    {"EN": "(unsupported field type)", "ZH": "（不支持的字段类型）"},
     "material.type":         {"EN": "Material type:", "ZH": "主材质类型："},
-    # ── MATERIAL 结构化编辑器（Phase C，2026-07）───────────────────────────────
+    # ── MATERIAL 结构化编辑器───────────────────────────────────────────────────
     "material.slot":         {"EN": "Material Slot", "ZH": "材质槽"},
     "material.change_type":  {"EN": "Change Type",   "ZH": "更改类型"},
     "material.add_slot":     {"EN": "Add Material Slot", "ZH": "添加材质槽"},
@@ -743,7 +710,6 @@ STRINGS = {
     "del.subselect_btn": {"EN": "Delete Subselect", "ZH": "删除 Subselect"},
 
     # ── 新建段条目（Add 面板）────────────────────────────────────────────────
-    # 一排三个按钮，宽度紧张，只留类型名（Action/Extern/Subselect 全库统一保留英文原名）
     "addsec.action":    {"EN": "Action",       "ZH": "Action"},
     "addsec.extern":    {"EN": "Extern",       "ZH": "Extern"},
     "addsec.subselect": {"EN": "Subselect",    "ZH": "Subselect"},
@@ -867,10 +833,6 @@ STRINGS = {
     "uvs.new_group_created":     {"EN": "; new group created (position {0})", "ZH": "；已新增 Group（位置 {0}）"},
 }
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 注册 / 注销
-# ─────────────────────────────────────────────────────────────────────────────
 
 def register():
     bpy.utils.register_class(EFX_OT_set_language)

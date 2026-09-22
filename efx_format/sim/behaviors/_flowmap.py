@@ -1,49 +1,44 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/_flowmap.py  —  flowmap（流动贴图）八件套的共用实现
+"""flowmap（流动贴图）字段组的共用实现。
 
-BILLBOARD3D / PLANE / BILLBOARD2D 各自带着同一组八个字段，不是独立的属性类型，
-所以这里是**共用函数**而不是 `@register` 的 behavior（一个 type_hash 只能绑一个
-behavior）。渲染体在自己的 `on_particle_spawn` / `build_render` 里各调一次。
+BILLBOARD3D / PLANE / BILLBOARD2D 各自带有同一组八个字段，flowmap 不是独立的属性类型，因此
+本模块提供**共用函数**而非 `@register` 的 behavior——一个 type_hash 只能绑定一个 behavior。
+各渲染体在自身的 `on_particle_spawn` / `build_render` 中分别调用。
 
-字段（全语料 10084 个官方文件里 3181 个用到，占 31.5%）
-------------------------------------------------------
-    applicationRule     位域；bit 0x04 = 启用，bit 0x08 = 播放一次后冻结
-    path                流动贴图的游戏路径。启用时几乎只用 11 张共享图
-                        `vfx/dds/cm/cm_flowmap/cm_flow_000..010_F_NM`
-    flowmapSpeed(+Jitter)           相位推进速度
-    flowmapSpeedCoef(+Jitter)       **逐帧**速度倍率（众数 1.0，其余 0.98/0.99）
-    flowmapStrength(+Jitter)        扭曲幅度（众数 0.2，其余 0.1/0.3/0.5/1.0）
-    flowmapStrengthCoef(+Jitter)    **逐帧**强度倍率（众数 1.0）
+字段职能：
 
-两个 Coef 是「每帧乘一次」的衰减率，与 TRANSFORM3D 的 `_modifier` 同一族；速度本身
-的单位则是 `SimConfig.flowmap_speed_unit`（默认每秒，同 t3d/uvs 那两处的结论）。
-相位与强度都有闭式解，不必逐帧递推：
+    applicationRule                位域。bit 0x04 = 启用，bit 0x08 = 播放一次后停止
+    path                           流动贴图的游戏路径
+    flowmapSpeed(+Jitter)          相位推进速度
+    flowmapSpeedCoef(+Jitter)      逐帧速度倍率
+    flowmapStrength(+Jitter)       扭曲幅度
+    flowmapStrengthCoef(+Jitter)   逐帧强度倍率
 
-    相位     step·t              （Coef == 1）
-             step·(c^t − 1)/(c − 1)（等比数列求和）
-    强度     strength · c^t
+两个 Coef 是每帧作用一次的衰减率，与 TRANSFORM3D 的 `_modifier` 属于同一类。相位与强度均有
+闭式解，无需逐帧递推：
 
-输出 `item.extra["flowmap"]` = 一个标量「位移量」= 相位映射 × 当前强度。真正的
-逐纹素位移在 glue 的 shader 里做：按流动贴图的 RG（切线空间法线，`rg×2−1` 即二维
-方向）推 UV，位移量再乘上当前序列帧格子的尺寸——`strength` 显然是相对格子而不是
-相对整张大图的（0.2 若按整图算会一下跳过一格半）。
+    相位   step·t                 （Coef == 1）
+           step·(c^t − 1)/(c − 1) （等比数列求和）
+    强度   strength · c^t
 
-未确认（都收成开关，见 SimConfig.UNKNOWNS）
--------------------------------------------
-* `flowmap_speed_unit` —— speed 是每秒还是每帧。
-* `flowmap_phase` —— 相位怎么映射成位移：`cycle`（取小数部分映到 −1..1，有界，
-  不会越拉越烂）还是 `linear`（一路累积）。
-* `applicationRule` 的三选一「应用模式」（默认/模式1/模式2）完全未知，未参与。
+输出 `item.extra["flowmap"]` 为标量位移量 = 相位映射 × 当前强度。逐纹素位移由 glue 的 shader
+完成：按流动贴图的 RG 通道（切线空间法线，`rg×2−1` 即二维方向）偏移 UV，位移量再乘以当前
+序列帧单格的尺寸。
 
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+两项未确定的读法以 `SimConfig.UNKNOWNS` 开关保留：`flowmap_speed_unit`（speed 的单位为每秒
+或每帧，默认每秒）与 `flowmap_phase`（相位到位移的映射：`cycle` 取小数部分映射到 −1..1，
+结果有界；`linear` 持续累积）。`applicationRule` 中三选一的应用模式完全未知，不参与计算。
+
+维护约束：
+- 位移量必须按序列帧单格的尺寸缩放，而非整张贴图。`strength` 的常见取值 0.2 若按整张贴图计算，
+  一次即跨过一格半。
 """
 
 import math
 
 from ..rng import jitter
 
-#: applicationRule 的位（见 schema/enums.py::BITS_APPLICATION_RULE）
+#: applicationRule 的位，与 schema/enums.py::BITS_APPLICATION_RULE 同一套
 BIT_ENABLE = 0x04
 BIT_FREEZE = 0x08
 
@@ -52,7 +47,7 @@ KEY = "flowmap"
 
 
 def roll(p, f, rng, mode):
-    """出生时抽一次（四个 Jitter）。没启用/没配置就什么都不留。"""
+    """出生时抽取四个 Jitter 并写入 p.rolled；未启用或未配置时不写入。"""
     if f is None:
         return
     rule = int(f.i("applicationRule") or 0)
@@ -62,7 +57,7 @@ def roll(p, f, rng, mode):
     strength = jitter(f.get("flowmapStrength", 0.0), f.get("flowmapStrengthJitter"),
                       rng, mode)
     if not strength:
-        return              # 强度 0 = 不位移，速度再大也没有画面差别
+        return              # 强度为 0 时无位移，速度取值不影响画面
     p.rolled[KEY] = (float(speed), float(strength),
                      float(f.get("flowmapSpeedCoef", 1.0) or 1.0),
                      float(f.get("flowmapStrengthCoef", 1.0) or 1.0),
@@ -70,7 +65,7 @@ def roll(p, f, rng, mode):
 
 
 def _geometric(step, coef, t):
-    """Σ step·coef^k, k=0..t-1。coef==1 时退化成 step·t。"""
+    """返回 Σ step·coef^k（k=0..t-1）；coef==1 时为 step·t。"""
     if abs(coef - 1.0) < 1e-9:
         return step * t
     try:
@@ -80,7 +75,7 @@ def _geometric(step, coef, t):
 
 
 def apply(p, em, item):
-    """把这一帧的位移量挂到渲染项上。返回 item（没启用时原样返回）。"""
+    """将本帧位移量写入渲染项并返回 item；未启用时原样返回。"""
     got = p.rolled.get(KEY)
     if item is None or item.kind == "NONE" or not got:
         return item
@@ -94,7 +89,7 @@ def apply(p, em, item):
             else speed)
     phase = _geometric(step, s_coef, t)
     if freeze and phase > 1.0:
-        phase = 1.0             # 「播放一次后冻结」：相位停在一轮末尾
+        phase = 1.0             # 播放一次后停止：相位保持在一轮末尾
     if abs(t_coef - 1.0) > 1e-9:
         try:
             strength = strength * (t_coef ** t)
@@ -102,7 +97,7 @@ def apply(p, em, item):
             pass
 
     if getattr(cfg, "flowmap_phase", "cycle") == "cycle":
-        # 取小数部分映到 −1..1：位移有界，不会随寿命越拉越烂
+        # 取小数部分映射到 −1..1，位移有界，不随寿命无限增长
         phase = (phase - math.floor(phase) - 0.5) * 2.0
     amount = phase * strength
     if amount:

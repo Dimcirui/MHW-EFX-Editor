@@ -1,37 +1,10 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/schema/codec.py — 核心字段编解码。
+"""Schema 字段的核心编解码。
 
-schema 是 (name, spec) 列表；codec 按序读写每个字段，保证 pack(unpack(data)) == data。
-本模块是编解码基座，被 attributes / custom_codecs / structs 装配层依赖，自身不依赖它们。
-
-spec 原子
----------
-标量（Python struct 格式字符，小端）：
-    'i' int32   'I' uint32   'f' float32   'h' int16   'H' uint16
-    'b' int8    'B' uint8    'q' int64     'Q' uint64
-定长数组：('i', 3) → 3×int32；任意标量字母都可搭配个数。
-XYZ 变体（EFX_Utils.bt，按类型码参数化）：
-    ('XYZ',0) → 6 floats：fixed/random ×3          (24 B)
-    ('XYZ',1) → 3×int32 x,y,z                       (12 B)
-    ('XYZ',2) → 3 ubyte + 1 pad                     ( 4 B)
-    ('XYZ',3) → 3 floats x,y,z                      (12 B)
-'colour'       → 4 ubyte r,g,b,a                    ( 4 B，等价 ('B',4) 但语义命名)
-'EPVColorSlot' → 定长 36 B 结构（见 _unpack_epvcolorslot）
-('XYZ[]',code,count) / ('colour[]',count) → 连续数组
-('path','i')   → int32 长度 + 该长度字节（存为 bytes）
-
-存储约定
---------
-值以纯 Python 标量/列表/bytes 存进 dict：
-    XYZ(0)=[fx,rx,fy,ry,fz,rz]  XYZ(1/3)=[x,y,z]  XYZ(2)=[x,y,z,pad]
-    colour=[r,g,b,a]           EPVColorSlot=具名子字段 dict
-
-API
----
-    unpack(schema, data, off=0) -> (values_dict, new_off)
-    pack(schema, values)        -> bytes
-    _schema_size(schema)        -> int   （定长 schema 总字节数）
+维护约束：
+- schema 按字段顺序读写；固定 schema 必须满足 ``pack(unpack(data)) == data``。
+- 所有标量按小端处理；动态 ``path`` 只能以原始 bytes 表示，不能参与静态大小计算。
+- 本模块是底层 codec，不依赖 attributes、custom_codecs 或 structs。
 """
 from __future__ import annotations
 import struct
@@ -45,9 +18,7 @@ _SCALAR_SIZE: Dict[str, int] = {
     'q': 8, 'Q': 8,
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# XYZ helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# XYZ 编解码
 
 _XYZ_FMT = {
     0: ('<6f', 24),   # float fixed_x random_x fixed_y random_y fixed_z random_z
@@ -72,28 +43,13 @@ def _xyz_size(t: int) -> int:
     return _XYZ_FMT[t][1]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EPVColorSlot helper (36 B)
-# EFX_Utils.bt:
-#   long  EPVColorSlotHead     (4 B)  # schema 字段名 epvColorSlot
-#   XYZ   color1(2)            (4 B)  ubyte x,y,z + pad
-#   long  NULL2                (4 B)
-#   XYZ   color2(2)            (4 B)  ubyte x,y,z + pad
-#   int   spacer4               (4 B)
-#   int   unkn15               (4 B)
-#   float size                 (4 B)
-#   int   unkn17               (4 B)
-#   byte  unkn18[2]            (2 B)
-#   short spacer5              (2 B)
-# Total: 4+4+4+4+4+4+4+4+2+2 = 36 B
-# ─────────────────────────────────────────────────────────────────────────────
+# EPVColorSlot 编解码
 
 _EPVCSLOT_FIELDS = [
     ('epvColorSlot', 'i'),
     ('color1', ('XYZ', 2)),
     ('null2', 'i'),
     ('color2', ('XYZ', 2)),
-    # 恒为 0xcdcdcd00（head/tailEnd 各 62/62）。
     ('spacer4', 'i'),
     ('unkn15', 'i'),
     ('size', 'f'),
@@ -106,7 +62,7 @@ _EPVCSLOT_SIZE = 36
 
 
 def _unpack_epvcolorslot(data: bytes, off: int) -> Tuple[dict, int]:
-    """Decode one EPVColorSlot from *data* at *off*; returns (dict, new_off)."""
+    """解码一个 EPVColorSlot。"""
     d, new_off = unpack(_EPVCSLOT_FIELDS, data, off)
     return d, new_off
 
@@ -115,26 +71,19 @@ def _pack_epvcolorslot(vals: dict) -> bytes:
     return pack(_EPVCSLOT_FIELDS, vals)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Core codec
-# ─────────────────────────────────────────────────────────────────────────────
+# 核心 codec
 
 def unpack(schema: list, data: bytes, off: int = 0) -> Tuple[Dict[str, Any], int]:
-    """
-    Decode *schema* fields from *data* starting at *off*.
-    Returns (values_dict, new_offset).
-    """
+    """从偏移处按 schema 解码，返回字段值及新偏移。"""
     values: Dict[str, Any] = {}
     for name, spec in schema:
         if isinstance(spec, str):
             if spec in _SCALAR_SIZE:
-                # single scalar
                 size = _SCALAR_SIZE[spec]
                 (val,) = struct.unpack_from('<' + spec, data, off)
                 values[name] = val
                 off += size
             elif spec == 'colour':
-                # 4 ubytes: red green blue alpha
                 vals = list(struct.unpack_from('<4B', data, off))
                 values[name] = vals
                 off += 4
@@ -150,7 +99,6 @@ def unpack(schema: list, data: bytes, off: int = 0) -> Tuple[Dict[str, Any], int
                 vals, off = _unpack_xyz(xyz_type, data, off)
                 values[name] = vals
             elif tag == 'XYZ[]':
-                # ('XYZ[]', type_code, count)
                 xyz_type, count = spec[1], spec[2]
                 arr = []
                 for _ in range(count):
@@ -173,13 +121,11 @@ def unpack(schema: list, data: bytes, off: int = 0) -> Tuple[Dict[str, Any], int
                     arr.append(d)
                 values[name] = arr
             elif tag == 'path':
-                # variable-length path: int32 length + that many bytes
                 (path_len,) = struct.unpack_from('<i', data, off)
                 off += 4
                 values[name] = data[off:off + path_len]
                 off += path_len
             elif tag in _SCALAR_SIZE or (len(tag) == 1 and tag in 'iIfFhHbBqQ'):
-                # fixed array ('i', count) etc.
                 scalar, count = spec
                 size = _SCALAR_SIZE[scalar]
                 vals = list(struct.unpack_from(f'<{count}{scalar}', data, off))
@@ -193,9 +139,7 @@ def unpack(schema: list, data: bytes, off: int = 0) -> Tuple[Dict[str, Any], int
 
 
 def pack(schema: list, values: Dict[str, Any]) -> bytes:
-    """
-    Encode *values* according to *schema*; returns bytes.
-    """
+    """按 schema 编码字段值。"""
     parts: List[bytes] = []
     for name, spec in schema:
         val = values[name]
@@ -237,7 +181,7 @@ def pack(schema: list, values: Dict[str, Any]) -> bytes:
 
 
 def _schema_size(schema: list) -> int:
-    """Return total byte size of this schema (sum of all field sizes)."""
+    """返回固定 schema 的总字节数。"""
     total = 0
     for _name, spec in schema:
         if isinstance(spec, str):
@@ -262,7 +206,6 @@ def _schema_size(schema: list) -> int:
             elif tag == 'path':
                 raise ValueError('Cannot compute static size for variable-length path spec')
             else:
-                # fixed array ('i', n) etc.
                 scalar, count = spec
                 total += _SCALAR_SIZE[scalar] * count
         else:

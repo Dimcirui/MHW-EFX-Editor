@@ -50,10 +50,6 @@ def _bodies_preset_dir_legacy() -> str:
 
 # 预设头字段须与导入端保持一致；attr_count 由导出端按实际属性重算。
 _STANDARD_PROP_KEYS = ("body_type", "unkn0", "attr_count", "null", "timl_length")
-_EXTENDED_PROP_KEYS = (
-    "body_type", "unkn0", "null0", "null1", "unkn1", "unkn2",
-    "attr_count", "null2", "timl_length",
-)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -151,12 +147,6 @@ def build_entry_preset_dict(entry_obj: bpy.types.Object) -> dict:
 
     if entry_kind == "standard":
         for key in _STANDARD_PROP_KEYS:
-            preset["props"][key] = str(entry_obj.get(key, ""))
-        preset["timl_bytes"] = str(entry_obj.get("timl_bytes", ""))
-        preset["attributes"] = _collect_attribute_dicts(entry_obj)
-
-    elif entry_kind == "extended":
-        for key in _EXTENDED_PROP_KEYS:
             preset["props"][key] = str(entry_obj.get(key, ""))
         preset["timl_bytes"] = str(entry_obj.get("timl_bytes", ""))
         preset["attributes"] = _collect_attribute_dicts(entry_obj)
@@ -375,16 +365,6 @@ def add_entry_from_preset_dict(preset: dict,
         _build_attributes(io_tree, AttrBlock, preset.get("attributes", []),
                       entry_obj, col_entry, raw_label)
 
-    elif entry_kind == "extended":
-        for key in _EXTENDED_PROP_KEYS:
-            entry_obj[key] = str(props.get(key, "0"))
-        # 咽喉点：从预设写 TIML（新建/替换）→ 写字节 + 建句柄 + 从新字节建持久 fcurve
-        import base64 as _b64
-        from . import timl_edit as _te
-        _te.set_entry_timl(entry_obj, _b64.b64decode(str(preset.get("timl_bytes", "")) or ""))
-        _build_attributes(io_tree, AttrBlock, preset.get("attributes", []),
-                      entry_obj, col_entry, raw_label)
-
     else:
         # root：尝试跟 io_tree 导入端同一套逻辑拆成 AttrBlock 子对象
         # （UnitBoundary/RenderTarget/LayoutBank 伪装成属性，可见、可删）；
@@ -406,7 +386,7 @@ def add_entry_from_preset_dict(preset: dict,
             entry_obj["raw"] = raw_str
 
     # #3c 跨文件引用重指针化：把新增 entry 内属性的段局部引用重指向目标文件的段。
-    if entry_kind in ("standard", "extended"):
+    if entry_kind == "standard":
         _repointerize_refs(preset, entry_obj, root_obj)
 
     # 按源 entry 在源文件里的 eof 状态，把新 entry 分流进目标文件对应的子集合

@@ -1,21 +1,18 @@
 """
-EFX type hash constants, extracted from refs/EFX_Hashes.bt.
+EFX type hash constants.
 
-All values are 32-bit unsigned integers (BT 'long' / 'int' = 4 bytes, little-endian).
+All values are 32-bit unsigned integers.
 Provides:
   - NAME_TO_HASH : dict[str, int]  (name → hash value)
   - HASH_TO_NAME : dict[int, str]  (hash value → name, for display/debug)
   - ALL_HASHES   : frozenset[int]  (used for forward-scanning unknown attr blocks)
-
-BT comment note: the byte-order comments in EFX_Hashes.bt are occasionally swapped
-(e.g. PLAYEFX comment shows PLAYEMITTER bytes).  The *integer values* are authoritative.
 """
 
 # ── Play type hashes ──────────────────────────────────────────────────────────
 PLAYEFX             = 1965813039    # 0x752BED2F  external .efx file call
 PLAYEMITTER         = 1152332069    # 0x44AF3125  internal body reference
 
-# ── Attribute block (Main body) type hashes ───────────────────────────────────
+# ── Attribute block type hashes ───────────────────────────────────
 TIML                = 1819109748    # 0x6C6D6974  keyframe animation
 TRANSFORM3D         = 10286765      # 0x009CF6AD
 PARENTOPTIONS       = 368199626     # 0x15F247CA
@@ -23,48 +20,48 @@ SPAWN               = 1921765292    # 0x728BCFAC
 LIFE                = 1320868484    # 0x4EBADA84
 EMITTERSHAPE3D      = 1003792849    # 0x3BD4A9D1
 VELOCITY3D          = 222458580     # 0x0D4272D4
-FADEBYDEPTH         = 859243212     # 0x3337022CC  (actually 0x330702CC)
-RIBBONBLADE         = 319363982     # 0x131B8E8E
-BILLBOARD3D         = 1136904414    # 0x43C3C8DE
+FADEBYDEPTH         = 859243212     # 0x333702CC
+RIBBONBLADE         = 319363982     # 0x13091B8E, type attribute
+BILLBOARD3D         = 1136904414    # 0x43C3C8DE, type attribute
 SCALEANIM           = 480396424     # 0x1CA24488
 UVSEQUENCE          = 1698970185    # 0x65443A49
 ALPHACORRECTION     = 61219887      # 0x03A6242F
 SHADERSETTINGS      = 1978267738    # 0x75E9F85A
 RGBFIRE             = 459578090     # 0x1B649AEA
-MESH                = 276670093     # 0x107DA68D
+MESH                = 276670093     # 0x107DA68D, type attribute
 ROTATEANIM          = 1774142981    # 0x69BF4605
 PLEMISSIVE          = 597394907     # 0x239B85DB
 GUIDE               = 1123011591    # 0x42EFCC07
-LIGHTNING           = 1558046267    # 0x5CDDE63B
+LIGHTNING           = 1558046267    # 0x5CDDE63B, type attribute
 PARENTEMISSIVE      = 14579343      # 0x00DE768F
 PTCOLLISION         = 280719621     # 0x10BB7105
 PLSNOW              = 1267346617    # 0x4B8A2CB9
 PTBEHAVIOR          = 1179069619    # 0x46472CB3
 MATERIAL            = 1659025771    # 0x62E2B96B
-PLANE               = 37870541      # 0x0241DBCD
+PLANE               = 37870541      # 0x0241DBCD, type attribute
 RGBWATER            = 1660327299    # 0x62F69583
 TURBULENCE          = 937428146     # 0x37E004B2
 FADEBYEMITTERANGLE  = 2116359897    # 0x7E2516D9
-RIBBON              = 733291506     # 0x2BB523F2
+RIBBON              = 733291506     # 0x2BB523F2, type attribute
 NOISE               = 523015778     # 0x1F2C9662
 UVCONTROL           = 2020068998    # 0x7867CE86
-FADEBYANGLE         = 1226136492    # 0x494915AC
+FADEBYANGLE         = 1226136492    # 0x49155BAC
 EMITTERBOUNDARY     = 873436648     # 0x340F95E8
 PTLIFE              = 493311524     # 0x1D675624
-STRAINRIBBON        = 1062052310    # 0x3F4DA1D6
-SCREENSPACECOLLISION= 697457224     # 0x2985A48  (0x299254A8)
-RAYCAST             = 275476317     # 0x106F6F5D
+STRAINRIBBON        = 1062052310    # 0x3F4DA1D6, type attribute
+SCREENSPACECOLLISION= 697457224     # 0x29925A48
+RAYCAST             = 275476317     # 0x106B6F5D
 EXTERNREFERENCE     = 351869514     # 0x14F91A4A
 FAKEPLANE           = 1257264016    # 0x4AF05390
-DUMMY               = 201720946     # 0x0C060472
+DUMMY               = 201720946     # 0x0C060472, type attribute
 RANDOMFIX           = 674258598     # 0x28305EA6
 TRANSFORM2D         = 428328940     # 0x1987C7EC
-BILLBOARD2D         = 1524169119    # 0x5AD8F99F
+BILLBOARD2D         = 1524169119    # 0x5AD8F99F, type attribute
 BLINK               = 1354601878    # 0x50BD9596
 LUMINANCEBLEED      = 71967929      # 0x044A24B9
 EMITTERSHAPE2D      = 584030352     # 0x22CF9890
 VELOCITY2D          = 341394325     # 0x14594395
-REFRACTION          = 957228464     # 0x3920B0E  (0x390E25B0)
+REFRACTION          = 957228464     # 0x390E25B0
 MASTERONLY          = 1616705008    # 0x605CF5F0
 TUBELIGHT           = 252064274     # 0x0F063212
 SHOVEL              = 1240420851    # 0x49EF51F3
@@ -73,7 +70,7 @@ FAKEDOF             = 212167510     # 0x0CA56B56
 REPEATAREA          = 842043995     # 0x3230925B
 LINKPARTSVISIBLE    = 812022019     # 0x30667903
 PTTRIGGER           = 2115227124    # 0x7E13CDF4
-PATHCHAIN           = 1217635032    # 0x48A3A2D8
+PATHCHAIN           = 1217635032    # 0x4893A2D8
 HOMING              = 1535857470    # 0x5B8B533E
 EMITTERSHAPEMESH    = 1111321825    # 0x423D6CE1
 SPAWNBYANGLE        = 1916268445    # 0x724EF79D
@@ -94,9 +91,6 @@ EXTERNPTBEHAVIOR    = 1610366518    # 0x5FFC3E36
 EXTERNRGBWATER      = 482524730     # 0x1CC2BE3A
 EXTERNVELOCITY3D    = 351887441     # 0x14F96051
 EXTERNEMITTERSHAPE3D= 1880343637    # 0x7013C455
-# 2026-09-20 改名：曾以"VELOCITY3D 变体"命名，实为对应主属性的 Extern 覆盖版
-# （byte-size + 全语料 pack(unpack(x))==x 零反例验证坐实，见 memory
-# extern-velocity3d-misnomer-corrected）。
 EXTERNPARENTEMISSIVE= 705591903     # 0x2A0E7A5F   （原 EXTERNVELOCITY3D5）
 EXTERNSPAWN         = 28559457      # 0x01B3C861
 EXTERNRGBFIRE       = 2069124466    # 0x7B545572
@@ -109,15 +103,25 @@ EXTERNUVSEQUENCE    = 2097096908    # 0x7CFF28CC
 EXTERNTYPEPLANE     = 805496014     # 0x3002E4CE   （原 EXTERNVELOCITY3D7）
 EXTERNPLSNOW        = 283026906     # 0x10DEA5DA   （原 EXTERNVELOCITY3D2）
 
+# ── Unused externs ──────────────────────────────────
+EXTERNFADEBYANGLE                               = 1415485201
+EXTERNFADEBYDEPTH                               = 779931249
+EXTERNSTRAINRIBBON                              = 167781675
+EXTERNUVCONTROL                                 = 1243935109
+EXTERNTURBULENCE                                = 777721399
+EXTERNGUIDE                                     = 766474541
+EXTERNPARENTSNOW                                = 74649634
+EXTERNOTOMOSNOW                                 = 1181241355
+
 # ── Root marker (not an attr hash; first int of a Root body) ─────────────────
 ROOT_MARKER         = 1228515738    # 0x4939A99A
 
 # ── Root sub-block type hashes (inside Root body) ────────────────────────────
-UNITBOUNDARY        = 1413509420    # 0x54407120  (0x5440712C)
+UNITBOUNDARY        = 1413509420    # 0x5440712C
 RENDERTARGET        = 2083659062    # 0x7C321D36
 LAYOUTBANK          = 2050487542    # 0x7A37F4F6
 
-# ── "Unused so far" / interface hashes (from EFX_Hashes.bt) ──────────────────
+# ── Other unused hashes ──────────────────
 EFFECTATTRCOLORTBL                              = 1690896576
 MHEFFECTDECALBEHAVIOR                           = 1128324015
 MHEFFECTDECALBEHAVIOR_GETTOTALFIRELIFEFRAME     = 1250245974
@@ -131,11 +135,6 @@ ITEM                                            = 1215086948
 DYNAMICRAY                                      = 1708014292
 FLOWMAPSETTINGS                                 = 1184613359
 EFFECTEXECUTOR                                  = 1213896611
-EXTERNFADEBYANGLE                               = 1415485201
-EXTERNFADEBYDEPTH                               = 779931249
-EXTERNSTRAINRIBBON                              = 167781675
-EXTERNUVCONTROL                                 = 1243935109
-EXTERNTURBULENCE                                = 777721399
 EXTERNITEM                                      = 1226458230
 BASICEXTERNITEM                                 = 1771113640
 EFFECTEVENT                                     = 1923506186
@@ -188,9 +187,6 @@ CEFFECTPROVIDERCUSTOMDATA_ACTIONELEMENT         = 510816299
 CEFFECTPROVIDERCUSTOMDATA_UNITELEMENT           = 1178760989
 CEFFECTPROVIDERCUSTOMDATA                       = 1867843721
 PLEMISSIVEMANAGER                               = 910471525
-EXTERNGUIDE                                     = 766474541
-EXTERNPARENTSNOW                                = 74649634
-EXTERNOTOMOSNOW                                 = 1181241355
 GUIDE_MOVETYPE_ALWAYSTHROUGH                    = 1168412664
 GUIDE_MOVETYPE_SKIPNEAR                         = 889775412
 GUIDE_MOVETYPE_OLDTYPE                          = 594406925
@@ -233,7 +229,7 @@ ATTR_HASHES: frozenset = frozenset([
     PATHCHAIN, HOMING, EMITTERSHAPEMESH, SPAWNBYANGLE, CHECKPUREATTRIBUTE,
     TONEMAPFILTER, COLORCORRECTFILTER, SPAWNBYOCCLUSION, FADEBYOCCLUSION,
     PARENTSNOW, OTOMOSNOW, PARENTMATERIAL,
-    # "unused so far" hashes also seen in practice
+    # unused hashes also seen in practice
     EFFECTATTRCOLORTBL, MHEFFECTDECALBEHAVIOR, FLOWMAPSETTINGS, EFFECTEXECUTOR,
     EFFECTEVENT, EVENTBEHAVIORPROPERTY, DECALBEHAVIOR, VARIANT, LIGHTBEHAVIOR,
     POINTLIGHTBEHAVIOR, SPOTLIGHTBEHAVIOR, UEFFECTRADIALBLURFILTER, FILTERBEHAVIOR,
@@ -253,10 +249,6 @@ ATTR_HASHES: frozenset = frozenset([
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 大纲视图显示名——把原始 ALLCAPS 类型名转成正常大小写，仅供 Blender 对象名显示用。
-# 不影响 efx_type_name 自定义属性 / HASH_TO_NAME 本身：那些是内部标识（预设文件名、
-# schema/注释表查找键），必须原样保留大写字符串，不能被这张表污染。
-# 覆盖 README「Entry Attributes」列出的全部受支持类型；未收录的原样返回（如未知/
-# opaque 类型），不会报错。
 # ─────────────────────────────────────────────────────────────────────────────
 ATTR_TYPE_DISPLAY_NAMES: dict = {
     "TRANSFORM3D": "Transform3D",
@@ -327,25 +319,23 @@ ATTR_TYPE_DISPLAY_NAMES: dict = {
     "FAKEDOF": "FakeDOF",
     "REPEATAREA": "RepeatArea",
     "LAYOUT": "Layout",
-    # Root 子条目（伪装成 AttrBlock 的 EFX_ATTRIBUTE，见 blender_efx/io_tree.py
-    # 的 _root_entry_to_attr_block），不是常规渲染属性，但显示名同一套规则。
+    # Root 子条目，不是常规属性，但显示名同一套规则。
     "UNITBOUNDARY": "UnitBoundary",
     "RENDERTARGET": "RenderTarget",
     "LAYOUTBANK": "LayoutBank",
 }
 
-# ── EXTERN* 的显示名：从对应主属性推导，不手抄 ────────────────────────────────
+# ── EXTERN* 的显示名 ────────────────────────────────
 # 绝大多数 EXTERN* 就是 "EXTERN" + 主属性名（EXTERNPTBEHAVIOR = EXTERN + PTBEHAVIOR），
-# 所以按主属性的显示名拼即可。推导而不是写死 28 条，是为了让主属性改名时自动跟上
-# ——手抄两份迟早有一份忘了改。
+# 所以按主属性的显示名拼即可。
 #
-# 推导不出来的单列在下面：名字里多一截（TYPE-）或压根没有主属性对应物。
+# 推导不出来的单列在下面。
 _EXTERN_DISPLAY_OVERRIDES = {
+    # 无匹配
     "EXTERN":           "Extern",
     "EXTERNITEM":       "ExternItem",
     "BASICEXTERNITEM":  "BasicExternItem",
-    # 主属性是 RIBBON / PLANE，但 extern 名里多了 TYPE 一截（见
-    # efxfile.py::_extern_data_size 关于 2026-09-20 改名的说明）
+    # 名里多了 TYPE 一截
     "EXTERNTYPERIBBON": "ExternTypeRibbon",
     "EXTERNTYPEPLANE":  "ExternTypePlane",
 }
@@ -368,9 +358,9 @@ import zlib as _zlib
 
 
 def jamcrc(name) -> int:
-    """JamCRC = 标准 CRC32 按位取反（MT Framework 名字哈希）。
+    """JamCRC = 标准 CRC32 按位取反。
 
-    实测(官方 5251 个 play 全命中)：ActionData.play_type == jamcrc(play 标签名)。
+    ActionData.play_type == jamcrc(play 标签名)。
     输入接受 str（按 ASCII/UTF-8 编码）或 bytes，返回 32-bit 无符号整数。
     """
     if isinstance(name, str):

@@ -1,21 +1,8 @@
-"""
-blender_efx/timl_edit.py  —  持久化 TIML 通道编辑（导入即建 fcurve，字节=结构权威）
+"""将 Entry TIML 字节与 Blender 持久 F 曲线同步，并提供网格预览绑定。
 
-模型（见 memory timl-fcurve-persistence-refactor-plan / timl-phase3-persistent-fcurve-detail）
-------------------------------------------------------------------------------------------
-- **EFX 导入时**即把 entry 的 TIML 解析成句柄(EFX_TIML)Action 上的**持久原生 fcurve**
-  （`build_persistent_fcurves`）。fcurve 是「值编辑面」，用户随时在 Dope/Graph 里改值/帧/插值。
-- **导出时**把 fcurve 值合并回 `timl_bytes` 结构再序列化（`sync_fcurves_to_bytes`，io_tree 调）。
-- **timl_bytes = 结构权威**（labelHash/dataIx/loop/轴/hash/顺序/opaque，fcurve 装不下）。
-- **弃 Apply/Cancel**：编辑即时持久（像普通 Blender 动画），丢弃靠原生 Ctrl+Z——由构造闭合
-  "Apply后撤销不回态 / 会话内撤销失效"两个旧 bug。进入/退出编辑退化为**绑定/解绑网格预览**。
-- **单一咽喉点 `set_entry_timl`**：所有 timl_bytes 变更（新建/替换/删除）必经它，写字节+建/删句柄+
-  从新字节重建 fcurve——否则 fcurve 陈旧，导出会拿旧 fcurve 反向覆盖新字节丢数据。结构编辑先
-  `commit_fcurves_to_bytes` 提交进行中的关键帧编辑，再改字节、再 set_entry_timl 重建。
-- byte-perfect：build→sync 全语料逐字节还原（仅变换值 loc/rot 亚-ULP 用户已接受，见
-  timl-loc-fcurve-precision-finding）；不再靠脏门控/未编辑短路。
-
-约束（CLAUDE.md）：bpy 稳定子集；Python 3.10；纯胶水层；硬逻辑在 efx_format/timl*.py。
+维护约束：``timl_bytes`` 保留 F 曲线无法表达的结构数据；所有字节变更必须经
+``set_entry_timl`` 重建句柄和 F 曲线。结构编辑先提交当前 F 曲线值。导出时再将
+F 曲线值合并回字节。TIML 解析和编码规则归 ``efx_format.timl``。
 """
 
 import base64
@@ -34,11 +21,10 @@ from ..efx_format.timl import names as _tn
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Action fcurves 兼容层（Blender 4.4+ 把 Action 改成 layers/strips/slots/channelbag）
+# Action F 曲线兼容层。
 # ─────────────────────────────────────────────────────────────────────────────
-# 4.4+ Action.fcurves 被移除（AttributeError，非 deprecated）；旧版(<4.4，含 3.6/4.3 目标运行
-# 版本)仍是直接 F 曲线集合。这层薄代理把两套 API 收敛成旧版接口，业务代码统一走 _act_fcurves()。
-# ⚠ 判据必须用 bpy.app.version（类级 RNA 数据属性 hasattr 不可靠，4.3 上误返回 False）。
+# Blender 4.4+ 使用 layer/strip/slot/channelbag；调用方统一经 ``_act_fcurves``。
+# 版本判定使用 ``bpy.app.version``，不能依赖 RNA 类属性探测。
 _LEGACY_ACTION_FCURVES = bpy.app.version < (4, 4, 0)
 
 
@@ -72,10 +58,9 @@ class _ChannelbagFCurvesProxy:
 
 
 class _EmptyFCurves:
-    """4.4+ 只读取用时，channelbag 还不存在的空集合替身。
+    """只读上下文没有 channelbag 时使用的空 F 曲线集合。
 
-    只读接口（len/iter/find/bool）行为等同空集合；new/remove 明确报错——走到这里
-    说明调用方在只读上下文里试图写，是逻辑错误，不该被静默吞掉。
+    写入操作必须报错，避免在本不应创建数据的路径静默改变状态。
     """
 
     def find(self, data_path, index=0):
@@ -101,12 +86,9 @@ class _EmptyFCurves:
 
 
 def _ensure_channelbag(act, timl_obj, create=True):
-    """新版(4.4+) API 专用：返回 timl_obj 对应的 ActionChannelbag。
+    """返回 4.4+ ActionChannelbag；``create`` 会写入 Blender ID 数据。
 
-    ⚠ create=True 会**写 ID 数据**（新建 slot/layer/strip、给 animation_data 赋
-    action_slot）。Blender 禁止在 poll()/draw() 里写 ID，那样会抛
-    "Writing to ID classes in this context is not allowed"。所以任何从 poll/draw
-    可达的路径必须传 create=False——此时只查不建，缺任何一层就返回 None。
+    从 ``poll`` 或 ``draw`` 可达的路径必须传 ``create=False``。
     """
     ad = timl_obj.animation_data
     slot = ad.action_slot if (ad is not None and ad.action_slot is not None) else None
@@ -137,11 +119,7 @@ def _ensure_channelbag(act, timl_obj, create=True):
 
 
 def _act_fcurves(act, timl_obj, create=False):
-    """统一入口：旧版直接 act.fcurves；新版(4.4+)走 layers/strips/channelbag 代理。
-
-    ⚠ 默认 create=False（只读）。只有确实要写 fcurve 的地方才传 create=True，
-    且那个调用点必须在算子 execute()/导入流程里，不能在 poll()/draw() 里。
-    """
+    """取得版本无关的 F 曲线集合；创建仅允许在可写上下文。"""
     if _LEGACY_ACTION_FCURVES:
         return act.fcurves
     bag = _ensure_channelbag(act, timl_obj, create=create)
@@ -170,10 +148,8 @@ def _channel_group_name(slot, tlp_hash, dt_hash, dtype, sub_label):
     return base
 
 
-# ── 插值类型映射（游戏 transition/easingMethod ↔ Blender fcurve interpolation）──────
-# 游戏枚举权威见 efx_format/timl.py::INTERP_NAMES（refs/EFX_Crimson.bt + EFX_TIML.bt）。
-# 游戏没有自由贝塞尔，只有一张固定多项式缓动枚举；且 Stuck(0)/Constant(1) 都得塌缩到
-# Blender 唯一的 CONSTANT（Blender 无法区分二者）。因映射非双射，正查/反查分两张表。
+# ── 插值类型映射 ────────────────────────────────────────────────────────────
+# 游戏的 Stuck/Constant 均映射为 Blender CONSTANT，故导入和导出映射不互逆。
 _GAME_TO_BLENDER_INTERP = {
     0: "CONSTANT",   # Stuck（步进，Blender 无独立档，并入 CONSTANT）
     1: "CONSTANT",   # Constant（常量）
@@ -181,15 +157,14 @@ _GAME_TO_BLENDER_INTERP = {
     3: "QUAD",       # Quadratic（二次）
     4: "CUBIC",      # Cubic（三次）
 }
-# 导出：Blender interpolation → 游戏 transition。忽略 Stuck(0)，常量统一写 1。
+# 导出常量统一写为游戏 Constant(1)。
 _BLENDER_TO_GAME_INTERP = {
     "CONSTANT": 1,
     "LINEAR":   2,
     "QUAD":     3,
     "CUBIC":    4,
 }
-# BEZIER = Blender 新建关键帧的默认插值，游戏无对应 → 导出近似为 Cubic + WARNING（不阻拦）。
-# 其余（SINE/EXPO/QUART/QUINT/CIRC/BACK/BOUNCE/ELASTIC）无游戏对应 → ERROR，validate 阻止导出。
+# BEZIER 近似为 Cubic；其他不支持插值由校验模块阻止导出。
 _SUPPORTED_INTERP_DESC = "Constant / Linear / Quadratic / Cubic (Bezier is approximated as Cubic)"
 
 
@@ -212,12 +187,10 @@ def _blender_to_transition(interp):
 
 
 def check_timl_interpolations(handle):
-    """扫描 handle 持久 Action 的所有 fcurve 关键帧插值，返回问题列表：
-        [{"severity": "ERROR"|"WARNING", "interp": <Blender枚举名>}, ...]（按类型去重）
-    - CONSTANT/LINEAR/QUAD/CUBIC → 无问题
-    - BEZIER → WARNING（导出会近似为 Cubic）
-    - 其余 → ERROR（游戏无对应，应阻止导出，避免静默降级）
-    供 validate_efx_tree 与独立 .timl 导出复用。"""
+    """返回持久 Action 中不支持的插值类型，按类型去重。
+
+    BEZIER 为近似 Cubic 的警告，其他不支持类型为阻断导出的错误。
+    """
     out = []
     act = _get_timl_action(handle)
     if act is None:
@@ -279,7 +252,7 @@ def _resolve_scope_bodies(context):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 通道走法（纯遍历，build 与 sync 共用 → synthetic ci 编号 / xform 碰撞判定一致）
+# 通道遍历。构建与同步共用，必须保持 synthetic 编号和 transform 冲突判定一致。
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _walk_channels(t):
@@ -324,8 +297,10 @@ _TIML_ACTION_MARKER = "~EFX_TIML_FC"   # 持久 TIML Action 标记
 
 
 def build_persistent_fcurves(handle, body):
-    """导入用：从 body 的 timl_bytes 在 handle 的 Action 上建**持久** fcurve（幂等：先清后建）。
-    空 TIML / 死数据（无非空动画）/ 非-timl → 不建 fcurve，返回 0（导出时走 verbatim）。返回通道数。"""
+    """从 TIML 字节重建句柄上的持久 F 曲线，返回通道数。
+
+    空、不可解析或无动画的 TIML 清空 F 曲线，导出时保留原字节。
+    """
     if handle is None or body is None:
         return 0
     data = _tio._entry_timl_bytes(body)
@@ -344,7 +319,7 @@ def build_persistent_fcurves(handle, body):
             handle.animation_data_create()
         handle.animation_data.action = act
     else:
-        # 唯一的写入路径（导入 / 进入编辑），必须 create=True 才能建出 channelbag
+        # 重建路径允许创建新版 API 所需的 channelbag。
         fcs = _act_fcurves(act, handle, create=True)
         while len(fcs):
             fcs.remove(fcs[0])
@@ -364,7 +339,7 @@ def build_persistent_fcurves(handle, body):
                 _set_kp(kp, dec["transition"], s["back"], s["period"])
             fc.update()
         else:
-            handle.efx_timl_channels.add()   # 顺序 add → 集合索引 == ch["ci"]
+            handle.efx_timl_channels.add()   # 集合索引必须对应 ``ch["ci"]``。
             fc = _act_fcurves(act, handle, create=True).new(data_path=ch["path"], index=0,
                                                action_group=ch["gname"])
             for dec in decoded:
@@ -376,8 +351,10 @@ def build_persistent_fcurves(handle, body):
 
 
 def sync_fcurves_to_bytes(handle, body):
-    """导出用：把 handle 的 fcurve 值合并回 body 的 timl_bytes 结构并序列化，返回新字节。
-    无 fcurve / 非-timl → 原 timl_bytes verbatim（空/死数据/未建 fcurve 都走这条，保 byte-perfect）。"""
+    """将持久 F 曲线值合并回 TIML 并返回序列化字节。
+
+    不可解析或没有 F 曲线时原样返回输入字节。
+    """
     data = _tio._entry_timl_bytes(body)
     t = _timl.parse_timl(data)
     if t is None:
@@ -405,7 +382,7 @@ def sync_fcurves_to_bytes(handle, body):
 
 
 def _clear_timl_fcurves(handle):
-    """清空 handle 上的持久 TIML fcurve + synthetic 通道集合（结构重建/删除用）。"""
+    """清空句柄上的持久 TIML F 曲线和 synthetic 通道。"""
     act = _get_timl_action(handle)
     if act is not None:
         try:
@@ -461,7 +438,7 @@ def _rebuild_synthetic(act, timl_obj, syn, tf):
                 subs.append({"value": kp.co[1], "back": kp.back, "period": kp.period})
             else:
                 subs.append({"value": fc.evaluate(fr), "back": 0.0, "period": 0.0})
-        transition = 2   # 默认 Linear（无子通道命中该帧时的兜底；新表 2=Linear）
+        transition = 2   # 没有子通道关键帧时回退 Linear。
         for i, fc in enumerate(sub_fcurves):
             kp = kp_maps[i].get(fr)
             if kp is not None:
@@ -474,7 +451,7 @@ def _rebuild_synthetic(act, timl_obj, syn, tf):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 单一咽喉点 API（供 io/tracks/meta_ui 变更 TIML；见文件头"单一咽喉点"）
+# TIML 字节写入入口。
 # ─────────────────────────────────────────────────────────────────────────────
 
 def read_model(body):
@@ -484,12 +461,14 @@ def read_model(body):
 
 def _store_bytes(body, data):
     body["timl_bytes"] = base64.b64encode(bytes(data)).decode("ascii")
-    body["timl_length"] = str(len(data))   # 导出端也会再重算，双保险
+    body["timl_length"] = str(len(data))
 
 
 def commit_fcurves_to_bytes(body):
-    """把 body 句柄上 fcurve 的当前值同步进 timl_bytes（提交进行中的关键帧编辑）。
-    结构编辑【前】调用，避免随后 rebuild 用旧字节冲掉正在改的关键帧。无句柄/无 fcurve → 无操作。"""
+    """将当前 F 曲线值提交到 ``timl_bytes``。
+
+    结构编辑前必须调用，避免重建时覆盖尚未提交的关键帧修改。
+    """
     if body is None:
         return
     from . import io_tree as _iot
@@ -503,10 +482,11 @@ def commit_fcurves_to_bytes(body):
 
 
 def set_entry_timl(body, new_bytes):
-    """**所有 timl_bytes 变更（新建/替换/删除）的唯一咽喉点**：写字节+长度、按需建/删 EFX_TIML
-    句柄、从新字节重建持久 fcurve。空 bytes → 删句柄+Action。不做 commit-first（新字节为准，
-    旧 fcurve 编辑按替换语义丢弃）；结构编辑请在调用前先 commit_fcurves_to_bytes。"""
-    # 字段行 ♫ 按钮的"已在做动画"缓存跟着 TIML 字节走，这里是唯一的写入咽喉点
+    """写入 TIML 字节并同步创建、删除或重建关联句柄和 F 曲线。
+
+    调用者在结构编辑前负责提交 F 曲线；传入的新字节始终为准。
+    """
+    # 字段动画状态缓存随 TIML 字节失效。
     try:
         from . import timl_tracks as _tt
         _tt.invalidate_anim_cache()
@@ -522,7 +502,7 @@ def set_entry_timl(body, new_bytes):
         return
     if h is None:
         h = _iot.make_timl_handle(body)
-    build_persistent_fcurves(h, body)   # 幂等清+建；无动画则清空不建
+    build_persistent_fcurves(h, body)
 
 
 def _delete_timl_handle(handle):
@@ -541,12 +521,12 @@ def _delete_timl_handle(handle):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 网格预览绑定（进入/退出编辑退化为绑定/解绑）
+# 网格预览绑定。
 # ─────────────────────────────────────────────────────────────────────────────
 
-_PREVIEW_FLAG = "efx_timl_preview_on"    # Scene 上的预览开关
-_FR_BACKUP = ("efx_timl_fr0", "efx_timl_fr1")   # 帧范围备份（Scene 自定义属性）
-_BOUND_MARKER = "~EFX_TIML_BOUND"        # 被绑定跟随的 mesh 标记（session_core reconcile）
+_PREVIEW_FLAG = "efx_timl_preview_on"
+_FR_BACKUP = ("efx_timl_fr0", "efx_timl_fr1")
+_BOUND_MARKER = "~EFX_TIML_BOUND"
 _CON_NAME = "EFX_TIML_PREVIEW"
 
 
@@ -570,7 +550,7 @@ def _bind_entry_mesh(body, handle):
 
 
 def unbind_all():
-    """解绑所有被 TIML 预览绑定的 mesh（按标记 reconcile，脱节也不残留）。"""
+    """按标记解绑所有 TIML 预览网格。"""
     for mesh in _sc.iter_marked(_BOUND_MARKER):
         try:
             con = mesh.constraints.get(_CON_NAME)
@@ -636,7 +616,7 @@ def preview_active(context) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_timl_edit_enter(Operator):
-    """浏览 TIML transform 效果：绑定网格跟随句柄的 TIML 动画 + 设帧范围（编辑随时在 Dope Sheet 进行）"""
+    """绑定网格到 TIML 句柄并设置预览帧范围。"""
     bl_idname = "efx.timl_edit_enter"
     bl_label = "Browse TIML Transform"
     bl_options = {"REGISTER"}
@@ -652,19 +632,17 @@ class EFX_OT_timl_edit_enter(Operator):
         if not bodies:
             self.report({"ERROR"}, T("timle.no_timl"))
             return {"CANCELLED"}
-        unbind_all()   # 先清场（历史遗留绑定）
+        unbind_all()
         scene = context.scene
         scene[_FR_BACKUP[0]] = scene.frame_start
         scene[_FR_BACKUP[1]] = scene.frame_end
-        # ⚠ 先设帧范围 + 跳到起始帧 + 刷新 depsgraph，让句柄按 t=0 求值，**再**绑定 mesh：
-        # Child-Of 的 inverse_matrix 须在起始帧（参考系=t=0）捕获，否则在任意当前帧捕获会让
-        # 网格运动错乱、且随捕获帧不同而不同（用户实测的"错乱"根因）。
+        # Child-Of 的 inverse_matrix 必须在起始帧求值后捕获，才能固定预览参考系。
         fmin, fmax = _frame_range(bodies)
         scene.frame_start = int(fmin)
         scene.frame_end = max(int(round(fmax)), int(fmin) + 1)
         try:
             scene.frame_set(scene.frame_start)
-            context.view_layer.update()   # 强制 depsgraph 重算 handle.matrix_world 到 t=0
+            context.view_layer.update()
         except Exception:
             pass
         nbound = 0
@@ -680,12 +658,12 @@ class EFX_OT_timl_edit_enter(Operator):
 
 
 class EFX_OT_timl_edit_exit(Operator):
-    """退出 TIML 预览：解绑网格、还原帧范围（编辑已持久，无需回写/丢弃）"""
+    """解绑预览网格并恢复场景帧范围。"""
     bl_idname = "efx.timl_edit_exit"
     bl_label = "Exit TIML Preview"
     bl_options = {"REGISTER"}
 
-    # 兼容旧调用签名（统一入口曾传 apply=False）；现忽略——编辑始终持久。
+    # 保留旧调用签名兼容；编辑始终持久化。
     apply: bpy.props.BoolProperty(default=False, options={"HIDDEN"})
 
     @classmethod
@@ -712,13 +690,11 @@ class EFX_OT_timl_edit_exit(Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 色轮（Color Wheel）—— 把 RGB(A) 4 条 synthetic 标量通道聚合成一个色轮控件
-# 持久化模型下 fcurve 始终存在，色轮随时可用；读写这 4 条真实 fcurve 在当前帧的关键帧
-# （与直接在 Dope Sheet 逐条调值等价，导出走同一条 sync_fcurves_to_bytes 路径）。
+# 色轮：将 RGB(A) synthetic 标量通道聚合为当前帧编辑控件。
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _current_ctx(context):
-    """当前活动 entry 的 {handle, body, act, channels}；无 TIML fcurve → None。"""
+    """返回活动 Entry 的 TIML 句柄、Action 和通道；不可编辑时返回 ``None``。"""
     try:
         body = _tio.resolve_timl_entry(context.active_object)
     except Exception:
@@ -754,7 +730,7 @@ def _find_color_groups(channels):
 
 
 def _active_color_group(ctx):
-    """确定色轮当前操作哪一组：唯一一组直接用；多组按 fcurve.select 判定；都没选中则二义（None）。"""
+    """确定色轮的目标组；多组时仅接受被选中 F 曲线所属的组。"""
     groups = _find_color_groups(ctx["channels"])
     if not groups:
         return None

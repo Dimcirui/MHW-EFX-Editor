@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/schema/custom_codecs.py — 变长 / 分派型 custom 块的手写编解码
+"""变长或分派型属性块的手写编解码。
+
+维护约束：
+- ``'_custom'`` schema 哨兵必须在本模块提供成对的 ``unpack_<TYPE>`` 与 ``pack_<TYPE>``。
+- 每个 decoder 返回 ``(values, new_off)``；encoder 必须按输入字段和原有布局重建等价字节。
+- path 等变长尾部的长度字段由 encoder 从 bytes 计算，不能信任编辑字典中的旧长度。
 """
 from __future__ import annotations
 import struct
@@ -21,58 +25,27 @@ from .enums import (
 )
 from ..hashes import *  # noqa: F401,F403  —— 各 custom 类型 hash 常量
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ─────────────────────────────────────────────────────────────────────────────
-# VARIABLE-LENGTH TYPES
-#
-# For variable-length blocks, we cannot use a static schema and _schema_size.
-# Instead we provide custom unpack_<TYPE>/pack_<TYPE> functions plus
-# a None-schema sentinel in ATTR_SCHEMA_MAP that routes to these functions
-# via AttrBlock.decode/encode.
-#
-# The ATTR_SCHEMA_MAP entry for these types uses the sentinel:
-#   HASH: ('_custom', None)
-# and the custom functions are called by the extended decode/encode below.
-# ─────────────────────────────────────────────────────────────────────────────
+# 变长类型以 ``('_custom', None)`` 哨兵分派到本模块的成对 codec
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UVSequence (variable: fixed 44 B header + int path_len + path bytes)
-#
-# BT: unkn0(4)+uvs_index(4)+NULL(4)+startFrame(4)+startFrameJ(4)+  
-#     animSpeed(4)+animSpeedJ(4)+animAccel(4)+animAccelJ(4)+loopEnum(4)+path_len(4)
-#     = 11 fields = 44 B, then path[path_len]
-# data_bytes layout: [0..43] = fixed, [44] = path_len int, [48..] = path bytes
-# ─────────────────────────────────────────────────────────────────────────────
+# UVSequence：固定字段、path 长度和 path bytes
 
 _UVSEQUENCE_FIXED_SCHEMA = [
-    ('typeFlag',                'i'),   # 原 unkn0
-    # 原 uvs_index：改 camelCase 以匹配 sequenceNoJitter，否则 panels.py::_is_matching_jitter
-    # 按 base+"Jitter" 派生名配对时对不上（期望 uvs_indexJitter），UI 会把 value/jitter 拆成两行。
+    ('typeFlag',                'i'),
+    # 与 sequenceNoJitter 保持命名配对，供 UI 合并 value/jitter
     ('sequenceNo',                'i'),
-    ('sequenceNoJitter',          'i'),  # 原 unkn2/NULL，实测为 sequenceNo 的抖动量
+    ('sequenceNoJitter',          'i'),
     ('patternNo',           'i'),
     ('patternNoJitter',     'i'),
     ('playSpeed',          'f'),
     ('playSpeedJitter',    'f'),
     ('playSpeedCoef',   'f'),
     ('playSpeedCoefJitter', 'f'),
-    # loopingEnum（4B）按语义拆分：byte0=动画模式，byte1=贴图朝向，byte2-3=padding（恒0）。
-    # 用户实机测试（2026-07-10，配合 BILLBOARD2D 当稳定测试画布）坐实 byte0 三段结构：
-    # value = direction×64 + flipCode×4 + playbackMode。
-    #   playbackMode（bit0-1）：0=只显示起始帧，1=循环，2=播放一次后强制消亡，
-    #     3=播放一次后定格最后一帧直到 Life 结束。
-    #   direction（bit6-7）：0=正向播放，1=倒放，2=正/倒随机取一种。全语料实测确认：
-    #     direction=1(倒放)+flipCode=10 → 值 104~107；direction=2(随机正倒)+flipCode=
-    #     0/2/10 → 值 128~131/136~139/168~171。direction=1/2 搭配其余 flipCode 值尚未测试。
-    #   flipCode（bit2-5）= 两个 2 位子字段：flipHorizontal(bit2-3) + flipVertical(bit4-5)，
-    #     flipCode = flipVertical×4 + flipHorizontal。每轴取值 0=不翻转 / 1=固定翻转 / 2=随机翻转
-    #     （3 为非法，实际只有 0~2）。故 flipCode 有效值 = {0,1,2,4,5,6,8,9,10}；含某轴=3 的
-    #     3/7/11/12/13/14/15 均为非法组合。随机项在粒子生成时取一次，循环期间不重取。
+    # 4 字节字段拆为 loopingMode、loopingOrientation 与保留 padding
     ('loopingMode',             'B'),
-    ('loopingOrientation',      'B'),   # byte1：0=正常/1=顺时针90°/2=逆时针90°/3=随机
-    ('loopingPad',              'h'),   # byte2-3：保留（实测恒 0）
-]  # 11 fields = 40 B
+    ('loopingOrientation',      'B'),
+    ('loopingPad',              'h'),
+]
 
 _UVSEQUENCE_FIXED_SIZE = _schema_size(_UVSEQUENCE_FIXED_SCHEMA)  # = 40
 
@@ -83,9 +56,7 @@ EXTERN_UVSEQUENCE_SCHEMA = _UVSEQUENCE_FIXED_SCHEMA + [
 assert _schema_size(EXTERN_UVSEQUENCE_SCHEMA) == 45, \
     f"EXTERN_UVSEQUENCE_SCHEMA size mismatch: {_schema_size(EXTERN_UVSEQUENCE_SCHEMA)}"
 
-# loopingMode 是打包字节位域，用 Bitmask + 4 个 BitEnum 段建模
-# （playbackMode/flipHorizontal/flipVertical/direction），UI 经位掩码弹窗按段渲染下拉。
-# codec 只读/写裸字节（1:1 恒等，byte-perfect 由构造保证）。
+# loopingMode 由 Bitmask 的四个 BitEnum 段建模；codec 保持裸字节
 UVSEQUENCE_ATTR = attr_from_legacy(
     _schema_size(_UVSEQUENCE_FIXED_SCHEMA), _UVSEQUENCE_FIXED_SCHEMA,
     overrides={
@@ -117,46 +88,27 @@ def pack_uvsequence(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Billboard3D (variable: billboard_data 108 B + extras 24 B + path)
-#
-# billboard_data (108 B, includes the path_len field at offset +104):
-#   unkn0(4)+applicationRule(4)+XYZ color(2)(4)+XYZ colorRange(2)(4)+brightness(4)+
-#   unkn2[3](12)+correctColorNo(4)+SlotOverride1(4)+rotation(4)+rotationJitter(4)+
-#   scale(4)+scaleJ(4)+width(4)+widthJ(4)+height(4)+heightJ(4)+
-#   flowmapSpeed(4)+flowmapSpeedJ(4)+flowmapAccel(4)+flowmapAccelJ(4)+
-#   flowmapStrength(4)+flowmapStrengthJ(4)+flowmapStrAccel(4)+flowmapStrAccelJ(4)+
-#   path_len(4) = 108 B total
-# Extras (24 B): divideNum(4) + [enableGPUParticle(4)+fieldInfluenceRate(4)](uint64扒开)
-#   + fieldInfluenceRateMultiplier(4) + lightGroup(4) + unknFlag9(4)
-# Then: path[path_len]
-#
-# data_bytes: [0..107] = billboard_data (path_len at +104),
-#             [108..131] = extras,
-#             [132..131+path_len] = path
-# ─────────────────────────────────────────────────────────────────────────────
+# Billboard3D：固定字段、path 长度、extra 字段和 path bytes
 
 _BILLBOARD3D_FIXED_SCHEMA = [
-    ('typeFlag',                   'i'),   # 原 unkn0
+    ('typeFlag',                   'i'),
     ('applicationRule',            'i'),
-    ('color',                      ('XYZ', 2)),  # TIML DT 0x58689812("Color") 已确认
-    ('colorRange',                 ('XYZ', 2)),  # TIML DT 0xC216C23D("ColorRange") 已确认
-    ('brightness',                 'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
-    # 原 randomBrightnessMult：全语料实测取值 0~240，跟 brightness 本身(0~255)同一量级，
-    # 并非 0~1 的"乘数"，是 brightness 的 jitter 一半，2026-07-30 改名（RIBBON 同款字段
-    # 同理改名，见 RIBBON schema 注释）。
-    ('brightnessJitter',           'f'),  # 原 randomBrightnessMult
+    ('color',                      ('XYZ', 2)),  # TIML DT 0x58689812("Color")
+    ('colorRange',                 ('XYZ', 2)),  # TIML DT 0xC216C23D("ColorRange")
+    ('brightness',                 'f'),  # TIML DT 0x9F1E012E("ColorRate")
+    # 实际抖动幅度是本字段值的两倍
+    ('brightnessJitter',           'f'),
     ('useColorRange',              'i'),  # bool
     ('blendMode',                  'i'),
-    ('correctColorNo',             'i'),  # 原 EPVColorSlot1；用户 2026-09-19 判定即官方 CorrectColorNo
-    ('colorRangeCorrectColorNo',   'i'),  # 原 SlotOverride1
-    ('rotation',                   'f'),  # TIML DT 0x2FF50558("Rotation") 实机确认
+    ('correctColorNo',             'i'),
+    ('colorRangeCorrectColorNo',   'i'),
+    ('rotation',                   'f'),  # TIML DT 0x2FF50558("Rotation")
     ('rotationJitter',             'f'),
-    ('scale',                      'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
+    ('scale',                      'f'),  # TIML DT 0x0EBAEC37("SizeScalar")
     ('scaleJitter',                'f'),
-    ('width',                      'f'),  # TIML DT 0x241CAED2("SizeX") 已确认
+    ('width',                      'f'),  # TIML DT 0x241CAED2("SizeX")
     ('widthJitter',                'f'),
-    ('height',                     'f'),  # TIML DT 0x531B9E44("SizeY") 已确认
+    ('height',                     'f'),  # TIML DT 0x531B9E44("SizeY")
     ('heightJitter',               'f'),
     ('flowmapSpeed',               'f'),
     ('flowmapSpeedJitter',         'f'),
@@ -166,29 +118,17 @@ _BILLBOARD3D_FIXED_SCHEMA = [
     ('flowmapStrengthJitter',      'f'),
     ('flowmapStrengthCoef','f'),
     ('flowmapStrengthCoefJitter', 'f'),
-    # path_len is next (part of billboard_data), then extras, then path
-    # we handle path_len + extras + path manually below
-]  # = 4+4+4+4+4+12+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
+]
 
-# 2026-09-19 用户提供官方讲座 Type Billboard 面板截图核对 + 全语料 62787 块交叉验证：
-#   unknEnum5→divideNum：取值 {0,1,2,3,4,10} 跳跃式分布，不像连续编号的 Enum（SortType
-#     这种名字像枚举类），更像一个直接输入的计数值，改名 divideNum（对应截图 DivideNum）。
-#   unknFlag6_0→enableGPUParticle：与 body/label 含"GPU"关键字的实例强相关（GPU 命名
-#     实例里为 1 的比例 95.2%，非 GPU 实例仅 11.0%），坐实。
-#   unkn6_1/unkn7→fieldInfluenceRate(+Multiplier)：分别 99.98%/99.99% 恒为 0.0/1.0，
-#     与截图"Field Influence Rate: 0.0 * 1.0"（注意用"*"不是"±"，是值+倍率对）吻合。
-#   unkn8→lightGroup：全 8 位均有真实使用（含 255 全选样本），bit0 置位率 78.94%，
-#     与截图"VFX 默认勾选"一致，位序详见 enums.BITS_LIGHT_GROUP 注释。
-#   unknFlag9：与 GPU 命名无关联，其余假设未有更多证据，暂不改名。
+# Billboard3D extras：flag、数值/倍率对和 LightGroup。
 _BILLBOARD3D_EXTRAS_SCHEMA = [
-    ('divideNum', 'i'),  # 原 unknEnum5
-    # 拆分自原 uint64 unkn6：低32位=int/flag，高32位=float（实测 60842 个 BILLBOARD3D 块核对）
-    ('enableGPUParticle', 'i'),  # 原 unknFlag6_0
-    ('fieldInfluenceRate', 'f'),  # 原 unkn6_1
-    ('fieldInfluenceRateMultiplier', 'f'),  # 原 unkn7
-    ('lightGroup', 'i'),  # 原 unkn8
+    ('divideNum', 'i'),
+    ('enableGPUParticle', 'i'),
+    ('fieldInfluenceRate', 'f'),
+    ('fieldInfluenceRateMultiplier', 'f'),
+    ('lightGroup', 'i'),
     ('unknFlag9', 'i'),
-]  # = 4+8+4+4+4 = 24 B
+]
 
 EXTERN_BILLBOARD3D_SCHEMA = (
     _BILLBOARD3D_FIXED_SCHEMA + _BILLBOARD3D_EXTRAS_SCHEMA + [
@@ -200,10 +140,7 @@ assert _schema_size(EXTERN_BILLBOARD3D_SCHEMA) == 133, \
     f"EXTERN_BILLBOARD3D_SCHEMA size mismatch: {_schema_size(EXTERN_BILLBOARD3D_SCHEMA)}"
 
 
-# applicationRule（BILLBOARD3D / PLANE 共用 int32 位域）现由 typed Bitmask + BitEnum 段建模
-# （见 enums.BITS_APPLICATION_RULE），UI 经位掩码弹窗按段渲染；codec 只读/写裸 int（1:1 恒等）。
-# 原先的手写拆分/合并（_split_application_rule / _merge_application_rule / _split_apprule_schema）
-# 已随之退休——声明式段模型取代之。
+# applicationRule 由 Bitmask/BitEnum 建模；codec 保持裸 int
 
 
 def unpack_billboard3d(data: bytes, off: int = 0):
@@ -230,8 +167,7 @@ def pack_billboard3d(values: dict) -> bytes:
     return out
 
 
-# BILLBOARD3D 固定段+extras（去 path/path_len）；applicationRule 用 Bitmask +
-# BitDef×2（flowmap 混合位）+ BitEnum（mode 互斥）建模。UI 编辑段 == 此 schema。
+# 编辑 schema 排除 path/path_len；UI 字段与此 schema 对应
 _BILLBOARD3D_EDIT_SCHEMA = [
     e for e in (_BILLBOARD3D_FIXED_SCHEMA + _BILLBOARD3D_EXTRAS_SCHEMA)
     if e[0] not in ('path', 'path_len')
@@ -241,51 +177,33 @@ BILLBOARD3D_ATTR = attr_from_legacy(
     overrides={
         'applicationRule': Bitmask('applicationRule', BITS_APPLICATION_RULE, label_zh="应用规则"),
         'useColorRange':   Bool('useColorRange', label_zh="启用颜色范围"),
-        # 2026-09-20 从"混合模式"二值枚举改成布尔：ENUM_BLEND_MODE 只有 Alpha Blend(0)/
-        # Additive(1) 两个取值，Additive 叠加混合就是自发光/辉光效果。字节不变。
+        # 底层为 0/1，作为自发光开关显示
         'blendMode':       Bool('blendMode', label_en="Enable Emissive", label_zh="启用自发光"),
         'enableGPUParticle': Bool('enableGPUParticle', label_zh="启用 GPU 粒子"),
         'lightGroup': Bitmask('lightGroup', BITS_LIGHT_GROUP, all_value=255, strict=True,
                                label_zh="光照组"),
         'correctColorNo': Int('correctColorNo', label_zh="EPV 颜色修正槽位"),
-        # colorRangeCorrectColorNo：原名 SlotOverride1，沿用 EPVColorSlot 命名习惯；
-        # 跟紧邻的 correctColorNo（已确认对应 color）结构对称，位置又正好挨着
-        # colorRange，推测是 colorRange 专属的 EPV 槽位覆盖——但没有独立的实机测试
-        # 或注释坐实，只是位置类比，标"?"存疑。
+        # colorRange 的专属槽位为位置推断，保留 ``?`` 标记
         'colorRangeCorrectColorNo': Int('colorRangeCorrectColorNo', label_en="Correct Color Range No?",
                                          label_zh="EPV 颜色修正槽位?"),
     },
 )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Billboard2D (variable: 116B 固定 + path[path_len])
-# EFX_Subtypes.bt: data_bytes(type 之后) =
-#   long unkn0_0,applicationRule(8) + XYZ(2) color,colorRange(8) + float brightness,randomBrightnessMult(8) +
-#   int useColorRange,blendMode,EPVColorSlot1,EPVColorSlot2(16) + float rotation,rotationJitter + scale,scaleJitter +
-#   width + widthJitter + height + heightJitter (8 floats=32) +
-#   float flowmapSpeed/Jitter,flowmapSpeedCoef/Jitter,flowmapStrength/Jitter,
-#   flowmapStrengthCoef/Jitter(32) + int path_len(4) + int unkn5[2](8) + char p[path_len]
-# 固定部分 116B；path_len 在 data 偏移 104。
-# ─────────────────────────────────────────────────────────────────────────────
+# Billboard2D：固定字段和 path bytes
 
 _BILLBOARD2D_FIXED_SCHEMA = [
-    ('typeFlag', 'i'),   # 原 unkn0_0
-    # 用户直接投喂（2026-07-10，未测）：位置/取值集合都跟 BILLBOARD3D.applicationRule
-    # 对应（BILLBOARD2D 只出现 [0,4,12,32]，是 BILLBOARD3D 枚举集合 [0,4,8,12,16,32,36,40…]
-    # 的子集）。
-    ('applicationRule', 'i'),   # 8
-    ('color',             ('XYZ', 2)), # 4
-    ('colorRange',        ('XYZ', 2)), # 4
+    ('typeFlag', 'i'),
+    ('applicationRule', 'i'),
+    ('color',             ('XYZ', 2)),
+    ('colorRange',        ('XYZ', 2)),
     ('brightness',        'f'),
-    ('brightnessJitter',  'f'),     # 8  原 randomBrightnessMult，2026-07-30 改名（见 RIBBON schema 注释）
+    ('brightnessJitter',  'f'),
     ('useColorRange',     'i'),
     ('blendMode',         'i'),
-    ('correctColorNo',            'i'),  # 原 EPVColorSlot1
-    ('colorRangeCorrectColorNo',  'i'),  # 原 EPVColorSlot2，16
-    # （2026-07-10）：原名 rotationJitterMin/Max、scaleJitterMin/Max 其实
-    # 不是"抖动范围的 min/max"，是"固定值 + 抖动量"这套本仓库到处都在用的 value/valueJitter
-    # 配对（同 BILLBOARD3D 的 rotation/rotationJitter、scale/scaleJitter）。
+    ('correctColorNo',            'i'),
+    ('colorRangeCorrectColorNo',  'i'),
+    # 固定值与 jitter 成对，供 UI 作为单个显示单元
     ('rotation', 'f'),
     ('rotationJitter', 'f'),
     ('scale',    'f'),
@@ -293,9 +211,7 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     ('width',            'f'),
     ('widthJitter',      'f'),
     ('height',           'f'),
-    ('heightJitter',     'f'),        # 8 floats = 32
-    # 用户确认（2026-07-10）：flowmap 八件套，位置+全语料统计形态跟 BILLBOARD3D 同名
-    # 字段逐一对应（"值有变化 + 紧跟的 Jitter 恒/几乎恒为 0"这套模式四对齐用）。  
+    ('heightJitter',     'f'),
     ('flowmapSpeed', 'f'),
     ('flowmapSpeedJitter', 'f'),
     ('flowmapSpeedCoef', 'f'),
@@ -303,35 +219,22 @@ _BILLBOARD2D_FIXED_SCHEMA = [
     ('flowmapStrength', 'f'),
     ('flowmapStrengthJitter', 'f'),
     ('flowmapStrengthCoef', 'f'),
-    ('flowmapStrengthCoefJitter', 'f'),   # 32
-    ('path_len',         'i'),        # 4
-    # 位置跟 BILLBOARD3D 的 path_len 之后、path 字节之前那段 extras（unkn5/unkn6_0…）
-    # 完全对应（都是"path_len 后、path 前"这个槎位）。
-    # 全语料核对：unkn5_0 全部恒为 0（580/580 无一例外）；unkn5_1 跟 applicationRule  
-    # 有统计相关（rule=4 时 76.8% 为 1，rule=12 时 100% 为 1，rule=0/32 时几乎全为 0），
-    # 曾猜测是 BILLBOARD3D.unkn6_0（"启用 flowmap 还需 unkn6=1"）的对应物——用户实机
-    # 测试（2026-07-10）证伪：flowmap 效果不需要 unkn5_1=1 就能生效，applicationRule
-    # 本身的 4/12 区别才是关键（4=持续循环流动，12=只播一次到终点停）。unkn5_1 跟
-    # applicationRule 的相关性仍然存在，但具体作用未知，不再套用 unkn6_0 的"开关"解读。
+    ('flowmapStrengthCoefJitter', 'f'),
+    ('path_len',         'i'),
     ('unknFixed5_0', 'i'),
-    ('unknEnum5_1', 'i'),   # 8
+    ('unknEnum5_1', 'i'),
 ]
 assert _schema_size(_BILLBOARD2D_FIXED_SCHEMA) == 116, \
     f"_BILLBOARD2D_FIXED_SCHEMA size mismatch: {_schema_size(_BILLBOARD2D_FIXED_SCHEMA)}"
-# 编辑段（去 path_len，同 CUSTOM_FIELD_SCHEMA_MAP[BILLBOARD2D]）；useColorRange/blendMode 同
-# BILLBOARD3D/PLANE 语义（bool / 混合模式枚举）。
+# 编辑 schema 排除 path_len
 _BILLBOARD2D_EDIT_SCHEMA = [e for e in _BILLBOARD2D_FIXED_SCHEMA if e[0] != 'path_len']
 BILLBOARD2D_ATTR = attr_from_legacy(
     _schema_size(_BILLBOARD2D_EDIT_SCHEMA), _BILLBOARD2D_EDIT_SCHEMA,
     overrides={
         'useColorRange': Bool('useColorRange', label_zh="启用颜色范围"),
-        # 2026-09-20 从"混合模式"二值枚举改成布尔，理由同 BILLBOARD3D。
+        # 底层为 0/1，作为自发光开关显示
         'blendMode':     Bool('blendMode', label_en="Enable Emissive", label_zh="启用自发光"),
-        # correctColorNo/colorRangeCorrectColorNo：原 EPVColorSlot1/2，跟 BILLBOARD3D
-        # 逐字段同构（color/colorRange/brightness/useColorRange/blendMode/两个 EPV
-        # 槽位/rotation…顺序完全一致），BILLBOARD3D 那边已把 EPVColorSlot1 坐实为
-        # correctColorNo（对应 color）；这里按同一结构类推同样改名，
-        # colorRangeCorrectColorNo 是否专属 colorRange 未独立验证，标"?"。
+        # colorRange 的专属槽位为结构类推，保留 ``?`` 标记
         'correctColorNo': Int('correctColorNo', label_zh="EPV 颜色修正槽位"),
         'colorRangeCorrectColorNo': Int('colorRangeCorrectColorNo', label_en="Correct Color Range No?",
                                          label_zh="EPV 颜色修正槽位?"),
@@ -359,90 +262,31 @@ def pack_billboard2d(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Mesh (variable: Mod3Properties 174 B + BeginMod3 1 B + path1 (null-term) + path2 (null-term))
-#
-# data_bytes layout (includes BeginMod3 at +174, then null-terminated strings):
-# [0..173] = Mod3Properties, [174] = BeginMod3 byte,
-# [175..null1] = path1 (null-terminated, null at null1),
-# [null1+1..null2] = path2 (null-terminated, null at null2)
-#
-# Mod3Properties (174 B) fields from BT (counted carefully):
-#   int unkn0[2](8) + long CD1(4) + float colorRate/Jitter(8) +
-#   float emissiveColorRate/Jitter(8) + float unknFloat0/1(8) + XYZ rotation(0)(24) +
-#   XYZ scale(0)(24) + float global_scale/j(8) +
-#   int visconIndex/Jitter（原 starting/end_model_viscon；2026-08 实机确认是固定/随机配对，
-#     非 start/end：视觉条件（mod3 Visible Condition）索引 + 其随机量）(8) + colour*4(16) + int unkn7_0/1(8) +
-#   int rotationOrder（原 unkn7_2）(4) +
-#   int tracking_flags（互斥模式选择,已转 Enum,官方语料见 0/1/2/4/6/8/10,10 不在
-#     社区文档表内待确认,9 从未出现）(4) + int unkn40(4) +
-#   int affectedByLight（官方语料证实为可混合位掩码：bit0~6 各种组合都出现,
-#     bit7 从不单独/局部出现,只在 all_value=255 时整体置位,已转 Bitmask+all_value)(4) +
-#   int shadowCastBitflag(4) + int epv_color_slot1(4) + int unkn5(4) +
-#   int epv_color_slot2(4) + int unkn6_1(4) + byte colorize1[4](4) +
-#   byte colorize2[4](4) +
-#   byte unknBool0..3（原 int randommizeViscon 拆分：4 字节各恒 0/1，同
-#     SHADERSETTINGS.visibleOnPreview 的打包字节模式，非单一标志）(4) +
-#   byte unknBool4..5（原 short NULL1 拆分：2 字节各恒 0/1，同上）(2)
-# = 8+4+8+8+24+8+24+8+8+16+12+4+4+4+4+4+4+4+4+4+4+4+2 = 174 B ✓
-#
-# （2026-07-06，色相/亮度组合排除测试）：color/colorRange 与
-# emissiveColor/emissiveColorRange 是两组独立的 Color/ColorRange 对（同
-# BILLBOARD3D/PLANE 机制），分别由 colorize_material1/2 里的开关控制：
-#   colorize_material1[0]/[2]（enableIntensity1/2）：各自独立地让 color 通道
-#     变亮，效果可叠加，不影响色相，只影响这条通道的亮度。
-#   colorize_material1[1]（useColorRange）：启用 color↔colorRange 随机插值。
-#   colorize_material1[3]（useEmissiveColor）：启用 emissiveColor 通道（不开
-#     则该通道零贡献）。
-#   colorize_material2[0]（useEmissiveColorRange）：启用 emissiveColor↔
-#     emissiveColorRange 随机插值，独立于 [1]，不依赖它才生效。
-#   colorize_material2[1]（enableEmissiveIntensity）：emissiveColor 通道的
-#     亮度开关（严格布尔，只有暗/亮两档，不是连续数值；已排除"混合模式切换"
-#     假设——纯黑 emissiveColor 在两档下都不会覆盖/压暗其它通道）。
-#   两条通道之间是纯加法叠加。
-#   colorize_material2[2]（disableAllColorRange）：实机确认，非零时同时强制
-#     color 和 emissiveColor 都变成静态值，无视 useColorRange/
-#     useEmissiveColorRange 各自的开关状态（一次性覆盖两条通道的随机插值）。
-#   colorize_material2[3]：曾疑似对应 emissiveColorRange，但该次测试被证实
-#     是场景雾气颜色污染导致的误判，已撤回，暂无可靠结论。  
-# ─────────────────────────────────────────────────────────────────────────────
+# Mesh：174 B 固定段、BeginMod3 和两个 NUL 终止路径。
+# color/colorRange 与 emissiveColor/emissiveColorRange 是独立通道；范围禁用位同时
+# 使两条通道使用静态颜色。
 
 _MOD3_PROPERTIES_SCHEMA = [
-    ('typeFlag', 'i'),   # 原 unkn0_0
-    ('unknFixed0_1', 'i'),   # 恒 167，接近但不满足 section_length 公式(174-8=166,差1)，未改名
+    ('typeFlag', 'i'),
+    ('unknFixed0_1', 'i'),
     ('CD1',                     'i'),
-    # color 通道的强度系数（原名 emissive_saturation/_j，前缀是错的）：中性值 1.0，
-    # 由 enableIntensity2 门控（关 27.9% / 开 83.7% 被调离 1.0，n=13625），
-    # 对 useEmissiveColor 三个发光开关零响应（47.2% vs 47.3%）——它不在发光侧。
-    # p50=1.0 / p90=5.65 / p99=100 / max=10000，形态是 HDR 强度倍率而非饱和度。
+    # color 通道的强度系数与其 jitter
     ('colorRate',               'f'),  # TIML DT 0x9F1E012E("ColorRate")
     ('colorRateJitter',         'f'),
-    # emissiveColor 通道的强度系数（原名 emissive_brightness/_j）：中性值 0.0，
-    # 死锁在发光通道上（useEmissiveColor 关 3.1% / 开 82.2%；useEmissiveColorRange
-    # 打开时 100% 非零），对 color 通道开关零响应。
+    # emissiveColor 通道的强度系数与其 jitter
     ('emissiveColorRate',       'f'),  # TIML DT 0x18C577DE("EmissiveColorRate")
     ('emissiveColorRateJitter', 'f'),
-    # ⚠ 这两个 float 曾被算进 rotation 的头两格（当成 X/XJitter）。全语料 13625 个块：
-    # 它们 99.6% / 99.8% 恒为 0、值域只有 0~1 和 0~3——不是角度。真正的三轴角度在后面。
+    # 不属于 rotation；三轴 rotation 紧随其后
     ('unknFloat0',              'f'),
     ('unknFloat1',              'f'),
-    # 真正的逐轴旋转：(X, XJitter, Y, YJitter, Z, ZJitter)。
-    # 曾切成「rotation(XYZ) + rotation2/Jitter」，整块偏了 8 字节，于是 X 被喂了个非角度
-    # 字段、Y 拿到真 X、Z 拿到真 Y，而 rotation2 其实就是 Z 那一对。
-    # 用户实机逐轴验（静止朝 Blender +X 的网格，四个量各填 90°）：
-    #   填「X」   游戏不转        —— 它是上面那个非角度字段
-    #   填「Y」   绕 game X       —— 沿对称轴，看不出变化
-    #   填「Z」   绕 game Y       —— 转到 Blender +Y
-    #   填「rot2」绕 game Z       —— 转到 Blender +Z
-    # 语料侧同构印证：后六格是三对形态完全一致的「角度+抖动」（角度众数 -180，
-    # 抖动众数 360 = 整圈随机），前两格则完全不是这个形态。
+    # rotation 为三组 value/jitter，前两个 float 不可并入该字段
     ('rotation',                ('XYZ', 0)),
     ('scale',                   ('XYZ', 0)),
-    ('global_scale',            'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
+    ('global_scale',            'f'),  # TIML DT 0x0EBAEC37("SizeScalar")
     ('global_scale_jitter',     'f'),
-    ('visconIndex',             'i'),  # 原 starting_model_viscon
-    ('visconIndexJitter',       'i'),  # 原 end_model_viscon
-    ('color',                   'colour'),  # TIML DT 0x58689812("Color") 已确认
+    ('visconIndex',             'i'),
+    ('visconIndexJitter',       'i'),
+    ('color',                   'colour'),  # TIML DT 0x58689812("Color")
     ('colorRange',              'colour'),
     ('emissiveColor',           'colour'),
     ('emissiveColorRange',      'colour'),
@@ -457,21 +301,21 @@ _MOD3_PROPERTIES_SCHEMA = [
     ('unknEnum5',                   'i'),
     ('epv_color_slot2',         'i'),
     ('unknFixed6_1',                 'i'),
-    ('enableIntensity1',        'B'),  # 原 colorize_material1[0]
-    ('useColorRange',           'B'),  # 原 colorize_material1[1]
-    ('enableIntensity2',        'B'),  # 原 colorize_material1[2]
-    ('useEmissiveColor',        'B'),  # 原 colorize_material1[3]
-    ('useEmissiveColorRange',   'B'),  # 原 colorize_material2[0]
-    ('enableEmissiveIntensity', 'B'),  # 原 colorize_material2[1]
-    ('disableAllColorRange',    'B'),  # 原 colorize_material2[2]：实机确认(2026-07-06)，非零时同时
-                                        # 强制 color 和 emissiveColor 都变成静态值，忽略
-                                        # useColorRange/useEmissiveColorRange，无视两者各自的开关状态
-    ('unknFlag_cm2_3',              'B'),  # 原 colorize_material2[3]：未确认（曾疑似color4，被场景雾误导后撤回）
-    ('unknBool0',                    'B'),  # 原 int randommizeViscon 拆分（4 字节各恒 0/1，
-    ('unknBool1',                    'B'),  # 同 SHADERSETTINGS.visibleOnPreview 的打包字节模式，
-    ('unknBool2',                    'B'),  # 非单一"随机/全范围"标志），语义待实机确认
+    ('enableIntensity1',        'B'),
+    ('useColorRange',           'B'),
+    ('enableIntensity2',        'B'),
+    ('useEmissiveColor',        'B'),
+    ('useEmissiveColorRange',   'B'),
+    ('enableEmissiveIntensity', 'B'),
+    # 非零时强制 color 与 emissiveColor 取静态值，覆盖两个 useColorRange 开关
+    ('disableAllColorRange',    'B'),
+    ('unknFlag_cm2_3',              'B'),
+    # unknBool0~3 由一个 int randommizeViscon 拆开，unknBool4~5 由一个 short NULL1 拆开
+    ('unknBool0',                    'B'),
+    ('unknBool1',                    'B'),
+    ('unknBool2',                    'B'),
     ('unknBool3',                    'B'),
-    ('unknBool4',                    'B'),  # 原 short NULL1 拆分（2 字节各恒 0/1，同上）
+    ('unknBool4',                    'B'),
     ('unknBool5',                    'B'),
 ]
 assert _schema_size(_MOD3_PROPERTIES_SCHEMA) == 174, \
@@ -524,135 +368,70 @@ def pack_mesh(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Ribbon (variable: fixed 360 B + null-terminated path)
-#
-# From efxfile.py: Ribbon full = 364 + null-term path, data_bytes = full - 4 = 360 + path
-# ⚠ 下面这张 breakdown 用的是改名前的旧字段名（仅作字节偏移对照用），当前权威字段名见
-#   _RIBBON_FIXED_SCHEMA 本体；其中 unkn23[8] 已确认是 flowmap 8 件套、tailTiedToBone
-#   实为 enableFlowmap、unkn24 低 2 字节实为 flowmapPlayOnce/flowmapReverse。
-# Structure breakdown (360 B fixed before path):
-#   unkn0(4) + section_length(4) + spacer0(4) +  
-#   XYZ color(2)(4) + spacer1(4) + XYZ color2(2)(4) + spacer2(4) +  
-#   brightness(4) + unkn4_0(f,4) + unkn4_1(i,4) + scale(8) + width(8) + length(8) +
-#   uv_map_height(4) + mat_tess_density(4) + mat_tess_j(4) + uv_map_width(4) +
-#   horiz_physics(4) + vert_physics(4) + unkn15(4) +
-#   restitution_dir(4) + unkn16[4](16) + startingAngle(4) + startingAngleJ(4) +
-#   unkn16_0[2](8) + short unkn16_1(2) + short unkn16_2(2) + spacer3(4) +  
-#   unkn17(4) + spacer4(4) + lengthwise_offset(4) + unknown19_0(4) +  
-#   restitution(4) + restitutionJ(4) + inertial_excess(4) + inertialJ(4) +
-#   springiness(4) + springinessJ(4) + spacer5(4) +  
-#   unkn20[4](16) + unkn21(4) + unkn22[3](12) + tailTiedToBone(4) + unkn23[8](32) +
-#   unkn24(4) + epvcolor[2](8) + spacer7(4) +  
-#   base_width_mult(4) + base_opacity(4) + tip_width_mult(4) + tip_opacity(4) +
-#   spacer8(4) + base_fade_length(4) + tip_fade_length(4) + short visiblePreview(2) + short spacer9(2) +  
-#   base_flap_freq(8) + base_flap_amount(8) + tip_flap_freq(8) + tip_flap_amount(8) +
-#     [现 flap1Frequency/Amount + flap2Frequency/Amount，各带 Jitter]
-#   byte unkn0(1) + byte flow_enable_a/b(2) + byte reserved[13](13) +  
-#   float flow_param0..3(16)   [原 ib_junk[32]，2026-07-21 拆分，见下方 schema 内注释]
-# Total fixed: verify = 360 B
-# ─────────────────────────────────────────────────────────────────────────────
+# Ribbon：360 B 固定段和 NUL 终止路径
 
 _RIBBON_FIXED_SCHEMA = [
-    ('typeFlag',                 'i'),   # 原 unkn0
+    ('typeFlag',                 'i'),
     ('section_length',           'i'),
     ('spacer0',                  'i'),
     ('color',                    ('XYZ', 2)),
-    # 原 int spacer1：全语料只有 0xCDCDCD00/01，低字节真实变化(12.6%非零)，其余 3 字节纯
-    # 0xCD 占位——拆出 1 个真实 bool，2026-07-30。用户实机确认(2026-07-30)：启用颜色范围，
-    # 同 BILLBOARD2D/BILLBOARD3D/PLANE 的 useColorRange 同一套语义，改名。
-    ('useColorRange',            'B'),  # 原 unknBool1
+    # 低字节为真实 bool，剩余三个字节为保留填充
+    ('useColorRange',            'B'),
     ('spacer1',                  ('B', 3)),
-    ('colorRange',               ('XYZ', 2)),  # 原 color2；由 useColorRange 启用的随机范围端点
-    # 原 int spacer2 的低字节（其余 3 字节纯 0xCD 占位）：blendMode，同 BILLBOARD3D/
-    # BILLBOARD2D/PLANE 的 ENUM_BLEND_MODE。
-    ('blendMode',                'B'),  # 原 unknBool2
+    ('colorRange',               ('XYZ', 2)),
+    ('blendMode',                'B'),
     ('spacer2',                  ('B', 3)),
-    ('brightness',               'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
-    # 原 unkn4(int[2]) 拆为两个独立字段：
-    # [0] 原名 randomBrightnessMult——全语料实测取值 0~240，跟 brightness 本身(0~255)同一
-    #     量级，并非 0~1 的"乘数"，是 brightness 的 static+jitter 配对里的 jitter 一半，
-    #     2026-07-30 改名（BILLBOARD3D/BILLBOARD2D/PLANE 的同名字段同样改名，见各自 schema）。
-    # [1] ribbonMode（原 unknEnum4_1）：三种条带形态，用户实机确认(2026-07-30)，命名对齐
-    #     续作(RE Engine)对应的 ribbon 类型族——0=RibbonFollow(轨迹跟随)、
-    #     1=RibbonLength(定长面片)、2=RibbonChain(柔体链)。
-    ('brightnessJitter',         'f'),  # 原 unkn4_0 / randomBrightnessMult
-    ('ribbonMode',                   'i'),  # 原 unknEnum4_1
-    ('scale',                    'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
+    ('brightness',               'f'),
+    ('brightnessJitter',         'f'),
+    ('ribbonMode',                   'i'),
+    ('scale',                    'f'),  # TIML DT 0x0EBAEC37("SizeScalar")
     ('scale_jitter',             'f'),
-    ('width',                    'f'),  # TIML DT 0xF0DF339B("WidthSize") 已确认
+    ('width',                    'f'),  # TIML DT 0xF0DF339B("WidthSize")
     ('width_jitter',             'f'),
-    ('length',                   'f'),  # TIML DT 0xF92E647B("Length") 已确认
+    ('length',                   'f'),  # TIML DT 0xF92E647B("Length")
     ('length_jitter',            'f'),
     ('uv_map_height',            'i'),
     ('material_tesselation_density', 'f'),
     ('material_tesselation_jitter',  'f'),
     ('uv_map_width',             'f'),
-    # subdivisionCount（原 horizontal_physics_subdivision_count）：沿条带长度方向的横向切边
-    # 数量，N 条切边分出 N-1 段、每段 2 个三角面（用户实机确认 2026-07-30：设 4 得到 4 条边、
-    # 3 段）。语料 1~150，主流值 2（即单个四边形）。命名对齐 STRAINRIBBON.subdivisionCount。
+    # 沿条带长度方向的细分数
     ('subdivisionCount',         'i'),
-    # 原 vertical_physics_subdivision_count：全语料只有 0/1（同一属性里 subdivisionCount 却用到
-    # 1~150 共 33 种取值），"count"不成立，按 bool 处理；具体作用未确认，退回 unkn 命名。
     ('unknBool15',               'i'),
     ('unkn15',                   'f'),
-    # baseAxis：原 restitution_direction，值分布同 VELOCITY3D/FADEBYANGLE 共用的
-    # AxisDirection6（0左1上2前3右4下5后），非"反弹方向"专属语义，2026-07-30 改通用名。
     ('baseAxis',                 'i'),
-    # rotationOrder：原 unknEnum16arr_0，98.83% 恒为 4，与 TRANSFORM3D/EMITTERSHAPE3D
-    # 共用同一套 _TRANSFORM_ROT_ORDER 枚举（2026-07-30 用户确认，不再单独猜测）。
     ('rotationOrder',            'i'),
-    # rotationX/Y/Z + Jitter：原 unkn16arr_1~3 + startingAngle/startingAngleJitter + unkn16_0_0，
-    # 2026-07-30 用户实机测试确认为 rotOrder 复合旋转的 XYZ 三轴 static+random（byte 布局本身
-    # 交错、非顺序对齐：X=(arr_1,arr_2)/Y=(startingAngle,arr_3)/Z=(unkn16_0_0,startingAngleJitter)）。
-    # ⚠ 哪个是物理 X/Y/Z 轴仍受 ribbon 强制朝相机的自转干扰、未最终坐实，仅结构分组已确认。
-    ('rotationX',                'f'),  # 原 unkn16arr_1
-    ('rotationXJitter',          'f'),  # 原 unkn16arr_2
-    ('rotationYJitter',          'f'),  # 原 unkn16arr_3
-    ('rotationY',                'f'),  # 原 startingAngle
-    ('rotationZJitter',          'f'),  # 原 startingAngleJitter
-    ('rotationZ',                'f'),  # 原 unkn16_0_0
+    # rotationX/Y/Z 的 value 与 jitter 在字节上交错排列，不是顺序成对，改动顺序会错位。
+    # ⚠ 三轴与物理 X/Y/Z 的对应关系未坐实
+    ('rotationX',                'f'),
+    ('rotationXJitter',          'f'),
+    ('rotationYJitter',          'f'),
+    ('rotationY',                'f'),
+    ('rotationZJitter',          'f'),
+    ('rotationZ',                'f'),
     ('unknFlag16_0_1', 'i'),
-    # 原 short unknEnum16_1：全语料只有 0x0101/0x0001，低字节恒为 1（非通常的 0/0xCD 填充），
-    # 只有高字节真正在 0/1 之间变化——拆出 1 个真实 bool，2026-07-30。
-    ('unknFixed16_1_lo',         'B'),  # 恒 1
-    ('unknBool16_1',             'B'),  # 真实数据
-    # 原 short unknBitmask16_2：{0,1,256,257} 全部有意义比例出现，两字节各自独立的真实
-    # bool（非填充），2026-07-30 拆分。低字节实机表现是"关闭后无法朝向摄像机"（一度误判为
-    # 启用 Y 轴移动，已撤销该命名）；两个字节的确切语义都未定，保持 unkn 命名。
+    # 低字节固定为 1，高字节为真实 bool
+    ('unknFixed16_1_lo',         'B'),
+    ('unknBool16_1',             'B'),
     ('unknBool16_2_0',           'B'),
     ('unknBool16_2_1',           'B'),
-    # 原 int spacer3：0xCDCD0000/0100/0001/0101，低 2 字节各自真实变化（byte0 罕见 0.43%，
-    # byte1 常见 27.24%），高 2 字节恒 0xCD 纯占位——拆出 2 个真实 bool，2026-07-30。
+    # 两个真实 bool，后两个字节为保留填充
     ('unknBool3a',               'B'),
     ('unknBool3b',               'B'),
     ('spacer3',                  ('B', 2)),
     ('unknFixed17',                   'f'),
     ('spacer4',                  'i'),
     ('lengthwise_offset_relative_to_camera', 'f'),
-    # 原 unknown19_0：用户实机测试确认(2026-07-30)——0 时前后向 ribbon 的最前端贴近生成
-    # 位置；1 时前移 1 个相对长度，变成最后端贴近生成位置。数值分布跟
-    # lengthwise_offset_relative_to_camera（几乎恒 0.5，仅偶见其他值）差异很大（本字段
-    # 广泛分布 0~1 且可超出到 5.0），不像是同一种取值，判断是两个独立参数。
-    ('spawnAnchorOffset',        'f'),  # 原 unknown19_0
+    # 0 时 ribbon 最前端贴近生成位置，1 时整体前移一个相对长度、改为最后端贴近。
+    ('spawnAnchorOffset',        'f'),
 
-    # ribbonMode=2(RibbonChain) 的弹簧-阻尼参数组。用户实机测试(2026-07-30)四组对照
-    # （restoreStrength 0/1 × inertia 1/0.5 × springiness 0/1）的表现与标准阻尼振子一致：
-    #   restoreStrength=0 → 无回复力，退化成与 ribbonMode=0(RibbonFollow) 高度相似的拖尾；
-    #   restoreStrength=1 → 缓慢归位为平直；再加 inertia=1 → 定形为硬长条；
-    #   再加 springiness=1 → 永不停歇地弹（等效无阻尼）；此时 inertia 降到 0.5 → 停止弹跳、
-    #   以一定速度归位（阻尼比 ζ=c/(2√(km))，降低 m 即提高 ζ——反证 inertia 是质量项而
-    #   非阻尼项，否则调低它会加剧振荡）。
-    # restitution→restoreStrength 改名原因：物理上 restitution(恢复系数)指"弹性/弹力"，
-    # 而该字段调高反而让条带**收敛**到平直，弹性其实在 springiness，旧名会误导。
-    ('restoreStrength',          'f'),  # 原 restitution
-    ('restoreStrengthJitter',    'f'),  # 原 restitution_jitter
-    ('inertia',                  'f'),  # 原 inertial_excess
-    ('inertiaJitter',            'f'),  # 原 inertial_excess_jitter
+    # RibbonChain 的恢复、惯性和弹性参数
+    ('restoreStrength',          'f'),
+    ('restoreStrengthJitter',    'f'),
+    ('inertia',                  'f'),
+    ('inertiaJitter',            'f'),
     ('springiness',              'f'),
     ('springiness_jitter',       'f'),
-    # 原 int spacer5：同 spacer1 模式，低字节真实变化(12.2%非零)，其余 3 字节纯 0xCD 占位。
-    # 实机表现是设为 1 后只显示条带前半部分（后半被隐藏），但确切语义未定，保持 unkn 命名。
+    # 低字节为未知 bool，剩余字节为保留填充
     ('unknBool5',                'B'),
     ('spacer5',                  ('B', 3)),
     ('unkn20_0', 'f'),
@@ -661,88 +440,59 @@ _RIBBON_FIXED_SCHEMA = [
     ('unkn20_3', 'f'),
     ('unkn21',                   'f'),
     ('unkn22_0', 'f'),
-    # 原 unknEnum22_1：全语料 17 种取值全部可干净分解为 2 的幂之和(bit0~6, 值1~64)，
-    # 是可混合位掩码而非枚举，2026-07-30 改名 + 转 Bitmask；2026-09-19 用户核对 bit0
-    # 73.94%/bit5 11.39% 与 BILLBOARD3D/MESH 的 LightGroup 位分布同型，坐实为同一字段。
-    ('lightGroup', 'i'),  # 原 unknBitmask22_1
+    ('lightGroup', 'i'),
     ('unknFlag22_2', 'i'),
-    # 原 4B int 恒为 0xCDCDCD00/0xCDCDCD01（未初始化填充）；只有最低字节（文件里的第 1 个
-    # 字节）在 0/1 之间变化，其余 3 字节恒为 0xCD 纯占位（2026-07-10）。用户实机确认
-    # (2026-07-30)：该字节是 flowmap 总开关（原名 tailTiedToBone 是误读），改名。
-    ('enableFlowmap',            'B'),  # 原 tailTiedToBone
+    # 低字节为 Flowmap 总开关，剩余字节为保留填充
+    ('enableFlowmap',            'B'),
     ('spacer6',                  ('B', 3)),
-    # 用户实机确认(2026-07-30)：原 unkn23_0~7 就是 flowmap 8 件套，字段顺序与 BILLBOARD2D
-    # 的 flowmap 组逐项吻合（两边取值分布形态一一对应，含 acceleration 两项同为 100% 恒 1.0）。
-    ('flowmapSpeed',                     'f'),  # 原 unkn23_0
-    ('flowmapSpeedJitter',               'f'),  # 原 unkn23_1
-    ('flowmapSpeedCoef',              'f'),  # 原 unkn23_2
-    ('flowmapSpeedCoefJitter',        'f'),  # 原 unknFixed23_3
-    ('flowmapStrength',                  'f'),  # 原 unkn23_4
-    ('flowmapStrengthJitter',            'f'),  # 原 unkn23_5
-    ('flowmapStrengthCoef',      'f'),  # 原 unkn23_6
-    ('flowmapStrengthCoefJitter','f'),  # 原 unknFixed23_7
-    # 原 int unkn24 的低 2 字节（高 2 字节恒 0xCD 纯占位）。用户实机确认(2026-07-30)：
-    # flowmapPlayOnce=流动只播放一次；flowmapReverse=逆向播放，且必须 flowmapPlayOnce
-    # 启用才生效（官方语料存在 reverse=1/playOnce=0 的无效组合 48 例，故不做可见性门控，
-    # 依赖关系写在 tooltip 里）。
-    ('flowmapPlayOnce',          'B'),  # 原 unknBool24a
-    ('flowmapReverse',           'B'),  # 原 unknBool24b
+    # Flowmap 的四组 value/jitter 参数
+    ('flowmapSpeed',                     'f'),
+    ('flowmapSpeedJitter',               'f'),
+    ('flowmapSpeedCoef',              'f'),
+    ('flowmapSpeedCoefJitter',        'f'),
+    ('flowmapStrength',                  'f'),
+    ('flowmapStrengthJitter',            'f'),
+    ('flowmapStrengthCoef',      'f'),
+    ('flowmapStrengthCoefJitter','f'),
+    # flowmapReverse 仅在 flowmapPlayOnce 启用时生效；仍保留无效组合
+    ('flowmapPlayOnce',          'B'),
+    ('flowmapReverse',           'B'),
     ('unkn24',                   ('B', 2)),
     ('epvcolor_0',               'i'),
     ('epvcolor_1',               'i'),
-    # 原 int spacer7：同 spacer1 模式，低字节真实变化(1.8%非零，比较罕见)。
+    # 低字节为未知 bool，剩余字节为保留填充
     ('unknBool7',                'B'),
     ('spacer7',                  ('B', 3)),
     ('base_width_multiplier',    'f'),
     ('base_opacity',             'f'),
     ('tip_width_multiplier',     'f'),
     ('tip_opacity',              'f'),
-    # 原 int spacer8：同 spacer1 模式，低字节真实变化(3.8%非零)。
+    # 低字节为未知 bool，剩余字节为保留填充
     ('unknBool8',                'B'),
     ('spacer8',                  ('B', 3)),
-    # 两端渐隐的长度（占条带全长的比例）：base_/tip_opacity 是端点的不透明度，
-    # 中间恒为 1，这两个字段决定从端点过渡回 1 要走多长。默认 0.3 / 0.4。
-    ('base_fade_length',         'f'),  # 原 unkn27_0
-    ('tip_fade_length',          'f'),  # 原 unkn27_1
-    # 原 short visiblePreview：全语料 {0,1,256,257} 均有意义比例出现，实为 2 个独立字节，
-    # 2026-07-30 拆分。低字节=已实机确认的"可见性修正"(非0破坏TIML变色+条带消失)；
-    # 高字节经实机确认是下面 flap 抖动组的总开关，改名 enableFlap（语料佐证：开关=1 的
-    # 270 块里 229 块确有 flap 取值；另有 111 块设了 flap 值但开关=0，属无效残留）。
+    # 从两端 opacity 过渡至中段的相对长度
+    ('base_fade_length',         'f'),
+    ('tip_fade_length',          'f'),
+    # 两个独立字节：可见性修正和 flap 总开关
     ('visiblePreview',           'B'),
-    ('enableFlap',               'B'),  # 原 unknFlag_visiblePreview2
+    ('enableFlap',               'B'),
     ('spacer9',                  'h'),
-    # flap 抖动组：给旗帜（ribbonMode=2 RibbonChain）一个恒定速率的来回摆动。用户实机确认
-    # (2026-07-30)：原 base_*/tip_* 两组效果基本相同、可叠加（类似 BLINK 的叠加式），并**不是**
-    # 名字暗示的"一组从根部起振、一组从尖端起振"，故改名 flap1/flap2 以免误导。
-    # 语料佐证：两组多为同时使用(251)，其次只用 flap1(77)，只用 flap2 极少(12)。
-    ('flap1Frequency',           'f'),  # 原 base_flap_frequency
-    ('flap1FrequencyJitter',     'f'),  # 原 base_flap_frequency_jitter
-    ('flap1Amount',              'f'),  # 原 base_flap_amount
-    ('flap1AmountJitter',        'f'),  # 原 base_flap_amount_jitter
-    ('flap2Frequency',           'f'),  # 原 tip_flap_frequency
-    ('flap2FrequencyJitter',     'f'),  # 原 tip_flap_frequency_jitter
-    ('flap2Amount',              'f'),  # 原 tip_flap_amount
-    ('flap2AmountJitter',        'f'),  # 原 tip_flap_amount_jitter
-    # 原 ib_junk[32] 拆分（2026-07-21 全语料 15015 块统计）：
-    # byte[0] 恒为 0（15015/15015 无一例外）。
-    # byte[1]/byte[2] 是两个独立 bool 标志：只要任一为 1，后面 3 个 float 里非零
-    # 的比例从基线 0.15%（两者都 0 时）跳到 80%~99%——近乎完美的 enable 门控关系。
-    # byte[3:16] 13 字节恒为 0xCD（未初始化占位，同 reserved-fill-fields 判据）。
-    # 第 4 个 float 恒为 0.0（15015/15015 无一例外）。已排除"其实是 flap 8 件套的重复/错位"假说。
-    # ⚠ 这批字段一度按"疑似 flowmap 参数"命名为 ribbon_flow_*，2026-07-30 已证伪——
-    #   真正的 flowmap 8 件套是上面的 flowmapSpeed~flowmapStrengthCoefJitter
-    #   （原 unkn23_*），总开关是 enableFlowmap。
-    # 用户实机确认(2026-07-30)：byte[1] 是后 3 个 float 的开关；byte[2] 疑似叠在 byte[1] 之上。
-    # 后 3 个 float 是三个正交方向的力（自尾端施力），方向恒定——不受 localRotation 也不受
-    # TRANSFORM3D 旋转影响，故为世界/全局方向，命名 unknGlobalForceX/Y/Z（param1=竖直轴→Y）。
-    # 具体各轴指向哪一侧仍未确认，保留 unkn 前缀。
+    # 两组可叠加的 flap 参数，不按条带首尾区分
+    ('flap1Frequency',           'f'),
+    ('flap1FrequencyJitter',     'f'),
+    ('flap1Amount',              'f'),
+    ('flap1AmountJitter',        'f'),
+    ('flap2Frequency',           'f'),
+    ('flap2FrequencyJitter',     'f'),
+    ('flap2Amount',              'f'),
+    ('flap2AmountJitter',        'f'),
     ('unknFixed28_0',            'B'),
-    ('unknGlobalForceEnable',    'B'),  # 原 unknBool28_1
+    ('unknGlobalForceEnable',    'B'),
     ('unknBool28_2',             'B'),
     ('spacer28',                 ('B', 13)),
-    ('unknGlobalForceX',         'f'),  # 原 unkn28_param0
-    ('unknGlobalForceY',         'f'),  # 原 unkn28_param1（竖直轴，负值近似重力）
-    ('unknGlobalForceZ',         'f'),  # 原 unkn28_param2
+    ('unknGlobalForceX',         'f'),
+    ('unknGlobalForceY',         'f'),
+    ('unknGlobalForceZ',         'f'),
     ('unknFixed28_param3',      'f'),
 ]
 assert _schema_size(_RIBBON_FIXED_SCHEMA) == 360, \
@@ -750,20 +500,14 @@ assert _schema_size(_RIBBON_FIXED_SCHEMA) == 360, \
 RIBBON_ATTR = attr_from_legacy(
     _schema_size(_RIBBON_FIXED_SCHEMA), _RIBBON_FIXED_SCHEMA,
     overrides={
-        # baseAxis：原 restitution_direction，同 VELOCITY3D/FADEBYANGLE/RIBBONBLADE 共享的
-        # 通用 AxisDirection6。（2026-07-30 一度误判要建独立枚举——当时的测试其实是
-        # rotationZ=90 复合旋转后的表观方向，baseAxis 本身取值没有问题，已撤销。）
         'baseAxis':       Enum('baseAxis', _AXIS_DIRECTION6, label_zh="基准轴"),
-        # rotationOrder：原 unknEnum16arr_0，同 TRANSFORM3D/EMITTERSHAPE3D 共享的旋转顺序枚举。
         'rotationOrder':  Enum('rotationOrder', _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
         'enableFlowmap':  Bool('enableFlowmap', backing='B', label_zh="启用流动贴图"),
-        # 2026-07-30 批量取值调查后落地：干净 0/1 → Bool；可混合位掩码 → Bitmask。
         'unknFlag16_0_1':          Bool('unknFlag16_0_1'),
         'unknBool16_1':            Bool('unknBool16_1', backing='B'),
         'unknBool16_2_0':          Bool('unknBool16_2_0', backing='B'),
         'unknBool16_2_1':          Bool('unknBool16_2_1', backing='B'),
-        # ⚠ RIBBON 语料最大值只到 65（bit0+bit6），从未见到 bit7/255，不设 all_value
-        # （BILLBOARD3D/MESH 才有 255 全选哨兵，RIBBON 目前没有证据支持同样的写法）。
+        # 不设 all_value；只有 BILLBOARD3D / MESH 有 255 全选哨兵
         'lightGroup':              Bitmask('lightGroup', BITS_LIGHT_GROUP, strict=True,
                                             label_zh="光照组"),
         'unknFlag22_2':            Bool('unknFlag22_2'),
@@ -771,12 +515,9 @@ RIBBON_ATTR = attr_from_legacy(
         'enableFlap':              Bool('enableFlap', backing='B', label_zh="启用抖动"),
         'unknGlobalForceEnable':   Bool('unknGlobalForceEnable', backing='B'),
         'unknBool28_2':            Bool('unknBool28_2', backing='B'),
-        # 原 spacer0/1/2/3/5/7/8、unkn24 拆出的真实 bool（0xCD 占位掩盖的低字节数据）。
         'useColorRange': Bool('useColorRange', backing='B', label_zh="启用颜色范围"),
         'ribbonMode':    Enum('ribbonMode', ENUM_RIBBON_MODE, label_zh="条带模式"),
-        # 2026-09-20 从"混合模式"二值枚举改成布尔：ENUM_BLEND_MODE 从来就只有
-        # Alpha Blend(0)/Additive(1) 两个取值，Additive 叠加混合就是自发光/辉光效果，
-        # 用勾选框比二选一下拉更直观。字节不变（同一个 'B' 背板，0/1 两个值）。
+        # 只有 Alpha Blend(0) / Additive(1) 两值，Additive 即自发光叠加，故用勾选框
         'blendMode':     Bool('blendMode', backing='B', label_en="Enable Emissive", label_zh="启用自发光"),
         'unknBool15':  Bool('unknBool15'),
         'unknBool3a':  Bool('unknBool3a', backing='B'),
@@ -786,9 +527,7 @@ RIBBON_ATTR = attr_from_legacy(
         'unknBool8':   Bool('unknBool8', backing='B'),
         'flowmapPlayOnce': Bool('flowmapPlayOnce', backing='B', label_zh="流动只播放一次"),
         'flowmapReverse':  Bool('flowmapReverse', backing='B', label_zh="流动逆向播放"),
-        # epvcolor_0/1：STRAINRIBBON 的 epv_color_slot1/2 注释里明确写"同 RIBBON.epvcolor
-        # 那套机制"——slot0 管 color、slot1 管 colorRange，跟 correctColorNo 家族同一种
-        # EPV 槽位覆盖，2026-09-20 补标签+挪到各自颜色上面（此前只改名没接完）。
+        # epvcolor_0 覆盖 color，epvcolor_1 覆盖 colorRange
         'epvcolor_0': Int('epvcolor_0', label_zh="EPV 颜色修正槽位"),
         'epvcolor_1': Int('epvcolor_1', label_zh="EPV 颜色修正槽位"),
     },
@@ -811,47 +550,27 @@ def pack_ribbon(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Plane (variable: dds_data 108 B + extras 48 B + path)
-#
-# dds_data (108 B, same layout as billboard_data):
-#   unkn0(4)+applicationRule(4)+XYZ color(2)(4)+XYZ colorRange(2)(4)+brightness(4)+
-#   randomBrightnessMult(4)+useColorRange(4)+blendMode(4)+EPVColorSlot1(4)+EPVColorSlot2(4)+
-#   rotation2/j(8)+
-#   scale/j(8)+width/j(8)+height/j(8)+
-#   flowmapSpeed/j(8)+flowmapAccel/j(8)+flowmapStrength/j(8)+flowmapStrAccel/j(8)+
-#   path_len(4) = 108 B (path_len at +104 within data_bytes)
-# Extras (48 B): int unkn5[4](16) + XYZ rotation(0)(24) + uint64 unkn7(8)
-# Then: path[path_len]
-# ─────────────────────────────────────────────────────────────────────────────
+# Plane：固定字段、extra 字段和 path bytes
 
 _PLANE_DDS_SCHEMA = [
-    ('typeFlag',           'i'),   # 原 unkn0
+    ('typeFlag',           'i'),
     ('applicationRule',    'i'),
-    # （同 BILLBOARD3D 的 color/colorRange/useColorRange 机制，见该注释）：
-    # 原 EPVColorBlend 实为 useColorRange，原 unkn22 实为 blendMode。
-    ('color',              ('XYZ', 2)),  # TIML DT 0x58689812("Color") 已确认
+    ('color',              ('XYZ', 2)),
     ('colorRange',         ('XYZ', 2)),
-    ('brightness',         'f'),  # TIML DT 0x9F1E012E("ColorRate") 已确认
-    # 原 unkn20，位置与 BILLBOARD3D 的 brightnessJitter 相同，暂按同名归类；语义未
-    # confirmed（不同于 BILLBOARD3D 那条已实机验证的注释，这里先只搬名字）。全语料实测
-    # 取值 0~100，跟 brightness(0~255) 同量级，支持"jitter 而非 0~1 乘数"这一改名，
-    # 2026-07-30。
-    ('brightnessJitter',  'f'),  # 原 randomBrightnessMult
+    ('brightness',         'f'),
+    ('brightnessJitter',  'f'),
     ('useColorRange',      'i'),
     ('blendMode',          'i'),
-    ('correctColorNo',            'i'),  # 原 EPVColorSlot1
-    ('colorRangeCorrectColorNo',  'i'),  # 原 EPVColorSlot2
-    # 与顶部 XYZ 朝向独立的一对标量旋转+抖动（平面沿自身垂线的自旋），
-    # 同 MESH.rotation2/rotation2Jitter 命名（原 SlotOverride1/2，2026-07-08 已排除
-    # 整数槽位覆盖语义，重解读为 float）。
+    ('correctColorNo',            'i'),
+    ('colorRangeCorrectColorNo',  'i'),
+    # 独立于 XYZ rotation 的平面法线自旋
     ('rotation2',          'f'),
     ('rotation2Jitter',    'f'),
-    ('scale',              'f'),  # TIML DT 0x0EBAEC37("SizeScalar") 已确认
+    ('scale',              'f'),
     ('scaleJitter',        'f'),
     ('width',              'f'),
     ('widthJitter',        'f'),
-    ('height',             'f'),  # TIML DT 0x531B9E44("SizeY") 已确认
+    ('height',             'f'),
     ('heightJitter',       'f'),
     ('flowmapSpeed',       'f'),
     ('flowmapSpeedJitter', 'f'),
@@ -861,21 +580,17 @@ _PLANE_DDS_SCHEMA = [
     ('flowmapStrengthJitter','f'),
     ('flowmapStrengthCoef','f'),
     ('flowmapStrengthCoefJitter','f'),
-    # path_len handled separately
-]  # = 4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 104 B
+]
 
 _PLANE_EXTRAS_SCHEMA = [
     ('unknBitmask5_0', 'i'),
     ('unknEnum5_1', 'i'),
-    ('baseAxis', 'i'),      # 原 unknBitmask5_2；实机确认为 AxisDirection6 基准轴
-    ('rotationOrder', 'i'), # 原 unknEnum5_3；实机确认为旋转顺序，与 MESH.rotationOrder 同款枚举
+    ('baseAxis', 'i'),
+    ('rotationOrder', 'i'),
     ('rotation',('XYZ', 0)),
-    # 拆分自原 uint64 unkn7：低32位=小整数/位掩码，高32位=0/1 标志（实测 4328 个 PLANE 块核对）
-    # lightGroup：2026-09-19 用户核对 bit0 77.19%/bit5 16.72%，与 BILLBOARD3D/MESH/
-    # RIBBON 的 LightGroup 位分布同型，坐实为同一字段。
-    ('lightGroup', 'i'),  # 原 unknBitmask7_0
+    ('lightGroup', 'i'),
     ('unknFlag7_1', 'i'),
-]  # = 16+24+8 = 48 B
+]
 
 
 def unpack_plane(data: bytes, off: int = 0):
@@ -902,7 +617,7 @@ def pack_plane(values: dict) -> bytes:
     return out
 
 
-# PLANE 同 BILLBOARD3D，applicationRule 共用 BITS_APPLICATION_RULE。
+# applicationRule 与 BILLBOARD3D 共用位定义
 _PLANE_EDIT_SCHEMA = [
     e for e in (_PLANE_DDS_SCHEMA + _PLANE_EXTRAS_SCHEMA)
     if e[0] not in ('path', 'path_len')
@@ -912,16 +627,14 @@ PLANE_ATTR = attr_from_legacy(
     overrides={
         'applicationRule': Bitmask('applicationRule', BITS_APPLICATION_RULE, label_zh="应用规则"),
         'useColorRange':   Bool('useColorRange', label_zh="启用颜色范围"),
-        # 2026-09-20 从"混合模式"二值枚举改成布尔，理由同 BILLBOARD3D。
+        # 底层为 0/1，作为自发光开关显示
         'blendMode':       Bool('blendMode', label_en="Enable Emissive", label_zh="启用自发光"),
         'unknEnum5_1':     Bitmask('unknEnum5_1', BITS_PLANE_UNKN5_1, gate_first=True),
         'baseAxis':        Enum('baseAxis', _AXIS_DIRECTION6, label_zh="基准轴"),
         'rotationOrder':   Enum('rotationOrder', _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
-        # ⚠ PLANE 语料最大值只到 36（bit2+bit5），从未见到 bit7/255，不设 all_value。
+        # 没有全选哨兵的证据，不能设置 all_value
         'lightGroup':      Bitmask('lightGroup', BITS_LIGHT_GROUP, strict=True, label_zh="光照组"),
-        # correctColorNo/colorRangeCorrectColorNo：原 EPVColorSlot1/2，跟
-        # BILLBOARD3D/BILLBOARD2D 逐字段同构，按同一结构类推改名（见 BILLBOARD2D
-        # 的同名注释）。
+        # colorRange 的专属槽位为结构类推，保留 ``?`` 标记
         'correctColorNo':           Int('correctColorNo', label_zh="EPV 颜色修正槽位"),
         'colorRangeCorrectColorNo': Int('colorRangeCorrectColorNo', label_en="Correct Color Range No?",
                                          label_zh="EPV 颜色修正槽位?"),
@@ -929,31 +642,19 @@ PLANE_ATTR = attr_from_legacy(
 )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RibbonBlade (variable: fixed 198 B header + path_len(int) + path)
-#
-# From efxfile.py: path_len at offset 198 from block start (= offset 194 in data_bytes)
-# fixed structure before path_len (194 B in data_bytes):
-#   unkn0[2](8)+spacer0(4)+widthDirection(4)+width(4)+length+unkn05_1(8)+spacer1(4)+unkn07_0+lengthMode(8)+  
-#   5 floats(20)+spacer2(4)+unkn10(4)+uvRep(4)+unkn12[3](12)+spacer3(4)+  
-#   EPVColorSlot head(36)+EPVColorSlot tailEnd(36)+
-#   flowmap 4*(value+jitter)(32)+short NULL9(2)  
-# = 8+4+4+4+8+4+8+20+4+4+4+12+4+36+36+32+2 = 198 B total data before path_len
-# Then: path_len(4) + path[path_len]
-# ─────────────────────────────────────────────────────────────────────────────
+# RibbonBlade：固定字段、path 长度和 path bytes
 
 _RIBBONBLADE_FIXED_SCHEMA = [
-    ('typeFlag', 'i'),   # 原 unkn0_0，样本少(62例)且几乎恒为1，弱证据但同机制
+    ('typeFlag', 'i'),
     ('unknFixed0_1', 'i'),
     ('spacer0',     'i'),
-    ('widthDirection', 'i'),  # 原 unkn03
-    ('width',       'f'),  # 原 unkn04；刀光纵边宽度（用户命名，2026-07-10）
-    ('length', 'i'),  # 原 unkn05_0
+    ('widthDirection', 'i'),
+    ('width',       'f'),
+    ('length', 'i'),
     ('unknEnum05_1', 'i'),
     ('spacer1',     'i'),
     ('unknFlag07_0', 'i'),
-    ('lengthMode', 'i'),  # 原 unkn07_1
-    # 5 floats: maxLengthLimit, contractionSpeed, colourTransitionPoint, emissiveStrength, unkn08
+    ('lengthMode', 'i'),
     ('maxLengthLimit',          'f'),
     ('contractionSpeed',        'f'),
     ('colourTransitionPoint',   'f'),
@@ -965,35 +666,28 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     ('unknFlag12_0', 'f'),
     ('unknFlag12_1', 'i'),
     ('unknFixed12_2', 'i'),
-    # 恒为 0xcdcdcd00（62/62）。曾拆出最低字节暴露实机测试（unkn13，2026-07-11），  
-    # 用户测试无效果，已改回纯占位（2026-07-11）。  
     ('spacer3',     'i'),
     ('head',        'EPVColorSlot'),
     ('tailEnd',     'EPVColorSlot'),
-    # flowmap 四件套 + jitter：实测确认（2026-07-11，用户系统测试 unkn25/26，其余按同结构类推）。
-    # NULL5~8 全语料恒为 0（int/float 位模式相同,无法从静态数据判定类型),按 jitter 惯例先定为 float,  
-    # 待实机测试非零值验证。
-    ('flowmapSpeed',                    'f'),  # 原 unkn23
-    ('flowmapSpeedJitter',              'f'),  # 原 NULL5 (i->f)  
-    ('flowmapSpeedCoef',             'f'),  # 原 unkn24
-    ('flowmapSpeedCoefJitter',       'f'),  # 原 NULL6 (i->f)  
-    ('flowmapStrength',                 'f'),  # 原 unkn25
-    ('flowmapStrengthJitter',           'f'),  # 原 NULL7 (i->f)  
-    ('flowmapStrengthCoef',     'f'),  # 原 unkn26
-    ('flowmapStrengthCoefJitter', 'f'),  # 原 NULL8 (i->f)  
+    # Flowmap 的四组 value/jitter 参数
+    ('flowmapSpeed',                    'f'),
+    ('flowmapSpeedJitter',              'f'),
+    ('flowmapSpeedCoef',             'f'),
+    ('flowmapSpeedCoefJitter',       'f'),
+    ('flowmapStrength',                 'f'),
+    ('flowmapStrengthJitter',           'f'),
+    ('flowmapStrengthCoef',     'f'),
+    ('flowmapStrengthCoefJitter', 'f'),
     ('NULL9',       'h'),
 ]
 assert _schema_size(_RIBBONBLADE_FIXED_SCHEMA) == 194, \
     f"_RIBBONBLADE_FIXED_SCHEMA size mismatch: {_schema_size(_RIBBONBLADE_FIXED_SCHEMA)}"
-# widthDirection：全语料 {1,2,4,5} ⊂ 0-5，同 6 向枚举。length（拖尾长度）语料 {2..35} 为
-# 连续幅值、非离散选择器，保持 int。
+# widthDirection 复用 6 向枚举；length 是连续幅值而非枚举
 RIBBONBLADE_ATTR = attr_from_legacy(
     _schema_size(_RIBBONBLADE_FIXED_SCHEMA), _RIBBONBLADE_FIXED_SCHEMA,
     overrides={
         'widthDirection': Enum('widthDirection', _AXIS_DIRECTION6, label_zh="宽度延伸方向"),
-        # 全语料(10084 文件/50 例)恒为 0 或 1，是二选一开关而非多档模式（2026-08-18 确认）：
-        # 关=用 length（收缩速度固定内置）；开=用 maxLengthLimit+contractionSpeed 组合控制。
-        # 对应字段的显示/隐藏见 field_visibility.FIELD_VISIBILITY["RIBBONBLADE"]。
+        # 开关决定 length 或 maxLengthLimit/contractionSpeed 的编辑路径；可见性规则在 field_visibility
         'lengthMode': Bool('lengthMode', label_zh="启用自定义长度", label_en="Enable Custom Length"),
     },
 )
@@ -1019,41 +713,30 @@ def pack_ribbonblade(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# StrainRibbon（拔刀链条，0x3F4DA1D6）—— 固定 340B（type 之后）+ 末尾 path
-# 字段布局对照 EFX_Crimson.bt 的 StrainRibbon struct（社区注释验证）。
-# color/colorRange 是字节 RGBA 色（XYZ type 2），与其他渲染主体（BILLBOARD3D/MESH 等）
-# 同款 color+colorRange+useColorRange 三件套（用户实机确认，2026-07-23）；color3 实为
-# endPointScatter/originReleaseFlag 两个开关 + enableFlowmap（原 color3_z，2026-07-31 关联
-# 检验定为 flowmap 总开关，见下方行内注释）+ color3_w（真保留，恒为 0xCD），共拆成 4 个 byte。
-# 含一片 MT Framework 物理参数（tension/gravity/inertia/displacement 等）——
-# MHW 即 MT Framework 引擎，这些在 MHW 内有效；unkn/spacer 为保留/对齐字段。  
-# ⚠ spacer00/01/02 同源 bug：原按 4B int 读取恒为 0xCDCDCD00 系列，但 MSB==0xCD 判据  
-# 只看最高字节，藏住了最低字节的真实数据——仿 RIBBON.tailTiedToBone 先例拆出最低字节。
-# spacer01→useColorRange、spacer02→useEmission 均已用户实机确认（2026-07-23）；spacer00  
-# 拆出的 unkn00_2 语料中恒为 0（暂无变化样本），语义仍待确认。  
-# ─────────────────────────────────────────────────────────────────────────────
+# StrainRibbon：340 B 固定段和末尾 path。
+# color、colorRange、useColorRange 构成颜色范围组；相邻四字节拆为两个端点开关、
+# Flowmap 总开关和保留字节。spacer00/01/02 的低字节是独立字段，不能合并为 int。
 _STRAINRIBBON_FIXED_SCHEMA = [
-    ('typeFlag', 'i'),   # 原 unkn00_0，语料 1~13 小基数分布，符合类型标记形态
-    ('unknFixed00_1', 'i'),   # 8，语料恒 244，不满足"总字节-8"公式，不套 section_length
-    ('unknFixed00_2',               'B'),        # spacer00 最低字节，语料恒 0，语义待确认  
-    ('spacer00',               ('B', 3)),   # 高 3 字节，纯 0xCD 占位  
-    ('color',                  ('XYZ', 2)), # 固定色 RGBA（原 color1）
-    ('useColorRange',          'B'),        # 原 unkn01_0/spacer01 最低字节；启用 color↔colorRange  
-    ('spacer01',               ('B', 3)),   # 高 3 字节，纯 0xCD 占位  
-    ('colorRange',             ('XYZ', 2)), # 随机颜色范围 RGBA（原 color2，与 color 配对）
-    ('useEmission',            'B'),        # 原 unkn02_0/spacer02 最低字节；启用自发光  
-    ('spacer02',               ('B', 3)),   # 高 3 字节，纯 0xCD 占位  
+    ('typeFlag', 'i'),
+    ('unknFixed00_1', 'i'),
+    ('unknFixed00_2',               'B'),
+    ('spacer00',               ('B', 3)),
+    ('color',                  ('XYZ', 2)),
+    ('useColorRange',          'B'),
+    ('spacer01',               ('B', 3)),
+    ('colorRange',             ('XYZ', 2)),
+    ('useEmission',            'B'),
+    ('spacer02',               ('B', 3)),
     ('emissionStrength',       'f'),
-    ('emissionStrengthJitter', 'f'),        # unkn03_01
+    ('emissionStrengthJitter', 'f'),
     ('spacer03',               'i'),
-    ('startPosition',          ('XYZ', 3)), # 起点（绑定骨骼/生成位置）XYZ 偏移，原 startDirectionX/Y/Z（用户实机确认为真实偏移量，非开关）
+    ('startPosition',          ('XYZ', 3)),
     ('unknFixed03_06',              'f'),
-    ('endPosition',            ('XYZ', 3)), # 末端骨骼 XYZ 偏移
+    ('endPosition',            ('XYZ', 3)),
     ('unknFixed03_10',              'f'),
-    ('width',                  'f'),  # TIML DT 0xF0DF339B("WidthSize") 已确认
+    ('width',                  'f'),  # TIML DT 0xF0DF339B("WidthSize")
     ('widthJitter',            'f'),
-    ('length',                 'f'),  # TIML DT 0xF92E647B("Length") 已确认
+    ('length',                 'f'),  # TIML DT 0xF92E647B("Length")
     ('lengthJitter',           'f'),
     ('startWidth',             'f'),
     ('startOpacity',           'f'),
@@ -1063,29 +746,25 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('unknFixed04_01',              'i'),
     ('uvRepetition',           'i'),
     ('widthwiseUVScalingAlpha','f'),
-    ('spacer04',               'f'),  # 名字像占位，但实测非零值干净重解读为 5.0，可能并非纯占位  
+    ('spacer04',               'f'),  # 出现过非零值，不能当纯占位处理
     ('widthwiseUVScalingBML',  'f'),
     ('endPointScatter',        'B'),        # color3.x（终点扩散开关）
     ('originReleaseFlag',      'B'),        # color3.y（起点解锁标志）
-    # 原 color3_z：模板误标成颜色分量，实为下方 flowmap 8 件套的总开关。
-    ('enableFlowmap',          'B'),        # 原 color3_z
+    ('enableFlowmap',          'B'),
     ('color3_w',               'B'),        # 真保留，恒为 0xCD
-    # 原 unkn06_0..unkn06_7（32B）= flowmap 8 件套。2026-07-31 对全 340B 逐槽滑窗，**只有这
-    # 一个窗口**匹配 RIBBON 已确认的签名 [1,0,1,0,1,0,1,0]，零歧义；最硬的指纹
-    # （accelJitter/strAccelJitter 100% 恒 0、distinct=1）在 RIBBON/LIGHTNING/STRAINRIBBON
-    # 三块全中。原命名自己也撞对了形态：unknFixed06_3("Fixed"=恒定)正落在恒 0 的 accelJitter
-    # 位、unknFlag06_5(只有 {0.0,1.0})正落在 strengthJitter 位。
-    ('flowmapSpeed',                     'f'),  # 原 unkn06_0
-    ('flowmapSpeedJitter',               'f'),  # 原 unkn06_1
-    ('flowmapSpeedCoef',              'f'),  # 原 unkn06_2
-    ('flowmapSpeedCoefJitter',        'f'),  # 原 unknFixed06_3
-    ('flowmapStrength',                  'f'),  # 原 unkn06_4
-    ('flowmapStrengthJitter',            'f'),  # 原 unknFlag06_5
-    ('flowmapStrengthCoef',      'f'),  # 原 unkn06_6
-    ('flowmapStrengthCoefJitter','f'),  # 原 unkn06_7
+    # Flowmap 的四组 value/jitter 参数
+    ('flowmapSpeed',                     'f'),
+    ('flowmapSpeedJitter',               'f'),
+    ('flowmapSpeedCoef',              'f'),
+    ('flowmapSpeedCoefJitter',        'f'),
+    ('flowmapStrength',                  'f'),
+    ('flowmapStrengthJitter',            'f'),
+    ('flowmapStrengthCoef',      'f'),
+    ('flowmapStrengthCoefJitter','f'),
     ('unknEnum06_08_00',           'h'),
     ('unknEnum06_08_01',           'h'),
-    ('lengthBreakpoint',       'f'),        # 以下一片为 MT Framework 物理参数（MHW 引擎）
+    # 物理相关参数
+    ('lengthBreakpoint',       'f'),
     ('lengthBreakpointJitter', 'f'),
     ('breakpointLocation',     'f'),
     ('breakpointLocationJitter','f'),
@@ -1101,14 +780,12 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('inertiaJitter',          'f'),
     ('poseSnapping',           'f'),
     ('poseSnappingJitter',     'f'),
-    ('endBoneID',              'i'),        # 链条末端绑定骨骼 ID（有效）
+    ('endBoneID',              'i'),
     ('positionalAberration_01','i'),
     ('positionalAberration_02','i'),
-    # EPV 颜色槽：写非 0 就用 .epv 对应槽位的颜色顶掉本属性上的值（同 RIBBON.epvcolor
-    # 那套机制）。slot1 管 color、slot2 管 colorRange。原名 colorModeFlag（"2=青色偏移、
-    # 10+=消失"其实就是取到了不同槽位的颜色）/ positionalAberration_04。
-    ('epv_color_slot1',        'i'),        # 原 colorModeFlag / positionalAberration_03
-    ('epv_color_slot2',        'i'),        # 原 positionalAberration_04
+    # 非零 EPV 槽位覆盖本属性颜色；slot1 对应 color，slot2 对应 colorRange
+    ('epv_color_slot1',        'i'),
+    ('epv_color_slot2',        'i'),
     ('positionalAberration_05','i'),
     ('displacement',           ('XYZ', 0)), # MT 遗留，24B
     ('displacementToggle',     'i'),
@@ -1118,8 +795,8 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('unkn09_3', 'f'),
     ('unkn09_4', 'f'),   # 20B
     ('unknEnum10_00',              'i'),
-    ('angleRelated',           'f'),        # 原 unkn10_01，bt 注释+语料恒 360.0 双证实
-    ('angleRelatedJitter',     'f'),        # 原 unkn10_02，bt 注释+语料恒 0.0 双证实
+    ('angleRelated',           'f'),
+    ('angleRelatedJitter',     'f'),
     ('unknEnum11',                 'i'),
     ('unknEnum12_00',              'i'),
     ('unknFixed12_01',              'f'),
@@ -1129,10 +806,9 @@ _STRAINRIBBON_FIXED_SCHEMA = [
 ]
 assert _schema_size(_STRAINRIBBON_FIXED_SCHEMA) == 340, \
     f"_STRAINRIBBON_FIXED_SCHEMA size mismatch: {_schema_size(_STRAINRIBBON_FIXED_SCHEMA)}"
-# enableFlowmap 渲成勾选框（backing 'B' 与 tuple spec 一致 → 字节等价不受影响）。
+# B-backed 开关须保留 backing，确保 schema 字节等价
 _STRAINRIBBON_OVR = {
     'enableFlowmap': Bool('enableFlowmap', backing='B', label_zh="启用流动贴图"),
-    # 与 enableFlowmap 同为 'B' 开关字节，此前漏了没渲成勾选框（用户 2026-09-03 指出）。
     'useColorRange': Bool('useColorRange', backing='B', label_zh="启用颜色范围"),
     'useEmission':   Bool('useEmission',   backing='B', label_zh="启用自发光"),
 }
@@ -1162,17 +838,7 @@ def pack_strainribbon(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Turbulence (variable: type(4) + unkn0(4) + path_len(4) + path + floats...)
-#
-# From efxfile.py: path_len at data_bytes offset 4; after path: 4+8+24*5+20 = 152 B more
-# BT layout (from data_bytes offset 0):
-#   unkn0(4) + path_len(4) + path[path_len] +
-#   forceMultiplier(4) + unkn1[2](8) +
-#   XYZ offsetPos(0)(24) + XYZ offsetPosVel(0)(24) +
-#   XYZ offsetAngle(0)(24) + XYZ offsetAngleVel(0)(24) +
-#   XYZ offsetScale(0)(24) + float unkn3[5](20)
-# ─────────────────────────────────────────────────────────────────────────────
+# Turbulence：typeFlag、长度前缀路径和路径后的固定字段
 
 _TURBULENCE_AFTER_PATH_SCHEMA = [
     ('forceMultiplier', 'f'),
@@ -1188,12 +854,12 @@ _TURBULENCE_AFTER_PATH_SCHEMA = [
     ('unkn3_2', 'i'),
     ('unknEnum3_3', 'i'),
     ('unknFlag3_4', 'i'),
-]  # = 4+8+24*5+20 = 4+8+120+20 = 152 B
+]
 
 
 def unpack_turbulence(data: bytes, off: int = 0):
     """Unpack Turbulence data_bytes (variable-length). Returns (dict, new_off)."""
-    (typeFlag,) = struct.unpack_from('<i', data, off)   # 原 unkn0
+    (typeFlag,) = struct.unpack_from('<i', data, off)
     off += 4
     (path_len,) = struct.unpack_from('<i', data, off)
     off += 4
@@ -1215,30 +881,13 @@ def pack_turbulence(values: dict) -> bytes:
     return out
 
 
-# TURBULENCE 固定字段（typeFlag + path 之后的固定段，同 CUSTOM_FIELD_SCHEMA_MAP[TURBULENCE]）；
-# path 由 codec 单独处理。unknEnum*/unknFlag* 值集未确认，暂按 int。
+# 编辑 schema 包含 typeFlag 与路径后的固定字段；未知整数保持 int
 _TURBULENCE_EDIT_SCHEMA = [('typeFlag', 'i')] + _TURBULENCE_AFTER_PATH_SCHEMA
 TURBULENCE_ATTR = attr_from_legacy(_schema_size(_TURBULENCE_EDIT_SCHEMA), _TURBULENCE_EDIT_SCHEMA)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ⚠ EXTERNSTRAINRIBBON / EXTERNTURBULENCE —— 2026-09-20 FABRICATED（虚构，无真实样本）
-#
-# 全部 efx_samples/ 语料（官方+社区）从未出现过这两个类型作为 Extern 子项；社区 BT
-# 参考模板把它们写成空 `typedef struct{}`；RE Engine DTI 转储对所有 ExternXxx 类只有
-# 统一的通用 mItems 容器字段，不提供任何可区分的结构信息。
-#
-# 这两个 schema 是纯粹的外推假设，依据是：已确认的 3 个"主属性含内嵌路径"的 Extern
-# 覆盖版（UVSEQUENCE/BILLBOARD3D/RGBWATER）无一例外表现为「主属性去掉路径 + 固定
-# 5 字节尾巴（int32+byte）」。STRAINRIBBON/TURBULENCE 的主属性同样含内嵌路径，故按
-# 同一规律外推：
-#   EXTERNSTRAINRIBBON = STRAINRIBBON 主属性路径前的 340B 定长段 + 5B 尾巴 = 345B
-#   EXTERNTURBULENCE   = TURBULENCE 主属性 typeFlag(4B)+路径后 152B 定长段 + 5B 尾巴 = 161B
-# 尾巴字段命名/取值完全是猜的（全部填 0，不借用 RGBWATER 那组"恒为1/0"的实测值，避免
-# 制造"这也是实测出来的"的错觉）。字段名/标签沿用对应主属性的既有命名（同一 Field
-# 对象直接复用），只有 unkn_tail0/1 是新增的、明确未知的猜测字段。
-# 一旦真的遇到样本，先核对字节是否吻合，不吻合要立刻改，不要因为代码能跑就默认对。
-# ─────────────────────────────────────────────────────────────────────────────
+# EXTERNSTRAINRIBBON / EXTERNTURBULENCE 是无真实样本支撑的外推 schema。
+# 其布局假设为主属性去除内嵌路径后追加 5 字节尾巴；遇到真实样本前不得将其视为格式事实。
 
 EXTERN_STRAINRIBBON_ATTR = Attribute(
     size=345,
@@ -1261,41 +910,18 @@ assert _schema_size(EXTERN_TURBULENCE_ATTR.schema) == 161, \
     f"EXTERN_TURBULENCE_ATTR size mismatch: {_schema_size(EXTERN_TURBULENCE_ATTR.schema)}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Lightning (variable: fixed 550 B in data_bytes + path_len(4) + path)
-#
-# data_bytes: [0..545] = fixed fields, [546] = int path_len, [550..] = path
-# From efxfile.py: path_len at offset 550 from block start = offset 546 in data_bytes
-#
-# Lightning fixed structure (546 B in data_bytes):
-# From BT: unkn00[2](8)+spacer0(4)+XYZ color1/2/emissive(2)(4 each = 12)+unkn02-04(12)+  
-#   spacer05_00(4)+unkn05_01(4)+sineWaveFreq/j(8)+alphaThreshold(4)+unkn05_05-07(12)+  
-#   outwardsExpansion/j(8)+unkn05_10(4)+unkn05_11-13(12)+spacer05_14(4)+  
-#   targetBoneID(4)+unkn05_16(4)+unkn05_17(4)+EPVColorSlot1/2(8)+unkn05_20-24(20)+
-#   inflection groups (2x20=40)+glow/length/width(16)+startWidth group(16)+
-#   unkn05_45-48(16)+unkn06[2](8)+unkn07_00-09(40)+unkn07_10-27(72)+
-#   unkn08[2](8)+unkn09[20](80)+unkn10[4](16)+unkn11[2](8)+unkn12[2](8)+
-#   unkn13[6](24)+unkn14[3](12)+unkn15[9](36)+short unkn16(2)
-# Let me not enumerate field-by-field: just use fixed blob + path for safety
-# since the block is correct from _known_attr_size already.
-# Actually: we need byte-perfect unpack. Let me define the full fixed schema.
-# ─────────────────────────────────────────────────────────────────────────────
+# Lightning：固定字段 + 长度前缀路径。
 
 _LIGHTNING_FIXED_SCHEMA = [
-    # header: unkn00[2](8) + spacer0(4)  
-    ('typeFlag', 'i'),   # 原 unkn00_0
+    ('typeFlag', 'i'),
     ('unknFixed00_1', 'i'),
     ('spacer0',             'i'),
-    # XYZ color1/2/emissive as (2) type = 4B each: 3*4=12B, then unkn02-04 = 3*4=12B
     ('color1',              ('XYZ', 2)),
     ('unkn02',              'i'),
     ('color2',              ('XYZ', 2)),
     ('unkn03',              'i'),
     ('emissive',            ('XYZ', 2)),
-    ('unkn04',              'f'),   # 原 unknEnum04：实为 float（全语料位模式=0.0/0.4/1.0…100.0 干净浮点）
-    # group05 block: spacer05_00+unkn05_01+sineFreq/j+alphaThreshold+05_05-07+  
-    #   outExp/j+05_10+05_11-13+spacer05_14+targetBone+05_16+05_17+EPV1/2+05_20-24  
-    # = 4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 25*4=100B
+    ('unkn04',              'f'),
     ('spacer05_00',         'i'),
     ('unknEnum05_01',           'i'),
     ('sineWaveFreq',        'f'),
@@ -1321,40 +947,32 @@ _LIGHTNING_FIXED_SCHEMA = [
     ('unknFixed05_22',           'i'),
     ('unknFixed05_23',           'f'),
     ('unknFixed05_24',           'f'),
-    # inflection1 group: inflectionPointCount+uInfl/j+vInfl/j = 5*4=20B
     ('inflectionPointCount',          'i'),
     ('uInflectionAngleLimit',         'f'),
     ('uInflectionAngleLimitJitter',   'f'),
     ('vInflectionAngleLimit',         'f'),
     ('vInflectionAngleLimitJitter',   'f'),
-    # inflection2 group: 5*4=20B
     ('inflectionPointCount2',         'i'),
     ('uInflectionAngleLimit2',        'f'),
     ('uInflectionAngleLimitJitter2',  'f'),
     ('vInflectionAngleLimit2',        'f'),
     ('vInflectionAngleLimitJitter2',  'f'),
-    # glow/length/width group: glow/j + length/j = 4*4=16B
     ('glow',            'f'),
     ('glowJitter',      'f'),
     ('length',          'f'),
     ('lengthJitter',    'f'),
-    # width group: width/j = 2*4=8B
     ('width',           'f'),
     ('widthJitter',     'f'),
-    # startWidth group: startWidth+uvRepetitionStart+endWidth+uvRepetitionEnd = 4*4=16B
     ('startWidth',              'f'),
     ('uvRepetitionStart',       'f'),
     ('endWidth',                'f'),
     ('uvRepetitionEnd',         'f'),
-    # unkn05_45-48: 4*4=16B
     ('unknFixed05_45',   'i'),
     ('unkn05_46',   'i'),
     ('unknBitmask05_47',   'i'),
     ('unknFlag05_48',   'i'),
-    # unkn06[2]: 2*4=8B
     ('unknBitmask06_0', 'i'),
     ('unknBitmask06_1', 'i'),
-    # unkn07_00-09: 10*4=40B
     ('radiusLimit',         'f'),
     ('radiusLimitJitter',   'f'),
     ('unkn07_02',           'f'),
@@ -1365,7 +983,6 @@ _LIGHTNING_FIXED_SCHEMA = [
     ('unkn07_07',           'f'),
     ('unknFixed07_08',           'f'),
     ('unkn07_09',           'f'),
-    # unkn07_10-27: 18*4=72B
     ('unkn07_10',   'f'),
     ('branchLength','f'),
     ('branchLengthJitter','f'),
@@ -1384,67 +1001,42 @@ _LIGHTNING_FIXED_SCHEMA = [
     ('unkn07_25',   'f'),
     ('unkn07_26',   'f'),
     ('unkn07_27',   'f'),
-    # unkn08[2]: 2*4=8B
     ('unknFixed08_0', 'i'),
     ('unknEnum08_1', 'i'),
-    # unkn09[20]: 20*4=80B
     ('unkn09',      ('f', 20)),
-    # unkn10[4]: 4*4=16B
     ('unkn10_0', 'f'),
     ('unknEnum10_1', 'i'),
     ('unknFlag10_2', 'i'),
     ('unknFixed10_3', 'i'),
-    # unkn11[2]: 2*4=8B
     ('unkn11_0', 'f'),
     ('unkn11_1', 'f'),
-    # unkn12[2]: 2*4=8B
     ('unknFixed12_0', 'i'),
     ('unknEnum12_1', 'i'),
-    # 原 unkn13(('f',6), 24B @472)：整块渲成一个 ARRAY_STR 逗号字符串框。2026-07-31 拆开——
-    # [0] 众数 360.0(94.6%)，其余 90/120/180 —— 干净的整圆角度预设，与 STRAINRIBBON.
-    #     angleRelated（恒 360.0）、HOMING.turnRate（度/秒）同款形态，故只标"角度相关"，
-    #     具体语义未测。
-    # [3] 语料 99.4% 为 0，罕见的两个"非零"值其实是 float 位模式 0x00000002 / 0x00000003
-    #     （按 float 读会显示成 2.8e-45 / 4.2e-45 这种无意义的非规格化小数，肉眼与 0 无法
-    #     区分）——它其实是 int，取值 {0,2,3}，故改按 'i' 解读（字节布局不变）。
-    ('unknAngle13_0',   'f'),  # 原 unkn13[0]，角度相关
-    ('unknFixed13_1',   'f'),  # 恒 0.0
-    ('unknFixed13_2',   'f'),  # 恒 0.0
-    ('unknEnum13_3',    'i'),  # 原按 float 读，实为 int，取值 {0,2,3}
-    ('unknFixed13_4',   'f'),  # 恒 1.0
-    ('unknFixed13_5',   'f'),  # 恒 1.0
-    # unkn14[3]: 3*4=12B
+    ('unknAngle13_0',   'f'),
+    ('unknFixed13_1',   'f'),
+    ('unknFixed13_2',   'f'),
+    ('unknEnum13_3',    'i'),
+    ('unknFixed13_4',   'f'),
+    ('unknFixed13_5',   'f'),
     ('unknEnum14_0', 'i'),
     ('unknFlag14_1', 'i'),
     ('unknFixed14_2', 'i'),
-    # 原 unkn15(('f',9), 36B)：整块只渲成一个 ARRAY_STR 逗号字符串框。2026-07-31 依 official
-    # 全语料 483 个 LIGHTNING 块拆分——
-    # · unkn15[0] 根本不是 float：全语料只有 2 种取值（字节 00 00 CD CD 占 91.7% /
-    #   00 01 CD CD 占 8.3%），高 2 字节恒 0xCD 纯占位、byte1 是真实 0/1 布尔。这与 RIBBON
-    #   的 enableFlowmap（1 字节真值 + 3 字节 0xCD spacer，紧贴其 flowmap 8 件套）是同一
-    #   布局，据此命名；⚠ 语义未实机验证。
-    # · unkn15[1..8] 就是 flowmap 8 件套，与 RIBBON 已确认的同组逐位同构，四条结构指纹全中：
-    #   ① 四个 value 槽众数均 1.0、四个 jitter 槽众数均 0.0 的交替；
-    #   ② accelJitter / strAccelJitter 两槽在 LIGHTNING 与 RIBBON 都是 100% 恒 0(distinct=1)；
-    #   ③ value 槽取值多样性远高于 jitter 槽；④ strength 是多样性最高的一项（两边都如此）。
-    #   错位一格的 unkn15[0..7] 完全对不上（会把上述 0xCD 占位槽当成 flowmapSpeed）。
-    ('unknFixed15_0a',                   'B'),  # 恒 0
-    ('enableFlowmap',                    'B'),  # byte1，真实 0/1（8.3% 置位）
-    ('spacer15_0',                       ('B', 2)),  # 恒 0xCD 占位
-    ('flowmapSpeed',                     'f'),  # 原 unkn15[1]
-    ('flowmapSpeedJitter',               'f'),  # 原 unkn15[2]
-    ('flowmapSpeedCoef',              'f'),  # 原 unkn15[3]
-    ('flowmapSpeedCoefJitter',        'f'),  # 原 unkn15[4]
-    ('flowmapStrength',                  'f'),  # 原 unkn15[5]
-    ('flowmapStrengthJitter',            'f'),  # 原 unkn15[6]
-    ('flowmapStrengthCoef',      'f'),  # 原 unkn15[7]
-    ('flowmapStrengthCoefJitter','f'),  # 原 unkn15[8]
-    # short unkn16: 2B
+    ('unknFixed15_0a',                   'B'),
+    ('enableFlowmap',                    'B'),
+    ('spacer15_0',                       ('B', 2)),
+    ('flowmapSpeed',                     'f'),
+    ('flowmapSpeedJitter',               'f'),
+    ('flowmapSpeedCoef',              'f'),
+    ('flowmapSpeedCoefJitter',        'f'),
+    ('flowmapStrength',                  'f'),
+    ('flowmapStrengthJitter',            'f'),
+    ('flowmapStrengthCoef',      'f'),
+    ('flowmapStrengthCoefJitter','f'),
     ('unknEnum16',      'h'),
 ]
 assert _schema_size(_LIGHTNING_FIXED_SCHEMA) == 546, \
     f"_LIGHTNING_FIXED_SCHEMA size mismatch: {_schema_size(_LIGHTNING_FIXED_SCHEMA)}"
-# enableFlowmap 渲成勾选框（backing 'B' 与 tuple spec 一致 → 字节等价不受影响）。
+# B-backed 开关须保留 backing，确保 schema 字节等价
 _LIGHTNING_OVR = {
     'enableFlowmap': Bool('enableFlowmap', backing='B', label_zh="启用流动贴图"),
 }
@@ -1474,66 +1066,22 @@ def pack_lightning(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RgbWater (variable: fixed 156 B + path_len(4) + path)
-#
-# From efxfile.py: path_len at offset 4+156 in block = offset 156 in data_bytes
-# BT ExternRgbWater:
-#   unkn0(4)+XYZ color(2)[2](8)+
-#   brightnessSlot1(4)+emissiveMultiplier(4)+brightnessSlot2(4)+
-#   brightnessSlotMult1(4)+brightnessSlotMult2(4)+opacity(4)+normalSharpness(4)+
-#   unknownInt[3](12)+unkn2[26](104)+path_len(4)+path
-# Fixed before path: 4+8+7*4+12+104 = 4+8+28+12+104 = 156 B
-# ─────────────────────────────────────────────────────────────────────────────
+# RgbWater：固定字段 + 长度前缀路径。
 
 _RGBWATER_FIXED_SCHEMA = [
-    # ── 三段 10/10/9 字段的生命期时序块，与 RGBFIRE 的 fireColorParam_/smokeColorParam_
-    # 逐位同构（flag │ appear+J │ keep+J │ vanish+J │ lighting · lifeType · correctColorNo）。
-    # 2026-09-03 用户实机把三段全部定死：
-    #     段0 → colorSpecular   段1 → colorSheet   段2 → waterLerpGtoB
-    # 也就是说**这三段对应的是本块的三个「颜色向」参数，不是四个 intensity**——四个强度
-    # 一个生命期段都没有。这个模型是自洽的：决定水面颜色的正好就是这三样。
-    #
-    # 语料侧独立印证（前两条是绝对零门，不是相关性）：
-    #   intensitySheet==0 的 97 个块 / colorSheet 全黑的 42 个块 → 动过段1 的 0.0%
-    #   intensitySpecular==0 的 199 个块 → 开过段0 useLife 的 0.0%
-    #   waterLerpGtoB==0 时段2 useLife 10.2%、≠0 时 24.4%（段2 唯一方向为正的关联；
-    #     不是零门是因为 0 本身是合法取值——插值的一端，不代表「这层关了」）
-    #   ⚠ 段2 曾被怀疑是 cubemap，已排除：cubemap 真正启用时段2 useLife 19.4%、
-    #     未启用 22.2%，持平且方向还是反的。
-    #
-    # 段2 只有 9 位（没有 correctColorNo），是三段唯一的结构差异——2026-09-19 跟
-    # devlecture §10.1.2 对上了：面板只有 CorrectColorSpecularNo/CorrectColorSheetNo
-    # 两个下拉框，没有第三个对应 waterLerpGtoB 段的，字节结构和官方面板严丝合缝。
-    #
-    # 2026-09-20 用户拿自制 ABCD 四通道测试贴图（R=A、G=B、B=C、Alpha=D，四个字母互不
-    # 重叠画在贴图四个通道里）实机逐条测出两条遮罩公式：
-    #   水膜(Sheet)遮罩    = mix(Alpha, Blue, waterLerpGtoB)——0 时纯 Alpha 形状、1 时
-    #                        纯 Blue 形状，两次都是单通道的干净整块，不是交集也不是叠加。
-    #   高光(Specular)遮罩 = R × G × Alpha 三通道交集——用连通域检测比对实机截图，
-    #                        三块碎片的形状类别、相对位置精确对应，不是渲染噪声。
-    # `waterLerpGtoB` 这个名字本身就是官方 TIML DT 确认过的原名（不是我们瞎起的），但
-    # 字面意思"G 混入 B"跟实测的"Alpha 混入 Blue"对不上——保留内部名（DTI 权威），
-    # 面板标签改成准确描述实测行为的说法，不用"GtoB"这个字面翻译。
-    ('typeFlag',                 'i'),   # 原 unkn0
-    # ── 头部 2 色 + 7 float。2026-09-03 用户在 Blender 里逐条建 TIML 轨道实测，把 4 个
-    # 位置钉到了官方 TimelineParam 名（DT hash 见 timl/names.py::FIELD_TO_DT）。
-    # 原 ('color', ('XYZ[]', 2, 2)) 拆成两个 ('XYZ', 2)：字节布局完全不变（unpack/pack
-    # 内部本就逐个走 _unpack_xyz），拆开纯粹为了让两个颜色各自拿到名字——原先界面显示
-    # 的是 color[0]/color[1]，没法和 ColorSpecular/ColorSheet 对上。
-    ('colorSpecular',            ('XYZ', 2)),   # 原 color[0]。实测 = DT ColorSpecular
-    ('colorSheet',               ('XYZ', 2)),   # 原 color[1]。实测 = DT ColorSheet
-    ('colorRate',                'f'),   # 原 brightnessSlot1。实测 = DT ColorRate
-    ('waterLerpGtoB',            'f'),   # 原 emissiveMultiplier。实测 = DT WaterLerpGtoB
-    ('intensityCubeMap',         'f'),   # 原 brightnessSlot2。实测 = DT IntensityCubeMap
-    ('intensitySpecular',        'f'),   # 原 brightnessSlotMultiplier1。实测 = DT IntensitySpecular
-    ('intensitySheet',           'f'),   # 原 brightnessSlotMultiplier2。实测 = DT IntensitySheet
-    ('intensityAlpha',           'f'),   # 原 opacity。实测 = DT IntensityAlpha
-    # 头部到此与官方 8 个 TimelineParam 一一对应且全部实机确认。剩下这一个 float 没有
-    # 对应 DT——引擎声明 6 个 float 参数、这里有 7 个 float，必有一个不可动画，就是它。
-    # devlecture P27（image15.PNG）：面板上紧跟在 CubemapAsset 前面的滑条正是
-    # NormalSharpness，默认 0.3——跟这里众数 0.3 占 73% 精确吻合。
-    ('normalSharpness',          'f'),   # 原 unknownFloat
+    # waterLerpGtoB 的字段名对应 TIML 通道名，标签按其实际的 Alpha/Blue 混合行为写
+    ('typeFlag',                 'i'),
+    # 两个颜色分开写，合并成数组后界面只能显示 color[0]/color[1]
+    # 头部 8 个字段可被 TIML 驱动，DT hash 见 timl/names.py::FIELD_TO_DT
+    ('colorSpecular',            ('XYZ', 2)),
+    ('colorSheet',               ('XYZ', 2)),
+    ('colorRate',                'f'),
+    ('waterLerpGtoB',            'f'),
+    ('intensityCubeMap',         'f'),
+    ('intensitySpecular',        'f'),
+    ('intensitySheet',           'f'),
+    ('intensityAlpha',           'f'),
+    ('normalSharpness',          'f'),   # 不可动画，无对应 DT 通道
     ('specularColorParam_useLife', 'i'),
     ('specularColorParam_appearFrame', 'i'),
     ('specularColorParam_appearFrameJitter', 'i'),
@@ -1543,8 +1091,6 @@ _RGBWATER_FIXED_SCHEMA = [
     ('specularColorParam_vanishFrameJitter', 'i'),
     ('specularColorParam_lighting', 'i'),
     ('specularColorParam_lifeType', 'i'),
-    # 原 unkn9：跟 RGBFIRE 的 fireColorParam_correctColorNo 同一形态（取值集合小、
-    # 跟 devlecture 的 CorrectColorSpecularNo 对应），同一 EPV 槽位覆盖机制。
     ('specularColorParam_correctColorNo', 'i'),
     ('sheetColorParam_useLife', 'i'),
     ('sheetColorParam_appearFrame', 'i'),
@@ -1555,7 +1101,7 @@ _RGBWATER_FIXED_SCHEMA = [
     ('sheetColorParam_vanishFrameJitter', 'i'),
     ('sheetColorParam_lighting', 'i'),
     ('sheetColorParam_lifeType', 'i'),
-    ('sheetColorParam_correctColorNo', 'i'),   # 原 unkn9，对应 CorrectColorSheetNo
+    ('sheetColorParam_correctColorNo', 'i'),
     ('waterLerpParam_useLife', 'i'),
     ('waterLerpParam_appearFrame', 'i'),
     ('waterLerpParam_appearFrameJitter', 'i'),
@@ -1565,15 +1111,12 @@ _RGBWATER_FIXED_SCHEMA = [
     ('waterLerpParam_vanishFrameJitter', 'i'),
     ('waterLerpParam_lighting', 'i'),
     ('waterLerpParam_lifeType', 'i'),
-]  # = 4+8+28+12+104 = 156 B
+]
 assert _schema_size(_RGBWATER_FIXED_SCHEMA) == 156, \
     f"_RGBWATER_FIXED_SCHEMA size mismatch: {_schema_size(_RGBWATER_FIXED_SCHEMA)}"
 RGBWATER_ATTR = attr_from_legacy(
     _schema_size(_RGBWATER_FIXED_SCHEMA), _RGBWATER_FIXED_SCHEMA,
-    # 2026-09-20 比照 RGBFIRE 精简：面板按 [高光]/[水膜]/[环境反射]/[插值] 分组显示
-    # （见 panels.py 的 RGBWATER 专属分组逻辑），组内字段不再重复"高光/水膜/水色插值"
-    # 前缀——分组小标题已经给出上下文。`waterLerpGtoB` 的标签改成描述实测行为
-    # （Alpha 混入蓝通道），不用字面直译的"绿→蓝"（原名 DTI 权威保留，只改标签）。
+    # 标签不带"高光/水膜"前缀：panels.py 分组绘制，小标题已给出上下文，不要补前缀
     labels={
         'colorSpecular': '颜色',
         'colorSheet': '颜色',
@@ -1608,15 +1151,7 @@ RGBWATER_ATTR = attr_from_legacy(
     },
 )
 
-# EXTERNRGBWATER（Extern 覆盖版，2026-07）：与主属性 _RGBWATER_FIXED_SCHEMA (156B)
-# 完全同构，无 path；语料实测（48/48 元素）额外多出固定 5B 尾巴 int32(恒为1)+
-# byte(恒0)，语义未知。161B/元素（156+5）。
-# 'color' 原 spec 是 ('XYZ[]', 2, 2)（嵌套数组，_check_schema_all_flat 判定不可
-# 平铺展开）——按字节序原样拆成两个独立 ('XYZ', 2) 字段（unpack/pack 内部本就是
-# 逐个循环 _unpack_xyz/_pack_xyz，拆开纯属重命名，字节布局不变），使整个 schema
-# 可平铺表示，从而复用跟其它 6 个已支持 EXTERN 类型一样的通用 flat schema 编辑路径。
-# 主属性 schema 现在本身就是全平铺的（'color' 已拆成 colorSpecular/colorSheet 两个
-# ('XYZ', 2)），直接照抄即可——原先在这里把 XYZ[] 拆成 color_0/color_1 的特判已无必要。
+# EXTERNRGBWATER：与主属性 schema 同构、无 path，每元素多出 5 B 尾巴，语义未知。
 EXTERN_RGBWATER_SCHEMA = list(_RGBWATER_FIXED_SCHEMA)
 EXTERN_RGBWATER_SCHEMA.append(('unkn_tail0', 'i'))
 EXTERN_RGBWATER_SCHEMA.append(('unkn_tail1', 'B'))
@@ -1644,24 +1179,14 @@ def pack_rgbwater(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ─────────────────────────────────────────────────────────────────────────────
-# DISPATCH TYPES: custom unpack/pack (not expressible as flat schemas)
-# ─────────────────────────────────────────────────────────────────────────────
+# 分派型 custom codec：内部元素按类型决定布局
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PtBehavior (variable: EFX_Behavior with per-element dispatch)
-#
-# data_bytes layout:
-#   unkn0(4) + behav_type_len(4) + para_count(4) +
-#   char b_type[behav_type_len] +
-#   EFX_Behav[para_count] (each: long unkn(4)+long const0(4)+int t(4)+data(t-dependent))
-# ─────────────────────────────────────────────────────────────────────────────
+# PtBehavior：行为类型字符串与按 ``t`` 分派的参数列表
 
 def unpack_ptbehavior(data: bytes, off: int = 0):
     """Unpack PtBehavior data_bytes. Returns (dict, new_off)."""
-    (typeFlag,) = struct.unpack_from('<i', data, off); off += 4   # 原 unkn0（块级头字段，跟下面每个参数各自的 unkn0 无关）
+    (typeFlag,) = struct.unpack_from('<i', data, off); off += 4
     (behav_type_len,) = struct.unpack_from('<i', data, off); off += 4
     (para_count,) = struct.unpack_from('<i', data, off); off += 4
     b_type = data[off:off + behav_type_len]
@@ -1769,26 +1294,11 @@ def pack_ptbehavior(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Material (variable: nested Tex_Block→Tex_Set dispatch)
-#
-# data_bytes layout:
-#   int64 unkn00(8) + int block_count(4) +
-#   block_count × Tex_Block:
-#     long mat_name_hash(4) + long mat_shader(4) + long unkn03(4) + int set_count(4) +
-#     set_count × Tex_Set:
-#       long set(4) + int unkn0(4) + long t(4) + int type(4) +
-#       type-dependent data:
-#         0x80: long head(4)+long NULL(4)+int path_len(4)+char p[path_len]  
-#         0x06: int64 NULL(8)+int unkn(4)  
-#         0x03/0x0A/0x0C: long NULL[3](12)  
-#         0x15: float unkn[6](24)
-#         else: long unkn_type(4)
-# ─────────────────────────────────────────────────────────────────────────────
+# Material：Tex_Block / Tex_Set 的嵌套类型分派
 
 def unpack_material(data: bytes, off: int = 0):
     """Unpack Material data_bytes. Returns (dict, new_off)."""
-    (typeFlag,) = struct.unpack_from('<q', data, off); off += 8   # 原 unkn00（8B/int64，语料仍呈小基数分布）
+    (typeFlag,) = struct.unpack_from('<q', data, off); off += 8
     (block_count,) = struct.unpack_from('<i', data, off); off += 4
     blocks = []
     for _ in range(block_count):
@@ -1867,19 +1377,16 @@ def pack_material(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# TonemapFilter (variable: fixed 24B data + int path_len + path bytes)
-# BT: int unkn0[2](8B) + long unkn1(4B) + float unkn2[3](12B) + int path_len(4B) + char p[path_len]
-# ─────────────────────────────────────────────────────────────────────────────
+# TonemapFilter：24 B 固定字段和长度前缀路径
 
 _TONEMAPFILTER_FIXED_SCHEMA = [
-    ('typeFlag', 'i'),   # 原 unkn0_0，语料仅 1 例
-    ('unknFixed0_1', 'i'),   # 8B
-    ('unkn1', 'i'),        # 4B
-    ('intensity', 'f'),      # 原 unknFixed2_0；2026-08 用户实机确认为生效强度
-    ('triggerRadius', 'f'),  # 原 unknFixed2_1；2026-08 用户实机确认为生效范围（相机需在此范围内才触发）
-    ('unknFixed2_2', 'f'),   # 12B，仍未确认
-]  # 24B
+    ('typeFlag', 'i'),
+    ('unknFixed0_1', 'i'),
+    ('unkn1', 'i'),
+    ('intensity', 'f'),
+    ('triggerRadius', 'f'),
+    ('unknFixed2_2', 'f'),
+]
 TONEMAPFILTER_ATTR = attr_from_legacy(
     _schema_size(_TONEMAPFILTER_FIXED_SCHEMA), _TONEMAPFILTER_FIXED_SCHEMA,
     labels={'intensity': "生效强度", 'triggerRadius': "生效范围"},
@@ -1904,67 +1411,47 @@ def pack_tonemapfilter(values: dict) -> bytes:
     return out
 
 
-# TUBELIGHT 固定段的 typed Attribute（字段进 FIELD_REGISTRY → label/控件/过滤）。
-# .schema 降级与原裸 tuple 逐字节等价（Int→'i'/Float→'f'），codec 与 on-disk 尺寸不变。
+# TUBELIGHT 的 typed Attribute；降级 schema 必须与 on-disk 字节布局等价
 TUBELIGHT_ATTR = Attribute(size=124, fields=[
-    Int("typeFlag"),                                   # off0  原 unkn0_0
+    Int("typeFlag"),
     Int("unknFixed0_1"),                               # off4
-    # off8 原 int unknEnum0_2：全语料(22 块/17 文件)只有 2 种取值 13434880/13435136=
-    # 0x00CD0000/0x00CD0100，拆成 4 字节可见：byte0 恒 0x00，byte2 恒 0xCD（未初始化占位，
-    # 同 off100 unkn5_1 的签名），byte3 恒 0x00——只有 byte1(0/1) 是真实数据，仿
-    # RIBBON.tailTiedToBone 先例拆分。样本量小（仅 22 块），结论待更多语料验证。
-    Byte("unknFixed0_2a"),                             # off8  恒 0x00
-    Bool("unknBool0_2", backing='B'),                  # off9  真实数据，含义未知
-    Byte("unknFixed0_2_cd"),                           # off10 恒 0xCD，未初始化占位
-    Byte("unknFixed0_2b"),                              # off11 恒 0x00
-    # off12：与「起点/终点的光是否照亮周围环境」有关，具体形式待进一步测试。
-    # ⚠ 原注释猜它是纹理滚动速度，已证伪——那个是 off60（textureScrollSpeed）。
-    Float("unkn1_0"),                                  # off12
-    # ⚠ off16/off20 是一次**交换式改名**（用户 2026-09-04 逐条建 TIML 轨道测出来的）：
-    # 原先叫 lightIntensity 的 off20 其实由 DT CoreThickness 驱动，真正的 DT LightIntensity
-    # 落在 off16（原 unknFixed1_1）。名字互换后 `lightIntensity` 这个 identifier 指向了
-    # **另一个偏移**——老 .blend 里的同名 item 会被当前 schema 直接按名字匹配上，
-    # field_rename_aliases 只在查不到时才兜底，帮不上忙 → 含 TUBELIGHT 的旧 .blend 必须
-    # 重新导入，否则该字段的编辑会写到错误偏移。（全语料 TUBELIGHT 仅 22 块，影响面很小。）
-    Float("lightIntensity", label_zh="光照强度"),      # off16 原 unknFixed1_1，DT LightIntensity
-    # ⚠ off20 上一版（0.6.6）误定成 coreThickness，实为 CoreIntensity；真正由 DT
-    # CoreThickness 驱动的是下面的 columnRadius。
-    Float("coreIntensity", label_zh="核心亮度"),       # off20 原 lightIntensity，DT CoreIntensity
+    # 该 int 拆为固定 byte、未知 bool、填充 byte、固定 byte
+    Byte("unknFixed0_2a"),
+    Bool("unknBool0_2", backing='B'),
+    Byte("unknFixed0_2_cd"),
+    Byte("unknFixed0_2b"),
+    Float("unkn1_0"),
+    # 这两个稳定字段名已指向明确偏移；不能复用旧名称，否则旧 .blend 会写入错误字段
+    Float("lightIntensity", label_zh="光照强度"),
+    Float("coreIntensity", label_zh="核心亮度"),
     Float("coreIntensityJitter", label_zh="核心亮度抖动"),  # off24
     Float("columnLengthModifier", label_zh="光柱长度修正"),  # off28
-    # columnRadius 由 DT CoreThickness 驱动。**名字保持不动**：这个名字是实机确认过的，
-    # 且「光柱半径」与「核心粗细」本就是同一个量的两种叫法；而且 coreThickness 这个
-    # identifier 刚在 0.6.6 里指过 off20，再复用一次会给旧 .blend 又埋一个错位坑。
-    # 字段名不必与 DT 名一致（PLANE.width↔SizeX、TRANSFORM2D.rotation↔rot 都是先例）。
-    Float("columnRadius", label_zh="光柱半径"),        # off32 DT CoreThickness
+    # 不将其重命名为 CoreThickness，避免和旧 .blend 字段名冲突
+    Float("columnRadius", label_zh="光柱半径"),
     Float("columnRadiusJitter", label_zh="光柱半径抖动"),    # off36
     Float("columnEdgeSoftness", label_zh="光柱边缘柔化"),    # off40
-    Float("effectiveRadius", label_zh="光照有效半径"),  # off44 原 unkn1_8，DT EffectiveRadius
-    Float("unknFixed1_9"),                             # off48 含义不明
-    Float("unkn1_10"),                                 # off52 可能与光柱长度有关
+    Float("effectiveRadius", label_zh="光照有效半径"),  # off44 DT EffectiveRadius
+    Float("unknFixed1_9"),                             # off48
+    Float("unkn1_10"),                                 # off52
     Float("unkn2_0"),                                  # off56
-    Float("textureScrollSpeed", label_zh="贴图滚动速度"),  # off60 原 unkn2_1
+    Float("textureScrollSpeed", label_zh="贴图滚动速度"),  # off60
     Int("unknFixed3_0"),                               # off64
     Int("unknFixed3_1"),                               # off68
     Int("unkn3_2"),                                    # off72
     Int("headColorEpvSlot", label_zh="EPV 颜色修正槽位"),  # off76
     Int("headColor", label_zh="光柱起点颜色"),          # off80 打包 RGBA int
-    # ── ⚠ 头/尾几何四件套：高度对称但对不齐，待进一步探索 ────────────────────────
-    # 用户 2026-09-04 观察：tailPlaneOffset(off112) 像是**起点**的实边位置、unkn6b_1(off116)
-    # 像起点的虚边；columnLength(off84) 像**终点**的实边、tailGlowSpread(off88) 像终点虚边。
-    # 也就是说「实边 / 虚边」× 「起点 / 终点」正好四格，语义位置和表现都高度对称——但
-    # 实测并不完全按这个分法走，而且我们现有的 head/tail 命名可能与实际的头尾**是反的**。
-    # 在测清楚之前四个名字都不动，只记下这条线索。
-    Float("columnLength", label_zh="光柱长度"),         # off84 起点 headColor→终点 tailColor
-    Float("tailGlowSpread", label_zh="尾光扩散(变长+边缘虚化)"),  # off88 一参两效
-    Float("tailEffectiveRadius", label_zh="终点有效半径"),  # off92 原 backFaceTintMode
-    Int("unknFixed5_0"),                               # off96  通常为 24
-    Int("unkn5_1"),                                    # off100 恒 0xCDCDCDCD 未初始化标记
+    # ⚠ head/tail 这组命名未经确认，可能与实际的头尾相反。改这四个字段的行为前，
+    #   先用具体数值确认哪一端是起点，不要按名字推断。
+    Float("columnLength", label_zh="光柱长度"),         # off84
+    Float("tailGlowSpread", label_zh="尾光扩散(变长+边缘虚化)"),  # off88
+    Float("tailEffectiveRadius", label_zh="终点有效半径"),  # off92
+    Int("unknFixed5_0"),                               # off96
+    Int("unkn5_1"),                                    # off100 保留填充（0xCD 占位）
     Int("unknFixed6a_0"),                              # off104
     Int("tailColor", label_zh="光柱终点颜色"),          # off108 打包 RGBA int
     Float("tailPlaneOffset", label_zh="终点发光面前后位置"),  # off112
-    Float("unkn6b_1"),                                 # off116 可能与发光光圈相关
-    Float("headEffectiveRadius", label_zh="起点有效半径"),  # off120 原 frontFaceTintMode
+    Float("unkn6b_1"),                                 # off116
+    Float("headEffectiveRadius", label_zh="起点有效半径"),  # off120
 ])
 _TUBELIGHT_FIXED_SCHEMA = TUBELIGHT_ATTR.schema
 assert _schema_size(_TUBELIGHT_FIXED_SCHEMA) == 124, \
@@ -1991,29 +1478,23 @@ def pack_tubelight(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EmitterShapeMesh (variable: 32B fixed + null-terminated path1，块在 null 处结束)
-#
-# BT (EFX_Crimson.bt)：int unkn0[2](8)+long unkn1[3](12)+byte unkn2[8](8)+
-#   int unkn3(4) = 32B fixed，随后 null-terminated path1（Mod3 路径）。
-# 空路径时块为 33B（32B fixed + 单个 null）。全字段 int/byte → 天然字节完美。
-# ─────────────────────────────────────────────────────────────────────────────
+# EmitterShapeMesh：32 B 固定字段和 NUL 终止路径
 
 _EMITTERSHAPEMESH_FIXED_SCHEMA = [
-    ('typeFlag', 'i'),   # 原 unkn0_0
-    ('unknFixed0_1', 'i'),   # 8B
+    ('typeFlag', 'i'),
+    ('unknFixed0_1', 'i'),
     ('unkn1_0', 'i'),
     ('unkn1_1', 'i'),
-    ('unkn1_2', 'i'),   # 12B (long=4B)
+    ('unkn1_2', 'i'),
     ('unknFlag2_0', 'b'),
-    ('ddsUsageType', 'b'),  # 原 unkn2_1；EFX.bt(新，refs/EFX_Subtypes.bt)具名，语义未实机验证
+    ('ddsUsageType', 'b'),
     ('unknFlag2_2', 'b'),
-    ('visconIndex', 'b'),   # 原 unkn2_3；EFX.bt(新)具名，语义未实机验证
+    ('visconIndex', 'b'),
     ('unknEnum2_4', 'b'),
     ('unknEnum2_5', 'b'),
     ('unknEnum2_6', 'b'),
-    ('unknEnum2_7', 'b'),   # 8B
-    ('unknBitmask3', 'i'),        # 4B
+    ('unknEnum2_7', 'b'),
+    ('unknBitmask3', 'i'),
 ]
 assert _schema_size(_EMITTERSHAPEMESH_FIXED_SCHEMA) == 32, \
     f"_EMITTERSHAPEMESH_FIXED_SCHEMA size mismatch: {_schema_size(_EMITTERSHAPEMESH_FIXED_SCHEMA)}"
@@ -2036,37 +1517,13 @@ def pack_emittershapemesh(values: dict) -> bytes:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Layout (变长: 24B fixed prefix + LayoutBank_Block(嵌套变长，opaque)，恒无尾巴)
-#
-# EFX_Crimson.bt（MHW-EFX-Template-master）：
-#   long type + int unkn0[2] + long unkn1[4] + LayoutBank_Block spb。
-# LayoutBank_Block 是 Root 的 LayoutBank 子条目共用的同一个 nested
-# repeat-until-sentinel 编码（见 _walk_layoutbank_block），本身不可平铺展开成
-# 标量字段，原样 opaque 存取——只有前面固定的 24B 前缀是真正的标量。
-#
-# ⚠ 2026-07 曾误判"LayoutBank_Block 结束后偶尔多出的 20B 是具名引用尾巴"——  
-# 实为 bug：那 20B 其实是*下一个 Main Entry 自己的 20B 头*（type+unkn0+
-# attr_count+null+timl_length）。触发条件：LAYOUT 恰好是所在 entry 的最后一个
-# 属性时，边界判定误把"下一个 entry 的任意 body_type 哈希"当成"不像边界"，
-# 从而多吞 20B，错位了下一个 entry 的头部（用户拿官方 010 模板实测反证：被
-# 误判"孤儿空属性"的 entry 实际有 14 个属性）。结论：LAYOUT 没有可选尾巴，  
-# 恒为 24B 前缀 + LayoutBank_Block，见 efxfile.py::_known_attr_size 的 LAYOUT
-# 分支（已改回直接返回，不做落点猜测）。
-# ─────────────────────────────────────────────────────────────────────────────
+# Layout：可编辑前缀 + 嵌套 LayoutBank_Block。
+# LayoutBank_Block 以 -1 sentinel 定界，长度只能靠遍历求出，必须原样保留。
 
 def _walk_layoutbank_block(data: bytes, pos: int) -> int:
-    """
-    Walk one LayoutBank_Block starting at *pos*, return the position right after it.
-    供 Root 的 LayoutBank 子条目解析（efxfile.py::_parse_layout_bank）与 Layout
-    主属性（unpack_layout/_known_attr_size 的 LAYOUT 分支）共用。
+    """返回紧跟这个 LayoutBank_Block 之后的位置。
 
-    LayoutBank_Block = int count(4);
-        if count>0: repeated LayoutBank_B until ReadInt()==-1, then long end(4).
-    LayoutBank_B = int block_type(4) + type-dependent UN 数组:
-        0<block_type<6 → UN p[count*2]
-        block_type==0 or ==6 → UN p[count*3]
-        block_type==7 → int unkn0 + UN p[count*2*unkn0]
+    由 Root 的 LayoutBank 子条目解析与 Layout 主属性共用，两处的块边界判定必须一致。
     """
     count = struct.unpack_from('<i', data, pos)[0]
     pos += 4
@@ -2092,17 +1549,10 @@ def _walk_layoutbank_block(data: bytes, pos: int) -> int:
 
 
 def _read_layoutbank_block_columns(data: bytes, pos: int):
-    """跟 _walk_layoutbank_block 走同一遍字节，但把每列的值也读出来，供只读展示用。
+    """与 _walk_layoutbank_block 走同一遍字节，同时把每列的值读出，供只读展示用。
 
     返回 (columns, new_pos)；columns = [{'block_type', 'count', 'values'}, ...]。
-    values 按 2026-09 全语料统计坐实的原生宽度解出（未实机确认具体语义，只保真原生
-    类型）：
-      block_type 0/1 → count*3 个 float32（0 是真实小数；1 常见大量精确 0.0）
-      block_type 6   → count*3 个 int32（其实是 16 位小整数 0 扩展到 32 位，见下方
-                       int16 展示；这里额外把 int32 值也存，两者数值相同）
-      block_type 1~5（不含 6）→ count*2 个 int16（4 short 一组，真实数据只占 1~3
-                       个，其余是 0 填充，见 docs 结论）
-      block_type 7   → 变宽（count*2*unkn0 个 int16），信息量太低，原样存 int16
+    与 _walk_layoutbank_block 的步进必须保持一致，否则展示结果与块边界会对不上。
     """
     columns = []
     count = struct.unpack_from('<i', data, pos)[0]
@@ -2140,13 +1590,10 @@ def _read_layoutbank_block_columns(data: bytes, pos: int):
 
 
 def describe_layoutbank(data: bytes) -> list:
-    """解出 Root LayoutBank 子条目（伪装成 AttrBlock 后的 data_bytes，即去掉了
-    4 字节类型头）的全部列，供只读展示用（不做字段级编辑，见用户 2026-09-20
-    的决定：LayoutBank 结构因人而异、变长，套不进固定 schema 模型）。
+    """解出 Root LayoutBank 子条目的全部列，按出现顺序摊平成一份平铺列表。
 
-    data_bytes 布局：int unkn0(4) + int block_count(4) + block_count ×
-    LayoutBank_Block。返回 [{'block_idx', 'block_type', 'count', 'values'}, ...]，
-    按出现顺序摊平（不再按 LayoutBank_Block 分组，UI 只需要一份平铺列表）。
+    LayoutBank 逐文件变长，套不进固定 schema，因此只做只读展示，不提供字段级编辑。
+    返回 [{'block_idx', 'block_type', 'count', 'values'}, ...]。
     """
     (unkn0,) = struct.unpack_from('<i', data, 0)
     (block_count,) = struct.unpack_from('<i', data, 4)
@@ -2161,7 +1608,7 @@ def describe_layoutbank(data: bytes) -> list:
 
 
 _LAYOUT_PREFIX_SCHEMA = [
-    ('typeFlag', 'i'),   # 原 unkn0_0
+    ('typeFlag', 'i'),
     ('unknFixed0_1', 'i'),
     ('unknEnum1_0', 'i'),
     ('unknEnum1_1', 'i'),
@@ -2170,11 +1617,10 @@ _LAYOUT_PREFIX_SCHEMA = [
 ]
 assert _schema_size(_LAYOUT_PREFIX_SCHEMA) == 24, \
     f"_LAYOUT_PREFIX_SCHEMA size mismatch: {_schema_size(_LAYOUT_PREFIX_SCHEMA)}"
-# LAYOUT 恒在的 24B 固定前缀（可编辑）；嵌套 LayoutBank_Block 仍 opaque。
 LAYOUT_ATTR = attr_from_legacy(_schema_size(_LAYOUT_PREFIX_SCHEMA), _LAYOUT_PREFIX_SCHEMA)
 
 def unpack_layout(data: bytes, off: int = 0):
-    """Unpack Layout（24B fixed + LayoutBank_Block(opaque)）。"""
+    """解出固定前缀字段；LayoutBank_Block 整段存入 layoutbank_bytes 原样保留。"""
     values, off = unpack(_LAYOUT_PREFIX_SCHEMA, data, off)
     bank_start = off
     bank_end = _walk_layoutbank_block(data, bank_start)
@@ -2184,34 +1630,15 @@ def unpack_layout(data: bytes, off: int = 0):
 
 
 def pack_layout(values: dict) -> bytes:
-    """Pack Layout values dict back to bytes。"""
+    """回写固定前缀并接上原始 layoutbank_bytes。"""
     out = pack(_LAYOUT_PREFIX_SCHEMA, values)
     out += values['layoutbank_bytes']
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 含路径 custom 类型的路径感知 extract / rebuild
-#
-# 设计原则：
-#   - extract_paths(type_hash, data_bytes) → list[str]   （UTF-8 解码路径）
-#   - rebuild_with_paths(type_hash, data_bytes, new_paths) → bytes
-#     非路径字节逐字从原 data_bytes verbatim 拷贝，只更新 path_len 字段和路径段。  
-#     若 new_paths == original_paths，输出 == 原 data_bytes（identity）。  
-#   - 不调用整体 pack_* 函数，绝对不 re-pack 非路径部分。  
-#   - PTBEHAVIOR / MATERIAL 支持嵌套/变长分派，多路径按序重建。
-#
-# 支持类型：
-#   UVSEQUENCE   —— 末尾 length-prefixed path（path_len @ offset 40, path @ 44）
-#   BILLBOARD3D  —— path_len 在结构中部（@ offset 104），extras 24B，path 在末尾
-#   PLANE        —— 与 BILLBOARD3D 同模式（path_len @ 104）
-#   RIBBONBLADE  —— path_len @ offset 194，path 在末尾
-#   RGBWATER     —— path_len @ offset 156，path 在末尾
-#   LIGHTNING    —— path_len @ offset 546，path 在末尾
-#   MESH         —— Mod3Properties 174B + BeginMod3 1B + null-term path1 + null-term path2
-#   RIBBON       —— 固定 360B header + null-term path（key='path1'）
-#   TURBULENCE   —— path_len @ offset 4（data_bytes[4:8]），路径在固定前缀后 / 后续字节后
-# ─────────────────────────────────────────────────────────────────────────────
+# 含路径 custom 类型的提取与保真重建。
+# rebuild 只能替换路径长度与路径字节，其余字节逐字复制；传入原路径必须原样返回。
+# extract 与 rebuild 的路径顺序必须一致，嵌套的 MATERIAL / PTBEHAVIOR 按遍历顺序配对。
 
 def _path_bytes_to_str(b: bytes) -> str:
     """路径 bytes → UTF-8 字符串（宽容解码）。"""
@@ -2224,16 +1651,6 @@ def _path_bytes_to_str(b: bytes) -> str:
 def _str_to_path_bytes(s: str) -> bytes:
     """路径字符串 → bytes（UTF-8）。"""
     return s.encode('utf-8')
-
-
-_PATH_TYPE_LAYOUT = {
-    # type_hash: 'kind'
-    # kind: 'length_prefix_tail'  (path_len + path 在块末尾)
-    #       'length_prefix_mid'   (path_len 在中部，extras 在 path_len 之后，path 在末尾)
-    #       'null_term_single'    (360B header + null-term path，key='path1')
-    #       'null_term_double'    (174B Mod3 + 1B BeginMod3 + 2 null-term paths)
-    #       'turbulence'          (path_len @ data[4:8]，后续字节在 path 后)
-}
 
 
 def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
@@ -2253,87 +1670,87 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
     ----
     ValueError — 若 type_hash 不在支持列表内，或 data_bytes 格式异常
     """
-    # UVSEQUENCE: fixed 40B + path_len(4) + path
+    # UVSEQUENCE
     if type_hash == UVSEQUENCE:
         (path_len,) = struct.unpack_from('<i', data_bytes, 40)
         path_b = data_bytes[44:44 + path_len]
         return [_path_bytes_to_str(path_b)]
 
-    # BILLBOARD3D: fixed 104B + path_len(4) + extras 24B + path[path_len]
+    # BILLBOARD3D
     if type_hash == BILLBOARD3D:
         (path_len,) = struct.unpack_from('<i', data_bytes, 104)
         path_start = 104 + 4 + 24  # = 132
         path_b = data_bytes[path_start:path_start + path_len]
         return [_path_bytes_to_str(path_b)]
 
-    # PLANE: fixed 104B + path_len(4) + extras 48B + path[path_len]
+    # PLANE
     if type_hash == PLANE:
         (path_len,) = struct.unpack_from('<i', data_bytes, 104)
         path_start = 104 + 4 + 48  # = 156
         path_b = data_bytes[path_start:path_start + path_len]
         return [_path_bytes_to_str(path_b)]
 
-    # RIBBONBLADE: fixed 194B + path_len(4) + path
+    # RIBBONBLADE
     if type_hash == RIBBONBLADE:
         (path_len,) = struct.unpack_from('<i', data_bytes, 194)
         path_b = data_bytes[198:198 + path_len]
         return [_path_bytes_to_str(path_b)]
 
-    # BILLBOARD2D: fixed 116B（path_len @ 104, unkn5 @ 108-115）+ path[path_len] @ 116
+    # BILLBOARD2D：path_len 与 path 之间夹着 unkn5
     if type_hash == BILLBOARD2D:
         (path_len,) = struct.unpack_from('<i', data_bytes, 104)
         path_b = data_bytes[116:116 + path_len]
         return [_path_bytes_to_str(path_b)]
 
-    # STRAINRIBBON: fixed 340B + path_len(4) + path
+    # STRAINRIBBON
     if type_hash == STRAINRIBBON:
         (path_len,) = struct.unpack_from('<i', data_bytes, 340)
         path_b = data_bytes[344:344 + path_len]
         return [_path_bytes_to_str(path_b)]
 
-    # RGBWATER: fixed 156B + path_len(4) + path
+    # RGBWATER
     if type_hash == RGBWATER:
         (path_len,) = struct.unpack_from('<i', data_bytes, 156)
         path_b = data_bytes[160:160 + path_len]
         return [_path_bytes_to_str(path_b)]
 
-    # LIGHTNING: fixed 546B + path_len(4) + path
+    # LIGHTNING
     if type_hash == LIGHTNING:
         (path_len,) = struct.unpack_from('<i', data_bytes, 546)
         path_b = data_bytes[550:550 + path_len]
         return [_path_bytes_to_str(path_b)]
 
-    # TURBULENCE: unkn0(4) + path_len(4) + path + after_path(152B)
+    # TURBULENCE：path 在块中部
     if type_hash == TURBULENCE:
         (path_len,) = struct.unpack_from('<i', data_bytes, 4)
         path_b = data_bytes[8:8 + path_len]
         return [_path_bytes_to_str(path_b)]
 
-    # TUBELIGHT: fixed 124B + path_len(4)@124 + path[path_len]（path_len 含末尾 null）
+    # TUBELIGHT：path_len 计入末尾的 null
     if type_hash == TUBELIGHT:
         (path_len,) = struct.unpack_from('<i', data_bytes, 124)
         path_b = data_bytes[128:128 + path_len].rstrip(b'\x00')
         return [_path_bytes_to_str(path_b)]
 
-    # EMITTERSHAPEMESH: fixed 32B + null-term path1（块在 null 处结束）
+    # EMITTERSHAPEMESH：无 path_len，块在 null 处结束
     if type_hash == EMITTERSHAPEMESH:
         null = data_bytes.index(b'\x00', 32)
         path_b = data_bytes[32:null]
         return [_path_bytes_to_str(path_b)]
 
-    # TONEMAPFILTER: fixed 24B + path_len(4)@24 + path[path_len]（path_len 含末尾 null）
+    # TONEMAPFILTER：path_len 计入末尾的 null
     if type_hash == TONEMAPFILTER:
         (path_len,) = struct.unpack_from('<i', data_bytes, 24)
         path_b = data_bytes[28:28 + path_len].rstrip(b'\x00')
         return [_path_bytes_to_str(path_b)]
 
-    # RIBBON: fixed 360B + null-term path
+    # RIBBON：无 path_len，null 结尾
     if type_hash == RIBBON:
         null = data_bytes.index(b'\x00', 360)
         path_b = data_bytes[360:null]
         return [_path_bytes_to_str(path_b)]
 
-    # MESH: Mod3Properties 174B + BeginMod3 1B + null-term path1 + null-term path2
+    # MESH
     if type_hash == MESH:
         off = 175  # skip 174B Mod3 + 1B BeginMod3
         null1 = data_bytes.index(b'\x00', off)
@@ -2344,14 +1761,7 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
         return [_path_bytes_to_str(path1_b), _path_bytes_to_str(path2_b)]
 
     # ── MATERIAL ─────────────────────────────────────────────────────────
-    # 结构：int64 unkn00(8) + int block_count(4) +
-    #   block_count × Tex_Block:
-    #     long mat_name_hash(4)+long mat_shader(4)+long unkn03(4)+int set_count(4)
-    #     + set_count × Tex_Set:
-    #         long set(4)+int unkn0(4)+long t(4)+int type(4)
-    #         type==0x80: long head(4)+long NULL(4)+int path_len(4)+char p[path_len]  
-    #         …其余类型按固定宽度跳过（不含路径）
-    # 遍历所有 type==0x80 的 Tex_Set，按出现顺序返回路径列表。
+    # 只有 type==0x80 的 Tex_Set 带路径；返回顺序即其出现顺序。
     if type_hash == MATERIAL:
         paths = []
         off = 0
@@ -2379,12 +1789,7 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
         return paths
 
     # ── PTBEHAVIOR ───────────────────────────────────────────────────────
-    # 结构：int unkn0(4)+int behav_type_len(4)+int para_count(4)+
-    #   char b_type[behav_type_len] +
-    #   para_count × EFX_Behav:
-    #     long unkn(4)+long const0(4)+int t(4)+type-dependent data
-    #     t==0x80: long file_type(4)+int path_len(4)+char p[path_len]
-    # 遍历所有 t==0x80 的 EFX_Behav，按出现顺序返回路径列表。
+    # 只有 t==0x80 的参数带路径；返回顺序即其出现顺序。
     if type_hash == PTBEHAVIOR:
         paths = []
         off = 0
@@ -2423,15 +1828,11 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
         return paths
 
 
-    # Layout：无嵌入路径（24B fixed + LayoutBank_Block(opaque)），
-    # 返回空列表，只为了让 CUSTOM_FIELD_SCHEMA_MAP 里的 24B 固定前缀字段展开生效。
+    # LAYOUT 没有嵌入路径，返回空列表；列在支持表里只为让固定前缀字段能展开编辑。
     if type_hash == LAYOUT:
         return []
 
-    # RenderTarget（Root 专属子条目，伪装成 AttrBlock，见 io_tree.py 的
-    # _root_entry_to_attr_block）：path_count(4) + 6×(path_len(4)+path，含末尾
-    # null) + NULL(4) + unkn0[6](24) + unkn1[9](36)。6 个槎位常有留空（只有
-    # 一个 \x00），按出现顺序原样返回 6 项，不因空槎跳过。
+    # 固定返回 6 项，空槽也占位，调用方按下标对应槽位
     if type_hash == RENDERTARGET:
         paths = []
         off = 4  # 跳过 path_count
@@ -2445,46 +1846,29 @@ def extract_paths(type_hash: int, data_bytes: bytes) -> 'List[str]':
 
 
 def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]') -> bytes:
-    """
-    用 new_paths 替换路径段，非路径字节逐字从原 data_bytes verbatim 拷贝。
+    """用 new_paths 替换路径段，其余字节逐字复制。
 
-    原则：
-      - 若 new_paths == original_paths，输出 == data_bytes（identity）
-      - 只更新 path_len 字段（int32 LE）和路径字节段
-      - 非路径字节全部来自 data_bytes（verbatim copy），绝不调用 pack_*
-
-    参数
-    ----
-    type_hash  : int
-    data_bytes : bytes — 原始 data_bytes
-    new_paths  : list[str] — 新路径字符串
-
-    返回
-    ----
-    bytes — 重建后的 data_bytes
+    只更新 path_len 与路径字节；非路径字节一律取自 data_bytes，绝不经过 pack_*。
+    传入与原路径相同的值时必须原样返回 data_bytes。
     """
     # ── UVSEQUENCE ──
     if type_hash == UVSEQUENCE:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
-        # [0..39] verbatim + new path_len + new path  
         return (data_bytes[:40]
                 + struct.pack('<i', len(new_path_b))
                 + new_path_b)
 
     # ── BILLBOARD3D ──
-    # 结构：[0..103]=fixed verbatim + path_len(4) + [108..131]=extras verbatim + path  
     if type_hash == BILLBOARD3D:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
-        # verbatim [0..103], 新 path_len, verbatim extras [108..131], 新 path  
         return (data_bytes[:104]
                 + struct.pack('<i', len(new_path_b))
                 + data_bytes[108:132]
                 + new_path_b)
 
     # ── PLANE ──
-    # 结构：[0..103]=fixed verbatim + path_len(4) + [108..155]=extras verbatim + path  
     if type_hash == PLANE:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
@@ -2494,7 +1878,6 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path_b)
 
     # ── RIBBONBLADE ──
-    # 结构：[0..193] verbatim + path_len(4) + path  
     if type_hash == RIBBONBLADE:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
@@ -2503,7 +1886,6 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path_b)
 
     # ── BILLBOARD2D ──
-    # 结构：[0..103]=fixed verbatim + path_len(4)@104 + [108..115]=unkn5 verbatim + path  
     if type_hash == BILLBOARD2D:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
@@ -2513,7 +1895,6 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path_b)
 
     # ── STRAINRIBBON ──
-    # 结构：[0..339] verbatim + path_len(4) + path  
     if type_hash == STRAINRIBBON:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
@@ -2522,7 +1903,6 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path_b)
 
     # ── RGBWATER ──
-    # 结构：[0..155] verbatim + path_len(4) + path  
     if type_hash == RGBWATER:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
@@ -2531,7 +1911,6 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path_b)
 
     # ── LIGHTNING ──
-    # 结构：[0..545] verbatim + path_len(4) + path  
     if type_hash == LIGHTNING:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
@@ -2540,21 +1919,19 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path_b)
 
     # ── TURBULENCE ──
-    # 结构：unkn0(4) verbatim + path_len(4) + new_path + after_path（原来 path 后到末尾）  
+    # path 在中部：其后的固定段整段平移，不能按固定偏移切
     if type_hash == TURBULENCE:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
         (old_path_len,) = struct.unpack_from('<i', data_bytes, 4)
         old_path_end = 8 + old_path_len
-        # verbatim unkn0[0:4], 新 path_len, 新 path, verbatim after_path[old_path_end:]  
         return (data_bytes[:4]
                 + struct.pack('<i', len(new_path_b))
                 + new_path_b
                 + data_bytes[old_path_end:])
 
     # ── TUBELIGHT ──
-    # 结构：[0..123] verbatim + path_len(4) + path（含末尾 null）。  
-    # path_len 计入 null，故新 path 字节 = new_path + \x00，path_len = 其长度。
+    # path_len 计入末尾 null，所以先补 null 再取长度
     if type_hash == TUBELIGHT:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0]) + b'\x00'
@@ -2563,15 +1940,13 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path_b)
 
     # ── EMITTERSHAPEMESH ──
-    # 结构：[0..31] verbatim (32B fixed) + new_path + \x00  
     if type_hash == EMITTERSHAPEMESH:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
         return data_bytes[:32] + new_path_b + b'\x00'
 
     # ── TONEMAPFILTER ──
-    # 结构：[0..23] verbatim (24B fixed) + path_len(4) + path（含末尾 null）。  
-    # path_len 计入 null，故新 path 字节 = new_path + \x00，path_len = 其长度。
+    # path_len 计入末尾 null，所以先补 null 再取长度
     if type_hash == TONEMAPFILTER:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0]) + b'\x00'
@@ -2580,14 +1955,12 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path_b)
 
     # ── RIBBON ──
-    # 结构：[0..359] verbatim + new_path + \x00  
     if type_hash == RIBBON:
         assert len(new_paths) == 1
         new_path_b = _str_to_path_bytes(new_paths[0])
         return data_bytes[:360] + new_path_b + b'\x00'
 
     # ── MESH ──
-    # 结构：[0..174] verbatim (174B Mod3 + 1B BeginMod3) + path1\x00 + path2\x00  
     if type_hash == MESH:
         assert len(new_paths) == 2
         new_path1_b = _str_to_path_bytes(new_paths[0])
@@ -2597,9 +1970,7 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
                 + new_path2_b + b'\x00')
 
     # ── MATERIAL ─────────────────────────────────────────────────────────
-    # 策略：遍历嵌套结构，逐字节拷贝所有非路径部分，对 type==0x80 的 Tex_Set
-    # 用 new_paths[path_idx] 替换 path_len+path 段，其余字节 verbatim。  
-    # path_idx 按 type==0x80 出现顺序递增，对齐 extract_paths 的返回顺序。
+    # path_idx 按 type==0x80 的出现顺序递增，必须与 extract_paths 的返回顺序一致。
     if type_hash == MATERIAL:
         parts = []
         off = 0
@@ -2638,9 +2009,8 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
         return b''.join(parts)
 
     # ── PTBEHAVIOR ───────────────────────────────────────────────────────
-    # 策略：遍历 EFX_Behav 列表，逐字节拷贝非路径部分，对 t==0x80 的参数
-    # 用 new_paths[path_idx] 替换 file_type 后面的 path_len+path 段。
-    # file_type(4) verbatim，只替换 path_len(4)+path[path_len]。  
+    # path_idx 按 t==0x80 的出现顺序递增，必须与 extract_paths 的返回顺序一致。
+    # file_type 原样保留，只替换其后的 path_len 与路径字节。
     if type_hash == PTBEHAVIOR:
         parts = []
         off = 0
@@ -2690,14 +2060,12 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
         return b''.join(parts)
 
 
-    # Layout：无嵌入路径，new_paths 恒为空，原样返回（24B 前缀字段
-    # 改动走 Phase A 的 rebuild_custom_field_attribute 覆盖，不经过这里）
+    # LAYOUT 无嵌入路径，原样返回；固定前缀字段的改动不经过这里。
     if type_hash == LAYOUT:
         return data_bytes
 
     # ── RenderTarget ──
-    # 结构：path_count(4) verbatim + 6×(path_len+path，含末尾 null) + tail(NULL
-    # + unkn0[6] + unkn1[9]，24+36=60B) verbatim。
+    # 6 个路径槽全部重写（path_len 计入末尾 null），头尾的固定段原样保留。
     if type_hash == RENDERTARGET:
         assert len(new_paths) == 6
         off = 4
@@ -2714,23 +2082,12 @@ def rebuild_with_paths(type_hash: int, data_bytes: bytes, new_paths: 'List[str]'
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RenderTarget（Root 专属子条目，见 refs/EFX_Root.bt）—— 伪装成 AttrBlock 才能
-# 套用现有的属性子对象基建（io_tree.py::_root_entry_to_attr_block）。
-#
-#   long type(4，已在 AttrBlock.type_hash，不进 data_bytes)
-#   int  path_count(4)                       —— 全语料 18 例取值 0/2/4，跟哪个
-#                                                路径槎位有值对不上，语义未知
-#   6 × RenderTarget_Path：int path_len(4) + char p[path_len]（含末尾 null）
-#   long NULL(4)                             —— 全语料恒 0
-#   int  unkn0[6](24)
-#   float unkn1[9](36)                       —— [0,6,7,8] 恒为 1/16/1/40；
-#                                                [5] 是唯一常变的，像距离/范围
-#
-# 18 例统计全部收在 unkn0/unkn1 的字段注释里；均未实机确认，字段名保持中性。
+# RenderTarget 是 Root 的专属子条目，被包成 AttrBlock 以复用属性子对象基建；
+# 类型哈希在 AttrBlock.type_hash 上，不进 data_bytes。
 # ─────────────────────────────────────────────────────────────────────────────
 
 def unpack_rendertarget(data: bytes, off: int = 0):
-    """Unpack RenderTarget data_bytes（Root 专属子条目）。"""
+    """解出 6 个路径与其后的标量字段。"""
     values = {}
     (values['path_count'],) = struct.unpack_from('<i', data, off)
     off += 4
@@ -2751,7 +2108,7 @@ def unpack_rendertarget(data: bytes, off: int = 0):
 
 
 def pack_rendertarget(values: dict) -> bytes:
-    """Pack RenderTarget values dict back to bytes。"""
+    """按解析顺序回写路径与标量字段。"""
     out = struct.pack('<i', values['path_count'])
     for i in range(6):
         p = values[f'path{i}']
@@ -2764,22 +2121,19 @@ def pack_rendertarget(values: dict) -> bytes:
     return out
 
 
-# 可编辑标量字段 schema（排除 path0..5，由 codec 单独处理，同其它 custom 类型约定）。
+# 可编辑标量字段 schema；path0..5 由 codec 单独处理，不入 schema。
 _RENDERTARGET_TAIL_SCHEMA = [
-    ('path_count', 'i'),  # 语义未知，见上方注释
-    ('nullField', 'i'),   # 全语料恒 0
+    ('path_count', 'i'),
+    ('nullField', 'i'),
     ('unkn0_0', 'i'), ('unkn0_1', 'i'), ('unkn0_2', 'i'),
     ('unkn0_3', 'i'), ('unkn0_4', 'i'), ('unkn0_5', 'i'),
-    ('unkn1_0', 'f'),  # 恒 1.0
-    ('unkn1_1', 'f'), ('unkn1_2', 'f'), ('unkn1_3', 'f'), ('unkn1_4', 'f'),  # 恒 0.0
-    ('unkn1_5', 'f'),  # 唯一常变的一个，像距离/范围
-    ('unkn1_6', 'f'),  # 恒 16.0
-    ('unkn1_7', 'f'),  # 恒 1.0
-    ('unkn1_8', 'f'),  # 恒 40.0
+    ('unkn1_0', 'f'), ('unkn1_1', 'f'), ('unkn1_2', 'f'), ('unkn1_3', 'f'),
+    ('unkn1_4', 'f'), ('unkn1_5', 'f'), ('unkn1_6', 'f'), ('unkn1_7', 'f'),
+    ('unkn1_8', 'f'),
 ]
 
 
-# 支持路径编辑的 custom 类型集合（基础 9 种；MATERIAL + PTBEHAVIOR 为嵌套/分派新增）
+# 支持路径编辑的 custom 类型集合。
 PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     UVSEQUENCE,
     BILLBOARD3D,
@@ -2794,61 +2148,45 @@ PATH_EDITABLE_CUSTOM_HASHES = frozenset({
     # 嵌套/分派类型，含多个嵌入路径
     MATERIAL,
     PTBEHAVIOR,
-    # 新增变长路径类型
     TUBELIGHT,
     EMITTERSHAPEMESH,
     BILLBOARD2D,
     TONEMAPFILTER,
-    # 无嵌入路径但需要 Phase A 固定字段展开：extract_paths/rebuild_with_paths 均按 0 路径处理
+    # 无嵌入路径，列在此处只为让固定字段展开生效
     LAYOUT,
-    # Root 专属子条目（伪装成 AttrBlock），含 6 个嵌入路径
     RENDERTARGET,
 })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phase A：custom 块固定字段展开编辑
+# custom 块的可编辑标量字段 schema：各 unpack_* 用到的 fixed 子 schema，排除路径条目。
 #
-# 9 个 custom-codec 类型的"可编辑标量字段 schema" —— 即各 unpack_* 用到的 fixed
-# 子 schema（排除 path / path_len / path1 / path2 等路径条目；路径由 codec 单独
-# 处理）。字段名与 decode() 返回 dict 的键完全一致，使得 dict_to_items 能取值、
-# rebuild_custom_field_block 能按名覆盖。
-#
-# rebuild 策略：decode → 覆盖被编辑标量字段 → 覆盖被编辑路径 → pack。未编辑字段
-# 由 decode 原值经 pack 精确还原（NaN / 精度 / 哨兵全免疫），因 field_roundtrip
-# 已证 pack(unpack(data)) == data 位精确。
-#
-# 注意：MATERIAL / PTBEHAVIOR 是嵌套分派结构，不在此表（分别由 fields.py 的
-# rebuild_material_attribute / rebuild_ptbehavior_attribute 单独处理）。
-# 拼接顺序仅影响 UI 显示顺序，不影响正确性（rebuild 按字段名覆盖，pack 按 dict 布局）。
+# 维护约束：
+# - 字段名必须与 unpack_* 返回 dict 的键一致，取值与按名覆盖都依赖这一点。
+# - 重建走 unpack → 覆盖被编辑字段 → pack；未编辑字段由原值经 pack 还原。
+# - MATERIAL 与 PTBEHAVIOR 是嵌套分派结构，不进此表，由 fields.py 各自的重建函数处理。
+# - 表内各 schema 的拼接顺序只影响 UI 显示顺序。
 # ─────────────────────────────────────────────────────────────────────────────
 
 CUSTOM_FIELD_SCHEMA_MAP: Dict[int, list] = {
     RIBBON:      _RIBBON_FIXED_SCHEMA,
-    # loopingMode 现为单字节 Bitmask（4 个 BitEnum 段），UI 经弹窗渲染；不再拆成 3 个子字节。
     UVSEQUENCE:  _UVSEQUENCE_FIXED_SCHEMA,
-    # MESH：174B Mod3Properties + 1B BeginMod3（unpack_mesh 单独读 BeginMod3，
-    # 故拼上 ('BeginMod3','B') 使其也可编辑）；path1/path2 由 codec 处理，不在 schema。
+    # BeginMod3 由 unpack_mesh 单独读，这里拼上才能编辑
     MESH:        _MOD3_PROPERTIES_SCHEMA + [('BeginMod3', 'B')],
     RIBBONBLADE: _RIBBONBLADE_FIXED_SCHEMA,
     STRAINRIBBON:_STRAINRIBBON_FIXED_SCHEMA,
     LIGHTNING:   _LIGHTNING_FIXED_SCHEMA,
     RGBWATER:    _RGBWATER_FIXED_SCHEMA,
     TURBULENCE:  [('typeFlag', 'i')] + _TURBULENCE_AFTER_PATH_SCHEMA,
-    # applicationRule 现为 int Bitmask（BitDef×2 混合位 + BitEnum 互斥组），UI 经弹窗渲染；
-    # 不再拆成 3 个子 int 字段。编辑段 == 各自的 _*_EDIT_SCHEMA（与 ATTR/codec 同字段序）。
+    # 编辑段用 _*_EDIT_SCHEMA：它把 path_len 之后的固定段也并了进来
     BILLBOARD3D: _BILLBOARD3D_EDIT_SCHEMA,
     PLANE:       _PLANE_EDIT_SCHEMA,
     TUBELIGHT:        _TUBELIGHT_FIXED_SCHEMA,
     EMITTERSHAPEMESH: _EMITTERSHAPEMESH_FIXED_SCHEMA,
     BILLBOARD2D:      [e for e in _BILLBOARD2D_FIXED_SCHEMA if e[0] != 'path_len'],
-    # TonemapFilter：3 个 fixed 标量字段（unkn0[2]/unkn1/unkn2[3]）；path/path_len
-    # 由 codec 处理、不入 schema，path 走通用 STRING-item↔bytes-key 路径回写。
     TONEMAPFILTER:    _TONEMAPFILTER_FIXED_SCHEMA,
-    # Layout：暴露恒在的 24B fixed 前缀；LayoutBank_Block（嵌套变长）
-    # 不在此表，但 unpack_layout/pack_layout 会原样保留（未编辑字段精确回填）。
+    # 只暴露固定前缀；LayoutBank_Block 由 unpack_layout/pack_layout 原样保留
     LAYOUT:           _LAYOUT_PREFIX_SCHEMA,
-    # RenderTarget：Root 专属子条目，6 个 path0..5 由 codec 单独处理，不入 schema。
     RENDERTARGET:     _RENDERTARGET_TAIL_SCHEMA,
 }
 
@@ -2868,19 +2206,16 @@ def _sz_no_path(schema):
 
 
 def _bb2d_before_after():
-    """BILLBOARD2D 的 path_len 是 _BILLBOARD2D_FIXED_SCHEMA 内的一个字段——在它处切成
-    before/after 两段（after 去掉 path）。"""
+    """BILLBOARD2D 的 path_len 是固定 schema 内的一个字段，在该处切成 before/after。"""
     s = _BILLBOARD2D_FIXED_SCHEMA
     i = next(k for k, e in enumerate(s) if e[0] == 'path_len')
     return s[:i], [e for e in s[i + 1:] if e[0] != 'path']
 
 
-# path_len 尾巴族：on-disk 布局 `4(类型哈希) + before + path_len(4) + after(+path[path_len])`，
-# after 为空即 path_len 紧贴 before 末尾，非空即 path_len 夹在中间（其后还有固定字段）。
-# ⚠ before/after 一律取 **CODEC 侧** `_XXX_FIXED_SCHEMA`（on-disk 真相）——**不能**用
-#   CUSTOM_FIELD_SCHEMA_MAP：那是 UI 编辑版，会把单字段拆成多个（applicationRule→3×int/+8B、
-#   UVSEQUENCE.loopingMode→3×byte/+2B），字节数对不上。TURBULENCE 的 path 物理上在 after 之前，
-#   但 size/偏移只看 before/after 字节数，公式一致。
+# on-disk 布局为 `4(类型哈希) + before + path_len(4) + after(+path)`，after 可为空。
+# before/after 必须取 codec 侧的 `_XXX_FIXED_SCHEMA`，不能用 CUSTOM_FIELD_SCHEMA_MAP：
+# 后者是 UI 编辑版，已把 after 段并进 before，用它计算会把那段字节数算两遍。
+# TURBULENCE 的 path 物理上在 after 之前，但尺寸只取决于两段字节数，公式一致。
 _PATHLEN_TAIL_LAYOUT = {
     # after 为空（path_len 紧贴 before 末尾）
     LIGHTNING:     (_LIGHTNING_FIXED_SCHEMA,     []),
@@ -2899,11 +2234,10 @@ _PATHLEN_TAIL_LAYOUT = {
 
 
 def custom_on_disk_size(type_hash: int, data: bytes, pos: int):
-    """变长块（path_len 尾巴族）的 on-disk 总字节数（含 4B 类型哈希）；不属此族返回 None。
+    """path_len 尾巴族的 on-disk 总字节数（含 4 B 类型哈希）；不属此族返回 None。
 
-    布局 `4(类型哈希) + before + path_len(4) + after(+path[path_len])`，before/after 取 codec schema：
-    size = 4 + sz(before) + 4 + sz(after) + path_len；path_len 读在 pos + 4 + sz(before)。
-    path_len 越界（负/异常大）返回 None，交由调用方 forward-scan 兜底（保留原分支对损坏数据的降级行为）。
+    path_len 为负或异常大时也返回 None，让调用方回退到 forward-scan，以保留对损坏
+    数据的降级行为。
     """
     layout = _PATHLEN_TAIL_LAYOUT.get(type_hash)
     if layout is None:
@@ -2919,9 +2253,7 @@ def custom_on_disk_size(type_hash: int, data: bytes, pos: int):
     return base + 4 + _sz_no_path(after) + path_len
 
 
-# null 结尾字符串族：定长前缀 + N 个 `\0` 结尾字符串（无 path_len）。前缀字节数从 **codec**
-# schema 派生（同上，不用 UI 版 CUSTOM_FIELD_SCHEMA_MAP），尾巴长度不可 schema 化、保留 `\0`
-# 扫描。值 =(fixed_schema, n_strings)。
+# 定长前缀 + N 个 null 结尾字符串，无 path_len。前缀同样取 codec schema，尾巴只能扫 null。
 _NULLSTR_TAIL_LAYOUT = {
     MESH:             (_MOD3_PROPERTIES_SCHEMA + [('BeginMod3', 'B')], 2),  # path1 + path2
     RIBBON:           (_RIBBON_FIXED_SCHEMA, 1),
@@ -2930,9 +2262,9 @@ _NULLSTR_TAIL_LAYOUT = {
 
 
 def custom_nullstr_size(type_hash: int, data: bytes, pos: int):
-    """定长前缀 + N 个 `\\0` 结尾字符串的变长块 on-disk 总字节数（含 4B 类型哈希）；不属此族返回
-    None。前缀 = 4 + _sz_no_path(fixed)，尾巴逐个扫 `\\0`（含终止符）。找不到 `\\0`（越界/损坏）
-    → None，交调用方 forward-scan 兜底。
+    """null 结尾字符串族的 on-disk 总字节数（含 4 B 类型哈希）；不属此族返回 None。
+
+    逐个扫 null 并计入终止符；扫不到时返回 None，让调用方回退到 forward-scan。
     """
     layout = _NULLSTR_TAIL_LAYOUT.get(type_hash)
     if layout is None:

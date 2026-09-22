@@ -1,20 +1,10 @@
 # -*- coding: utf-8 -*-
-"""
-blender_efx/layout_model.py — 字段行布局的**纯逻辑**：配对、轴组、顺序订正、常用/高级分档。
+"""字段行布局的纯逻辑：配对、轴组、排序和常用/高级分档。
 
-⚠ **本模块零 import**（连 bpy 都不碰），这样 `tools/ui_layout_sim.py` 才能在命令行里
-按文件路径加载它、拿全语料跑自检——`panels.py` 里 `import bpy`，CLI 进不去。
-同样的手法已经用在 `field_labels.py` / `field_visibility.py` 上。
-
-**为什么非要能在 CLI 里跑**：这一层完全不经过 `roundtrip.py` / `field_roundtrip.py`
-两套测试的路径（见 CLAUDE.md §3 的告诫）。2026-08-18 那张错的属性顺序表把 52% 的官方
-文件排成错误顺序，两套 CLI 测试全绿——就是因为没人能在 Blender 外面跑这一层。
-
-数据表（`FIELD_ORDER_ANCHORS` / `ADVANCED_FIELDS`）不在这里 import，一律**由调用方注入**，
-以保持零依赖。`panels.py` 那两个同名包装函数负责查表并转调。
-
-这里只认 item 的两个属性：`.ori_name` 和 `.data_type`（鸭子类型）——自检脚本因此可以
-拿最简单的假对象喂进来。
+维护约束：
+- 本模块不得导入 bpy 或字段数据表；调用方注入排序和分档表，因此可独立运行。
+- 仅依赖 item 的 ori_name 和 data_type。
+- 排序失败时必须整体回退原始顺序；布局只影响显示，不能改变导出顺序。
 """
 
 
@@ -28,13 +18,7 @@ SCALAR_PROP_ATTR = {
 }
 
 
-# 不符合 Jitter 后缀约定、但语义上是抖动字段的名称（MESH 的 _j 后缀字段）
-# SPAWN 原 randomizedSpawnsPerFrame/randomizedDelay/randomizedLifespan/occur2 已改名为标准
-# XJitter 后缀（2026-07-26 实机测试后重命名），不再需要在此特例登记。
-# 非标准 jitter 后缀特例（既不是 `Jitter` 也不是 `_jitter`）。目前为空：原先这里的
-# MESH `emissive_saturation_j`/`emissive_brightness_j` 已改名为
-# `colorRateJitter`/`emissiveColorRateJitter`，走标准后缀。`is_matching_jitter` 仍
-# 接受 `_j` 派生名，所以新出现的 `_j` 字段无需登记在此。
+# 非标准 jitter 名称特例。
 NONSTANDARD_JITTER_NAMES = frozenset()
 
 
@@ -44,11 +28,7 @@ def is_jitter_name(name: str) -> bool:
 
 
 def is_matching_jitter(base_name: str, candidate_name: str) -> bool:
-    """candidate_name 是否确实是 base_name 的 jitter 搭档（按名字派生关系判断，而非仅仅
-    "长得像 jitter"）。原来的相邻位置配对只检查下一个字段是否为任意 jitter 名，未核对是否
-    真的由 base_name 派生——当 value/jitter 在字节布局里不相邻（如 RIBBON 的
-    rotationYJitter 排在 rotationY 前面，见 ribbon-family 相关 schema 注释）时，会错误地把
-    下一个无关的 jitter 字段（如 rotationZJitter）配对给当前字段（rotationY），2026-07-30 修复。"""
+    """判断候选字段是否由基础字段名派生为 jitter。"""
     return candidate_name in (base_name + "Jitter", base_name + "_jitter", base_name + "_j")
 
 

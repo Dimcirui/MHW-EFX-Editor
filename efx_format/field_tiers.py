@@ -1,22 +1,10 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/field_tiers.py — 属性字段分档表（常用 / 高级）。
+"""属性字段的常用/高级显示分档。
 
-**只影响 UI 显示，不影响解析与导出。** 高级区的字段仍然可编辑——
-`rotOrder` 恒为 4 是因为没人改过，不是不能改。
-
-判据（满足任一进「高级」）：
-  A. 名字仍是占位/未知语义（`unkn*` / `spacer*` / `NULL*` / `fixed*` / 结构位）；
-  B. 已在 `blender_efx/field_labels.py::RESERVED_FILL_FIELDS`（0xCD 填充位，本就只读）；
-  C. 全语料「事实常量」——众数占比 >= 98%、样本 >= 100。
-
-强制留常用：`field_visibility.FIELD_VISIBILITY` 里的 mode 字段（藏了就找不到开关）
-+ 一张手工白名单（见 `tools/gen_field_tiers.py::KEEP_COMMON`）。
-
-⚠ 本文件由 `python tools/gen_field_tiers.py --write` 生成，别手改——
-手改会在下次重跑统计时丢失。要放行某个字段请加进生成脚本的 KEEP_COMMON。
-
-语料：`efx_samples/official/` 10084 文件（2026-09-20 生成）。
+维护约束：
+- 仅影响 UI 分组，不影响解析、编辑能力或导出。
+- 可见性规则中的模式字段必须保留在常用区，避免隐藏其控制入口。
+- 本表由 ``tools/gen_field_tiers.py`` 生成；持久调整应修改生成脚本的白名单或规则。
 """
 
 # TYPE_NAME -> 该类型下归入「高级」的字段 ori_name 集合
@@ -691,7 +679,7 @@ ADVANCED_FIELDS = {
 
 
 def is_advanced_field(type_name: str, ori_name: str) -> bool:
-    """该字段是否归入「高级」区。表里查不到一律 False（=常用），保守显示。"""
+    """判断字段是否归入高级区；未知字段保守地显示为常用。"""
     names = ADVANCED_FIELDS.get(type_name)
     return bool(names) and ori_name in names
 

@@ -1,17 +1,8 @@
-"""
-efx_format/timl/dti_tlp_extra.py  —  DTI dump 里有、但调色板之前漏掉的 (TLP → DT)
+"""DTI 声明但未纳入常规表的 ``TLP → DT`` 映射。
 
-来源同 OFFICIAL_TLP_DT（`refs/dti_effect_fields.json`），补的是那张表按类型筛掉的那批：
-bool / u32 / u16 / vector* / float2 / custom 等非 f32-非 color 的参数。
-合进 DT_PALETTE，让调色板覆盖「DTI 认识的全部 TLP 参数」，不再按类型预筛。
-
-dataType 映射：f32→2(Float)  color→3(Color)  bool→4(Bool)  u32/u16/range→1(Int)  s32→0(SInt)
-⚠ **vector2/3/4 与 float2 也给 2(Float)**——TIML 的 transform 只有一个标量 dataType，
-  向量参数在引擎里怎么排通道我们不知道。多数向量参数在 TLP 表里本来就是拆成
-  X/Y/Z/W 各一条的（UVRangeX…、CenterX…），剩下这几条整名的（ChromaticAberration、
-WPos、ProjectionScale…）属于没见过的形态，建了轨道生不生效要自己实机试。
-
-⚠ 整张表**没有任何验证**：既无官方用例也无实机确认，只是「引擎的类型信息里有这一条」。
+维护约束：
+- 本表并入调色板，扩展其可选参数范围，不表示相关轨道已验证可用。
+- 标量 dataType 映射为 TIML 类型；向量参数目前以 Float 表示，其通道布局待确认。
 """
 
 DTI_TLP_EXTRA = {

@@ -1,25 +1,23 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/plane.py  —  PLANE（**固定朝向**的片）
+"""PLANE —— 固定朝向的面片。
 
-和 BILLBOARD3D 的唯一本质区别：**不朝相机**。对应 Unity ParticleSystemRenderMode
-的 Mesh/Stretched 之外那档「按自身 transform 定向的 quad」，或 UE Niagara 里
-Sprite Renderer 把 Alignment 设成 Custom Direction 的用法。
+与 BILLBOARD3D 的唯一本质区别是**不朝向相机**，朝向由自身字段确定。
 
-    baseAxis        AxisDirection6，片的基准法线（实机确认，与 VELOCITY3D 同一套枚举）
-    rotation(XYZ0)  在基准法线上叠的欧拉旋转
-    rotationOrder   实机确认与 MESH 同款枚举（_TRANSFORM_ROT_ORDER）
-    rotation2(+Jitter)  沿自身垂线的自旋（annotations：「与上面的 XYZ 朝向字段独立」）
+字段职能：
 
-其余字段（color / colorRange / useColorRange / brightness / blendMode /
-scale / width / height / flowmap*）与 BILLBOARD3D 同名同义，走 _common.py 共享实现。
+    baseAxis            面片的基准法线，与 VELOCITY3D 共用 AxisDirection6 枚举
+    rotation(XYZ0)      作用于基准法线的欧拉旋转，XYZ0 的后半部分为逐轴抖动幅度
+    rotationOrder       欧拉旋转顺序，与 MESH 使用同一套枚举
+    rotation2(+Jitter)  绕自身法线的自旋，独立于上述朝向字段
 
-尺寸约定同 BILLBOARD3D：`scale`(SizeScalar) 是倍率，`width`/`height` 是游戏单位。
+color / colorRange / useColorRange / brightness / blendMode / scale / width / height 与
+flowmap 字段组均与 BILLBOARD3D 同名同义，使用 `_common.py` 的共享实现；尺寸约定也相同，
+`scale` 为倍率，`width` / `height` 为游戏单位。`correctColorNo` 与
+`colorRangeCorrectColorNo` 未接入，仅记录 note。
 
-未处理：correctColorNo/colorRangeCorrectColorNo（记 note，原 EPVColorSlot1/2）、
-flowmap 一族（属 T3 纹理部分）。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- `item.extra["base_tint"]` 保存渲染主体自身的颜色，不含 RGBFIRE / RGBWATER 写入 `p.color`
+  的分层色，供 glue 的两层染色分支作为逐通道滤镜使用。BILLBOARD3D 的同名字段含义相同。
 """
 
 from ...hashes import PLANE
@@ -34,7 +32,7 @@ from ._common import (axis_normal, blend_name, epv_note, oriented_basis,
 
 @register(PLANE)
 class Plane(Behavior):
-    """RENDER_BODY：产出固定朝向的片（RenderItem.axis_u/axis_v 非空 → glue 不朝相机）。"""
+    """RENDER_BODY 阶段产出固定朝向的面片；axis_u/axis_v 非空即表示 glue 不做朝向相机处理。"""
 
     STAGE = RENDER_BODY
     ORDER = 100
@@ -61,7 +59,6 @@ class Plane(Behavior):
                                        rng, mode)
         p.rolled["pl_spin"] = jitter(f.get("rotation2"), f.get("rotation2Jitter"), rng, mode)
 
-        # 朝向：baseAxis 经 rotation(XYZ0) 旋转。XYZ0 的后一半是逐轴抖动幅度。
         base = f.xyz_lo("rotation")
         amt = f.xyz_hi("rotation")
         rolled_rot = (jitter(base.x, amt.x, rng, mode),
@@ -73,7 +70,7 @@ class Plane(Behavior):
         p.rolled["pl_rgba"], p.rolled["pl_coff"] = roll_rgba(f, rng, em.config)
         p.rolled["pl_blend"] = blend_name(f)
 
-        _flowmap.roll(p, f, rng, mode)          # 流动贴图八件套（见 _flowmap.py）
+        _flowmap.roll(p, f, rng, mode)
 
     def build_render(self, p, em, view, item):
         rolled = p.rolled
@@ -97,18 +94,16 @@ class Plane(Behavior):
             bright = rolled["pl_bright"]
 
         item.size = Vec3(w * p.scale.x, h * p.scale.y, 1.0)
-        # 自旋 = 属性自带的 rotation2 + ROTATEANIM 在 p.rot.z 上累积的平面旋转
+        # 自旋 = 自身的 rotation2 与 ROTATEANIM 在 p.rot.z 上累积的平面旋转之和
         item.axis_u, item.axis_v = oriented_basis(
             normal, rolled.get("pl_spin", 0.0) + p.rot.z)
-        item.rot = 0.0                     # 朝向已经烘进 axis_u/axis_v，不再给 glue 转
+        item.rot = 0.0                     # 朝向已写入 axis_u/axis_v，glue 不得再次旋转
         item.color = [r0 * bright * p.color[0],
                       g0 * bright * p.color[1],
                       b0 * bright * p.color[2],
                       a0 * p.alpha]
-        # 渲染主体自己的颜色（不含 RGBFIRE/RGBWATER 的 p.color）单独存一份，供
-        # glue 的两层染色分支当逐通道滤镜用，见 billboard3d.py 同名字段的注释。
         item.extra["base_tint"] = (r0 * bright, g0 * bright, b0 * bright)
         item.blend = rolled["pl_blend"]
         item.extra["vel"] = p.vel
         item.extra["age"] = p.age
-        return _flowmap.apply(p, em, item)       # 流动贴图（见 _flowmap.py）
+        return _flowmap.apply(p, em, item)

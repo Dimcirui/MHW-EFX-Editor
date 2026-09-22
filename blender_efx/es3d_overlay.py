@@ -1,27 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-blender_efx/es3d_overlay.py  —  发射器生成区域线框（独立叠加层）
+"""选中 Entry 的 EMITTERSHAPE3D 生成区域线框叠加层。
 
-一个开关，画**当前选中的那些 entry** 的 EMITTERSHAPE3D 生成区域。与粒子模拟
-完全解耦：不用播放、不推进任何东西，勾上就看得见，改字段立刻跟。
-
-与另外两处的分工
-----------------
-* `sim_preview` 的「显示 → Emitter shape」勾选框：**播放期间**画正在播的那些
-  track（整文件播放时就是那一批），跟着播放起点的矩阵走。
-* 本模块：**不播放**也能看，只画选中的，用 entry 当前的世界矩阵（拖动 empty
-  时线框跟着动）。**不展开 PtLife → Action 的子特效**——那是一整棵实例树，
-  几十个形状叠在一起没法看，而作者正在编辑的是选中的这几个。
-0.7.1 起本模块是生成区域的**唯一**画法。此前还有一个进入/退出式的 GN 会话
-（`es3d_preview.py`）会生成真实网格子对象，它对 rangeXYZ 的读法与模拟层不一致
-（把前一半当尺寸），留着只会给出互相矛盾的形状，已随该版本删除。
-
-线框本身来自 `efx_format/sim/behaviors/emittershape3d.py::EmitterShape3D.outline()`
-——和采样器同一份读法，所以「框在哪」与「粒子会生在哪」必然一致。形状读法的标定
-开关（`es3d_range_mode` 等）同样对它生效。
-
-约束（CLAUDE.md）：bpy 稳定子集（draw_handler_add 自 2.8、gpu.shader.from_builtin
-自 2.8）；Python 3.10；纯胶水层，只读 EFX 字段。
+线框由模拟器的 emitter_outline() 生成，并按 Entry 当前世界矩阵变换；仅显示选中
+Entry，不展开 Action 子特效树。
 """
 
 import bpy
@@ -30,7 +11,7 @@ from bpy.types import Operator
 
 from .i18n import T
 
-#: 一次最多画几个 entry 的线框。选中整个 EFX 时不至于把视口刷爆。
+# 单次绘制的 Entry 上限。
 _MAX_ENTRIES = 64
 
 _STATE = {
@@ -46,7 +27,7 @@ def is_active():
 
 
 def invalidate():
-    """字段被编辑过 → 下次绘制重算（fields.py 的回调里调）。"""
+    """标记叠加层在下次绘制时重算。"""
     if _STATE["handler"] is not None:
         _STATE["dirty"] = True
         _redraw()
@@ -67,11 +48,7 @@ def _redraw():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def selected_entries(context):
-    """选中对象（或它们下面的属性）各自往上找到的 entry，去重保序。
-
-    空选时退回活动对象。**不**像 `sim_preview.collect_entries` 那样在点中根集合时
-    扩展到整个文件——本叠加层就是「只看我选的这几个」。
-    """
+    """返回选中对象所属的去重 Entry；无选择时回退活动对象。"""
     from . import sim_preview as _sp
 
     out = []
@@ -89,8 +66,7 @@ def selected_entries(context):
 
 
 def _build(entries, scene):
-    """每个 entry 建一个**单体** Simulator（不是 SimScene → 天然没有子特效树），
-    取它的生成区域线框，过 entry 的世界矩阵变到世界坐标。"""
+    """构建各 Entry 的单体模拟器线框并变换到世界坐标。"""
     from . import sim_preview as _sp
 
     out = []
@@ -117,7 +93,7 @@ def _build(entries, scene):
 
 
 def _signature(entries):
-    """「选中了谁、摆在哪」——变了就重算。矩阵进签名，这样拖动 empty 线框会跟着走。"""
+    """返回选择与世界矩阵签名，用于判断是否重算。"""
     sig = []
     for o in entries:
         try:

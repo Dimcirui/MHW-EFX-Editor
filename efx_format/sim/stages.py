@@ -1,31 +1,17 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/stages.py  —  behavior 的阶段划分
+"""behavior 的阶段划分。
 
-设计要点：**阶段按「写什么」命名，不按「什么时候跑」命名。**
-
-`pre/motion/post` 这类相对时机命名的问题是：叠加顺序本来就未确认，以后每加一个
-属性都可能要插队，而「pre」里挤满互不相干的东西之后，没人说得清一个新 behavior
-该放哪。改成按写入目标命名之后：
-
-  - TURBULENCE/HOMING/GUIDE 都写速度 → 全在 FORCE，彼此用 ORDER 排；
-  - PATHCHAIN/REPEATAREA/NOISE 不是「在运动之后」，而是「写 pos 不写 vel」→
-    CONSTRAIN 这个名字自己解释了它为什么必须排在 INTEGRATE 后面（NOISE 绕生成点
-    的圆周运动是直接覆写位置的闭式解，2026-09-17 实机确认，不是速度近似）；
-  - 将来真出现「积分前改位置」的属性，那是个新阶段（加一个常量），不必重构。
-
-副产品：`STAGE_WRITES` 给出每个阶段允许写的 Particle 槽位，`SimConfig.strict`
-打开时逐调用比对，越界即抛（FORCE 的 behavior 碰了 p.pos = bug）。30 个 behavior
-共存之后，这是唯一能自动检查的契约。
-
-阶段顺序是**数据不是代码**：`DEFAULT_STAGE_ORDER` 只是默认值，SimConfig 可整体
-替换，UI 上可拖动重排——把「顺序未知」变成可调参数，而不是待定的代码分支。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- 阶段按「写什么」命名，不按「什么时候跑」命名。新 behavior 归哪个阶段，看它写
+  Particle 的哪个槽位；出现新的写入目标时加一个阶段常量，不要重构现有阶段。
+- `STAGE_WRITES` 是各阶段允许写的槽位清单，`SimConfig.strict` 打开时逐调用比对，
+  越界即抛。新增阶段必须同时登记。
+- 阶段顺序是数据：`DEFAULT_STAGE_ORDER` 只是默认值，SimConfig 可整体替换，UI 可
+  重排。叠加顺序尚未确认，故做成可调参数而非固定代码分支。
 """
 
 # ── 阶段常量 ─────────────────────────────────────────────────────────────────
-# 数值留空隙，方便以后往中间插（例如 WARP = 15：积分前改位置）。
+# 数值留空隙，便于在两个阶段之间插入新阶段。
 FORCE       = 10   # 写 p.vel      —— TURBULENCE / HOMING / GUIDE / 重力
 INTEGRATE   = 20   # p.pos ← p.vel —— VELOCITY3D 独占
 CONSTRAIN   = 30   # 覆写 p.pos    —— PATHCHAIN / REPEATAREA / EMITTERBOUNDARY / NOISE / 碰撞

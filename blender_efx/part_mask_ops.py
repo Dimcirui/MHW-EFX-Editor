@@ -1,41 +1,15 @@
-"""
-blender_efx/part_mask_ops.py  —  PLEMISSIVE body_p / wp_p 位掩码勾选编辑器
+"""PLEMISSIVE body_p 与 wp_p 的位掩码编辑器。
 
-PLEMISSIVE 的关联部位字段 body_p / wp_p 各是一个完整字节（8 位），无额外的"cycle"高位——
-2026-09 用 official 全语料（185 个 PLEMISSIVE 块）核对后推翻了旧版"低位掩码+高位 cycle
-计数器"读法：那个所谓的"cycle"在 wp_p 里最常见的取值（如 0x20→cycle 8、0x38→cycle 14）
-是跨大量不同文件反复出现的固定常数，不是会递增的计数器；而 evc0020_031.efx 里
-body_p=wp_p=0x3F（配 color=白、bright=1.0）明显是个"全选"测试样本，直接证明两个字段
-就是纯粹的按位选择，不需要额外的乘法换算。
-
-现状（2026-09 语料统计，见 docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §3.1）：
-  body_p：官方讲座列出 8 个防具项（HELM/BODY/ARM/WAIST/LEG/ACCE/HAIR/FACE），旧代码
-    bit0~4 已用 head/body/arms/waist/legs 对应前 5 项，用户 2026-09-19 指出这个顺序
-    跟官方列表前 5 项顺序一致不像巧合，故 bit5~7 按同一顺序接着排 ACCE/HAIR/FACE。
-    仍是假设（bit5 只在"全选"样本里出现过一次，bit6/7 全语料零命中，未实机验证），
-    但比单纯占位名有更强的顺序依据。
-  wp_p：官方讲座列了 3 个武器项（WP_MAIN/WP_SUB0/WP_SUB1，均是数字编号；此前一度
-    误记成"WP_SUBO"末位是字母O，用户 2026-09-19 核对原图确认末位就是数字 0，已订正）。
-    语料里 bit0~5 全部有实质使用（bit5 单独出现率高达 62.7%），明显超出 3 位——旧名
-    "左手/右手"本身无独立证据支撑，按用户 2026-09-19 给出的假设改名：bit1(原
-    right_hand)→wpMain（较有把握），bit0(原 left_hand)→wpSub0（临时假设），
-    bit2→wpSub1（临时假设）。bit3~7 仍未定位，占位名 wp_unkn3~7，等游戏内逐位实机
-    测试（逐个切换装备部位/武器槽、导出对比字节变化——MHW 是 MT Framework，没有
-    REFramework 之类的脚本化探测手段）后再回填/纠正。
-
-⚠ 8 个勾选框只是把同一个字节按位拆开显示/编辑，不涉及任何换算——底层仍是单字节
-  item.byte1_value，byte-perfect 不受影响。
+维护约束：
+- 两字段都是完整的 8 位掩码，直接读写 byte1_value，不做额外换算。
+- 未确认的部位名称以 `?` 标示；未知位仍以独立复选框保留。
 """
 
 import bpy
 from bpy.props import BoolProperty, StringProperty
 
 
-# ── 掩码常量 ──────────────────────────────────────────────────────────────────
-# (attr_key, bit, 中文简称, 英文簡稱)；body_p bit0~4 沿用旧名，与官方 8 防具项前 5 位
-# （HELM/BODY/ARM/WAIST/LEG）顺序一致，故 bit5~7 按同一顺序接排 ACCE/HAIR/FACE
-# （用户 2026-09-19 假设，未实机验证）。2026-09-20 起不确定的字段名统一在末尾加"?"，
-# 不再用"（假设）"/"（弱假设）"这种置信度括注（面向用户的文案约定，见 UI_COPY_GUIDE.md）。
+# 掩码项：(属性名、位、中文标签、英文标签)。
 _BODY_PARTS = [
     ("head",  0x01, "头 Head",   "Head"),
     ("body",  0x02, "身 Body",   "Body"),
@@ -47,8 +21,6 @@ _BODY_PARTS = [
     ("face",  0x80, "脸 Face?",  "Face?"),
 ]
 
-# wp_p：bit0~2 按用户 2026-09-19 假设改名（bit1=wpMain 较有把握，bit0=wpSub0/
-# bit2=wpSub1 是临时假设，均未实机验证），bit3~7 仍未定位，按 unkn{位号} 占位。
 _WP_PARTS = [
     ("wpSub0",   0x01, "WP_SUB0?",  "WP_SUB0?"),
     ("wpMain",   0x02, "WP_MAIN?",  "WP_MAIN?"),
@@ -87,8 +59,6 @@ def part_mask_summary(value, field):
     return "+".join(names) if names else "无"
 
 
-# ── 勾选弹窗算子 ──────────────────────────────────────────────────────────────
-
 class EFX_OT_set_part_mask(bpy.types.Operator):
     """以勾选框编辑 PLEMISSIVE 的关联部位 / 关联武器位掩码"""
 
@@ -97,23 +67,20 @@ class EFX_OT_set_part_mask(bpy.types.Operator):
     bl_description = "Edit the related-body / related-weapon bitmask via checkboxes"
     bl_options     = {"REGISTER", "UNDO", "INTERNAL"}
 
-    field: StringProperty(name="Field", default="body_p")  # "body_p" / "wp_p"
+    field: StringProperty(name="Field", default="body_p")
 
     head:  BoolProperty(name="头 Head",  default=False)
     body:  BoolProperty(name="身 Body",  default=False)
     arms:  BoolProperty(name="臂 Arms",  default=False)
     waist: BoolProperty(name="腰 Waist", default=False)
     legs:  BoolProperty(name="腿 Legs",  default=False)
-    # 2026-09-20 修复：_BODY_PARTS 早就把 bit5~7 从占位名改成了 acce/hair/face，
-    # 这里的属性名一直没跟着改——draw()/invoke()/execute() 都按 _BODY_PARTS 的 key
-    # 反查 getattr(self, key)，key 对不上会直接报错，之前这几个位的勾选框其实是坏的。
     acce: BoolProperty(name="饰 Acce?", default=False)
     hair: BoolProperty(name="发 Hair?", default=False)
     face: BoolProperty(name="脸 Face?", default=False)
 
     wpSub0: BoolProperty(name="WP_SUB0?", default=False)
     wpMain: BoolProperty(name="WP_MAIN?", default=False)
-    wpSub1: BoolProperty(name="WP_SUB1?", default=False)  # 同上，_WP_PARTS 早有这一位，这里漏注册了
+    wpSub1: BoolProperty(name="WP_SUB1?", default=False)
     wp_unkn3: BoolProperty(name="未知 3", default=False)
     wp_unkn4: BoolProperty(name="未知 4", default=False)
     wp_unkn5: BoolProperty(name="未知 5", default=False)
@@ -127,7 +94,6 @@ class EFX_OT_set_part_mask(bpy.types.Operator):
     def invoke(self, context, event):
         bp = context.active_object.efx_block
         item = _find_field_item(bp, self.field)
-        # body_p / wp_p 是 'B'(byte) 字段 → 值存于 byte1_value 槽（非 int_value）
         val = int(item.byte1_value) if item is not None else 0
         parts = _BODY_PARTS if self.field == "body_p" else _WP_PARTS
         for key, bit, _zh, _en in parts:
@@ -153,7 +119,7 @@ class EFX_OT_set_part_mask(bpy.types.Operator):
         for key, bit, _zh, _en in parts:
             if getattr(self, key):
                 mask |= bit
-        item.byte1_value = mask & 0xFF   # update=_mark_block_dirty 自动置脏
+        item.byte1_value = mask & 0xFF
         self.report({"INFO"}, f"{self.field} = 0x{mask:02X} ({part_mask_summary(mask, self.field)})")
         return {"FINISHED"}
 

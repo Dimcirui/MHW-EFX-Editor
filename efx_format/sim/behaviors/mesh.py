@@ -1,40 +1,44 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/mesh.py  —  MESH（宿主绑定的 mod3 网格）
+"""MESH —— 宿主绑定的 mod3 网格。
 
-分工
-----
-核心层**拿不到几何**——mod3 的顶点在宿主里（Blender 侧 `mod3_link.py` 已经把
-mod3 导入并绑在 MESH 属性的 `efx_mesh_target` 上）。所以本 behavior 只产出
-「在这个位置、按这个变换、用这个颜色，画那个绑定的网格」，具体怎么画交给 glue：
+核心层无法取得几何数据：mod3 的顶点位于宿主中（Blender 侧由 `mod3_link.py` 导入 mod3 并绑定到
+MESH 属性的 `efx_mesh_target`）。因此本 behavior 只产出绘制所需的位置、变换与颜色，具体绘制由
+glue 完成：
 
     item.kind = 'MESH'
-    item.pos / item.size(=逐轴缩放) / item.extra['rot'](欧拉角，度；含发射器旋转)
-    item.extra['viscon'] = visconIndex   —— 选 mod3 里哪一组网格
-    item.extra['emissive'] = (r,g,b,a)   —— 自发光色，glue 可叠加
+    item.pos / item.size            位置与逐轴缩放
+    item.extra['rot']               欧拉角，单位度，已包含发射器旋转
+    item.extra['rot_order']
+    item.extra['viscon']            选择 mod3 中的哪一组网格
+    item.extra['emissive']          自发光色，由 glue 叠加
 
-这条分界和 BILLBOARD3D 一样干净：核心只说「画什么、在哪」，glue 知道「怎么画」。
+字段职能：
 
-字段
-----
-    rotation(XYZ0)            逐轴旋转（固定/抖动成对）。⚠ 曾经这一块的字节边界划错了
-                              8 个字节，于是「X」拿到一个非角度字段、「Y」拿到真 X、
-                              「Z」拿到真 Y，而真正的 Z 被单独叫成 rotation2。
-                              现在 rotation 就是完整的三轴，没有额外的标量旋转。
-    rotationOrder             _TRANSFORM_ROT_ORDER
-    scale(XYZ0)               逐轴缩放
-    global_scale(+Jitter)     整体缩放倍率
-    visconIndex(+Jitter)      「指定调用所链接 mod3 内 Visible Condition 与此值相同
-                              的网格」（annotations 原话）
-    color / colorRange / useColorRange        基础色
-    emissiveColor / emissiveColorRange        自发光色
-    colorRate(+Jitter)        颜色倍率（≈ BILLBOARD3D 的 brightness/ColorRate）
-    emissiveColorRate(+Jitter) 自发光倍率
+    rotation(XYZ0)              完整的三轴旋转，各轴由固定值与抖动幅度成对组成；不存在额外的标量旋转字段
+    rotationOrder               欧拉旋转顺序，与 TRANSFORM3D 相同
+    scale(XYZ0)                 逐轴缩放
+    global_scale(+Jitter)       整体缩放倍率，与逐轴缩放相乘
+    visconIndex(+Jitter)        选择所链接 mod3 中 Visible Condition 与该值相同的网格
+    color / colorRange /        基础色
+    useColorRange
+    emissiveColor /             自发光色
+    emissiveColorRange
+    colorRate(+Jitter) /        两者各自的倍率
+    emissiveColorRate(+Jitter)
 
-未处理：affectedByLight / shadowCastBitflag / tracking_flags / enableIntensity*
-（都是渲染管线开关，预览里没有对应概念）、epv_color_slot1/2（记 note）。
+affectedByLight / shadowCastBitflag / tracking_flags / enableIntensity* 均为渲染管线开关，
+预览中没有对应实现，不参与计算；`epv_color_slot1/2` 仅记录 note。
 
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- 带 TIML 的属性必须在 `build_render` 中逐帧重新求值 rotation / scale / color。常见的淡入淡出
+  通过 scale 的 A1 曲线实现，age=0 时多为 0；仅在出生时采样会使网格停留在 0 缩放、始终不可见。
+- `item.extra['rot']` 必须是四项之和：属性自身的 rotation、ROTATEANIM 的累积、
+  `em.rot_dynamic`（宿主未施加的部分：根 entry 上只含 TRANSFORM3D 的 rotation_velocity 累积，
+  子实例上还包含静态 rotate）与 `em.host_rotation`（父实例旋转时逐帧传递的部分）。两种情形下
+  相加均正确，因此不设条件判断。
+- `item.blend` 固定为 `'ALPHA'`：MESH 没有 blendMode 字段，网格按不透明处理。
+- `item.extra["base_tint"]` 保存渲染主体自身的颜色，不含 RGBFIRE / RGBWATER 写入 `p.color`
+  的分层色，供 glue 的两层染色分支作为逐通道滤镜使用。
 """
 
 from ...hashes import MESH
@@ -48,14 +52,12 @@ from ._common import epv_note, pick_color, roll_rgba
 
 @register(MESH)
 class Mesh(Behavior):
-    """RENDER_BODY：产出 kind='MESH'，几何由 glue 从绑定对象取。"""
+    """RENDER_BODY 阶段产出 kind='MESH'，几何由 glue 从绑定对象读取。"""
 
     STAGE = RENDER_BODY
     ORDER = 100
 
-    #: 本块有没有 TIML 曲线。挂了才在 build_render 逐帧重解 scale/color——同
-    #: BILLBOARD3D/PLANE 的模式。常见的「淡入淡出」用 scale 的 A1 曲线做（age=0
-    #: 起多半是 0），只在出生时采一次样会把网格冻结在 0 缩放上、永久不可见。
+    #: 本属性是否带 TIML 曲线；带曲线时在 build_render 中逐帧重新求值。
     _has_tracks = False
 
     def on_emitter_init(self, em, rng):
@@ -72,14 +74,12 @@ class Mesh(Behavior):
             return
         mode = em.config.jitter_mode
 
-        # 逐轴旋转（X/Y/Z 各自的固定+随机）
         rb, ra = f.xyz_lo("rotation"), f.xyz_hi("rotation")
         p.rolled["me_rot"] = Vec3(jitter(rb.x, ra.x, rng, mode),
                                   jitter(rb.y, ra.y, rng, mode),
                                   jitter(rb.z, ra.z, rng, mode))
         p.rolled["me_order"] = rot_order_name(f.i("rotationOrder"), ROT_ORDER_TRANSFORM)
 
-        # 逐轴缩放 × 整体缩放
         sb, sa = f.xyz_lo("scale"), f.xyz_hi("scale")
         g = jitter(f.get("global_scale", 1.0), f.get("global_scale_jitter"), rng, mode)
         p.rolled["me_scale"] = Vec3(jitter(sb.x, sa.x, rng, mode) * g,
@@ -111,7 +111,7 @@ class Mesh(Behavior):
         if "me_rgba" not in rolled:
             return item
 
-        if self._has_tracks:        # 挂了 TIML → rotation/scale/color 可能逐帧变，重解
+        if self._has_tracks:
             f = em.f(MESH, p)
             rot = f.xyz_lo("rotation")
             sb = f.xyz_lo("scale")
@@ -139,19 +139,8 @@ class Mesh(Behavior):
                       g0 * rate * p.color[1],
                       b0 * rate * p.color[2],
                       a0 * p.alpha]
-        # 渲染主体自己的颜色（不含 RGBFIRE/RGBWATER 的 p.color）单独存一份，供
-        # glue 的两层染色分支当逐通道滤镜用，见 billboard3d.py 同名字段的注释。
         item.extra["base_tint"] = (r0 * rate, g0 * rate, b0 * rate)
-        item.blend = "ALPHA"           # MESH 没有 blendMode 字段；网格按实心处理
-        # 属性旋转 + ROTATEANIM 累积 + **发射器自己的旋转** + **从 PTLIFE 父实例
-        # 继承的旋转**。`em.rot_dynamic` 是「宿主没有替我们套的那部分」：根 entry
-        # 上它只含 TRANSFORM3D 的 rotation_velocity 累积（静态部分由宿主摆位），
-        # 子实例上它还含静态 rotate（子实例没有宿主，见 scene.py 的 `_child_config`）。
-        # `em.host_rotation` 是父实例转起来时逐帧传下来的那份（见
-        # scene.py::SimScene._follow）——父发射器转，召唤出的子发射器也要跟着转。
-        # 两种情形加上去都是对的，所以不设门。
-        # 实例：wp11_017 的 aura32a/b/c 只差发射器静态 rotate Z 的 0 / ±120°，
-        # 不加这一项三份就完全重叠。
+        item.blend = "ALPHA"
         item.extra["rot"] = rot + p.rot + em.rot_dynamic + em.host_rotation
         item.extra["rot_order"] = rolled["me_order"]
         item.extra["viscon"] = rolled["me_viscon"]

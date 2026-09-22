@@ -1,40 +1,10 @@
-"""
-blender_efx/normalize.py  —  顶层段的规范化设施（重编号 + 满命名）
+"""顶层段的重编号与补全标签。
 
-本模块是「结构权威下放」重构的公共基础，供 io_tree 导入端、operators 导出端、
-reorder 重排算子共用。三件事：
-
-1. renumber_group / renumber_all_groups —— efx_index 撞车规范化
-   每个同级组（EFX_ENTRY / EFX_ACTION / EFX_EXTERN / EFX_SUBSELECT）按
-   (efx_index, name) 稳定排序后重赋 efx_index = 0..n-1，并重建显示名。
-   - 排序次级键用 name：Blender 原生 Shift+D 的副本带 ".001" 后缀，天然排在源之后，
-     使"复制出的副本紧跟源"这一直觉成立。
-   - 幂等：已是 0..n-1 连续序时不改动（返回 False）。
-   - 主要解决原生复制（Shift+D）导致两个同级对象 efx_index 撞车的问题——
-     导出端调用一次即化解；reorder/delete 各自也走全组重编号，故撞车只是瞬态。
-
-2. ensure_all_named —— 满命名（反查真名优先，绝不重算身份哈希）
-   给所有 efx_has_label==0 的 action/entry（standard）补 has_label=1 + 标签。
-   ⚠ EFX_ACTION.play_type / EFX_ENTRY(standard).body_type 是 jamcrc(段名) 派生的
-   **权威身份哈希**（语料实证 100%/99.7%，见 memory play-type-is-jamcrc-of-name）
-   ——未命名段仍带着真实非零哈希（"有名字但没进标签表"，非零装饰）。**本函数只
-   反查/合成标签字符串，绝不改动 body_type/play_type**：
-     ① 优先用 efx_format.hashes.jamcrc_names.JAMCRC_TO_NAME 反查现有哈希 → 命中则用
-        反查出的真名（body_type/play_type 与新标签天然自洽，语料验证 47/47 命中）；
-     ② 未命中（当前语料 0 例）→ 退回合成 "类型_序号"（哈希与标签不一致但哈希
-        本就已保留，不构成新问题）。
-   EFX_EXTERN 的 attr_type 是固定类型常量（如 EXTERNSPAWN），与 label 名无关，
-   无身份哈希顾虑，合成命名永远安全。EFX_ENTRY 非 standard（extended/root）的
-   body_type 也不是名字哈希（extended≡1，root≡ROOT_MARKER），同样直接合成。
-   满命名后标签表变为"全命名"（连续前缀退化为满），copy/duplicate 永不破坏前缀，
-   can_label 前缀边界机器随之作废。
-
-   **用户手动改名**（reorder.py EFX_OT_rename_entry/rename_action_extern）走
-   不同规则：改名即改身份，**必须重算** body_type/play_type = jamcrc(新名)——
-   与 ensure_all_named 的"反查/保留哈希"正好相反，两条规则各管一段生命周期
-   （导入时的自动命名 vs 用户主动改名），互不冲突。
-
-约束（CLAUDE.md）：Python 3.10 语法、bpy 稳定子集、不改 efx_format/。
+维护约束：
+- 同级对象按 (efx_index, name) 稳定排序后重编号；Root Entry 必须优先。
+- 自动补名只修改标签与显示名，绝不重算 Action 或 standard Entry 的身份哈希。
+- 用户显式改名的身份哈希更新属于其他模块，不能与自动补名混用。
+- 补名后调用方须重建标签表。
 """
 
 import bpy
@@ -42,10 +12,8 @@ import bpy
 from . import root_collection as _rc
 
 
-# 顶层段（归属 root 所在文件集合、参与 efx_index 重编号）
 _ROOT_GROUP_TYPES = ("EFX_ENTRY", "EFX_ACTION", "EFX_EXTERN", "EFX_SUBSELECT")
 
-# 满命名合成标签前缀（仅 label 表条目：action/extern/entry；subselect 不在标签表）
 _NAME_PREFIX = {
     "EFX_ACTION": "action",
     "EFX_EXTERN": "extern",
@@ -54,17 +22,12 @@ _NAME_PREFIX = {
 
 
 def _nn(idx: int) -> str:
-    """零填充 2 位序号（>99 不填充），与 io_tree/reorder/delete_ops 命名一致。"""
+    """返回显示名使用的两位序号。"""
     return str(idx).zfill(2) if idx < 100 else str(idx)
 
 
 def _collect_group(root, type_tag: str) -> list:
-    """收集 root 文件集合下 ~TYPE==type_tag 的顶层对象，按 (efx_index, name) 稳定排序
-    （root_collection.collect_top_level 已按 efx_index 排序，这里补 name 次级键，
-    保证 Shift+D 撞车出的同 index 副本按 name 拆出确定前后顺序）。
-
-    EFX_ENTRY 额外规则：entry_kind=="root" 的条目恒排第一——跟 io_tree.py 导出端
-    的强制顺序保持一致，避免"面板显示的编号"和"导出文件里的实际顺序"对不上。"""
+    """按稳定顺序收集顶层对象；Root Entry 始终优先。"""
     objs = _rc.collect_top_level(root, type_tag)
     if type_tag == "EFX_ENTRY":
         objs.sort(key=lambda o: (0 if str(o.get("entry_kind", "")) == "root" else 1,
@@ -153,7 +116,7 @@ def _identity_hash(o, type_tag: str):
             return None
     if type_tag == "EFX_ENTRY":
         if str(o.get("entry_kind", "")) != "standard":
-            return None  # extended≡1 / root≡ROOT_MARKER，非名字哈希
+            return None  # root≡ROOT_MARKER，非名字哈希
         try:
             return int(str(o.get("body_type", ""))) & 0xFFFFFFFF
         except (ValueError, TypeError):

@@ -1,27 +1,8 @@
-"""
-blender_efx/reorder.py  —  entry / attribute 的重排（上移/下移）
+"""重排 Entry、Action、Extern 与属性对象。
 
-算子：
-  efx.move_entry  —  对 EFX_ENTRY 对象执行上移/下移（direction='UP'/'DOWN'）
-  efx.move_attribute —  对 EFX_ATTRIBUTE 对象执行上移/下移（direction='UP'/'DOWN'）
-
-设计要点：
-  1. 重排只交换相邻对象的 efx_index——导出时 export_efx_tree 已按 efx_index 排序，
-     引用指针化也是导出时经"对象→段局部 index"映射重算，因此重排无需做任何指针修改。
-  2. 交换后必须重建两个对象的显示名 NN 前缀（大纲显示顺序由名字前缀控制）。
-     显示名格式（见 io_tree.py 命名规则）：
-       entry：  "{nn} {raw_label}"
-       attribute：    "[{parent_label}] {nn} {type_name}"
-  3. 原始标签/类型名从对象的自定义属性 efx_raw_label（entry）/ type_hash（attribute）读取，
-     导入时写入；类型名通过 HASH_TO_NAME 查询。
-  4. byte-perfect：重排→排回 ≡ 没有重排，efx_index 换回原值、名字前缀重生成
-     结果与原导入完全一致，导出字节不变。
-
-约束（参照 CLAUDE.md）：
-  - Python 3.10 语法（兼容 Blender 3.6～5.x）
-  - bpy 只用稳定子集
-  - 不改 efx_format/，不改 io_tree.py
-  - bl_options = {"REGISTER", "UNDO"}
+维护约束：重排后必须按列表顺序为整个段重新编号并刷新显示名；导出时引用依据
+对象到段内索引的映射重算，不能手工交换引用。顶层条目顺序变化必须置
+``labels_dirty``，使标签表按新顺序重建。Root body 的位置规则由 normalize 维护。
 """
 
 import bpy
@@ -57,9 +38,7 @@ def _hash_display_name(type_hash: int) -> str:
 
 
 def _entry_renderer_suffix(entry_obj) -> str:
-    """扫描 entry_obj 现有 EFX_ATTRIBUTE 子对象（按 efx_index 序），返回渲染主体
-    后缀（如 " (Mesh)"），见 efx_format.categories.renderer_suffix。entry_obj 为
-    None 时返回空串（供导入期还没有子对象的路径复用同一签名）。"""
+    """返回 Entry 属性决定的显示后缀；没有 Entry 时返回空串。"""
     if entry_obj is None:
         return ""
     from ..efx_format import categories as _cat
@@ -76,26 +55,14 @@ def _entry_renderer_suffix(entry_obj) -> str:
 
 
 def _entry_display_name(efx_index: int, raw_label: str, entry_obj=None) -> str:
-    """
-    按 io_tree.py 规则生成 entry 的显示名："{nn} {raw_label}{renderer_suffix}"。
-    nn 是零填充 2 位序号（>99 时自动扩展）。entry_obj 给出时附加渲染主体后缀
-    （见 _entry_renderer_suffix），不给出时省略（如未建子对象前的场景）。
-    """
+    """生成 Entry 显示名；渲染后缀仅用于大纲呈现。"""
     nn = str(efx_index).zfill(2) if efx_index < 100 else str(efx_index)
     suffix = _entry_renderer_suffix(entry_obj)
     return f"{nn} {raw_label}{suffix}"
 
 
 def _attribute_display_name(efx_index: int, parent_label: str, type_name: str) -> str:
-    """
-    按 io_tree.py 规则生成属性的显示名：
-      有父标签：  "[{parent_label}] {nn} {type_name}"
-      无父标签：  "{nn} {type_name}"
-
-    type_name 在此转成正常大小写显示形式（如 "TRANSFORM2D" → "Transform2D"）——
-    仅影响这里拼出的显示字符串，不影响调用方传入的原始值（efx_type_name 等内部
-    标识仍保持大写，见 efx_format.hashes.pretty_type_name）。
-    """
+    """生成属性显示名；类型名称格式化不改变内部类型标识。"""
     from ..efx_format.hashes import pretty_type_name
     nn = str(efx_index).zfill(2) if efx_index < 100 else str(efx_index)
     display_name = pretty_type_name(type_name)
@@ -179,28 +146,13 @@ def _get_attribute_parent_label(block_obj: bpy.types.Object) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 顶层带标签条目（entry / action / extern）通用重排核心
-#
-# 三者命名同格式 "{nn} {efx_raw_label}"、parent 都是 EFX_ROOT、都活在
-# [Action|Extern|Entry] 全局标签前缀里。重排要正确必须：
-#   1. 标签前缀守卫：相邻两条 efx_has_label 不同 → 拒绝（交换会破坏"有标签条目是
-#      连续前缀"的不变量，导出重建标签表会错位）。
-#   2. 交换 efx_index + 重建显示名。
-#   3. 若任一条有标签 → 置 root["labels_dirty"]=1，使导出按新顺序重建标签表
-#      （否则导出发原始 verbatim 标签字节＝旧顺序，标签会贴到错误条目上）。
-# ─────────────────────────────────────────────────────────────────────────────
+# 顶层段重排共享同一全组重编号与标签表失效逻辑。
 
 def _move_labeled_entry(obj, direction: str, type_tag: str, report) -> set:
-    """
-    上移/下移顶层带标签条目（EFX_ENTRY / EFX_ACTION / EFX_EXTERN）。
+    """移动顶层段对象并为整个段稳定重编号。
 
-    重构（结构权威下放）：从"交换两个 efx_index"改为"列表重排 + 全组重编号"——
-      1. 同级按 (efx_index, name) 稳定排序成列表（撞车的两个副本靠 name 拆成确定前后）；
-      2. 目标与相邻项交换列表位置；
-      3. 全组按新列表顺序重赋 efx_index = 0..n-1 + 重建显示名。
-    这样：① 永不"转移失败"（同名同 index 也已被 name 拆序，必动）；
-         ② 永不留撞车（末尾恒 0..n-1 唯一）——撞车不再是需处理的 case。
-    满命名后所有条目都在标签表内，原"标签前缀守卫"作废，已移除。
+    ``(efx_index, name)`` 定义异常重复索引时的确定顺序；重排后必须重建显示名并
+    标记标签表失效。
     """
     from . import normalize
     root = _rc.find_root_collection(obj)
@@ -208,7 +160,7 @@ def _move_labeled_entry(obj, direction: str, type_tag: str, report) -> set:
         report({"ERROR"}, "EFX_ROOT not found")
         return {"CANCELLED"}
 
-    sibs = normalize._collect_group(root, type_tag)  # (efx_index, name) 稳定序
+    sibs = normalize._collect_group(root, type_tag)
     if len(sibs) < 2:
         report({"INFO"}, "Only 1 entry, cannot move")
         return {"CANCELLED"}
@@ -230,7 +182,6 @@ def _move_labeled_entry(obj, direction: str, type_tag: str, report) -> set:
             return {"CANCELLED"}
         npos = pos + 1
 
-    # 交换列表位置 → 全组重赋 efx_index=0..n-1 + 重建显示名
     sibs[pos], sibs[npos] = sibs[npos], sibs[pos]
     for i, o in enumerate(sibs):
         o["efx_index"] = i
@@ -239,7 +190,6 @@ def _move_labeled_entry(obj, direction: str, type_tag: str, report) -> set:
         except Exception:
             pass
 
-    # 顶层条目在标签表内 → 顺序变，导出需按新序重建标签表
     root["labels_dirty"] = 1
 
     dir_str = "up" if direction == "UP" else "down"
@@ -252,7 +202,7 @@ def _move_labeled_entry(obj, direction: str, type_tag: str, report) -> set:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_move_entry(bpy.types.Operator):
-    """上移或下移选中的 EFX_ENTRY（交换 efx_index 并重建显示名）"""
+    """移动选中的 Entry 并刷新 Main 段顺序。"""
 
     bl_idname      = "efx.move_entry"
     bl_label       = "Move Entry"
@@ -275,7 +225,6 @@ class EFX_OT_move_entry(bpy.types.Operator):
         obj = context.active_object
         if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
             return False
-        # 需要能解析出所属文件集合才能找同级
         return _rc.find_root_collection(obj) is not None
 
     def execute(self, context):
@@ -287,7 +236,7 @@ class EFX_OT_move_entry(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_move_attribute(bpy.types.Operator):
-    """上移或下移选中 EFX_ENTRY 内的 EFX_ATTRIBUTE（交换 efx_index 并重建显示名）"""
+    """移动选中属性并刷新所属 Entry 的属性顺序。"""
 
     bl_idname      = "efx.move_attribute"
     bl_label       = "Move Attribute"
@@ -310,17 +259,14 @@ class EFX_OT_move_attribute(bpy.types.Operator):
         obj = context.active_object
         if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
             return False
-        # 需要有父 EFX_ENTRY
         parent = obj.parent
         return parent is not None and parent.get("~TYPE") == "EFX_ENTRY"
 
     def execute(self, context):
-        # 重构：列表重排 + 全组重编号（同 _move_labeled_entry），撞车/失败均不可能。
         from . import normalize
         obj = context.active_object
-        body = obj.parent  # EFX_ENTRY
+        body = obj.parent
 
-        # 同一 entry 下的 EFX_ATTRIBUTE 按 (efx_index, name) 稳定排序
         sibs = [o for o in bpy.data.objects
                 if o.parent == body and o.get("~TYPE") == "EFX_ATTRIBUTE"]
         sibs.sort(key=lambda o: (int(o.get("efx_index", 0)), o.name))
@@ -345,7 +291,6 @@ class EFX_OT_move_attribute(bpy.types.Operator):
                 return {"CANCELLED"}
             npos = pos + 1
 
-        # 交换列表位置 → 全组重赋 efx_index=0..n-1 + 重建显示名
         sibs[pos], sibs[npos] = sibs[npos], sibs[pos]
         for i, o in enumerate(sibs):
             o["efx_index"] = i
@@ -364,9 +309,7 @@ class EFX_OT_move_attribute(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_OT_move_action_extern(bpy.types.Operator):
-    """上移或下移选中的 EFX_ACTION / EFX_EXTERN（交换 efx_index、重建显示名、
-    跨标签边界守卫 + labels_dirty）。引用（PTLIFE/PTCOLLISION→action、
-    ExternReference→extern）均已指针化，导出按段局部 index 自动重算，重排安全。"""
+    """移动选中的 Action 或 Extern；引用在导出时按段内索引重算。"""
 
     bl_idname      = "efx.move_action_extern"
     bl_label       = "Move Entry"
@@ -400,20 +343,7 @@ class EFX_OT_move_action_extern(bpy.types.Operator):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def can_label_entry(obj) -> bool:
-    """
-    该 entry 能否安全获得/拥有标签槽。
-
-    EFX 标签表是 [Action|Extern|Entry] 全局顺序的**连续前缀**。一个 entry 要有标签，
-    它前面的所有条目（action/extern + 在它之前的 entry）必须都已有标签——否则给它
-    标签会让标签错位（落到前面那个无标签条目上）。
-
-    返回 True 表示：它已在前缀内（has_label=1），或恰好在前缀边界（前面全有标签，
-    可安全扩展前缀把它纳入）。
-
-    Root entry 恒不可改名——它不是"一个特效体"，没有语义上的名字，固定显示为
-    "Root"。这里直接拦，inline 输入框（can_rename）和 Edit 面板弹窗按钮
-    （EFX_OT_rename_entry.poll 直接调这个函数）两条路径同时生效。
-    """
+    """判断 Entry 能否安全占用标签前缀中的位置；Root 不可命名。"""
     if obj is None or obj.get("~TYPE") != "EFX_ENTRY":
         return False
     if str(obj.get("entry_kind", "")) == "root":
@@ -436,13 +366,7 @@ def can_label_entry(obj) -> bool:
 
 
 class EFX_OT_rename_entry(bpy.types.Operator):
-    """重命名 EFX_ENTRY（改 EFX_Type 标签表里的名字，导出生效）
-
-    标签表是 [Action|Extern|Entry] 顺序的连续前缀。可命名条件（can_label_entry）：
-      - 已有标签（efx_has_label=1）→ 直接改名；
-      - 或处于前缀边界（前面条目全有标签）→ 提升为有标签（has_label=1）。
-    前面有无标签条目的 entry 不可命名（会破坏位置映射），面板会禁用。
-    """
+    """重命名 Entry 并更新 EFX 标签表数据。"""
 
     bl_idname      = "efx.rename_entry"
     bl_label       = "Rename Entry"
@@ -477,13 +401,7 @@ class EFX_OT_rename_entry(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Action / Extern 重命名（与 entry 同理；解决"前导 action/extern 未命名锁死全体"的问题）
-#
-# EFX_Type 标签表是 [Action|Extern|Entry] 全局顺序的连续前缀。此前只有 entry 能重命名，
-# 于是无标签文件里位于最前的 action/extern 永远无法获得标签 → 它后面的所有 entry 也
-# 因 can_label_entry 的"前面条目须全有标签"而永久锁死。给 action/extern 加重命名后，
-# 先命名前导 action/extern，entry 即随之解锁（前缀逐个向后扩展）。
-# ─────────────────────────────────────────────────────────────────────────────
+# Action、Extern 与 Entry 共享全局连续标签前缀。
 
 _LABELED_TYPES = ("EFX_ACTION", "EFX_EXTERN", "EFX_ENTRY")
 
@@ -496,12 +414,7 @@ def _global_ordered_entries(root):
 
 
 def can_label_action_extern(obj) -> bool:
-    """
-    通用版 can_label_entry：action / extern / entry 均适用。
-
-    条件：已有标签（efx_has_label=1）→ True；否则处于标签前缀边界
-    （[Action|Extern|Entry] 全局顺序里它前面的条目全部已有标签）→ True。
-    """
+    """判断顶层条目能否安全占用或扩展连续标签前缀。"""
     if obj is None or obj.get("~TYPE") not in _LABELED_TYPES:
         return False
     if int(obj.get("efx_has_label", 0)) == 1:
@@ -517,11 +430,7 @@ def can_label_action_extern(obj) -> bool:
 
 
 class EFX_OT_rename_action_extern(bpy.types.Operator):
-    """重命名 EFX_ACTION / EFX_EXTERN（改 EFX_Type 标签表里的名字，导出生效）
-
-    可命名条件同 entry（can_label_action_extern）：已有标签，或处于标签前缀边界。
-    显示名格式：'{nn} {label}'（与 io_tree / delete_ops 一致）。
-    """
+    """重命名 Action 或 Extern 并更新 EFX 标签表数据。"""
 
     bl_idname      = "efx.rename_action_extern"
     bl_label       = "Rename Entry"
@@ -558,19 +467,7 @@ class EFX_OT_rename_action_extern(bpy.types.Operator):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# auto_sort_entry_attributes  —  按规范顺序重排 entry 内属性
-#
-# ⚠ 顺序表已于 2026-08-18 整体替换。旧表来自 2026-06 的「中位归一化位置」统计，
-#   与官方语料实际顺序冲突严重：拿它重排 official 语料，24.6% 的 entry（52.0% 的
-#   文件）会被改动顺序，其中最大一处是 ALPHACORRECTION 排在 UVSEQUENCE 之前——
-#   而语料里 7426 次都是 UVSEQUENCE 在前。由于本函数在导出前无条件跑（可用
-#   auto_sort_attributes 关掉），旧表实际上会静默破坏这半数文件的 byte-perfect，
-#   且 CLI 的两套 roundtrip 都走不到这条路径（不经过 io_tree/operators），测不出来。
-#
-# 现表下沉到 efx_format/categories.py::ATTRIBUTE_CANONICAL_ORDER（纯 Python，
-# 零 bpy），由支配关系图拓扑排序得出，全语料仅 0.48% 的 entry 会被改动。
-# 依据与统计口径见 docs/ATTRIBUTE_STATS.md「Entry 内属性的规范顺序」。
-# ─────────────────────────────────────────────────────────────────────────────
+# 属性规范顺序由 efx_format.categories 的纯 Python 表定义。
 
 def _build_attribute_sort_key_map() -> dict:
     """Lazy-build hash→sort_key；导入失败返回空字典（调用方退化为不排序）。"""
@@ -585,24 +482,16 @@ _ATTRIBUTE_SORT_KEY_MAP = None  # lazy-initialized on first export
 
 
 def auto_sort_entry_attributes(root_obj) -> int:
-    """
-    对 root_obj 下每个 entry 的 EFX_ATTRIBUTE 按规范顺序排序（就地修改 efx_index）。
+    """按规范表稳定排序各 Entry 的属性，仅更新 efx_index。
 
-    规范顺序表 = efx_format.categories.ATTRIBUTE_CANONICAL_ORDER（语料拓扑排序得出，
-    见该文件顶部注释）。排序是**稳定**的：同 rank 或未知类型保持相互间的原有先后。
-
-    只修改 efx_index；io_tree.export_efx_tree 按 efx_index 排序序列化，无需重建显示名。
-    返回被重新排序的 entry 数量（未变动的 entry 不计）。
-
-    ⚠ 规范顺序是惯例（官方语料 99.5% 符合）而非格式硬约束，本函数会改动那 0.48%
-    本就"逆序"的官方 entry。导出算子的 auto_sort_attributes 开关可整体关掉。
+    相同 rank 和未知类型保留相对顺序；规范排序是可选导出修正而非格式硬约束。
     """
     global _ATTRIBUTE_SORT_KEY_MAP
     if _ATTRIBUTE_SORT_KEY_MAP is None:
         _ATTRIBUTE_SORT_KEY_MAP = _build_attribute_sort_key_map()
     sort_map = _ATTRIBUTE_SORT_KEY_MAP
     if not sort_map:
-        return 0  # 表加载失败：不排序，保持用户原顺序
+        return 0
     try:
         from ..efx_format.categories import CANONICAL_ORDER_DEFAULT as _DEFAULT_KEY
     except ImportError:
@@ -628,7 +517,6 @@ def auto_sort_entry_attributes(root_obj) -> int:
 
             sorted_attributes = sorted(blocks, key=_sort_key)
 
-            # 顺序已正确时跳过（避免无意义的属性写入）
             if all(b is s for b, s in zip(blocks, sorted_attributes)):
                 continue
 
@@ -636,7 +524,7 @@ def auto_sort_entry_attributes(root_obj) -> int:
             for new_idx, blk in enumerate(sorted_attributes):
                 blk["efx_index"] = new_idx
         except Exception:
-            pass  # 单个 entry 失败不阻断其余 entry
+            pass
 
     return modified
 
@@ -656,14 +544,9 @@ def can_rename(obj) -> bool:
 
 
 def apply_rename(obj, new_name: str):
-    """改名 + 全部连带副作用，返回 (是否成功, 信息)。
+    """应用标签改名及其派生状态，返回成功标记和消息。
 
-    弹窗算子和属性面板的输入框共用这一份。副作用漏一项都会让导出结果对不上：
-      - efx_raw_label / efx_has_label：标签表里的名字，边界条目顺带提升为有标签
-      - obj.name：大纲显示名（entry 带渲染主体后缀，action/extern 是 '{nn} {label}'）
-      - root.labels_dirty：不置位的话导出端不会重建标签表，改名等于没改
-      - 身份哈希：entry 的 body_type / action 的 play_type = jamcrc(名字)，
-        不同步重算就会名↔哈希不一致，按哈希定位的引用全部失效
+    必须同步标签、显示名、标签表脏标记和名称派生的身份哈希。
     """
     t = obj.get("~TYPE") if obj is not None else None
     if t not in ("EFX_ENTRY", "EFX_ACTION", "EFX_EXTERN"):
@@ -688,7 +571,7 @@ def apply_rename(obj, new_name: str):
 
     if t == "EFX_ENTRY":
         obj.name = _entry_display_name(idx, new_name, entry_obj=obj)
-        # extended（body_type≡1）/ root（≡ROOT_MARKER）不是名字哈希，不动
+        # Root Entry 的 body_type 不是名称哈希。
         if str(obj.get("entry_kind", "")) == "standard":
             try:
                 from ..efx_format.hashes import jamcrc
@@ -703,9 +586,7 @@ def apply_rename(obj, new_name: str):
             if t == "EFX_ACTION":
                 obj.efx_play.play_type_str = str(jamcrc(new_name))
             else:
-                # ExternAttribute.attr_type = jamcrc(extern 标签名)，与 action 的
-                # play_type / entry 的 body_type 同族（official 全语料 1477/1477 命中，
-                # 零反例）。改名不同步重算就会名↔哈希脱钩。
+                # Extern 类型同样由标签名称派生。
                 obj.efx_extern.attr_type_str = str(jamcrc(new_name))
         except Exception:
             pass
@@ -718,24 +599,17 @@ def _label_edit_get(self):
 
 
 def _label_edit_set(self, value):
-    # 输入框里敲的每个名字都要走完整副作用链，不能直接写 efx_raw_label。
-    # 名字非法或当前不可命名时静默不改——控件会在下次重绘时弹回原值，
-    # 输入框没有 report 通道，这里报不出错。可命名判定已经在画的时候灰掉了控件。
+    # 输入框必须走与弹窗相同的改名副作用链。
     apply_rename(self, value)
 
 
 def draw_rename_field(layout, obj) -> None:
-    """就地编辑名字的输入框（点进去直接改），供各类型自己的属性面板用。
-
-    不可命名时灰掉控件并在下面补一行说明——光给个灰框看不出为什么不能改。
-    """
+    """绘制就地标签编辑控件；不可命名时禁用。"""
     from .i18n import T
 
     t = obj.get("~TYPE") if obj is not None else None
     if t not in ("EFX_ENTRY", "EFX_ACTION", "EFX_EXTERN"):
         return
-    # Root 不是"没法改名"（那会走下面的 blocked_hint，暗示"先做点什么就能改"），
-    # 是压根不适用改名这件事——不画输入框也不画提示。
     if t == "EFX_ENTRY" and str(obj.get("entry_kind", "")) == "root":
         return
 
@@ -750,15 +624,12 @@ def draw_rename_field(layout, obj) -> None:
 
 
 def draw_rename_button(layout, obj) -> None:
-    """弹窗式重命名按钮，供 Edit 面板用（属性面板走 draw_rename_field）。
-
-    两种画法的可命名判定同源（can_rename），不会一边能改一边不能改。
-    """
+    """绘制弹窗式改名按钮，与就地控件共享命名判定。"""
     from .i18n import T
 
     t = obj.get("~TYPE") if obj is not None else None
     if t == "EFX_ENTRY" and str(obj.get("entry_kind", "")) == "root":
-        return  # 同 draw_rename_field：Root 不适用改名，连按钮都不画
+        return
     if t == "EFX_ENTRY":
         op_id, ok_key, blocked_key = "efx.rename_entry", "entry.rename", "entry.rename_blocked"
     elif t in ("EFX_ACTION", "EFX_EXTERN"):
@@ -792,8 +663,7 @@ def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
-    # 属性面板上就地改名的输入框。get/set 直接读写 efx_raw_label 自定义属性，
-    # 不另开一份存储——否则导入时两边会对不上。写入统一走 apply_rename 的副作用链。
+    # 输入框直接读写标签属性，并统一经 apply_rename 更新派生状态。
     bpy.types.Object.efx_label_edit = bpy.props.StringProperty(
         name="Name",
         description="This item's name in the EFX label table (applied to the file on export)",

@@ -27,26 +27,11 @@ from .enums import (
 from .codec import _schema_size
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ExternTransform3D schema  (228 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int     unkn0                                    4 B
-#   XYZ     translate(0)   6 floats                 24 B
-#   XYZ     rotate(0)      6 floats                 24 B
-#   XYZ     resize(0)      6 floats                 24 B
-#   int     rotationOrder (unkn1)                     4 B
-#   XYZ     Translation_Velocity(0)                 24 B
-#   XYZ     Translation_Velocity_Modifier(0)        24 B
-#   XYZ     Rotation_Velocity(0)                    24 B
-#   XYZ     Rotation_Velocity_Modifier(0)           24 B
-#   XYZ     Scale_Velocity(0)                       24 B
-#   XYZ     Scale_Velocity_Modifier(0)              24 B
-#   int     enableVelocityBitflag                    4 B
-# Total: 4 + 24*3 + 4 + 24*6 + 4 = 4+72+4+144+4 = 228 B
+# ExternTransform3D
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_TRANSFORM3D_ATTR = Attribute(size=228, fields=[
-    Int("typeFlag"),  # 原 unkn0
+    Int("typeFlag"),
     Raw("translate", ('XYZ', 0), label_zh="平移"),
     Raw("rotate", ('XYZ', 0), label_zh="旋转"),
     Raw("resize", ('XYZ', 0), label_zh="缩放"),
@@ -57,48 +42,30 @@ EXTERN_TRANSFORM3D_ATTR = Attribute(size=228, fields=[
     Raw("rotation_velocity_modifier", ('XYZ', 0), label_zh="旋转速度修正"),
     Raw("scale_velocity", ('XYZ', 0), label_zh="缩放速度"),
     Raw("scale_velocity_modifier", ('XYZ', 0), label_zh="缩放速度修正"),
-    # 全语料 111993/111993 穷举：取值只有 0/1/2/3，即 bit0/bit1 各自独立开关+组合，
-    # bit2 及以上从未出现过——确认是纯 2 位可混合掩码，非 4 值枚举，strict=True 不留残留位框。
+    # 只有 bit0/bit1 两位且可混合，故建模为 Bitmask 而非 4 值枚举
     Bitmask("enableVelocityBitflag", BITS_ENABLE_VELOCITY, label_zh="启用速度位标志", strict=True),
 ])
 EXTERN_TRANSFORM3D_SCHEMA = EXTERN_TRANSFORM3D_ATTR.schema
 assert _schema_size(EXTERN_TRANSFORM3D_SCHEMA) == 228, \
     f"EXTERN_TRANSFORM3D_SCHEMA size mismatch: {_schema_size(EXTERN_TRANSFORM3D_SCHEMA)}"
 
-# Transform3D block data_bytes schema (excludes the 4-byte type hash already
-# stripped by AttrBlock).  Total must equal 232-4 = 228 B.
 TRANSFORM3D_SCHEMA = EXTERN_TRANSFORM3D_SCHEMA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ParentOptions schema  (data_bytes = 60 B; full block = 64 B)
-#
-# BT (EFX_Subtypes.bt):
-#   long    type                              4 B  ← in type_hash, not in data_bytes
-#   int     unkn0                             4 B
-#   XYZ     relationPos(1)          12 B  (int x,y,z)
-#   XYZ     relationRot(1)                12 B
-#   XYZ     relationScl(1)                12 B
-#   int     particleUseLocal                        4 B
-#   int     unkn1                             4 B
-#   int     spawnLock                         4 B
-#   int     bleedPos                          4 B
-#   int     jointNo                          4 B
-# data_bytes total: 4 + 36 + 4*5 = 4+36+20 = 60 B  ✓  (full block = 64 B)
+# ParentOptions
 # ─────────────────────────────────────────────────────────────────────────────
 
 PARENTOPTIONS_ATTR = Attribute(size=60, fields=[
-    Int("typeFlag"),  # 原 unkn0
+    Int("typeFlag"),
     EnumVec3("relationPos", ENUM_TRACKING_POS, label_zh="平移跟踪"),
     EnumVec3("relationRot", ENUM_TRACKING_ANGLE, label_zh="角度跟踪"),
     EnumVec3("relationScl", ENUM_TRACKING_POS, label_zh="缩放跟踪"),
     Bool("particleUseLocal", label_en="Follow Emitter", label_zh="跟随发射器"),
     Bool("unknFlag1"),
-    # 原 spawnLock/bleedPos：实为一对 fixed+jitter，作用是"跨生成追踪启用后，达到该帧数即
-    # 停止追踪"（0=始终追踪），并非各自独立的"锁定位置/渗出位置"。
     Int("constRelease", label_zh="停止追踪帧数"),
     Int("constReleaseJitter", label_zh="停止追踪帧数抖动"),
-    Int("jointNo", label_zh="绑定骨骼"),  # 绑定骨骼的序号
+    Int("jointNo", label_zh="绑定骨骼"),
 ])
 PARENTOPTIONS_SCHEMA = PARENTOPTIONS_ATTR.schema
 assert _schema_size(PARENTOPTIONS_SCHEMA) == 60, \
@@ -106,103 +73,44 @@ assert _schema_size(PARENTOPTIONS_SCHEMA) == 60, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ExternSpawn schema  (72 B)
-#
-# BT 原字段名（EFX_Subtypes.bt）见各字段行内注释；下面是 2026-07-26 用户实机测试
-# （详见 docs/ATTRIBUTE_BEHAVIOR_NOTES.md「SPAWN」一节）后按 emitter/particle 三层模型
-# （SPAWN属性本身 → emitter实例/轮次 → particle个体）重新命名的结果。
-#
-# 2026-09-19 内部名按官方讲座 Spawn 面板截图改名（命名优先级：DTI匹配>devlecture匹配>
-# 我们的第三方命名>其他），外部 label_zh 不变——那是三层模型考据出来的精确措辞，跟
-# 官方通用名是两回事，改内部名不影响它：
-#   particlesPerBurst→spawnNum、burstInterval→intervalFrame、burstsPerCycle→loopNum、
-#   emitterStartDelay→emitterDelayFrame、particleSpawnDelay→spawnWaitFrame。
-#
-#   maxParticles/intervalFrame/loopNum/emitterRepeatCount/emitterDelayFrame
-#   均为 emitter 实例层字段；spawnWaitFrame 是唯一的 particle 层字段。
-#
-# 核心机制（完整模型见 docs）：
-#   - maxParticles：同时存活粒子数软上限（非终身总量，Little's Law 验证：
-#     稳态同存数=生成速率×粒子寿命）
-#   - loopNum(+Jitter)：每轮（每次换新位置）重新抽取，三态：
-#     0=永不换位置+intervalFrame节奏无限生成；1=改用altBurstInterval节奏；
-#     ≥2=仍用intervalFrame节奏。非0时总批次数=该值+emitterRepeatCount-1，
-#     最后一批固定按粒子寿命(LIFE duration+fadeOutDuration)节奏，随后立即换位置
-#   - emitterRepeatCount：0=无论loopNum是什么都永不换位置；
-#     非0时与loopNum相加决定总批次数。没有Jitter搭档
-#   - altBurstInterval(+Jitter)：仅当loopNum抽到1时，取代intervalFrame
-#     作为批次间隔（原名ringBufferInterval，2026-07-26根据精确模型改名——它就是
-#     intervalFrame的替代取值，跟"环形缓冲"式的容量回收逻辑无关，那是maxParticles的职责；
-#     官方讲座截图没有单独展示这个字段，内部名维持我们自己的考据结果不改）
-#   - spawnFrame(+Jitter)（原 instanceCountUnknLimit）：用户 2026-09-19 假设即
-#     UseSpawnFrame 对应的参数——语料交叉验证 spawnFlags.bit5(UseSpawnFrame) 置位时
-#     93% 的块 spawnFrame 非零，是其余 5 位的 24~730 倍相关性，坐实两者是"开关+参数"
-#     一对；取值为干净整数刻度（1/10/20/30/40/50/60/100/120/300…），像帧数，具体
-#     控制什么行为仍未测。
-#   - spawnFlags（原 unknBitmask31）：官方全语料(112573 块)穷举，可混合位只到 bit5
-#     （值 32），bit6+ 从未出现。数量正好对上截图 6 个默认不勾选的独立勾选框
-#     （UseSpawnFrame/RingBufferMode/RayCastHitOnly/RayCastDependency/InitializeFull/
-#     InterporatePos）。两条交叉验证坐实 3 个位：① 同 entry 是否有 RAYCAST 属性→
-#     bit1/bit2 共现率是无 RAYCAST 时的 105x/144x，是 RayCastHitOnly/RayCastDependency
-#     这一对；② spawnFrame 是否非零→bit5 共现率 167x 远超其余位，是 UseSpawnFrame。
-#     具体 bit1 vs bit2 谁是谁、以及剩余 bit0/3/4（RingBufferMode/InitializeFull/
-#     InterporatePos）对应哪个名字，只能按截图列出的顺序假设，未实机验证。
+# ExternSpawn
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_SPAWN_ATTR = Attribute(size=72, fields=[
-    Int("typeFlag"),  # 原 unkn0
-    Int("maxParticles", label_zh="同时存活上限"),  # 原 instancesSpawnedTotal，同时存活软上限
-    Int("spawnNum", label_zh="单批生成数"),  # 原 particlesPerBurst/instancesSpawnedPerFrame
-    Int("spawnNumJitter", label_zh="单批生成数抖动"),  # 原 particlesPerBurstJitter/randomizedSpawnsPerFrame
-    Int("intervalFrame", label_zh="批次间隔（帧）"),  # 原 burstInterval/frameDelayBetweenSpawns
-    Int("intervalFrameJitter", label_zh="批次间隔抖动（帧）"),  # 原 burstIntervalJitter/randomizedDelay
-    Int("loopNum", label_zh="每轮批次数"),  # 原 burstsPerCycle/durationOfSpawnerLifespan，三态模式选择+计数基准
-    Int("loopNumJitter", label_zh="每轮批次数抖动"),  # 原 burstsPerCycleJitter/randomizedLifespan
-    Int("spawnFrame", label_zh="生成总帧数"),  # 原 instanceCountUnknLimit，假设即 UseSpawnFrame 的参数
-    Int("spawnFrameJitter", label_zh="生成总帧数抖动"),  # 原 instanceCountUnknLimitJitter
-    Int("emitterDelayFrame", label_zh="发射器启动延迟（帧）"),  # 原 emitterStartDelay/occur，发射器首次生成前的一次性延迟
-    Int("emitterDelayFrameJitter", label_zh="发射器启动延迟抖动（帧）"),  # 原 emitterStartDelayJitter/occur2
-    # BT 原标 uint32；实测全语料从未接近 2^31，改签名 int 换取原生数值控件（原字符串输入框）
-    Int("spawnWaitFrame", label_zh="粒子生成延迟（帧）"),  # 原 particleSpawnDelay/unkn10，粒子个体独立生成延迟
-    Int("spawnWaitFrameJitter", label_zh="粒子生成延迟抖动（帧）"),  # 原 particleSpawnDelayJitter/unknEnum11
-    Int("emitterRepeatCount", label_zh="重复次数"),  # 原 repeatAtribute，批次数加成+换位置总开关
-    Int("altBurstInterval", label_zh="替代批次间隔（帧）"),  # 原 unkn21（一度改名 ringBufferInterval，已订正），loopNum=1时的专属批次间隔
-    Int("altBurstIntervalJitter", label_zh="替代批次间隔抖动（帧）"),  # 原 unkn30
-    Bitmask("spawnFlags", BITS_SPAWN_FLAGS, strict=True, label_zh="生成标志位"),  # 原 unknBitmask31
+    Int("typeFlag"),
+    Int("maxParticles", label_zh="同时存活上限"),  # 同时存活的软上限，不是终身总量
+    Int("spawnNum", label_zh="单批生成数"),
+    Int("spawnNumJitter", label_zh="单批生成数抖动"),
+    Int("intervalFrame", label_zh="批次间隔（帧）"),
+    Int("intervalFrameJitter", label_zh="批次间隔抖动（帧）"),
+    Int("loopNum", label_zh="每轮批次数"),
+    Int("loopNumJitter", label_zh="每轮批次数抖动"),
+    Int("spawnFrame", label_zh="生成总帧数"),  # 身份是假设：spawnFlags 的 UseSpawnFrame 位对应的参数
+    Int("spawnFrameJitter", label_zh="生成总帧数抖动"),
+    Int("emitterDelayFrame", label_zh="发射器启动延迟（帧）"),  # 发射器首次生成前的一次性延迟
+    Int("emitterDelayFrameJitter", label_zh="发射器启动延迟抖动（帧）"),
+    Int("spawnWaitFrame", label_zh="粒子生成延迟（帧）"),  # 粒子个体各自的生成延迟
+    Int("spawnWaitFrameJitter", label_zh="粒子生成延迟抖动（帧）"),
+    Int("emitterRepeatCount", label_zh="重复次数"),  # 取 0 时永不换生成位置
+    Int("altBurstInterval", label_zh="替代批次间隔（帧）"),  # 仅当 loopNum 取 1 时取代 intervalFrame
+    Int("altBurstIntervalJitter", label_zh="替代批次间隔抖动（帧）"),
+    Bitmask("spawnFlags", BITS_SPAWN_FLAGS, strict=True, label_zh="生成标志位"),
 ])
 EXTERN_SPAWN_SCHEMA = EXTERN_SPAWN_ATTR.schema
 assert _schema_size(EXTERN_SPAWN_SCHEMA) == 72, \
     f"EXTERN_SPAWN_SCHEMA size mismatch: {_schema_size(EXTERN_SPAWN_SCHEMA)}"
 
-# Spawn block data_bytes schema (excludes type hash)
 SPAWN_SCHEMA = EXTERN_SPAWN_SCHEMA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Life schema  (data_bytes = 48 B; full block = 52 B)
-#
-# BT (EFX_Subtypes.bt):
-#   long type                                4 B  ← in type_hash
-#   long unkn0                               4 B
-#   long fadeInDuration                      4 B
-#   long fadeInDurationJitter                4 B
-#   long duration                            4 B
-#   long durationJitter                      4 B
-#   long unkn2[2]                            8 B
-#   long fadeOutDuration                     4 B
-#   long fadeOutDurationJitter               4 B
-#   long timeToDeath                         4 B
-#   long timeToDeathJitter                   4 B
-#   long indefiniteLifespan                  4 B
-# data_bytes: 12 × 4 = 48 B ✓
-#
-# unknFrame/unknFrameJitter（原 unkn2[2]/unkn2_0+unknEnum2_1）：语义仍未确认，但字段位置
-# 正好夹在其他几组 duration/durationJitter 之间，形态上是同一种 static/random 配对，
-# 先按这套惯例改名挂起（"Frame" 只是命名占位，不代表已确认是帧数）。
+# Life
 # ─────────────────────────────────────────────────────────────────────────────
+# unknFrame/unknFrameJitter 的名字只是按邻近 duration/durationJitter 的配对惯例取的，
+# 未确认是帧数，不要按名字推断语义。
 
 LIFE_ATTR = Attribute(size=48, fields=[
-    Int("typeFlag"),  # 原 unkn0
+    Int("typeFlag"),
     Int("fadeInDuration", label_zh="淡入时长"),
     Int("fadeInDurationJitter", label_zh="淡入时长抖动"),
     Int("duration", label_zh="持续时间"),
@@ -221,52 +129,18 @@ assert _schema_size(LIFE_SCHEMA) == 48, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ShaderSettings schema  (data_bytes = 116 B; full block = 120 B)
-#
-# BT (EFX_Subtypes.bt):
-#   long type                                4 B  ← in type_hash
-#   int  unkn0                               4 B
-#   int  unkn1                               4 B
-#   int  spacer                              4 B  
-#   int  unkn2                               4 B
-#   float zDepthModifierStart                4 B
-#   float zDepthModifierEnd                  4 B
-#   int  unkn3_0                             4 B
-#   int  unkn3_1                             4 B
-#   int  controlBitflag                      4 B
-#   float unkn4[16]                         64 B
-#   byte  objectInteractionFlag0             1 B
-#   byte  objectInteractionFlag1             1 B
-#   byte  objectInteractionFlag2             1 B
-#   byte  objectInteractionFlag3             1 B
-#   byte  unknBool0  ) 原 int visibleOnPreview 语料统计显示实为
-#   byte  unknBool1  ) 4 个各自独立的 0/1 字节（十六进制每字节恒
-#   byte  unknBool2  ) 0x00 或 0x01），非单一"预览可见"标志，拆
-#   byte  unknBool3  ) 分为 4 个布尔字节，语义待实机确认        1 B×4
-#   int   unkn5[2]                           8 B
-# data_bytes: 9×4 + 64 + 4 + 4 + 8 = 36 + 64 + 16 = 116 B ✓
+# ShaderSettings
 # ─────────────────────────────────────────────────────────────────────────────
 
 SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
-    Int("typeFlag"),  # 原 unkn0
-    Int("unknEnum1"),  # 不满足 section_length 公式(99.9%恒104,应为108)，未改名
+    Int("typeFlag"),
+    Int("unknEnum1"),  # 不满足 section_length 的自描述长度公式，故不按段长度命名
     Int("spacer"),
     Bool("unknFlag2"),
-    # 深度修正机制（2026-09 实机逐值排查，详见 memory shadersettings-zdepth-modifier-mechanism；
-    # 原名 zDepthModifierStart/End，2026-09-20 按官方术语改名 DepthBias/SoftParticleDistance）：
-    # 语料 98.5% 遵守 depthBias<=0、softParticleDistance>=0 的符号约定，以 0（未经修正的
-    # 原始深度）为共同基准。DepthBias 是标准深度测试偏移量——负值把特效的有效深度往摄像机
-    # 方向拉近，实机验证越负越能穿透真实场景几何体，跟"深度偏移"的标准图形学语义完全一致。
-    # SoftParticleDistance 是标准的软粒子淡出距离——粒子跟真实几何体相交处按这个距离柔化
-    # 边缘，不是二元的"挡住/穿透"开关，所以之前固定 depthBias 扫 softParticleDistance
-    # 看不出明显变化（那批测试只对比了整体可见性，没有专门看相交边缘的渐变），跟这个语义
-    # 并不矛盾。越界输入（同号、二者相对 0 的符号颠倒、绝对值远超语料常见的 ±500 量级等）
-    # 会导致效果异常（钳制/退化），推测是格式未设计要处理的边界情况。
-    Float("depthBias", label_en="Depth Bias", label_zh="深度偏移"),  # 原 zDepthModifierStart
-    Float("softParticleDistance", label_en="Soft Particle Distance", label_zh="软粒子距离"),  # 原 zDepthModifierEnd
+    Float("depthBias", label_en="Depth Bias", label_zh="深度偏移"),
+    Float("softParticleDistance", label_en="Soft Particle Distance", label_zh="软粒子距离"),
     Int("unknBitmask3_0"),
-    # 暂不作 enum：RenderLayerMode 标签尚存疑；controlBitflag 官方语料见 5/7/8/9 等组合值
-    # （5=1+4、9=1+8…），实为位掩码而非枚举，待 bitmask 编辑器再定。保持原始整数编辑。
+    # controlBitflag 是可混合位掩码而非枚举，保留原始整数编辑
     Int("unknEnum3_1", label_zh="渲染层 / Billboard 模式"),
     Int("controlBitflag", label_zh="控制位标志"),
     Float("unkn4_0"),
@@ -277,15 +151,7 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Float("unkn4_5"),
     Float("unkn4_6"),
     Float("unkn4_7"),
-    # 原 unknEnum4_8。2026-09-19 用户提供官方讲座 EffectSettingPresets 资源表截图
-    # （§5，8 个具名 preset：Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test）
-    # 坐实即 PresetId：全语料恰好 9 种取值——1 个 -1（63.6%，= 无 preset/None 默认）+
-    # 8 个非 -1 值，数量精确对上 8 个具名 preset。其中 4 个用 jamcrc(名字) 精确验证：
-    # Default→-753088836、Smoke→2004367745、test05→752604312、Hit_test→-1388296667，
-    # 均在语料里原样命中。剩余 4 个值（对应 Water/Hahen/Dirt/Aura）用截图显示的名字
-    # 算出的 jamcrc 对不上，可能内部字符串跟显示名不同，未继续深挖，先按索引/哈希
-    # 混合的引用处理，不建 Enum（本就是外部资源表的引用，不是固定枚举，见官方文档
-    # §2.2"⚠️部分枚举"的处理原则）。
+# presetId 是外部资源表的引用而非固定枚举，故保留原始 int，不建 Enum。
     Int("presetId", label_zh="预设 ID"),
     Float("unkn4_9"),
     Float("unkn4_10"),
@@ -298,7 +164,7 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Byte("objectInteractionFlag1", label_zh="物体交互标志1"),
     Byte("objectInteractionFlag2", label_zh="物体交互标志2"),
     Byte("objectInteractionFlag3", label_zh="物体交互标志3"),
-    Bool("unknBool0", backing='B'),  # 原 visibleOnPreview 拆分（4 字节各恒 0/1，非单一标志）
+    Bool("unknBool0", backing='B'),  # 由一个 visibleOnPreview 拆成 4 个独立字节，不是单一标志
     Bool("unknBool1", backing='B'),
     Bool("unknBool2", backing='B'),
     Bool("unknBool3", backing='B'),
@@ -311,104 +177,14 @@ assert _schema_size(SHADERSETTINGS_SCHEMA) == 116, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ExternVelocity3D schema  (108 B)
-#
-# 2026-07 定稿依据：用户多轮实机测试 + RE Engine 续作 schema（EFXAttributeVelocity3D，
-# kagenocookie/RE-Engine-Lib 社区反查）三方交叉印证，字段名尽量直接采用续作命名：
-#   Speed→initialVelocity, SpeedCoef→acceleration, SpeedDelayFrame→initialVelocityDelay,
-#   GravityRate/GravityDelayFrame→gravity/gravityDelay, VelocityType→velocityType
-#   （TIML DTI 名"Speed"也独立佐证了 initialVelocity）。
-#
-#   int   typeFlag                           4 B
-#   int   initialVelocityAxis（原 unknBitmask0_1）：initialVelocity 的基准轴，
-#         与 rotationX/Y/Z 复合决定最终朝向，仅在 velocityType=0(Direction) 时有意义。
-#         AxisDirection6 枚举（0=左,1=上,2=前,3=右,4=下,5=后），与 RIBBONBLADE.
-#         widthDirection / RIBBON.baseAxis 同款；仅confirmed 3/4 两点。
-#         用"Axis"而非"Direction"命名以区分它是"选六个基准轴之一"而非自由方向向量 4 B
-#   int   unknAxis（原 unknBitmask0_2）：疑似旋转顺序（结构上跟 EMITTERSHAPE3D.
-#         rotationOrder 一样 6 值以 4 为主流），但实机测试（固定 rotationX=rotationY=90，
-#         逐个切换该字段 0~5）结果对不上 TRANSFORM3D 已知的 0~5→XYZ/YZX/ZXY/ZYX/YXZ/XZY
-#         顺序表（无论正读反读都只对上部分），暂缓深究，先按未知处理                4 B
-#   float rotationX                          4 B  ─┐ 实机排除"向量"假说，确认是旋转角度
-#   float rotationXJitter                    4 B   │（360°/720°抖动上限即是证据）；且实测
-#   float rotationY                          4 B   │出局部坐标系：X轴=左右旋转轴，Y轴=上下
-#   float rotationYJitter                    4 B   │旋转轴（旋转"上"不变），Z轴=前后旋转轴，
-#   float rotationZ                          4 B   │与 AxisDirection6 三对方向一一对应。
-#   float rotationZJitter                    4 B  ─┘同样仅在 velocityType=0(Direction) 有意义
-#   float initialVelocity（原 expansion_radius_limit）                    4 B
-#   float initialVelocityJitter（原 expansion_radius_jitter）             4 B
-#   float acceleration（原 expansion_radius_elasticity）：1=匀速，>1=加速并突破
-#         initialVelocity 原值持续增长，<1=减速直至0                     4 B
-#   float accelerationJitter（原 expansion_radius_elasticity_jitter）    4 B
-#   float offsetX                            4 B  ─┐ 仅在搭配生成方式类属性（如
-#   float offsetY                            4 B   │ EMITTERSHAPE3D/EMITTERSHAPEMESH等，
-#   float offsetZ                            4 B  ─┘ 理论上不限于ES3D）且 velocityType=1
-#         (Normal) 时生效；确认对应续作 Offset（原 velocityX/Y/Z）
-#   float sizeX                              4 B  ─┐ 同上条件下生效；确认对应续作
-#   float sizeY                              4 B   │ Size（原 energyOnAxisX/Y/Z）。
-#   float sizeZ                              4 B  ─┘ 与 offsetX/Y/Z 共同决定每个粒子
-#         的运动方向：先按公式 Vi=(sizeI−1)×该粒子在i轴的生成坐标+offsetI（i=X/Y/Z）
-#         算出一个三维向量，再归一化——方向=normalize(Vx,Vy,Vz)，速度恒定（与
-#         Vx/Vy/Vz 的具体大小无关，只看方向）。三轴 size 相等时退化为真正的径向
-#         收拢/发散（<1收拢穿心而过继续到对面，>1发散，=1该轴无效果）；三轴不等时
-#         方向连续过渡（不是离散分区）。offsetI=0 时该轴的"零点"精确落在真正几何
-#         中心；offsetI≠0 会把零点挪开，实机数值验证：临界 offsetI = (sizeI−1)×该轴
-#         实际坐标范围（如 ES3D 的 rangeXYZ，含 radiusEnd 等相对倍数换算后的实际值）
-#   int   velocityType（原 expansionType）：RE Engine 续作 VelocityType 枚举。本质是
-#         "决定粒子运动方向如何确定"（速度始终由 initialVelocity/acceleration 决定，
-#         重力独立于此始终生效）——0=Direction(由 initialVelocityAxis+rotation 决定方向),
-#         1=Normal(常规，仅由 offset+size 共同决定方向；实测更可能是"常规/标准"而非字面
-#         "表面法线"——offset/size 全中性时完全静止), 2=Radial(始终向外运动，无视
-#         offset/size/方向字段), 3=Spread(运动方向=生成瞬间发射器的速度方向),
-#         4=ScreenSpace, 5=Max(C# 数组哨兵值，从不出现——全语料 82756 条零个=5，与此吻合)
-#         【velocityType 其实更贴切叫 velocityDirectionType，但保留续作原名 VelocityType
-#          以维持可追溯性，方向语义写进 tooltip】                              4 B
-#   float gravity                            4 B  # 重力，不论 velocityType 如何始终生效；TIML DT 0x6A5FE3C4("Gravity") 已确认
-#   float gravity_jitter                     4 B
-#   int   initialVelocityDelay（原 expansionDelay）：initialVelocity 生效前的延迟帧数  4 B
-#   int   initialVelocityDelayJitter（原 expansionDelayJitter）           4 B
-#   int   gravityDelay：gravity 生效前的延迟帧数                          4 B
-#   int   gravityDelayJitter                 4 B
-#   float unknFloat（原 NULL2）：名字像占位，但实测非零值干净重解读为 40.0，语义未确认  4 B  
-# Total: 12 + 6×4 + 4×4 + 3×4 + 3×4 + 4 + 2×4 + 4×4 + 4 = 108 B
-#
-# 续作 schema 里还有 InheritRate/InheritDistance/Spread 等字段没能对应到我们这 108B
-# 里，可能是 MHW 这代（MT Framework）压根没有的后加功能。RE Engine 的 uint Flags
-# 字段是否对应 typeFlag/initialVelocityAxis/unknAxis 这三个头部字段的合并，
-# 风险较大，未采信。
-#
-# 待补充测试：unknAxis 的完整规律、velocityType=2/3/4 与生成方式类属性共现时的
-# 细节、offset/size 三轴同时生效时总速度是否会跟单轴时不同（目前只验证过方向公式，
-# 未验证多轴同时生效的合速度大小）。见 docs/ATTRIBUTE_BEHAVIOR_NOTES.md「与生成方式
-# 共现」一节；交互式演示见 docs/interactive/velocity3d_offset_size_model.html。
+# ExternVelocity3D
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── VELOCITY3D：typed field-object 模型（类型即语义，enum 用 EnumDef，标签内嵌）──
-# Attribute.schema 降级成与旧 tuple 逐字节等价的 [(name, spec)]，codec 无感。
-# hash 常量晚于此处导入（见文件末 hashes import），故 Attribute 定义时 hash 留空、导入后回填。
-#
-# 字段考据保留在这里（研究记录，非用户 tooltip；tooltip 只写结论，见记忆 annotation-tone）：
-#   typeFlag         原 unkn0_0（续作 schema 叫 uniqueID，为统一全仓库 typeFlag 惯例未改名）
-#   baseAxis         原 initialVelocityAxis/unknBitmask0_1；枚举 0=左1=上2=前3=右4=下5=后 为旧假说，
-#                    与续作 AxisType 的 0=+X..5=-Z 笛卡尔映射有出入，未定论
-#   rotOrder         原 unknAxis/unknBitmask0_2；依续作 schema RotOrder 坐实 0=XYZ..5=ZYX
-#                    （跟 TRANSFORM3D 惯例不是同一套映射）
-#   speed/speedJitter        原 initialVelocity/expansion_radius_limit（+jitter），依续作改名，语义不变
-#   acceleration(+Jitter)    原 expansion_radius_elasticity（+jitter）；续作叫 drag（1=匀速/0=瞬停），
-#                            本质同一个力，用户 2026-07-26 决定保留 acceleration 名字
-#   offsetX/Y/Z              原 velocityX/Y/Z（更早原名 offsetX/Y/Z）；2026-09-19 官方讲座
-#                            §2.1 坐实 NORMAL 模式确有 Offset X/Y/Z 字段，内部名改回续作/官方
-#                            一致的 offset，仅 velocityType=NORMAL 时生效，方向性、量级无关
-#   sizeX/Y/Z                原 divergenceX/Y/Z（更早原名 sizeX/Y/Z，energyOnAxis*）；同上官方
-#                            确认 NORMAL 模式的 Size X/Y/Z，内部名改回 size；1=该轴无效果，
-#                            <1 朝基准点，>1 背离基准点
-#   velocityType             原 expansionType；官方讲座 §2.1 完整下拉坐实 0=DIRECTION/
-#                            1=NORMAL/2=RADIAL/3=EMITTER_MOVE（EN 标签已改用官方词面，ZH 保留
-#                            实机考据措辞）。⚠ 语料曾观测 4/5，超出 0~3 集合，UI 层需对越界值
-#                            回退显示原整数
-#   movementDelay(+Jitter)   原 initialVelocityDelay/expansionDelay（+jitter），依续作改名，语义不变
-#   minMovementThreshold     原 unknFloat/NULL2；仅 velocityType=EmitterMotion 有意义（emitter 速度  
-#                            低于此阈值不施加给粒子）
+# ─────────────────────────────────────────────────────────────────────────────
+# VELOCITY3D
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠ baseAxis 的枚举取值未确认，不要按枚举名推断轴向。
+# velocityType 官方语料实测出现过 4，已作为 Unknown (4) 补进枚举（见 enums.py）。
 
 
 VELOCITY3D_ATTR = Attribute(size=108, native_timl_axis=0, fields=[
@@ -425,12 +201,12 @@ VELOCITY3D_ATTR = Attribute(size=108, native_timl_axis=0, fields=[
     Float("speedJitter", label_zh="初速度偏差"),
     Float("speedCoef", label_zh="加速度"),
     Float("speedCoefJitter", label_zh="加速度偏差"),
-    Float("offsetX", label_zh="X 基准点偏置"),  # 原 velocityX
-    Float("offsetY", label_zh="Y 基准点偏置"),  # 原 velocityY
-    Float("offsetZ", label_zh="Z 基准点偏置"),  # 原 velocityZ
-    Float("sizeX", label_zh="X 基准点伸缩"),  # 原 divergenceX
-    Float("sizeY", label_zh="Y 基准点伸缩"),  # 原 divergenceY
-    Float("sizeZ", label_zh="Z 基准点伸缩"),  # 原 divergenceZ
+    Float("offsetX", label_zh="X 基准点偏置"),
+    Float("offsetY", label_zh="Y 基准点偏置"),
+    Float("offsetZ", label_zh="Z 基准点偏置"),
+    Float("sizeX", label_zh="X 基准点伸缩"),
+    Float("sizeY", label_zh="Y 基准点伸缩"),
+    Float("sizeZ", label_zh="Z 基准点伸缩"),
     Enum("velocityType", _VELOCITY_TYPE, label_zh="速度类型"),
     Float("gravity", label_zh="重力"),
     Float("gravity_jitter", label_zh="重力抖动"),
@@ -445,152 +221,75 @@ EXTERN_VELOCITY3D_SCHEMA = VELOCITY3D_ATTR.schema
 assert _schema_size(EXTERN_VELOCITY3D_SCHEMA) == 108, \
     f"EXTERN_VELOCITY3D_SCHEMA size mismatch: {_schema_size(EXTERN_VELOCITY3D_SCHEMA)}"
 
-# Velocity3D block data_bytes schema (excludes type hash)
 VELOCITY3D_SCHEMA = EXTERN_VELOCITY3D_SCHEMA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # EXTERNLIFE / EXTERNTYPERIBBON / EXTERNPLSNOW / EXTERNPARENTEMISSIVE /
-# EXTERNROTATEANIM / EXTERNTYPEPLANE（2026-09-20 改名坐实）
-#
-# 曾以"VELOCITY3D 变体"命名（EXTERNVELOCITY3D0/1/2/5/6/7），当时判定"主属性里
-# 没有同名对象可抄"，字段全按纯统计推断给成 unkn{i}。2026-09-20 重新核对：这 6
-# 个其实是对应主属性（LIFE/RIBBON/PLSNOW/PARENTEMISSIVE/ROTATEANIM/PLANE）的
-# Extern 覆盖版，只是编号命名掩盖了对应关系——跟 EXTERNPLEMISSIVE 是同一类
-# （Extern 版与主属性同尺寸/同编码，直接复用主属性 schema/codec）。
-# 验证：① 字节数逐一精确匹配主属性定长部分（LIFE 48B/PLSNOW 84B/PARENTEMISSIVE
-# 72B/ROTATEANIM 80B 完全相等；RIBBON 360B+1/PLANE 156B+1 差一个空路径终止符）；
-# ② 全语料每个元素用主属性 schema/codec 解出的值全部语义合理（颜色、ID、系数、
-# 帧数都在正常范围，不是乱码）；③ 全语料 pack(unpack(x))==x 零反例（LIFE 567、
-# RIBBON 73、PLSNOW 4、PARENTEMISSIVE 2、ROTATEANIM 15、PLANE 6 个元素，全部
-# 精确重建）。四个定长类型（LIFE/PLSNOW/PARENTEMISSIVE/ROTATEANIM）复用下方/
-# 别处已有的 LIFE_SCHEMA/PLSNOW_SCHEMA/PARENTEMISSIVE_SCHEMA/ROTATEANIM_SCHEMA，
-# 不再需要本文件单独定义；RIBBON/PLANE 是变长类型（含内嵌路径字符串），复用
-# custom_codecs.py 的 unpack_ribbon/pack_ribbon、unpack_plane/pack_plane，
+# EXTERNROTATEANIM / EXTERNTYPEPLANE
+# ─────────────────────────────────────────────────────────────────────────────
+# 这六个是对应主属性的 Extern 覆盖版，直接复用主属性的 schema 与 codec，本文件不另定义：
+# 四个定长类型用各自的主属性 schema，RIBBON / PLANE 走 custom_codecs 的成对 codec，
 # 尺寸计算见 efxfile.py::_extern_data_size。
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ExternEmitterShape3D schema  (88 B; full block = 92 B)
-#
-# 字段名对齐 RE Engine 续作 schema（同名 Emitter Shape 3D 类型，kagenocookie/RE-Engine-Lib）：
-#   RangeX/Y/Z→rangeXYZ, ShapeType→shapeType, RangeDivideAxis→rangeDivideAxis,
-#   LocalRotation→localRotationX/Y/Z, RotationOrder→rotationOrder, RotationCorrect→
-#   rotationCorrect, RangeDivideHorizontalNum/VerticalNum→同名。
-# radiusEnd/radiusOrigin 未对齐续作的 ScaleHorizontal/ScaleVertical（结构吻合，但那个名字
-# 对"半径"这个实际功能不直观）；本仓库 scanAngleHorizontal/Vertical 是横/纵扫描角度，跟续作
-# 同名的 ScaleHorizontal/ScaleVertical 语义未必相同。
-# 续作的 RangeDivideNum（单轴细分）MHW 没有——MHW 早就是横纵双轴独立细分。
-#
-#   int   typeFlag                           4 B
-#   XYZ   rangeXYZ(0)   6 floats            24 B  # 每轴 offset/size：offset=内边界（空腔），
-#         size=生成壳层厚度，外边界=offset+size。用户 2026-07-30 实机测试（offset=20 配
-#         size=0/10/20，壳厚分别为 0/空腔一半/与空腔等厚）确认 Box/Sphere/Cylinder 一致，
-#         推翻旧的"Box/Sphere 是 min/max、只有 Cylinder 是 offset/size"分叉说；RE DTI
-#         dump 的官方名 RangeMinX/RangeMaxX 与此行为对不上，以实测为准
-#   int   shapeType：0=Box,1=Sphere,2=Cylinder,≥3=Point（非严格枚举，3/4/5 均为点）   4 B
-#   int   rangeDivideAxis（原 unknEnum2）：仅 Box 生效，选沿哪个轴细分；不受
-#         localRotation 影响                                                4 B
-#   int   rotationCorrect（原 unknEnum3_0）：全形状生效，照搬续作 RotationCorrectType；
-#         官方语料取值 [0,1,3,5,7] 不完全落在 0~4 内                            4 B
-#   float localRotationX                    4 B  ─┐ 生成形状的总体旋转，全形状生效
-#   float localRotationY                    4 B   │（RE Engine LocalRotation，Vector3）；
-#   float localRotationZ                    4 B  ─┘ 不影响生成对象自身法线/切线
-#   int   rotationOrder：全形状生效，与 TRANSFORM3D/RIBBON 共用 _TRANSFORM_ROT_ORDER   4 B
-#   float scanAngleHorizontal（原 spawnAngleLimits）：仅 Sphere/Cylinder 生效，
-#         横向扫描角度，180=半球/半环，360/0(等效)=整圆                          4 B
-#   float scanAngleVertical（原 unkn3_f1）：仅 Sphere 生效，纵向扫描角度，180=上半球  4 B
-#   int   rangeDivideHorizontalNum（原 spawnPerCycle）：仅 Sphere/Cylinder 生效，沿横向
-#         等分；细分作用在 rangeXYZ+扫描角度定出的最终形状之上（先定形状再细分）      4 B
-#   int   rangeDivideVerticalNum（原 spawnTotal）：全形状生效，沿纵向等分，0=连续铺满；
-#         同上作用在最终形状之上；Box 下小值(1~3)表现为位掩码（1=边中点族/2=角族/
-#         3=并集），大值(如16)细分方式待研究                                    4 B
-#   float radiusEnd                         4 B  ─┐ 仅 Cylinder 生效。两者构成内外半径
-#   float radiusOrigin                      4 B  ─┘ band，顺序互换结果一致（引擎按
-#         min/max 取用，不看谁存在哪个字段）；实际半径 = rangeXYZ 该轴的外边界 × 该比例
-#         （旧注释写作 "rangeXYZ.max"，rangeXYZ 改判 offset/size 后需复测确认基准取的是
-#          外边界 offset+size 还是 size 本身）
-#   int   rayCastDependency：全形状生效。docs/OFFICIAL_DEFAULTS_AND_ENUMS.md §2.1 官方
-#         讲座下拉完整拍到 6 项（NONE/MIN/MAX/MUL/EQUAL/OFFSET），与本字段 0~5 取值域吻合，
-#         按下拉顺序坐实；具体运算机制仍不明                                        4 B
-#   int   unknFlag4：目前视为全形状生效。0/1，机制不明，多数为 1                     4 B
-# Point(shapeType≥3) 例外：以上按形状的过滤规则对它一律不生效（全部字段照常显示）。
-# Total: 4+24+4+4+4+4+4+4+4+4+4+4+4+4+4+4+4 = 4+24+15×4 = 88 B ✓
+# ExternEmitterShape3D
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_EMITTERSHAPE3D_ATTR = Attribute(size=88, fields=[
-    Int("typeFlag"),  # 原 unkn0
-    Raw("rangeXYZ", ('XYZ', 0), label_zh="生成范围"),  # 原 transform
-    Enum("shapeType", ENUM_SHAPE_TYPE3D, label_zh="形状类型"),  # 原 patternControl
-    Enum("rangeDivideAxis", ENUM_RANGE_DIVIDE_AXIS, label_zh="细分轴向"),  # 原 unknEnum2
-    Enum("rotationCorrect", ENUM_ROTATION_CORRECT_TYPE, label_zh="旋转修正方式"),  # 原 unknEnum3_0
-    Float("localRotationX", label_zh="局部旋转 X"),  # 原 trayectoryRotationX
-    Float("localRotationY", label_zh="局部旋转 Y"),  # 原 trayectoryRotationY
-    Float("localRotationZ", label_zh="局部旋转 Z"),  # 原 trayectoryRotationZ
+    Int("typeFlag"),
+    Raw("rangeXYZ", ('XYZ', 0), label_zh="生成范围"),
+    Enum("shapeType", ENUM_SHAPE_TYPE3D, label_zh="形状类型"),
+    Enum("rangeDivideAxis", ENUM_RANGE_DIVIDE_AXIS, label_zh="细分轴向"),
+    Enum("rotationCorrect", ENUM_ROTATION_CORRECT_TYPE, label_zh="旋转修正方式"),
+    Float("localRotationX", label_zh="局部旋转 X"),
+    Float("localRotationY", label_zh="局部旋转 Y"),
+    Float("localRotationZ", label_zh="局部旋转 Z"),
     Enum("rotationOrder", _TRANSFORM_ROT_ORDER, label_zh="旋转顺序"),
-    Float("scanAngleHorizontal", label_zh="横向扫描角度"),  # 原 scaleHorizontal/spawnAngleLimits
-    Float("scanAngleVertical", label_zh="纵向扫描角度"),  # 原 scaleVertical/unkn3_f1
-    Int("rangeDivideHorizontalNum", label_zh="横向等分数量"),  # 原 spawnPerCycle
-    Int("rangeDivideVerticalNum", label_zh="纵向等分数量"),  # 原 spawnTotal
+    Float("scanAngleHorizontal", label_zh="横向扫描角度"),
+    Float("scanAngleVertical", label_zh="纵向扫描角度"),
+    Int("rangeDivideHorizontalNum", label_zh="横向等分数量"),
+    Int("rangeDivideVerticalNum", label_zh="纵向等分数量"),
     Float("radiusEnd", label_zh="结束半径"),
     Float("radiusOrigin", label_zh="起始半径"),
-    Enum("rayCastDependency", ENUM_RAYCAST_DEPENDENCY, label_zh="射线检测依赖"),  # 原 unknBitmaskRadiusRelated
+    Enum("rayCastDependency", ENUM_RAYCAST_DEPENDENCY, label_zh="射线检测依赖"),
     Bool("unknFlag4"),
 ])
 EXTERN_EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_ATTR.schema
 assert _schema_size(EXTERN_EMITTERSHAPE3D_SCHEMA) == 88, \
     f"EXTERN_EMITTERSHAPE3D_SCHEMA size mismatch: {_schema_size(EXTERN_EMITTERSHAPE3D_SCHEMA)}"
 
-# EmitterShape3D block data_bytes schema (excludes type hash)
 EMITTERSHAPE3D_SCHEMA = EXTERN_EMITTERSHAPE3D_SCHEMA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ExternScaleAnim schema  (76 B; full block = 80 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int   unkn0                              4 B
-#   float animationSpeed                4 B
-#   long  NULL                               4 B  
-#   float scaleSpeed                         4 B
-#   float scaleSpeedJitter                   4 B
-#   float unkn1[2]                           8 B
-#   float scaleAccel                         4 B
-#   float scaleAccelJitter                   4 B
-#   float unkn2[8]                          32 B
-#   int   delay                              4 B
-#   int   delayJitter                        4 B
-# Total: 4+4+4+4+4+8+4+4+32+4+4 = 76 B ✓
+# ExternScaleAnim
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 社区实测（《世界特效注释解析》，验证版）：原模板对 SCALEANIM 误读很多，此为正确语义。
-# 两阶段缩放：初始整体扩散（速度+加速度）+ 播放过程中的逐轴缩放（X/Y/Z 各 速度/加速度 + 偏差）。
-# 字段宽度与原版完全一致（仅拆分 unkn1=('f',2)→X、unkn2=('f',8)→Y/Z，重命名，不改类型/字节）。
+# 两阶段缩放：初始整体扩散（速度+加速度），之后逐轴缩放（X/Y/Z 各有速度/加速度/偏差）。
 EXTERN_SCALEANIM_ATTR = Attribute(size=76, fields=[
-    Int("typeFlag"),  # 原 unkn0
-    Float("initialScaleSpeed", label_zh="初始扩散速度"),  # 初始扩散速度（原 animationSpeed）TIML DT 0xC24DF97C("SizeScalarAdd") 已确认
-    # 原 unknFloat/NULL：紧跟 initialScaleSpeed、恰好是它缺的 Jitter 搭档（该字段本身
-    # 约 30% 非零，clean 小数如 0.02/0.04/0.1/0.2，符合 jitter 数值特征），按 static/random
-    # 配对约定改名，未实机验证。
+    Int("typeFlag"),
+    Float("initialScaleSpeed", label_zh="初始扩散速度"),
+    # Jitter 身份按 static/random 配对惯例推定，未经验证
     Float("initialScaleSpeedJitter", label_zh="初始扩散速度抖动"),
 
-    Float("initialScaleAccel", label_zh="初始扩散加速度"),  # 初始扩散加速度（原 scaleSpeed）
-    Float("initialScaleAccelJitter", label_zh="初始扩散加速度抖动"),  # 原 scaleSpeedJitter
-    Float("scaleSpeedX", label_zh="X 缩放速度"),  # X 轴缩放速度（原 unkn1[0]）TIML DT 0x909EC047("SizeXAdd") 已确认
-    Float("scaleSpeedXJitter", label_zh="X 缩放速度抖动"),  # 原 unkn1[1]
-    Float("scaleAccelX", label_zh="X 缩放加速度"),  # X 轴缩放加速度（原 scaleAccel）
-    Float("scaleAccelXJitter", label_zh="X 缩放加速度抖动"),  # 原 scaleAccelJitter
-    Float("scaleSpeedY", label_zh="Y 缩放速度"),  # Y 轴缩放速度（原 unkn2[0]）TIML DT 0x2822A722("SizeYAdd") 已确认
-    Float("scaleSpeedYJitter", label_zh="Y 缩放速度抖动"),  # unkn2[1]
-    Float("scaleAccelY", label_zh="Y 缩放加速度"),  # Y 轴缩放加速度 unkn2[2]
-    Float("scaleAccelYJitter", label_zh="Y 缩放加速度抖动"),  # unkn2[3]
-    Float("scaleSpeedZ", label_zh="Z 缩放速度"),  # Z 轴缩放速度 unkn2[4]（仅模型有 Z）TIML DT 0x3A9708CC("SizeZAdd") 已确认
-    Float("scaleSpeedZJitter", label_zh="Z 缩放速度抖动"),  # unkn2[5]
-    Float("scaleAccelZ", label_zh="Z 缩放加速度"),  # Z 轴缩放加速度 unkn2[6]
-    Float("scaleAccelZJitter", label_zh="Z 缩放加速度抖动"),  # unkn2[7]
-    Int("animUpdateStart", label_zh="动画更新开始时间"),  # 动画更新开始时间（原 delay）
-    Int("animUpdateStartJitter", label_zh="动画更新开始时间抖动"),  # 原 delayJitter
+    Float("initialScaleAccel", label_zh="初始扩散加速度"),
+    Float("initialScaleAccelJitter", label_zh="初始扩散加速度抖动"),
+    Float("scaleSpeedX", label_zh="X 缩放速度"),
+    Float("scaleSpeedXJitter", label_zh="X 缩放速度抖动"),
+    Float("scaleAccelX", label_zh="X 缩放加速度"),
+    Float("scaleAccelXJitter", label_zh="X 缩放加速度抖动"),
+    Float("scaleSpeedY", label_zh="Y 缩放速度"),
+    Float("scaleSpeedYJitter", label_zh="Y 缩放速度抖动"),
+    Float("scaleAccelY", label_zh="Y 缩放加速度"),
+    Float("scaleAccelYJitter", label_zh="Y 缩放加速度抖动"),
+    Float("scaleSpeedZ", label_zh="Z 缩放速度"),
+    Float("scaleSpeedZJitter", label_zh="Z 缩放速度抖动"),
+    Float("scaleAccelZ", label_zh="Z 缩放加速度"),
+    Float("scaleAccelZJitter", label_zh="Z 缩放加速度抖动"),
+    Int("animUpdateStart", label_zh="动画更新开始时间"),
+    Int("animUpdateStartJitter", label_zh="动画更新开始时间抖动"),
 ])
 EXTERN_SCALEANIM_SCHEMA = EXTERN_SCALEANIM_ATTR.schema
 assert _schema_size(EXTERN_SCALEANIM_SCHEMA) == 76, \
@@ -600,31 +299,11 @@ SCALEANIM_SCHEMA = EXTERN_SCALEANIM_SCHEMA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FadeByDepth schema  (data_bytes = 20 B; full block = 24 B)
-#
-# （2026-07-23）：跟摄像机距离相关，与"角度"/"裁剪"这两个原 BT
-# 命名的字面含义都对不上，是两段独立的距离渐隐区间：
-#   - 近端：低于 nearFadeInStart 硬消失；nearFadeInStart~nearFadeInEnd 之间
-#     软过渡淡入；高于 nearFadeInEnd 全程可见。两者同置 0 时近端渐隐整体关闭
-#     （不管多近都不消失），实机验证。
-#   - 远端：低于 farFadeOutStart 全程可见；farFadeOutStart~farFadeOutEnd 之间
-#     软过渡淡出；高于 farFadeOutEnd 硬消失。farFadeOutStart=0/farFadeOutEnd=500
-#     实机验证：约 400 距离处已接近不可见，拉近变清晰，与该模型吻合。
-#   两段区间彼此独立（近端清零不影响远端），全语料 44321 块统计 fadeOutStart/
-#   fadeOutEnd 会成对打到 ~1e10 当"关闭远端渐隐"的哨兵值用，近端两个字段则
-#   从未见到同等量级的哨兵值。
-# 原 BT (EFX_Subtypes.bt) 命名（已被推翻，仅留存查）：
-#   long  type                               4 B  ← in type_hash
-#   int   unkn0                              4 B
-#   float viewAngleLimit（原名，实为近端硬消失阈值，与角度无关）      4 B
-#   float clipMin（原名，实为近端淡入终点）                          4 B
-#   float fadeStart（原名，实为远端淡出起点，命名恰好蒙对）           4 B
-#   float clipMax（原名，实为远端硬消失阈值，命名恰好蒙对）          4 B
-# data_bytes: 4+4×4 = 20 B ✓
+# FadeByDepth
 # ─────────────────────────────────────────────────────────────────────────────
 
 FADEBYDEPTH_ATTR = Attribute(size=20, fields=[
-    Int("typeFlag"),  # 原 unkn0
+    Int("typeFlag"),
     Float("nearFadeInStart", label_zh="近处淡入起点"),
     Float("nearFadeInEnd", label_zh="近处淡入终点"),
     Float("farFadeOutStart", label_zh="远处淡出起点"),
@@ -636,62 +315,21 @@ assert _schema_size(FADEBYDEPTH_SCHEMA) == 20, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ExternRgbFire schema  (112 B; full block = 116 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int   unkn0                              4 B
-#   XYZ   color1(2)   ubyte×3+pad            4 B
-#   float brightness1                        4 B
-#   XYZ   color2(2)   ubyte×3+pad            4 B
-#   float brightness2                        4 B
-#   float unkn4                              4 B
-#   float brightness3                        4 B
-#   float brightness4                        4 B
-#   ColorParam color1Param   10×int         40 B
-#   ColorParam color2Param   10×int         40 B
-# Total: 4+4+4+4+4+4+4+4+40+40 = 112 B ✓
-#
-# ColorParam decoded as flat named fields with prefix to avoid collision.
+# ExternRgbFire
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
-    Int("typeFlag"),  # 原 unkn0
-    # devlecture P26 (image14.PNG)：面板标题是 RGB Common，但字段全用 Fire/Smoke 术语，
-    # 且官方强调的是纹理的 GreenCh（=Fire）/RedCh（=Smoke）通道——顺序由 CorrectFireColorNo
-    # 紧邻 GreenCh 组、TotalFireLifeFrame 收尾 GreenCh 组确定，Smoke/RedCh 同理。
-    # 内部名沿用 fire/smoke（TIML DT 已确认，优先级高于 devlecture 的 GreenCh/RedCh
-    # 措辞），标签里用括号把 GreenCh/RedCh 补上做辅助说明，避免用户以为只是任意起名。
-    Raw("fireColor", ('XYZ', 2), label_en="Fire (GreenCh) Color", label_zh="火焰（绿通道）颜色"),  # 原 color1；TIML DT 0x39A1E557("FireColor") 已确认
-    Float("fireFactor", label_en="Fire (GreenCh) Factor", label_zh="火焰（绿通道）系数"),  # 原 brightness1；语料方向门证据见 sim/behaviors/rgbfire.py
-    Raw("smokeColor", ('XYZ', 2), label_en="Smoke (RedCh) Color", label_zh="烟雾（红通道）颜色"),  # 原 color2；TIML DT 0x5A8C6820("SmokeColor") 已确认
-    # 2026-09-20 用户逐个改值实机测试订正：DT 哈希 0x9F1E012E 只能证明"ColorRate 这个
-    # 名字存在、可被 TIML 控制"，不能说明它绑在哪个字段上——当初把它挂在这里（原
-    # brightness2）是基于错误理解下的判断，现改值测出 ColorRate 实为 colorRate（原
-    # brightness4），哈希绑定同步挪过去（见 efx_format/timl/names.py FIELD_TO_DT）。
-    # brightness2 改按 devlecture 顺序定为 RedChFactor，跟 fireFactor(GreenChFactor)
-    # 镜像——同一识别度、同一实机测试批次（fireFactor 已确认门控火焰层）。
-    Float("redChFactor", label_en="Smoke (RedCh) Factor", label_zh="烟雾（红通道）系数"),  # 原 brightness2
-    # devlecture 同一面板上紧邻的滑条 LerpAlphaToBlue：全语料 54028 块严格落在
-    # [0.0, 1.0]（无一例外），是插值系数的典型特征，与滑条描述吻合。
-    Float("lerpAlphaToBlue", label_en="Lerp Alpha To Blue", label_zh="Alpha 混入蓝通道比例"),  # 原 unkn4
-    # alphaFactor/colorRate：跟 devlecture 顺序对齐（GreenCh Factor/RedCh Factor/
-    # AlphaFactor/ColorRate 四项一一对应 brightness1~4；面板原名是 AlphaFactor，不是
-    # AlphaRate——2026-09-20 曾错标成 alphaRate，随后订正）。此前实机 tooltip 记录的
-    # "Color Balance 1/2 互相牵制、任一为 0 全部消失"现象跟这组身份并不矛盾——
-    # AlphaFactor=0 令整体 alpha 归零、ColorRate=0 令整体颜色归零，两者都会导致画面
-    # 消失，正好吻合。
-    Float("alphaFactor", label_en="Alpha Factor", label_zh="透明度强度"),  # 原 brightness3；效果未接入模拟，只订正了名字
-    Float("colorRate", label_en="Color Rate", label_zh="亮度强度"),  # 原 brightness4；TIML DT 0x9F1E012E("ColorRate") 已确认，2026-09-20 实机改值验证
-    # ColorParam fireColorParam (10 ints)：fireColor 的生命期时序块。
-    # 内部名对齐官方 DTI（nEffect::MhEffectDecalBehavior 的 fire 段）：
-    #   useLife←mUseFireLife / appearFrame(+Jitter)←mFireAppearFrame(range) /
-    #   keepFrame←mFireKeepFrame / vanishFrame←mFireVanishFrame /
-    #   lighting←mFireLighting(原 unkn7) / lifeType←mFireLifeType(原 unkn8)。
-    # 三个 range 字段各占两格（值+抖动），正是官方 range 类型的字节展开。
-    # ⚠ 前缀 fireColorParam_/smokeColorParam_ 保留：color_fields.py 靠它把整块
-    #   归类为「颜色相关」（Color Editor 模式过滤依据）。
-    # 标签精简为 devlecture 原文的 Appear/Keep/Vanish，加 Fire(GreenCh)/Smoke(RedCh)
-    # 分组前缀，去掉旧的「Color Param fade In/duration/fade Out」冗长措辞。
+    Int("typeFlag"),
+    # fire/smoke 分别作用在纹理的绿通道与红通道上，标签里括注 GreenCh/RedCh 是有意为之。
+    Raw("fireColor", ('XYZ', 2), label_en="Fire (GreenCh) Color", label_zh="火焰（绿通道）颜色"),
+    Float("fireFactor", label_en="Fire (GreenCh) Factor", label_zh="火焰（绿通道）系数"),
+    Raw("smokeColor", ('XYZ', 2), label_en="Smoke (RedCh) Color", label_zh="烟雾（红通道）颜色"),
+    Float("redChFactor", label_en="Smoke (RedCh) Factor", label_zh="烟雾（红通道）系数"),
+    Float("lerpAlphaToBlue", label_en="Lerp Alpha To Blue", label_zh="Alpha 混入蓝通道比例"),
+    Float("alphaFactor", label_en="Alpha Factor", label_zh="透明度强度"),  # 效果未接入模拟预览
+    Float("colorRate", label_en="Color Rate", label_zh="亮度强度"),
+# ⚠ 前缀 fireColorParam_ / smokeColorParam_ 必须保留：color_fields.py 靠它把整块
+#   归类为颜色相关字段，改前缀会让 Color Editor 的过滤失效。
     Bool("fireColorParam_useLife", label_en="Fire (GreenCh) Use Life", label_zh="火焰（绿通道）启用生命期"),
     Int("fireColorParam_appearFrame", label_en="Fire (GreenCh) Appear", label_zh="火焰（绿通道）淡入"),
     Int("fireColorParam_appearFrameJitter", label_en="Fire (GreenCh) Appear Jitter", label_zh="火焰（绿通道）淡入抖动"),
@@ -701,15 +339,8 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Int("fireColorParam_vanishFrameJitter", label_en="Fire (GreenCh) Vanish Jitter", label_zh="火焰（绿通道）淡出抖动"),
     Bool("fireColorParam_lighting", label_en="Fire (GreenCh) Lighting", label_zh="火焰（绿通道）受光照"),
     Int("fireColorParam_lifeType", label_en="Fire (GreenCh) Life Type", label_zh="火焰（绿通道）生命期模式"),
-    # 原 unkn9：取值集合 {0,1,2,7,8,9}、0 占 99.4%，跟 BILLBOARD3D 的 correctColorNo
-    # （EPV 槽位覆盖 id，0=用本地值）同一取值形态；且跟 lifeType/appearFrame+keepFrame+
-    # vanishFrame 的总和都测过没有相关性（互斥共现，量级也对不上"总生命期帧数"假设），
-    # 排除了"是 TotalFireLifeFrame"的可能。已有 tooltip 描述"设为 1 会消除火焰色"，
-    # 与 EPV 槽位覆盖机制吻合（本地预览拿不到 .epv 数据，槽位非 0 时颜色显示为空）。
+    # EPV 槽位覆盖 id，0 表示用本地颜色值；非 0 时本地预览取不到 .epv 数据，颜色显示为空。
     Int("fireColorParam_correctColorNo", label_en="Correct Fire Color No", label_zh="EPV 颜色修正槽位"),
-    # ColorParam smokeColorParam (10 ints)：smokeColor 的生命期时序块，与 fire 段同构
-    # （mUseSmokeLife / mSmokeAppearFrame / KeepFrame / VanishFrame / mSmokeLighting /
-    # mSmokeLifeType）。
     Bool("smokeColorParam_useLife", label_en="Smoke (RedCh) Use Life", label_zh="烟雾（红通道）启用生命期"),
     Int("smokeColorParam_appearFrame", label_en="Smoke (RedCh) Appear", label_zh="烟雾（红通道）淡入"),
     Int("smokeColorParam_appearFrameJitter", label_en="Smoke (RedCh) Appear Jitter", label_zh="烟雾（红通道）淡入抖动"),
@@ -719,7 +350,7 @@ EXTERN_RGBFIRE_ATTR = Attribute(size=112, fields=[
     Int("smokeColorParam_vanishFrameJitter", label_en="Smoke (RedCh) Vanish Jitter", label_zh="烟雾（红通道）淡出抖动"),
     Bool("smokeColorParam_lighting", label_en="Smoke (RedCh) Lighting", label_zh="烟雾（红通道）受光照"),
     Int("smokeColorParam_lifeType", label_en="Smoke (RedCh) Life Type", label_zh="烟雾（红通道）生命期模式"),
-    Int("smokeColorParam_correctColorNo", label_en="Correct Smoke Color No", label_zh="EPV 颜色修正槽位"),  # 原 unkn9，理由同上
+    Int("smokeColorParam_correctColorNo", label_en="Correct Smoke Color No", label_zh="EPV 颜色修正槽位"),
 ])
 EXTERN_RGBFIRE_SCHEMA = EXTERN_RGBFIRE_ATTR.schema
 assert _schema_size(EXTERN_RGBFIRE_SCHEMA) == 112, \
@@ -729,53 +360,28 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RotateAnim schema  (data_bytes = 80 B; full block = 84 B)
-#
-# BT (EFX_Subtypes.bt):
-#   long  type                               4 B  ← in type_hash
-#   int   unkn0_0                            4 B  ← 轴掩码（bitmask：bit0=X, bit1=Y, bit2=Z）
-#   int   unkn0_1                            4 B  ← 旋转模式（0/1=billboard平面旋转；2/3=启用自旋速度）
-#   long  NULL[2]                            8 B  
-#   XYZ   spin_velocity(0)   6 floats       24 B
-#   float unkn1_0                            4 B
-#   float unkn1_1                            4 B
-#   float momentum_retention                 4 B
-#   XYZ   spin_acceleration(0)              24 B
-#   float unkn1_2                            4 B
-# data_bytes: 8+8+24+12+24+4 = 80 B ✓
+# RotateAnim
 # ─────────────────────────────────────────────────────────────────────────────
 
 ROTATEANIM_ATTR = Attribute(size=80, fields=[
-    # 原 unkn0_0。曾按「bit0=X bit1=Y bit2=Z 的自旋轴掩码」读，语料对不上（见
-    # enums.BITS_ROTATEANIM_SPIN_FLAGS 的注释）：位用到 bit6，且与 spin_velocity
-    # 的非零轴无对应。各位含义未知，UI 按中性位掩码渲染。
+    # 各位含义未知，按中性位掩码渲染；不要读作 XYZ 自旋轴掩码，与 spin_velocity 无对应。
     Bitmask("spinAxisMask", BITS_ROTATEANIM_SPIN_FLAGS,
             label_en="Spin Flags", label_zh="自旋标志位"),
-    # rotationModeMask（原 unknBitmask0_1）：用户实机确认 4 态——0=仅平面旋转系(billboardRotation+
-    # billboardRotationCoef)；1=同上+随机正反向；2=仅自旋速度系(spin_velocity+spinSpeedCoef+
-    # 已废弃的 momentum_retention 概念)；3=同上+随机正反向(每轴独立随机)。
+    # rotationModeMask 决定生效的是平面旋转组还是自旋速度组，以及是否随机正反向。
     Enum("rotationModeMask", ENUM_ROTATION_MODE, label_zh="旋转模式"),
-    # 社区实测+用户实机(2026-07)：这两个专门控制 BILLBOARD3D 平面类的旋转，模板原标为 int，实为 float。
-    # billboardRotation + billboardRotationJitter(原 billboardRotationSpeed) 是一组 static/random。
     Float("billboardRotation", label_zh="平面旋转"),
-    Float("billboardRotationJitter", label_zh="平面旋转抖动"),  # 原 billboardRotationSpeed，实为 billboardRotation 的 random 分量
+    Float("billboardRotationJitter", label_zh="平面旋转抖动"),  # 是 billboardRotation 的 random 分量
     Raw("spin_velocity", ('XYZ', 0), label_zh="自旋速度"),
-    # billboardRotationCoef + Jitter(原 unkn1_0/unkn1_1)：billboardRotation 的加速度 static/random，
-    Float("billboardRotationCoef", label_zh="平面旋转加速度"),  # 原 unkn1_0
-    Float("billboardRotationCoefJitter", label_zh="平面旋转加速度抖动"),  # 原 unkn1_1
-    # 用户实机(2026-07-26)：原 momentum_retention + spin_acceleration(XYZ) + unknEnum1_2 整体错位一格。
-    # 全语料实测证实：spinSpeedCoefX/Y/Z 的 static 分布集中在 0.9~1.0，random 分布 96%+ 为 0（偶尔
-    # 干净小数）；原 spin_acceleration.random_z 当 float 解读 100% 恒为 0.0（denormal 假象），当 int32  
-    # 解读呈现 5/10/15/20/30/100/512 等干净帧数刻度，与 unknEnum1_2（帧数刻度一致）组成 static/random
-    # 一对，改名 rotateDelayStart(+Jitter)，字段类型由 float 改为 int。
-    Float("spinSpeedCoefX", label_zh="自旋加速度 X"),  # 原 momentum_retention
-    Float("spinSpeedCoefXJitter", label_zh="自旋加速度 X 抖动"),  # 原 spin_acceleration.fixed_x
-    Float("spinSpeedCoefY", label_zh="自旋加速度 Y"),  # 原 spin_acceleration.random_x
-    Float("spinSpeedCoefYJitter", label_zh="自旋加速度 Y 抖动"),  # 原 spin_acceleration.fixed_y
-    Float("spinSpeedCoefZ", label_zh="自旋加速度 Z"),  # 原 spin_acceleration.random_y
-    Float("spinSpeedCoefZJitter", label_zh="自旋加速度 Z 抖动"),  # 原 spin_acceleration.fixed_z
-    Int("rotateDelayStart", label_zh="旋转延迟起始帧"),  # 原 spin_acceleration.random_z（float 恒 0.0，实为 int 帧数）
-    Int("rotateDelayStartJitter", label_zh="旋转延迟起始帧抖动"),  # 原 unknEnum1_2
+    Float("billboardRotationCoef", label_zh="平面旋转加速度"),
+    Float("billboardRotationCoefJitter", label_zh="平面旋转加速度抖动"),
+    Float("spinSpeedCoefX", label_zh="自旋加速度 X"),
+    Float("spinSpeedCoefXJitter", label_zh="自旋加速度 X 抖动"),
+    Float("spinSpeedCoefY", label_zh="自旋加速度 Y"),
+    Float("spinSpeedCoefYJitter", label_zh="自旋加速度 Y 抖动"),
+    Float("spinSpeedCoefZ", label_zh="自旋加速度 Z"),
+    Float("spinSpeedCoefZJitter", label_zh="自旋加速度 Z 抖动"),
+    Int("rotateDelayStart", label_zh="旋转延迟起始帧"),  # 实为 int 帧数，不是 float
+    Int("rotateDelayStartJitter", label_zh="旋转延迟起始帧抖动"),
 ])
 ROTATEANIM_SCHEMA = ROTATEANIM_ATTR.schema
 assert _schema_size(ROTATEANIM_SCHEMA) == 80, \
@@ -783,23 +389,14 @@ assert _schema_size(ROTATEANIM_SCHEMA) == 80, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AlphaCorrection schema  (data_bytes = 20 B; full block = 24 B)
-#
-# BT (EFX_Subtypes.bt):
-#   long  type                               4 B  ← in type_hash
-#   int   unkn0                              4 B
-#   float unkn1                              4 B
-#   float transparentness                    4 B
-#   float unkn3 (原 NULL，BT 误标，实为 float)  4 B  
-#   int   unkn2                              4 B
-# data_bytes: 5×4 = 20 B ✓
+# AlphaCorrection
 # ─────────────────────────────────────────────────────────────────────────────
 
 ALPHACORRECTION_ATTR = Attribute(size=20, fields=[
     Int("unkn0"),
-    Float("lowPass", label_zh="低通阈值"),  # 原 unkn1 / alpha_clip_threshold；硬阈值裁切(类 PS Threshold)：<此值的 alpha 直接归 0，0=不裁
-    Float("contrast_gamma", label_zh="对比度/伽马修正"),  # 原 transparentness；对比度/伽马修正，无上限：越大边缘(低/中alpha)越快变透明、核心保留
-    Float("unkn3"),  # 原 NULL（int）；BT 模板误标，实为 float，语义未确认  
+    Float("lowPass", label_zh="低通阈值"),  # 硬阈值裁切：低于此值的 alpha 直接归 0，取 0 表示不裁切
+    Float("contrast_gamma", label_zh="对比度/伽马修正"),  # 越大则低/中 alpha 越快变透明，高 alpha 核心保留；无上限
+    Float("unkn3"),
     Bool("unknFlag2"),
 ])
 ALPHACORRECTION_SCHEMA = ALPHACORRECTION_ATTR.schema
@@ -819,20 +416,13 @@ assert _schema_size(LUMINANCEBLEED_SCHEMA) == 16, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Refraction schema  (data_bytes = 12 B; full block = 16 B)
-#
-# BT (EFX_Subtypes.bt):
-#   long  type                               4 B  ← in type_hash
-#   int   unkn0                              4 B
-#   int   pixelNormalOffset                  4 B
-#   int   unkn2                              4 B
-# data_bytes: 3×4 = 12 B ✓
+# Refraction
 # ─────────────────────────────────────────────────────────────────────────────
 
 REFRACTION_ATTR = Attribute(size=12, fields=[
-    Int("typeFlag"),  # 原 unkn0
+    Int("typeFlag"),
     Enum("pixelNormalOffset", ENUM_REFRACTION_OFFSET, label_zh="像素法线偏移"),
-    Float("seeThroughBlend", label_zh="透视混合系数"),  # 原 unkn2
+    Float("seeThroughBlend", label_zh="透视混合系数"),
 ])
 REFRACTION_SCHEMA = REFRACTION_ATTR.schema
 assert _schema_size(REFRACTION_SCHEMA) == 12, \
@@ -840,45 +430,21 @@ assert _schema_size(REFRACTION_SCHEMA) == 12, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Noise schema  (data_bytes = 44 B; full block = 48 B)
-#
-# BT (EFX_Subtypes.bt):
-#   long  type                               4 B  ← in type_hash
-#   long  NULL                               4 B  
-#   int   section_length                     4 B
-#   long  spacer                             4 B  
-#   float main_axis_speed                    4 B
-#   float main_axis_speed_jitter            4 B
-#   float teleport_radius                   4 B
-#   float teleport_radius_jitter            4 B
-#   float main_axis_speed2                  4 B
-#   float main_axis_speed2_jitter           4 B
-#   float teleport_radius2                  4 B
-#   float teleport_radius2_jitter           4 B
-# data_bytes: 4+4+4+8×4 = 44 B ✓
-# main_axis_speed_jitter/2（原 secondary_axis_speed/2）、teleport_radius_jitter/2
-# （原 smooth_radius_randomized/2）实测确认（2026-07-11）：分别是前一个字段的 jitter，
-# 不是独立的"次轴速度"/"平滑半径随机"字段。
-#
-# 2026-09-19 devlecture §10.4（P41 完整面板）：Noise 是"通过双重 sin 计算为发生
-# 位置与运动赋予摇曳"，只有 4 个字段（各带 ± 抖动）：LowFrequency(1.0±0.5)/
-# LowFrequencyWidth(50.0±0)/HighFrequency(0±0)/HighFrequencyWidth(0±0)。跟本 schema
-# 已经搞清楚机制的 4 对字段一一对应（Low=第一重、High=第二重，Frequency=速度、
-# Width=位移振幅），直接改名，不改值。文档特别注明 Noise/Blink 应共用同一套命名。
+# Noise
 # ─────────────────────────────────────────────────────────────────────────────
 
 NOISE_ATTR = Attribute(size=44, fields=[
-    Int("typeFlag"),  # 原 NULL（名字错，语料 35 种取值，非空）
+    Int("typeFlag"),
     Int("section_length", label_zh="段长度"),
     Int("spacer"),
-    Float("lowFrequency", label_zh="低频"),  # 原 main_axis_speed
-    Float("lowFrequencyJitter", label_zh="低频抖动"),  # 原 main_axis_speed_jitter
-    Float("lowFrequencyWidth", label_zh="低频振幅"),  # 原 teleport_radius
-    Float("lowFrequencyWidthJitter", label_zh="低频振幅抖动"),  # 原 teleport_radius_jitter
-    Float("highFrequency", label_zh="高频"),  # 原 main_axis_speed2
-    Float("highFrequencyJitter", label_zh="高频抖动"),  # 原 main_axis_speed2_jitter
-    Float("highFrequencyWidth", label_zh="高频振幅"),  # 原 teleport_radius2
-    Float("highFrequencyWidthJitter", label_zh="高频振幅抖动"),  # 原 teleport_radius2_jitter
+    Float("lowFrequency", label_zh="低频"),
+    Float("lowFrequencyJitter", label_zh="低频抖动"),
+    Float("lowFrequencyWidth", label_zh="低频振幅"),
+    Float("lowFrequencyWidthJitter", label_zh="低频振幅抖动"),
+    Float("highFrequency", label_zh="高频"),
+    Float("highFrequencyJitter", label_zh="高频抖动"),
+    Float("highFrequencyWidth", label_zh="高频振幅"),
+    Float("highFrequencyWidthJitter", label_zh="高频振幅抖动"),
 ])
 NOISE_SCHEMA = NOISE_ATTR.schema
 assert _schema_size(NOISE_SCHEMA) == 44, \
@@ -886,36 +452,7 @@ assert _schema_size(NOISE_SCHEMA) == 44, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Guide schema  (data_bytes = 104 B; full block = 108 B)
-#
-# BT (EFX_Subtypes.bt):
-#   float initialPosition/Jitter(8) + speed/Jitter(8) + accel/Jitter(8) +
-#   innerRadius/Jitter(8) + outerRadius/Jitter(8) = 10 floats = 40 B
-#   float restitutionDelay/Jitter(8) + restitutionEcc/Jitter(8) +
-#   restitutionElasticity/Jitter(8) = 6 floats = 24 B
-#   float unkn16-19 (4 floats = 16 B) + unkn20-22 (3 floats = 12 B)
-#   int int_unkn1[2] (8 B) + float float_unkn2[3] (12 B)
-# Total: 40+24+16+12+8+12 = 112 B?  But _known_attr_size returns 108-4=104.
-# From efxfile.py: 4+40+16+16+12+8+12 = 108 full, so data_bytes = 104.
-# Schema:
-#   10 floats (initialPos/Jitter, speed/Jitter, accel/Jitter,
-#              innerRadius/Jitter, outerRadius/Jitter) = 40 B
-#   6 floats (restitutionDelay/Jitter, restitutionEcc/Jitter,
-#             restitutionElasticity/Jitter) = 24 B
-#   4 floats (unkn16-unkn19) = 16 B
-#   3 floats (unkn20-unkn22) = 12 B
-#   2 ints   (int_unkn1[2]) = 8 B
-#   3 floats (float_unkn2[3]) = 12 B
-# Total: 40+24+16+12+8+12 = 112 B  ← but expected is 104 B
-# Actual: efxfile.py says 4 + 40 + 16 + 16 + 12 + 8 + 12 = 108 full = 104 data
-# That's: 40 + 16 + 16 + 12 + 8 + 12 = 104 → only 6 restitution floats missing
-# Counting BT fields: 23 floats + 2 ints + 3 floats = 26 floats + 2 ints = 112 B
-# But efxfile computed 108. Let's trust the efxfile.py value:
-#   10 floats = 40 B
-#   4 floats = 16 B  (restitution: delay/j, ecc/j — only 4 not 6?)
-# Actually from efxfile.py: 4+40+16+16+12+8+12 = 108:
-#   type(4) + 10floats(40) + 4floats(16) + 4floats(16) + 3floats(12) + 2ints(8) + 3floats(12)
-# = 4+40+16+16+12+8+12 = 108 full, 104 data_bytes
+# Guide
 # ─────────────────────────────────────────────────────────────────────────────
 
 GUIDE_ATTR = Attribute(size=112, fields=[
@@ -929,9 +466,6 @@ GUIDE_ATTR = Attribute(size=112, fields=[
     Float("innerRadiusJitter", label_zh="内半径抖动"),
     Float("outerRadius", label_zh="外半径"),
     Float("outerRadiusJitter", label_zh="外半径抖动"),
-    # efxfile.py: 4+40+40+12+8+12 = 116 full → data_bytes = 112
-    # (EFX_Crimson.bt Guide: type + 23 floats + int[2] + float[3])
-    # restitution 组共 10 floats（40B）
     Float("restitutionDelay", label_zh="回弹延迟"),
     Float("restitutionDelayJitter", label_zh="回弹延迟抖动"),
     Float("restitutionEccentricity", label_zh="回弹偏心率"),
@@ -942,14 +476,11 @@ GUIDE_ATTR = Attribute(size=112, fields=[
     Float("unkn17"),
     Float("unkn18"),
     Float("unkn19"),
-    # unkn20/21/22 共 3 floats (12B)
     Float("unknFixed20"),
     Float("unkn21"),
     Float("unkn22"),
-    # 2 ints (8B)
     Int("int_unkn1_0"),
     Int("int_unkn1_1"),
-    # 3 floats (12B)
     Float("float_unkn2_0"),
     Float("float_unkn2_1"),
     Float("float_unkn2_2"),
@@ -960,53 +491,29 @@ assert _schema_size(GUIDE_SCHEMA) == 112, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PlEmissive schema  (data_bytes = 76 B; full block = 80 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0[2](8) + float unkn1(4) + ubyte body_p(1) + ubyte wp_p(1) + short NULL(2) +
-#   int epv_color_slot(4) + XYZ color(2)(4) + float unkn4(4) + float area[2](8) +
-#   float bright(4) + int area_of_aura(4) + float radii[3](12) + float unkn5[5](20)
-# = 8+4+4+4+4+8+4+4+12+20 = 76 B ✓
-#
-# 2026-09-19 按 devlecture §10.3.1（P36 完整面板截图）+ 语料 208 块统计落地。8 个
-# 字段全部拿到 TIML DT 哈希确认（jamcrc(官方名) 精确命中该 TLP 下此前一直没解出来
-# 的 8 个 DT，见 shadersettings-presetid-jamcrc 同款手法）：
-#   Priority(unknEnum0_1)/Blend(unkn1,0x95A3A1D3)/Emissive(color,0xFA79B1CD)/
-#   Intensity(unkn4,0x94BCC5CE)/RimWidth(area[0],0xAC635CA9)/RimPower(area[1],
-#   0x8BF31826)/RimAlpha(bright,0xF09920EC)/Mask0(radii_effect_unkn0,0xEC4350B5)/
-#   Mask1(radii_effect_unkn1,0x9B446023)。除 priority 没有 DT（devlecture 示例值
-#   17，语料众数落在附近的 10/17/18/19/20）外，其余全部是 DTI 级确认，Emissive/
-#   Intensity/RimWidth/RimPower/RimAlpha/Mask0/Mask1 这 7 个还额外有语料默认值精确
-#   吻合（RimAlpha/Intensity/Blend 众数 1.0、Mask0/Mask1 众数精确等于 15.0/250.0）
-#   佐证。correctColorNo 是已确认的 EPV 槽位覆盖机制（同 BILLBOARD3D）。
-# area_of_aura 是 4 位掩码（全语料从未见 bit4 及以上），bit1/bit2 关联检验方向清晰
-# （见 enums.py::BITS_PLEMISSIVE_EMIT_MASK 注释），改名 emitMaskFlags。
-# enableUseEmitMask（原 radii_effect_unkn2）是全语料唯一一个 100%/0% 完美门控：
-# ==0 时 Mask0/Mask1 从未被改过默认值，==1 时 100% 被改过——是 EmitMask 功能的
-# 真正总开关。unkn5_1/unkn5_2（AddMask0/AddMask1 候选）证据较弱，先按位置改名，
-# 标注弱假设；unknFixed5_0/5_3/5_4 全语料恒为 0.0，找不到区分依据，维持 unkn。
+# PlEmissive
 # ─────────────────────────────────────────────────────────────────────────────
 
 PLEMISSIVE_ATTR = Attribute(size=76, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("priority", label_zh="优先级"),  # 原 unknEnum0_1；devlecture 示例值 17，无 DT
-    Float("blend", label_zh="混合"),  # 原 unkn1；TIML DT 0x95A3A1D3("Blend") 已确认
+    Int("typeFlag"),
+    Int("priority", label_zh="优先级"),
+    Float("blend", label_zh="混合"),  # TIML DT 0x95A3A1D3("Blend")
     Byte("body_p", label_zh="关联 Body"),
     Byte("wp_p", label_zh="关联武器"),
     Short("NULL"),
-    Int("correctColorNo", label_zh="EPV 颜色修正槽位"),  # 原 epv_color_slot；EPV 槽位覆盖机制
-    Raw("emissive", ('XYZ', 2), label_zh="自发光颜色"),  # 原 color；TIML DT 0xFA79B1CD("Emissive") 已确认
-    Float("intensity", label_zh="强度"),  # 原 unkn4；TIML DT 0x94BCC5CE("Intensity") 已确认
-    Float("rimWidth", label_zh="边缘光宽度"),  # 原 area[0]；TIML DT 0xAC635CA9("RimWidth") 已确认
-    Float("rimPower", label_zh="边缘光强度"),  # 原 area[1]；TIML DT 0x8BF31826("RimPower") 已确认
-    Float("rimAlpha", label_zh="边缘光透明度"),  # 原 bright；TIML DT 0xF09920EC("RimAlpha") 已确认
-    Bitmask("emitMaskFlags", BITS_PLEMISSIVE_EMIT_MASK, strict=True, label_zh="发光遮罩标志"),  # 原 area_of_aura
-    Float("mask0", label_zh="遮罩阈值 0"),  # 原 radii_effect_unkn0；TIML DT 0xEC4350B5("Mask0") 已确认，众数 15.0
-    Float("mask1", label_zh="遮罩阈值 1"),  # 原 radii_effect_unkn1；TIML DT 0x9B446023("Mask1") 已确认，众数 250.0
-    Bool("enableUseEmitMask", label_zh="启用发光遮罩"),  # 原 radii_effect_unkn2；100%/0% 完美门控 Mask0/Mask1
+    Int("correctColorNo", label_zh="EPV 颜色修正槽位"),  # EPV 槽位覆盖
+    Raw("emissive", ('XYZ', 2), label_zh="自发光颜色"),  # TIML DT 0xFA79B1CD("Emissive")
+    Float("intensity", label_zh="强度"),  # TIML DT 0x94BCC5CE("Intensity")
+    Float("rimWidth", label_zh="边缘光宽度"),  # TIML DT 0xAC635CA9("RimWidth")
+    Float("rimPower", label_zh="边缘光强度"),  # TIML DT 0x8BF31826("RimPower")
+    Float("rimAlpha", label_zh="边缘光透明度"),  # TIML DT 0xF09920EC("RimAlpha")
+    Bitmask("emitMaskFlags", BITS_PLEMISSIVE_EMIT_MASK, strict=True, label_zh="发光遮罩标志"),
+    Float("mask0", label_zh="遮罩阈值 0"),  # TIML DT 0xEC4350B5("Mask0")
+    Float("mask1", label_zh="遮罩阈值 1"),  # TIML DT 0x9B446023("Mask1")
+    Bool("enableUseEmitMask", label_zh="启用发光遮罩"),  # Mask0/Mask1 的总开关
     Float("unknFixed5_0"),
-    Float("addMask0"),  # 原 unkn5_1；弱假设，位置对应 devlecture 的 AddMask0
-    Float("addMask1"),  # 原 unkn5_2；弱假设，位置对应 devlecture 的 AddMask1
+    Float("addMask0"),  # 按位置推名，证据较弱
+    Float("addMask1"),  # 按位置推名，证据较弱
     Float("unknFixed5_3"),
     Float("unknFixed5_4"),
 ])
@@ -1016,43 +523,24 @@ assert _schema_size(PLEMISSIVE_SCHEMA) == 76, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ParentEmissive schema  (data_bytes = 72 B; full block = 76 B)
-#
-# BT (EFX_Subtypes.bt):
-#   long unkn0(4) + long unkn1(4) + float unkn2(4) + long unkn3(4) +
-#   XYZ color(2)(4) + float brightness(4) + float rimParam[3](12) +
-#   long unkn4(4) + float blendParam[3](12) + float unkn8[5](20)
-# = 4+4+4+4+4+4+12+4+12+20 = 72 B ✓
-#
-# 2026-09-19：ParentEmissive 跟 PlEmissive 共用同一个 TIML TLP（0x598272E1，
-# 注释里写着两者共现 3.5x），说明官方本来就是同一套 TimelineParam 字段定义应用在
-# 这两个类型上，PLEMISSIVE 那 8 个改名同样成立，只需重新确认字节位置：
-#   unkn2→blend（众数 1.0 占 67.4%）、color→emissive（位置对应）、
-#   rimParam[0..2]→rimWidth/rimPower/rimAlpha（[2] 众数 1.0 占 85.8%，比 PLEMISSIVE
-#   还干净——这里官方本来就把三个连续存成一个数组）、unknEnum3→correctColorNo
-#   （distinct=4，0 占 58.9%，EPV 槽位模式）、brightness→intensity（位置对应，但
-#   语料分布比 PLEMISSIVE 松散，弱假设）、blendParam[0]/[1]→mask0/mask1（15.0/250.0
-#   是第二常见值而非众数，弱假设）。blendParam[2] 众数 1.0/0.99，找不到 PLEMISSIVE
-#   对应物，维持 unkn；unknEnum4 结构上像位掩码但众数是 9 不是 0，跟 PLEMISSIVE 默认
-#   关闭的模式对不上，也不套用 emitMaskFlags。
-# ⚠ rimParam/blendParam 由数组拆成独立字段，是拆分不是纯改名，字段改名兼容表覆盖
-#   不了，已导入的 .blend 需要重新导入。
+# ParentEmissive
 # ─────────────────────────────────────────────────────────────────────────────
+# ⚠ rimParam / blendParam 由数组拆成独立字段，属于拆分而非改名，别名表无法兼容。
 
 PARENTEMISSIVE_ATTR = Attribute(size=72, fields=[
-    Int("typeFlag"),  # 原 unkn0
+    Int("typeFlag"),
     Int("unknEnum1"),
-    Float("blend", label_zh="混合"),  # 原 unkn2；同 PLEMISSIVE 的 Blend，众数 1.0(67.4%)
-    Int("correctColorNo", label_zh="EPV 颜色修正槽位"),  # 原 unknEnum3；EPV 槽位模式
-    Raw("emissive", ('XYZ', 2), label_zh="自发光颜色"),  # 原 color；同 PLEMISSIVE 的 Emissive
-    Float("intensity", label_zh="强度"),  # 原 brightness；弱假设，语料分布比 PLEMISSIVE 松散
-    Float("rimWidth", label_zh="边缘光宽度"),  # 原 rimParam[0]
-    Float("rimPower", label_zh="边缘光强度"),  # 原 rimParam[1]
-    Float("rimAlpha", label_zh="边缘光透明度"),  # 原 rimParam[2]；众数 1.0(85.8%)
+    Float("blend", label_zh="混合"),
+    Int("correctColorNo", label_zh="EPV 颜色修正槽位"),  # EPV 槽位覆盖
+    Raw("emissive", ('XYZ', 2), label_zh="自发光颜色"),
+    Float("intensity", label_zh="强度"),  # 身份证据较弱
+    Float("rimWidth", label_zh="边缘光宽度"),
+    Float("rimPower", label_zh="边缘光强度"),
+    Float("rimAlpha", label_zh="边缘光透明度"),
     Int("unknEnum4"),
-    Float("mask0", label_zh="遮罩阈值 0"),  # 原 blendParam[0]；弱假设
-    Float("mask1", label_zh="遮罩阈值 1"),  # 原 blendParam[1]；弱假设
-    Float("unkn7_2"),  # 原 blendParam[2]；无 PLEMISSIVE 对应物
+    Float("mask0", label_zh="遮罩阈值 0"),  # 身份证据较弱
+    Float("mask1", label_zh="遮罩阈值 1"),  # 身份证据较弱
+    Float("unkn7_2"),
     Float("unknFixed8_0"),
     Float("unkn8_1"),
     Float("unkn8_2"),
@@ -1065,30 +553,12 @@ assert _schema_size(PARENTEMISSIVE_SCHEMA) == 72, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PlSnow schema  (data_bytes = 84 B; full block = 88 B)
-#
-# ⚠ 2026-07 修：原 schema 漏掉 BT 描述的最后一个字段 craquelure_smoothing_threshold  
-# （20 项写成了 19 项，注释自己都写出了"84"却在结尾错算成"80"）——导致 PLSNOW
-# 恒少算 4B，凡是 entry 里 PLSNOW 后面紧跟别的属性/entry 的文件，从这里起
-# 全部错位 4 字节，最终整个 main 段解析失败退化到 main_opaque（语料实测：
-# 6 个 DEGRADED 文件里至少这一个根因已确认，修复后 roundtrip.py --all 的
-# DEGRADED 计数下降）。
-#
-# BT (EFX_Subtypes.bt)：
-#   int unkn0[2](8) + long spacer(4) + int body_part_id(4) + int weapon_id(4) +  
-#   colour color(4) + int epvcolorslot(4) + int alpha_effect(4) +
-#   float normal_map_strength(4) + float alpha_threshold(4) +
-#   float unkn4_0(4) + float unkn4_1(4) + long unkn5(4) +
-#   float roughness_multiplier(4) + float metallicness_multiplier(4) +
-#   float subsurface_multipler(4) + float unkn6_0(4) +
-#   float craquelure_effect_diffumination(4) + float craquelure_threshold(4) +
-#   float unkn6_1(4) + float craquelure_smoothing_threshold(4)
-# = unkn0[2](8) + 19×4B(76) = 84 B data_bytes ✓（20 个 4B 字段，非 19 个）
+# PlSnow
 # ─────────────────────────────────────────────────────────────────────────────
 
 PLSNOW_ATTR = Attribute(size=84, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("unknFixed0_1"),  # int unkn0[2] = 8 B
+    Int("typeFlag"),
+    Int("unknFixed0_1"),
     Int("spacer"),
     Int("body_part_id", label_zh="身体部位 ID"),
     Int("weapon_id", label_zh="武器 ID"),
@@ -1115,58 +585,36 @@ assert _schema_size(PLSNOW_SCHEMA) == 84, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PtCollision schema  (data_bytes = 112 B; full block = 116 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn00-07 (8 ints = 32 B) + float unkn1[3](12) + int unkn2[2](8) +
-#   float bounceElasticity(4)+j(4)+Mult(4)+horizontal(4)+unkn34-37(16) +
-#   int unkn38(4) + int unkn4[2](8) + int ieIndex(4) + int unkn6[3](12)
-# = 32+12+8+32+4+8+4+12 = 112 B ✓
-#
-# unkn2[2] 的第一个 int（原 unknEnum2_0→bounceCountLimit）2026-07-31 用户实机测试确认为
-# bounceCount：反弹次数，如=2则反弹2次，第3次触地触发 physicsEnum 收尾行为（不再是纯粹未知枚举）。
-# 语料分布 0~5 集中(98.8%)，个别到 20/25，与"反弹次数"语义吻合。
-#
-# 2026-07-31 用户实机测试确认 impactPlayTriggerMode 组（原 unkn38/unknBitmask4_0/unknFlag4_1）：
-# ieIndex 引用的 Play 在反弹序列中的触发时机，行为随 physicsEnum 而不同——physicsEnum=0（穿透）
-# 时一次性判定全部反弹，其余 physicsEnum 值下逐次反弹判定：
-#   0=每次触地都触发；
-#   1=前 N 次触地触发，N 由 impactPlayTriggerCount ± impactPlayTriggerCountJitter 决定；
-#   2=仅最后一次触地触发。
-# impactPlayTriggerCountJitter（原疑似 impactPlayTriggerCountRandom 布尔开关）2026-07-31
-# 用户实机测试确认实为 impactPlayTriggerCount 的 jitter，非开关，已并入该组按 value+jitter 惯例改名。
+# PtCollision
 # ─────────────────────────────────────────────────────────────────────────────
 
 PTCOLLISION_ATTR = Attribute(size=112, fields=[
-    Int("typeFlag"),  # 原 unkn00
+    Int("typeFlag"),
     Enum("physicsEnum", ENUM_COLLISION_PHYSICS, label_zh="物理类型"),
     Int("unkn02"),
     Int("unkn03"),
     Int("unknEnum04"),
     Int("unknFixed05"),
-    # 2026-07-31 用户实机测试确认：碰撞面沿 -Y 轴的投影偏移，正值向下偏移、负值向上偏移。
-    Float("projectionOffset", label_zh="投影偏移"),  # 原 unkn06
-    # 2026-07-31 用户实机测试：固定同一个值不产生不同表现（排除 jitter），但不同取值会
-    # 产生"无变化"/"产生水平碰撞"/"抬高碰撞水平面"/"改变 action 触发点"等多种质变效果——
-    # 疑似跨越不同数值区间触发不同行为模式，非线性距离参数。具体分段边界未测。
-    Float("projectionDist", label_zh="投影距离"),  # 原 unkn07
-    Float("unkn1_0"),  # 2026-07-31 用户实机测试排除：不是碰撞判定 radius
-    Float("unkn1_1"),  # 2026-07-31 用户实机测试排除：不是碰撞判定 radius
-    Float("unkn1_2"),  # 2026-07-31 用户实机测试排除：不是碰撞判定 radius
-    Int("bounceCount", label_zh="反弹次数"),  # 原 unknEnum2_0→bounceCountLimit，2026-07-31 用户建议去掉"上限"（配合 physicsEnum 收尾行为，反弹满该次数后触发对应收尾）
-    Int("bounceCountJitter", label_zh="反弹次数抖动"),  # 原 unknEnum2_1→bounceCountLimitJitter，2026-07-31 用户实机测试确认为 bounceCount 的抖动
+    # 碰撞面沿 -Y 轴的投影偏移，正值向下、负值向上。
+    Float("projectionOffset", label_zh="投影偏移"),
+    Float("projectionDist", label_zh="投影距离"),
+    Float("unkn1_0"),
+    Float("unkn1_1"),
+    Float("unkn1_2"),
+    Int("bounceCount", label_zh="反弹次数"),  # 反弹满该次数后触发 physicsEnum 的收尾行为
+    Int("bounceCountJitter", label_zh="反弹次数抖动"),
     Float("bounceElasticity", label_zh="弹跳弹性"),
     Float("bounceElasticityJitter", label_zh="弹跳弹性抖动"),
-    # 2026-07-31 用户实机测试确认：跟 bounceElasticity 效果完全相同，两者是叠加关系（非倍率，维持原名）。
+    # 与 bounceElasticity 叠加生效，不是倍率关系。
     Float("bounceElasticityMultiplier", label_zh="弹跳弹性倍率"),
     Float("horizontalBounce", label_zh="水平弹跳"),
     Float("unkn34"),
     Float("unkn35"),
     Float("unkn36"),
     Float("unkn37"),
-    Enum("impactPlayTriggerMode", ENUM_IMPACT_PLAY_TRIGGER_MODE, label_zh="触地触发模式"),  # 原 unknEnum38
-    Int("impactPlayTriggerCount", label_zh="触地触发次数"),  # 原 unknBitmask4_0，非位掩码——实测是次数 N，配合 impactPlayTriggerMode=1 使用
-    Int("impactPlayTriggerCountJitter", label_zh="触地触发次数抖动"),  # 原 unknFlag4_1→impactPlayTriggerCountRandom，2026-07-31 用户实机测试确认为 impactPlayTriggerCount 的 jitter
+    Enum("impactPlayTriggerMode", ENUM_IMPACT_PLAY_TRIGGER_MODE, label_zh="触地触发模式"),
+    Int("impactPlayTriggerCount", label_zh="触地触发次数"),  # 不是位掩码，是次数 N，配合 impactPlayTriggerMode=1 使用
+    Int("impactPlayTriggerCountJitter", label_zh="触地触发次数抖动"),
     Int("ieIndex", label_zh="碰撞触发 Play"),
     Int("unknEnum6_0"),
     Int("unknEnum6_1"),
@@ -1178,20 +626,7 @@ assert _schema_size(PTCOLLISION_SCHEMA) == 112, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RandomFix schema  (data_bytes = 40 B; full block = 44 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0[10]  (10 × 4 = 40 B)
-#
-# 用户对照 RE Engine（Wilds 同构）的命名逐一核对（2026-07-10，22946 个官方块）：
-# useRandomSeedTableCount + randomSeedTable0~7 + tableSelectionGroup，刚好 10 个字段。
-#   randomSeedTable0~7（原 seed/unkn0_2~8）：8 个位置形状一致——大多数为 0（未用槎位），
-#     非零时 67%~98% 落在 |v|>=1000（真随机 int32 种子的典型信号，不是设计师手填小数）。
-#   useRandomSeedTableCount（原 unkn0_0）：小整数，众数 1~9，但范围 0~69，并不严格 ≤8
-#     （8 个 table 槎位的上限）——不是"已填槎位数"，更像"抽取/复用次数"计数器
-#     （允许循环复用 8 个槎位），故字段名里的"count"仍成立，只是不是槎位计数。
-#   tableSelectionGroup（原 unkn0_9）：取值全部是 2 的幂/位组合（1/2/4/8/16/32/64/128/
-#     255/15/31/63/240…），上限恰好 255（8-bit 全开）——8 个 table 槎位的选择位掩码。
+# RandomFix
 # ─────────────────────────────────────────────────────────────────────────────
 
 RANDOMFIX_ATTR = Attribute(size=40, fields=[
@@ -1212,15 +647,12 @@ assert _schema_size(RANDOMFIX_SCHEMA) == 40, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Dummy schema  (data_bytes = 9 B; full block = 13 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0[2](8) + byte unkn1(1) = 9 B
+# Dummy
 # ─────────────────────────────────────────────────────────────────────────────
 
 DUMMY_ATTR = Attribute(size=9, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
     Byte("unknFixed1"),
 ])
 DUMMY_SCHEMA = DUMMY_ATTR.schema
@@ -1229,26 +661,18 @@ assert _schema_size(DUMMY_SCHEMA) == 9, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ExternReference schema  (data_bytes = 36 B; full block = 40 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0(4) + int referenceIndex(4) + int unkn1[7](28) = 36 B
+# ExternReference
 # ─────────────────────────────────────────────────────────────────────────────
 
 EXTERNREFERENCE_ATTR = Attribute(size=36, fields=[
-    Int("typeFlag"),  # 原 unkn0，语料恒为 0（该类型场景下无变体）
+    Int("typeFlag"),
     Int("referenceIndex", label_zh="Extern 引用"),
-    # trigger_condition 四态、transitionDuration/triggerDelay 语义 2026-09-20 经用户实机测试
-    # 坐实：0=默认（静态直选，lerp 恒 0）、1=随发射器生命周期变化（外部事件触发过渡）、
-    # 2=未知（全语料未出现该取值）、3=随粒子生命周期变化（自驱动，无需外部事件）。
     Enum("trigger_condition", ENUM_EXTERNREF_TRIGGER, label_zh="触发条件"),
-    # index0/index1/lerp：2026-09-19 核对，现有预设默认值 0/1/0.0 与官方讲座 §4.14
-    # Index0=0／Index1=1／Lerp=0.0 逐字节精确匹配，坐实改名。
-    Int("index0", label_zh="索引 0"),  # 原 unknEnum1_1
-    Int("index1", label_zh="索引 1"),  # 原 unknEnum1_2
-    Float("lerp", label_zh="插值系数"),  # 原 unkn1_3
-    Int("transitionDuration", label_zh="过渡时长（帧）"),  # 原 unkn1_4
-    Int("triggerDelay", label_zh="触发延迟（帧）"),  # 原 unkn1_5
+    Int("index0", label_zh="索引 0"),
+    Int("index1", label_zh="索引 1"),
+    Float("lerp", label_zh="插值系数"),
+    Int("transitionDuration", label_zh="过渡时长（帧）"),
+    Int("triggerDelay", label_zh="触发延迟（帧）"),
     Bool("unknFlag1_6"),
 ])
 EXTERNREFERENCE_SCHEMA = EXTERNREFERENCE_ATTR.schema
@@ -1257,23 +681,17 @@ assert _schema_size(EXTERNREFERENCE_SCHEMA) == 36, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PtLife schema  (data_bytes = 20 B; full block = 24 B)
-#
-# BT (EFX_Subtypes.bt):
-#   short unkn0-9  (10 × 2 = 20 B)
+# PtLife
 # ─────────────────────────────────────────────────────────────────────────────
 
 PTLIFE_ATTR = Attribute(size=20, fields=[
-    Short("typeFlag"),  # 原 unkn0
+    Short("typeFlag"),
     Short("unknFixed1"),
     Enum("status", ENUM_PTLIFE_STATUS, backing='h', label_en="Trigger On", label_zh="触发条件"),
     Short("unknEnum3"),
     Short("relationIndex", label_zh="关联 Play"),
     Short("unknEnum5"),
-    # unknFrame0/1 及各自 Jitter：原 unknEnum6/unknFixed7、unknEnum8/unknFixed9。位置相邻 +
-    # 数值特征（unknFrame0/1 非零时恒为 10 的倍数，像帧数）同 LIFE.unknFrame/unknFrameJitter
-    # 一样按 static/random 配对改名；Jitter 一侧全部已知语料（8961 块）恒为 0，是否真的承担
-    # 随机量仍未证实，仅按位置+数值形态归类。
+    # unknFrame0/1 及其 Jitter 的名字按配对惯例取的，未确认是帧数，不要按名字推断语义。
     Short("unknFrame0"),
     Short("unknFrame0Jitter"),
     Short("unknFrame1"),
@@ -1285,14 +703,11 @@ assert _schema_size(PTLIFE_SCHEMA) == 20, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EmitterBoundary schema  (data_bytes = 40 B; full block = 44 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0[2](8) + float unkn1[8](32) = 40 B
+# EmitterBoundary
 # ─────────────────────────────────────────────────────────────────────────────
 
 EMITTERBOUNDARY_ATTR = Attribute(size=40, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
+    Int("typeFlag"),
     Int("unknEnum0_1"),
     Float("unkn1_0"),
     Float("unkn1_1"),
@@ -1309,41 +724,16 @@ assert _schema_size(EMITTERBOUNDARY_SCHEMA) == 40, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FadeByAngle schema  (data_bytes = 40 B; full block = 44 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0[2](8) + float unkn1[4](16) + int64 NULL(8) + int unkn2[2](8) = 40 B
-#
-# 2026-07-29 用户实机测试全部确认（视角朝基轴方向看时特效渐隐/消失）：
-#   cutoffConeAngle (原 unkn_angle0)：完全消失锥角（半角）——落在这个角度以内完全不可见
-#   fadeConeAngle   (原 unkn_angle1)：渐隐锥角（半角）——cutoffConeAngle 到这个角度之间做渐隐过渡
-#   minAlpha        (原 unkn1_2)：渐隐允许达到的最小 alpha（=1 时完全不触发消失，=0.5 时只淡到一半）
-#   rotation.xyz (原 axisRotationX/Y/Z / unkn_angle2/3/4)：基轴的旋转分量，与 baseAxis/rotOrder 复合
-#   baseAxis   (原 unknBitmask2_0)：基准轴，AxisDirection6（0左1上2前3右4下5后），与 VELOCITY3D
-#              同一套枚举，6 个值全部逐一实机验证通过
-#   rotOrder   (原 unknEnum2_1)：旋转顺序，_ROT_ORDER6（0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX），
-#              与 VELOCITY3D 同一套枚举，复合公式 v' = Ry(rotation.y)·Rx(rotation.x)·
-#              Rz(rotation.z)·baseAxis，实机验证通过（含分组验证 0/1/4 vs 2/3/5）
-# 三者共同确定"往哪个方向看会触发渐隐/消失"，跟 VELOCITY3D 的 [baseAxis, rotOrder] 是同一套
-# 底层机制的另一处复用。
-#
-# coneVisibilityFlags（原 unkn0_1）：2026-07-29 用户实机穷举全部 8 种位组合确认：
-#   bit0=enableDoubleCone：独立生效，不受 bit1/bit2 影响——置位后额外在对立角（-baseAxis）
-#     追加一份与主锥角完全相同的可见性规则（镜像）。
-#   bit1=excludeCone：真正的"反转"开关，恒定生效——置位后"锥角内/外"的可见性互换
-#     （变成锥角内不可见、外可见），不受 bit0/bit2 影响。
-#   bit2（未知）：单独置位时表现跟 bit1 一样是反转，但只要 bit0=1 就完全失效（被盖掉，
-#     不再反转）——即整体反转 = bit1 OR (bit2 AND NOT bit0)。这个"被 bit0 单向遮蔽"的
-#     不对称行为无法用一个独立同等地位的开关解释，具体内部语义仍不清楚，先保留占位标签。
+# FadeByAngle
 # ─────────────────────────────────────────────────────────────────────────────
 
 FADEBYANGLE_ATTR = Attribute(size=40, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
+    Int("typeFlag"),
     Bitmask("coneVisibilityFlags", BITS_FADEBYANGLE_FLAGS, label_zh="锥体可见性标志", strict=True),
     Float("cutoffConeAngle", label_zh="完全消失锥角"),
     Float("fadeConeAngle", label_zh="渐隐锥角"),
     Float("minAlpha", label_zh="最小透明度"),
-    Raw("rotation", ('XYZ', 3), label_zh="旋转"),  # 原 axisRotationX/Y/Z
+    Raw("rotation", ('XYZ', 3), label_zh="旋转"),
     Enum("baseAxis", _AXIS_DIRECTION6, label_zh="基准轴"),
     Enum("rotOrder", _ROT_ORDER6, label_zh="旋转顺序"),
 ])
@@ -1353,14 +743,11 @@ assert _schema_size(FADEBYANGLE_SCHEMA) == 40, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MasterOnly schema  (data_bytes = 4 B; full block = 8 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0(4) = 4 B
+# MasterOnly
 # ─────────────────────────────────────────────────────────────────────────────
 
 MASTERONLY_ATTR = Attribute(size=4, fields=[
-    Int("typeFlag"),  # 原 unkn0
+    Int("typeFlag"),
 ])
 MASTERONLY_SCHEMA = MASTERONLY_ATTR.schema
 assert _schema_size(MASTERONLY_SCHEMA) == 4, \
@@ -1368,33 +755,23 @@ assert _schema_size(MASTERONLY_SCHEMA) == 4, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Blink schema  (data_bytes = 52 B; full block = 56 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0[2](8) + float unkn1[11](44) = 52 B
-#
-# 2026-09-19 devlecture §10.4（P44 完整面板）：Blink 是"通过双重 sin 计算为透明度
-# 赋予波动"，跟 Noise 后 4 个字段完全同名同构，只是前面多了 MinRate/MaxRate 两个
-# 钳制滑条（因为输出目标是 alpha，需要值域钳制；Noise 输出位移不需要）：
-# MinRate(0)/MaxRate(1.0)/LowFrequency(3.0±0)/LowFrequencyWidth(1.0±0)/
-# HighFrequency(0±0)/HighFrequencyWidth(0±0)。改名对齐 Noise 那一套（Amplitude→
-# Width、lowFreq→lowFrequency），minAlpha/maxAlpha 改成官方的 MinRate/MaxRate。
+# Blink
 # ─────────────────────────────────────────────────────────────────────────────
 
 BLINK_ATTR = Attribute(size=52, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1
-    Float("unkn1_0"),  # bool (byte 0) + 0xCD×3 padding
-    Float("minRate", label_zh="最小速率"),  # 原 minAlpha
-    Float("maxRate", label_zh="最大速率"),  # 原 maxAlpha
-    Float("lowFrequency", label_zh="低频"),  # 原 lowFreq
-    Float("lowFrequencyJitter", label_zh="低频抖动"),  # 原 lowFreqJitter
-    Float("lowFrequencyWidth", label_zh="低频振幅"),  # 原 lowFreqAmplitude
-    Float("lowFrequencyWidthJitter", label_zh="低频振幅抖动"),  # 原 lowFreqAmplitudeJitter
-    Float("highFrequency", label_zh="高频"),  # 原 highFreq
-    Float("highFrequencyJitter", label_zh="高频抖动"),  # 原 highFreqJitter
-    Float("highFrequencyWidth", label_zh="高频振幅"),  # 原 highFreqAmplitude
-    Float("highFrequencyWidthJitter", label_zh="高频振幅抖动"),  # 原 highFreqAmplitudeJitter
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Float("unkn1_0"),  # 低字节是 bool，其余三字节是保留填充
+    Float("minRate", label_zh="最小速率"),
+    Float("maxRate", label_zh="最大速率"),
+    Float("lowFrequency", label_zh="低频"),
+    Float("lowFrequencyJitter", label_zh="低频抖动"),
+    Float("lowFrequencyWidth", label_zh="低频振幅"),
+    Float("lowFrequencyWidthJitter", label_zh="低频振幅抖动"),
+    Float("highFrequency", label_zh="高频"),
+    Float("highFrequencyJitter", label_zh="高频抖动"),
+    Float("highFrequencyWidth", label_zh="高频振幅"),
+    Float("highFrequencyWidthJitter", label_zh="高频振幅抖动"),
 ])
 BLINK_SCHEMA = BLINK_ATTR.schema
 assert _schema_size(BLINK_SCHEMA) == 52, \
@@ -1402,23 +779,14 @@ assert _schema_size(BLINK_SCHEMA) == 52, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FadeByEmitterAngle schema  (data_bytes = 28 B; full block = 32 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0[2](8) + long unkn(4) + float unkn2[4](16) = 28 B
-#
-# 原 cone/alphaRate 改名 outerConeAngle/innerConeAngle（2026-07-23，全语料
-# 10131 块统计：innerConeAngle ≤ outerConeAngle 占 10116/10131=99.85%，二者
-# 同为 0~360 量级，最高频组合 (180,20) 占比 73%——形态是一对锥角，"alphaRate"
-# 这个原名容易让人误以为是透明度变化速率，故直接改名）。
-# ⚠ 待验证：只有统计证据，未像 fadeInStart/fadeInEnd 那样经过实机操作确认——  
-# 还没人转到发射器侧后方实测过角度跨过这两个值时透明度是否真的在变。
+# FadeByEmitterAngle
 # ─────────────────────────────────────────────────────────────────────────────
+# ⚠ outerConeAngle / innerConeAngle 的身份未经确认，不要按名字推断行为。
 
 FADEBYEMITTERANGLE_ATTR = Attribute(size=28, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1
-    Int("unkn"),  # bool (byte 0) + 0xCD×3 padding  
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Int("unkn"),  # 低字节是 bool，其余三字节是保留填充
     Float("outerConeAngle", label_zh="外锥角"),
     Float("innerConeAngle", label_zh="内锥角"),
     Float("fadeInStart", label_zh="淡入起点"),
@@ -1430,63 +798,29 @@ assert _schema_size(FADEBYEMITTERANGLE_SCHEMA) == 28, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RayCast schema  (data_bytes = 78 B; full block = 82 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unknown(4) + int fixed70(4) + long spacer0(4) +
-#   float distanceMod0/j(8) + float prop1/j(8) +
-#   long spacer1/2/3(12) + float prop2(4) + XYZ prop3(3)(12) +
-#   int direction(4) + float distanceMod1/j(8) +
-#   long spacer(4) + int unknown1(4) + short unknown2(2)
-# = 4+4+4+8+8+12+4+12+4+8+4+4+2 = 78 B ✓
-#
-# 2026-09-19 用户提供官方讲座 RayCast 面板截图（docs/OFFICIAL_DEFAULTS_AND_ENUMS.md
-# §4.11）逐字段核对 + official 全语料 1363 块交叉验证：
-#   spacer1/spacer2/spacer3：恒为 0xCDCDCDCD，确认是纯占位，不是 StartOffset（此前的
-#     猜测已证伪）。
-#   prop3(XYZ)：z 分量恒 0，x/y 分量有真实小幅度偏移值——对应 StartOffset X/Y/Z，
-#     已改名 startOffset。
-#   spacer（原判占位）：**不是占位**——恒为 0xFFFFFFxx，只有低 2 位变化：bit0 置位率
-#     97.1%、bit1 置位率 23.5%，与截图"SCR 默认勾选、OBJ 默认不勾选"的比例吻合，
-#     已改名 rayCastAttr（Bitmask，bit0=SCR/bit1=OBJ）。
-#   unknownBitmask2：90.8% 恒为 0，bit0/bit8 各自独立偶尔置位（2.1%/7.1%），与截图
-#     "SyncSpawnFrame/RayCastOnce 均默认不勾选"的两个独立勾选框形态吻合，已改名
-#     rayCastFlags（Bitmask，bit0=SyncSpawnFrame/bit8=RayCastOnce）。
-#   unknownEnum1：改名 rayCastID（对应截图 RayCastID），语料 52.3% 为 -1——猜测
-#     -1=NONE（截图唯一见到的取值），但只有单一取值证据，不建 Enum，保留原始整数。
-#   distanceMod0/prop1/distanceMod1（对应截图 MaxDistance/StartDistance/Speed）：
-#     三者数值区间高度重叠、prop1 与 distanceMod0 有 63.3% 概率相等、语料里没有一次
-#     取到官方默认值 650.0，靠语料统计无法区分身份。2026-09-19 用户按截图字段顺序
-#     初步定名 distanceMod0→startDistance/distanceMod1→maxDistance/prop1→speed，
-#     随后用户实机测试推翻：把「速度」设 0、下调「最大距离」，粒子生成时机仍随之
-#     连续变化（越调越低生成越晚）——这是「数值越大到达越快」的**速率**特征，
-#     不是「数值越大延迟越久」的距离上限特征，说明原命名反了。改按截图顺序（跳过
-#     RayCastID）逐位对应 + 数量级比例校验（官方 MaxDistance=5000 是 StartDistance=10
-#     的 500 倍，本仓库 distanceMod0 中位数 4000 是 prop1 中位数 500 的 8 倍，明显
-#     更像"总射程 vs 起始点"这一对，而 distanceMod1 中位数 5000 与 distanceMod0 只差
-#     1.25 倍不像）**三向对调**：distanceMod0→maxDistance、prop1→startDistance、
-#     distanceMod1→speed。
+# RayCast
 # ─────────────────────────────────────────────────────────────────────────────
+# rayCastID 只观测到单一取值，保留原始 int，不建 Enum。
 
 RAYCAST_ATTR = Attribute(size=78, fields=[
-    Int("typeFlag"),  # 原 unknown0
-    Int("section_length", label_zh="段长度"),  # 原 fixed70
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
     Int("spacer0"),
-    Float("maxDistance", label_zh="最大距离"),  # 原 distanceMod0（原名 startDistance，2026-09-19 实机测试后三向对调）
-    Float("maxDistanceJitter", label_zh="最大距离抖动"),  # 原 distanceMod0Jitter
-    Float("startDistance", label_zh="起始距离"),  # 原 prop1（原名 speed，2026-09-19 实机测试后三向对调）
-    Float("startDistanceJitter", label_zh="起始距离抖动"),  # 原 prop1Jitter
+    Float("maxDistance", label_zh="最大距离"),
+    Float("maxDistanceJitter", label_zh="最大距离抖动"),
+    Float("startDistance", label_zh="起始距离"),
+    Float("startDistanceJitter", label_zh="起始距离抖动"),
     Int("spacer1"),
     Int("spacer2"),
     Int("spacer3"),
     Float("prop2", label_zh="属性2"),
-    Raw("startOffset", ('XYZ', 3), label_zh="起始偏移"),  # 原 prop3
+    Raw("startOffset", ('XYZ', 3), label_zh="起始偏移"),
     Enum("direction", ENUM_RAYCAST_DIR, label_zh="方向"),
-    Float("speed", label_zh="速度"),  # 原 distanceMod1（原名 maxDistance，2026-09-19 实机测试后三向对调）
-    Float("speedJitter", label_zh="速度抖动"),  # 原 distanceMod1Jitter
-    Bitmask("rayCastAttr", BITS_RAYCAST_ATTR, strict=True, label_zh="射线属性"),  # 原 spacer
-    Enum("rayCastID", ENUM_RAYCAST_ID, label_zh="RayCast ID"),  # 原 unknownEnum1；2026-09-19 改下拉，只列语料见过的 4 个值
-    Bitmask("rayCastFlags", BITS_RAYCAST_FLAGS, backing='h', strict=True, label_zh="射线标志位"),  # 原 unknownBitmask2
+    Float("speed", label_zh="速度"),
+    Float("speedJitter", label_zh="速度抖动"),
+    Bitmask("rayCastAttr", BITS_RAYCAST_ATTR, strict=True, label_zh="射线属性"),
+    Enum("rayCastID", ENUM_RAYCAST_ID, label_zh="RayCast ID"),  # 只列已观测到的取值
+    Bitmask("rayCastFlags", BITS_RAYCAST_FLAGS, backing='h', strict=True, label_zh="射线标志位"),
 ])
 RAYCAST_SCHEMA = RAYCAST_ATTR.schema
 assert _schema_size(RAYCAST_SCHEMA) == 78, \
@@ -1494,63 +828,22 @@ assert _schema_size(RAYCAST_SCHEMA) == 78, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Homing schema  (data_bytes = 52 B; full block = 56 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unknown(4) + int unknown0(4) + long spacer(4) +  
-#   float restoringForce(4) + float speed(4) + float speedMultiplier(4) +
-#     ↑ 本仓库现名 turnRate / initialSpeed / targetSpeed（见下方改名说明）
-#   float f3(4) + float vanishDistance(4) + float forceFieldDistance(4) +
-#     ↑ 现名 forceFieldSpeedScale / vanishRadius / forceFieldRadius
-#   long homingTarget(4) + long vanishMode(4) +
-#   int forceFieldMode(4) + int unknown1(4)
-# = 4+4+4+4+4+4+4+4+4+4+4+4+4 = 52 B ✓
-# Note: SPEC.md confirms HOMING = 56 B (with +12 offset often 0xCDCDCD00),  
-# matches efxfile.py: 4(type)+4+4+4+24+8+8 = 4+52 = 56 full.
-# homingTarget 原名 i0，（2026-07-11）：归航运动始终指向目标点的**实时**位置
-# （非旧假说所说的"触发时捕获定住"）。vanishMode/forceFieldMode 原名 i1/
-# enableRadialVanish，2026-07-11 按实测语义改名。
-#
-# ── 运动学模型（2026-07-30 用八角探针系统实测坐实，取代此前的"回复力/弹簧"读法）──
-# 单个粒子的行为：
-#   ① 从生成位置**径直飞向**归航目标，这一段是直线、不转弯；
-#   ② 到达目标的瞬间，获得一个与入射方向**垂直（90°）**的速度；
-#   ③ 之后在这个平面内转圈，角速度 = turnRate，半径 r = v / turnRate，圆在目标点
-#      与入射方向相切，转一整圈回到目标点，如此往复、无衰减。
-#   ④ v 从 initialSpeed 出发（上限被 targetSpeed 钳住）乘法式逼近 targetSpeed：
-#      两者相等 → 严格闭合圆；initialSpeed 更小 → 从小圈向外旋开；任一为 0 → 不动。
-# ⚠ 多粒子的**合成剪影**会呈现四叶草/扁球/圆盘/水平线等图案，那些都不是单粒子行为，
-#   早期基于球形发射器剪影推出的"逐轴简谐振荡 + 绕局部 Y 涡旋"结论已被证伪。
-# ⚠ HOMING 硬依赖同 entry 的 VELOCITY3D（哪怕 V3D 字段全 0），否则粒子没有惯性、
-#   跑到目标点即停。validate.py (5m) 已有对应 WARN。
-#
-# 改名（2026-07-30，依上述实测）：
-#   restoringForce  → turnRate            不是力度，是转弯角速度，单位**度/秒**
-#                                         （rF=360 实测正好每秒一整圈）
-#   speed           → initialSpeed        起始速度，取 min(自身, targetSpeed)
-#   speedMultiplier → targetSpeed         不是倍率，是速度最终收敛到的值；
-#                                         终半径 = targetSpeed / turnRate（线性）
-#   f3              → forceFieldSpeedScale 力场作用区内的速度倍率，0=停住、
-#                                         ≥1=不缩放；仅 forceFieldMode 2/4 用得到
-#                                         （语料 21/21 零例外：mode 2/4 必配 <1，
-#                                          mode 0 的 149 条一个 <1 都没有）
-#   vanishDistance  → vanishRadius        是球半径不是距离，球心=归航目标
-#   forceFieldDistance → forceFieldRadius 同上
+# Homing
 # ─────────────────────────────────────────────────────────────────────────────
 
 HOMING_ATTR = Attribute(size=52, fields=[
-    Int("typeFlag"),  # 原 unknown
-    Int("section_length", label_zh="段长度"),  # 原 unknown0
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
     Int("spacer"),
-    Float("turnRate", label_zh="转向速率"),  # 原 restoringForce / f0；单位度/秒
-    Float("initialSpeed", label_zh="起始速度"),  # 原 speed
-    Float("targetSpeed", label_zh="终速度"),  # 原 speedMultiplier
-    Float("forceFieldSpeedScale", label_zh="力场速度倍率"),  # 原 f3
-    Float("vanishRadius", label_zh="消失半径"),  # 原 vanishDistance / f4 / activationDistance
-    Float("forceFieldRadius", label_zh="力场半径"),  # 原 forceFieldDistance / radius
-    Enum("homingTarget", ENUM_HOMING_TARGET, label_zh="归航目标"),  # 原 i0
-    Enum("vanishMode", ENUM_HOMING_VANISH, label_zh="消失模式"),  # 原 i1
-    Enum("forceFieldMode", ENUM_HOMING_FORCEFIELD, label_zh="力场模式"),  # 原 enableRadialVanish
+    Float("turnRate", label_zh="转向速率"),  # 单位为度/秒
+    Float("initialSpeed", label_zh="起始速度"),
+    Float("targetSpeed", label_zh="终速度"),
+    Float("forceFieldSpeedScale", label_zh="力场速度倍率"),
+    Float("vanishRadius", label_zh="消失半径"),
+    Float("forceFieldRadius", label_zh="力场半径"),
+    Enum("homingTarget", ENUM_HOMING_TARGET, label_zh="归航目标"),
+    Enum("vanishMode", ENUM_HOMING_VANISH, label_zh="消失模式"),
+    Enum("forceFieldMode", ENUM_HOMING_FORCEFIELD, label_zh="力场模式"),
     Int("unknownEnum1"),
 ])
 HOMING_SCHEMA = HOMING_ATTR.schema
@@ -1559,17 +852,12 @@ assert _schema_size(HOMING_SCHEMA) == 52, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ScreenSpaceCollision schema  (data_bytes = 36 B; full block = 40 B)
-#
-# BT (EFX_Subtypes.bt):
-#   int unkn0[2](8) + long spacer(4) + float unkn1(4) + float bounce(4) +  
-#   float bounceJitter(4) + int lifespan(4) + int lifespanJitter(4) +
-#   float bounceConditional(4) = 36 B ✓
+# ScreenSpaceCollision
 # ─────────────────────────────────────────────────────────────────────────────
 
 SCREENSPACECOLLISION_ATTR = Attribute(size=36, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
     Int("spacer"),
     Int("unknEnum1"),
     Float("bounce", label_zh="弹跳"),
@@ -1584,21 +872,12 @@ assert _schema_size(SCREENSPACECOLLISION_SCHEMA) == 36, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Shovel schema  (data_bytes = 70 B; full block = 74 B)
-#
-# BT (EFX_Subtypes.bt):
-#   long unkn00(4) + long unkn01(4) + long spacer(4) +  
-#   float width/j(8) + float height/j(8) + float length/j(8) +
-#   long unkn09(4) + long unkn10(4) + float unkn11(4) +
-#   long unkn12-14(12) + long pattern(4) + long unkn16(4) + short unkn17(2)
-# = 4+4+4+8+8+8+4+4+4+12+4+4+2 = 70 B ✓
-#
-# ⚠ unkn09/unkn10 实测非 BT 标注的 long，是 float（角度对，见 549/549 官方样本统计）。  
+# Shovel
 # ─────────────────────────────────────────────────────────────────────────────
 
 SHOVEL_ATTR = Attribute(size=70, fields=[
-    Int("typeFlag"),  # 原 unkn00
-    Int("section_length", label_zh="段长度"),  # 原 unkn01
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
     Int("spacer"),
     Float("width", label_zh="宽度"),
     Float("widthJitter", label_zh="宽度抖动"),
@@ -1622,22 +901,13 @@ assert _schema_size(SHOVEL_SCHEMA) == 70, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UVControl schema  (data_bytes = 236 B; full block = 240 B)
-#
-# BT (EFX_Subtypes.bt):
-#   Material_Animation_Data uv1 (100 B) + Material_Animation_Data uv2 (100 B) +
-#   int unkn2(4) + float[8] extra (32 B) = 236 B
-#
-# Material_Animation_Data (100 B):
-#   int unkn0(4) + uv_transform[6](96) where uv_transform = float u/uJ/v/vJ (16 B)
-#   = 4 + 6*16 = 100 B
+# UVControl
 # ─────────────────────────────────────────────────────────────────────────────
 
 UVCONTROL_ATTR = Attribute(size=236, fields=[
     # uv1 Material_Animation_Data
-    # 2026-07-31 全语料扫描(official 1784例)：18 种取值(1~26)从未为 0，覆盖低4位几乎
-    # 全部非零组合+罕见第5位；具备位掩码特征但具体位含义未实机确认，先只改名不拆位。
-    Int("uv1_unknFlag", label_zh="UV1 未知标志"),  # 原 uv1_unkn0
+    # 形态像位掩码但各位含义未确认，保持整数不拆位。
+    Int("uv1_unknFlag", label_zh="UV1 未知标志"),
     Raw("uv1_offset", ('f', 4), label_zh="UV1 初始位置"),
     Raw("uv1_offsetAdd", ('f', 4), label_zh="UV1 速度"),
     Raw("uv1_offsetCoef", ('f', 4), label_zh="UV1 加速度"),
@@ -1645,25 +915,23 @@ UVCONTROL_ATTR = Attribute(size=236, fields=[
     Raw("uv1_scaleAdd", ('f', 4), label_zh="UV1 缩放速度"),
     Raw("uv1_scaleCoef", ('f', 4), label_zh="UV1 缩放加速度"),
     # uv2 Material_Animation_Data
-    Bool("uv2_enable"),  # 原 uv2_unkn0，实测 1860 例仅 0/1 两种取值，干净二元
+    Bool("uv2_enable"),
     Raw("uv2_offset", ('f', 4), label_zh="UV2 初始位置"),
     Raw("uv2_offsetAdd", ('f', 4), label_zh="UV2 速度"),
     Raw("uv2_offsetCoef", ('f', 4), label_zh="UV2 加速度"),
     Raw("uv2_scale", ('f', 4), label_zh="UV2 缩放"),
     Raw("uv2_scaleAdd", ('f', 4), label_zh="UV2 缩放速度"),
     Raw("uv2_scaleCoef", ('f', 4), label_zh="UV2 缩放加速度"),
-    # extra fields — flowmap 8 件套（2026-07-31 改名，命名对齐 RIBBON/RIBBONBLADE/
-    # BILLBOARD2D/BILLBOARD3D/PLANE 同款 flowmap 组：Speed/Acceleration/Strength/
-    # StrengthAcceleration 各配 Jitter，另加 enableFlowmap 总开关）。
-    Bool("enableFlowmap", label_zh="启用流动贴图"),  # 原 unknFlag2
-    Float("flowmapSpeed", label_zh="流动贴图速度"),  # 原 extraMaterialInitialPosition
-    Float("flowmapSpeedJitter", label_zh="流动贴图速度抖动"),  # 原 extraMaterialInitialPositionJitter
-    Float("flowmapSpeedCoef", label_zh="流动贴图加速度"),  # 原 extraMaterialSpeed
-    Float("flowmapSpeedCoefJitter", label_zh="流动贴图加速度抖动"),  # 原 extraMaterialSpeedJitter
-    Float("flowmapStrength", label_zh="流动贴图强度"),  # 原 opacity
-    Float("flowmapStrengthJitter", label_zh="流动贴图强度抖动"),  # 原 opacityJitter
-    Float("flowmapStrengthCoef", label_zh="流动贴图强度加速度"),  # 原 opacityAcceleration
-    Float("flowmapStrengthCoefJitter", label_zh="流动贴图强度加速度抖动"),  # 原 opacityAccelerationJitter
+    # flowmap 组，与 RIBBON / BILLBOARD3D / PLANE 等同款
+    Bool("enableFlowmap", label_zh="启用流动贴图"),
+    Float("flowmapSpeed", label_zh="流动贴图速度"),
+    Float("flowmapSpeedJitter", label_zh="流动贴图速度抖动"),
+    Float("flowmapSpeedCoef", label_zh="流动贴图加速度"),
+    Float("flowmapSpeedCoefJitter", label_zh="流动贴图加速度抖动"),
+    Float("flowmapStrength", label_zh="流动贴图强度"),
+    Float("flowmapStrengthJitter", label_zh="流动贴图强度抖动"),
+    Float("flowmapStrengthCoef", label_zh="流动贴图强度加速度"),
+    Float("flowmapStrengthCoefJitter", label_zh="流动贴图强度加速度抖动"),
 ])
 UVCONTROL_SCHEMA = UVCONTROL_ATTR.schema
 assert _schema_size(UVCONTROL_SCHEMA) == 236, \
@@ -1671,31 +939,19 @@ assert _schema_size(UVCONTROL_SCHEMA) == 236, \
 
 
 EMITTERSHAPE2D_ATTR = Attribute(size=36, fields=[
-    Int("typeFlag"),  # 原 unkn0
-    # rangeX/Y(+Jitter)：原 offsetX/Y(+Jitter)，用户 2026-07-26 确认对应 EMITTERSHAPE3D.rangeXYZ
-    # 同一概念（生成范围），只是 2D 版本存成独立标量而非 XYZ 复合类型（少一根 Z 轴）。
-    # ⚠ 与 rangeXYZ 一样是 offset/size（内边界+厚度，外边界=offset+size），**不是** 固定/随机；
-    # ori_name 的 *Jitter 后缀是历史命名，保留不动（改名会波及预设与已导入的 .blend），
-    # UI 措辞由 panels.py::_OFFSET_SIZE_PAIRS 覆盖成 偏移/尺寸。
+    Int("typeFlag"),
+    # rangeX/Y 与其 *Jitter 实为 offset/size 一对（外边界=offset+size），不是固定/随机。
+    # *Jitter 这个 ori_name 不能改（会波及预设与已导入的 .blend），UI 措辞由
+    # panels.py::_OFFSET_SIZE_PAIRS 覆盖成 偏移/尺寸。
     Float("rangeX", label_zh="生成范围 X"),
     Float("rangeXJitter", label_zh="生成范围 X 抖动"),
     Float("rangeY", label_zh="生成范围 Y"),
     Float("rangeYJitter", label_zh="生成范围 Y 抖动"),
-    # shapeType：原 unknFlag20，用户 2026-07-26 确认对应 EMITTERSHAPE3D.shapeType：
-    # 0=方形，1=圆形，2+=点。⚠ 全语料 292 例目前只观测到 0/1，未见过 ≥2 的实例。
     Enum("shapeType", ENUM_SHAPE_TYPE2D, label_zh="形状类型"),
-    # rangeDivideHorizontalNum：原 spawnCount（"生成数量"）。用户 2026-07-30 实机测试确认
-    # 它是**等分数量**而非生成个数，与 EMITTERSHAPE3D.rangeDivideHorizontalNum 同一概念的
-    # 2D 版本（2D 只有一根横向维度，故没有 Vertical 对应字段）。
     Int("rangeDivideHorizontalNum", label_zh="横向等分数量"),
-    # rangeDivideAxis：原 unknEnum22_0。用户 2026-09-03 按与 EMITTERSHAPE3D 同构推定为
-    # 「方形的细分轴向」——2D 版与 3D 版逐字段对应，3D 那边同位置就是 rangeDivideAxis
-    # （仅 Box 生效、选沿哪个轴细分）。取值 {0:94%, 1:2%, 2:4%}。
-    # ⚠ 用 2D 专属枚举：3D 那张是 0=X/1=Z/2=Y，2D 实测是 **0=Y、1=X**，编号不一样。
-    #   语料还有 4% 取值 2，含义未知，未列进枚举（越界值回退显示原整数）。
+    # 必须用 2D 专属枚举：编号与 3D 版不同（3D 是 0=X/1=Z/2=Y，2D 是 0=Y/1=X）。
+    # 官方语料实测出现过取值 2，已作为 Unknown (2) 补进枚举（见 enums.py）。
     Enum("rangeDivideAxis", ENUM_RANGE_DIVIDE_AXIS_2D, label_zh="细分轴向"),
-    # unknFixed22_1：全语料 292 例恒为 0。曾被列为 EmitterShape2D 的 LocalRotation
-    # （TIML DT 0x7516AA5D）的候选宿主，但用户 2026-09-03 实机改它看不到变化，未坐实。
     Int("unknFixed22_1"),
 ])
 EMITTERSHAPE2D_SCHEMA = EMITTERSHAPE2D_ATTR.schema
@@ -1703,25 +959,24 @@ assert _schema_size(EMITTERSHAPE2D_SCHEMA) == 36, \
     f"EMITTERSHAPE2D_SCHEMA size mismatch: {_schema_size(EMITTERSHAPE2D_SCHEMA)}"
 
 VELOCITY2D_ATTR = Attribute(size=72, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Float("rotation", label_zh="旋转"),  # 原 unkn0_1，2026-07-26 用户确认为旋转角度
-    Float("rotationJitter", label_zh="旋转抖动"),  # 原 unkn10
-    Float("speed", label_zh="初速度"),  # 原 initialVelocity/expansionRadius，2026-07-26 依续作 schema 改名
-    Float("speedJitter", label_zh="初速度偏差"),  # 原 initialVelocityJitter/expansionRadiusJitter
-    Float("speedCoef", label_zh="加速度"),  # 原 expansionRadiusElasticity（用户 2026-07-26 决定保留此名，
-                                               # 不跟随续作 schema 的 drag 命名，二者本质是同一个力）
-    Float("speedCoefJitter", label_zh="加速度偏差"),  # 原 expansionRadiusElasticityJitter
-    Float("velocityX", label_zh="X 基准点偏置"),  # 原 offsetX/unkn15，2026-07-26 依续作 schema 改回 velocityX
-    Float("velocityY", label_zh="Y 基准点偏置"),  # 原 offsetY/unkn16
-    Float("divergenceX", label_zh="X 基准点伸缩"),  # 原 sizeX/energyOnAxisX，2026-07-26 依续作 schema 改名
-    Float("divergenceY", label_zh="Y 基准点伸缩"),  # 原 sizeY/energyOnAxisY，9 floats = 36
-    Enum("velocityType", _VELOCITY_TYPE, label_zh="速度类型"),  # 原 expansionType，同 V3D 改名（枚举语义见 V3D 注释）
+    Int("typeFlag"),
+    Float("rotation", label_zh="旋转"),
+    Float("rotationJitter", label_zh="旋转抖动"),
+    Float("speed", label_zh="初速度"),
+    Float("speedJitter", label_zh="初速度偏差"),
+    Float("speedCoef", label_zh="加速度"),
+    Float("speedCoefJitter", label_zh="加速度偏差"),
+    Float("velocityX", label_zh="X 基准点偏置"),
+    Float("velocityY", label_zh="Y 基准点偏置"),
+    Float("divergenceX", label_zh="X 基准点伸缩"),
+    Float("divergenceY", label_zh="Y 基准点伸缩"),
+    Enum("velocityType", _VELOCITY_TYPE, label_zh="速度类型"),  # 枚举语义见 VELOCITY3D
     Float("gravity", label_zh="重力"),
-    Float("gravityJitter", label_zh="重力抖动"),  # 8
-    Int("movementDelay", label_zh="运动延迟"),  # 原 initialVelocityDelay/expansionDelay，2026-07-26 依续作 schema 改名
-    Int("movementDelayJitter", label_zh="运动延迟抖动"),  # 原 initialVelocityDelayJitter/expansionDelayJitter
+    Float("gravityJitter", label_zh="重力抖动"),
+    Int("movementDelay", label_zh="运动延迟"),
+    Int("movementDelayJitter", label_zh="运动延迟抖动"),
     Int("gravityDelay", label_zh="重力延迟"),
-    Int("gravityDelayJitter", label_zh="重力延迟抖动"),  # 16
+    Int("gravityDelayJitter", label_zh="重力延迟抖动"),
 ])
 VELOCITY2D_SCHEMA = VELOCITY2D_ATTR.schema
 assert _schema_size(VELOCITY2D_SCHEMA) == 72, \
@@ -1729,24 +984,22 @@ assert _schema_size(VELOCITY2D_SCHEMA) == 72, \
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 原 opaque 定长类型 schema（新增）
-# 字段布局来源：EFX_Crimson.bt；字节数由 _known_attr_size 实测往返验证。
-# 字段命名以 unknN 为主，语义待后续补全。
+# 以下类型此前按 opaque 处理，现已定长 schema 化；多数字段语义未知，名字保持 unknN。
 # ─────────────────────────────────────────────────────────────────────────────
 
-# PathChain (81B total, 77B data)
+# PathChain
 PATHCHAIN_ATTR = Attribute(size=77, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1，8B
-    Int("unkn1"),  # 4B
-    Float("unkn2"),  # 4B
-    Int("unknEnum3"),  # 4B
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Int("unkn1"),
+    Float("unkn2"),
+    Int("unknEnum3"),
     Float("unkn4_0"),
     Float("unknFixed4_1"),
     Float("unkn4_2"),
     Float("unknFixed4_3"),
     Float("unkn4_4"),
-    Float("unknFixed4_5"),  # 24B
+    Float("unknFixed4_5"),
     Int("unknBitmask5_0"),
     Float("unkn5_1"),
     Float("unkn5_2"),
@@ -1754,149 +1007,133 @@ PATHCHAIN_ATTR = Attribute(size=77, fields=[
     Int("unknFixed5_4"),
     Float("unkn5_5"),
     Int("unknFixed5_6"),
-    Int("unknEnum5_7"),  # 32B
-    Bool("unknFlag6", backing='b'),  # 1B
+    Int("unknEnum5_7"),
+    Bool("unknFlag6", backing='b'),
 ])
 PATHCHAIN_SCHEMA = PATHCHAIN_ATTR.schema
 assert _schema_size(PATHCHAIN_SCHEMA) == 77, \
     f"PATHCHAIN_SCHEMA size mismatch: {_schema_size(PATHCHAIN_SCHEMA)}"
 
-# PtTrigger (20B total, 16B data)
+# PtTrigger
 PTTRIGGER_ATTR = Attribute(size=16, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1，8B
-    Int("unkn1"),  # 4B
-    Int("unknEnum2"),  # 4B
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Int("unkn1"),
+    Int("unknEnum2"),
 ])
 PTTRIGGER_SCHEMA = PTTRIGGER_ATTR.schema
 assert _schema_size(PTTRIGGER_SCHEMA) == 16, \
     f"PTTRIGGER_SCHEMA size mismatch: {_schema_size(PTTRIGGER_SCHEMA)}"
 
-# LinkPartsVisible (16B total, 12B data)
+# LinkPartsVisible
 LINKPARTSVISIBLE_ATTR = Attribute(size=12, fields=[
-    Int("typeFlag"),  # 原 unkn0_0，语料恒为 1（样本少，仅 87 例）
+    Int("typeFlag"),
     Int("unknFixed0_1"),
-    Int("unknEnum0_2"),  # 12B
+    Int("unknEnum0_2"),
 ])
 LINKPARTSVISIBLE_SCHEMA = LINKPARTSVISIBLE_ATTR.schema
 assert _schema_size(LINKPARTSVISIBLE_SCHEMA) == 12, \
     f"LINKPARTSVISIBLE_SCHEMA size mismatch: {_schema_size(LINKPARTSVISIBLE_SCHEMA)}"
 
-# SpawnByAngle (26B total, 22B data)
+# SpawnByAngle
 SPAWNBYANGLE_ATTR = Attribute(size=22, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1，8B
-    Int("unkn1"),  # 4B
-    Float("unkn2"),  # 4B
-    Int("unknEnum3"),  # 4B
-    Short("unknFixed4"),  # 2B
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Int("unkn1"),
+    Float("unkn2"),
+    Int("unknEnum3"),
+    Short("unknFixed4"),
 ])
 SPAWNBYANGLE_SCHEMA = SPAWNBYANGLE_ATTR.schema
 assert _schema_size(SPAWNBYANGLE_SCHEMA) == 22, \
     f"SPAWNBYANGLE_SCHEMA size mismatch: {_schema_size(SPAWNBYANGLE_SCHEMA)}"
 
-# CheckPureAttribute (44B total, 40B data)
+# CheckPureAttribute
 CHECKPUREATTRIBUTE_ATTR = Attribute(size=40, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1，8B
-    Int("unkn1"),  # 4B
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Int("unkn1"),
     Int("unknEnum2_0"),
     Int("unknEnum2_1"),
     Int("unknEnum2_2"),
     Int("unknEnum2_3"),
     Int("unknEnum2_4"),
     Int("unknEnum2_5"),
-    Int("unknFixed2_6"),  # 28B
+    Int("unknFixed2_6"),
 ])
 CHECKPUREATTRIBUTE_SCHEMA = CHECKPUREATTRIBUTE_ATTR.schema
 assert _schema_size(CHECKPUREATTRIBUTE_SCHEMA) == 40, \
     f"CHECKPUREATTRIBUTE_SCHEMA size mismatch: {_schema_size(CHECKPUREATTRIBUTE_SCHEMA)}"
 
-# SpawnByOcclusion (24B total, 20B data)
+# SpawnByOcclusion
 SPAWNBYOCCLUSION_ATTR = Attribute(size=20, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1，8B
-    Int("unkn1"),  # 4B
-    Float("unknFixed2"),  # 4B
-    Int("unknFixed3"),  # 4B
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Int("unkn1"),
+    Float("unknFixed2"),
+    Int("unknFixed3"),
 ])
 SPAWNBYOCCLUSION_SCHEMA = SPAWNBYOCCLUSION_ATTR.schema
 assert _schema_size(SPAWNBYOCCLUSION_SCHEMA) == 20, \
     f"SPAWNBYOCCLUSION_SCHEMA size mismatch: {_schema_size(SPAWNBYOCCLUSION_SCHEMA)}"
 
-# FadeByOcclusion (28B total, 24B data)
-#
-# 2026-07-29 用户实机测试确认：这个块不是靠隐藏/透明度渐隐，是"被遮挡时把特效缩小"，
-# 跟续作 schema 的 Radius/MinSize 对应（见 fadebyocclusion-shrink-mechanism 记忆）：
-#   occlusionRadius (原 unkn2_0)：判定体积，设得越大越容易触发缩小
-#   minScale        (原 unknFlag2_1)：允许缩小到的最小比例（=1 时完全不缩小）
-#   minAlpha        (原 unknFlag2_2)：缩小时允许淡到的最小透明度（=1 时只缩小不渐隐，
-#                    =0 时缩小的同时会渐隐）
-# 顺带核对：unknFixed0_1 全语料恒为 16（=24B 总长-8，跟其他类型的 section_length 同一套
-# 结构性标记，非可调数据）；unkn1 全语料恒为 0xCDCDCDCD（未初始化填充，非可调数据）。
+# FadeByOcclusion
 FADEBYOCCLUSION_ATTR = Attribute(size=24, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unknFixed0_1，8B
-    Int("spacer0"),  # 原 unkn1，恒 0xCDCDCDCD，4B
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Int("spacer0"),
     Float("occlusionRadius", label_zh="遮挡判定半径"),
     Float("minScale", label_zh="最小缩放比例"),
-    Float("minAlpha", label_zh="最小透明度"),  # 12B
+    Float("minAlpha", label_zh="最小透明度"),
 ])
 FADEBYOCCLUSION_SCHEMA = FADEBYOCCLUSION_ATTR.schema
 assert _schema_size(FADEBYOCCLUSION_SCHEMA) == 24, \
     f"FADEBYOCCLUSION_SCHEMA size mismatch: {_schema_size(FADEBYOCCLUSION_SCHEMA)}"
 
-# ParentMaterial (16B total, 12B data)
+# ParentMaterial
 PARENTMATERIAL_ATTR = Attribute(size=12, fields=[
-    Int("typeFlag"),  # 原 unkn0_0，语料仅 1 例
-    Int("unknFixed0_1"),  # 8B
-    Float("unknFixed1"),  # 4B
+    Int("typeFlag"),
+    Int("unknFixed0_1"),
+    Float("unknFixed1"),
 ])
 PARENTMATERIAL_SCHEMA = PARENTMATERIAL_ATTR.schema
 assert _schema_size(PARENTMATERIAL_SCHEMA) == 12, \
     f"PARENTMATERIAL_SCHEMA size mismatch: {_schema_size(PARENTMATERIAL_SCHEMA)}"
 
-# Transform2D (28B total, 24B data)
-# 原 BT 猜测 int64 unkn0[2](16B) + float unkn1[2](8B)（两个 int64，各拆低32位int+高32位
-# float）——2026-07-10 用户对照 RE Engine（Wilds 同构，Type=0x1987C7EC）反编译结构证实
-# 该猜测是错的：实际是扁平的 6 个标量，根本没有"int64 对"这层结构：
-#   int unknown(4) + float offsetXY[2](8) + float rotation(4) + float scaleXY[2](8) = 24B
-# 第一个字段确实是 int（该引擎里很多块的头一个字段习惯性是 int/flags，REE 自己也没解出
-# 具体含义、仍标"unknown"，故未强行杜撰名字）；offsetXY/scaleXY 按本仓库惯例拆成 X/Y
-# 后缀（同 BILLBOARD2D 的 scaleX/scaleY）。
+# Transform2D
 TRANSFORM2D_ATTR = Attribute(size=24, fields=[
-    Int("typeFlag"),  # 原 unknown
+    Int("typeFlag"),
     Float("offsetX", label_zh="X 偏移"),
     Float("offsetY", label_zh="Y 偏移"),
-    Float("rotation", label_zh="旋转"),  # 16B
+    Float("rotation", label_zh="旋转"),
     Float("scaleX"),
-    Float("scaleY"),  # 8B
+    Float("scaleY"),
 ])
 TRANSFORM2D_SCHEMA = TRANSFORM2D_ATTR.schema
 assert _schema_size(TRANSFORM2D_SCHEMA) == 24, \
     f"TRANSFORM2D_SCHEMA size mismatch: {_schema_size(TRANSFORM2D_SCHEMA)}"
 
-# ColorCorrectFilter (692B total, 688B data)
+# ColorCorrectFilter
 COLORCORRECTFILTER_ATTR = Attribute(size=688, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
+    Int("typeFlag"),
     Int("unknEnum0_1"),
     Int("unknFixed0_2"),
-    Int("unknFixed0_3"),  # 16B
-    Raw("unkn1", ('f', 168)),  # 672B
+    Int("unknFixed0_3"),
+    Raw("unkn1", ('f', 168)),
 ])
 COLORCORRECTFILTER_SCHEMA = COLORCORRECTFILTER_ATTR.schema
 assert _schema_size(COLORCORRECTFILTER_SCHEMA) == 688, \
     f"COLORCORRECTFILTER_SCHEMA size mismatch: {_schema_size(COLORCORRECTFILTER_SCHEMA)}"
 
-# ParentSnow (84B total, 80B data)
+# ParentSnow
 PARENTSNOW_ATTR = Attribute(size=80, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1，8B
-    Int("unkn1"),  # 4B
-    Int("unknFixed2"),  # 4B
-    Raw("color", ('XYZ', 2), label_zh="颜色"),  # 4B
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Int("unkn1"),
+    Int("unknFixed2"),
+    Raw("color", ('XYZ', 2), label_zh="颜色"),
     Int("unknEnum3_0"),
-    Int("unkn3_1"),  # 8B
+    Int("unkn3_1"),
     Float("unkn4_0"),
     Float("unkn4_1"),
     Float("unkn4_2"),
@@ -1909,26 +1146,26 @@ PARENTSNOW_ATTR = Attribute(size=80, fields=[
     Float("unkn4_9"),
     Float("unkn4_10"),
     Float("unknFixed4_11"),
-    Float("unkn4_12"),  # 52B
+    Float("unkn4_12"),
 ])
 PARENTSNOW_SCHEMA = PARENTSNOW_ATTR.schema
 assert _schema_size(PARENTSNOW_SCHEMA) == 80, \
     f"PARENTSNOW_SCHEMA size mismatch: {_schema_size(PARENTSNOW_SCHEMA)}"
 
 OTOMOSNOW_ATTR = Attribute(size=84, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1，8B
-    Int("unkn1"),  # 4B
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
+    Int("unkn1"),
     Int("unknFixed2_0"),
-    Int("unknFixed2_1"),  # 8B
-    Raw("color", ('XYZ', 2), label_zh="颜色"),  # 4B
-    Int("unknEnum3"),  # 4B
-    Int("unkn4"),  # 4B
+    Int("unknFixed2_1"),
+    Raw("color", ('XYZ', 2), label_zh="颜色"),
+    Int("unknEnum3"),
+    Int("unkn4"),
     Float("unknFixed5_0"),
     Float("unknFixed5_1"),
     Float("unknFixed5_2"),
-    Float("unknFixed5_3"),  # 16B
-    Int("unkn6"),  # 4B
+    Float("unknFixed5_3"),
+    Int("unkn6"),
     Float("unknFixed7_0"),
     Float("unkn7_1"),
     Float("unknFixed7_2"),
@@ -1936,25 +1173,23 @@ OTOMOSNOW_ATTR = Attribute(size=84, fields=[
     Float("unkn7_4"),
     Float("unknFixed7_5"),
     Float("unknFixed7_6"),
-    Float("unkn7_7"),  # 32B
+    Float("unkn7_7"),
 ])
 OTOMOSNOW_SCHEMA = OTOMOSNOW_ATTR.schema
 assert _schema_size(OTOMOSNOW_SCHEMA) == 84, \
     f"OTOMOSNOW_SCHEMA size mismatch: {_schema_size(OTOMOSNOW_SCHEMA)}"
 
-# FakePlane (64B total, 60B data)
-# BT (EFX_Crimson.bt): int unkn0[2](8) + byte unkn1[4](4) + float unkn2(4) +
-#   int unkn3(4) + long unkn4(4) + float unkn5[9](36)
+# FakePlane
 FAKEPLANE_ATTR = Attribute(size=60, fields=[
-    Int("typeFlag"),  # 原 unkn0_0
-    Int("section_length", label_zh="段长度"),  # 原 unkn0_1，8B
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),
     SByte("unknFixed1_0"),
     Bool("unknFlag1_1", backing='b'),
     Bool("unknFlag1_2", backing='b'),
-    Bool("unknFlag1_3", backing='b'),  # 4B
-    Float("unkn2"),  # 4B
-    Int("unknEnum3"),  # 4B
-    Int("unkn4"),  # 4B  (long=4B)
+    Bool("unknFlag1_3", backing='b'),
+    Float("unkn2"),
+    Int("unknEnum3"),
+    Int("unkn4"),
     Float("unkn5_0"),
     Float("unkn5_1"),
     Float("unkn5_2"),
@@ -1963,45 +1198,35 @@ FAKEPLANE_ATTR = Attribute(size=60, fields=[
     Float("unkn5_5"),
     Float("unkn5_6"),
     Float("unknFixed5_7"),
-    Int("unknEnum5_8"),  # 36B
+    Int("unknEnum5_8"),
 ])
 FAKEPLANE_SCHEMA = FAKEPLANE_ATTR.schema
 assert _schema_size(FAKEPLANE_SCHEMA) == 60, \
     f"FAKEPLANE_SCHEMA size mismatch: {_schema_size(FAKEPLANE_SCHEMA)}"
 
-# RepeatArea (56B total, 52B data) — 无 BT，按全 135 实例列分析推断字段类型：
-#   off0 小整数(0~10) / off4 恒为 44 / off8..23 为 0xcd 未初始化区(16B) /  
-#   off24..47 为 6 个 float / off48 小整数。
-# EFX.bt(新，refs/EFX_Subtypes.bt)把这个类型按变长结构描述：
-#   int unkn0; int length; long unkn1[length/4-5]; float unkn2[3]; int unkn3[2];
-# 即 off4 是"剩余字节数"自描述长度标记（跟 NOISE.section_length 等同一机制，已在
-# field_labels.py RESERVED_FILL_FIELDS 里按此归类），全语料 135/135 恒为 44，故正式
-# 改名 section_length。新 bt 认为 off8..23 是变长 long 数组的一部分，但实测这 16 字节
-# 每份样本都是固定的 `00 CD CD ... CD`（首字节 0x00 + 其余 0xCD），是保留未用容量，  
-# 不是有效数据，故沿用 unkn2 原名（已在 RESERVED_FILL_FIELDS 标注只读）。
+# RepeatArea
 REPEATAREA_ATTR = Attribute(size=52, fields=[
-    Int("typeFlag"),  # 4B  原 unkn0，索引/计数
-    Int("section_length", label_zh="段长度"),  # 4B  原 unkn1；恒 44，剩余字节数自描述标记（非可调参数）
-    Raw("unkn2", ('b', 16)),  # 16B 0xcd 未初始化区（首字节固定 0x00，其余固定 0xCD）  
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),  # 自描述的剩余字节数标记，不是可调参数
+    Raw("unkn2", ('b', 16)),  # 保留填充（0xCD 占位）
     Float("unkn3_0"),
     Float("unkn3_1"),
     Float("unknFixed3_2"),
     Float("unknFixed3_3"),
     Float("unkn3_4"),
-    Float("unkn3_5"),  # 24B
-    Int("unknEnum4"),  # 4B
+    Float("unkn3_5"),
+    Int("unknEnum4"),
 ])
 REPEATAREA_SCHEMA = REPEATAREA_ATTR.schema
 assert _schema_size(REPEATAREA_SCHEMA) == 52, \
     f"REPEATAREA_SCHEMA size mismatch: {_schema_size(REPEATAREA_SCHEMA)}"
 
 
-# FakeDoF：恒 32B 定长（曾误判有"可选 20B 尾巴"而登记为 _custom，实为 LAYOUT 同源 bug，
-# 下一 entry 头被误吞——已查实无尾，转正为普通定长块，退掉空壳 custom codec）。
+# FakeDoF：定长，无可选尾巴。
 FAKEDOF_ATTR = Attribute(size=32, fields=[
-    Int("typeFlag"),          # 原 unkn0，索引/计数 1~5
-    Int("section_length", label_zh="段长度"),    # 原 unkn1，恒 24（自描述剩余字节标记，非可调参数）
-    Int("unkn2"),             # 0xcd 未初始化
+    Int("typeFlag"),
+    Int("section_length", label_zh="段长度"),  # 自描述的剩余字节数标记，不是可调参数
+    Int("unkn2"),  # 保留填充（0xCD 占位）
     Float("unkn3_0"),
     Float("unkn3_1"),
     Float("unkn4"),
@@ -2013,31 +1238,16 @@ assert _schema_size(FAKEDOF_SCHEMA) == 32, \
     f"FAKEDOF_SCHEMA size mismatch: {_schema_size(FAKEDOF_SCHEMA)}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UnitBoundary（Root 专属子条目之一，40B data；不是普通渲染属性，见 io_tree.py 的
-# _root_entry_to_attr_block——伪装成 AttrBlock 才能套用这份 schema）
-#
-# 全语料 2302 例统计（efx_samples/official）：
-#   ints[1]（boundaryType）三态分布 945(0) / 523(1) / 834(2)，按各态哪些浮点非零
-#   交叉统计倒出下面的字段划分：
-#     0(Sphere?)：只有 radius(86% 非零) + radius2(97% 非零) 有值，其余全 0。
-#     1(Box?)：boundaryMin/Max 六个分量几乎全非零(82~100%)，radius/radius2 也常非零。
-#     2(None?)：几乎全零（radius/radius2 也降到 12~14%），像是"不限制"。
-#   真实样本核对（bgn_ex_000.efx 等）：boundaryMin=(-3,-3,-2)、boundaryMax=(3,3,203)，
-#   min<max 逐分量成立，读作 AABB 完全自洽。
-#   ints[0]（unkn0）跟 boundaryType 无关联（三态里全都出现 0~29 各种值），也不是位
-#   掩码（无主导 bit，值分布是平滑小整数），像独立的计数/索引，语义未知。
-# 续作(MHWs) UnitCulling 是这个概念的后续版本（Center/Size/Rotation + Flags 位掩码 +
-# DrawDistance），字段数量和编码方式都变了，只能当"这确实是同一类概念"的旁证，不能
-# 照抄字段划分——本 schema 的字段名/枚举值全部未实机确认，标"?"。
-# ─────────────────────────────────────────────────────────────────────────────
+# UnitBoundary
+# Root 专属子条目，被包成 AttrBlock 才能套用这份 schema（见 io_tree.py）。
+# ⚠ 字段名与枚举取值均未确认，标签保留 ? 标记。
 UNITBOUNDARY_ATTR = Attribute(size=40, fields=[
-    Int("unkn0"),  # 原 ints[0]：与 boundaryType 无关联的小整数(0~29 多为 0/1)，含义未知
-    Enum("boundaryType", ENUM_UNITBOUNDARY_TYPE, label_zh="边界类型?"),  # 原 ints[1]
-    Float("radius", label_zh="半径?"),          # 原 floats[0]
-    Raw("boundaryMin", ('XYZ', 3), label_zh="边界最小角?"),  # 原 floats[1..3]：纯 X/Y/Z 三分量，无 jitter
-    Raw("boundaryMax", ('XYZ', 3), label_zh="边界最大角?"),  # 原 floats[4..6]：纯 X/Y/Z 三分量，无 jitter
-    Float("radius2", label_zh="次级半径?"),      # 原 floats[7]
+    Int("unkn0"),  # 含义未知，与 boundaryType 无关联
+    Enum("boundaryType", ENUM_UNITBOUNDARY_TYPE, label_zh="边界类型?"),
+    Float("radius", label_zh="半径?"),
+    Raw("boundaryMin", ('XYZ', 3), label_zh="边界最小角?"),
+    Raw("boundaryMax", ('XYZ', 3), label_zh="边界最大角?"),
+    Float("radius2", label_zh="次级半径?"),
 ])
 UNITBOUNDARY_SCHEMA = UNITBOUNDARY_ATTR.schema
 assert _schema_size(UNITBOUNDARY_SCHEMA) == 40, \

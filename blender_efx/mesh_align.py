@@ -1,23 +1,9 @@
-"""
-blender_efx/mesh_align.py  —  绑定网格随 TRANSFORM3D + MESH 旋转/缩放实时对齐（预览式 + 可编辑 + 实例化）
+"""按 TRANSFORM3D 与 MESH 字段对齐绑定网格的临时实例。
 
-设计（与用户确认）
-------------------
-- **预览式会话**（进入/退出，类 uvc/timl），但**会话内支持编辑实时重对齐**。
-- **实例化**：一个网格对象不能同时出现在多处，故为每个「MESH 属性绑定」建一个**链接复制体**
-  （共享网格数据、各自独立 transform），解决「多个 entry 复用同一网格也都显示」。
-  进入时建实例 + 隐藏源网格；退出时删实例 + 恢复源网格可见，场景零残留。
-- **对齐公式**：`instance.matrix_world = body.matrix_world · mesh_local`
-    body.matrix_world = EFX_ENTRY empty 的世界矩阵（transform_sync 已据 TRANSFORM3D+骨骼+锚定摆好）
-    mesh_local       = game_rot_matrix_blender(MESH.rotation) · Diag(game_scale_to_blender(MESH.scale)·global_scale)
-  旋转/缩放复用 transform_sync 的正确转换器（基变换共轭，非朴素交换）。
-- **实时编辑**：会话期间，fields.py 的字段编辑回调会调用本模块 realign_entry_if_active()——
-    编辑 TRANSFORM3D(translate/rotate/resize) → 先重摆 entry empty，再重对齐其实例；
-    编辑 MESH(rotation/scale/global_scale) → 重对齐其实例。
-
-约束（CLAUDE.md）
------------------
-- 纯胶水层、只读 EFX 字段，不碰 byte-perfect。Python 3.10、bpy 稳定子集。
+维护约束：
+- 会话创建共享网格数据、独立变换的实例并隐藏源对象；退出必须删除实例、恢复源对象。
+- 会话状态由场景标记派生，不能依赖 Python 缓存。
+- 字段编辑期间按当前 Entry 与 MESH 属性重对齐实例；本模块只读取 EFX 字段。
 """
 
 import bpy
@@ -32,22 +18,16 @@ from . import root_collection as _rc
 
 _TEMP_COLLECTION = "EFX Mesh Align (preview)"
 
-# 标记：会话产物一律打自定义属性，"是否活跃/有哪些实例"由标记扫描派生，不用 Python _state
-# （见 session_core 设计原则：状态=场景事实的派生量，undo/reload/热重载不残留孤儿）。
-_INSTANCE_MARKER = "~EFX_ALIGN_INSTANCE"   # 实例对象标记
-_BODY_KEY = "~EFX_ALIGN_BODY"              # 实例记源 entry 名（重对齐时反查）
-_ATTR_KEY = "~EFX_ALIGN_ATTR"             # 实例记源 MESH 属性名（重对齐时反查）
-_HID_FLAG = "~EFX_ALIGN_HID_ORIG"         # 被隐藏源网格记原 hide_viewport 值（还原用）
+_INSTANCE_MARKER = "~EFX_ALIGN_INSTANCE"
+_BODY_KEY = "~EFX_ALIGN_BODY"
+_ATTR_KEY = "~EFX_ALIGN_ATTR"
+_HID_FLAG = "~EFX_ALIGN_HID_ORIG"
 
 
 def _is_active() -> bool:
     """会话是否活跃：场景里有无对齐实例（标记扫描派生，非 Python 状态）。"""
     return bool(_sc.iter_marked(_INSTANCE_MARKER))
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 属性/字段读取
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _attribute_type_hash(obj):
     if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
@@ -91,7 +71,7 @@ def _mesh_local_matrix(mesh_attribute):
     scl_g = _read_field6_fixed(mesh_attribute, "scale")
     gscale = _read_float(mesh_attribute, "global_scale", 1.0)
     if gscale == 0.0:
-        gscale = 1.0  # 0 视为未设，避免实例塌成不可见
+        gscale = 1.0
 
     rot = _ts.game_rot_matrix_blender(*rot_g) if rot_g else Matrix.Identity(4)
     if scl_g:
@@ -103,13 +83,7 @@ def _mesh_local_matrix(mesh_attribute):
 
 
 def apply_mesh_rotscale_to_object(mesh_attribute):
-    """把 MESH 属性的 rotation/scale/global_scale 直接作用到其绑定对象。
-
-    持久、实时：保留对象当前位置，只覆盖其本地旋转与缩放（= mesh_local）。
-    仅对真正的 MESH 属性生效；非 MESH 属性或未绑定则忽略。作用到**全部**绑定对象
-    ——mod3_link 按 viscon 范围可能绑了不止一个（efx_mesh_targets），不止旧模型
-    的单体 efx_mesh_target，否则同一属性下没被选中预览的那几个网格摆位不同步。
-    """
+    """将 MESH 旋转和缩放作用到全部绑定对象，保留其位置。"""
     if not _is_mesh_attribute(mesh_attribute):
         return
     targets = []
@@ -125,7 +99,7 @@ def apply_mesh_rotscale_to_object(mesh_attribute):
     mat_local = _mesh_local_matrix(mesh_attribute)
     for obj in targets:
         try:
-            loc = obj.matrix_basis.to_translation()   # 保留原位置
+            loc = obj.matrix_basis.to_translation()
             obj.matrix_basis = Matrix.Translation(loc) @ mat_local
         except Exception:
             pass
@@ -155,31 +129,25 @@ def _all_efx_roots():
     return _rc.all_root_collections()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 会话（无 Python 状态：真相全在场景标记，见文件头设计原则）
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _make_instance(src, col, label, body, mesh_attribute):
     """建链接复制体（共享网格数据）并打标记，返回新对象。"""
-    dup = src.copy()          # 默认共享 .data（链接复制）
+    dup = src.copy()
     dup.name = "EFX_align::" + label
     dup[_INSTANCE_MARKER] = 1
-    dup[_BODY_KEY] = body.name          # 反查用：重对齐按 body 名筛实例
+    dup[_BODY_KEY] = body.name
     dup[_ATTR_KEY] = mesh_attribute.name
-    # ⚠ src.copy() 会继承源的隐藏状态：若源已被前一次循环隐藏，复制体会跟着隐藏
-    # （多 entry 复用同源时只显示第一个的根因）→ 强制实例可见。
+    # 源对象可能已隐藏，实例必须强制可见。
     try:
         dup.hide_viewport = False
         dup.hide_render = False
     except Exception:
         pass
-    # 仅链进临时集合（src.copy 不自动入集合）
     try:
         col.objects.link(dup)
     except Exception:
         pass
     try:
-        dup.hide_set(False)   # 取消按视图层的隐藏（眼睛图标）
+        dup.hide_set(False)
     except Exception:
         pass
     return dup
@@ -193,11 +161,7 @@ def _align_instance(dup, body, mesh_attribute):
 
 
 def realign_entry_if_active(body):
-    """会话进行中，重对齐属于该 entry 的全部实例（供 fields.py 编辑回调调用）。
-
-    ⚠ 完全按**场景标记**重新解析（零 Python 缓存）：扫所有对齐实例，取 _BODY_KEY==body.name 的，
-    按 _ATTR_KEY 反查 MESH 属性对象再对齐。undo/reload 让引用失效也无所谓——每次按名重取。
-    """
+    """会话中按场景标记重对齐指定 Entry 的全部实例。"""
     if body is None or not _is_active():
         return
     for dup in _sc.iter_marked(_INSTANCE_MARKER):
@@ -208,27 +172,21 @@ def realign_entry_if_active(body):
             _align_instance(dup, body, blk)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 进入 / 退出
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _reconcile():
-    """清场：删掉全部对齐实例、还原全部被隐藏源、删临时集合。按标记，非缓存引用。
-    幂等、可重复安全调用；进入前先跑一次即根治历史遗留孤儿（"越进越乱"）。"""
+    """按标记清理实例、恢复源对象并删除临时集合；可重复调用。"""
     _sc.purge_marked(_INSTANCE_MARKER)
     _sc.restore_hidden(_HID_FLAG)
     _sc.remove_collection_named(_TEMP_COLLECTION)
 
 
 def _start(roots, armature, use_anchor):
-    """建实例并对齐。返回实例数。进入前先清场（marker 扫描），杜绝孤儿累积。"""
+    """清场后创建并对齐实例，返回实例数量。"""
     _reconcile()
     col = _sc.get_or_create_collection(_TEMP_COLLECTION)
     n = 0
     for root in roots:
         if root is None:
             continue
-        # 先确保 entry empty 已据 TRANSFORM3D+骨骼+锚定摆好（entry_world 来源）
         try:
             _ts.sync_all_transform3d(root, armature, use_anchor=use_anchor)
         except Exception:
@@ -241,14 +199,13 @@ def _start(roots, armature, use_anchor):
                 label = str(body.get("efx_raw_label", "") or body.name)
                 dup = _make_instance(src, col, label, body, mattribute)
                 _align_instance(dup, body, mattribute)
-                # 隐藏源网格：原 hide 值存源对象自定义属性（flag_hidden 幂等，多源复用只记一次）
                 _sc.flag_hidden(src, _HID_FLAG)
                 n += 1
     return n
 
 
 def _stop():
-    """退出：清场（删实例/还原源/删集合）。按标记，撤销/热重载脱节也不残留。"""
+    """退出对齐会话并恢复场景。"""
     _reconcile()
 
 

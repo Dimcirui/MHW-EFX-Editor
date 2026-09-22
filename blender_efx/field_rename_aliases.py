@@ -1,32 +1,14 @@
 # -*- coding: utf-8 -*-
-"""
-blender_efx/field_rename_aliases.py — 字段改名导出兼容表
+"""旧字段名到当前 schema 字段名的导出兼容表。
 
-背景：EFXFieldItem.ori_name 是导入时按当时 schema 烘死进 .blend 的（见 fields.py::
-dict_to_items）。改 schema 字段名之后，已经导入、尚未重新导入的 .blend 里，item.ori_name
-还是旧名字——rebuild_data_bytes / rebuild_custom_field_attribute 按当前 schema 的名字表
-查不到，本来会安全退回整块 raw_b64（不会崩、不会错位，但会静默丢弃用户在旧名字段上做的
-编辑，见 memory schema-change-requires-reimport）。
-
-这张表是重建路径失败前的最后一步兜底：按 (type_name, 旧字段名) 查当前字段名，再用当前
-字段名的 spec 重试。调用方还会额外核对新旧 dtype 是否一致才敢用（见 fields.py 的
-_resolve_renamed_spec/_resolve_renamed_entry），所以就算这张表记错、记漏、或者字段其实是
-被拆分/合并过的（形状变了、根本对不上），也只是安全地查不到/核对不过，等价于没有这张
-表——不会比现状更差。
-
-⚠ 维护约定：只登记"纯改名"——同一个字段、同一个字节位置、同一个存储大小，只是换了个
-identifier。字段拆分（1 个旧字段拆成多个新字段，如 SHADERSETTINGS.visibleOnPreview →
-unknBool0~3）或合并（多个旧字段并成 1 个，如 FADEBYANGLE.unkn_angle2/3/4 → rotation）
-不满足"同一个字段"，查了也用不上，不要塞进来。
-
-⚠ 以后每次在 schema/attributes.py 或 schema/custom_codecs.py 里给字段改名，顺手在这里
-补一条 (TYPE_NAME, 旧名): 新名。如果同一个字段这一轮又改了第二次（比如上一版才把 A 改成
-B，这一版又把 B 改成 C），两条都要留：{(TYPE, "A"): "C", (TYPE, "B"): "C"}——旧名统一直接
-指向"当前"名字，不做链式查找。
+维护约束：
+- 仅登记同一字节位置、存储大小与 dtype 均不变的纯改名。
+- 别名直接指向当前名称；多次改名时保留每个旧名称的直接映射。
+- 字段拆分、合并或名称复用不能由本表安全兼容，必须重新导入。
 """
 
 FIELD_RENAME_ALIASES = {
-    # ── HOMING（2026-07-30 六字段改名，运动学模型定案）──────────────────────
+    # HOMING
     ("HOMING", "restoringForce"): "turnRate",
     ("HOMING", "speed"): "initialSpeed",
     ("HOMING", "speedMultiplier"): "targetSpeed",
@@ -40,22 +22,18 @@ FIELD_RENAME_ALIASES = {
     ("EMITTERSHAPE3D", "scaleVertical"): "scanAngleVertical",
     ("EMITTERSHAPE3D", "unknBitmaskRadiusRelated"): "rayCastDependency",
 
-    # ── EXTERNREFERENCE（2026-09-19，官方讲座 Index0/Index1/Lerp 数值精确匹配）──
+    # EXTERNREFERENCE
     ("EXTERNREFERENCE", "unknEnum1_1"): "index0",
     ("EXTERNREFERENCE", "unknEnum1_2"): "index1",
     ("EXTERNREFERENCE", "unkn1_3"): "lerp",
-    # ── EXTERNREFERENCE（2026-09-20，用户实机测试坐实触发四态 + 时长/延迟语义）──
     ("EXTERNREFERENCE", "unkn1_4"): "transitionDuration",
     ("EXTERNREFERENCE", "unkn1_5"): "triggerDelay",
 
-    # ── RAYCAST（2026-09-19，官方讲座截图 + 全语料位分布交叉核对）───────────────
+    # RAYCAST
     ("RAYCAST", "prop3"): "startOffset",
     ("RAYCAST", "spacer"): "rayCastAttr",
     ("RAYCAST", "unknownEnum1"): "rayCastID",
     ("RAYCAST", "unknownBitmask2"): "rayCastFlags",
-    # distanceMod0/prop1/distanceMod1：语料统计分不清身份，2026-09-19 实机测试
-    # （调"速度"=0 后改"最大距离"仍连续影响生成时机，是速率特征不是距离上限特征）
-    # 推翻了当天早些时候按截图顺序初定的名字，改成三向对调，这里直接指向最终名：
     ("RAYCAST", "distanceMod0"): "maxDistance",
     ("RAYCAST", "distanceMod0Jitter"): "maxDistanceJitter",
     ("RAYCAST", "prop1"): "startDistance",
@@ -63,10 +41,8 @@ FIELD_RENAME_ALIASES = {
     ("RAYCAST", "distanceMod1"): "speed",
     ("RAYCAST", "distanceMod1Jitter"): "speedJitter",
 
-    # ── BILLBOARD3D（2026-09-19，官方讲座 Type Billboard 面板截图 + 全语料交叉核对）──
+    # BILLBOARD
     ("BILLBOARD3D", "EPVColorSlot1"): "correctColorNo",
-    # 2026-09-20 按结构类推改名：BILLBOARD3D.SlotOverride1、BILLBOARD2D/PLANE 的
-    # EPVColorSlot1/2（三者跟 BILLBOARD3D 逐字段同构）。
     ("BILLBOARD3D", "SlotOverride1"): "colorRangeCorrectColorNo",
     ("BILLBOARD2D", "EPVColorSlot1"): "correctColorNo",
     ("BILLBOARD2D", "EPVColorSlot2"): "colorRangeCorrectColorNo",
@@ -80,7 +56,7 @@ FIELD_RENAME_ALIASES = {
     ("RIBBON", "unknBitmask22_1"): "lightGroup",
     ("PLANE", "unknBitmask7_0"): "lightGroup",
 
-    # ── SPAWN（2026-09-19，官方讲座 Spawn 面板截图；内部名改，label_zh 三层模型措辞不变）──
+    # SPAWN
     ("SPAWN", "particlesPerBurst"): "spawnNum",
     ("SPAWN", "particlesPerBurstJitter"): "spawnNumJitter",
     ("SPAWN", "burstInterval"): "intervalFrame",
@@ -120,7 +96,7 @@ FIELD_RENAME_ALIASES = {
     ("LIFE", "unkn2_0"): "unknFrame",
     ("LIFE", "unknEnum2_1"): "unknFrameJitter",
 
-    # ── PTCOLLISION（2026-07-31）─────────────────────────────────────────────
+    # PTCOLLISION
     ("PTCOLLISION", "unkn06"): "projectionOffset",
     ("PTCOLLISION", "unkn07"): "projectionDist",
     ("PTCOLLISION", "unknEnum2_0"): "bounceCount",
@@ -130,7 +106,7 @@ FIELD_RENAME_ALIASES = {
     ("PTCOLLISION", "unknBitmask4_0"): "impactPlayTriggerCount",
     ("PTCOLLISION", "unknFlag4_1"): "impactPlayTriggerCountJitter",
 
-    # ── UVCONTROL（2026-07-31，flowmap 8 件套改名）───────────────────────────
+    # UVCONTROL
     ("UVCONTROL", "uv1_unkn0"): "uv1_unknFlag",
     ("UVCONTROL", "unknFlag2"): "enableFlowmap",
     ("UVCONTROL", "extraMaterialInitialPosition"): "flowmapSpeed",
@@ -147,7 +123,7 @@ FIELD_RENAME_ALIASES = {
     ("BILLBOARD2D", "randomBrightnessMult"): "brightnessJitter",
     ("PLANE", "randomBrightnessMult"): "brightnessJitter",
 
-    # ── RIBBON（2026-07-30 大批改名）─────────────────────────────────────────
+    # RIBBON
     ("RIBBON", "color2"): "colorRange",
     ("RIBBON", "unkn4_0"): "brightnessJitter",
     ("RIBBON", "unknEnum4_1"): "ribbonMode",
@@ -195,8 +171,7 @@ FIELD_RENAME_ALIASES = {
     ("RIBBON", "ribbon_flow_param2"): "unknGlobalForceZ",
     ("RIBBON", "ribbon_flow_param3"): "unknFixed28_param3",
 
-    # ── STRAINRIBBON（2026-07-31，flowmap 8 件套 + 总开关）─────────────────────
-    # 9 条全是纯改名（同偏移、同大小、同 dtype），可安全走本表。
+    # STRAINRIBBON
     ("STRAINRIBBON", "color3_z"): "enableFlowmap",
     ("STRAINRIBBON", "unkn06_0"): "flowmapSpeed",
     ("STRAINRIBBON", "unkn06_1"): "flowmapSpeedJitter",
@@ -206,16 +181,10 @@ FIELD_RENAME_ALIASES = {
     ("STRAINRIBBON", "unknFlag06_5"): "flowmapStrengthJitter",
     ("STRAINRIBBON", "unkn06_6"): "flowmapStrengthCoef",
     ("STRAINRIBBON", "unkn06_7"): "flowmapStrengthCoefJitter",
-    # ⚠ 同一未发布周期内二次改名产生的中间名——这些名字进过发给用户的中间测试
-    #   构建，用那些包导入过的 .blend 里烘的就是它们，故必须一并登记（补漏）。
     ("PTCOLLISION", "bounceCountLimitJitter"): "bounceCountJitter",
     ("PTCOLLISION", "impactPlayTriggerCountRandom"): "impactPlayTriggerCountJitter",
     ("PTCOLLISION", "bounceElasticityBonus"): "bounceElasticityMultiplier",
 
-    # ── 0.5.0 之前的历史改名（2026-07-31 批量补录）─────────────────────────────
-    # 由脚本从 schema 行内「原 X」注释抽取并逐条过滤：类型名与新字段名都必须真实存在
-    # 于 FIELD_REGISTRY、老名不能仍是该类型的合法字段、老名映射到多个新名的（拆分）
-    # 一律丢弃；另人工剔除拆分/合并/类型变更/注释里的幽灵名共 12 条。
     ("ALPHACORRECTION", "transparentness"): "contrast_gamma",
     ("ALPHACORRECTION", "unkn1"): "lowPass",
     ("BILLBOARD2D", "unkn0_0"): "typeFlag",
@@ -323,11 +292,9 @@ FIELD_RENAME_ALIASES = {
     ("RGBFIRE", "color2"): "smokeColor",
     ("RGBFIRE", "brightness1"): "fireFactor",
     ("RGBFIRE", "unkn4"): "lerpAlphaToBlue",
-    # brightness2/3/4：2026-09-20 实机改值测试订正身份，按 devlecture 顺序改名
     ("RGBFIRE", "brightness2"): "redChFactor",
     ("RGBFIRE", "brightness3"): "alphaFactor",
     ("RGBFIRE", "brightness4"): "colorRate",
-    # alphaRate：同一天内改名途中的中间名，devlecture 原名其实是 AlphaFactor 不是 AlphaRate
     ("RGBFIRE", "alphaRate"): "alphaFactor",
     ("RGBFIRE", "fireColorParam_unkn9"): "fireColorParam_correctColorNo",
     ("RGBFIRE", "smokeColorParam_unkn9"): "smokeColorParam_correctColorNo",
@@ -410,9 +377,7 @@ FIELD_RENAME_ALIASES = {
     ("VELOCITY2D", "unkn0_1"): "rotation",
     ("VELOCITY2D", "unkn10"): "rotationJitter",
 
-    # ── 2026-08-03 官方 DTI 名对齐（UI 措辞不变，只改内部名）─────────────────
-    # flowmap 八件套：Acceleration 实为每帧乘算系数（中性值 1.0），官方名 mFlowSpeedCoef /
-    # mFlowStrengthCoef。8 个类型共用同一套字段名。
+    # 多类型共用的 flowmap 系数字段。
     **{
         (_t, _old): _new
         for _t in ("BILLBOARD2D", "BILLBOARD3D", "LIGHTNING", "PLANE",
@@ -425,7 +390,7 @@ FIELD_RENAME_ALIASES = {
         )
     },
 
-    # UVCONTROL：官方 Offset / OffsetAdd / OffsetCoef（Scale 同构）三件套
+    # UVCONTROL
     ("UVCONTROL", "uv1_initialPosition"): "uv1_offset",
     ("UVCONTROL", "uv1_speed"): "uv1_offsetAdd",
     ("UVCONTROL", "uv1_acceleration"): "uv1_offsetCoef",
@@ -437,15 +402,14 @@ FIELD_RENAME_ALIASES = {
     ("UVCONTROL", "uv2_scaleSpeed"): "uv2_scaleAdd",
     ("UVCONTROL", "uv2_scaleAcceleration"): "uv2_scaleCoef",
 
-    # UVSEQUENCE：官方 mSequenceNo / mPatternNo / mPlaySpeed / mPlaySpeedCoef
-    ("UVSEQUENCE", "uvs_index"): "sequenceNo",          # 0.5.3 中间名 uvsIndex 见下条
+    # UVSEQUENCE
+    ("UVSEQUENCE", "uvs_index"): "sequenceNo",
     ("UVSEQUENCE", "uvsIndex"): "sequenceNo",
     ("UVSEQUENCE", "uvsIndexJitter"): "sequenceNoJitter",
-    ("UVSEQUENCE", "unkn2"): "sequenceNoJitter",        # 覆盖上一轮 unkn2→uvsIndexJitter
+    ("UVSEQUENCE", "unkn2"): "sequenceNoJitter",
     ("UVSEQUENCE", "startingFrame"): "patternNo",
     ("UVSEQUENCE", "startingFrameJitter"): "patternNoJitter",
-    # MESH：emissive_* 前缀查明是错的（emissive_saturation 实为 color 通道强度系数，
-    # 由 enableIntensity2 门控、对发光开关零响应），两对一并改成与 DT 同名
+    # MESH
     ("MESH", "emissive_saturation"): "colorRate",
     ("MESH", "emissive_saturation_j"): "colorRateJitter",
     ("MESH", "emissive_brightness"): "emissiveColorRate",
@@ -455,7 +419,7 @@ FIELD_RENAME_ALIASES = {
     ("UVSEQUENCE", "animationAcceleration"): "playSpeedCoef",
     ("UVSEQUENCE", "animationAccelerationJitter"): "playSpeedCoefJitter",
 
-    # ROTATEANIM：两组 Accel 语料上均为 1.0 中性 → 系数
+    # ROTATEANIM
     ("ROTATEANIM", "billboardRotationAccel"): "billboardRotationCoef",
     ("ROTATEANIM", "billboardRotationAccelJitter"): "billboardRotationCoefJitter",
     ("ROTATEANIM", "spinAccelerationX"): "spinSpeedCoefX",
@@ -465,12 +429,11 @@ FIELD_RENAME_ALIASES = {
     ("ROTATEANIM", "spinAccelerationZ"): "spinSpeedCoefZ",
     ("ROTATEANIM", "spinAccelerationZJitter"): "spinSpeedCoefZJitter",
 
-    # VELOCITY2D / VELOCITY3D：同族系数（推翻 2026-07-26 保留 acceleration 的命名）
+    # VELOCITY
     ("VELOCITY3D", "acceleration"): "speedCoef",
     ("VELOCITY3D", "accelerationJitter"): "speedCoefJitter",
-    ("VELOCITY3D", "elasticity"): "speedCoef",               # 0.5.0 前的更早旧名
+    ("VELOCITY3D", "elasticity"): "speedCoef",
     ("VELOCITY3D", "elasticityJitter"): "speedCoefJitter",
-    # 2026-09-19 官方讲座坐实 NORMAL 模式确有 Offset/Size 字段，内部名改回续作同款：
     ("VELOCITY3D", "velocityX"): "offsetX",
     ("VELOCITY3D", "velocityY"): "offsetY",
     ("VELOCITY3D", "velocityZ"): "offsetZ",
@@ -480,19 +443,18 @@ FIELD_RENAME_ALIASES = {
     ("VELOCITY2D", "acceleration"): "speedCoef",
     ("VELOCITY2D", "accelerationJitter"): "speedCoefJitter",
 
-    # PARENTOPTIONS：官方 mRelationPos/Rot/Scl、mParticleUseLocal、mConstRelease、mJointNo
+    # PARENTOPTIONS
     ("PARENTOPTIONS", "translation_tracking"): "relationPos",
     ("PARENTOPTIONS", "angle_tracking"): "relationRot",
     ("PARENTOPTIONS", "scale_tracking"): "relationScl",
     ("PARENTOPTIONS", "spawnTrack"): "particleUseLocal",
     ("PARENTOPTIONS", "lockToPositionFrame"): "constRelease",
     ("PARENTOPTIONS", "lockToPositionFrameJitter"): "constReleaseJitter",
-    ("PARENTOPTIONS", "spawnLock"): "constRelease",          # 0.5.0 前的更早旧名
+    ("PARENTOPTIONS", "spawnLock"): "constRelease",
     ("PARENTOPTIONS", "bleedPos"): "constReleaseJitter",
     ("PARENTOPTIONS", "bone_lim"): "jointNo",
 
-    # RGBFIRE fire/smoke 生命期时序块：官方 mUseFireLife / mFireAppearFrame(range) /
-    # mFireKeepFrame / mFireVanishFrame / mFireLighting / mFireLifeType
+    # RGBFIRE 生命周期字段。
     **{
         (_t, f"{_p}ColorParam_{_old}"): f"{_p}ColorParam_{_new}"
         for _t in ("RGBFIRE",)
@@ -510,24 +472,23 @@ FIELD_RENAME_ALIASES = {
         )
     },
 
-    # ⚠ LIGHTNING 的 unkn15 / unkn13 是**字段拆分**（一个 ('f',N) 拆成多个），dtype 与
-    #   大小都变了，本表覆盖不了——那两处只能靠重新导入，故意不在这里登记。
+    # LIGHTNING 的字段拆分不能由本表兼容。
 
-    # ── PLANE（2026-08-03 实机确认 baseAxis / rotationOrder）───────────────────
+    # PLANE
     ("PLANE", "unknBitmask5_2"): "baseAxis",
     ("PLANE", "unknEnum5_3"): "rotationOrder",
 
-    # ── MESH（2026-08 实机确认 viscon 是固定/随机配对，非 start/end）──────────
+    # MESH
     ("MESH", "starting_model_viscon"): "visconIndex",
     ("MESH", "end_model_viscon"): "visconIndexJitter",
 
-    # ── PTLIFE（2026-08 折成 static/random 配对，改名 unknFrame0/1）──────────
+    # PTLIFE
     ("PTLIFE", "unknEnum6"): "unknFrame0",
     ("PTLIFE", "unknFixed7"): "unknFrame0Jitter",
     ("PTLIFE", "unknEnum8"): "unknFrame1",
     ("PTLIFE", "unknFixed9"): "unknFrame1Jitter",
 
-    # ── RGBWATER（2026-08-18 三段 colorParamN_* 结构同构改名）──────────────
+    # RGBWATER
     ("RGBWATER", "unknownFlagInt_0"): "colorParam0_useLife",
     ("RGBWATER", "unknownEnumInt_1"): "colorParam0_appearFrame",
     ("RGBWATER", "unknownEnumInt_2"): "colorParam0_appearFrameJitter",
@@ -558,13 +519,11 @@ FIELD_RENAME_ALIASES = {
     ("RGBWATER", "unknFlag2_24"): "colorParam2_lighting",
     ("RGBWATER", "unknEnum2_25"): "colorParam2_lifeType",
 
-    # ── RGBWATER 头部（2026-09-03 实机确认后改成官方 TimelineParam 名）──────────
+    # RGBWATER 头部
     ("RGBWATER", "brightnessSlot1"): "colorRate",
     ("RGBWATER", "emissiveMultiplier"): "waterLerpGtoB",
     ("RGBWATER", "brightnessSlotMultiplier2"): "intensitySheet",
-    # 'color' 由 ('XYZ[]',2,2) 拆成两个 ('XYZ',2)：整字段是拆分（不登记），但拆出来的
-    # 两项各自与旧 UI item 名 color[0]/color[1] 一一对应、同字节同大小，属纯改名。
-    # EXTERN 版旧名是 color_0/color_1，一并登记。
+    # 数组旧名的两个子项与当前字段一一对应，可作为纯改名兼容。
     ("RGBWATER", "color[0]"): "colorSpecular",
     ("RGBWATER", "color[1]"): "colorSheet",
     ("RGBWATER", "color_0"): "colorSpecular",
@@ -574,7 +533,7 @@ FIELD_RENAME_ALIASES = {
     ("RGBWATER", "opacity"): "intensityAlpha",
     ("RGBWATER", "unknownFloat"): "normalSharpness",
 
-    # ── RGBWATER 生命期段 0/1 的归属 2026-09-03 实机确认（段0=高光、段1=水膜）──
+    # RGBWATER 生命周期字段。
     ("RGBWATER", "colorParam0_useLife"): "specularColorParam_useLife",
     ("RGBWATER", "colorParam0_appearFrame"): "specularColorParam_appearFrame",
     ("RGBWATER", "colorParam0_appearFrameJitter"): "specularColorParam_appearFrameJitter",
@@ -607,18 +566,12 @@ FIELD_RENAME_ALIASES = {
     ("RGBWATER", "colorParam2_lighting"): "waterLerpParam_lighting",
     ("RGBWATER", "colorParam2_lifeType"): "waterLerpParam_lifeType",
 
-    # ── EMITTERSHAPE2D（2026-09-03，按与 3D 同构推定为细分轴向）──
+    # EMITTERSHAPE2D
     ("EMITTERSHAPE2D", "unknEnum22_0"): "rangeDivideAxis",
 
-    # ── TUBELIGHT（2026-09-04）──────────────────────────────────────────────
-    # ⚠ 这里有一次**名字复用**：老名 lightIntensity（off20）现在叫 coreThickness，
-    #   而 off16 拿走了 lightIntensity 这个名字。本表只在"按当前 schema 查不到"时才
-    #   兜底，老 .blend 里的 lightIntensity 会**直接匹配上新的 off16 字段**，轮不到
-    #   这条别名 → 含 TUBELIGHT 的旧 .blend 必须重新导入。这条留着是为了记录事实，
-    #   不要指望它能救。
+    # TUBELIGHT：旧名 lightIntensity 与当前字段重名，旧数据必须重新导入。
     ("TUBELIGHT", "lightIntensity"): "coreIntensity",
     ("TUBELIGHT", "lightIntensityJitter"): "coreIntensityJitter",
-    # 0.6.6 那一版把 off20 叫过 coreThickness（错的），也登记一下
     ("TUBELIGHT", "coreThickness"): "coreIntensity",
     ("TUBELIGHT", "coreThicknessJitter"): "coreIntensityJitter",
     ("TUBELIGHT", "unkn2_1"): "textureScrollSpeed",
@@ -627,7 +580,7 @@ FIELD_RENAME_ALIASES = {
     ("TUBELIGHT", "backFaceTintMode"): "tailEffectiveRadius",
     ("TUBELIGHT", "frontFaceTintMode"): "headEffectiveRadius",
 
-    # ── STRAINRIBBON（2026-09-04）──────────────────────────────────────────
+    # STRAINRIBBON
     ("STRAINRIBBON", "colorModeFlag"): "epv_color_slot1",
     ("STRAINRIBBON", "positionalAberration_04"): "epv_color_slot2",
 }

@@ -1,38 +1,9 @@
 # -*- coding: utf-8 -*-
-"""
-blender_efx/sim_preview.py  —  粒子模拟播放器（modal 时钟 + gpu 绘制，零场景对象）
+"""以独立 modal 时钟和 GPU 绘制预览 EFX 粒子模拟。
 
-定位
-----
-`efx_format/sim`（零 bpy）负责算，本模块只负责三件事：
-
-  1. **喂数据**：从**正在编辑的属性树**拼 `[(type_hash, fields_dict)]`——不是从
-     上次保存的文件读，否则预览看到的不是你刚改的值。
-  2. **时钟**：modal + `wm.event_timer_add`，自带播放/循环/倍速，**不碰
-     `scene.frame_current`**，与时间轴完全解耦。
-  3. **绘制**：`SpaceView3D.draw_handler_add(POST_VIEW)` 直接画，**不建任何场景对象**
-     ——没有标记、没有孤儿、不污染 undo 栈（session_core 那一整套在这里用不上）。
-
-为什么不走 mesh + 几何节点
---------------------------
-用户明确「不要求在 3D View、不要求拖时间轴」之后，场景对象那条路的代价（生命周期
-管理 + GN 建图 + frame_change 耦合 + EEVEE 没有加法混合）就全都没必要付了。直接
-gpu 绘制还顺带把加法混合白拿了：`gpu.state.blend_set('ADDITIVE')` 一行，比 EEVEE
-（4.2+ 只剩 Dithered/Blended 两种 Render Method）能做到的更准。
-
-骨架照搬 `uvs_io.py`（`wm.window_new` + `draw_handler_add` + modal 管生命周期），
-那套在本仓库已经跑通过。
-
-⚠ gpu 模块的版本地雷（改本文件前先看这里）
--------------------------------------------
-  - `gpu.shader.from_builtin` 的名字跨版本不同：4.0+ 是 'FLAT_COLOR'，3.x 是
-    '3D_FLAT_COLOR'。`_builtin()` 两个都试，别写死。（`uvs_io.py:766` 直接写死了
-    4.0+ 的名字，那边若在 3.6 报错，把 `_builtin` 提出去共用即可。）
-  - **不要**用 `gpu.types.GPUShader(vert_src, frag_src)` 字符串构造器：3.4 起废弃、
-    5.0 移除，且 Vulkan 后端（5.x 默认）下不工作。本模块只用 builtin shader，
-    真要自定义 shader 走 `gpu.shader.create_from_info`。
-
-约束（CLAUDE.md）：bpy 稳定子集；Python 3.10；纯胶水层，不改 efx_format/。
+维护约束：模拟计算归 ``efx_format.sim``；输入必须来自当前编辑树而非磁盘快照。
+预览不得改 ``scene.frame_current`` 或创建场景对象。builtin shader 名称跨 Blender
+版本需要回退；不得使用已废弃的字符串 GPUShader 构造器。
 """
 
 import base64
@@ -53,23 +24,14 @@ _DRAW_TAG = "~EFX_SIM_PREVIEW"      # draw handler 识别用（跨热重载按�
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 播放器状态
-#
-# 这里用模块级 dict 是**合理的**（对比 session_core 的教条）：本模块不产生任何
-# 场景数据，没有「场景里的残留物要清理」的问题。真相源就是 draw handler 在不在、
-# modal 在不在——两者都由本 dict 持有并由算子成对管理。
-# ─────────────────────────────────────────────────────────────────────────────
+# 本模块不产生场景数据，播放器生命周期由 draw handler 与 modal 状态共同持有。
 
 _P = {
-    # 每个被选中的 entry 一条 track（**多选同时模拟**）：
-    #   {"sim", "entry_name", "ref_rows", "items", "image", "uvs"}
-    # 一条 track 自带参考矩阵和渲染产物——多个 entry 各自摆在自己的位置上，
-    # 共享的只有时钟（同一个累加器 → 天然同步，不会各跑各的帧）。
     "tracks": [],
     "playing": False,
-    "acc": 0.0,           # 帧累加器（浮点，只走整数帧）
-    "last_t": 0.0,        # 上次 tick 的墙钟
-    "duration": 0,        # 本次「播放一次」的长度（帧）= 各 track 里最长的那个
+    "acc": 0.0,
+    "last_t": 0.0,
+    "duration": 0,
     "handler": None,
     "timer": None,
     "dirty": False,       # 属性被编辑过 → 下个 tick 重建
@@ -85,16 +47,7 @@ _P = {
 
 
 def _gc_hold(on):
-    """播放期间关掉分代 GC，停止时恢复并补一次回收。
-
-    模拟每帧要造几万个 Vec3/元组，而场景里长期活着的对象有二十多万个（光是
-    `tr["items"]` 里上千条条带的顶点就占了一大半）。分代 GC 一到 gen2 就要把这
-    二十多万个全遍历一遍——实测 `build_render` 因此在 105 ms 和 265 ms 之间反复
-    跳，那一下就是肉眼可见的卡顿。
-
-    关掉是安全的：这里造的垃圾（Vec3、元组、RenderItem）都不成环，引用计数当场
-    就回收了，GC 只负责环。停止/暂停时恢复并 `collect()` 一次收尾。
-    """
+    """播放时暂存并关闭 GC 状态，停止时恢复并执行一次回收。"""
     import gc
     if on:
         if _P["gc_was_on"] is None:
@@ -150,13 +103,7 @@ def _entry_attributes(entry_obj):
 
 
 def _block_fields(blk_obj):
-    """一个属性块 → (type_hash, fields_dict)，**反映未保存的编辑**。
-
-    走导出同一条路：`fields.get_attribute_data_bytes` 按当前属性树重建字节，
-    再用 `AttrBlock.decode()` 解成 dict。复用已经被往返测试盖住的路径，比另写
-    一套「property → dict」的读法可靠得多（后者要重复处理十几种值槽）。
-    opaque 块或重建异常 → 回退到自定义属性里的原始字节。
-    """
+    """将当前属性块解析为模拟输入；重建失败时回退原始字节。"""
     from ..efx_format.efxfile import AttrBlock
 
     try:
@@ -183,23 +130,12 @@ def _block_fields(blk_obj):
     return (type_hash, decoded if decoded is not None else {})
 
 
-#: entry 名 → UVSEQUENCE 属性对象名。找宿主要扫一遍 bpy.data.objects，而面板每次
-#: 重绘都要报「帧表从哪来」——不缓存就是每帧一次全场景扫描（见记忆
-#: onchange-full-scene-scan-perf-bug）。缓存只存名字，取用时再查一次对象是否还在。
+#: Entry 名到 UVSEQUENCE 宿主对象名的缓存；缓存名称后仍需查验对象存在。
 _UVS_HOST_CACHE = {}
 
 
 def _uvs_host(entry_obj, use_cache=False):
-    """entry 下 UVSEQUENCE 属性实际存 `efx_uvs` 数据的对象；没有则 None。
-
-    全语料 10084 个官方文件里一个 entry 最多一个 UVSEQUENCE（84106 个有的 entry
-    全是 1 个），所以「取第一个」不是将就，就是全部。
-
-    ⚠ uvs_link.py 把数据搬到了属性对象外挂的 `efx_uvs_target`（见
-    `ensure_host_for_attribute`）——属性对象自己的 `efx_uvs` 现在恒空。有外挂宿主
-    就必须跟过去，否则读到的永远是空数据（序列帧贴图静默消失）。老数据/尚未跑过
-    uvs_link 的属性没有 `efx_uvs_target`，退回属性对象自己（兼容旧场景）。
-    """
+    """返回实际存放 ``efx_uvs`` 的 UVSEQUENCE 宿主；兼容未迁移场景。"""
     from ..efx_format.hashes import UVSEQUENCE
 
     if use_cache and entry_obj.name in _UVS_HOST_CACHE:
@@ -234,12 +170,7 @@ def _uvs_info(host):
 
 
 def _uvs_state(entry_obj):
-    """(SimResources, 展示信息 dict)。
-
-    序列帧的真实矩形在 `.uvs` 里，属性里只有游戏相对路径——所以这里读的是**用户
-    在该属性上手动载入的那份**（uvs_io.py 的导入按钮，存在 `obj.efx_uvs.raw_b64`）。
-    没载入就交空资源，核心会退到网格兜底并 note 一条（预览不静默撒谎）。
-    """
+    """返回已载入 UVS 的模拟资源及展示信息；缺失时返回空资源。"""
     from ..efx_format.sim import SimResources
 
     host = _uvs_host(entry_obj)
@@ -262,7 +193,7 @@ def _entry_timl_bytes(entry_obj):
 
 
 def _config_from_scene(scene):
-    """场景属性 → SimConfig。待标定项全在这儿落地成开关。"""
+    """将场景属性映射为 SimConfig。"""
     from ..efx_format.sim import SimConfig
 
     return SimConfig(
@@ -317,11 +248,7 @@ def _budget_kw(scene):
 
 
 def build_simulator(entry_obj, scene, out=None):
-    """按当前属性树建一个新的 Simulator。失败返回 None 并把原因写进 _P['error']。
-
-    `out` 给了就往里写 `{"uvs": 帧表来源信息}`——面板要显示「帧表从哪来」，而那个
-    信息是建资源时顺带算出来的，不想为它再扫一遍属性树。
-    """
+    """按当前属性树构造 Simulator；失败原因写入共享播放器状态。"""
     from ..efx_format.sim import Simulator
 
     blocks = []
@@ -347,11 +274,7 @@ def build_simulator(entry_obj, scene, out=None):
 
 
 def _uvs_image_name(entry_obj):
-    """这个 entry 的序列帧大图（UVSEQUENCE 属性上绑的参考图名）；没有则 ""。
-
-    一个 entry 最多一个 UVSEQUENCE（全语料 84106/84106），所以「一 entry 一张图」
-    成立，绘制时按图分桶即可。图是 uvs_link 的链式载入或用户手选填进去的。
-    """
+    """返回 Entry UVSEQUENCE 绑定的已载入参考图名。"""
     host = _uvs_host(entry_obj, use_cache=True)
     if host is None:
         return ""
@@ -362,29 +285,16 @@ def _uvs_image_name(entry_obj):
     return name if name in bpy.data.images else ""
 
 
-#: MATERIAL 的贴图槽 → 已载入的图名。键是 (槽位游戏路径)，跨 entry/文件共享——
-#: 同一张 null_white 被几十个 entry 引用是常态，转一次就够。
+#: MATERIAL 游戏路径到已载入图像名的缓存。
 _MAT_TEX_CACHE = {}
 
 
-#: 图名 → 这张图的 alpha 通道有没有实际内容。判一次要把整张图读进来，缓存住。
+#: 图像名到 alpha 通道是否可用的缓存。
 _TEX_ALPHA_USABLE = {}
 
 
 def _texture_alpha_is_usable(name):
-    """这张贴图的 alpha 通道能不能当遮罩用。
-
-    两类贴图混在一起，**不能按渲染体一刀切**（按 MESH 切会让 aura32a 那种从对的变成错的）：
-
-      - 流动贴图（`_BM` / flow 系）：alpha 恒 1。实测 `zrx_008` 0.9961~1、
-        `zr024` 0.9843~1、`flow_331` 0.9647~1——那点变化是 DDS 压缩噪声，不是内容。
-        照实取 alpha 会把黑底一起画成实心方片，得改用 RGB 的明暗当 alpha。
-      - 真带 alpha 的：`hx_10` alpha 0~1、平均 0.0446（RGB 几乎全白，形状全在 alpha 里），
-        `md_wp11_000_BM` 0~1 平均 0.469。这些必须用自己的 alpha。
-
-    判据取「alpha < 0.5 的像素占比」，两类之间空得很开（0.96 以上 vs 0），
-    用占比而不是最小值是为了不被几个杂散纹素带偏。
-    """
+    """判断图像 alpha 是否含可用遮罩内容，并缓存读取结果。"""
     if not name:
         return True
     got = _TEX_ALPHA_USABLE.get(name)
@@ -404,7 +314,7 @@ def _texture_alpha_is_usable(name):
             a = buf[3::4]
             usable = float((a < 0.5).mean()) > 0.001
         else:
-            usable = False      # 没有 alpha 通道
+            usable = False
     except Exception:
         usable = int(getattr(img, "depth", 32)) >= 32
     _TEX_ALPHA_USABLE[name] = usable
@@ -420,15 +330,7 @@ def _clear_material_cache():
 
 
 def _material_tex_paths(attr_objs):
-    """entry 的 MATERIAL 属性 → {贴图槽名: 游戏相对路径}。没有 MATERIAL 则 {}。
-
-    MATERIAL 是 mrl3 同源的内联材质覆盖，`sets` 里 `type == 128` 的才是贴图槽，
-    槽位由 `t` 哈希反查（meta.texture_slot_name）。其余 type 是非贴图参数，跳过。
-    一个块里 58 个 set 是常态，但贴图槽只有十来个。
-
-    ⚠ `null_white` / `null_NM` 这类**照常读取**，不特判——它们是游戏里真实存在的
-    占位贴图，作者拿 null_white 当纯白底正是为了让 MESH 的染色不被贴图串色。
-    """
+    """从 MATERIAL 属性提取贴图槽名到游戏相对路径的映射。"""
     from ..efx_format.material.meta import texture_slot_name
     from ..efx_format.hashes import MATERIAL
 
@@ -457,12 +359,7 @@ def _material_tex_paths(attr_objs):
 
 
 def _material_image_name(entry_obj, attr_objs, slot, chunk_root):
-    """MATERIAL 指定的那张贴图 → 已载入的图名；取不到返回 ""。
-
-    走的是 uvs_link 那条现成的链（游戏路径解析 → tex→dds → bpy.data.images），
-    与序列帧大图同一套，不另起炉灶。**在 build_track 里调一次**——这是磁盘 I/O，
-    逐帧做会卡死。
-    """
+    """解析并载入 MATERIAL 槽贴图；调用方应仅在构建 track 时调用。"""
     paths = _material_tex_paths(attr_objs)
     rel = paths.get(slot) or ""
     if not rel:
@@ -487,21 +384,16 @@ def _material_image_name(entry_obj, attr_objs, slot, chunk_root):
                 name = img.name
     except Exception:
         name = ""
-    _MAT_TEX_CACHE[rel] = name      # 失败也缓存：别每次重建 track 都去磁盘扑空
+    _MAT_TEX_CACHE[rel] = name      # 失败也缓存，避免重复路径解析。
     return name
 
 
-#: 游戏路径 → 已载入的 flowmap 图名（""=找不到）。11 张共享图，全局缓存一次够用。
+#: flowmap 游戏路径到已载入图像名的缓存。
 _FLOW_TEX_CACHE = {}
 
 
 def _flowmap_path(attr_objs):
-    """entry 的渲染体属性里那条 flowmap 贴图路径；没启用/没配就 ""。
-
-    八件套挂在 BILLBOARD3D / PLANE / BILLBOARD2D 自己身上（不是独立属性类型），
-    路径也存在同一个块里。`applicationRule` 的 bit 0x04 才是「启用」——语料里有
-    9663 个块备了路径但没开位，那些不该画。
-    """
+    """返回启用的渲染体 flowmap 路径；未设置启用位时忽略路径。"""
     from ..efx_format.hashes import BILLBOARD3D, BILLBOARD2D, PLANE
     from ..efx_format.sim.behaviors._flowmap import BIT_ENABLE
 
@@ -551,11 +443,7 @@ def _flowmap_image_name(entry_obj, attr_objs, chunk_root):
 
 
 def _attributes_by_entry():
-    """一次遍历建 {entry 对象 → [属性对象(按 efx_index)]}。
-
-    **不要**按 entry 逐个调 `_entry_attributes`：那是 O(entry 数 × 场景对象数)，
-    多文件场景下就是记忆里那个导入退化到分钟级的坑（onchange-full-scene-scan-perf-bug）。
-    """
+    """一次遍历按 Entry 建属性映射，供整棵模拟树复用。"""
     out = {}
     for o in bpy.data.objects:
         if o.get("~TYPE") != "EFX_ATTRIBUTE":
@@ -570,12 +458,7 @@ def _attributes_by_entry():
 
 
 def _action_table(root_col):
-    """{action 段下标 → [ActionTarget]}。
-
-    下标就是 EFX_ACTION 在段里的局部顺序（`collect_top_level` 已按 efx_index 排序），
-    与 PTLIFE.relationIndex 同一套编号。目标 entry 走已有的对象指针
-    （`action_emitter.py` 的 targets[].body_ptr），Size/Position 取那两个实机确认的字段。
-    """
+    """构建 Action 段局部索引到模拟目标的表，供 PTLIFE relationIndex 使用。"""
     from ..efx_format.sim import ActionTarget
     from ..efx_format.sim.state import Vec3
 
@@ -603,7 +486,7 @@ def _action_table(root_col):
 
 
 def _reachable_entries(root_entry, action_table, attrs_by_entry, max_depth):
-    """根 entry + 它经 PTLIFE/ACTION 能到的那些 entry（别给整份文件都建模板）。"""
+    """收集根 Entry 经 PTLIFE/Action 可达的 Entry，受深度限制。"""
     from ..efx_format.hashes import PTLIFE
 
     def _relation_indices(entry_obj):
@@ -616,8 +499,7 @@ def _reachable_entries(root_entry, action_table, attrs_by_entry, max_depth):
                 continue
             pair = _block_fields(blk)
             if pair:
-                # ⚠ 别写成 `... or -1`：**relationIndex 0 是合法值而且是最常见的那个**
-                # （全语料 8904 块里 4192 个是 0），0 被 `or` 判成假就整条链断掉。
+                # relationIndex 的 0 是合法 Action 段局部索引。
                 raw = (pair[1] or {}).get("relationIndex", -1)
                 ri = -1 if raw is None else int(raw)
                 if ri >= 0:
@@ -641,13 +523,7 @@ def _reachable_entries(root_entry, action_table, attrs_by_entry, max_depth):
 
 
 def build_track(entry_obj, scene):
-    """建一条 track。
-
-    track 里的 `sim` 是一个 **SimScene**（实例树）：根是选中的 entry，PTLIFE 触发的
-    ACTION 会在树上长出子实例。SimScene 与 Simulator 鸭子兼容（frame/particles/
-    step/build_render/unsupported/notes/config/em/suggested_duration），所以时钟、
-    绘制、面板那几段都不用分情况。失败返回 None。
-    """
+    """构造一条含根 Entry 及可达 PTLIFE Action 实例的模拟 track。"""
     from ..efx_format.sim import EntryTemplate, SimScene
 
     root_col = _rc.find_root_collection(entry_obj)
@@ -681,9 +557,7 @@ def build_track(entry_obj, scene):
         res, info = _uvs_state(obj)
         resources[name] = res
         images[name] = _uvs_image_name(obj)
-        # MATERIAL 是 MESH 的伴生属性（全语料 5873 个带 MATERIAL 的 entry 全都带
-        # MESH），它指定的贴图应当盖过 mod3 自带材质里那张。解析是磁盘 I/O，
-        # 只在这里做一次。
+        # MATERIAL 槽贴图优先于网格自带材质，且仅在构建时解析。
         if mat_slot != "none":
             got = _material_image_name(obj, attrs, mat_slot, chunk_root)
             if got:
@@ -717,18 +591,17 @@ def build_track(entry_obj, scene):
         "ref_rows": _entry_matrix_rows(entry_obj),
         "items": [],
         "image": images.get(entry_obj.name, ""),
-        #: entry 名 → 序列帧大图名。一棵树里每个 entry 各有各的图，绘制时按
-        #: item.extra['entry_key'] 查（见 _collect_track）。
+        #: Entry 名到序列帧图像名的映射，子实例按自己的 Entry 查找。
         "images": images,
         "mesh_images": mesh_images,
-        #: entry 名 → flowmap 贴图名（启用了才有）。见 `_flowmap_image_name`。
+        #: Entry 名到已启用 flowmap 图像名的映射。
         "flow_images": flow_images,
-        "uvs": root_uvs_info,          # 帧表来源（真 .uvs / 网格兜底），面板显示用
+        "uvs": root_uvs_info,
     }
 
 
 def rebuild_track(tr, scene, keep_frame=True):
-    """就地重建一条 track（改了字段/标定开关之后）。成功返回 True。"""
+    """就地重建 track，并在允许时恢复原帧；成功返回 ``True``。"""
     entry = bpy.data.objects.get(tr["entry_name"])
     if entry is None:
         return False
@@ -746,12 +619,7 @@ def rebuild_track(tr, scene, keep_frame=True):
 
 
 def _active_root_collection(context):
-    """大纲里当前点中的集合所属的 EFX 文件根集合；不在任何 EFX 文件里则 None。
-
-    根集合本身、以及它下面的 Entry / Direct Trigger 这些子集合都算——点进去的任何
-    一层都只可能属于**一个**文件，没有歧义。真正要播单个 entry 的人是去选 entry
-    **对象**的，那条路在 `collect_entries` 里优先级更高。
-    """
+    """返回活动大纲集合所属的 EFX 根集合；找不到时返回 ``None``。"""
     try:
         lc = context.view_layer.active_layer_collection
     except Exception:
@@ -776,19 +644,15 @@ def _active_root_collection(context):
     return None
 
 
-#: "点中根集合" 播放范围下拉的标识前缀：具体 Subselect 用 "SS:" + 对象名，
-#: 区别于固定项 "ALL"（Direct Trigger 那批，原行为）。
+# Subselect 播放范围的 Enum identifier 前缀。
 _SIM_SCOPE_SS_PREFIX = "SS:"
 
-#: 全局缓存：防止 Blender EnumProperty 动态回调因 GC 丢引用导致下拉乱码
-#: （见 memory/enum-callback-gc-trap：必须是模块级变量，回调里 global 重新赋值，
-#: 返回这个全局对象本身，不能返回局部 list）。
+# EnumProperty 动态回调必须返回持久模块级列表，避免 GC 后的失效引用。
 _sim_scope_items_cache = [("ALL", "All", "")]
 
 
 def _sim_scope_items(self, context):
-    """播放范围下拉的候选项：固定 "All"（Direct Trigger）+ 当前根集合下的每个
-    Subselect（选中即只播那个 Subselect.members 指向的 entry 集合）。"""
+    """返回 All 与当前根集合内各 Subselect 的播放范围选项。"""
     global _sim_scope_items_cache
     items = [("ALL", T("sim.scope_all"), T("sim.scope_all_tip"))]
     root = _active_root_collection(context) if context is not None else None
@@ -800,9 +664,10 @@ def _sim_scope_items(self, context):
 
 
 def _subselect_scope_entries(root, ss_name):
-    """指定 Subselect 的成员 entry 列表：按 members 原序，去重，跳过悬空指针。
-    ss_name 对不上当前 root 下的任何 Subselect（改名/切到别的文件）时返回空列表
-    ——不悄悄退回全播，播放范围选错了就该看见"没东西可播"而不是播了别的一批。"""
+    """返回 Subselect 成员 Entry，保序去重并跳过悬空指针。
+
+    名称不属于当前根集合时返回空列表，不能退回全量播放。
+    """
     ss_obj = bpy.data.objects.get(ss_name)
     if ss_obj is None or _rc.find_root_collection(ss_obj) is not root:
         return []
@@ -821,14 +686,7 @@ def _subselect_scope_entries(root, ss_name):
 
 
 def _selected_entries(context):
-    """当前**选中对象**（不是 `active_object`）各自往上找到的 entry，去重、按选中顺序。
-
-    刻意不用 `context.active_object`：在大纲里点一个集合行只会改
-    `view_layer.active_layer_collection`，不会清掉之前选中物体时留下的
-    `active_object`——用 `active_object` 判断"是不是选中了具体 entry"会在
-    「先选了个 entry，再点集合切到播放范围下拉」这个顺序下误判成"还选着 entry"，
-    导致下拉怎么点都不出现（面板判据必须跟 `collect_entries` 真正的优先级一致）。
-    """
+    """从选中对象解析 Entry，去重并保留选择顺序。"""
     out = []
     seen = set()
     for obj in list(getattr(context, "selected_objects", None) or ()):
@@ -840,20 +698,14 @@ def _selected_entries(context):
 
 
 def collect_entries(context):
-    """要模拟哪些 entry。
+    """按选中 Entry 或活动根集合范围收集模拟入口。
 
-    两条路：
-
-      - 大纲里点中**一个 EFX 根集合** → 按播放范围下拉（`Scene.efx_sim_scope`）：
-        "All" 播整个文件的 **Direct Trigger** 那批 entry（原行为，Not Direct Trigger
-        的不起 track——它们是靠 PtLife → Action 召唤出来的，模拟里已经会作为子实例
-        生出来，见 sim/scene.py；再起一条就会被画两遍）；选了具体 Subselect 则只播
-        它 members 指向的那些 entry（"这套子选择实际会用到的特效"）。
-      - 否则按**选中对象**各自往上找 entry，去重；空则退回活动对象（多选=同时播）。
+    根集合全播时只启动 Direct Trigger Entry；Not Direct Trigger 会在 PTLIFE Action
+    实例树中出现，不能再作为独立 track 重复播放。
     """
     out = _selected_entries(context)
     if out:
-        return out              # 选了具体的 entry（或它下面的属性）→ 就播这些
+        return out
 
     root = _active_root_collection(context)
     if root is not None:
@@ -864,21 +716,16 @@ def collect_entries(context):
         direct = [e for e in ents if _entry_ref.is_entry_in_eof(e)]
         if direct:
             return direct
-        return ents        # 没有 eof 分流信息（opaque 模型）→ 只能全播
+        return ents        # 缺少 EOF 信息时无法可靠筛选 Direct Trigger。
 
     e = _resolve_entry(context.active_object)
     return [e] if e is not None else []
 
 
 def entry_order(entry_obj):
-    """绘制次序的排序键 `(文件, 文件内次序)`。
+    """返回 ``(根集合名, efx_index)`` 绘制排序键。
 
-    **文件内**有权威答案：entry 在 main 段里的次序（`efx_index`）。完全重合的面片
-    谁盖谁就按这个来——我们的粒子不写深度（`depth_mask_set(False)`），所以先后
-    全由绘制顺序决定，这正是实机那套「按 entry 排布定覆盖优先权」的机制。
-
-    **跨文件没有权威答案**：不同 .efx 是各自独立的特效实例，相对先后由引擎在触发时
-    决定，文件里没有这个信息。这里取根集合名——就是大纲里看到的顺序，要调整改个名即可。
+    同文件 Entry 必须按段内 ``efx_index`` 排序；粒子绘制不写深度。
     """
     if entry_obj is None:
         return ("", 0)
@@ -892,53 +739,22 @@ def entry_order(entry_obj):
 
 
 def invalidate_if_active(obj=None):
-    """字段被编辑 → 下个 tick 重建模拟器。fields.py 的编辑回调调用本函数。
-
-    刻意只置一个标志：编辑回调是**每改一个字段就触发一次**的热路径，在里面重建
-    整个模拟器会卡。真正的重建推迟到定时器 tick（见 `_tick`）。
-    """
+    """标记活跃预览需要重建；实际重建延后到 timer tick。"""
     if is_active():
         _P["dirty"] = True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 坐标换算（游戏 → Blender）
-#
-# 与 transform_sync.game_loc_to_blender 同一套：/100 + (X,Y,Z)→(X,-Z,Y)。
-# 核心层全程用游戏坐标，换算只在这里发生一次。
+# 坐标换算（游戏 → Blender）。模拟核心保持游戏坐标，边界统一换算。
 # ─────────────────────────────────────────────────────────────────────────────
 
 _UNIT = 1.0 / 100.0
 
 
 def _display_color(c, mode):
-    """HDR 的渲染项颜色 → 能画进 LDR 帧缓冲的颜色。
+    """将 HDR 渲染色转换为预览帧缓冲可用颜色。
 
-    `BILLBOARD3D.brightness` 是个 HDR 强度，不是 0~1 的倍率：全语料中位 1.5、90% 到
-    49.25、最大 255，**39% 的块 >1.5**。
-
-    用户在 test.efx 上做的受控扫描（alpha=1、纯红、暗背景、逐个改 brightness，
-    读出的屏幕色解到线性）把机制定死了：
-
-        Alpha 混合   红恒为 0.1046，**与 brightness 完全无关**
-        Add 混合     亮度 1 → 0.1046   10 → 0.982   100 → 0.982
-                     即 emitted = 0.1046 × 亮度，然后**硬夹取**（不是软过渡：
-                     Reinhard 在亮度 10 处只给 0.51、1-exp 给 0.65，都对不上 0.982）
-
-    那个 0.1046 是贴图在取样点上的值。⚠ **别据此以为「有贴图就可以照实夹取」**：
-    贴图是 shader 在这一步**之后**才乘的（`clip(tex × col)`，不是 `tex × clip(col)`），
-    所以 'raw' 下 col 早就被夹成白的了，贴图再乘也救不回来。游戏那边不全白靠的是
-    tone map + 自动曝光，我们没有这两样——所以预览必须自己把色相保下来。
-
-      'preserve_hue'（默认）除以最大分量保住色相，**alpha 原样不动**。
-                     ⚠ 曾经这里把超出的倍数折进不透明度（`a * m` 再夹 1），理由是
-                     「加法混合下更亮 = 加得更多」——那会**把淡入淡出整条压平**：
-                     `star` 的 brightness=50，alpha 只要 >0.02 就一律顶成 1，LIFE
-                     算得好好的 1.0→0.6 的淡出在屏幕上完全看不出来。宁可整体偏暗
-                     也不能丢掉淡入淡出，那是作者调出来的东西。
-      'tonemap'      Reinhard c/(1+c)。⚠ 与实测不符（受控扫描证明是硬夹取），留作对照
-      'raw'          直接夹取：与「单个像素」的实机行为一致，但少了 tone map/自动曝光，
-                     brightness 一大就整片白
+    ``preserve_hue`` 不得改变 alpha，否则会破坏粒子淡入淡出。
     """
     r, g, b, a = c[0], c[1], c[2], c[3]
     if mode == "raw":
@@ -952,15 +768,7 @@ def _display_color(c, mode):
 
 
 def _multiply_tint(c, gain=1.0):
-    """折射（乘法通道）的源色：按覆盖度在「无操作(1,1,1)」和「颜色×brightness」之间插值。
-
-    定点管线的 MULTIPLY 是 `dst × src`，`src.a` 根本不参与 RGB 的结果——所以粒子的
-    alpha（LIFE 的淡入淡出、颜色自带的 a）必须在这里折进 RGB，否则折射层会在出生
-    和死亡的瞬间硬闪。折到 1 而不是 0：乘 1 等于不改变背景，这才是「淡出」。
-
-    贴图那一档还会再按纹素 alpha 混一次，两次朝同一个端点插值可以复合
-    （`mix(1, mix(1,C,α), t) == mix(1, C, α·t)`），所以两边都对。
-    """
+    """为乘法通道将覆盖度折入 RGB；透明端必须回到乘法恒等色 ``(1,1,1)``。"""
     a = c[3] * gain
     if a == 1.0:
         return (c[0], c[1], c[2], 1.0)
@@ -977,12 +785,7 @@ def _to_blender(v):
 
 
 def _axis_swap(v):
-    """**方向**的坐标系换算：只换轴，不乘 `_UNIT`。
-
-    ⚠ 位置要 ÷100（游戏单位→米），方向不能——`_to_blender` 拿来转单位向量会把它
-    缩成 0.01 长，乘上半宽之后面片就小了 100 倍。PLANE 的 axis_u/axis_v 就是这么
-    被缩没的（长宽 76.8 游戏单位的片画出来只有 1.2 厘米，屏幕上等于不可见）。
-    """
+    """转换方向坐标轴，不应用位置单位缩放。"""
     return (v.x, -v.z, v.y)
 
 
@@ -992,11 +795,7 @@ def _to_game(bx, by, bz):
 
 
 def _ref_local(rows, world_pos):
-    """世界坐标点 → 参考系下的局部偏移。
-
-    把参考系当刚体处理（`Rᵀ(p − t)`）：entry empty 上如果有非 1 的缩放，这里会
-    有偏差——语料里 TRANSFORM3D.resize 恒为 1.0，先不为它引入 mathutils 依赖。
-    """
+    """将世界坐标点转换为参考系局部偏移，按刚体矩阵处理。"""
     dx = world_pos[0] - rows[0][3]
     dy = world_pos[1] - rows[1][3]
     dz = world_pos[2] - rows[2][3]
@@ -1006,15 +805,9 @@ def _ref_local(rows, world_pos):
 
 
 def _sync_track_origin(tr):
-    """把 entry empty 相对**播放起点**的位移报给该 track 的模拟器。
+    """将 Entry 相对播放起点的位移同步到模拟器。
 
-    为什么需要：条带类渲染体（RIBBON 轨迹跟随 / RIBBONBLADE 刀光）画的是发射器
-    划过的轨迹。blade_trail 这类原型根本没有 VELOCITY3D——粒子自己不动，整个效果
-    靠 PARENTOPTIONS 把发射器绑在挥动的武器骨骼上。宿主不把这个位移报进去，
-    模拟层就永远看不到运动，刀光永远是空的。
-
-    参考系取**播放开始那一刻**的世界矩阵并固定下来（`tr["ref_rows"]`），绘制也
-    用它——这样发射器移动时，已经发出去的粒子会如实留在原地，而不是跟着整体平移。
+    参考矩阵在播放开始时固定，使已经发射的粒子不随宿主整体平移。
     """
     sim = tr.get("sim")
     entry = bpy.data.objects.get(tr["entry_name"])
@@ -1038,18 +831,10 @@ def _sync_host_origin(scene=None):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# "模拟挥砍"预览开关
-#
-# RIBBON/RIBBONBLADE 这类条带渲染体画的是**宿主**（entry empty）划过的轨迹，
-# 不认粒子自身速度——ribbonblade.py 已实测确认它没有 VELOCITY3D，纯靠 PARENTOPTIONS
-# 把发射器绑在挥动的武器骨骼上。没有骨骼动画可播时，宿主永远静止，轨迹永远是空的。
-# 这里给预览加一个内置的往复摆动量，纯粹为了让轨迹逻辑有东西可画——编出来的摆动
-# 不追求还原游戏内挥砍手感，只用来验证渲染逻辑本身。
-# ─────────────────────────────────────────────────────────────────────────────
+# 挥砍预览为宿主轨迹提供独立的往复运动。
 
 def _mute_bone_follow(entry):
-    """挥砍预览和骨骼跟随约束二选一：两边都在改 entry 位置会叠出双份位移，
-    这里临时静音 transform_sync 挂的 Copy Location 约束（若有）。"""
+    """挥砍预览启用时静音骨骼跟随，避免叠加两份宿主位移。"""
     from . import transform_sync as _tsync
     con = entry.constraints.get(_tsync._BONE_FOLLOW_CONSTRAINT_NAME)
     if con is not None:
@@ -1067,20 +852,13 @@ def _restore_bone_follow(entry_name):
 
 
 def _restore_all_bone_follow():
-    """停止播放 / 插件卸载时兜底：别把静音状态留在场景里。"""
+    """停止或卸载时恢复所有被静音的骨骼跟随约束。"""
     for tr in _P["tracks"]:
         _restore_bone_follow(tr["entry_name"])
 
 
 def _apply_swing_preview(tr, scene):
-    """挥砍开关开着时，把 entry 摆到「参考位置」为圆心的一段往复圆弧上；
-    关着（默认）什么都不做，只确保约束状态复原。
-
-    往复一次 = 去程 + 回程，各占 `efx_sim_swing_duration` 秒，smoothstep 缓入缓出。
-    方向反转的瞬间速度过零——正好把 RIBBONBLADE「停下才回缩」的那一段也一并练到。
-    时间轴用 `tr["sim"].frame`（模拟自己的帧计数），暂停/调速/重播都天然跟着走，
-    不用另起一个时钟。
-    """
+    """按模拟帧在参考位置周围应用往复圆弧，并与骨骼跟随互斥。"""
     entry_name = tr["entry_name"]
     if scene is None or not getattr(scene, "efx_sim_swing_enable", False):
         _restore_bone_follow(entry_name)
@@ -1100,27 +878,23 @@ def _apply_swing_preview(tr, scene):
     radius = max(0.0, float(getattr(scene, "efx_sim_swing_radius", 1.0)))
 
     cycle = 2.0 * duration
-    phase = (t % cycle) / duration              # 0..2：去程/回程各占一段
+    phase = (t % cycle) / duration
     u = phase if phase <= 1.0 else 2.0 - phase
-    u = u * u * (3.0 - 2.0 * u)                  # smoothstep
-    theta = half_angle * (2.0 * u - 1.0)         # -half..+half
+    u = u * u * (3.0 - 2.0 * u)
+    theta = half_angle * (2.0 * u - 1.0)
 
     rows = tr["ref_rows"]
     rx, ry, rz = rows[0][3], rows[1][3], rows[2][3]
     s, c = math.sin(theta), math.cos(theta)
 
-    # 圆弧半径 radius，theta=0 时正好落回参考位置（c-1=0, s=0）。
     if axis == "X":
         pos = (rx, ry + radius * (c - 1.0), rz + radius * s)
     elif axis == "Y":
         pos = (rx + radius * s, ry, rz + radius * (c - 1.0))
-    else:  # "Z"（默认）：弧线在水平面内
+    else:
         pos = (rx + radius * (c - 1.0), ry + radius * s, rz)
 
-    # 只改位置，entry 自身的朝向/缩放（TRANSFORM3D 本地旋转/缩放）原样保留。
-    # ⚠ 不能拿一份手搭的嵌套 tuple 直接赋给 matrix_world/matrix_basis——那样赋值
-    # 不会报错，但会被静默当成单位矩阵（实机验证过），朝向/缩放全部丢失。必须
-    # 改在一个真正的 Matrix 实例上（这里就是读出来的 cur 本身）再整个赋回去。
+    # 保留现有 Matrix 的旋转和缩放，仅替换平移。
     cur = entry.matrix_world
     cur.translation = pos
     entry.matrix_world = cur
@@ -1128,15 +902,7 @@ def _apply_swing_preview(tr, scene):
 
 
 def _entry_matrix_rows(entry_obj):
-    """entry empty 的世界矩阵，拆成三行纯 float 元组。
-
-    用**完整矩阵**而不只是位置：TRANSFORM3D 的 rotate/resize 以及 PARENTOPTIONS 的
-    骨骼绑定都已经由 transform_sync.py 烘进了这个矩阵，乘上去就自动全部继承——
-    模拟层因此完全不必知道骨骼、锚定这些事（见 behaviors/transform3d.py 的分工说明）。
-
-    ⚠ 只有**位置**过这个矩阵，粒子自身的尺寸不跟着 entry 的 scale 缩放。语料里
-    TRANSFORM3D.resize 恒为 1.0，区分不出来；真遇到非 1 的再定。
-    """
+    """将 Entry 世界矩阵保存为三行纯浮点参考系。"""
     try:
         m = entry_obj.matrix_world
         return ((m[0][0], m[0][1], m[0][2], m[0][3]),
@@ -1159,11 +925,7 @@ def _spin(right, up, deg):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _builtin(name):
-    """builtin shader 取名的跨版本包装。
-
-    4.0 起 2D/3D 统一成 'FLAT_COLOR' 这样的短名，3.x 是 '3D_FLAT_COLOR'。
-    先试新名、失败再试旧名，这样 3.6→5.x 同一份代码都能跑。
-    """
+    """取得 builtin shader，回退到旧版 3D 名称。"""
     import gpu
     try:
         return gpu.shader.from_builtin(name)
@@ -1211,25 +973,19 @@ def _cross(a, b):
 
 
 def _uv_corners(item, flip_v, tex):
-    """一个 RenderItem 的四角 UV（BL, BR, TR, TL），已处理 v 轴朝向；无贴图返回 None。
-
-    UVSEQUENCE 写的 `uv_corners` 用的是 **.uvs 里的 v 向下**约定，而
-    `gpu.texture.from_image` 取到的图第 0 行在**下**——所以默认翻一次 v。
-    翻错了会整幅上下颠倒，一眼能看出来，故留一个开关（`efx_sim_uv_flip_v`）
-    而不是把方向当成已知（同 uvs_io 里那处订正的教训）。
-    """
+    """返回贴图四角 UV；v 方向由可配置的 ``flip_v`` 统一处理。"""
     if not tex:
         return None
     c = item.uv_corners
     if not c:
-        # 有贴图但这一项没有序列帧信息（比如渲染体没挂 UVSEQUENCE）→ 整张图铺满
+        # 无序列帧数据时使用整张贴图。
         c = ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
     if flip_v:
         return tuple((u, 1.0 - v) for u, v in c)
     return tuple((float(u), float(v)) for u, v in c)
 
 
-#: `_quad_verts` 的六个顶点对应的四角下标（a=BL b=BR c=TR d=TL）
+#: ``_quad_verts`` 的六个顶点对应的四角下标。
 _QUAD_UV_ORDER = (0, 1, 2, 0, 2, 3)
 
 
@@ -1237,21 +993,13 @@ def _quad_uvs(corners):
     return tuple(corners[i] for i in _QUAD_UV_ORDER)
 
 
-#: 面片的**局部** UV（0..1 铺满这一格），顶点序同 `_quad_verts`。flowmap 要按它
-#: 采流动贴图——流动图是整张独立的图，不该跟着序列帧的子格走。
+#: flowmap 使用整图局部 UV，不随序列帧子格变化。
 _QUAD_LUV = tuple(((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))[i]
                   for i in _QUAD_UV_ORDER)
 
 
 def _ribbon_affine(rows):
-    """把「游戏坐标 → Blender 世界」压成一个 3×3 + 平移。
-
-    `_world` 是 `rows · _to_blender(v)` 两步，逐顶点调等于每个顶点两次函数调用；
-    条带一帧有几十万个顶点，合并成一个矩阵之后 numpy 一次点乘就完事。
-
-    `_to_blender` 是 (x, y, z) → (x, -z, y) × _UNIT，代进去并按 (x, y, z) 重新
-    收系数即可（同 `_mesh_affine` 里那处合并）。
-    """
+    """合并游戏到 Blender 的轴变换和参考矩阵，供条带批量变换。"""
     u = _UNIT
     lin = []
     t = []
@@ -1274,8 +1022,7 @@ def _ribbon_np_ctx(rows, view_dir):
             numpy.array(view_dir, dtype="f4"))
 
 
-#: 条带展开成三角的下标表：n → (顶点下标, alpha 下标, 纵向参数列)。
-#: 只跟顶点数有关，一个文件里就那么一两种，算一次全场复用。
+#: 条带三角展开索引按点数缓存，可跨渲染项复用。
 _RIBBON_IDX = {}
 
 
@@ -1285,8 +1032,7 @@ def _ribbon_idx(numpy, n):
         return got
     m = n - 1
     i = numpy.arange(m)
-    # 每段六个顶点 = (l0, r0, r1, l0, r1, l1)；左右两侧拼成一个 (2n, …) 再按下标取，
-    # 六次分量赋值就压成一次高级索引
+    # 每段由左右两侧的相邻点组成两个三角形。
     vidx = numpy.empty((m, 6), dtype=numpy.intp)
     vidx[:, 0] = i
     vidx[:, 1] = n + i
@@ -1308,20 +1054,9 @@ def _ribbon_idx(numpy, n):
 
 
 def _emit_ribbons_np(chunks, group, size_mul, ctx):
-    """**一批**条带 → numpy 分块。按顶点数分组，同组的一次算完。
-
-    为什么要成批：单条带走 numpy 也要二十来次 numpy 调用，每次约 2 µs 的调度开销
-    ——上千条带就是 60 ms，而且这笔开销**不随细分数下降**（降细分只让数组变短，
-    调用次数一个不少）。整组拉成 `(K, n, …)` 之后，同样二十来次调用把一万条带
-    全算完，降细分才真的降得动。
-
-    中途出错不会留下半截数据：分块先攒在本地，整组算完才并进桶里，调用方可以
-    整组退回纯 Python。
-    """
+    """按点数分组批量生成条带；结果完整后才追加到 ``chunks``。"""
     numpy, lin, tr, vdir = ctx
-    # 分组键带上「是不是数组形态」：核心层大多数条带已经是 RibbonStrip
-    # （见 efx_format/sim/state.py），这种整组 stack 就完了；老的元组列表
-    # （柔体链/刚性矩形/没有 numpy 时的兜底）还得逐顶点拉平。
+    # 数组形态可直接堆叠；旧式点元组需先拉平。
     by_n = {}
     for rec in group:
         pts = rec[0].points
@@ -1342,12 +1077,12 @@ def _emit_ribbons_np(chunks, group, size_mul, ctx):
         six = m * 6
 
         if is_strip:
-            # 数组形态：三次 stack 就位，Python 侧一个顶点都不用碰
+            # 数组形态可直接批量堆叠。
             pos = numpy.stack([r[0].points.pos for r in recs]).astype("f4")
             half = numpy.stack([r[0].points.half for r in recs]).astype("f4")
             alpha = numpy.stack([r[0].points.alpha for r in recs]).astype("f4")
         else:
-            # (K, n, 5) = [x, y, z, 半宽, alpha]，逐顶点拉平
+            # (K, n, 5) = [x, y, z, 半宽, alpha]。
             flat = []
             ex = flat.extend
             for it, _col, _core, _cn in recs:
@@ -1361,15 +1096,14 @@ def _emit_ribbons_np(chunks, group, size_mul, ctx):
         W = pos.dot(lin.T)
         W += tr
 
-        # 每个顶点的「前后方向」：首尾各用自己那一段
+        # 首尾使用唯一相邻段估计方向。
         seg = numpy.empty_like(W)
         seg[:, 1:-1] = W[:, 2:]
         seg[:, 1:-1] -= W[:, :-2]
         seg[:, 0] = W[:, 1] - W[:, 0]
         seg[:, -1] = W[:, -1] - W[:, -2]
 
-        # 横向 = 段方向 × 视线。`numpy.cross` 的 Python 外壳（moveaxis 一类）比
-        # 算式本身还贵，直接按分量写。
+        # 横向由段方向与视线叉乘；按分量计算以保持批量路径。
         sx = seg[:, :, 0]
         sy = seg[:, :, 1]
         sz = seg[:, :, 2]
@@ -1385,7 +1119,7 @@ def _emit_ribbons_np(chunks, group, size_mul, ctx):
         good = nrm > 1e-9
         hw = numpy.abs(half) * (size_mul * _UNIT)
         numpy.maximum(hw, 1e-5, out=hw)
-        numpy.divide(hw, nrm, out=hw, where=good)            # 归一化与半宽合成一步
+        numpy.divide(hw, nrm, out=hw, where=good)
         side *= hw[:, :, None]
 
         lr = numpy.empty((k, n * 2, 3), dtype="f4")
@@ -1422,7 +1156,7 @@ def _emit_ribbons_np(chunks, group, size_mul, ctx):
             U = U.reshape(-1, 2)
             C2 = C2.reshape(-1, 4)
 
-        # 段方向与视线平行时叉乘退化，那一段不画（两端有一端退化就整段丢）
+        # 与视线平行的段没有可用宽度方向，跳过它。
         if not good.all():
             keep = numpy.repeat(good[:, :-1] & good[:, 1:], 6, axis=1).reshape(-1)
             V = V[keep]
@@ -1439,19 +1173,7 @@ def _emit_ribbons_np(chunks, group, size_mul, ctx):
 
 def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
                  corners=None, col2s=None, core=None):
-    """条带 → 三角形（`uvs` 非 None 时同时产出逐顶点 UV）。
-
-    每一段的「横向」取 `段方向 × 视线` 并归一化——这样条带永远把宽面朝向相机，
-    是 Trail Renderer 的标准做法。段方向与视线平行时（正对着看）叉乘退化，
-    这一段就跳过，不画烂三角。
-
-    UV：横向铺满这一格（s: 左 0 → 右 1），纵向沿条带铺满（t: 尾 0 → 头 1），
-    四角之间双线性插值——这样序列帧的翻转/90° 旋转对条带同样生效。
-
-    这是 numpy 缺席时的兜底路（有 numpy 走成批的 `_emit_ribbons_np`）。逐行的
-    UV/颜色都**先按顶点行算好再展开成三角**，别在每段里重算一遍——相邻两段共用
-    同一行，照四角逐段插值等于把每行算两遍。
-    """
+    """以 Python 兜底路径展开条带三角形；numpy 可用时使用批量路径。"""
     pts = item.points
     if not pts or len(pts) < 2:
         return
@@ -1469,7 +1191,7 @@ def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
     ca, cb, cc, cd = col[0], col[1], col[2], col[3]
     core_rgb = core if core is not None else col
 
-    # 逐**顶点行**先算好：左右两侧的世界坐标、颜色、UV。三角只是这些行的排列组合。
+    # 先按顶点行计算共享数据，再展开相邻行的三角形。
     lo = []
     hi = []
     rowc = []
@@ -1521,7 +1243,7 @@ def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
             uvs.extend((u_l0, u_r0, u_r1, u_l0, u_r1, u_l1))
 
 
-#: MESH 没绑定网格时画的占位：单位立方体的 12 个三角（游戏坐标系，半边长 1）
+#: MESH 未绑定网格时使用的占位几何。
 _PLACEHOLDER_TRIS = None
 
 
@@ -1539,15 +1261,7 @@ def _placeholder_cube():
 
 
 def _mesh_tris_game(mesh_obj):
-    """绑定网格的三角顶点，换算到**游戏坐标系**并缓存。
-
-    返回 `(平坦列表, numpy 数组或 None, 逐顶点 UV 或 None)`。换算一次、缓存下来，
-    之后每个粒子只要过一次仿射矩阵。numpy 那份是快路径用的（见 `_emit_mesh`），
-    Blender 自带 numpy，拿不到就退回纯 Python。
-
-    UV 来自网格自己的第一层 UVMap（mod3 导进来就带着），有它才能把材质贴图画上去——
-    否则网格只能平涂一个颜色，作者调的「在贴图上染色」就完全看不出来。
-    """
+    """读取并缓存游戏坐标三角形、可选 numpy 数组和逐顶点 UV。"""
     uvs = None
     if mesh_obj is None:
         key, tris = "~placeholder", _placeholder_cube()
@@ -1588,12 +1302,7 @@ def _mesh_tris_game(mesh_obj):
 
 
 def _mesh_tris_game_multi(mesh_objs):
-    """同一 viscon 组常常由好几个 Sub 网格拼成——把它们的三角顶点（各自走
-    `_mesh_tris_game` 换算+缓存）拼成一份，缓存 key 用全部对象名排序后的 tuple。
-
-    UV 要求全体都有才拼（否则贴图坐标对不上、干脆整体退回纯色桶，同单网格没有
-    UV 时的既有降级路径一致）。
-    """
+    """合并 viscon 网格；仅全部具有 UV 时才保留合并后的 UV。"""
     objs = [m for m in mesh_objs if m is not None]
     if not objs:
         return _mesh_tris_game(None)
@@ -1626,13 +1335,7 @@ def _mesh_tris_game_multi(mesh_objs):
 
 
 def _mesh_image_name(mesh_obj):
-    """绑定网格用哪张贴图。
-
-    reference mesh 是 Model Editor 那条链导进来的，材质和贴图已经建好了——我们只要
-    找出「基础色」那张图，不自己解析 mrl3。优先顺着 Principled BSDF 的 Base Color
-    连线找；找不到就退回第一张**不是法线贴图**的图（法线图命名以 `_NM` 结尾）。
-    多材质槽的网格只取第一张：我们一个网格只画一个桶。
-    """
+    """从绑定网格材质取得基础色图，回退到首张非 normal 图。"""
     if mesh_obj is None:
         return ""
     for slot in getattr(mesh_obj, "material_slots", ()):
@@ -1655,20 +1358,13 @@ def _mesh_image_name(mesh_obj):
 
 
 def _mat3_mul(a, b):
-    """3×3 × 3×3。就三行，不值得为它引依赖。"""
+    """相乘两个 3×3 矩阵。"""
     return [[a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j]
              for j in range(3)] for i in range(3)]
 
 
 def _mesh_affine(item, size_mul, rows):
-    """把「逐轴缩放 → 欧拉旋转 → 平移 → 游戏坐标转 Blender → 参考矩阵」压成一个 3×4。
-
-    这是网格能画得动的关键：原来每个顶点都要调一次 `rotate_euler`（每次重算三角
-    函数）再过一次矩阵，1 万面的网格配 1 个粒子就要 58 ms。现在每个**粒子**算一次
-    矩阵，每个顶点只剩 9 乘 9 加。
-
-    返回 `(L, T)`：world = L·v + T，L 是 3×3、T 是 3 元组。
-    """
+    """合并粒子的缩放、旋转、平移及坐标变换，返回 ``world = L·v + T``。"""
     from ..efx_format.sim.vecmath import rotate_euler
     from ..efx_format.sim.state import Vec3
 
@@ -1680,8 +1376,7 @@ def _mesh_affine(item, size_mul, rows):
     sz = size_mul * item.size.z
 
     def rot3():
-        """欧拉角 → 3×3。把三个基向量各转一次得到，走 `rotate_euler` 而不是另写一份
-        公式，保证与别处（V3D/ES3D）用的是同一套顺序与手性。"""
+        """以共享的 ``rotate_euler`` 构造旋转矩阵，保持旋转约定一致。"""
         e = [rotate_euler(Vec3(*b), rot.x, rot.y, rot.z, order=order)
              for b in ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))]
         return [[e[0].x, e[1].x, e[2].x],
@@ -1690,23 +1385,16 @@ def _mesh_affine(item, size_mul, rows):
 
     scl = [[sx, 0.0, 0.0], [0.0, sy, 0.0], [0.0, 0.0, sz]]
     turning = rot is not None and (rot.x or rot.y or rot.z)
-    # 游戏 → Blender：(x, -z, y) × _UNIT（与 _to_blender 同一式子）
+    # 游戏到 Blender 的线性轴变换。
     au = [[_UNIT, 0.0, 0.0], [0.0, 0.0, -_UNIT], [0.0, _UNIT, 0.0]]
     m3 = [[r0[0], r0[1], r0[2]], [r1[0], r1[1], r1[2]], [r2[0], r2[1], r2[2]]]
 
     space = _P.get("mesh_rot_space") or "game"
     if turning and space == "game":
-        # 在游戏坐标系里转，再换轴（= M·R·M⁻¹，M=Rx(90°)）。
-        #
-        # 两条互相独立的实测都指向这一支：
-        #   MOD_aura2 的 ROTATEANIM spin_velocity.z=1 —— 转轴要平行于 Blender Y
-        #     （'game' 给 Y、'local' 给 Z）
-        #   MOD_aura2 的 MESH.rotation 是 game Y=4 —— transform_sync 把它摆成
-        #     Blender Z=4°（'game' 给 Z、'local' 给 Y）
-        # 后一条尤其硬：那是另一条独立写成的代码路径算出来的同一个结论。
+        # 默认旋转在游戏坐标系完成后再换轴。
         lin = _mat3_mul(m3, _mat3_mul(au, _mat3_mul(rot3(), scl)))
     elif turning:
-        # 'local'：换完轴再在网格自己的 Blender 局部系里转。留作对照。
+        # ``local`` 在换轴后旋转，用于兼容性切换。
         lin = _mat3_mul(m3, _mat3_mul(rot3(), _mat3_mul(au, scl)))
     else:
         lin = _mat3_mul(m3, _mat3_mul(au, scl))
@@ -1720,13 +1408,7 @@ def _mesh_affine(item, size_mul, rows):
 
 
 def _bound_meshes_for(entry_obj, viscon=None):
-    """entry 下 MESH 属性绑定的网格对象列表，按 viscon（Visible Condition）过滤。
-
-    优先用 `efx_mesh_targets`（mod3_link 按 visconIndex/visconIndexJitter 范围绑的
-    多网格，同一组常有好几个 Sub 网格）；没有精确命中该 viscon 时（超出范围/老
-    数据没有分组信息）退回单体 `efx_mesh_target`，保证预览不会因为一次没打中
-    随机范围就整个不画。
-    """
+    """按 viscon 查找绑定网格，缺少精确组时回退单个目标。"""
     for blk in _entry_attributes(entry_obj):
         try:
             targets = blk.efx_mesh_targets
@@ -1778,14 +1460,7 @@ def _join_chunks(verts, colors, uvs, col2s, chunks):
 
 def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
                uvs=None, col2s=None, core=None):
-    """网格 → 三角形。
-
-    几何来自宿主（mod3_link 已经把 mod3 导进来并绑在 MESH 属性上），模拟层只给
-    位置/旋转/缩放/颜色。没绑定就画一个占位立方体——比什么都不画诚实。
-
-    整条变换压成一个 3×4（见 `_mesh_affine`），有 numpy 就整批算完，没有就逐顶点走
-    同一个矩阵。两条路结果一致，只差速度。
-    """
+    """将网格按粒子变换输出三角形；numpy 不可用时回退逐顶点路径。"""
     tris, arr, muv = geom
     if not tris:
         return
@@ -1831,13 +1506,11 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
         col2s.extend([(c[0], c[1], c[2], col[3])] * len(tris))
 
 
-#: 自定义 shader（pos + uv + color + sampler2D）。None = 还没建，False = 建不出来
-#: （那就退回 FLAT_COLOR 的白方块，功能降级但不报错）。
+#: 贴图 shader；``False`` 表示创建失败并回退纯色绘制。
 _TEX_SHADER = None
-#: shader 的 CreateInfo / 接口对象：有版本在 shader 存活期间要求它们别被回收，
-#: 一并挂在模块上（同 enum-callback-gc-trap 那类坑的防法）。
+#: 部分 Blender 版本要求 CreateInfo 与接口对象随 shader 存活。
 _TEX_SHADER_KEEP = []
-#: 图像名 → GPUTexture。逐帧重建太贵；换图/重启时清掉（见 _clear_tex_cache）。
+#: 图像名到 GPUTexture 的缓存。
 _GPU_TEX = {}
 
 _VERT_SRC = """
@@ -1850,41 +1523,8 @@ void main()
 }
 """
 
-#: `alphaFix` = (lowPass, contrast_gamma, lumaAsAlpha)，中性值 (0, 1, 0)。
-#: 第三位把**贴图 RGB 的明暗当成 alpha**：`_BM`/flow 这类贴图是 RGB-only 的，
-#: alpha 通道恒 1，照实取 alpha 画出来会连黑底一起变成不透明的一整片。
-#: ALPHACORRECTION 是**逐纹素**
-#: 改贴图 alpha 的形状（硬阈值裁切 + 伽马），只有在这里做才是对的。
-#:
-#: 两层染色分三套模型，靠 `fireLerp`/`waterLerp`（两个都 <0 = 关）区分，两者
-#: 互斥（同一渲染项只可能来自 RGBFIRE 或 RGBWATER 之一，见 simulator.py）：
-#:
-#: * 通用模型（两者都关，没挂 RGBFIRE/RGBWATER 的普通贴图渲染体）：col2 == color
-#:   （`_layers_of` 没有第二层时两边都返回 col），贴图 RGB 直接乘渲染体颜色——
-#:   2026-09-20 用户实机对拍确认：BILLBOARD3D 颜色设纯红时，贴图上非红的区域
-#:   整块变黑，不是被红色盖过去；纯白时贴图原样显示。也就是说这个颜色对贴图是
-#:   **逐通道相乘的滤镜**，不是「亮度当遮罩、颜色当底色叠加」。
-#: * RGBFIRE（`fireLerp` ∈ [0,1]）：devlecture 给出贴图通道各自的语义
-#:   （R=烟密度、G=火焰强度、B=辅助弥散层、A=轮廓遮罩），两层不是靠亮度插值，
-#:   是各自独立的遮罩相加：col=火焰色用 G 做遮罩，col2=烟雾色用
-#:   `R × mix(A, B, fireLerp)` 做遮罩——`lerpAlphaToBlue` 就是把 A 按比例混入 B。
-#:   col/col2 本身已经在 `_layers_of` 里乘过渲染体自己的颜色（`base_tint`），
-#:   跟通用模型是同一条「颜色=逐通道滤镜」规则，只是滤镜作用在两层各自的遮罩
-#:   结果上，而不是整张贴图的 RGB 上——两层用的是纯色调（fireColor/smokeColor），
-#:   贴图 RGB 本身在这两个块里不表示颜色，只是遮罩数据。
-#: * RGBWATER（`waterLerp` ∈ [0,1]）：用户拿 ABCD 四通道测试贴图实机测出的两条
-#:   遮罩（见 custom_codecs.py `_RGBWATER_FIXED_SCHEMA` 注释）：col=水膜色用
-#:   `mix(A, B, waterLerp)` 做遮罩（跟 RGBFIRE 的烟雾遮罩同构，只是分子换成
-#:   waterLerpGtoB），col2=高光色用 `R × G × A` 三通道交集做遮罩，同样已经乘过
-#:   `base_tint`。
-#:
-#: ⚠ RIBBON 不走 `_layers_of` 的双层分支（simulator.py 排除在外），挂了 RGBFIRE
-#: 时是把两层的加权代表色直接乘进 item.color 后走这里的通用模型；早前用户拿
-#: cm_elec_902_BM（不透明区平均 R0.34/G0.62/B0.19，偏绿）测出纯蓝 tint 显示仍是
-#: 纯蓝，像是"贴图色相不参与"——这份记录目前按"加法混合下贴图最亮的核心区域
-#: 本来就接近灰阶，逐通道相乘和纯亮度调制在那份样本上难以区分"处理，不当成
-#: 与本次结论矛盾，但没有专门对 RIBBON 重新实机验证，见 color-layering-open-
-#: question 备忘。
+#: ``alphaFix`` 逐纹素修正不透明度；luma 模式用于没有有效 alpha 的贴图。
+#: RGBFIRE 与 RGBWATER 使用互斥的双层通道遮罩；其他项逐通道染色。
 _FRAG_SRC = """
 void main()
 {
@@ -1912,7 +1552,7 @@ void main()
 """
 
 
-#: 折射的贴图 shader（pos + uv + color + sampler2D）。语义同 `_REFR_FRAG_SRC`。
+#: 折射贴图 shader 状态。
 _REFR_SHADER = None
 _REFR_SHADER_KEEP = []
 
@@ -1925,19 +1565,7 @@ void main()
 }
 """
 
-#: 乘法通道 + 贴图：源色 = 贴图 RGB × 渲染体颜色 × brightness，按覆盖度混向
-#: 「无操作(1,1,1)」——贴图之外和淡出的时候都不改变背景。
-#:
-#: 覆盖度沿用整条管线那一套（`alphaFix`，见 `_FRAG_SRC`）：`_BM`/flow 这类
-#: RGB-only 贴图用亮度当 alpha，ALPHACORRECTION 的阈值/伽马也照样生效。
-#:
-#: ⚠ 贴图 RGB 当颜色乘是**推断**：实测的那个样本没有 UVSEQUENCE，所以只坐实了
-#: 「颜色 × brightness」那一半。而带折射的官方 entry 100% 挂 UVSEQUENCE，其中
-#: `cm_smoke_905_BM` 在不透明区的通道形态（B 恒高 0.63~0.94、G 跨 0.5 两侧）
-#: 更像切线空间法线图而不是颜色——真是法线的话这里就该拿去算位移而不是相乘。
-#: 等 pixelNormalOffset 那一档实测了再回来改。
-#: `refrParam` = (贴图 RGB 的参与度, 预览放大倍数)，见 `efx_sim_refraction_tex`
-#: 与 `efx_sim_refraction_gain`。参与度 0 = 贴图只当遮罩、RGB 不进源色。
+#: 折射以乘法颜色混合；``refrParam`` 控制贴图颜色参与度和预览增益。
 _REFR_FRAG_SRC = """
 void main()
 {
@@ -1981,7 +1609,7 @@ def _refraction_shader():
     return _REFR_SHADER or None
 
 
-#: flowmap shader：在 `_tex_shader` 基础上，先按流动贴图把 UV 推一下再采样。
+#: flowmap shader 在采样前偏移主贴图 UV。
 _FLOW_SHADER = None
 _FLOW_SHADER_KEEP = []
 
@@ -1997,10 +1625,7 @@ void main()
 }
 """
 
-#: 流动贴图是切线空间法线图（语料里那 11 张全叫 `_NM`，实测 R 居中 0.5、B 恒高
-#: 0.82~1.0），`rg × 2 − 1` 就是二维流动方向。按**局部** UV 采它——它是整张独立
-#: 的图，不跟着序列帧的子格走；推出来的位移量已经在 CPU 侧乘过格子尺寸。
-#: 其余（双层染色、alpha 修正）与 `_FRAG_SRC` 完全一致，只是采样点变了。
+#: flowmap 按局部 UV 采样；其偏移量已在 CPU 侧换算到当前贴图格。
 _FLOW_FRAG_SRC = """
 void main()
 {
@@ -2067,10 +1692,9 @@ def _flow_shader():
 
 
 def _tex_shader():
-    """带贴图的 shader；建不出来返回 None（调用方退回纯色）。
+    """构建贴图 shader；不可用时返回 ``None`` 以回退纯色绘制。
 
-    **不要**用 `gpu.types.GPUShader(vert, frag)` 字符串构造器：3.4 起废弃、5.0 移除、
-    Vulkan 后端下不工作。`create_from_info` 是 3.2+ 一直支持、5.x 仍推荐的那条路。
+    使用 ``GPUShaderCreateInfo``，避免已废弃的字符串构造器。
     """
     global _TEX_SHADER
     if _TEX_SHADER is not None:
@@ -2136,11 +1760,7 @@ def _clear_tex_cache():
 
 def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                    line_colors):
-    """一条 track 的 RenderItem → 顶点桶。
-
-    桶的 key 是 `(混合模式, 贴图名)`：多选同时模拟时各 entry 用各自的序列帧大图，
-    按图分桶就能一次 batch 画完同一张图的所有片，不必逐粒子换绑定。
-    """
+    """将一个 track 的渲染项装配到按绘制状态分组的顶点桶。"""
     items = tr.get("items") or ()
     rows = tr.get("ref_rows")
     entry = bpy.data.objects.get(tr["entry_name"])
@@ -2155,8 +1775,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     draw_mode = getattr(scene, "efx_sim_draw_mode", "QUADS")
     blend = getattr(scene, "efx_sim_blend", "AUTO")
     hdr_mode = getattr(scene, "efx_sim_hdr_mode", "preserve_hue")
-    # 逐帧读一次存进 _P：`_mesh_affine` 是逐粒子调的，在那里读 Scene 属性等于
-    # 每个粒子过一次 RNA
+    # 逐帧读取，避免逐粒子访问 Scene RNA。
     _P["mesh_rot_space"] = getattr(scene, "efx_sim_mesh_rot_space", "game")
     show_vel = bool(getattr(scene, "efx_sim_show_velocity", False))
     flip_v = bool(getattr(scene, "efx_sim_uv_flip_v", True))
@@ -2174,17 +1793,11 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
 
     right, up = _camera_axes(rv3d)
     view_dir = _view_direction(rv3d)
-    #: 条带的 numpy 快路径常量（仿射矩阵 + 视线）。拿不到 numpy 就是 None，
-    #: `_emit_ribbon` 自动退回纯 Python。
+    #: 条带批量路径常量；无 numpy 时使用 Python 兜底。
     np_ctx = _ribbon_np_ctx(rows, view_dir)
 
     def _order_of(it):
-        """这一项属于哪个 entry → 绘制次序键。子实例（PtLife → Action）属于别的
-        entry，按**它自己**那个 entry 的次序排。
-
-        ⚠ 游戏里子实例究竟按子 entry 的次序排、还是按父粒子的生成时机排，没有实测
-        依据；这里取前者（与文件内的静态次序一致，至少是可预期的）。
-        """
+        """返回渲染项所属 Entry 的绘制次序键。"""
         key = it.extra.get("entry_key")
         if not key:
             return track_order
@@ -2235,8 +1848,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             luma = 0.0 if _texture_alpha_is_usable(tex) else 1.0
         else:
             luma = 1.0 if luma_mode == "on" else 0.0
-        # <0 = 关（走通用的贴图亮度插值），[0,1] = 各自专属的通道遮罩模式；
-        # 两者互斥，同一渲染项不会同时挂两个键（见 simulator.py）。
+        # 两种双层通道模式互斥，关闭时使用通用贴图路径。
         fire_lerp = it.extra.get("rgbfire_lerp")
         fire_lerp = -1.0 if fire_lerp is None else fire_lerp
         water_lerp = it.extra.get("rgbwater_lerp")
@@ -2245,21 +1857,15 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         key = (_order_of(it), mode, tex, (low, gamma, luma), flow_tex, lerp)
         b = buckets.get(key)
         if b is None:
-            # 第 4 条是双层染色的核心色；和 uv 一样只有走贴图 shader 的桶才需要。
-            # 第 5 条是网格的 numpy 分块 [(顶点, 颜色), …]：静态网格整块过同一个矩阵，
-            # 留在 numpy 里到画之前才拼，省掉 tolist（51200 面时那一步占六成时间）。
-            # 第 6/7 条是 flowmap 的局部 UV 与逐粒子位移量，只有流动桶才有。
+            # 贴图桶额外保存核心色、UV、numpy 网格分块及可选 flowmap 数据。
             b = [[], [], ([] if tex else None), ([] if tex else None), [],
                  ([] if flow_tex else None), ([] if flow_tex else None)]
             buckets[key] = b
         return key, b
 
-    #: 这一趟里「(entry, viscon) → 网格三角」的记忆。`_bound_meshes_for` 要遍历
-    #: entry 的属性列表、前面还要 `bpy.data.objects.get`——逐粒子做就是每个粒子一次
-    #: 小扫描，粒子一多就是网格路径的主要固定开销（实测占每粒子 120 µs 里的大半）。
-    #: 同一 entry + 同一 viscon 只查一次。
+    #: 同一 Entry/viscon 的网格几何在本次装配中只解析一次。
     mesh_memo = {}
-    #: entry 名 → 绘制次序键。子实例每帧都要查，缓存一下别逐粒子反查集合
+    #: Entry 名到绘制次序键的本次装配缓存。
     order_memo = {}
     track_order = tr.get("order") or ("", 0)
     mat_images = tr.get("mesh_images") or {}
@@ -2267,18 +1873,11 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     root_flow = flow_images.get(tr["entry_name"], "")
     flow_gain = float(getattr(scene, "efx_sim_flowmap_gain", 1.0))
     luma_mode = getattr(scene, "efx_sim_alpha_source", "auto")
-    #: 折射的预览放大倍数（见 `efx_sim_refraction_gain`）。没贴图那条路在 CPU 侧
-    #: 折进源色，有贴图那条交给 shader，两边都是「乘在混合系数上」。
+    #: 折射预览增益；无贴图和贴图路径都应用它。
     refr_gain = float(getattr(scene, "efx_sim_refraction_gain", 1.0))
 
     def _geom_of(it):
-        """(几何, 贴图名)。贴图来自绑定网格自己的材质——reference mesh 那条链已经把
-        材质和贴图建好了，我们只取用不解析。`use_tex` 关掉时退回纯色桶。
-
-        ⚠ 缓存 key 要带上 viscon：同一 entry 下不同粒子可能因 visconIndexJitter
-        各自摇到不同的组（`me_viscon`，见 behaviors/mesh.py），只按 entry 缓存会
-        让后到的粒子沿用第一个粒子摇到的那组网格，"随机换网格"的效果就没了。
-        """
+        """返回网格几何和贴图；缓存键必须包含 viscon 以保持随机分组。"""
         key = it.extra.get("entry_key") or ""
         viscon = it.extra.get("viscon")
         memo_key = (key, viscon)
@@ -2287,14 +1886,13 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             owner = bpy.data.objects.get(key) or entry
             meshes = _bound_meshes_for(owner, viscon)
             if not meshes:
-                # 没绑 mod3 → 画的是占位方块，面板上要说清楚（方块是对称的，
-                # 看不出旋转对不对，容易被误判成「旋转没实现」）
+                # 无绑定网格时改用占位几何，并记录诊断信息。
                 miss = tr.setdefault("mesh_missing", [])
                 nm = getattr(owner, "name", "") or "?"
                 if nm not in miss:
                     miss.append(nm)
             m0 = meshes[0] if meshes else None
-            # MATERIAL 指定的贴图优先；没有（或没载上）才退回 mod3 自带材质那张
+            # MATERIAL 指定贴图优先于绑定网格材质。
             name = (mat_images.get(key) or _mesh_image_name(m0)) if use_tex else ""
             if name and _gpu_texture(name) is None:
                 name = ""
@@ -2312,24 +1910,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         return tuple((u * su + ou, v * sv + ov) for (u, v) in c)
 
     def _layers_of(it, col, tex=""):
-        """(外缘色, 核心色)：没挂双层染色就两边都用 col，shader 里 mix 退化成恒等。
-
-        折射（乘法）不走双层染色那套——它是给加法/Alpha 的显示变换，套进来会把
-        brightness 归一化掉。折射的源色按有没有贴图分两条：
-
-        * **有贴图** → 原样传，逐纹素的遮罩和淡出都交给 `_refraction_shader`
-          （`mix(1, 贴图×颜色, 覆盖度×alpha)`）。
-        * **没贴图** → 走 FLAT_COLOR，shader 里没法混，只能在这里把 alpha 折进
-          RGB，见 `_multiply_tint`。
-
-        用户实机对拍确认：渲染主体自己的颜色（BILLBOARD3D/PLANE/MESH 的 color 字段，
-        跟 RGBFIRE/RGBWATER 无关）对两层染色是**逐通道相乘的滤镜**，不是叠加的
-        底色——同样两层设红/蓝，主体颜色纯红时红层原样显示、蓝层整个变黑；主体
-        颜色纯蓝则反过来；主体颜色是白/洋红这类两通道都非零的颜色，两层才都保留。
-        `col` 这时已经过 HDR 色调映射，直接乘会跟两层各自的色调映射结果不同量纲，
-        所以改用 `base_tint`（渲染体自己的原始颜色，未色调映射，见 billboard3d.py）
-        跟两层的原始值先乘再一起送去色调映射。
-        """
+        """返回外缘和核心色；折射不使用双层染色，保留其亮度语义。"""
         if it.blend == "MULTIPLY":
             c = col if tex else _multiply_tint(col, refr_gain)
             return c, c
@@ -2362,14 +1943,11 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
              r2[0] * bx + r2[1] * by + r2[2] * bz)
         return _norm(d) or d
 
-    #: 桶 key → (桶, [(渲染项, 外缘色, 核心色, UV 四角), …])。条带不当场展开，
-    #: 攒到这一趟走完再整批过 numpy，见 `_emit_ribbons_np`。
+    #: 条带延后按桶批量展开，避免逐条调用 numpy。
     ribbon_pend = {}
 
     if show_shape:
-        # 生成区域的线框。用的是**模拟器自己**那份读法（见
-        # behaviors/emittershape3d.py::outline），所以框和粒子真正的落点必然一致
-        # ——两边各算一遍迟早会走样。并进速度线那条现成的 LINES 叠加层。
+        # 直接使用模拟器的轮廓计算，避免预览和发射逻辑分叉。
         try:
             pts = tr["sim"].emitter_outline()
         except Exception:
@@ -2385,10 +1963,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         center = _world(it.pos)
         tex_name = _tex_of(it)
         if it.blend == "MULTIPLY":
-            # 折射走乘法：输出 = 背后画面 × (贴图 × 颜色 × brightness)。
-            # ⚠ 这里**不能**过 `_display_color` —— 那是给加法/Alpha 用的 HDR 压缩，
-            #   会把 brightness 归一化掉，而乘法通道正要靠它（实机：白色
-            #   brightness=10 明显提亮背景、改成 1 则面片完全消失）。
+            # 乘法路径不能经过 HDR 映射，否则会丢失 brightness 语义。
             col = tuple(it.color)
         else:
             col = _display_color(it.color, hdr_mode)
@@ -2399,7 +1974,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             edge, core = _layers_of(it, col, tex_name)
             corners = _corners_of(it, tex_name)
             if np_ctx is not None:
-                # 攒着，等这一趟走完再按桶成批算（见 `_emit_ribbons_np`）
+                # 延后到本轮末尾按桶批量展开。
                 pend = ribbon_pend.get(key)
                 if pend is None:
                     pend = ribbon_pend[key] = (b, [])
@@ -2408,21 +1983,18 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                 _emit_ribbon(b[0], b[1], b[2], it, edge, size_mul, _world,
                              view_dir, corners, col2s=b[3], core=core)
         elif kind == "MESH":
-            # 网格用自己的 UV（来自 mod3），我们没收集 → 始终走纯色桶。
-            # ⚠ 绑定网格要按**这一项所属的 entry**查：子实例是别的 entry，
-            # 拿根 entry 的绑定会让所有子特效都画成根的那个网格。
+            # 子实例按其所属 Entry 查询绑定网格。
             geom, tex_name = _geom_of(it)
             _key, (bv, bc, bu, b2, bnp, _lu, _fo) = _bucket_for(it, tex_name)
             edge, core = _layers_of(it, col, tex_name)
             _emit_mesh(bv, bc, bnp, it, edge, size_mul, rows, geom,
                        uvs=bu, col2s=b2, core=core)
         elif draw_mode in ("QUADS", "BOTH"):
-            # it.size 是**游戏单位**（BILLBOARD3D 的 width×scale 一类），和位置同一
-            # 套换算：÷100。size_mul 只是个人工放大镜，默认 1.0 = 照文件里的尺寸画。
+            # 片尺寸与位置同为游戏单位，统一应用坐标换算。
             hw = max(1e-5, size_mul * abs(it.size.x) * _UNIT * 0.5)
             hh = max(1e-5, size_mul * abs(it.size.y) * _UNIT * 0.5)
             if it.axis_u is not None and it.axis_v is not None:
-                # PLANE：固定朝向，用属性给的横/纵轴，不朝相机
+                # PLANE 使用属性轴而非面朝相机。
                 qr, qu = _world_dir(it.axis_u), _world_dir(it.axis_v)
             else:
                 qr, qu = (_spin(right, up, it.rot) if it.rot else (right, up))
@@ -2437,8 +2009,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             if bu is not None:
                 bu.extend(_quad_uvs(corners))
             if blu is not None:
-                # 位移量是**相对这一格**的：strength 0.2 若按整张大图算，一步就跨过
-                # 一格半；按格子算才是「在自己这一帧里推一点点」
+                # flowmap 位移按当前序列格尺寸缩放。
                 us = [c[0] for c in corners]
                 vs = [c[1] for c in corners]
                 off = (flow_amt * (max(us) - min(us)),
@@ -2451,7 +2022,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             point_colors.append(col)
         vel = it.extra.get("vel")
         if show_vel and vel is not None:
-            # 速度是「每帧位移」，直接画一帧的长度太短，乘一个可读的倍数
+            # 速度按可读比例绘制。
             vx, vy, vz = _to_blender(vel)
             k = 8.0
             lines.append(center)
@@ -2462,8 +2033,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         try:
             _emit_ribbons_np(b[4], group, size_mul, np_ctx)
         except Exception:
-            # numpy 那条整组失败就整组退回纯 Python（`_emit_ribbons_np` 保证
-            # 失败时一个分块都没并进桶，不会画出半截）
+            # 批量路径失败时整组回退，避免混入不完整分块。
             for it, edge, core, corners in group:
                 _emit_ribbon(b[0], b[1], b[2], it, edge, size_mul, _world,
                              view_dir, corners, col2s=b[3], core=core)
@@ -2480,11 +2050,7 @@ _DRAW_KNOBS = ("efx_sim_particle_size", "efx_sim_draw_mode", "efx_sim_blend",
 
 
 def _draw_signature(scene, rv3d, trs):
-    """「这一次画的东西和上次一模一样吗」的判据。
-
-    顶点装配只依赖这四样：渲染项的版本号、视角（面片朝相机）、这些旋钮、
-    各 track 的参考矩阵。全都没变就直接重画上次烘好的 batch。
-    """
+    """返回绘制负载缓存签名；任一输入变化均需重新装配顶点。"""
     vm = rv3d.view_matrix
     return (_P["gen"],
             tuple(vm[i][j] for i in range(4) for j in range(4)),
@@ -2493,14 +2059,10 @@ def _draw_signature(scene, rv3d, trs):
 
 
 def _build_payload(scene, rv3d, trs):
-    """收集顶点并**当场烘成 GPUBatch**，返回可反复画的负载。
-
-    烘成 batch 而不是留着顶点列表：`batch_for_shader` 本身在几十万顶点时也要十几
-    毫秒，而视口一帧里可能被重绘好几次（鼠标划过、叠加层刷新），没理由每次都重传。
-    """
+    """装配顶点并创建可复用的 ``GPUBatch`` 绘制负载。"""
     from gpu_extras.batch import batch_for_shader
 
-    buckets = {}          # (次序, 混合模式, 贴图名, alpha 修正, 流动贴图, (fireLerp, waterLerp)) -> [顶点, 颜色, UV|None, 核心色|None, numpy 分块]
+    buckets = {}          # 按绘制状态分组的顶点数据。
     points, point_colors, lines, line_colors = [], [], [], []
     for tr in trs:
         _collect_track(tr, scene, rv3d, buckets, points, point_colors,
@@ -2512,12 +2074,7 @@ def _build_payload(scene, rv3d, trs):
     tex_shader = _tex_shader()
     flow_shader = _flow_shader()
 
-    # 先 Alpha 再 Add：加法混合的东西通常是最亮的高光，压在最后一层
-    # 绘制顺序 = 桶 key 的次序（entry 在文件里的排布），见 `entry_order`。
-    # 'alpha_first' 退回改动前的「先所有 Alpha 再所有 Add」。
-    # ⚠ 两者不等价：加法之间可交换，但**加法与 Alpha 之间不可交换**——一个 Alpha
-    # 面片画在加法之后会把已经加上去的光按 (1-a) 衰减掉。要照实机的覆盖关系来，
-    # 就得让这个启发式让位。
+    # Alpha 与 Add 不可交换；默认保留 Entry 排序以决定重叠覆盖关系。
     if getattr(scene, "efx_sim_draw_order", "entry") == "entry":
         order = sorted(buckets.keys())
     else:
@@ -2536,9 +2093,7 @@ def _build_payload(scene, rv3d, trs):
         if bnp:
             bv, bc, bu, b2 = _join_chunks(bv, bc, bu, b2, bnp)
         tex = _gpu_texture(tex_name) if (bu is not None) else None
-        # ⚠ 折射排在 flowmap 前面：折射换掉的是整条输出通道，flowmap 只推 UV，
-        # 两者撞车时丢掉后者损失小。语料里同时有这两样的 entry 只占 3.4%，
-        # 核心层会在那些 entry 上如实记一条 note。
+        # 折射替换完整输出通道，优先于只偏移 UV 的 flowmap。
         ftex = (_gpu_texture(flow_name)
                 if (flow_name and blu is not None and mode != "MULTIPLY") else None)
         if ftex is not None and tex is not None and flow_shader is not None:
@@ -2549,9 +2104,7 @@ def _build_payload(scene, rv3d, trs):
                                            "flowoff": bfo})))
             continue
         if mode == "MULTIPLY":
-            # 折射：源色已经在 `_multiply_tint` 里折好了，shader 只负责遮罩。
-            # 没贴图（或 shader 建不出来）就整片乘——实测样本正是这一档。
-            # 折射不走双层通道混合，lerp 恒 None。
+            # 折射不使用双层通道混合；贴图 shader 不可用时回退整片乘法。
             if tex is not None and refr_shader is not None:
                 tris.append((mode, refr_shader, tex, (fix, refr_param), None,
                              batch_for_shader(refr_shader, "TRIS",
@@ -2580,7 +2133,7 @@ def _build_payload(scene, rv3d, trs):
 
 
 def _draw():
-    """POST_VIEW draw handler。**不改任何状态**，只画各 track 的 items。"""
+    """POST_VIEW draw handler；仅绘制现有渲染项。"""
     if not is_active():
         return
     trs = [t for t in _P["tracks"] if t.get("items")]
@@ -2600,9 +2153,7 @@ def _draw():
         return
     scene = context.scene
 
-    # 逐 region 缓存：分屏时两个视口视角不同，各存各的。
-    # ⚠ 键要用 `as_pointer()`（底层 C 地址）——`id()` 拿到的是这一次访问临时生成的
-    # Python 包装对象，每次都不一样，缓存永远命中不了。
+    # 分屏视图独立缓存；优先稳定的底层指针而非临时 Python 包装对象。
     try:
         ck = rv3d.as_pointer()
     except Exception:
@@ -2614,7 +2165,7 @@ def _draw():
         if payload is None:
             return
         if len(_P["draw_cache"]) > 4:
-            _P["draw_cache"].clear()    # 换布局会留下死 region，别无限长
+            _P["draw_cache"].clear()    # 释放已失效区域缓存。
         _P["draw_cache"][ck] = (sig, payload)
     else:
         payload = got[1]
@@ -2623,30 +2174,27 @@ def _draw():
     blend = getattr(scene, "efx_sim_blend", "AUTO")
 
     gpu.state.depth_test_set("LESS_EQUAL")
-    gpu.state.depth_mask_set(False)      # 粒子之间不互相遮挡，但仍被场景几何遮挡
+    gpu.state.depth_mask_set(False)      # 粒子间不写深度，仍受场景深度测试约束。
     try:
         for mode, shader, tex, fix, lerp, batch in tris:
             gpu.state.blend_set(mode)
             if tex is not None:
                 shader.bind()
                 if isinstance(tex, tuple):
-                    # flowmap：主图 + 流动图两个采样器
+                    # flowmap 使用主图与流动图两个采样器。
                     shader.uniform_sampler("image", tex[0])
                     shader.uniform_sampler("flowTex", tex[1])
                 else:
                     shader.uniform_sampler("image", tex)
                 if isinstance(fix, tuple) and len(fix) == 2:
-                    # 折射：(alphaFix, refrParam)
+                    # 折射参数：(alphaFix, refrParam)。
                     shader.uniform_float("alphaFix", fix[0])
                     shader.uniform_float("refrParam", fix[1])
                 elif fix is not None:
-                    # (lowPass, contrast_gamma, lumaAsAlpha)，中性值 (0, 1, 0)
+                    # (lowPass, contrast_gamma, lumaAsAlpha)。
                     shader.uniform_float("alphaFix", fix)
                     if lerp is not None:
-                        # (fireLerp, waterLerp)：<0 = 走通用贴图亮度插值，[0,1] =
-                        # 对应块专属的通道遮罩模式；每次 bind 都要两个都设，同一个
-                        # shader 程序前一次画的是别的桶时会把值留在状态里，不重设
-                        # 会漏到下一个桶
+                        # 每次绑定均设置两个值，避免前一桶的 shader 状态泄漏。
                         shader.uniform_float("fireLerp", lerp[0])
                         shader.uniform_float("waterLerp", lerp[1])
             batch.draw(shader)
@@ -2658,7 +2206,7 @@ def _draw():
                 getattr(scene, "efx_sim_point_px", 4))))
             pt.draw(flat)
         if ln is not None:
-            gpu.state.blend_set("ALPHA")     # 速度线是调试叠加层，别被加法混合冲白
+            gpu.state.blend_set("ALPHA")     # 速度线保持可读的调试叠加层。
             ln.draw(flat)
     except Exception:
         pass
@@ -2669,9 +2217,7 @@ def _draw():
 
 
 
-#: 本模块注册过的 draw handler。模块级列表即可——不像 uvc_preview 那样需要「跨热
-#: 重载按名清理」，因为本模块不往场景里放任何东西，重载后最坏只是叠加层不再刷新，
-#: unregister() 会把它们摘干净。
+#: 当前模块注册的 draw handler。
 _HANDLERS = []
 
 
@@ -2708,25 +2254,19 @@ def _redraw_viewports():
 # 时钟
 # ─────────────────────────────────────────────────────────────────────────────
 
-#: 重建后最多快进多少帧。超过就从头播——纯粹是防手滑设了个巨大的 duration
-#: 之后每改一个字段都卡一下；正常值（百来帧）远在这个上限之下。
+#: 重建时允许恢复的最大帧数，避免编辑触发无界快进。
 _REBUILD_CATCHUP_MAX = 600
 
 
 def _rebuild_if_dirty(scene):
-    """属性被编辑过 → 用新参数重建全部 track，并**快进回原来那一帧**。
-
-    不快进的话，拖一下滑块画面就跳回第 0 帧，调参时根本没法比较前后差异。
-    快进是划算的：整个模拟就是个 for 循环，几百帧 × 几百粒子是毫秒级
-    （实测 600 粒子 2.1 ms/帧），而且确定性重放保证快进结果与连续播放一致。
-    """
+    """以新参数重建脏 track，并在可控范围内恢复原播放帧。"""
     if not _P["dirty"]:
         return
     _P["dirty"] = False
-    _P["needs_items"] = True    # 参数变了，即使这一 tick 不走帧也得重画
-    _clear_tex_cache()          # 参考图可能被换了
-    _clear_material_cache()     # MATERIAL 的贴图路径也可能被改过
-    _clear_flow_cache()         # flowmap 的路径同理
+    _P["needs_items"] = True
+    _clear_tex_cache()
+    _clear_material_cache()
+    _clear_flow_cache()
     alive = []
     for tr in _P["tracks"]:
         if rebuild_track(tr, scene, keep_frame=True):
@@ -2737,11 +2277,7 @@ def _rebuild_if_dirty(scene):
 
 
 def _resolve_duration(scene, sim=None):
-    """「播放一次」多长。0 = 自动（SPAWN 三态里没有停止条件，见 sim/behaviors/spawn.py）。
-
-    多 track 时取**最长**的那个：短的那些循环几轮等长的跑完，比谁先结束谁就
-    整体重置更符合「同时看几个效果」的意图。
-    """
+    """解析单次播放时长；自动模式下多 track 取最长建议值。"""
     d = int(getattr(scene, "efx_sim_duration", 0))
     if d > 0:
         return d
@@ -2766,17 +2302,13 @@ def _reset_all():
 
 
 def _view_context():
-    """给核心用的相机信息。BILLBOARD3D 要靠它决定自旋的哪一轴变成屏幕自转。
-
-    `_draw` 每帧把视线方向缓存进 `_P["cam_fwd"]`（那里才拿得到 region_data；
-    构建渲染项是在定时器里做的，上下文里没有视图）。还没画过第一帧时退回 game +Z。
-    """
+    """将 draw handler 缓存的视线转换为核心模拟所用的 ViewContext。"""
     from ..efx_format.sim.state import ViewContext, Vec3
 
     fwd = _P.get("cam_fwd")
     if not fwd:
         return ViewContext()
-    # Blender 世界方向 → 游戏方向（`_axis_swap` 的逆，方向不换单位）
+    # Blender 世界方向转为游戏方向，不应用单位缩放。
     return ViewContext(cam_forward=Vec3(fwd[0], fwd[2], -fwd[1]))
 
 
@@ -2797,12 +2329,7 @@ def _rebuild_items():
 
 
 def _tick(scene):
-    """一次定时器滴答：按墙钟推进整数帧（所有 track 共用这一个时钟 → 天然同步）。
-
-    倍速不靠改定时器间隔（那会丢整数帧语义），靠浮点累加器：
-    0.25 倍速 = 每 4 个 tick 走一帧，2 倍速 = 每 tick 走两帧，
-    逐帧乘法递推在任何倍速下都精确。
-    """
+    """以共享的墙钟累加器推进整数模拟帧。"""
     _rebuild_if_dirty(scene)
     if not _P["tracks"]:
         return
@@ -2812,7 +2339,7 @@ def _tick(scene):
     dt = now - _P["last_t"]
     _P["last_t"] = now
     if dt <= 0.0 or dt > 0.5:
-        dt = min(max(dt, 0.0), 1.0 / 30.0)   # 卡顿/切后台后不要一次补几百帧
+        dt = min(max(dt, 0.0), 1.0 / 30.0)   # 避免恢复后单次补帧过多。
 
     cfg = _P["tracks"][0]["sim"].config
     fps = float(getattr(cfg, "fps", 60))
@@ -2820,7 +2347,7 @@ def _tick(scene):
     _P["acc"] += dt * fps * speed
 
     steps = 0
-    while _P["acc"] >= 1.0 and steps < 240:   # 单 tick 步数上限，防卡死
+    while _P["acc"] >= 1.0 and steps < 240:   # 单 tick 步数上限。
         for tr in _P["tracks"]:
             tr["sim"].step()
         _P["acc"] -= 1.0
@@ -2836,14 +2363,9 @@ def _tick(scene):
             _gc_hold(False)
             break
 
-    # ⚠ 只有真走了帧（或参数被改过）才重建渲染项并请求重绘。定时器是固定
-    # 1/120 s 的高频 tick，倍速低的时候大多数 tick 根本没推进——照旧无脑重建
-    # 等于把最贵的两段（build_render + 顶点装配）白跑四五遍，而画面一模一样。
-    # 这也正是「把倍速调到 0.5 却一点不见变快」的原因。
+    # 仅在模拟或参数状态变化后重建渲染项。
     if steps or _P["needs_items"]:
-        # 抽帧显示（efx_sim_render_every）：模拟照样逐帧走，只是攒够 N 帧才重建
-        # 一次画面。重文件里把它开到 2~3，时序仍然精确，肉眼只觉得帧率低一点。
-        # 参数改过 / 暂停中要立刻看到结果，这两种情况不抽。
+        # 抽帧只降低显示更新频率，不改变模拟步进；参数变化和暂停时立即更新。
         every = max(1, int(getattr(scene, "efx_sim_render_every", 1)))
         _P["skipped"] = 0 if _P["needs_items"] else _P["skipped"] + steps
         if _P["needs_items"] or not _P["playing"] or _P["skipped"] >= every:
@@ -2866,7 +2388,7 @@ class EFX_OT_sim_play(Operator):
 
     @classmethod
     def poll(cls, context):
-        # 点中根集合时活动对象未必是 entry（甚至可能没有），那条路照样能播整个文件
+        # 选中根集合时无需活动 Entry。
         if is_active():
             return False
         return (_resolve_entry(context.active_object) is not None
@@ -2900,7 +2422,7 @@ class EFX_OT_sim_play(Operator):
 
         _add_handler()
         wm = context.window_manager
-        # 固定高频 tick；倍速由累加器处理，不改这个间隔
+        # tick 间隔固定，倍速由累加器处理。
         _P["timer"] = wm.event_timer_add(1.0 / 120.0, window=context.window)
         wm.modal_handler_add(self)
 
@@ -2918,13 +2440,12 @@ class EFX_OT_sim_play(Operator):
             if _P["playing"]:
                 _tick(context.scene)
             elif _P["dirty"]:
-                # 暂停中改字段同样要立刻看到结果。不能直接调 `_tick`——它会按墙钟
-                # 往累加器里加时间，暂停的语义就没了。这里只重建、不走帧。
+                # 暂停时仅重建显示，不能通过 tick 推进模拟。
                 _rebuild_if_dirty(context.scene)
                 _rebuild_items()
                 _redraw_viewports()
                 _P["last_t"] = time.perf_counter()
-        return {"PASS_THROUGH"}       # 不吞事件：播放时照样能转视角、改参数
+        return {"PASS_THROUGH"}       # 保留视图和编辑交互。
 
     def _finish(self, context):
         wm = context.window_manager
@@ -2960,7 +2481,7 @@ class EFX_OT_sim_stop(Operator):
         return is_active()
 
     def execute(self, context):
-        # 只摘 handler：modal 下一个 tick 看到 is_active()==False 就自己收尾
+        # modal 会在下一个 tick 完成剩余清理。
         _remove_handlers()
         _P["playing"] = False
         _restore_all_bone_follow()
@@ -2986,7 +2507,7 @@ class EFX_OT_sim_pause(Operator):
     def execute(self, context):
         _P["playing"] = not _P["playing"]
         _P["last_t"] = time.perf_counter()
-        # 暂停是回收垃圾的好时机：这一下的开销用户感觉不到，继续播时再关掉
+        # 暂停时恢复 GC，继续播放时再暂存其状态。
         _gc_hold(_P["playing"])
         return {"FINISHED"}
 
@@ -3003,7 +2524,7 @@ class EFX_OT_sim_restart(Operator):
         return is_active()
 
     def execute(self, context):
-        # 直接重建，不走 _rebuild_if_dirty 的「快进回原帧」——重放的语义就是回到开头
+        # 重放从第 0 帧重建，不恢复原播放位置。
         _clear_tex_cache()
         _P["mesh_cache"] = {}
         alive = []
@@ -3055,10 +2576,7 @@ class EFX_OT_sim_step(Operator):
 
 
 def _uvs_state_info(entry_obj):
-    """没在播放时，面板也要能说清帧表会从哪来（不建资源，只看属性）。
-
-    走带缓存的宿主查找：面板 draw 是高频路径，不能每次重绘扫一遍全场景对象。
-    """
+    """为面板读取 UVSEQUENCE 信息，不构建模拟资源。"""
     if entry_obj is None:
         return None
     try:
@@ -3068,11 +2586,7 @@ def _uvs_state_info(entry_obj):
 
 
 def _uvs_cell_readout():
-    """(帧号, 总帧数, sequenceNo)——各 track 最近一次 build_render 里第一个带序列帧的项。
-
-    贴图已经画出来了，但这个读数仍然有用：格号是唯一能**数**着验证帧推进对不对的
-    东西（贴图看着对不对是主观的，格号能跟游戏逐帧对拍）。
-    """
+    """返回首个序列帧渲染项的当前格读数，供面板显示。"""
     for tr in _P["tracks"]:
         for it in tr.get("items") or ():
             n = it.extra.get("uvs_n")
@@ -3090,13 +2604,12 @@ def _agg_status():
     frame = trs[0]["sim"].frame
     alive = sum(len(tr["sim"].particles) for tr in trs)
     spawned = sum(tr["sim"].em.spawned_total for tr in trs)
-    # SimScene 才有 instance_count；根实例自己不算「子特效」
+    # 根实例不计入子实例数。
     children = sum(max(0, getattr(tr["sim"], "instance_count", 1) - 1) for tr in trs)
     return (frame, alive, spawned, len(trs), children)
 
 class EFX_PT_sim(Panel):
-    """粒子模拟播放器。独立于 EFX_PT_mesh_drive 那一族——那边是「给绑定网格挂驱动」
-    模型，这边是「播放器」模型，混在一起只会互相干扰。"""
+    """粒子模拟播放器面板。"""
 
     bl_idname = "EFX_PT_sim"
     bl_space_type = "VIEW_3D"
@@ -3118,9 +2631,7 @@ class EFX_PT_sim(Panel):
             layout.label(text=T("sim.pick_entry"), icon="INFO")
             return
 
-        # ── 播放范围：点中根集合时才有意义（选了具体 entry 就是播那些，没有"范围"
-        # 一说）。"All" = 原行为（Direct Trigger 那批）；否则播指定 Subselect 的
-        # members，即"这个装备状态/这套子选择实际会用到的那些特效"。
+        # 仅根集合播放时显示范围选择器。
         if root is not None and not entry:
             row = layout.row()
             row.enabled = not active
@@ -3151,7 +2662,7 @@ class EFX_PT_sim(Panel):
             if children:
                 col.label(text=T("sim.children").format(children), icon="OUTLINER_OB_GROUP_INSTANCE")
             if n_tracks > 1:
-                # 多选同时模拟：列出在播的是哪几个，别让人猜
+                # 多 track 时显示当前播放对象。
                 col.label(text=T("sim.playing_n").format(n_tracks), icon="SEQUENCE")
                 sub = col.column(align=True)
                 sub.scale_y = 0.7
@@ -3162,7 +2673,7 @@ class EFX_PT_sim(Panel):
             if _P["error"]:
                 col.label(text=_P["error"], icon="ERROR")
 
-        # ── MESH 没绑 mod3：画的是占位方块，说清楚 ───────────────────────────
+        # ── 未绑定网格诊断 ───────────────────────────────────────────────────
         missing = []
         for tr in trs:
             for nm in (tr.get("mesh_missing") or ()):
@@ -3176,7 +2687,7 @@ class EFX_PT_sim(Panel):
             for nm in missing[:6]:
                 col.label(text="· " + nm)
 
-        # ── 未模拟的属性：如实列出，预览不静默撒谎 ───────────────────────────
+        # ── 未支持属性诊断 ───────────────────────────────────────────────────
         unsup = []
         for tr in trs:
             for _h, name in tr["sim"].unsupported:
@@ -3194,9 +2705,7 @@ class EFX_PT_sim(Panel):
 
 
 class _SimSubPanel(Panel):
-    """播放器的可收起分组。父面板 `EFX_PT_sim` 里只留走带 + 读数 + 诊断，
-    参数按「多久碰一次」分组塞进子面板——Blender 的子面板自带折叠状态记忆，
-    跟 Calibration 用的是同一套（`bl_parent_id` + `bl_options`）。"""
+    """模拟播放器的可折叠子面板基类。"""
 
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -3205,14 +2714,13 @@ class _SimSubPanel(Panel):
 
     @classmethod
     def poll(cls, context):
-        # 父面板在「没选中 entry、没点中根集合、也没在播」时只画一句提示就 return，
-        # 子面板要跟着一起消失，否则会剩下几个空壳标题。
+        # 与父面板的可见条件保持一致。
         return (is_active() or _resolve_entry(context.active_object) is not None
                 or _active_root_collection(context) is not None)
 
 
 class EFX_PT_sim_playback(_SimSubPanel):
-    """调得最勤的一组：循环方式/倍速/时长/种子 + 挥砍预览。默认展开。"""
+    """播放和挥砍预览设置。"""
 
     bl_idname = "EFX_PT_sim_playback"
     bl_label = "Playback"
@@ -3228,7 +2736,7 @@ class EFX_PT_sim_playback(_SimSubPanel):
         col.prop(scene, "efx_sim_duration")
         col.prop(scene, "efx_sim_seed")
 
-        # 挥砍预览：没有骨骼动画时，给 RIBBON/RIBBONBLADE 一点轨迹可画
+        # 挥砍预览为条带提供宿主轨迹。
         box = layout.box()
         box.label(text=T("sim.swing"), icon="CON_ROTLIKE")
         col = box.column(align=True)
@@ -3241,7 +2749,7 @@ class EFX_PT_sim_playback(_SimSubPanel):
 
 
 class EFX_PT_sim_display(_SimSubPanel):
-    """设一次就不大动的一组：显示 / 性能 / 序列帧读数。默认收起。"""
+    """显示、性能和序列帧读数设置。"""
 
     bl_idname = "EFX_PT_sim_display"
     bl_label = "Display & Performance"
@@ -3262,7 +2770,7 @@ class EFX_PT_sim_display(_SimSubPanel):
         col.prop(scene, "efx_sim_particle_size")
         if getattr(scene, "efx_sim_draw_mode", "QUADS") in ("POINTS", "BOTH"):
             col.prop(scene, "efx_sim_point_px")
-        # 独立叠加层：不用播放、只画选中的那几个（见 es3d_overlay.py）
+        # 独立叠加层可在不播放时显示选中项。
         from . import es3d_overlay as _es3do
         _es3do.draw_button(layout, context)
         col = layout.column(align=True)
@@ -3280,7 +2788,7 @@ class EFX_PT_sim_display(_SimSubPanel):
         col.prop(scene, "efx_sim_particle_budget")
         col.prop(scene, "efx_sim_render_every")
 
-        # ── 序列帧：帧表来源 + 现在放到第几格 ────────────────────────────────
+        # ── 序列帧读数 ──────────────────────────────────────────────────────
         uvs = (trs[0].get("uvs") if trs else None) if active             else _uvs_state_info(entry)
         if uvs is None:
             return
@@ -3300,19 +2808,14 @@ class EFX_PT_sim_display(_SimSubPanel):
             col.label(text=T("sim.uvs_cell").format(cell[0] + 1, cell[1], cell[2]))
         img = trs[0].get("image") if trs else None
         if active and not img:
-            # 载了 .uvs 但没绑图 → 画出来仍然是纯色片，说清楚为什么
+            # 已载入 UVS 但没有绑定贴图时显示诊断。
             col.label(text=T("sim.uvs_noimage"), icon="INFO")
         if not uvs["loaded"]:
             box.prop(scene, "efx_sim_uvs_grid")
 
 
 class EFX_PT_sim_unknowns(Panel):
-    """待标定开关。
-
-    这些不是「偏好设置」，是**还没实测确定的语义**。每一项都对应
-    efx_format/sim/config.py::UNKNOWNS 里的一条。标定方式就是切开关对拍，
-    定下来之后把 sim/config.py 的默认值改掉。
-    """
+    """模拟器行为的校准开关。"""
 
     bl_idname = "EFX_PT_sim_unknowns"
     bl_parent_id = "EFX_PT_sim"
@@ -3329,11 +2832,7 @@ class EFX_PT_sim_unknowns(Panel):
         layout.label(text=T("sim.calib_hint"), icon="INFO")
         col = layout.column(align=True)
         col.prop(scene, "efx_sim_jitter_mode")
-        # efx_sim_es3d_range / efx_sim_t3d_vel_unit：不再列在这里——两条各自的
-        # UNKNOWNS 描述都直接写了「另一个选项与实机对不上」（es3d_range_mode 的
-        # minmax、t3d_velocity_unit 的 per_frame，见 config.py），不是「两个都说得
-        # 通，等实测」那类真正待标定项。开关本身还留着（默认值已经是 shell /
-        # per_second），只是没必要再占 Calibration 面板的位置。
+        # 已有稳定默认值的开关不在校准面板重复显示。
         col.prop(scene, "efx_sim_spawn_jitter")
         col.prop(scene, "efx_sim_t3d_rot_sign")
         col.prop(scene, "efx_sim_material_slot")
@@ -3355,14 +2854,7 @@ class EFX_PT_sim_unknowns(Panel):
         col.prop(scene, "efx_sim_age_during_delay")
         col.prop(scene, "efx_sim_ribbon_length")
         col.prop(scene, "efx_sim_ribbon_rigid_dir")
-        # HOMING 的其余开关（转弯重定轴 / 速度爬升曲线与圈数 / 力场倍率读法与
-        # 恢复帧数 / 竖直压扁 axial_falloff）2026-09-12 已逐项拿游戏实拍标定完，
-        # 不再占 Calibration 的位置——Scene 属性与 SimConfig 开关都还在，要对照
-        # 旧行为直接在代码里改默认值即可。axis_update / retarget / axial_falloff
-        # 在纯追踪默认下已经**没有意义**（每帧按当前几何重算转向，那几个结构性
-        # 缺口本来就不存在），一并撤出面板。这里只留两项：HOMING 的驱动方式
-        # （compose，默认纯追踪，留 add/override 对照被排除的两种读法），以及
-        # lateral_tilt —— 它现在只管「穿过目标那一瞬间往哪边拐」这个退化点。
+        # 仅保留仍需校准的 HOMING 选项。
         col.prop(scene, "efx_sim_homing_compose")
         col.prop(scene, "efx_sim_homing_lateral_tilt")
         col.prop(scene, "efx_sim_parent_clock")
@@ -3391,7 +2883,7 @@ _CLASSES = (
 
 
 def _on_knob_changed(self, context):
-    """标定开关变了 → 标脏，下个 tick 用新配置重建。"""
+    """标记播放状态为脏，以便下一个 tick 重建。"""
     _P["dirty"] = True
 
 
@@ -3423,7 +2915,7 @@ def register():
         name="Seed", default=0, update=_on_knob_changed,
         description="Base random seed; same seed replays identically")
 
-    # ── 挥砍预览：RIBBON/RIBBONBLADE 靠宿主位移画轨迹，没有骨骼动画时用这个代打 ──
+    # ── 挥砍预览 ────────────────────────────────────────────────────────────
     S.efx_sim_swing_enable = BoolProperty(
         name="Simulate Swing", default=False,
         description="Sweep the entry back and forth on a synthetic arc while playing "
@@ -3470,7 +2962,7 @@ def register():
                     "(BILLBOARD3D width/height x scale, in game units). 1.0 = as authored")
     S.efx_sim_point_px = IntProperty(name="Point px", default=4, min=1, max=32)
 
-    # ── 性能（预览降载；只影响画面精细度与刷新率，不碰文件）──────────────────
+    # ── 预览性能 ────────────────────────────────────────────────────────────
     S.efx_sim_ribbon_subdiv_max = IntProperty(
         name="Ribbon detail cap", default=0, min=0, soft_max=64,
         update=_on_knob_changed,
@@ -3510,15 +3002,14 @@ def register():
                     "downwards while the GPU samples row 0 at the bottom. Turn it off "
                     "if the artwork shows up upside down")
 
-    # ── 待标定（见 efx_format/sim/config.py::UNKNOWNS）───────────────────────
+    # ── 校准 ────────────────────────────────────────────────────────────────
     S.efx_sim_jitter_mode = EnumProperty(
         name="Jitter", update=_on_knob_changed,
         items=[("onesided", "base + U[0, a]", "Confirmed: jitter is added on top of the static value"),
                ("symmetric", "base + U[-a, a]", "Symmetric around the static value"),
                ("gaussian", "base + N(0, a/2)", "Gaussian instead of uniform")],
         default="onesided")
-    # ⚠ 刻意换了属性名（原 efx_sim_es3d_range_mode）：老名字在会话/.blend 里存着
-    #   "minmax" 这个**仍然合法**的旧值，不换名就会把用户静默钉在被推翻的读法上。
+    # 新属性名避免旧场景保存的废弃值覆盖当前默认行为。
     S.efx_sim_hdr_mode = EnumProperty(
         name="Over-bright colours",
         items=[("preserve_hue", "Keep hue",
@@ -3851,12 +3342,12 @@ def unregister():
         "efx_sim_ribbon_rigid_dir",
         "efx_sim_parent_clock", "efx_sim_color_range", "efx_sim_t3d_vel_unit",
         "efx_sim_spawn_jitter", "efx_sim_t3d_rot_sign", "efx_sim_rgb_tint", "efx_sim_mesh_rot_space",
-        "efx_sim_mesh_rot",   # 撤掉的旧名（存过 local），留着清场
+        "efx_sim_mesh_rot",   # 清理旧场景遗留属性。
         "efx_sim_draw_order", "efx_sim_material_slot",
         "efx_sim_alpha_source",
-        "efx_sim_luma_alpha",   # 撤掉的旧名（存过 mesh/all），留着清场
+        "efx_sim_luma_alpha",   # 清理旧场景遗留属性。
         "efx_sim_hdr_mode",
-        "efx_sim_hdr",   # 撤掉的旧名（存过已删除的 auto），留着清场
+        "efx_sim_hdr",   # 清理旧场景遗留属性。
         "efx_sim_ribbon_subdiv_max", "efx_sim_render_every",
         "efx_sim_particle_budget",
         "efx_sim_refraction_tex", "efx_sim_refraction_gain",
@@ -3867,7 +3358,7 @@ def unregister():
         "efx_sim_homing_ff_scale",
         "efx_sim_homing_ff_recover", "efx_sim_homing_converge",
         "efx_sim_homing_ramp_turns",
-        "efx_sim_fps",   # 已撤掉的开关，留在这里是为了从老场景里清掉
+        "efx_sim_fps",   # 清理旧场景遗留属性。
     ):
         if hasattr(bpy.types.Scene, attr):
             delattr(bpy.types.Scene, attr)

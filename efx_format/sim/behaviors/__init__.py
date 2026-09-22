@@ -1,36 +1,17 @@
 # -*- coding: utf-8 -*-
-"""
-efx_format/sim/behaviors/  —  逐属性的模拟行为
+"""逐属性的模拟行为。
 
-**加一个属性 = 新建一个文件 + `@register(HASH)` + 在下面加一行 import。**
-不需要改 registry / simulator / stages 里的任何东西。
+新增一个属性只需新建一个文件、以 `@register(HASH)` 注册，并在下方增加一行 import，无需修改
+registry / simulator / stages。
 
-已实现
-------
-T1（生成与运动）  SPAWN / LIFE / EMITTERSHAPE3D / VELOCITY3D / HOMING（径直飞向目标→
-                  绕目标转圈，FORCE 阶段只写速度，位移仍由 VELOCITY3D 积分）
-T2（外观与发射器）TRANSFORM3D / SCALEANIM / ROTATEANIM / BILLBOARD3D
-T3（其余渲染主体）DUMMY / PLANE / RIBBON / RIBBONBLADE / MESH
-T3（渲染修饰）    UVSEQUENCE（序列帧；帧表由宿主经 SimResources 提供）
-T4（绑定关系）    PARENTOPTIONS（只做「跟随发射器」+「停止追踪帧数」，其余如实 note）
-T4（联动）        PTLIFE（粒子在某个生命阶段触发 ACTION → 子实例，见 sim/scene.py）
-T4（联动）        PTCOLLISION（落地即停+可选单次触发 ACTION，不做真正反弹，见 ptcollision.py 头注）
-T4（运动）        NOISE（绕生成点的两组独立匀速圆周运动叠加，CONSTRAIN 阶段覆写 p.pos，
-                  见 noise.py 头注）
-T5（染色）        RGBFIRE / RGBWATER（两层颜色 + 各自的生命期时序块）
-T5（渲染修饰）    ALPHACORRECTION（逐纹素的 alpha 阈值/伽马，真正的处理在 shader）
-T5（渲染修饰）    REFRACTION（折射层 = 对背后画面做乘法；只做 pixelNormalOffset=0 那一档）
-T5（渲染修饰）    flowmap 流动贴图（`_flowmap.py`，**共用函数不是 behavior**——八件套挂在
-                  BILLBOARD3D / PLANE / BILLBOARD2D 自己身上，渲染体各调一次）
-T5（渲染修饰）    UVCONTROL（UV 滚动/缩放，公式与 uvc_preview.py 同一套）
+未实现的属性不会被静默跳过：registry 将其记入 `em.unsupported`，由 UI 列出该 entry 中未模拟的
+属性数量。
 
-刻意不做：STRAINRIBBON / LIGHTNING —— 用户确认极少用到，且字段语义几乎全未知，
-做出来也只是好看的猜测。它们照常走「未模拟」兜底，如实列在面板上。
-
-未实现的属性不是「不支持」：registry 会把它们记进 `em.unsupported`，UI 上列出
-「本 entry 有 N 个未模拟属性」，预览不静默撒谎。
-
-约束（CLAUDE.md）：纯 Python，禁 import bpy；语法兼容 3.10。
+维护约束：
+- STRAINRIBBON 与 LIGHTNING 不予实现，按未模拟属性处理。其字段语义几乎全部未知，实现结果只能
+  是猜测。
+- `_flowmap.py` 是共用函数模块，不是 behavior，没有 `@register`。flowmap 字段属于
+  BILLBOARD3D / PLANE / BILLBOARD2D，由各渲染体分别调用。
 """
 
 from . import alphacorrection  # noqa: F401

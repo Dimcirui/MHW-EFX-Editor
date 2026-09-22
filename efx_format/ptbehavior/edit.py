@@ -1,12 +1,7 @@
-"""
-efx_format/ptbehavior/edit.py  —  PTBEHAVIOR 稀疏覆盖的增删编辑核心
+"""编辑 PTBEHAVIOR 的稀疏参数覆盖。
 
-PTBEHAVIOR 是类型化稀疏覆盖（见 categories/catalog 与 memory ptbehavior-is-sparse-override）：
-每个 b_type 一张固定有序的属性表，实例只存被覆盖的属性子集（保持子序列）。本模块在
-unpack_ptbehavior 产出的 values dict 上做增删覆盖项，再交给 pack_ptbehavior 还原字节。
-
-不变量：params 始终是合并目录（catalog + dti_extra）里该 b_type 顺序的子序列；每个 key 至多一项。
-新增覆盖项按规范顺序插入；const0 取同块现有项（= jamcrc(b_type)），空块时用 jamcrc 算。
+维护约束：params 必须是对应 b_type 合并目录的有序子序列，每个 key 至多一次；新增项
+按目录顺序插入，const0 复用已有值或由 b_type 计算。
 """
 
 import zlib
@@ -69,7 +64,7 @@ def addable_catalog(values: dict):
             if (k & 0xFFFFFFFF) not in have]
 
 
-# ── 各 value_type t 的默认值（新增覆盖项时填零/空，用户再编辑）─────────────────
+# 新增覆盖项的默认字段。
 def _default_param_fields(t: int, key: int = 0) -> dict:
     if t == 0x03:
         return {'NULL': 0}
@@ -84,8 +79,7 @@ def _default_param_fields(t: int, key: int = 0) -> dict:
     if t == 0x14:
         return {'unkn1': [0.0, 0.0, 0.0]}
     if t == 0x15:
-        # 颜色型（mColor）第 4 分量是 alpha，全不透明起步；语料里它几乎恒为 1.0，
-        # 给 0 等于新加的覆盖项一上来就全透明。
+        # 颜色参数的第四分量为 alpha，默认不透明。
         from .names import is_color_param
         a = 1.0 if is_color_param(key) else 0.0
         return {'unkn0': 0.0, 'unkn1': 0.0, 'unkn2': 0.0, 'unkn3': a}
@@ -119,11 +113,11 @@ def add_override(values: dict, key: int) -> bool:
     if key not in cat:
         return False
     t = cat[key]
-    # unkn/const0 存有符号 int32（与 unpack_ptbehavior 输出、pack 的 '<i' 一致）
+    # unkn 与 const0 以有符号 int32 存储。
     param = {'unkn': _to_signed32(key), 'const0': _to_signed32(_const0_for(values)), 't': t}
     param.update(_default_param_fields(t, key))
 
-    # 按规范顺序找插入位置：第一个 canonical_index > key 的现有项之前
+    # 在首个规范顺序位于 key 之后的现有项之前插入。
     idx = _canonical_index(values)
     key_ci = idx.get(key, 1 << 30)
     params = values['params']

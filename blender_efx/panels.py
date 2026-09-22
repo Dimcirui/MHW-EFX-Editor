@@ -1,68 +1,23 @@
-"""
-blender_efx/panels.py  —  属性字段绘制 + 预设 UI + BT 注释接入 + 预设面板重构
-                           + 属性字段显示重设计（语义化绘制 + ctc 现代风 + 友好字段名）
+"""绘制 EFX 数据、属性字段和编辑面板。
 
-约束（参照 CLAUDE.md）：
-  - Python 3.10 语法（兼容 Blender 3.6～5.x）
-  - bpy 只用稳定子集：Panel / layout.operator / layout.box / layout.label /
-    layout.prop / layout.row / layout.column / BoolProperty / WindowManager /
-    EnumProperty（动态 items 回调）
-  - 不使用 5.x 新增 API
-
-预设 UI 重构：
-  - EFX_PT_entry 顶部：移除旧预设按钮，只保留 Import/Export。
-  - _draw_attribute_fields_content 底部：移除旧 _draw_preset_ui 嵌入调用。
-  - 新增独立可展开面板（今为 EFX_PT_add，VIEW_3D N 面板），
-    与属性字段面板平级，poll 要求 is_editable=True 的 EFX_ATTRIBUTE。
-    （属性编辑器预设变体 _props/_object 已按设计理念移除，工具功能仅保留在 N 面板）
-  - 新面板内容从上到下：
-      1. Copy / Paste 按钮行（即时内存剪贴板）
-      2. 保存当前字段为预设按钮
-      3. 预设下拉 + 应用按钮行
-      4. 打开预设文件夹按钮
-
-#2 字段说明 tooltip（替代旧 efx_show_annotations toggle）：
-  有注释的字段旁显示 ⓘ（INFO）图标按钮。
-  悬停该图标即在 Blender 原生 tooltip 中显示 BT 注释（通过 EFX_OT_field_help 动态 description）。
-  无注释字段不渲染图标，布局保持紧凑。
-  已移除：WindowManager.efx_show_annotations / header toggle / label 行渲染。
-
-#3 COLOR_RGBA alpha 可编辑：
-  FloatVectorProperty size=4 subtype='COLOR' 的色块点开后含 Alpha 滑块，
-  但内联色块本身不显示 alpha 通道。
-  补充：在色块旁追加一个 index=3 数值条（text="A"，slider=True），使 alpha 直接可见可编辑。
-  COLOR_RGBA 同时用于 spec='colour'（真 RGBA）和 spec=('XYZ',2)（XYZ type 2，第4字节为 alpha）。
-  两者绘制逻辑统一，alpha 通道对两类字段均可见可编辑。
-
-属性字段显示重设计：
-  - 友好字段名：下划线→空格、camelCase 拆词、首字母大写（仅显示，逻辑仍用 ori_name）。
-  - FLOAT6（XYZ type 0，6个float，顺序=[fixed_x,random_x,fixed_y,random_y,fixed_z,random_z]）：
-    字段名一行 + 3 行（X Static/Random、Y Static/Random、Z Static/Random），
-    用 index= 分量绘制，不开 property_split，保证布局不乱。
-  - INT3（XYZ type 1，3个int=x,y,z）：字段名一行 + 1行 X/Y/Z 分量。
-  - FLOAT3（XYZ type 3 或 float[3]，x,y,z）：字段名一行 + 1行 X/Y/Z 分量。
-  - FLOAT4（4个float，顺序=[fixed_x,random_x,fixed_y,random_y]，UVCONTROL uv1/uv2 材质动画用）：
-    字段名一行 + 2 行（X Static/Random、Y Static/Random），跟 FLOAT6 同款，少一根轴。
-  - 虚拟轴向组合控件（AXIS_GROUPS，见下）：部分类型把同概念的 X/Y/Z 独立标量字段（因各轴
-    实测语义不完全对称、无法收进真正的 XYZ 复合类型）在 UI 层重新拼成跟 FLOAT6 一样的
-    标题行 + 逐轴行显示，不改变底层 schema/字节布局，纯展示层的分组。
-  - 标量/颜色/字符串等：保持现有绘制（友好名 + 值 + ⓘ + 色块+alpha）。
-  - 整体风格（ctc 风）：字段列表包在 box() 里，scale_y=1.1 放大行高，
-    手动 index 分量行不开 property_split（row.use_property_split=False）。
+维护约束：
+- 面板仅展示或调用既有算子；字段名转换与布局分组不改变底层 schema 或字节布局。
+- 字段注释、动画和专用控件必须仍以原始 ``ori_name`` 查找数据。
+- 复杂的纯布局规则归属 layout_model.py，本模块只负责 Blender UI 适配。
 """
 
 import os
 import re
 import bpy
-from .subselect import EFX_PT_subselect, EFX_PT_subselect_data  # Subselect 归属面板
-from .action_emitter import EFX_PT_action, EFX_PT_action_props  # Action 数据面板
-from .extern_ref import EFX_PT_extern_ref      # ExternReference 指针面板
-from .entry_action_ref import (                   # EOF 归属面板
+from .subselect import EFX_PT_subselect, EFX_PT_subselect_data
+from .action_emitter import EFX_PT_action, EFX_PT_action_props
+from .extern_ref import EFX_PT_extern_ref
+from .entry_action_ref import (
     EFX_PT_eof_list,
     EFX_OT_eof_toggle_entry,
     is_entry_in_eof,
 )
-from .backref import (                          # L2 反向引用视图（只读）
+from .backref import (
     EFX_PT_extern_backref,
     EFX_PT_entry_backref,
     EFX_PT_root_states,
@@ -70,45 +25,23 @@ from .backref import (                          # L2 反向引用视图（只读
     classify_entry_activation,
 )
 from .add_ops import get_active_efx_root
-# 重排面板（entry + attribute 上移/下移按钮）
 from . import reorder as _reorder
-# 中英双语化：T() 查表 + 语言切换行
 from . import i18n
 from .i18n import T
 from . import root_collection as _rc
-# Extern 字段展开面板
 from . import extern_props as _extern_props
-# EFX Color Editor：颜色字段判据（是否处于颜色模式的判定见 root_collection.is_color_editor_mode）
 from . import color_fields as _cf
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 友好字段名工具函数
-# ─────────────────────────────────────────────────────────────────────────────
+# 字段显示基础设施。
 
 def _friendly_name(ori_name: str, type_name: str = "") -> str:
-    """
-    把 schema 原始字段名转换为友好的显示名称（仅用于 UI，不影响任何逻辑）。
-
-    规则：
-      1. 下划线替换为空格。
-      2. camelCase → 拆分（在小写→大写的边界插入空格）。
-      3. 连续空格压缩，首字母大写，其余词小写保留（不强制小写，保留缩写如 UV）。
-
-    例：
-      translation_velocity   → "Translation Velocity"
-      unkn0                  → "Unkn0"
-      patternControl         → "Pattern Control"
-      enableVelocityBitflag  → "Enable Velocity Bitflag"
-      uv1_offsetCoef       → "Uv1 Acceleration"
-      __opaque_hint__        → "__opaque_hint__"（原样返回，勿转换）
-    """
-    # 特殊内部名称（opaque hint 等）直接返回
+    """返回字段显示名；内部提示字段与数据查找键保持原样。"""
+    # 内部提示字段不是用户可编辑字段。
     if ori_name.startswith("__") and ori_name.endswith("__"):
         return ori_name
 
-    # 中文模式：优先查中文标签（定长块＝Field.label_zh，custom 块＝残余表），
-    # 命中即返回；未命中回退英文友好名（下方派生）。见 efx_format/schema/labels.py。
+    # 中文标签缺失时回退英文显示名。
     from .i18n import get_lang
     if get_lang() == "ZH":
         from ..efx_format.schema.labels import field_label_zh
@@ -116,8 +49,7 @@ def _friendly_name(ori_name: str, type_name: str = "") -> str:
         if zh:
             return zh
 
-    # 英文标签冻结表：内部名向官方名对齐后，界面措辞仍沿用旧称。命中即返回，
-    # 未命中才走下面的 camelCase 派生。中文模式若无中文标签也会落到这里。
+    # 标签表优先于自动拆词，维持既有 UI 名称。
     from ..efx_format.schema.labels import field_label_en
     en = field_label_en(type_name or None, ori_name)
     if en:
@@ -125,44 +57,23 @@ def _friendly_name(ori_name: str, type_name: str = "") -> str:
 
     s = ori_name
 
-    # camelCase 拆词：在 小写/数字→大写 的边界插入空格
     s = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', s)
 
-    # 下划线→空格
     s = s.replace("_", " ")
 
-    # 压缩连续空格
     s = re.sub(r' +', ' ', s).strip()
 
-    # 首字母大写（capitalize() 会把其余字母变小写，改用 title() 逻辑的变体：
-    # 仅首词首字母大写，保留后续词的原始大小写）
     if s:
         s = s[0].upper() + s[1:]
 
     return s
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 内部工具：ⓘ 图标辅助
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _draw_field_row_buttons(row, type_name: str, ori_name: str,
                             item=None, timl: bool = True,
                             anno_name: str = "") -> None:
-    """字段行末尾的两个附件：ⓘ 注释 + ♫ 动画。
-
-    ⓘ：该字段有 BT 注释时才画，悬停显示注释（EFX_OT_field_help）。
-    ♫：该字段在 `FIELD_TO_DT` 里有确认的 TIML datatype 时才画——**"这个参数能不能做
-    动画"由此一眼可见**。已经有轨道时按钮画成按下态。点开是选 A0/A1 的弹窗（沿用
-    既有的推荐轴逻辑，见 timl_tracks.draw_field_timl_buttons）。
-
-    timl=False 用于轴组标题行：那里的 ⓘ 借用第一条轴的注释，但 DT 是逐轴的，
-    按钮画在每条轴自己的行上才对得上。
-
-    anno_name：只给 ⓘ 用的查表名（默认同 ori_name）。PTBEHAVIOR 的 param 行 ori_name 是
-    'p3' 这样的序号占位，注释得按参数真名（mBrightThreshold 等）查；♫ 那边仍要原
-    ori_name——TIML 播种值是按 ori_name 回查 field_item 的。
-    """
+    """绘制字段注释与 TIML 按钮；两者可使用不同的原始查找名。"""
     if not type_name:
         return
     from .annotations import get_annotation
@@ -184,12 +95,7 @@ def _draw_field_row_buttons(row, type_name: str, ori_name: str,
             pass
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 内部工具：按 data_type 绘制字段控件
-# ─────────────────────────────────────────────────────────────────────────────
-
-# 布局纯逻辑（配对/轴组/顺序订正/分档）搬去了 `layout_model.py`——那个模块零 import，
-# 好让 `tools/ui_layout_sim.py` 在 Blender 外面拿全语料自检。这里只留查表的薄包装。
+# 纯布局规则由 layout_model.py 提供；此处只适配 Blender 控件。
 from .layout_model import (
     SCALAR_PROP_ATTR as _SCALAR_PROP_ATTR,
     AXIS_GROUPS,
@@ -210,11 +116,7 @@ def reorder_items_for_display(type_name: str, items):
 
 
 def addon_prefs():
-    """取本插件的偏好设置对象；取不到返回 None（调用方须按默认值兜底）。
-
-    扩展装出来的包名是 `bl_ext.<repo>.efx_editor`、老式 addon 是 `efx_editor`，
-    而偏好设置的 `bl_idname` 是**顶层包名**——本模块在子包里，去掉最后一段即可。
-    """
+    """返回插件偏好；包名变化或未注册时返回 None。"""
     try:
         key = __package__.rsplit(".", 1)[0] if "." in __package__ else __package__
         return bpy.context.preferences.addons[key].preferences
@@ -223,8 +125,7 @@ def addon_prefs():
 
 
 def field_tiers_enabled() -> bool:
-    """是否启用「常用 / 高级」字段分档。**默认关**——字节序本身带语义，
-    分档会把字段从原本的邻居里拽走，逆向字段作用时碍事。见偏好设置。"""
+    """返回是否启用常用/高级字段分档。"""
     prefs = addon_prefs()
     return bool(getattr(prefs, "field_tiers", False)) if prefs else False
 
@@ -240,10 +141,7 @@ def classify_field_tiers(type_name: str, items, axis_group_at: dict, axis_group_
                               axis_group_at, axis_group_consumed)
 
 
-# 少数字节布局上长得像 value+jitter 的配对，语义其实是 offset+size（内边界+厚度，
-# 外边界=offset+size）。EMITTERSHAPE2D.rangeX/Y 是 EMITTERSHAPE3D.rangeXYZ 的 2D 版本，
-# 同一套语义，只是存成独立标量而非 FLOAT6（ori_name 里的 *Jitter 后缀是历史命名，保留
-# 不动以免动到预设/已导入的 .blend；这里只改显示措辞）。
+# 这些字段复用 jitter 布局，但显示为 offset/size，不能改动原始字段名。
 _OFFSET_SIZE_PAIRS = {
     ("EMITTERSHAPE2D", "rangeX"),
     ("EMITTERSHAPE2D", "rangeY"),
@@ -251,11 +149,7 @@ _OFFSET_SIZE_PAIRS = {
 
 
 def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = "", label_override=None):
-    """
-    把 value 字段与紧随其后的 jitter 字段合并成一行两列：友好名 | 固定 | 随机。
-    与 XYZ Static/Random 的分组风格一致（rotation X/Y/Z 等各成一行）。
-    _OFFSET_SIZE_PAIRS 里的配对改用 偏移 | 尺寸 措辞。
-    """
+    """将 value/jitter 配对绘制为同一行；特定字段显示为 offset/size。"""
     fname = label_override if label_override else _friendly_name(vitem.ori_name, type_name)
     vattr = _SCALAR_PROP_ATTR[vitem.data_type]
     jattr = _SCALAR_PROP_ATTR[jitem.data_type]
@@ -286,7 +180,7 @@ def _draw_axis_group(layout, type_name: str, group, item_by_name: dict):
     title_row.scale_y = 1.1
     title_row.use_property_split = False
     title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
-    # 标题行只借第一条轴的注释画 ⓘ；♫ 是逐轴的，画在各自的轴行上
+    # 标题借首轴注释；动画按钮必须对应各轴自身字段。
     _draw_field_row_buttons(title_row, type_name, first_base, timl=False)
 
     for axis_label, base in axes:
@@ -469,7 +363,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
         return
 
-    # ── EnumVec3 逐轴枚举（INT3 背板）→ 标题行 + X/Y/Z 三个下拉 ─────────────────────
+    # EnumVec3 以三个轴向下拉控件显示。
     if (dtype == "INT3" and not item.read_only
             and _field_is_enum_vec3(type_name, item.ori_name)):
         title = layout.row(align=True)
@@ -485,20 +379,16 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
             r.prop(item, prop, text="")
         return
 
-    # ── FLOAT6（XYZ type 0）：固定+随机/轴，3×2 展开 ─────────────────────────
-    # 顺序：[fixed_x(0), random_x(1), fixed_y(2), random_y(3), fixed_z(4), random_z(5)]
+    # FLOAT6 分量按 X/Y/Z 的固定值与随机值配对。
     if dtype == "FLOAT6":
         prop6, is_b = _xyz_prop_name(item, "float6_value")
-        # 字段名标题行（含 ⓘ + T2 +TIML 按钮）；Blender 坐标模式下标注
         title_row = layout.row(align=True)
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=(fname + (" [Blender]" if is_b else "")), icon="ORIENTATION_GLOBAL")
         _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item, anno_name=_anno)
 
-        # EMITTERSHAPE3D.rangeXYZ 的两个值不是 static+random，而是 offset+size：
-        # 内边界=offset、厚度=size、外边界=offset+size。用户 2026-07-30 实机测试确认
-        # 全形状（Box/Sphere/Cylinder）都是这套，不存在"Box/Sphere 是 min/max"的分叉。
+        # rangeXYZ 使用 offset/size，而非 static/random 语义。
         if type_name == "EMITTERSHAPE3D" and item.ori_name == "rangeXYZ":
             lbl_a, lbl_b = T("field.offset"), T("field.size")
         else:
@@ -529,16 +419,14 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         z_row.prop(item, prop6, index=5, text=lbl_b)
         return
 
-    # ── INT3（XYZ type 1）：x,y,z 三分量整数 ─────────────────────────────────
+    # INT3 以 X/Y/Z 分量显示。
     if dtype == "INT3":
-        # 字段名标题行（含 ⓘ）
         title_row = layout.row(align=True)
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=fname, icon="ORIENTATION_GLOBAL")
         _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item, anno_name=_anno)
 
-        # X/Y/Z 分量行
         comp_row = layout.row(align=True)
         comp_row.scale_y = 1.1
         comp_row.use_property_split = False
@@ -548,17 +436,15 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         comp_row.prop(item, "int3_value", index=2, text="Z")
         return
 
-    # ── FLOAT3（XYZ type 3 / float[3]）：x,y,z 三分量浮点 ───────────────────
+    # FLOAT3 以 X/Y/Z 分量显示。
     if dtype == "FLOAT3":
         prop3, is_b = _xyz_prop_name(item, "float3_value")
-        # 字段名标题行（含 ⓘ）
         title_row = layout.row(align=True)
         title_row.scale_y = 1.1
         title_row.use_property_split = False
         title_row.label(text=(fname + (" [Blender]" if is_b else "")), icon="ORIENTATION_GLOBAL")
         _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item, anno_name=_anno)
 
-        # X/Y/Z 分量行
         comp_row = layout.row(align=True)
         comp_row.scale_y = 1.1
         comp_row.use_property_split = False
@@ -568,8 +454,7 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         comp_row.prop(item, prop3, index=2, text="Z")
         return
 
-    # ── COLOR_RGBA：色块 + A 滑块 ─────────────────────────────────────────────
-    # 用于 spec='colour' 和 spec=('XYZ',2)，两者第4字节均为 alpha
+    # COLOR_RGBA 的第四分量始终显示为 alpha。
     if dtype == "COLOR_RGBA":
         row = layout.row(align=True)
         row.scale_y = 1.1
@@ -577,18 +462,12 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         split = row.split(factor=0.45)
         split.label(text=fname)
         val_row = split.row(align=True)
-        # 色块（点击打开色轮，含 Alpha 面板）
         val_row.prop(item, "color_rgba_value", text="")
-        # alpha 数值条，使 alpha 在内联行就可见可编辑
         val_row.prop(item, "color_rgba_value", index=3, text="A", slider=True)
-        # ⓘ 注释 + ♫ 动画（♫ 已并进 _draw_field_row_buttons，别再单独调一次）
         _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
         return
 
-    # ── FLOAT4（X/Y 各自 Static/Random，2×2 展开）───────────────────────────
-    # 顺序：[fixed_x(0), random_x(1), fixed_y(2), random_y(3)]（与 FLOAT6 的 X/Y/Z 惯例一致，
-    # 少一根轴）。原来单行塞 4 个数值框并排显示，改成跟 FLOAT6 一样的并列式两行，更好读
-    # 也更紧凑（数值框不用挤在 0.45 分栏里）。
+    # FLOAT4 分量按 X/Y 的固定值与随机值配对。
     if dtype == "FLOAT4":
         title_row = layout.row(align=True)
         title_row.scale_y = 1.1
@@ -611,7 +490,6 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         y_row.prop(item, "float4_value", index=3, text=T("field.random"))
         return
 
-    # ── 通用单行布局 ──────────────────────────────────────────────────────────
     row = layout.row(align=True)
     row.scale_y = 1.1
     row.use_property_split = False
@@ -657,18 +535,15 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
     elif dtype == "ARRAY_STR":
         split.prop(item, "array_str", text="")
     elif dtype == "OPAQUE":
-        # opaque hint 项（路径属性的提示行，ori_name 以 '__' 开头）
         if item.ori_name.startswith("__"):
             split.label(text=item.opaque_str)
         else:
             split.label(text=T("field.read_only"))
     elif dtype == "STRING":
-        # 路径字段：可编辑文本框（用于 custom-codec 含路径类型）
         split.prop(item, "string_value", text="")
     else:
         split.label(text=T("field.unknown_type"))
 
-    # RANDOMFIX：种子槎位骰子按钮（一键随机重生成）+ 选择组勾选弹窗
     if type_name == "RANDOMFIX":
         if item.ori_name.startswith("randomSeedTable"):
             _seed_op = row.operator("efx.randomize_seed", text="", icon="RNDCURVE")
@@ -676,23 +551,13 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         elif item.ori_name == "tableSelectionGroup":
             row.operator("efx.randomfix_set_table_group", text="", icon="DOWNARROW_HLT")
 
-    # ⓘ 图标（有注释，且非 OPAQUE 内部提示行）
     if dtype not in ("OPAQUE",) and not item.ori_name.startswith("__"):
         _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# TUBELIGHT 专用字段绘制（headColor/tailColor 是打包 int32 RGBA，拆成颜色选择器；
-# 2026-07-01 schema 重构后 unkn5/unkn6a 已是独立标量字段，交给通用引擎处理）
-# ─────────────────────────────────────────────────────────────────────────────
+# 专用字段控件。
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 位标志逐位展开（2026-09-20）：把一个 Bitmask 字段的某一位单独画成一行勾选框，
-# 而不是"摘要 + 弹窗"。多行共用同一个底层 int/byte/short 槽（bitmask_bools 代理，
-# 见 fields.py），可以分开摆在面板不同位置——TRANSFORM3D.enableVelocityBitflag
-# 两位一起摆；SPAWN.spawnFlags 则是 UseSpawnFrame 单独挪到 spawnFrame 上面当门控，
-# 其余 5 位留在原位。ⓘ 提示按钮仍指向整个字段（弹窗按钮标出的注释是整个位掩码的）。
-# ─────────────────────────────────────────────────────────────────────────────
+# 位掩码的各行共享底层整数槽；注释仍指向完整位掩码字段。
 
 def _draw_bitmask_bit_row(layout, item, type_name, bit_index, label, *, anno_name=None, show_info=True):
     """画一行：标签 | 单个位的勾选框 | （可选）ⓘ 提示按钮。"""
@@ -720,10 +585,6 @@ def _draw_tubelight_int_as_color(layout, item, type_name, label):
     _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SHADERSETTINGS 专用字段绘制（presetId：字符串输入，导出时按 jamcrc 算成 int32；
-# 见 blender_efx/fields.py 的 preset_name_display 影子属性）
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _draw_shadersettings_preset_id(layout, item, type_name, label):
     """presetId：预设名字符串输入框 + 已知名字下拉。"""
@@ -738,12 +599,7 @@ def _draw_shadersettings_preset_id(layout, item, type_name, label):
     _draw_field_row_buttons(row, type_name, item.ori_name, item=item)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RGBFIRE 专用分组显示（2026-09-20 用户要求的重排；顺序订正见
-# efx_format/field_order.py 的 RGBFIRE 锚点条目，这里只管小标题/分隔线/行内简化标签）。
-# 组内字段去掉 "Fire (GreenCh)"/"Smoke (RedCh)" 前缀——有分组小标题兜底，不再需要
-# 每行重复一遍；ⓘ 提示按钮仍按 ori_name 查完整的 annotations，不受标签精简影响。
-# ─────────────────────────────────────────────────────────────────────────────
+# RGBFIRE/RGBWATER 分组只改变显示标签，注释查找仍使用 ori_name。
 
 _RGBFIRE_ROW_LABELS = {
     "colorRate":   ("总体亮度", "Overall Brightness"),
@@ -770,19 +626,12 @@ _RGBFIRE_ROW_LABELS = {
 
 
 def _draw_section_header(layout, zh: bool, text_zh: str, text_en: str):
-    """小标题行：偏小/灰的分组名（用 .active=False 借主题的次要文字颜色）。
-    RGBFIRE/RGBWATER 的分组面板共用这一个绘制函数。"""
+    """绘制 RGBFIRE/RGBWATER 共用的次要分组标题。"""
     row = layout.row()
     row.active = False
     row.label(text=text_zh if zh else text_en)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RGBWATER 专用分组显示（2026-09-20，跟 RGBFIRE 同一批要求）：顺序订正见
-# efx_format/field_order.py 的 RGBWATER 锚点条目，这里管小标题/分隔线/简化标签。
-# `waterLerpGtoB` 的行标签直接用官方原名描述实测行为（Alpha 混入蓝通道），
-# 内部字段名保留 DTI 原名不动。
-# ─────────────────────────────────────────────────────────────────────────────
 
 _RGBWATER_ROW_LABELS = {
     "colorRate":      ("总体亮度", "Overall Brightness"),
@@ -1152,9 +1001,7 @@ def _draw_layoutbank_summary(layout, bp) -> None:
         box.label(text=preview)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 公共绘制函数：属性字段内容（两个 Panel 共用，避免重复代码）
-# ─────────────────────────────────────────────────────────────────────────────
+# 属性字段内容。
 
 def _draw_attribute_fields_content(layout, context, obj=None):
     """
@@ -1172,17 +1019,13 @@ def _draw_attribute_fields_content(layout, context, obj=None):
         layout.label(text=T("attribute.select_hint"), icon="INFO")
         return
 
-    # ── 获取 efx_block PropertyGroup ────────────────────────────────────────
     try:
         bp = obj.efx_block
     except AttributeError:
         layout.label(text=T("attribute.not_registered"), icon="ERROR")
         return
 
-    # ── 解析当前属性的类型名（用于查注释字典）────────────────────────────────────
-    # bp.type_hash_str 存的是十进制 uint32 字符串（如 "1003792849"）。
-    # 通过 HASH_TO_NAME 查出名称（如 "EMITTERSHAPE3D"），再大写作为字典键。
-    # 注释现在始终传给 _draw_field_item，由其内部按需显示 ⓘ 图标。
+    # 类型名是字段注释和专用布局的查找键。
     type_name = ""
     type_hash_int = 0
     try:
@@ -1192,9 +1035,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
     except (ValueError, ImportError):
         type_name = ""
 
-    # LayoutBank（Root 专属子条目，伪装成 AttrBlock）：结构是变长的"列数不定、
-    # 每列宽度不定"的表，套不进固定 Field 模型（2026-09-20 跟用户确认过，走只读
-    # 摘要而不是假装能编辑）。数值宽度/含义见 describe_layoutbank 的文档串。
+    # LayoutBank 为变长表，仅提供只读摘要。
     if type_name == "LAYOUTBANK":
         _draw_layoutbank_summary(layout, bp)
         return
@@ -1742,9 +1583,6 @@ def _draw_attribute_fields_content(layout, context, obj=None):
         _hint_row.label(text=T("attribute.partial_edit"))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_entry  —  VIEW_3D 侧边栏 "EFX" 标签页
-# ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_entry(bpy.types.Panel):
     """MHW EFX 编辑器主面板（N 面板 → EFX 标签页）"""
@@ -1753,9 +1591,7 @@ class EFX_PT_entry(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category    = "EFX"
     bl_label       = "MHW EFX"
-    # 固定顺序：MHW EFX > Add > Edit > 其他（默认顺序，bl_order 未设时=0）。
-    # 必须用负数——Blender 未显式设 bl_order 的面板默认值就是 0，正数反而排到那些"默认顺序"
-    # 面板后面（之前用 0/1/2/3 试过，最大的那个直接被挤到全局最后，只有负数才保证排在最前）。
+    # 负值确保此面板位于未设置顺序的默认面板之前。
     bl_order       = -4
 
     def draw(self, context):
@@ -1787,10 +1623,6 @@ class EFX_PT_entry(bpy.types.Panel):
                          text=T("entry.add_workspace"), icon="WORKSPACE")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_add  —  统一「新建」面板
-#   顶部一排 Action / Extern / Subselect 一键新建，下面 Entry / Attribute 两个标签页。
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _draw_entry_tab(layout, context):
     """Entry 标签页：复制/粘贴 Entry + 保存 + 选预设新增 + 打开文件夹。
@@ -2014,11 +1846,6 @@ class EFX_PT_add(bpy.types.Panel):
             _draw_entry_tab(layout, context)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_entry_status  —  Entry Status 面板（选中 EFX_ENTRY 时显示）
-#   子栏：Activation / Entry References。
-#   排序/重命名操作在 EFX_PT_delete（Edit 面板）。
-# ─────────────────────────────────────────────────────────────────────────────
 
 class EFX_PT_entry_status(bpy.types.Panel):
     """EFX Entry Status 父面板（容器）。子栏：Activation / Entry References 同级附于其下。"""
@@ -2113,11 +1940,6 @@ class EFX_PT_entry_activation(bpy.types.Panel):
 
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EFX_PT_entry_properties / EFX_PT_entry_unkn  —  Entry 原始属性面板
-#   Entry Properties：单行只读 Type + 子栏 Unkn Attributes + TIML 挂在其下。
-#   Entry Status（EFX_PT_entry_status）管激活状态和引用，Entry Properties 管原始数据。
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _describe_root_subentries(raw_b64: str) -> list:
     """解出 opaque Root 的子条目类型名列表（['UnitBoundary', 'RenderTarget', ...]）。
@@ -2162,7 +1984,6 @@ def _draw_entry_properties_content(layout, context):
     entry_kind = str(obj.get("entry_kind", "unknown"))
     kind_label = {
         "standard": T("entry.type_standard"),
-        "extended": T("entry.type_extended"),
     }.get(entry_kind, entry_kind)
     row = layout.row()
     row.enabled = False
@@ -2248,15 +2069,9 @@ class EFX_PT_entry_unkn(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         obj = context.active_object
-        entry_kind = str(obj.get("entry_kind", "unknown"))
         col = layout.column(align=True)
         if "unkn0" in obj:
             col.prop(obj, '["unkn0"]', text="Unkn0")
-        if entry_kind == "extended":
-            if "unkn1" in obj:
-                col.prop(obj, '["unkn1"]', text="Unkn1")
-            if "unkn2" in obj:
-                col.prop(obj, '["unkn2"]', text="Unkn2")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
