@@ -55,8 +55,8 @@ FIELD_ANNOTATIONS = {
 
     # ─── TRANSFORM3D ──────────────────────────────────────────────────────────
     ("TRANSFORM3D", "rotationOrder"): {
-        "EN": "4 is the most common value. 0-XYZ, 1-YZX, 2-ZXY, 3-ZYX, 4-YXZ, 5-XZY",
-        "ZH": "4 为最常见值。0-XYZ，1-YZX，2-ZXY，3-ZYX，4-YXZ，5-XZY",
+        "EN": "4 is the most common value. 0-XYZ, 1-YZX, 2-YXZ, 3-ZYX, 4-ZXY, 5-XZY",
+        "ZH": "4 为最常见值。0-XYZ，1-YZX，2-YXZ，3-ZYX，4-ZXY，5-XZY",
     },
     ("TRANSFORM3D", "translation_velocity_modifier"): {
         "EN": "Multiplier / Acceleration? Range [0, 1]",
@@ -78,28 +78,28 @@ FIELD_ANNOTATIONS = {
 
     # ─── PARENTOPTIONS ────────────────────────────────────────────────────────
     ("PARENTOPTIONS", "relationPos"): {
-        "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
-              "  1=Track Player Movement,  2=Do not track further movements,"
-              "  3=Ignore Basic Transform",
-        "ZH": "XYZ —— 每轴的跟随模式：  0=绝对追踪地图中心，"
-              "  1=追踪玩家移动，  2=不再追踪后续移动，"
-              "  3=忽略基础变换",
+        "EN": "XYZ — per-axis position tracking of the emitter that spawned the particle:"
+              "  0=Don't track,  1=Track (default). The meaning of 2 and 3 is unknown."
+              " The three axes are almost always set to the same value.",
+        "ZH": "XYZ —— 逐轴的位置跟随模式，跟随的是发出该粒子的发射器："
+              "  0=不追踪，  1=追踪（默认）。2、3 的含义未知。"
+              "三个轴几乎总是取同一个值。",
     },
     ("PARENTOPTIONS", "relationRot"): {
-        "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
-              "  1=Track Player Movement,  2=Do not track further movements,"
-              "  3=Snap to Angle And Track",
-        "ZH": "XYZ —— 每轴的跟随模式：  0=绝对追踪地图中心，"
-              "  1=追踪玩家移动，  2=不再追踪后续移动，"
-              "  3=对齐到角度并追踪",
+        "EN": "XYZ — per-axis rotation tracking of the emitter that spawned the particle:"
+              "  0=Don't track,  1=Track (default). The meaning of 2 and 3 is unknown."
+              " The three axes are almost always set to the same value.",
+        "ZH": "XYZ —— 逐轴的角度跟随模式，跟随的是发出该粒子的发射器："
+              "  0=不追踪，  1=追踪（默认）。2、3 的含义未知。"
+              "三个轴几乎总是取同一个值。",
     },
     ("PARENTOPTIONS", "relationScl"): {
-        "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
-              "  1=Track Player Movement,  2=Do not track further movements,"
-              "  3=Ignore Basic Transform",
-        "ZH": "XYZ —— 每轴的跟随模式：  0=绝对追踪地图中心，"
-              "  1=追踪玩家移动，  2=不再追踪后续移动，"
-              "  3=忽略基础变换",
+        "EN": "XYZ — per-axis scale tracking of the emitter that spawned the particle:"
+              "  0=Don't track,  1=Track (default). The meaning of 2 and 3 is unknown."
+              " The three axes are almost always set to the same value.",
+        "ZH": "XYZ —— 逐轴的缩放跟随模式，跟随的是发出该粒子的发射器："
+              "  0=不追踪，  1=追踪（默认）。2、3 的含义未知。"
+              "三个轴几乎总是取同一个值。",
     },
     ("PARENTOPTIONS", "particleUseLocal"): {
         "EN": "When enabled, all particles will follow the emitter's movement.",
@@ -2506,16 +2506,16 @@ FIELD_ANNOTATIONS = {
         "ZH": "闪烁摆动范围的上限（与 minRate 配对使用）。",
     },
     ("BLINK", "lowFrequency"): {
-        "EN": "Blink speed of the low-frequency channel; adds together with the high-frequency channel. Setting this to 0 does NOT turn the channel off — it freezes it at half of lowFrequencyWidth. Set lowFrequencyWidth to 0 to actually disable it.",
-        "ZH": "低频通道的闪烁速度，与高频通道叠加生效。把这里设为 0 并不会关闭该通道——只会让它固定停在 lowFrequencyWidth 一半的位置。要真正关闭该通道，请把 lowFrequencyWidth 设为 0。",
+        "EN": "Blink speed of the low-frequency channel; adds together with the high-frequency channel. At 0 this channel stops oscillating. To turn the channel off, set lowFrequencyWidth to 0.",
+        "ZH": "低频通道的闪烁速度，与高频通道叠加生效。设为 0 时该通道不再摆动。要关闭该通道，请把 lowFrequencyWidth 设为 0。",
     },
     ("BLINK", "lowFrequencyWidth"): {
         "EN": "Blink depth of the low-frequency channel — the higher, the more pronounced. Set to 0 to fully disable this channel.",
         "ZH": "低频通道的闪烁深度，越大摆动越明显。设为 0 即可彻底关闭这一通道。",
     },
     ("BLINK", "highFrequency"): {
-        "EN": "Blink speed of the high-frequency channel; adds together with the low-frequency channel. Setting this to 0 does NOT turn the channel off — it freezes it at half of highFrequencyWidth. Set highFrequencyWidth to 0 to actually disable it.",
-        "ZH": "高频通道的闪烁速度，与低频通道叠加生效。把这里设为 0 并不会关闭该通道——只会让它固定停在 highFrequencyWidth 一半的位置。要真正关闭该通道，请把 highFrequencyWidth 设为 0。",
+        "EN": "Blink speed of the high-frequency channel; adds together with the low-frequency channel. At 0 this channel stops oscillating. To turn the channel off, set highFrequencyWidth to 0.",
+        "ZH": "高频通道的闪烁速度，与低频通道叠加生效。设为 0 时该通道不再摆动。要关闭该通道，请把 highFrequencyWidth 设为 0。",
     },
     ("BLINK", "highFrequencyWidth"): {
         "EN": "Blink depth of the high-frequency channel — the higher, the more pronounced. Set to 0 to fully disable this channel.",
@@ -3251,11 +3251,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [-4, -3, -2, -1]。",
     },
     ("REFRACTION", "seeThroughBlend"): {
-        "EN": "See-through blend factor, range 0~1. 0 = background content is "
-              "completely obscured; 1 = distortion while still seeing through to "
-              "the original background content (blended).",
-        "ZH": "透视混合系数，取值 0~1。0=背后内容被完全遮挡不可见；1=扭曲的同时，"
-              "可以透过看到背后原本内容（混合叠加）。",
+        "EN": "Range 0~1. Its effect is unknown; at 0 the background is still "
+              "visible through the effect.",
+        "ZH": "取值 0~1，作用未知；取 0 时仍能透过特效看到背后的画面。",
     },
     ("REPEATAREA", "typeFlag"): {
         "EN": "Header field present in most attribute types, a type/category "
