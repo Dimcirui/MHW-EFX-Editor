@@ -20,8 +20,7 @@ Action 有两种条目，两种的字段都已完全展开可编辑：
     时的溯源线索——**界面上显示的是各自 `name=` 的语义名**，不是 unkn。改属性标识符会让已存
     .blend 里的值回落默认，所以只改 label/description，标识符保持不动。
 
-  字段偏移见 `load_entry_fields_from_raw`（`struct.unpack_from` 的字面量就是权威，
-  不在这里复述一遍）。
+  字节布局由 `efx_format/schema/action.py` 的 codec 定义，本文件只做字段值与属性的映射。
 
 PropertyGroup 层级：
 
@@ -46,7 +45,6 @@ PropertyGroup 层级：
 其余区间在 fields_loaded 时按属性重写，否则沿用原字节。
 """
 
-import struct
 import base64
 
 import bpy
@@ -63,6 +61,9 @@ from bpy.props import (
 from bpy.types import PropertyGroup, Operator
 
 from ..efx_format.hashes import PLAYEMITTER, PLAYEFX
+from ..efx_format.schema.action import (
+    ACTION_ENTRY_CODEC, unpack_playemitter, pack_playemitter, unpack_playefx, pack_playefx,
+)
 from .i18n import T
 from . import root_collection as _rc
 
@@ -312,36 +313,30 @@ def load_entry_fields_from_raw(item, raw: bytes, is_emitter: bool) -> None:
     把一个 ActionEntry 的 raw 字节解成 item 上的可编辑属性，并置 fields_loaded=True。
 
     导入（init_action_props）与新建 entry（EFX_OT_action_entry_add）共用本函数，保证
-    两条路径填出来的属性完全一致——新建的 entry 也因此立刻可编辑全部字段。
-
-    偏移见本文件头部结构说明。任何长度不足/解析异常都保持 fields_loaded=False，
-    此时重建路径沿用原始字节（见 _rebuild_emitter_raw / _rebuild_actionefx_raw）。
+    两条路径填出来的属性完全一致。字节无法解析时保持 fields_loaded=False，此时重建
+    路径沿用原始字节（见 _rebuild_emitter_raw / _rebuild_actionefx_raw）。
     """
     try:
         if is_emitter:
-            if len(raw) < 52:
-                return
-            item.em_unkn0 = struct.unpack_from('<i', raw, 0)[0]
-            item.em_unkn1 = bool(struct.unpack_from('<i', raw, 4)[0])
-            item.em_unkn2 = bool(struct.unpack_from('<i', raw, 8)[0])
-            item.em_rotation_order = struct.unpack_from('<i', raw, 12)[0]
-            item.em_rotation = struct.unpack_from('<3f', raw, 16)
-            item.xyz = struct.unpack_from('<3f', raw, 28)
-            item.em_position = struct.unpack_from('<3f', raw, 40)
+            v = unpack_playemitter(raw)
+            item.em_unkn0 = v['typeFlag']
+            item.em_unkn1 = bool(v['setLandAttribute'])
+            item.em_unkn2 = bool(v['setLandDirection'])
+            item.em_rotation_order = v['rotationOrder']
+            item.em_rotation = v['rotation']
+            item.xyz = v['scale']
+            item.em_position = v['translate']
         else:
-            if len(raw) < 64:
-                return
-            item.pefx_unkn0 = struct.unpack_from('<i', raw, 0)[0]
-            item.pefx_type_str = str(struct.unpack_from('<I', raw, 8)[0])
-            item.pefx_unkn_0 = bool(struct.unpack_from('<i', raw, 12)[0])
-            item.pefx_unkn_1 = bool(struct.unpack_from('<i', raw, 16)[0])
-            item.pefx_unkn_2 = struct.unpack_from('<i', raw, 20)[0]
-            item.pefx_unkn_3 = struct.unpack_from('<f', raw, 24)[0]
-            item.pefx_unkn_4 = struct.unpack_from('<f', raw, 28)[0]
-            item.pefx_unkn_5 = struct.unpack_from('<f', raw, 32)[0]
-            item.pefx_unkn_6 = struct.unpack_from('<i', raw, 36)[0]
-            item.xyz = struct.unpack_from('<3f', raw, 40)
-            item.pefx_null = struct.unpack_from('<3f', raw, 52)
+            v = unpack_playefx(raw)
+            item.pefx_unkn0 = v['typeFlag']
+            item.pefx_type_str = str(v['efxType'])
+            item.pefx_unkn_0 = bool(v['setLandAttribute'])
+            item.pefx_unkn_1 = bool(v['setLandDirection'])
+            item.pefx_unkn_2 = v['unkn2']
+            item.pefx_unkn_3, item.pefx_unkn_4, item.pefx_unkn_5 = v['rotation']
+            item.pefx_unkn_6 = v['rotationOrder']
+            item.xyz = v['scale']
+            item.pefx_null = v['translate']
     except Exception:
         return
     item.fields_loaded = True
@@ -383,31 +378,23 @@ def init_action_props(play_obj: bpy.types.Object,
 
         if entry.type_hash == PLAYEMITTER:
             item.is_emitter = True
-            raw = entry.raw
-            load_entry_fields_from_raw(item, raw, True)
-            if len(raw) >= 56:
-                target_count = struct.unpack_from('<i', raw, 52)[0]
-                for ti in range(target_count):
-                    offset = 56 + ti * 4
-                    if offset + 4 > len(raw):
-                        break
-                    body_idx = struct.unpack_from('<i', raw, offset)[0]
-                    t = item.targets.add()
-                    entry_obj = main_bodies_by_index.get(body_idx)
-                    if entry_obj is not None:
-                        t.body_ptr = entry_obj
+            load_entry_fields_from_raw(item, entry.raw, True)
+            try:
+                target_indices = unpack_playemitter(entry.raw)['targets']
+            except Exception:
+                target_indices = []
+            for body_idx in target_indices:
+                t = item.targets.add()
+                entry_obj = main_bodies_by_index.get(body_idx)
+                if entry_obj is not None:
+                    t.body_ptr = entry_obj
         else:
             item.is_emitter = False
-            raw = entry.raw
-            load_entry_fields_from_raw(item, raw, False)
-            if len(raw) >= 8:
-                path_len = struct.unpack_from('<i', raw, 4)[0]
-                if path_len > 0 and 64 + path_len <= len(raw):
-                    path_bytes = raw[64:64 + path_len]
-                    null_pos = path_bytes.find(b'\x00')
-                    if null_pos >= 0:
-                        path_bytes = path_bytes[:null_pos]
-                    item.efx_path = path_bytes.decode('utf-8', errors='replace')
+            load_entry_fields_from_raw(item, entry.raw, False)
+            try:
+                item.efx_path = _path_str(unpack_playefx(entry.raw)['path'])
+            except Exception:
+                pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -477,135 +464,77 @@ def export_action_data(play_obj: bpy.types.Object,
     return ActionData(play_type=play_type, entries=entries)
 
 
+def _path_str(path: bytes) -> str:
+    """路径字节截到第一个 null，按 UTF-8 宽容解码。"""
+    nz = path.find(b'\x00')
+    return (path[:nz] if nz >= 0 else path).decode('utf-8', errors='replace')
+
+
+def _base_values(orig_raw: bytes, type_hash: int) -> dict:
+    """原字节的字段值；原字节无法解析时取默认值。"""
+    try:
+        return ACTION_ENTRY_CODEC[type_hash][0](orig_raw)
+    except Exception:
+        from ..efx_format.assembly import default_action_entry
+        return default_action_entry(type_hash)
+
+
 def _rebuild_emitter_raw(item: EFXActionEntryProps,
                          entry_index_map: dict) -> bytes:
     """
     重建 PlayEmitter entry 的 raw 字节。
 
-    fields_loaded=False 时保留头部和 Position 的原始字节。
+    fields_loaded=False 时头部与 Translate 沿用原字节的值；Scale 始终取 item.xyz。
     targets 按当前 entry 指针重建；悬空或不属于当前 EFX 的目标会被跳过。
     """
-    orig_raw = _b64dec(str(item.raw_b64))
-
-    # 构建 target 索引列表
-    target_indices = []
-    for t in item.targets:
-        entry_obj = t.body_ptr
-        if entry_obj is None:
-            continue
-        local_idx = entry_index_map.get(entry_obj)
-        if local_idx is None:
-            continue
-        target_indices.append(local_idx)
-
+    v = _base_values(_b64dec(str(item.raw_b64)), PLAYEMITTER)
     if item.fields_loaded:
-        head = (struct.pack('<i', int(item.em_unkn0))
-                + struct.pack('<i', 1 if item.em_unkn1 else 0)
-                + struct.pack('<i', 1 if item.em_unkn2 else 0)
-                + struct.pack('<i', int(item.em_rotation_order))
-                + struct.pack('<3f', *item.em_rotation))
-        pos = struct.pack('<3f', *item.em_position)
-    else:
-        head = orig_raw[:28]
-        pos = orig_raw[40:52]
-
-    prefix = head + struct.pack('<3f', *item.xyz) + pos
-
-    N = len(target_indices)
-    new_raw = prefix + struct.pack('<i', N)
-    for idx in target_indices:
-        new_raw += struct.pack('<i', idx)
-
-    return new_raw
+        v.update(typeFlag=int(item.em_unkn0),
+                 setLandAttribute=1 if item.em_unkn1 else 0,
+                 setLandDirection=1 if item.em_unkn2 else 0,
+                 rotationOrder=int(item.em_rotation_order),
+                 rotation=list(item.em_rotation),
+                 translate=list(item.em_position))
+    v['scale'] = list(item.xyz)
+    v['targets'] = [entry_index_map[t.body_ptr] for t in item.targets
+                    if t.body_ptr is not None and t.body_ptr in entry_index_map]
+    return pack_playemitter(v)
 
 
 def _rebuild_actionefx_raw(item: EFXActionEntryProps) -> bytes:
     """
     重建 PlayEFX entry 的 raw 字节。
 
-    fields_loaded 控制可编辑字段是否写回原始数据。
-    路径未修改时保留原始 path_len 和路径字节，以保护空路径与尾部填充。
+    fields_loaded 控制可编辑字段是否写回；Scale 始终取 item.xyz。
+    路径未修改时保留原路径字节，以保护空路径与尾部填充。
     """
-    orig_raw = _b64dec(str(item.raw_b64))
-
-    # 还原原始路径串（与 init_action_props 的解码逻辑一致），判断用户是否真的改过
-    orig_path_len = struct.unpack_from('<i', orig_raw, 4)[0] if len(orig_raw) >= 8 else 0
-    orig_path_bytes = (orig_raw[64:64 + orig_path_len]
-                       if orig_path_len > 0 and 64 + orig_path_len <= len(orig_raw)
-                       else b'')
-    _nz = orig_path_bytes.find(b'\x00')
-    orig_path_str = (orig_path_bytes[:_nz] if _nz >= 0 else orig_path_bytes) \
-        .decode('utf-8', errors='replace')
-
-    if item.efx_path == orig_path_str:
-        path_len_bytes = orig_raw[4:8]
-        path_bytes = orig_path_bytes
-    else:
-        path_bytes = item.efx_path.encode('utf-8') + b'\x00'
-        path_len_bytes = struct.pack('<i', len(path_bytes))
-
-    head = orig_raw[:4]        # Type Flags
-    mid = orig_raw[8:40]       # Type、标志位、旋转字段
-    tail = orig_raw[52:64]     # Position XYZ
+    v = _base_values(_b64dec(str(item.raw_b64)), PLAYEFX)
+    if item.efx_path != _path_str(v['path']):
+        v['path'] = item.efx_path.encode('utf-8') + b'\x00'
     if item.fields_loaded:
         try:
-            type_val = int(str(item.pefx_type_str)) & 0xFFFFFFFF
-            head = struct.pack('<i', int(item.pefx_unkn0))
-            mid = (struct.pack('<I', type_val)
-                   + struct.pack('<i', 1 if item.pefx_unkn_0 else 0)
-                   + struct.pack('<i', 1 if item.pefx_unkn_1 else 0)
-                   + struct.pack('<i', int(item.pefx_unkn_2))
-                   + struct.pack('<f', item.pefx_unkn_3)
-                   + struct.pack('<f', item.pefx_unkn_4)
-                   + struct.pack('<f', item.pefx_unkn_5)
-                   + struct.pack('<i', int(item.pefx_unkn_6)))
-            tail = struct.pack('<3f', *item.pefx_null)
-        except (ValueError, TypeError, struct.error):
-            head = orig_raw[:4]
-            mid = orig_raw[8:40]
-            tail = orig_raw[52:64]
-
-    new_raw = (head
-               + path_len_bytes
-               + mid
-               + struct.pack('<3f', *item.xyz)
-               + tail
-               + path_bytes)
-
-    return new_raw
+            v.update(typeFlag=int(item.pefx_unkn0),
+                     efxType=int(str(item.pefx_type_str)) & 0xFFFFFFFF,
+                     setLandAttribute=1 if item.pefx_unkn_0 else 0,
+                     setLandDirection=1 if item.pefx_unkn_1 else 0,
+                     unkn2=int(item.pefx_unkn_2),
+                     rotation=[item.pefx_unkn_3, item.pefx_unkn_4, item.pefx_unkn_5],
+                     rotationOrder=int(item.pefx_unkn_6),
+                     translate=list(item.pefx_null))
+        except (ValueError, TypeError):
+            pass
+    v['scale'] = list(item.xyz)
+    return pack_playefx(v)
 
 
 def _fallback_raw_action(play_obj: bpy.types.Object):
     """
-    兼容回退：从自定义属性 raw_b64 原样还原 ActionData（旧 opaque 路径）。
+    兼容回退：从自定义属性 raw_b64 原样还原 ActionData。
     用于 play_obj 没有 efx_play PropertyGroup 数据的情况（旧 .blend / 兼容）。
     """
-    from ..efx_format.efxfile import ActionData, ActionEntry
-
-    raw_all = _b64dec(str(play_obj["raw_b64"]))
-    # raw_b64 存的是 pd.serialize() = pack('<Ii', play_type, entry_count) + entries
-    play_type = struct.unpack_from('<I', raw_all, 0)[0]
-    entry_count = struct.unpack_from('<i', raw_all, 4)[0]
-    pos = 8
-    entries = []
-    for _ in range(entry_count):
-        type_hash = struct.unpack_from('<I', raw_all, pos)[0]
-        pos += 4
-        from ..efx_format.hashes import PLAYEFX
-        if type_hash == PLAYEFX:
-            path_len = struct.unpack_from('<i', raw_all, pos + 4)[0]
-            entry_size = 64 + path_len
-        elif type_hash == PLAYEMITTER:
-            target_count = struct.unpack_from('<i', raw_all, pos + 52)[0]
-            entry_size = 56 + 4 * target_count
-        else:
-            # 未知类型：尽力回退（不应发生）
-            break
-        entry_raw = raw_all[pos:pos + entry_size]
-        pos += entry_size
-        entries.append(ActionEntry(type_hash=type_hash, raw=entry_raw))
-
-    return ActionData(play_type=play_type, entries=entries)
+    from ..efx_format.efxfile import EFXFile
+    actions, _pos = EFXFile._parse_play(_b64dec(str(play_obj["raw_b64"])), 0, 1)
+    return actions[0]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -710,30 +639,20 @@ class EFX_OT_action_entry_add(Operator):
         self.layout.prop(self, "entry_type", text=T("action.entry_type"))
 
     def execute(self, context):
-        import base64 as _b64mod
-        from .add_section_ops import _BLANK_PLAYEFX_RAW, _BLANK_EMITTER_UNKN7
+        from ..efx_format.assembly import default_action_entry_bytes
 
         obj = context.active_object
         props = obj.efx_play
         item = props.entries.add()
 
-        if self.entry_type == 'PLAYEFX':
-            item.type_hash_str = str(PLAYEFX)
-            item.is_emitter    = False
-            item.raw_b64       = _b64mod.b64encode(_BLANK_PLAYEFX_RAW).decode('ascii')
-            item.efx_path      = ""
-            # 模板已经包含 Size=(1,1,1)；解析后不要再用默认值覆盖 xyz。
-            load_entry_fields_from_raw(item, _BLANK_PLAYEFX_RAW, False)
-        else:
-            emitter_raw = (_BLANK_EMITTER_UNKN7
-                           + struct.pack("<3f", 1.0, 1.0, 1.0)
-                           + b"\x00" * 12
-                           + struct.pack("<i", 0))
-            item.type_hash_str = str(PLAYEMITTER)
-            item.is_emitter    = True
-            item.raw_b64       = _b64mod.b64encode(emitter_raw).decode('ascii')
-            load_entry_fields_from_raw(item, emitter_raw, True)
-            item.xyz           = (1.0, 1.0, 1.0)
+        is_emitter = self.entry_type != 'PLAYEFX'
+        type_hash = PLAYEMITTER if is_emitter else PLAYEFX
+        raw = default_action_entry_bytes(type_hash)
+        item.type_hash_str = str(type_hash)
+        item.is_emitter    = is_emitter
+        item.raw_b64       = _b64enc(raw)
+        item.efx_path      = ""
+        load_entry_fields_from_raw(item, raw, is_emitter)
 
         props.active_entry_index = len(props.entries) - 1
         return {"FINISHED"}

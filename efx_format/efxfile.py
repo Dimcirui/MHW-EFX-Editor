@@ -7,6 +7,7 @@
 """
 
 from __future__ import annotations
+import math
 import struct
 from dataclasses import dataclass, field
 from typing import List, Optional
@@ -171,6 +172,20 @@ class EFXHeader:
             self.count_subselect, self.subselect_size,
             self.count_eof, self.double_buffer,
         )
+
+def recompute_double_buffer(data: bytes, factor: float = 2.0):
+    """按文件长度重算 header 的 doubleBuffer，返回 ``(新字节, 原值, 新值)``。
+
+    新值取原值与「文件长度 × factor，向上取整到 16 字节」中的较大者，只增不减。
+    """
+    fields = list(EFXHeader.STRUCT.unpack_from(data, 0))
+    old = fields[-1]
+    new = max(old, (math.ceil(factor * len(data)) + 15) // 16 * 16)
+    if new == old:
+        return data, old, new
+    fields[-1] = new
+    return EFXHeader.STRUCT.pack(*fields) + data[EFXHeader.SIZE:], old, new
+
 
 @dataclass
 class ActionEntry:

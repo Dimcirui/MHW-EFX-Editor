@@ -4,7 +4,7 @@
 维护约束：
 - 预设只含字段值，不含原始字节。写出时剔除 ``DERIVED_KEYS`` 中可由内容推出的长度 / 计数键；
   读取时忽略它们，由 pack 按实际内容重算。清单须与 ``tools/scan_derived_keys.py`` 的结果一致。
-- 读取时逐个字段块规整顶层字段：旧名按调用方传入的改名表映射，缺失字段取
+- 读取时逐个字段块规整顶层字段：旧名按改名表映射（默认 ``FIELD_RENAME_ALIASES``），缺失字段取
   ``defaults.json`` 的同类默认值，未知字段抛 ``PresetError``。嵌套结构（列表、子字典）原样使用。
 - 改名表以主属性类型名为键；Extern Set 按对应主属性名查表。
 - 跨段引用字段按原值保存，重定位由调用方按 ``source_counts`` 等元数据处理。
@@ -19,6 +19,7 @@ import json
 from .. import hashes as H
 from ..efxfile import EFXFile, EntryData, AttrBlock, RootBody
 from ..structs import EXTERN_HASH_ALIASES
+from ..schema.field_rename_aliases import FIELD_RENAME_ALIASES
 from .attribute import type_key, type_from_key, attribute_to_json, attribute_from_json
 from .extern import EXTERN_VARLEN_MAIN, extern_to_json, extern_from_json
 from .action import action_to_json, action_from_json
@@ -108,6 +109,8 @@ def normalize_fields(category: str, type_hash: int, fields: dict, aliases=None):
     canonical = [k for k in default if k not in derived]
     canonical_set = set(canonical)
     alias_name = _alias_type_name(category, type_hash)
+    if aliases is None:
+        aliases = FIELD_RENAME_ALIASES
 
     given = {}
     unknown = []
@@ -117,7 +120,7 @@ def normalize_fields(category: str, type_hash: int, fields: dict, aliases=None):
         elif k in derived:
             continue
         else:
-            new = (aliases or {}).get((alias_name, k)) if alias_name else None
+            new = aliases.get((alias_name, k)) if alias_name else None
             if new in canonical_set and new not in fields:
                 given[new] = v
             else:
@@ -259,6 +262,18 @@ def build_preset(preset: dict, aliases=None, filled_log=None):
     builder = {'attribute': build_attribute, 'entry': build_entry,
                'extern': build_extern, 'action': build_action}[kind]
     return builder(payload, aliases, filled_log)
+
+
+def attribute_preset_type(preset: dict):
+    """不升级预设，直接取属性预设的 ``(type_hash, type_name)``；读不出时返回 ``(None, '')``。"""
+    try:
+        if preset.get('format_version') == FORMAT_VERSION:
+            h = type_from_key(preset['attribute']['type'])
+        else:
+            h = int(str(preset['type_hash']))
+    except (KeyError, TypeError, ValueError):
+        return None, ''
+    return h, H.HASH_TO_NAME.get(h, f'0x{h:08X}')
 
 
 def preset_meta(preset: dict) -> dict:

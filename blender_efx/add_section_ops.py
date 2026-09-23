@@ -12,7 +12,6 @@
 """
 
 import base64
-import struct
 
 import bpy
 from bpy.props import EnumProperty
@@ -21,39 +20,6 @@ from bpy.types import Operator
 from .i18n import T
 from .add_ops import get_active_efx_root
 from . import root_collection as _rc
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 模板常量
-# ─────────────────────────────────────────────────────────────────────────────
-
-# 新建条目的种子字节。
-# `unkn[N]` 是社区 EFX_Play.bt 的下标，只为对照模板时溯源，不代表该槽仍未知。
-
-# PlayEmitter raw[0:28]：
-#   @0  Type Flags        = 2    作用未知。
-#   @4  SetLandAttribute  = 0    取命中地面的属性，供按标志位过滤特效
-#   @8  SetLandDirection  = 0    让生成实例的矩阵贴合地面倾斜
-#   @12 Order             = 4    ZXY
-#   @16/20/24 Rotation XYZ = 0.0 float
-_BLANK_EMITTER_UNKN7 = bytes.fromhex(
-    "02000000000000000000000004000000000000000000000000000000"
-)
-
-# PlayEFX raw：64B 固定段 + 1B 路径终止符。槽位布局与 PlayEmitter 同构，多一个 @8 Type。
-# 下列非零常量是**必须**的——语料里这些槽没有一例为 0，填 0 的条目游戏内大概率不生效。
-_BLANK_PLAYEFX_RAW = (
-    struct.pack('<i', 1)                 # @0  Type Flags（unkn0）
-    + struct.pack('<i', 1)               # @4  path_len = 1（null path）
-    + struct.pack('<I', 1082828692)      # @8  Type = 0x408AA794
-    + b'\x00' * 8                        # @12 SetLandAttribute / @16 SetLandDirection
-    + struct.pack('<i', 2)               # @20 Unknown 2（unkn[2]）
-    + b'\x00' * 12                       # @24/28/32 Rotation X/Y/Z（unkn[3..5]）
-    + struct.pack('<i', 4)               # @36 Order（unkn[6]）= 4 ZXY
-    + struct.pack('<3f', 1.0, 1.0, 1.0)  # @40 Scale
-    + b'\x00' * 12                       # @52 Translate（属性标识符 pefx_null 是 BT 错名）
-    + b'\x00'                            # @64 path[1] = null terminator
-)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,13 +137,12 @@ def add_subselect(root_obj) -> bpy.types.Object:
 
 def add_action(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
     """
-    新建一个 Action：含 1 个初始 entry，类型由 entry_type 决定。
-      'PLAYEMITTER'：空白 PlayEmitter（0 targets，xyz=1,1,1）
-      'PLAYEFX'    ：空白 PlayEFX（path=""，xyz=1,1,1）
-    targets / 路径由用户在 Action 面板里接线。
+    新建一个 Action：含 1 个初始 entry，类型由 entry_type（'PLAYEMITTER' / 'PLAYEFX'）
+    决定，字段取默认值；targets 为空、路径为空，由用户在 Action 面板里接线。
     """
     from ..efx_format.efxfile import ActionData, ActionEntry
     from ..efx_format.hashes import PLAYEMITTER, PLAYEFX
+    from ..efx_format.assembly import default_action_entry_bytes
     from . import action_emitter as _action_emitter
 
     col = _section_collection(root_obj, "_0 Action")
@@ -186,14 +151,8 @@ def add_action(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
 
     idx = _next_index(root_obj, "EFX_ACTION")
 
-    if entry_type == 'PLAYEFX':
-        first_entry = ActionEntry(type_hash=PLAYEFX, raw=_BLANK_PLAYEFX_RAW)
-    else:
-        emitter_raw = (_BLANK_EMITTER_UNKN7
-                       + struct.pack("<3f", 1.0, 1.0, 1.0)
-                       + b"\x00" * 12
-                       + struct.pack("<i", 0))
-        first_entry = ActionEntry(type_hash=PLAYEMITTER, raw=emitter_raw)
+    type_hash = PLAYEFX if entry_type == 'PLAYEFX' else PLAYEMITTER
+    first_entry = ActionEntry(type_hash=type_hash, raw=default_action_entry_bytes(type_hash))
 
     # 标签前缀规则：新 action 追加在 action 组末尾，前面=现有所有 action。
     has_label = _all_labeled(_sorted_children(root_obj, "EFX_ACTION"))
@@ -246,9 +205,8 @@ def add_extern(root_obj) -> bpy.types.Object:
     obj["efx_raw_label"] = raw_label
     obj["efx_has_label"] = int(has_label)
 
-    # 空白 ExternAttribute：只有 16B header（attr_type/null0/item_count=0/null1），
-    # 与 export_extern_data 的 header 格式（struct.pack('<IiIi', ...)）完全一致。
-    raw_b64 = _b64enc(struct.pack('<IiIi', attr_type, 0, 0, 0))
+    from ..efx_format.efxfile import ExternAttribute
+    raw_b64 = _b64enc(ExternAttribute(attr_type=attr_type, null0=0, null1=0, items=[]).serialize())
     obj["raw_b64"] = raw_b64
 
     ep = obj.efx_extern

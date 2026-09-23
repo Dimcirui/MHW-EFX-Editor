@@ -9,9 +9,11 @@
 """
 from __future__ import annotations
 
+import copy
+
 from .. import hashes as H
 from ..structs import (
-    ATTR_CUSTOM_CODEC, unpack, pack, _schema_size,
+    ATTR_CUSTOM_CODEC, ATTR_SCHEMA_MAP, EXTERN_HASH_ALIASES, unpack, pack, _schema_size,
     EXTERN_SPAWN_SCHEMA, EXTERN_VELOCITY3D_SCHEMA, EXTERN_SCALEANIM_SCHEMA,
     EXTERN_EMITTERSHAPE3D_SCHEMA, EXTERN_RGBFIRE_SCHEMA, EXTERN_TRANSFORM3D_SCHEMA,
     PLEMISSIVE_SCHEMA, LIFE_SCHEMA, PLSNOW_SCHEMA, PARENTEMISSIVE_SCHEMA,
@@ -54,6 +56,29 @@ EXTERN_VARLEN_MAIN = {
     H.EXTERNTYPERIBBON:   H.RIBBON,
     H.EXTERNTYPEPLANE:    H.PLANE,
 }
+
+
+def extern_main_type(type_hash: int):
+    """返回 Extern 类型对应的主属性类型；没有对应时返回 None。"""
+    return EXTERN_VARLEN_MAIN.get(type_hash) or EXTERN_HASH_ALIASES.get(type_hash)
+
+
+def extern_set_from_main(type_hash: int, main_values: dict) -> dict:
+    """由主属性字段值生成一个 Set。
+
+    变长类型与主属性共用 codec，直接复制；定长类型从该 Extern 类型的默认值出发，只覆盖
+    同名且 spec 相同的字段，其余保持默认值。
+    """
+    if type_hash in EXTERN_VARLEN_MAIN:
+        return copy.deepcopy(main_values)
+    from .defaults import default_extern_set
+    values = default_extern_set(type_hash)
+    main_schema = ATTR_SCHEMA_MAP.get(EXTERN_HASH_ALIASES.get(type_hash), (None,))[0]
+    main_specs = dict(main_schema) if isinstance(main_schema, list) else {}
+    for name, spec in EXTERN_FIXED_SCHEMA[type_hash]:
+        if name in main_values and main_specs.get(name) == spec:
+            values[name] = copy.deepcopy(main_values[name])
+    return values
 
 
 def decode_extern_sets(type_hash: int, attr_count: int, data: bytes) -> list:

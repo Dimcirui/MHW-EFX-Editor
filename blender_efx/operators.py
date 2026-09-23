@@ -9,7 +9,6 @@
 
 import os
 import re
-import struct
 
 import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
@@ -413,11 +412,9 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
 
         _db_note = ""
         if self.recompute_double_buffer:
-            import math
-            old_db = struct.unpack_from("<I", data, 68)[0]
-            new_db = max(old_db, (math.ceil(2.0 * len(data)) + 15) // 16 * 16)
+            from ..efx_format.efxfile import recompute_double_buffer
+            data, old_db, new_db = recompute_double_buffer(data)
             if new_db != old_db:
-                data = data[:68] + struct.pack("<I", new_db) + data[72:]
                 # 保持 UI 与写出字节一致。
                 root["hdr_double_buffer"] = str(new_db)
             _db_note = f", filesize_double {old_db}→{new_db}"

@@ -12,16 +12,22 @@ from .attribute import (
     attribute_to_json, attribute_from_json,
 )
 from .extern import (
-    EXTERN_FIXED_SCHEMA, EXTERN_VARLEN_MAIN, decode_extern_sets, encode_extern_sets,
+    EXTERN_FIXED_SCHEMA, EXTERN_VARLEN_MAIN, extern_main_type, extern_set_from_main,
+    decode_extern_sets, encode_extern_sets,
     extern_to_json, extern_from_json,
 )
 from .action import action_to_json, action_from_json
 from .timl import timl_to_json, timl_from_json
 from .entry import entry_to_json, entry_from_json
 from .efx import efx_to_json, efx_from_json
+from .defaults import (
+    has_default, default_attribute, default_extern_set, default_action_entry,
+    default_root_entry, default_attribute_bytes, default_extern_set_bytes,
+    default_action_entry_bytes,
+)
 from .preset import (
     FORMAT_VERSION, DERIVED_KEYS, PresetError, strip_derived, normalize_fields,
     attribute_preset, entry_preset, extern_preset, action_preset,
     build_attribute, build_entry, build_extern, build_action, build_preset,
-    preset_meta, upgrade_preset,
+    preset_meta, upgrade_preset, attribute_preset_type,
 )

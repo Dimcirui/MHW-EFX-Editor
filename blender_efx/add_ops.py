@@ -48,10 +48,6 @@ def _bodies_preset_dir_legacy() -> str:
     return os.path.join(_presets_root(), "__bodies__")
 
 
-# 预设头字段须与导入端保持一致；attr_count 由导出端按实际属性重算。
-_STANDARD_PROP_KEYS = ("body_type", "unkn0", "attr_count", "null", "timl_length")
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Active EFX root helper
 # ─────────────────────────────────────────────────────────────────────────────
@@ -124,47 +120,55 @@ def save_entry_preset(entry_obj: bpy.types.Object, name: str) -> str:
 
 
 def build_entry_preset_dict(entry_obj: bpy.types.Object) -> dict:
-    """磁盘预设和会话剪贴板共用的唯一 Entry 序列化路径。"""
+    """磁盘预设和会话剪贴板共用的唯一 Entry 序列化路径；产出 v2 预设。"""
     if entry_obj is None or entry_obj.get("~TYPE") != "EFX_ENTRY":
         raise ValueError("build_entry_preset_dict：目标对象不是 EFX_ENTRY")
 
-    entry_kind = str(entry_obj.get("entry_kind", "unknown"))
+    from . import io_tree
+    from ..efx_format import assembly as _asm
+    from ..efx_format.efxfile import EFXFile, EntryData, RootBody
 
-    preset = {
-        "efx_preset_kind": "entry",
-        "entry_kind": entry_kind,
-        # display_name：下拉显示用（utf-8 从 JSON 读，免疫文件名编码）；
-        # 默认用 entry 自身的标签名，save_entry_preset 可用用户输入覆盖。
-        "display_name": str(entry_obj.get("efx_raw_label", "")),
-        "props": {},
-        "timl_bytes": "",
-        "raw": "",
-        "source_label": str(entry_obj.get("efx_raw_label", "")),
-        "source_counts": _read_source_counts(entry_obj),
-        "in_eof": _is_entry_in_eof(entry_obj),
-        "attributes": [],
-    }
+    entry_kind = str(entry_obj.get("entry_kind", "unknown"))
+    label = str(entry_obj.get("efx_raw_label", ""))
+    blocks = _collect_attribute_blocks(entry_obj)
 
     if entry_kind == "standard":
-        for key in _STANDARD_PROP_KEYS:
-            preset["props"][key] = str(entry_obj.get(key, ""))
-        preset["timl_bytes"] = str(entry_obj.get("timl_bytes", ""))
-        preset["attributes"] = _collect_attribute_dicts(entry_obj)
-
+        timl = io_tree._export_timl_bytes(entry_obj)
+        body = EntryData(
+            body_type=int(str(entry_obj.get("body_type", "0"))),
+            unkn0=int(str(entry_obj.get("unkn0", "0"))),
+            attr_count=len(blocks),
+            null=int(str(entry_obj.get("null", "0"))),
+            timl_length=len(timl),
+            timl_bytes=timl,
+            attr_blocks=blocks,
+        )
+    elif entry_kind == "root":
+        if blocks or "raw" not in entry_obj:
+            body = RootBody(entries=blocks)
+        else:
+            body, _end = EFXFile._parse_root_body(io_tree._b64dec(str(entry_obj["raw"])), 0)
     else:
-        # root / unknown：整段 raw（b64），无属性子对象
-        preset["raw"] = str(entry_obj.get("raw", ""))
+        raise ValueError(f"build_entry_preset_dict：无法结构化的 entry 类型 {entry_kind!r}")
 
-    return preset
+    # display_name 默认用 entry 标签名，save_entry_preset 可用用户输入覆盖。
+    return _asm.entry_preset(
+        body,
+        display_name=label,
+        source_label=label,
+        source_counts=_read_source_counts(entry_obj),
+        in_eof=_is_entry_in_eof(entry_obj),
+    )
 
 
-def _collect_attribute_dicts(entry_obj: bpy.types.Object) -> list:
+def _collect_attribute_blocks(entry_obj: bpy.types.Object) -> list:
     """
     使用与导出端相同的字段解析取得当前字节，而非导入快照，
     以保留字段编辑和引用覆写。局部段索引也须与导出顺序一致。
     """
     import base64
     from . import io_tree
+    from ..efx_format.efxfile import AttrBlock
 
     root = _rc.find_root_collection(entry_obj)  # 顶层文件集合
 
@@ -185,12 +189,8 @@ def _collect_attribute_dicts(entry_obj: bpy.types.Object) -> list:
         try:
             data = io_tree._resolve_attribute_data_bytes(b, extern_map, entry_map, play_map)
         except Exception:
-            # 回退：原始快照（至少不崩）
             data = base64.b64decode(str(b.get("data_bytes", "")))
-        out.append({
-            "type_hash": str(b.get("type_hash", "")),
-            "data_bytes": base64.b64encode(data).decode("ascii"),
-        })
+        out.append(AttrBlock(type_hash=int(str(b.get("type_hash", "0"))), data_bytes=data))
     return out
 
 
@@ -223,38 +223,6 @@ def _is_entry_in_eof(entry_obj: bpy.types.Object) -> bool:
         return entry_action_ref.is_entry_in_eof(entry_obj)
     except Exception:
         return False
-
-
-def _normalize_legacy_entry_preset(preset: dict) -> dict:
-    """
-    兼容 3.0 重命名前的旧 entry 预设 schema（efx_preset_kind == "body"，来自
-    presets/__bodies__/）：把旧 key 名规整成当前 schema，使 add_entry_from_preset_dict
-    余下的逻辑不必关心新旧格式差异。已是新 schema（efx_preset_kind == "entry"）或
-    不认识的格式原样返回。
-
-    旧→新 key 对照（值本身不变，只是 key 名跟着 3.0 重命名走）：
-      efx_preset_kind: "body" → "entry"
-      body_kind        → entry_kind
-      blocks           → attributes
-      source_counts.body/play → source_counts.entry/action
-    """
-    if preset.get("efx_preset_kind") != "body":
-        return preset
-    out = dict(preset)
-    out["efx_preset_kind"] = "entry"
-    if "body_kind" in out:
-        out["entry_kind"] = out.pop("body_kind")
-    if "blocks" in out:
-        out["attributes"] = out.pop("blocks")
-    sc = out.get("source_counts")
-    if isinstance(sc, dict):
-        new_sc = dict(sc)
-        if "body" in new_sc:
-            new_sc["entry"] = new_sc.pop("body")
-        if "play" in new_sc:
-            new_sc["action"] = new_sc.pop("play")
-        out["source_counts"] = new_sc
-    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -300,20 +268,20 @@ def add_entry_from_preset_dict(preset: dict,
     """
     按 preset dict 新建 entry（add_entry_from_preset 的核心；供文件版与"粘贴Entry"内存版共用）。
 
-    自动兼容 __bodies__/ 里的旧 schema 预设（efx_preset_kind == "body"），
-    见 _normalize_legacy_entry_preset。
+    v1 预设（含 3.0 前的 body 格式）先升级为 v2，再由字段值组装 Entry。
     """
     from . import io_tree
-    from ..efx_format.efxfile import AttrBlock
-
-    preset = _normalize_legacy_entry_preset(preset)
+    from ..efx_format import assembly as _asm
+    from ..efx_format.efxfile import RootBody
 
     if root_obj is None or root_obj.get("~TYPE") != "EFX_ROOT":
         raise ValueError("add_entry_from_preset_dict：root_obj 不是 EFX_ROOT")
+    preset = _asm.upgrade_preset(preset)
     if preset.get("efx_preset_kind") != "entry":
         raise ValueError("add_entry_from_preset_dict：不是 entry 预设（efx_preset_kind != 'entry'）")
+    body = _asm.build_preset(preset)
 
-    entry_kind = str(preset.get("entry_kind", "unknown"))
+    entry_kind = "root" if isinstance(body, RootBody) else "standard"
     source_label = str(preset.get("source_label", ""))
 
     # ── 找目标 Main 集合 ──────────────────────────────────────────────────────
@@ -353,37 +321,20 @@ def add_entry_from_preset_dict(preset: dict,
         except Exception:
             pass
 
-    props = preset.get("props", {}) or {}
-
     if entry_kind == "standard":
-        for key in _STANDARD_PROP_KEYS:
-            entry_obj[key] = str(props.get(key, "0"))
-        # 咽喉点：从预设写 TIML（新建/替换）→ 写字节 + 建句柄 + 从新字节建持久 fcurve
-        import base64 as _b64
+        entry_obj["body_type"]   = str(body.body_type)
+        entry_obj["unkn0"]       = str(body.unkn0)
+        entry_obj["attr_count"]  = str(len(body.attr_blocks))
+        entry_obj["null"]        = str(body.null)
+        entry_obj["timl_length"] = str(body.timl_length)
+        # 咽喉点：写 TIML（新建/替换）→ 写字节 + 建句柄 + 从新字节建持久 fcurve
         from . import timl_edit as _te
-        _te.set_entry_timl(entry_obj, _b64.b64decode(str(preset.get("timl_bytes", "")) or ""))
-        _build_attributes(io_tree, AttrBlock, preset.get("attributes", []),
-                      entry_obj, col_entry, raw_label)
-
+        _te.set_entry_timl(entry_obj, body.timl_bytes)
+        attr_blocks = body.attr_blocks
     else:
-        # root：尝试跟 io_tree 导入端同一套逻辑拆成 AttrBlock 子对象
-        # （UnitBoundary/RenderTarget/LayoutBank 伪装成属性，可见、可删）；
-        # 拆不动（非 root 或数据本身就不合法）才退回整段 raw 只读存底。
-        raw_str = str(preset.get("raw", ""))
-        decomposed = False
-        if entry_kind == "root" and raw_str:
-            try:
-                from ..efx_format.efxfile import EFXFile
-                raw_bytes = io_tree._b64dec(raw_str)
-                body, end_pos = EFXFile._parse_root_body(raw_bytes, 0)
-                if end_pos == len(raw_bytes):
-                    attr_blocks = [io_tree._root_entry_to_attr_block(e) for e in body.entries]
-                    io_tree._build_attr_attribute_children(attr_blocks, entry_obj, col_entry, raw_label)
-                    decomposed = True
-            except Exception:
-                decomposed = False
-        if not decomposed:
-            entry_obj["raw"] = raw_str
+        # Root 子条目（UnitBoundary / RenderTarget / LayoutBank）与导入端一样建成属性子对象。
+        attr_blocks = [io_tree._root_entry_to_attr_block(e) for e in body.entries]
+    io_tree._build_attr_attribute_children(attr_blocks, entry_obj, col_entry, raw_label)
 
     # #3c 跨文件引用重指针化：把新增 entry 内属性的段局部引用重指向目标文件的段。
     if entry_kind == "standard":
@@ -494,22 +445,6 @@ def _flag_if_cross_file_broken(props, ptr_attr, pointerized_attr,
         setattr(props, pointerized_attr, True)
         setattr(props, ptr_attr, None)
     # 否则（v >= src_count）→ 源也越界/死属性，保持 pointerized=False（verbatim）
-
-
-def _build_attributes(io_tree, AttrBlock, attribute_list, entry_obj,
-                  col_entry, raw_label) -> None:
-    """从预设的 attributes 列表重建 AttrBlock 子对象（复用 io_tree 构建器）。"""
-    attr_blocks = []
-    for b in (attribute_list or []):
-        try:
-            th = int(b["type_hash"])
-            db = io_tree._b64dec(b["data_bytes"])
-        except (KeyError, ValueError, TypeError):
-            continue
-        attr_blocks.append(AttrBlock(type_hash=th, data_bytes=db))
-
-    # 默认 extern 参数：v1 不跨文件指针化，属性 data_bytes 逐字保留为 raw。
-    io_tree._build_attr_attribute_children(attr_blocks, entry_obj, col_entry, raw_label)
 
 
 def _find_entry_collection(root_obj: bpy.types.Collection):
@@ -714,7 +649,8 @@ class EFX_OT_copy_entry(bpy.types.Operator):
             traceback.print_exc()
             self.report({"ERROR"}, "Failed to copy this entry. See the system console for details.")
             return {"CANCELLED"}
-        nblk = len(_ENTRY_CLIPBOARD.get("attributes", []))
+        entry = _ENTRY_CLIPBOARD["entry"]
+        nblk = len(entry["attributes"] if entry["kind"] == "standard" else entry["entries"])
         self.report({"INFO"}, f"Copied Entry ({nblk} attributes) to clipboard")
         return {"FINISHED"}
 

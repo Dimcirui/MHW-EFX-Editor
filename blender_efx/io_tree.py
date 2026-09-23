@@ -57,8 +57,7 @@ def _b64dec(s: str) -> bytes:
 def _root_entry_to_attr_block(e) -> AttrBlock:
     """将可按 AttrBlock 编码表示的 Root 子条目映射为属性块。"""
     if isinstance(e, RootUnitBoundary):
-        data = struct.pack('<2i', *e.ints) + struct.pack('<8f', *e.floats)
-        return AttrBlock(type_hash=RootBody.UNITBOUNDARY, data_bytes=data)
+        return AttrBlock(type_hash=RootBody.UNITBOUNDARY, data_bytes=e.serialize()[4:])
     type_hash = struct.unpack_from('<I', e.raw, 0)[0]
     return AttrBlock(type_hash=type_hash, data_bytes=e.raw[4:])
 

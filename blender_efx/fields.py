@@ -1569,7 +1569,7 @@ def _resolve_renamed_spec(block_props, spec_map: dict, item):
     安全退回整块 raw_b64，不会比没有这张表更差）。
     """
     from ..efx_format.hashes import HASH_TO_NAME
-    from .field_rename_aliases import FIELD_RENAME_ALIASES
+    from ..efx_format.schema.field_rename_aliases import FIELD_RENAME_ALIASES
 
     type_hash_str = getattr(block_props, "type_hash_str", "") or ""
     if not type_hash_str:
@@ -2583,7 +2583,7 @@ def rebuild_custom_field_attribute(bp, type_hash: int) -> bytes:
     entry_map = {e['item_name']: e for e in entries} if entries else {}
 
     from ..efx_format.hashes import HASH_TO_NAME
-    from .field_rename_aliases import FIELD_RENAME_ALIASES
+    from ..efx_format.schema.field_rename_aliases import FIELD_RENAME_ALIASES
     type_name = HASH_TO_NAME.get(type_hash)
 
     # ── 覆盖被编辑的标量/颜色/嵌套字段 ───────────────────────────────────────

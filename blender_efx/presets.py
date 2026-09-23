@@ -94,8 +94,24 @@ def _presets_root() -> str:
     return new_root
 
 
+def _attr_fingerprint(d) -> tuple:
+    """属性预设（v1 / v2）的 ``(type_hash, type_name, 内容指纹)``；无法组装时指纹为 None。
+
+    内容指纹是组装出的字节，因此同一内容的 v1 与 v2 预设指纹相同。
+    """
+    from ..efx_format.assembly import attribute_preset_type, build_preset
+    if not isinstance(d, dict) or d.get("efx_preset_kind") != "attribute":
+        return None, "", None
+    type_hash, type_name = attribute_preset_type(d)
+    try:
+        key = build_preset(d)
+    except Exception:
+        key = None
+    return type_hash, type_name, key
+
+
 def _is_stock_duplicate(old_path: str, new_path: str) -> bool:
-    """判断预设类型和原始数据是否相同；读取异常时保守保留文件。"""
+    """判断预设类型和内容是否相同；读取异常时保守保留文件。"""
     if not os.path.isfile(new_path):
         return False
     try:
@@ -105,9 +121,8 @@ def _is_stock_duplicate(old_path: str, new_path: str) -> bool:
             new = json.load(f)
     except Exception:
         return False
-    return (isinstance(old, dict) and isinstance(new, dict)
-            and old.get("type_hash") == new.get("type_hash")
-            and old.get("data_bytes") == new.get("data_bytes"))
+    old_key = _attr_fingerprint(old)[2]
+    return old_key is not None and old_key == _attr_fingerprint(new)[2]
 
 
 # 旧分类目录的存在表示需要迁移属性预设树。
@@ -137,9 +152,11 @@ def _build_official_preset_fingerprints(package_attrs_dir: str) -> tuple:
             try:
                 with open(os.path.join(dirpath, fname), "r", encoding="utf-8") as f:
                     d = json.load(f)
-                exact_fingerprints[(d.get("type_hash"), d.get("data_bytes"))] = d.get("display_name", "")
-                if d.get("type_hash") is not None:
-                    known_type_names[d.get("type_hash")] = d.get("type_name", "")
+                type_hash, type_name, key = _attr_fingerprint(d)
+                if key is not None:
+                    exact_fingerprints[key] = d.get("display_name", "")
+                if type_hash is not None:
+                    known_type_names[type_hash] = type_name
             except Exception:
                 continue
     return exact_fingerprints, known_type_names
@@ -183,9 +200,7 @@ def _migrate_to_new_category_tree(new_root: str, package_attrs_dir: str):
                 try:
                     with open(path, "r", encoding="utf-8") as f:
                         d = json.load(f)
-                    type_hash = d.get("type_hash")
-                    type_name = d.get("type_name", "")
-                    key = (type_hash, d.get("data_bytes"))
+                    type_hash, type_name, key = _attr_fingerprint(d)
                     display_name = d.get("display_name", "")
                 except Exception:
                     type_hash, type_name, key, display_name = None, "", None, ""

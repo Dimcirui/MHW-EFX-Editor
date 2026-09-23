@@ -65,6 +65,12 @@ def default_extern_set_bytes(type_hash: int) -> bytes:
     return encode_extern_sets(type_hash, [default_extern_set(type_hash)])
 
 
+def default_action_entry_bytes(type_hash: int) -> bytes:
+    """Action 条目的默认字节（不含 type hash）。"""
+    from ..schema.action import ACTION_ENTRY_CODEC
+    return ACTION_ENTRY_CODEC[type_hash][1](default_action_entry(type_hash))
+
+
 def verify_defaults(table: dict = None) -> list:
     """逐项检查默认值能编码并解回同一结构；返回问题列表，空列表表示全部通过。"""
     from ..schema.action import ACTION_ENTRY_CODEC

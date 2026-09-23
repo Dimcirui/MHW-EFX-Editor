@@ -6,7 +6,7 @@
   计数非零」这种无法由列表推出的计数才写成 ``attrCount``。
 - 属性里的跨段引用（EXTERNREFERENCE、PTLIFE、PTCOLLISION 的索引字段）按原值保存，
   重定位由调用方负责。
-- Root 子条目：UnitBoundary 与 RenderTarget 按同 hash 的属性 codec 编码（数据不含前导 type），
+- Root 子条目也可以是 ``AttrBlock``（导出端的表示）。UnitBoundary 与 RenderTarget 按同 hash 的属性 codec 编码（数据不含前导 type），
   LayoutBank 为 ``unkn`` + 若干 LayoutBank_Block。
 """
 from __future__ import annotations
@@ -51,6 +51,8 @@ def _entry_from_json(obj: dict) -> EntryData:
 
 
 def _root_sub_to_json(e) -> dict:
+    if isinstance(e, AttrBlock):
+        e = RootOpaqueEntry(raw=e.serialize())
     if isinstance(e, RootUnitBoundary):
         data = struct.pack('<2i', *e.ints) + struct.pack('<8f', *e.floats)
         return attribute_to_json(RootBody.UNITBOUNDARY, data)

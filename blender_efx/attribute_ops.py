@@ -69,10 +69,11 @@ def _iter_preset_files(category_dir: str) -> list:
 
 def _preset_display_item(path: str) -> tuple:
     """读取单个预设 JSON，返回 EnumProperty item 元组 (_encode_path_ident(path), label, type_name)。"""
+    from ..efx_format.assembly import attribute_preset_type
     try:
         with open(path, "r", encoding="utf-8") as f:
             d = json.load(f)
-        type_name = d.get("type_name", "")
+        type_name = attribute_preset_type(d)[1]
         stored_display = d.get("display_name", "")
     except Exception:
         type_name, stored_display = "", ""
@@ -95,6 +96,7 @@ def build_attribute_preset_dict(blk_obj: bpy.types.Object) -> dict:
 
     from . import io_tree
     from ..efx_format.hashes import HASH_TO_NAME
+    from ..efx_format.assembly import attribute_preset
 
     # 导出侧解析所需的段索引映射。
     root = _rc.find_root_collection(blk_obj)
@@ -120,15 +122,8 @@ def build_attribute_preset_dict(blk_obj: bpy.types.Object) -> dict:
         type_hash = 0
     type_name = HASH_TO_NAME.get(type_hash, f"0x{type_hash:08X}")
 
-    return {
-        "efx_preset_kind": "attribute",
-        "type_hash": str(type_hash),
-        "type_name": type_name,
-        "display_name": type_name,
-        "category": category_of(type_hash),
-        "subgroup": subgroup_of(type_hash),
-        "data_bytes": base64.b64encode(data).decode("ascii"),
-    }
+    return attribute_preset(type_hash, data, display_name=type_name,
+                            category=category_of(type_hash), subgroup=subgroup_of(type_hash))
 
 
 def save_attribute_preset(blk_obj: bpy.types.Object, name: str) -> str:
@@ -142,7 +137,8 @@ def save_attribute_preset(blk_obj: bpy.types.Object, name: str) -> str:
     save_dir = _attribute_category_dir("custom")
     os.makedirs(save_dir, exist_ok=True)
 
-    fallback = str(preset.get("type_name", "attribute"))
+    from ..efx_format.assembly import attribute_preset_type
+    fallback = attribute_preset_type(preset)[1] or "attribute"
     fname = _unique_ascii_filename(save_dir, name, fallback)
     json_path = os.path.join(save_dir, fname + ".json")
     with open(json_path, "w", encoding="utf-8") as f:
@@ -222,10 +218,10 @@ def add_attribute_to_entry(entry_obj: bpy.types.Object, preset_dict: dict) -> bp
     if preset_dict.get("efx_preset_kind") != "attribute":
         raise ValueError("add_attribute_to_entry：不是属性预设（efx_preset_kind != 'attribute'）")
 
+    from ..efx_format.assembly import build_preset
     try:
-        type_hash = int(str(preset_dict["type_hash"]))
-        data_bytes = base64.b64decode(preset_dict["data_bytes"])
-    except (KeyError, ValueError, Exception) as exc:
+        type_hash, data_bytes = build_preset(preset_dict)
+    except Exception as exc:
         raise ValueError(f"add_attribute_to_entry：预设格式错误：{exc}")
 
     # ── 找集合（attribute 与 entry 同集合）────────────────────────────────────────
@@ -699,7 +695,8 @@ class EFX_OT_copy_attribute(bpy.types.Operator):
             traceback.print_exc()
             self.report({"ERROR"}, "Failed to copy this attribute. See the system console for details.")
             return {"CANCELLED"}
-        type_name = _ATTRIBUTE_CLIPBOARD.get("type_name", "")
+        from ..efx_format.assembly import attribute_preset_type
+        type_name = attribute_preset_type(_ATTRIBUTE_CLIPBOARD)[1]
         self.report({"INFO"}, f"Attribute copied to clipboard ({type_name})")
         return {"FINISHED"}
 

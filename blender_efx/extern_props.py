@@ -8,7 +8,6 @@
 """
 
 import base64
-import struct
 
 import bpy
 from bpy.props import (
@@ -24,126 +23,42 @@ _HAS_POLL_MESSAGE_SET = hasattr(bpy.types.Operator, "poll_message_set")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EXTERN 类型 hash → (schema, elem_size) 映射
+# EXTERN 类型布局：数据取自 efx_format.assembly.extern，这里只换成胶水层的形状
 # ─────────────────────────────────────────────────────────────────────────────
 
 _EXTERN_SCHEMA_MAP_CACHE = None
-
-
-def _get_extern_schema_map() -> dict:
-    global _EXTERN_SCHEMA_MAP_CACHE
-    if _EXTERN_SCHEMA_MAP_CACHE is not None:
-        return _EXTERN_SCHEMA_MAP_CACHE
-    try:
-        from ..efx_format.hashes import (
-            EXTERNSPAWN, EXTERNVELOCITY3D, EXTERNSCALEANIM,
-            EXTERNEMITTERSHAPE3D, EXTERNRGBFIRE, EXTERNTRANSFORM3D,
-            EXTERNPLEMISSIVE,
-            EXTERNLIFE, EXTERNPLSNOW, EXTERNPARENTEMISSIVE, EXTERNROTATEANIM,
-            EXTERNFADEBYANGLE, EXTERNFADEBYDEPTH, EXTERNUVCONTROL, EXTERNGUIDE,
-            EXTERNPARENTSNOW, EXTERNOTOMOSNOW,
-        )
-        from ..efx_format.structs import (
-            EXTERN_SPAWN_SCHEMA, EXTERN_VELOCITY3D_SCHEMA, EXTERN_SCALEANIM_SCHEMA,
-            EXTERN_EMITTERSHAPE3D_SCHEMA, EXTERN_RGBFIRE_SCHEMA, EXTERN_TRANSFORM3D_SCHEMA,
-            PLEMISSIVE_SCHEMA, LIFE_SCHEMA, PLSNOW_SCHEMA, PARENTEMISSIVE_SCHEMA,
-            ROTATEANIM_SCHEMA, FADEBYANGLE_SCHEMA, FADEBYDEPTH_SCHEMA, UVCONTROL_SCHEMA,
-            GUIDE_SCHEMA, PARENTSNOW_SCHEMA, OTOMOSNOW_SCHEMA,
-        )
-        _EXTERN_SCHEMA_MAP_CACHE = {
-            EXTERNSPAWN:           (EXTERN_SPAWN_SCHEMA,           72),
-            EXTERNVELOCITY3D:      (EXTERN_VELOCITY3D_SCHEMA,      108),
-            EXTERNSCALEANIM:       (EXTERN_SCALEANIM_SCHEMA,        76),
-            EXTERNEMITTERSHAPE3D:  (EXTERN_EMITTERSHAPE3D_SCHEMA,   88),
-            EXTERNRGBFIRE:         (EXTERN_RGBFIRE_SCHEMA,          112),
-            EXTERNTRANSFORM3D:     (EXTERN_TRANSFORM3D_SCHEMA,      228),
-            EXTERNPLEMISSIVE:      (PLEMISSIVE_SCHEMA,              76),
-            EXTERNLIFE:            (LIFE_SCHEMA,                    48),
-            EXTERNPLSNOW:          (PLSNOW_SCHEMA,                  84),
-            EXTERNPARENTEMISSIVE:  (PARENTEMISSIVE_SCHEMA,          72),
-            EXTERNROTATEANIM:      (ROTATEANIM_SCHEMA,              80),
-            # FABRICATED 映射仍须由 UI 标为不确定。
-            EXTERNFADEBYANGLE:     (FADEBYANGLE_SCHEMA,             40),
-            EXTERNFADEBYDEPTH:     (FADEBYDEPTH_SCHEMA,             20),
-            EXTERNUVCONTROL:       (UVCONTROL_SCHEMA,              236),
-            EXTERNGUIDE:           (GUIDE_SCHEMA,                  112),
-            EXTERNPARENTSNOW:      (PARENTSNOW_SCHEMA,              80),
-            EXTERNOTOMOSNOW:       (OTOMOSNOW_SCHEMA,               84),
-        }
-    except Exception:
-        _EXTERN_SCHEMA_MAP_CACHE = {}
-    return _EXTERN_SCHEMA_MAP_CACHE
-
-
-# 变长 EXTERN 类型：元素切分函数与对应主属性类型。
-
 _EXTERN_VARLEN_MAP_CACHE = None
 
 
+def _get_extern_schema_map() -> dict:
+    """定长 EXTERN 类型 hash → (schema, elem_size)。FABRICATED 类型仍须由 UI 标为不确定。"""
+    global _EXTERN_SCHEMA_MAP_CACHE
+    if _EXTERN_SCHEMA_MAP_CACHE is None:
+        from ..efx_format.assembly.extern import EXTERN_FIXED_SCHEMA
+        from ..efx_format.structs import _schema_size
+        _EXTERN_SCHEMA_MAP_CACHE = {h: (schema, _schema_size(schema))
+                                    for h, schema in EXTERN_FIXED_SCHEMA.items()}
+    return _EXTERN_SCHEMA_MAP_CACHE
+
+
 def _get_extern_varlen_map() -> dict:
+    """变长 EXTERN 类型 hash → (元素切分函数, 主属性类型)。"""
     global _EXTERN_VARLEN_MAP_CACHE
-    if _EXTERN_VARLEN_MAP_CACHE is not None:
-        return _EXTERN_VARLEN_MAP_CACHE
-    try:
-        from ..efx_format.hashes import (
-            EXTERNMESH, EXTERNPTBEHAVIOR, MESH, PTBEHAVIOR,
-            EXTERNTYPERIBBON, EXTERNTYPEPLANE, RIBBON, PLANE,
-            EXTERNUVSEQUENCE, EXTERNBILLBOARD3D, EXTERNRGBWATER,
-            EXTERNSTRAINRIBBON, EXTERNTURBULENCE,
-            UVSEQUENCE, BILLBOARD3D, RGBWATER, STRAINRIBBON, TURBULENCE,
-        )
-        from ..efx_format.structs import (
-            unpack_mesh, unpack_ptbehavior, unpack_ribbon, unpack_plane,
-            unpack_uvsequence, unpack_billboard3d, unpack_rgbwater,
-            unpack_strainribbon, unpack_turbulence,
-        )
+    if _EXTERN_VARLEN_MAP_CACHE is None:
+        from ..efx_format.assembly.extern import EXTERN_VARLEN_MAIN
+        from ..efx_format.structs import ATTR_CUSTOM_CODEC
 
-        def _split_mesh(data, off):
-            start = off
-            _, off = unpack_mesh(data, off)
-            return data[start:off], off
-
-        def _split_ptbehavior(data, off):
-            start = off
-            _, off = unpack_ptbehavior(data, off)
-            return data[start:off], off
-
-        def _split_ribbon(data, off):
-            start = off
-            _, off = unpack_ribbon(data, off)
-            return data[start:off], off
-
-        def _split_plane(data, off):
-            start = off
-            _, off = unpack_plane(data, off)
-            return data[start:off], off
-
-        def _make_split(fn):
+        def _make_split(unpack_fn):
             def _split(data, off):
                 start = off
-                _, off = fn(data, off)
+                _, off = unpack_fn(data, off)
                 return data[start:off], off
             return _split
 
-        _split_uvsequence   = _make_split(unpack_uvsequence)
-        _split_billboard3d  = _make_split(unpack_billboard3d)
-        _split_rgbwater     = _make_split(unpack_rgbwater)
-        _split_strainribbon = _make_split(unpack_strainribbon)
-        _split_turbulence   = _make_split(unpack_turbulence)
-
         _EXTERN_VARLEN_MAP_CACHE = {
-            EXTERNMESH:       (_split_mesh,       MESH),
-            EXTERNPTBEHAVIOR: (_split_ptbehavior, PTBEHAVIOR),
-            EXTERNUVSEQUENCE:   (_split_uvsequence,  UVSEQUENCE),
-            EXTERNBILLBOARD3D:  (_split_billboard3d, BILLBOARD3D),
-            EXTERNRGBWATER:     (_split_rgbwater,    RGBWATER),
-            EXTERNSTRAINRIBBON: (_split_strainribbon, STRAINRIBBON),
-            EXTERNTURBULENCE:   (_split_turbulence,  TURBULENCE),
-            EXTERNTYPERIBBON: (_split_ribbon,     RIBBON),
-            EXTERNTYPEPLANE:  (_split_plane,      PLANE),
+            h: (_make_split(ATTR_CUSTOM_CODEC[main][0]), main)
+            for h, main in EXTERN_VARLEN_MAIN.items()
         }
-    except Exception:
-        _EXTERN_VARLEN_MAP_CACHE = {}
     return _EXTERN_VARLEN_MAP_CACHE
 
 
@@ -338,22 +253,6 @@ def _init_varlen_extern_item(it, item_data, varlen_entry, _fields) -> None:
             inst.field_items.clear()
 
 
-# 变长类型的新建元素模板；必须包含 codec 所需的合法结构。
-_BLANK_VARLEN_B64 = {
-    "EXTERNMESH":       "AAAAAKcAAAAAzc3NAACgQAAAAAAAQJxFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAP///////////////wAAAP8AAAAAAAAAAAQAAAAAAAAAAgAAAAEAAAABAAAACQAAAAAAAAAJAAAAAAAAAAAAAQEAAQEAAAAAAAAAAAAA",  # noqa: E501
-    "EXTERNPTBEHAVIOR": "AAAAABUAAAABAAAATWhQb2ludExpZ2h0QmVoYXZpb3IAKNLim+LZ8KsPAAAACAQE/w==",
-    "EXTERNTYPEPLANE":  "AAAAAAAAAACjqsHm/////wAAwD8AAIA/AAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAA7FE4Po/CdT4AAKBBAACgQQAAjEIAAHBCAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAABAAAAAAAAAAAAAAAAAAAABAAAAAAAIEIAAKBBAABwwgAA8EIAAKDBAAAgQiAAAAABAAAAAA==",  # noqa: E501
-    "EXTERNTYPERIBBON": "AAAAAGABAAAAzc3NfFyy/wHNzc1gXLL/Ac3NzQAAyEIAAAAAAQAAAAAA4D8AAAA/AABAPwAAAD8AAIA/AACAQAAAAAAAAIA/AAAAAAAAgD8CAAAAAAAAAM3MzD0BAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAABAQABAADNzQAAgD/Nzc3NAAAAPwAAAD8AAIA/AAAAAGZmZj8AAAAAzczMPQAAAAAAzc3NAAAAAAAAAAAAAAAAAAAAAM3MzD0AAAAAAAAAAAAAAAAAzc3NAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAM3NAAAAAAAAAAAAzc3NAACAPwAAgD8AAIA/AACAPwDNzc2amZk+zczMPgEAzc0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM3Nzc3Nzc3Nzc3Nzc0AAAAAAAAAAAAAAAAAAAAAAA==",  # noqa: E501
-}
-
-
-def _blank_varlen_element(extern_type_hash: int) -> bytes:
-    """返回变长元素模板；缺失时返回空字节。"""
-    from ..efx_format.hashes import HASH_TO_NAME
-    b64 = _BLANK_VARLEN_B64.get(HASH_TO_NAME.get(extern_type_hash, ""))
-    return base64.b64decode(b64) if b64 else b""
-
-
 def fill_extern_instance(inst, base: bytes, extern_type_hash: int) -> None:
     """以字节初始化实例；重建不一致时保持不可编辑。"""
     from . import fields as _fields
@@ -413,61 +312,35 @@ def extern_instance_bytes(it, inst) -> bytes:
     return base64.b64decode(inst.raw_b64)
 
 
-def create_extern_item(ep, extern_type_hash: int, seed_bytes: bytes = None,
+def create_extern_item(ep, extern_type_hash: int, seed_values: dict = None,
                         n_slots: int = None) -> "EFXExternItemProps":
-    """创建 item 并同步所有状态列与 orig_attr_count。"""
-    from . import fields as _fields
-    from ..efx_format.structs import unpack
-    from ..efx_format.efxfile import AttrBlock
+    """创建 item 并同步所有状态列与 orig_attr_count。
+
+    每个 Set 由 ``seed_values``（Set 字段值）组装；未给出时取该类型的默认值。
+    没有 Extern codec 的类型抛 ValueError。
+    """
+    from ..efx_format import assembly as _asm
+
+    if extern_type_hash not in _get_extern_schema_map()             and extern_type_hash not in _get_extern_varlen_map():
+        raise ValueError(f"create_extern_item：0x{extern_type_hash:08X} 没有 Extern codec")
 
     if n_slots is None:
         # opaque item 的显示实例数不能代表实际列数。
         n_slots = max((int(i.orig_attr_count) for i in ep.items), default=0) or 2
     n_slots = max(1, int(n_slots))
 
+    values = seed_values if seed_values is not None else _asm.default_extern_set(extern_type_hash)
+    base = _asm.encode_extern_sets(extern_type_hash, [values])
+
     it = ep.items.add()
     it.type_hash_str = str(int(extern_type_hash))
     it.unkn_str = "0"
     it.ui_expand = True
     it.orig_attr_count = n_slots
-
-    schema_map = _get_extern_schema_map()
-    varlen_map = _get_extern_varlen_map()
-
-    entry = schema_map.get(extern_type_hash)
-    if entry is not None:
-        schema, elem_size = entry
-        base = seed_bytes if seed_bytes is not None else b""
-        if len(base) < elem_size:
-            base = base + b"\x00" * (elem_size - len(base))
-        elif len(base) > elem_size:
-            base = base[:elem_size]
-
-        it.is_editable = True
-        it.raw_b64 = base64.b64encode(base * n_slots).decode("ascii")
-        for _ in range(n_slots):
-            fill_extern_instance(it.instances.add(), base, extern_type_hash)
-        return it
-
-    varlen_entry = varlen_map.get(extern_type_hash)
-    if varlen_entry is not None:
-        # 变长元素需要完整模板，不能用零字节补齐。
-        base = seed_bytes if seed_bytes is not None else _blank_varlen_element(extern_type_hash)
-        it.is_editable = True
-        it.raw_b64 = base64.b64encode(base * n_slots).decode("ascii")
-        for _ in range(n_slots):
-            fill_extern_instance(it.instances.add(), base, extern_type_hash)
-        return it
-
-    # 未支持类型以单个 opaque 实例保留。
-    it.is_editable = False
-    it.orig_attr_count = 1
-    it.ui_expand = False
-    base = seed_bytes if seed_bytes is not None else b""
-    it.raw_b64 = base64.b64encode(base).decode("ascii")
-    inst = it.instances.add()
-    inst.raw_b64 = it.raw_b64
-    inst.is_editable = False
+    it.is_editable = True
+    it.raw_b64 = base64.b64encode(base * n_slots).decode("ascii")
+    for _ in range(n_slots):
+        fill_extern_instance(it.instances.add(), base, extern_type_hash)
     return it
 
 
@@ -728,25 +601,26 @@ def add_extern_override_for_attribute(attr_obj: bpy.types.Object,
         extern_map = {o: i for i, o in enumerate(_rc.collect_top_level(root_obj, "EFX_EXTERN"))}
         entry_map = {o: i for i, o in enumerate(_rc.collect_top_level(root_obj, "EFX_ENTRY"))}
         play_map = {o: i for i, o in enumerate(_rc.collect_top_level(root_obj, "EFX_ACTION"))}
+    from ..efx_format import assembly as _asm
     try:
-        seed_bytes = _io_tree._resolve_attribute_data_bytes(attr_obj, extern_map, entry_map, play_map)
+        main_bytes = _io_tree._resolve_attribute_data_bytes(attr_obj, extern_map, entry_map, play_map)
     except Exception:
-        seed_bytes = base64.b64decode(str(attr_obj.get("data_bytes", "")))
+        main_bytes = base64.b64decode(str(attr_obj.get("data_bytes", "")))
+    seed_values = _asm.extern_set_from_main(
+        extern_hash, _asm.decode_attribute(main_hash, main_bytes))
 
     ep = ea_obj.efx_extern
-    create_extern_item(ep, extern_hash, seed_bytes=seed_bytes,
+    create_extern_item(ep, extern_hash, seed_values=seed_values,
                         n_slots=2 if new_ea_created else None)
 
     repointed = current_ea is not None and current_ea is not ea_obj
 
     if er_obj is None:
-        # unkn0=0，referenceIndex=-1（哨兵）；后面立刻覆写为指向 ea_obj，这里的
-        # 初值只是让 add_attribute_to_entry 内部的 init_extern_ref_props 走一条
-        # 干净的路径，不依赖它猜出什么有意义的值。
+        # 全部字段取默认值（referenceIndex 为 -1）；随后立即指向 ea_obj。
         preset = {
             "efx_preset_kind": "attribute",
-            "type_hash": str(_EXTERNREFERENCE_HASH),
-            "data_bytes": base64.b64encode(struct.pack('<ii', 0, -1) + b"\x00" * 28).decode("ascii"),
+            "format_version": _asm.FORMAT_VERSION,
+            "attribute": {"type": _asm.type_key(_EXTERNREFERENCE_HASH), "fields": {}},
         }
         er_obj = _attr_ops.add_attribute_to_entry(entry_obj, preset)
 
@@ -1152,54 +1026,39 @@ def export_extern_data(obj: bpy.types.Object) -> bytes:
     ep = obj.efx_extern
     try:
         from . import fields as _fields
-
-        attr_type = int(ep.attr_type_str)
-        item_count = len(ep.items)
-        out = struct.pack('<IiIi', attr_type, ep.null0, item_count, ep.null1)
+        from ..efx_format.efxfile import ExternAttribute, ExternDataItem
 
         schema_map = _get_extern_schema_map()
         varlen_map = _get_extern_varlen_map()
 
+        items = []
         for it in ep.items:
             type_hash = int(it.type_hash_str)
-            unkn = int(it.unkn_str)
-            # ⚠ 用 orig_attr_count（导入时记的原始值），不能用 len(it.instances)——
-            # 未落 schema 的类型不管真实 attr_count 多大都只建 1 个 opaque instance，
-            # len(instances) 恒为 1，会把 attr_count 错写成 1（2026-07 修，见 GitHub
-            # issue #1：EXTERNMESH attr_count 2→1 导致 MHW 崩溃）。变长类型
-            # （EXTERNMESH/EXTERNPTBEHAVIOR）导入时按真实元素数建 instance，两者
-            # 恰好相等，但仍用 orig_attr_count 保持同一套防御逻辑。
+            # attr_count 用导入时记录的 orig_attr_count：opaque item 只建 1 个实例，
+            # len(instances) 不代表真实 Set 数，写错会导致游戏崩溃。
             attr_count = it.orig_attr_count
 
-            if it.is_editable and type_hash in schema_map:
-                schema, _elem_size = schema_map[type_hash]
+            if it.is_editable and (type_hash in schema_map or type_hash in varlen_map):
                 inst_bytes = b""
                 for inst in it.instances:
                     if inst.is_editable:
                         try:
-                            inst_bytes += _fields.rebuild_data_bytes(inst, schema)
+                            if type_hash in schema_map:
+                                inst_bytes += _fields.rebuild_data_bytes(inst, schema_map[type_hash][0])
+                            else:
+                                inst_bytes += _fields.rebuild_extern_instance_bytes(
+                                    inst, varlen_map[type_hash][1])
+                            continue
                         except Exception:
-                            inst_bytes += base64.b64decode(inst.raw_b64)
-                    else:
-                        inst_bytes += base64.b64decode(inst.raw_b64)
-                out += struct.pack('<Iii', type_hash, unkn, attr_count) + inst_bytes
-            elif it.is_editable and type_hash in varlen_map:
-                _split_fn, main_type_hash = varlen_map[type_hash]
-                inst_bytes = b""
-                for inst in it.instances:
-                    if inst.is_editable:
-                        try:
-                            inst_bytes += _fields.rebuild_extern_instance_bytes(inst, main_type_hash)
-                        except Exception:
-                            inst_bytes += base64.b64decode(inst.raw_b64)
-                    else:
-                        inst_bytes += base64.b64decode(inst.raw_b64)
-                out += struct.pack('<Iii', type_hash, unkn, attr_count) + inst_bytes
+                            pass
+                    inst_bytes += base64.b64decode(inst.raw_b64)
             else:
-                item_data = base64.b64decode(it.raw_b64)
-                out += struct.pack('<Iii', type_hash, unkn, attr_count) + item_data
+                inst_bytes = base64.b64decode(it.raw_b64)
+            items.append(ExternDataItem(type_hash=type_hash, unkn=int(it.unkn_str),
+                                        attr_count=attr_count, data_bytes=inst_bytes))
 
-        return out
+        return ExternAttribute(attr_type=int(ep.attr_type_str), null0=ep.null0,
+                               null1=ep.null1, items=items).serialize()
 
     except Exception:
         return base64.b64decode(ep.raw_b64)
