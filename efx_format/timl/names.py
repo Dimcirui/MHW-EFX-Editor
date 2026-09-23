@@ -2496,6 +2496,44 @@ def block_native_axis(block_type: str):
     return BLOCK_NATIVE_AXIS.get((block_type or "").upper())
 
 
+# official 语料各块类型 TIML 轨道数 (A0, A1)。用于判定是否存在绝对优势轴。
+BLOCK_AXIS_COUNTS = {
+    "TRANSFORM3D":    (955, 9),
+    "TRANSFORM2D":    (72, 0),
+    "RGBFIRE":        (454, 2),
+    "RGBWATER":       (58, 2),
+    "TUBELIGHT":      (42, 0),
+    "EMITTERSHAPE3D": (665, 37),
+    "VELOCITY2D":     (1, 0),
+    "MESH":           (8, 418),
+    "RIBBON":         (18, 343),
+    "PLANE":          (2, 20),
+    "STRAINRIBBON":   (0, 66),
+    "UVSEQUENCE":     (1, 95),
+    "ROTATEANIM":     (1, 48),
+    "SCALEANIM":      (4, 76),
+    "VELOCITY3D":     (5, 113),
+    "BILLBOARD2D":    (0, 2),
+    "BILLBOARD3D":    (364, 2056),
+}
+
+#: 优势轴门槛：占比至少这么高、且样本不少于 DOMINANT_AXIS_MIN_TRACKS 条才算绝对优势
+DOMINANT_AXIS_SHARE = 0.90
+DOMINANT_AXIS_MIN_TRACKS = 10
+
+
+def dominant_axis(block_type: str):
+    """块类型的绝对优势轴 slot（0/1）；没有绝对优势或样本太少 → None。"""
+    counts = BLOCK_AXIS_COUNTS.get((block_type or "").upper())
+    if not counts:
+        return None
+    total = counts[0] + counts[1]
+    if total < DOMINANT_AXIS_MIN_TRACKS:
+        return None
+    slot = 0 if counts[0] >= counts[1] else 1
+    return slot if counts[slot] >= DOMINANT_AXIS_SHARE * total else None
+
+
 # ── CORPUS_PAIRS：TLP hash → [(dt_hash, data_type), ...] ─────────────────────────
 # 只收录有命名的 DT hash（DT_NAMES 或 DT_TRANSFORM 覆盖的条目）。
 CORPUS_PAIRS = {

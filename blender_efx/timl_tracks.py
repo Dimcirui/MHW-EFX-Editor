@@ -19,7 +19,7 @@ from ..efx_format.timl.names import (
     TLP_NAMES, DT_NAMES, DT_TRANSFORM,
     timeline_param_name, timeline_param_fullname, timeline_param_category,
     TLP_CATEGORIES,
-    datatype_name, channel_label, block_native_axis,
+    datatype_name, channel_label, block_native_axis, dominant_axis,
 )
 
 
@@ -288,7 +288,13 @@ def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
     sub = row.row(align=True)
     # 可支持的 Entry 即使尚无 TIML 也可触发添加。
     sub.enabled = (_timl_capable_entry() is not None)
-    op = sub.operator("efx.timl_field_add_menu", text="", icon="ANIM", depress=animated)
+    # 有绝对优势轴时直接加到该轴；另一轴仍可在 TIML 侧栏手动添加。
+    slot = dominant_axis(tname) if tname != "PTBEHAVIOR" else None
+    if slot is not None:
+        op = sub.operator("efx.timl_add_field_tracks", text="", icon="ANIM", depress=animated)
+        op.slot = slot
+    else:
+        op = sub.operator("efx.timl_field_add_menu", text="", icon="ANIM", depress=animated)
     op.block_type = tname
     op.field_name = ori_name
     op.tlp_hash_hex = tlp_hex
@@ -380,6 +386,10 @@ class EFX_OT_timl_add_field_tracks(Operator):
     def poll(cls, context):
         # 不要求已有 TIML，执行时会创建缺失段。
         return _timl_capable_entry() is not None
+
+    @classmethod
+    def description(cls, context, properties):
+        return T("timl.add_to_a1" if properties.slot == 1 else "timl.add_to_a0")
 
     def execute(self, context):
         if self.tlp_hash_hex and self.dt_hash_hex:
