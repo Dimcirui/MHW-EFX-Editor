@@ -126,15 +126,16 @@ ENUM_ROTATION_MODE = EnumDef("RotationMode", [
     (3, "Spin + Random Dir", "自旋速度 + 随机正反"),
 ])
 
-# PARENTOPTIONS：逐轴跟随父级发射器的模式；2、3 语义未定
+# PARENTOPTIONS：逐轴跟随模式；前三项共享，第四项按字段区分
 _TRACKING_BASE = [
-    (0, "Don't Track", "不追踪"),
-    (1, "Track", "追踪"),
-    (2, "Unknown (2)", "未知 (2)"),
-    (3, "Unknown (3)", "未知 (3)"),
+    (0, "Track Map Center Absolutely", "绝对追踪地图中心"),
+    (1, "Track Player Movement", "追踪玩家移动"),
+    (2, "Do not track further", "不再追踪后续移动"),
 ]
-ENUM_TRACKING_POS = EnumDef("TrackingModePos", _TRACKING_BASE)       # translation / scale
-ENUM_TRACKING_ANGLE = EnumDef("TrackingModeAngle", _TRACKING_BASE)   # angle
+ENUM_TRACKING_POS = EnumDef("TrackingModePos",
+    _TRACKING_BASE + [(3, "Ignore Basic Transform", "忽略基础变换")])   # translation / scale
+ENUM_TRACKING_ANGLE = EnumDef("TrackingModeAngle",
+    _TRACKING_BASE + [(3, "Snap to Angle And Track", "对齐到角度并追踪")])  # angle
 
 # MESH.tracking_flags 是不可组合的枚举，未知值保留原整数
 ENUM_MESH_TRACKING_FLAGS = EnumDef("MeshTrackingFlags", [

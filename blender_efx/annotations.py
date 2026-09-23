@@ -78,28 +78,28 @@ FIELD_ANNOTATIONS = {
 
     # ─── PARENTOPTIONS ────────────────────────────────────────────────────────
     ("PARENTOPTIONS", "relationPos"): {
-        "EN": "XYZ — per-axis position tracking of the emitter that spawned the particle:"
-              "  0=Don't track,  1=Track (default). The meaning of 2 and 3 is unknown."
-              " The three axes are almost always set to the same value.",
-        "ZH": "XYZ —— 逐轴的位置跟随模式，跟随的是发出该粒子的发射器："
-              "  0=不追踪，  1=追踪（默认）。2、3 的含义未知。"
-              "三个轴几乎总是取同一个值。",
+        "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
+              "  1=Track Player Movement,  2=Do not track further movements,"
+              "  3=Ignore Basic Transform",
+        "ZH": "XYZ —— 每轴的跟随模式：  0=绝对追踪地图中心，"
+              "  1=追踪玩家移动，  2=不再追踪后续移动，"
+              "  3=忽略基础变换",
     },
     ("PARENTOPTIONS", "relationRot"): {
-        "EN": "XYZ — per-axis rotation tracking of the emitter that spawned the particle:"
-              "  0=Don't track,  1=Track (default). The meaning of 2 and 3 is unknown."
-              " The three axes are almost always set to the same value.",
-        "ZH": "XYZ —— 逐轴的角度跟随模式，跟随的是发出该粒子的发射器："
-              "  0=不追踪，  1=追踪（默认）。2、3 的含义未知。"
-              "三个轴几乎总是取同一个值。",
+        "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
+              "  1=Track Player Movement,  2=Do not track further movements,"
+              "  3=Snap to Angle And Track",
+        "ZH": "XYZ —— 每轴的跟随模式：  0=绝对追踪地图中心，"
+              "  1=追踪玩家移动，  2=不再追踪后续移动，"
+              "  3=对齐到角度并追踪",
     },
     ("PARENTOPTIONS", "relationScl"): {
-        "EN": "XYZ — per-axis scale tracking of the emitter that spawned the particle:"
-              "  0=Don't track,  1=Track (default). The meaning of 2 and 3 is unknown."
-              " The three axes are almost always set to the same value.",
-        "ZH": "XYZ —— 逐轴的缩放跟随模式，跟随的是发出该粒子的发射器："
-              "  0=不追踪，  1=追踪（默认）。2、3 的含义未知。"
-              "三个轴几乎总是取同一个值。",
+        "EN": "XYZ — per-axis tracking mode:  0=Track Map Center Absolutely,"
+              "  1=Track Player Movement,  2=Do not track further movements,"
+              "  3=Ignore Basic Transform",
+        "ZH": "XYZ —— 每轴的跟随模式：  0=绝对追踪地图中心，"
+              "  1=追踪玩家移动，  2=不再追踪后续移动，"
+              "  3=忽略基础变换",
     },
     ("PARENTOPTIONS", "particleUseLocal"): {
         "EN": "When enabled, all particles will follow the emitter's movement.",
