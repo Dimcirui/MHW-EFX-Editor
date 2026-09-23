@@ -24,6 +24,10 @@
   本帧的指令速度之和），`p.vel_free` 仅为自由速度。作用于 `p.vel` 意味着 speedCoef 对粒子
   总速度生效，HOMING 驱动的部分同样受影响；HOMING 每帧重写 `p.vel`，因此对该部分而言是单帧
   倍率，而非几何累积。没有 HOMING 时两条通道逐帧一致。
+- TIML（A1）：speed 与 gravity 每帧取「曲线值 + 出生时抽取的抖动偏移」为基准。speed 的基准再
+  乘以 speedCoef 按年龄的累积衰减，按与上一帧的差量沿初速度方向加到两条速度通道上，不打乱
+  gravity 的累积与 HOMING 的指令速度；没有轨道时与逐帧递推完全一致。gravity 没有自己的衰减
+  系数，基准即本帧重力。
 - 两项未确定的读法以 `SimConfig` 保留：`rot_order_applied`（旋转顺序串中先写的轴先作用还是
   后作用）与 `minMovementThreshold` 的比较对象（当前按发射器每帧位移的长度比较）。
 """
@@ -51,6 +55,13 @@ class Velocity3D(Behavior):
     STAGE = INTEGRATE
     ORDER = 100
 
+    _has_tracks = False
+
+    def on_emitter_init(self, em, rng):
+        f = em.f(VELOCITY3D)
+        if f is not None:
+            self._has_tracks = f.has_tracks
+
     def on_particle_spawn(self, p, em, rng):
         f = em.f(VELOCITY3D, p)
         if f is None:
@@ -63,6 +74,12 @@ class Velocity3D(Behavior):
                                     rng, mode)
         p.rolled["v_gravity"] = jitter(f.get("gravity"), f.get("gravity_jitter"),
                                        rng, mode)
+        if self._has_tracks:
+            # TIML 基准 = 曲线值 + 这两个偏移；v_base 为上一帧用过的 speed 基准
+            p.rolled["v_speed_off"] = p.rolled["v_speed"] - f.get("speed")
+            p.rolled["v_grav_off"] = p.rolled["v_gravity"] - f.get("gravity")
+            p.rolled["v_base"] = p.rolled["v_speed"]
+            p.rolled["v_decay"] = 1.0
         p.rolled["v_move_delay"] = max(0, jitter_int(
             f.get("movementDelay"), f.get("movementDelayJitter"), rng, mode))
         p.rolled["v_grav_delay"] = max(0, jitter_int(
@@ -78,6 +95,7 @@ class Velocity3D(Behavior):
         # 发射器自身旋转时，初速度方向随之旋转；静态朝向由宿主的 entry 矩阵负责
         direction = emitter_rotate(em, direction)
         p.vel = direction * p.rolled["v_speed"]
+        p.rolled["v_dir"] = direction
         # 自由速度通道，HOMING 的指令速度叠加在其上
         p.vel_free = p.vel.copy()
 
@@ -112,6 +130,20 @@ class Velocity3D(Behavior):
                             applied=cfg.rot_order_applied)
 
     @staticmethod
+    def _apply_speed_track(p, f, coef):
+        """speed 曲线的基准变化乘以累积衰减，沿初速度方向补到两条速度通道上。"""
+        r = p.rolled
+        r["v_decay"] *= coef
+        base = f.get("speed") + r["v_speed_off"]
+        delta = (base - r["v_base"]) * r["v_decay"]
+        r["v_base"] = base
+        if delta:
+            d = r.get("v_dir")
+            if d is not None:
+                p.vel += d * delta
+                p.vel_free += d * delta
+
+    @staticmethod
     def _random_unit(rng):
         """返回随机单位向量，用于 spawn_pos 恰为原点、Radial 无方向可取的情形。"""
         z = rng.uniform(-1.0, 1.0)
@@ -126,8 +158,14 @@ class Velocity3D(Behavior):
             p.vel *= coef
             p.vel_free *= coef
 
+        f = em.f(VELOCITY3D, p) if self._has_tracks else None
+        if f is not None and "v_base" in p.rolled:
+            self._apply_speed_track(p, f, coef)
+
         if p.age >= p.rolled.get("v_grav_delay", 0):
             g = p.rolled.get("v_gravity", 0.0)
+            if f is not None and "v_grav_off" in p.rolled:
+                g = f.get("gravity") + p.rolled["v_grav_off"]
             if g:
                 p.vel.y -= g          # 游戏坐标系 +Y = 上
                 p.vel_free.y -= g

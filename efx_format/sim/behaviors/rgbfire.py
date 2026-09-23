@@ -9,7 +9,7 @@ RGBFIRE 只提供颜色，其作用是从一张多通道贴图中分别取出两
     fireColor / smokeColor      两层各自的颜色
     fireFactor / redChFactor    两层各自独立的强度，取 0 即关闭该层
     colorRate                   整体亮度倍率
-    alphaFactor                 全局透明度强度，未接入模拟
+    alphaFactor                 整体透明度强度，乘入 p.alpha 并限定不超过 1
     lerpAlphaToBlue             烟雾遮罩中 Alpha 与 Blue 的混合比例
     fireColorParam_* /          两层各自的生命期时序块（出现、保持、消失），
     smokeColorParam_*           见 `_common.roll_color_param`
@@ -49,12 +49,12 @@ def _rgb(v):
 
 @register(RGBFIRE)
 class RgbFire(Behavior):
-    """SHADE 阶段写入 p.color；排在 LIFE 之后，LIFE 负责 alpha，此处负责颜色。"""
+    """SHADE 阶段写入 p.color，并将 alphaFactor 乘入 p.alpha；排在 LIFE 之后。"""
 
     STAGE = SHADE
     ORDER = 60
 
-    #: fireColor / smokeColor / colorRate 可由 TIML 驱动，存在轨道时逐帧重新求值；
+    #: fireColor / smokeColor / colorRate / alphaFactor 可由 TIML 驱动，存在轨道时逐帧重新求值；
     #: 仅在出生时采样会使颜色停留在 age=0 的取值。
     _has_tracks = False
 
@@ -77,6 +77,7 @@ class RgbFire(Behavior):
             "fire_i": max(0.0, float(f.get("fireFactor", 1.0) or 0.0)),
             "smoke_i": max(0.0, float(f.get("redChFactor", 1.0) or 0.0)),
             "rate": float(f.get("colorRate", 1.0) or 0.0),
+            "alpha": float(f.get("alphaFactor", 1.0) or 0.0),
             "lerp": max(0.0, min(1.0, float(f.get("lerpAlphaToBlue", 0.0) or 0.0))),
             "fp": roll_color_param(f, rng, cfg, "fireColorParam_"),
             "sp": roll_color_param(f, rng, cfg, "smokeColorParam_"),
@@ -88,6 +89,7 @@ class RgbFire(Behavior):
             return
         fire, smoke = st["fire"], st["smoke"]
         fire_i, smoke_i, rate, lerp = st["fire_i"], st["smoke_i"], st["rate"], st["lerp"]
+        alpha = st["alpha"]
         if self._has_tracks:
             f = em.f(RGBFIRE, p)
             if f is not None:
@@ -96,12 +98,14 @@ class RgbFire(Behavior):
                 fire_i = max(0.0, float(f.get("fireFactor", 1.0) or 0.0))
                 smoke_i = max(0.0, float(f.get("redChFactor", 1.0) or 0.0))
                 rate = float(f.get("colorRate", 1.0) or 0.0)
+                alpha = float(f.get("alphaFactor", 1.0) or 0.0)
                 lerp = max(0.0, min(1.0, float(f.get("lerpAlphaToBlue", 0.0) or 0.0)))
 
         wf = fire_i * color_param_weight(st["fp"], p.age)
         ws = smoke_i * color_param_weight(st["sp"], p.age)
         tint = blend_two_colors(em.config, fire, wf, smoke, ws)
         p.color = [tint[0] * rate, tint[1] * rate, tint[2] * rate]
+        p.alpha = min(1.0, p.alpha * max(0.0, alpha))
         # (火焰色, 烟雾色)，由贴图 shader 按两个遮罩分别使用
         p.rolled["layers"] = ([c * wf * rate for c in fire],
                               [c * ws * rate for c in smoke])

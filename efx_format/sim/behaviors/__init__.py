@@ -19,6 +19,8 @@ from . import billboard3d     # noqa: F401
 from . import blink          # noqa: F401
 from . import dummy            # noqa: F401
 from . import emittershape3d   # noqa: F401
+from . import fadebyangle      # noqa: F401
+from . import fadebydepth      # noqa: F401
 from . import homing           # noqa: F401
 from . import life             # noqa: F401
 from . import mesh             # noqa: F401
@@ -44,4 +46,5 @@ __all__ = ["spawn", "life", "emittershape3d", "velocity3d", "homing",
            "transform3d", "scaleanim", "rotateanim", "billboard3d",
            "dummy", "plane", "ribbon", "ribbonblade", "mesh", "uvsequence",
            "parentoptions", "ptlife", "ptcollision", "noise", "rgbfire", "rgbwater",
-           "alphacorrection", "uvcontrol", "refraction", "blink"]
+           "alphacorrection", "uvcontrol", "refraction", "blink",
+           "fadebydepth", "fadebyangle"]

@@ -19,6 +19,10 @@ EMITTERSHAPE3D 的生成点与 VELOCITY3D 的初速度方向在出生时使用�
 变化求得 `em.velocity`，供 VELOCITY3D 的 velocityType=3（EmitterMotion）使用。
 `scale_velocity` 加在缩放上，动态倍率同样按加法累积。
 
+TIML：translate / rotate / resize 的 A0 轨道逐帧按发射器当前帧求值，取「曲线值 − 静态值」作为
+动态增量（静态部分已由宿主或出生时的基础变换施加），每帧只施加增量的变化量：平移进
+`em.drift`，旋转进 `em.rot_dynamic`，缩放按「曲线值 / 静态值」的倍率乘进 `em.scale_dynamic`。
+
 维护约束：
 - 默认**不施加静态变换**（`cfg.t3d_apply_base` 为 False）。Blender 侧 entry 的 empty 已由
   `transform_sync.py` 按 translate / rotate / resize 放置（并处理了 PARENTOPTIONS 的骨骼绑定
@@ -27,7 +31,12 @@ EMITTERSHAPE3D 的生成点与 VELOCITY3D 的初速度方向在出生时使用�
   摆放时，才启用该开关。
 - `em.scale_dynamic` 必须限定为非负：`scale_velocity` 为负时持续累减会使倍率变为负数，生成
   形状被镜像，粒子由收缩变为向外运动。
-- 旋转速度默认取反（`cfg.t3d_rotation_sign`）：按字面符号旋转的方向与实机相反。
+- 旋转速度默认取反（`cfg.t3d_rotation_sign`）：按字面符号旋转的方向与实机相反。TIML 的
+  rotate 是静态旋转的替换值，与静态 rotate 同号，不取反。
+- 宿主摆位时粒子坐标会经过 entry 的旋转与缩放，TIML 平移增量须先逆变换静态旋转与缩放，
+  否则 entry 带旋转时平移方向被一起转掉。基础变换由模拟层施加时（`t3d_apply_base`）不需要。
+- 基础变换取**不含 TIML** 的静态值加抖动；TIML 的影响全部由逐帧增量负责，避免初始化那一帧
+  的曲线值被计入两次。
 """
 
 from ...hashes import TRANSFORM3D
@@ -35,7 +44,7 @@ from ..registry import Behavior, register
 from ..rng import jitter_vec
 from ..stages import FORCE
 from ..state import Vec3
-from ..vecmath import ROT_ORDER_TRANSFORM, rot_order_name
+from ..vecmath import ROT_ORDER_TRANSFORM, rot_order_name, rotate_euler
 
 BIT_ENABLE_VELOCITY = 0x1
 BIT_ENABLE_ACCEL = 0x2
@@ -55,9 +64,10 @@ class Transform3D(Behavior):
         cfg = em.config
         mode = cfg.jitter_mode
 
-        translate = jitter_vec(f.xyz_lo("translate"), f.xyz_hi("translate"), rng, mode)
-        rotate = jitter_vec(f.xyz_lo("rotate"), f.xyz_hi("rotate"), rng, mode)
-        resize = jitter_vec(f.xyz_lo("resize"), f.xyz_hi("resize"), rng, mode)
+        static = {k: _static_half(f, k) for k in ("translate", "rotate", "resize")}
+        translate = jitter_vec(static["translate"], f.xyz_hi("translate"), rng, mode)
+        rotate = jitter_vec(static["rotate"], f.xyz_hi("rotate"), rng, mode)
+        resize = jitter_vec(static["resize"], f.xyz_hi("resize"), rng, mode)
 
         flags = f.i("enableVelocityBitflag")
         vel_on = bool(flags & BIT_ENABLE_VELOCITY)
@@ -87,6 +97,11 @@ class Transform3D(Behavior):
                                         f.xyz_hi("scale_velocity_modifier"), rng, mode)
                              if acc_on else Vec3(1.0, 1.0, 1.0),
             "accel_on": acc_on,
+            "static": static,
+            "timl": f.has_tracks,
+            "tl_move": Vec3(),
+            "tl_rot": Vec3(),
+            "tl_scale": Vec3(1.0, 1.0, 1.0),
         }
         em.user[Transform3D] = st
 
@@ -100,6 +115,8 @@ class Transform3D(Behavior):
             em.scale_dynamic = resize.copy()
         else:
             em.note("TRANSFORM3D 静态变换未套用（宿主已摆位；开 t3d_apply_base 可改）")
+        #: scale_velocity 的加法累积部分；em.scale_dynamic = 它 × TIML 倍率
+        st["scale_add"] = em.scale_dynamic.copy()
 
     def on_emitter_step(self, em):
         st = em.user.get(Transform3D)
@@ -128,19 +145,53 @@ class Transform3D(Behavior):
                 rv.y *= m.y
                 rv.z *= m.z
 
+        if st["timl"]:
+            self._apply_timl(em, st)
+
         sv = st["scale_vel"]
         if sv.x or sv.y or sv.z:
             em.scale += sv * dt
             # 按加法累积：base 为 1 的常见情形下，1+Σ(sv·dt) 即实际倍率
-            sd = em.scale_dynamic
-            sd.x = max(0.0, sd.x + sv.x * dt)
-            sd.y = max(0.0, sd.y + sv.y * dt)
-            sd.z = max(0.0, sd.z + sv.z * dt)
+            sa = st["scale_add"]
+            sa.x = max(0.0, sa.x + sv.x * dt)
+            sa.y = max(0.0, sa.y + sv.y * dt)
+            sa.z = max(0.0, sa.z + sv.z * dt)
             if st["accel_on"]:
                 m = st["scale_vel_mod"]
                 sv.x *= m.x
                 sv.y *= m.y
                 sv.z *= m.z
+        if st["timl"] or sv.x or sv.y or sv.z:
+            sa, k, sd = st["scale_add"], st["tl_scale"], em.scale_dynamic
+            sd.x, sd.y, sd.z = sa.x * k.x, sa.y * k.y, sa.z * k.z
+
+    @staticmethod
+    def _apply_timl(em, st):
+        """按发射器当前帧求 TIML 值，把相对上一帧的增量变化施加到动态变换上。"""
+        f = em.f(TRANSFORM3D)
+        base = st["static"]
+
+        rot = f.xyz_lo("rotate") - base["rotate"]
+        step = rot - st["tl_rot"]
+        st["tl_rot"] = rot
+        if step.x or step.y or step.z:
+            em.rotation += step
+            em.rot_dynamic += step
+
+        cur = f.xyz_lo("resize")
+        s0 = base["resize"]
+        k = Vec3(*[max(0.0, c / b) if abs(b) > 1e-9 else 1.0
+                   for c, b in ((cur.x, s0.x), (cur.y, s0.y), (cur.z, s0.z))])
+        st["tl_scale"] = k
+
+        move = f.xyz_lo("translate") - base["translate"]
+        if not em.config.t3d_apply_base:
+            move = _undo_static(move, base["rotate"], s0, st["rot_order"],
+                                em.config.rot_order_applied)
+        step = move - st["tl_move"]
+        st["tl_move"] = move
+        if step.x or step.y or step.z:
+            em.drift += step
 
     @staticmethod
     def _rot_sign(cfg):
@@ -153,3 +204,19 @@ class Transform3D(Behavior):
         if getattr(cfg, "t3d_velocity_unit", "per_second") == "per_frame":
             return 1.0
         return 1.0 / float(getattr(cfg, "fps", 60) or 60)
+
+
+def _static_half(f, field):
+    """FLOAT6 前一半的静态值（不含 TIML）。"""
+    v = f.raw(field)
+    if not isinstance(v, (list, tuple)) or len(v) < 6:
+        return f.xyz_lo(field)
+    return Vec3(float(v[0]), float(v[2]), float(v[4]))
+
+
+def _undo_static(v, rot, scale, order, applied):
+    """把父空间的位移换算到 entry 局部：逆施加静态旋转，再除以静态缩放。"""
+    out = rotate_euler(v, -rot.x, -rot.y, -rot.z, order=order[::-1], applied=applied)
+    return Vec3(out.x / scale.x if abs(scale.x) > 1e-9 else out.x,
+                out.y / scale.y if abs(scale.y) > 1e-9 else out.y,
+                out.z / scale.z if abs(scale.z) > 1e-9 else out.z)

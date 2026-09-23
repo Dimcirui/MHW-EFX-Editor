@@ -38,6 +38,7 @@ _P = {
     "error": "",
     "mesh_cache": {},     # 绑定网格 → 游戏坐标系下的三角顶点（按网格名，全局共享）
     "cam_fwd": None,      # 上一帧的视线方向（Blender 世界系），由 _draw 缓存
+    "cam_pos": None,      # 上一帧的相机位置（Blender 世界系），由 _draw 缓存
     "gen": 0,             # 渲染项的版本号：每次重建 items +1，绘制缓存据此失效
     "needs_items": False, # 下个 tick 无论走没走帧都要重建一次 items
     "draw_cache": {},     # id(region_data) → (签名, 绘制负载)，见 _draw
@@ -222,6 +223,8 @@ def _config_from_scene(scene):
         flowmap_phase=getattr(scene, "efx_sim_flowmap_phase", "cycle"),
         oscillator_freq_unit=getattr(scene, "efx_sim_oscillator_freq_unit", "hz"),
         blink_phase=getattr(scene, "efx_sim_blink_phase", "zero"),
+        fade_depth_metric=getattr(scene, "efx_sim_fade_depth_metric", "view_depth"),
+        fade_cone_mode=getattr(scene, "efx_sim_fade_cone_mode", "outer"),
         ribbon_subdiv_max=int(getattr(scene, "efx_sim_ribbon_subdiv_max", 0)),
         ribbon_rigid_dir=getattr(scene, "efx_sim_ribbon_rigid_dir", "static"),
         homing_compose=getattr(scene, "efx_sim_homing_compose", "pursuit"),
@@ -953,6 +956,32 @@ def _camera_axes(rv3d):
     right = (vm[0][0], vm[0][1], vm[0][2])
     up = (vm[1][0], vm[1][1], vm[1][2])
     return right, up
+
+
+def _camera_position(rv3d):
+    """视图矩阵之逆的平移 = 相机位置（世界空间）。"""
+    t = rv3d.view_matrix.inverted().translation
+    return (t[0], t[1], t[2])
+
+
+#: 渲染结果依赖相机位置的属性；暂停时转视角须重建渲染项
+_VIEW_DEPENDENT = None
+
+
+def _view_dependent(tr):
+    """该 track 的模板里是否有依赖相机位置的属性。"""
+    global _VIEW_DEPENDENT
+    if _VIEW_DEPENDENT is None:
+        from ..efx_format.hashes import FADEBYANGLE, FADEBYDEPTH
+        _VIEW_DEPENDENT = frozenset((int(FADEBYDEPTH), int(FADEBYANGLE)))
+    sim = tr.get("sim")
+    got = tr.get("view_dep")
+    if got is None or got[0] is not sim:
+        templates = getattr(sim, "templates", None) or {}
+        got = (sim, any(int(h) in _VIEW_DEPENDENT
+                        for t in templates.values() for h, _f in (t.blocks or ())))
+        tr["view_dep"] = got
+    return got[1]
 
 
 def _view_direction(rv3d):
@@ -2151,6 +2180,12 @@ def _draw():
     rv3d = getattr(context, "region_data", None)
     if rv3d is not None:
         _P["cam_fwd"] = _view_direction(rv3d)
+        cam = _camera_position(rv3d)
+        if cam != _P["cam_pos"]:
+            _P["cam_pos"] = cam
+            # 暂停时视角变化只重建依赖相机的渲染项，不推进模拟
+            if not _P["playing"] and any(_view_dependent(t) for t in trs):
+                _P["needs_items"] = True
     if rv3d is None:
         return
     scene = context.scene
@@ -2303,20 +2338,49 @@ def _reset_all():
             pass
 
 
-def _view_context():
-    """将 draw handler 缓存的视线转换为核心模拟所用的 ViewContext。"""
+def _inverse_rows(rows):
+    """参考矩阵（三行 3×4）的逆，按一般仿射矩阵求，允许带缩放。"""
+    (a, b, c, tx), (d, e, f, ty), (g, h, i, tz) = rows
+    det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+    if abs(det) < 1e-12:
+        return None
+    inv = ((e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det,
+           (f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det,
+           (d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det)
+    return inv, (tx, ty, tz)
+
+
+def _view_context(tr=None):
+    """将 draw handler 缓存的相机换算为该 track 局部游戏坐标下的 ViewContext。"""
     from ..efx_format.sim.state import ViewContext, Vec3
 
     fwd = _P.get("cam_fwd")
     if not fwd:
         return ViewContext()
-    # Blender 世界方向转为游戏方向，不应用单位缩放。
-    return ViewContext(cam_forward=Vec3(fwd[0], fwd[2], -fwd[1]))
+    cam = _P.get("cam_pos")
+    got = _inverse_rows(tr["ref_rows"]) if tr and tr.get("ref_rows") else None
+    if got is None:
+        # 没有参考矩阵：世界方向直接转为游戏方向，不应用单位缩放
+        return ViewContext(cam_forward=Vec3(fwd[0], fwd[2], -fwd[1]))
+    m, t = got
+
+    def _local(v, point):
+        if point:
+            v = (v[0] - t[0], v[1] - t[1], v[2] - t[2])
+        return (m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+                m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+                m[6] * v[0] + m[7] * v[1] + m[8] * v[2])
+
+    lf = _local(fwd, False)
+    view = ViewContext(cam_forward=Vec3(lf[0], lf[2], -lf[1]))
+    if cam:
+        view.cam_pos = Vec3(*_to_game(*_local(cam, True)))
+    return view
 
 
 def _build_items(tr):
     try:
-        tr["items"] = tr["sim"].build_render(_view_context())
+        tr["items"] = tr["sim"].build_render(_view_context(tr))
     except Exception as exc:
         _P["error"] = str(exc)
         tr["items"] = []
@@ -2447,6 +2511,10 @@ class EFX_OT_sim_play(Operator):
                 _rebuild_items()
                 _redraw_viewports()
                 _P["last_t"] = time.perf_counter()
+            elif _P["needs_items"]:
+                # 暂停时视角变化：只重建渲染项
+                _rebuild_items()
+                _redraw_viewports()
         return {"PASS_THROUGH"}       # 保留视图和编辑交互。
 
     def _finish(self, context):
@@ -2846,6 +2914,8 @@ class EFX_PT_sim_unknowns(Panel):
         col.prop(scene, "efx_sim_flowmap_gain")
         col.prop(scene, "efx_sim_oscillator_freq_unit")
         col.prop(scene, "efx_sim_blink_phase")
+        col.prop(scene, "efx_sim_fade_depth_metric")
+        col.prop(scene, "efx_sim_fade_cone_mode")
         col.prop(scene, "efx_sim_draw_order")
         col.prop(scene, "efx_sim_mesh_rot_space")
         col.prop(scene, "efx_sim_rgb_tint")
@@ -3059,6 +3129,20 @@ def register():
                ("random", "Random",
                 "Every particle starts at a random point in its blink cycle")],
         default="zero")
+    S.efx_sim_fade_depth_metric = EnumProperty(
+        name="Depth fade distance", update=_on_knob_changed,
+        items=[("view_depth", "Along view",
+                "Measure how far a particle is along the viewing direction"),
+               ("distance", "Straight line",
+                "Measure the straight-line distance from the camera to a particle")],
+        default="view_depth")
+    S.efx_sim_fade_cone_mode = EnumProperty(
+        name="Angle fade cone", update=_on_knob_changed,
+        items=[("outer", "Outer angle",
+                "Fade Cone Angle is the angle where the fade ends"),
+               ("width", "Fade width",
+                "Fade Cone Angle is how wide the fade is, counted from Cutoff Cone Angle")],
+        default="outer")
     S.efx_sim_flowmap_phase = EnumProperty(
         name="Flowmap travel", update=_on_knob_changed,
         items=[("cycle", "Cycles",
@@ -3373,6 +3457,7 @@ def unregister():
         "efx_sim_refraction_tex", "efx_sim_refraction_gain",
         "efx_sim_flowmap_gain", "efx_sim_flowmap_speed_unit", "efx_sim_flowmap_phase",
         "efx_sim_oscillator_freq_unit", "efx_sim_blink_phase",
+        "efx_sim_fade_depth_metric", "efx_sim_fade_cone_mode",
         "efx_sim_homing_compose",
         "efx_sim_homing_axial_falloff", "efx_sim_homing_retarget",
         "efx_sim_homing_lateral_tilt", "efx_sim_homing_axis_update",

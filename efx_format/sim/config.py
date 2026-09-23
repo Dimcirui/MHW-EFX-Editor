@@ -7,7 +7,7 @@ Blender 里对拍，不是改代码重装插件。
 维护约束：
 - `UNKNOWNS` 是未确认语义的登记表，每条对应一处必须实测才能定的行为。
 - 标定完一条就改掉默认值，并把该条从 `UNKNOWNS` 移走；开关本身保留作对照。
-  标定依据与推翻过的读法写进 `docs/comments/sim_notes.md`，不留在本文件。
+  标定依据与推翻过的读法写进 `docs/notes/sim_notes.md`，不留在本文件。
 - 一个开关的默认值出现在三处：`UNKNOWNS`、`SimConfig.__init__`、以及
   `blender_efx/sim_preview.py` 读 Scene 属性时的兜底值。改默认值必须三处同改。
 """
@@ -67,8 +67,8 @@ UNKNOWNS = {
     ),
     "scaleanim_add_target": (
         "SCALEANIM 的速度加在哪。'size' 加在同名的尺寸字段上——SizeScalarAdd 加"
-        "BILLBOARD3D.scale，SizeXAdd/YAdd 加 width/height；'multiplier' 加进一个从 1 "
-        "起的归一化倍率。⚠ 只有 BILLBOARD3D 走 'size'，其余渲染体仍读归一化倍率。",
+        "scale，SizeXAdd/YAdd 加 width/height；'multiplier' 加进一个从 1 "
+        "起的归一化倍率。⚠ 只有 BILLBOARD3D / PLANE 走 'size'，MESH / RIBBON 仍读归一化倍率。",
         ("size", "multiplier"), "size",
     ),
     "t3d_rotation_sign": (
@@ -194,6 +194,17 @@ UNKNOWNS = {
         "'static' 出生时用 baseAxis 加 rotationX/Y/Z 定死、终生不变。",
         ("static", "velocity"), "static",
     ),
+    "fade_depth_metric": (
+        "FADEBYDEPTH 的距离怎么量。'view_depth' 为视线方向上的深度；"
+        "'distance' 为粒子到相机的直线距离。",
+        ("view_depth", "distance"), "view_depth",
+    ),
+    "fade_cone_mode": (
+        "FADEBYANGLE.fadeConeAngle 的读法。'outer' 为过渡区外边界的绝对锥角；"
+        "'width' 为从 cutoffConeAngle 起算的过渡宽度。"
+        "语料中约三分之一的块 fadeConeAngle 小于 cutoffConeAngle，'outer' 下这些块没有过渡区。",
+        ("outer", "width"), "outer",
+    ),
 }
 
 
@@ -219,6 +230,7 @@ class SimConfig(object):
         "homing_orbit_axial_falloff", "homing_orbit_handed",
         "homing_orbit_lateral_tilt", "homing_orbit_axis_update",
         "homing_orbit_retarget", "ribbon_rigid_dir",
+        "fade_depth_metric", "fade_cone_mode",
         "stage_order", "render_stage_order", "order_override", "disabled",
         "max_particles_hard", "max_frames", "max_spawn_depth", "trail_max",
         "max_instances", "max_particles_total", "child_cull_grace",
@@ -272,6 +284,8 @@ class SimConfig(object):
         self.uvs_speed_unit = "per_frame"
         self.uvs_once_span = "to_end"
         self.uvs_start_wrap = "wrap"
+        self.fade_depth_metric = "view_depth"
+        self.fade_cone_mode = "outer"
 
         # 没有载入 .uvs 时的网格兜底；不是待标定语义，是「猜一张图」的参数。
         self.uvs_grid_h = 8

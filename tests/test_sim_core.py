@@ -22,7 +22,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from efx_format.hashes import (ALPHACORRECTION, BILLBOARD2D, BILLBOARD3D, DUMMY,  # noqa: E402
-                               EMITTERSHAPE3D, HOMING, LIGHTNING,
+                               EMITTERSHAPE3D, FADEBYANGLE, FADEBYDEPTH, HOMING, LIGHTNING,
                                LIFE, MESH, NOISE, BLINK, PLANE, RIBBON, RIBBONBLADE,
                                PARENTOPTIONS, PTCOLLISION, PTLIFE, REFRACTION, RGBFIRE,
                                RGBWATER, ROTATEANIM, SCALEANIM,
@@ -315,7 +315,7 @@ def ptlife_fields(**kw):
 
 def ptcollision_fields(**kw):
     f = {
-        "typeFlag": 0, "physicsEnum": 0, "unkn02": 0, "unkn03": 0,
+        "typeFlag": 0, "physicsEnum": 3, "unkn02": 0, "unkn03": 0,
         "unknEnum04": 0, "unknFixed05": 0,
         "projectionOffset": 0.0, "projectionDist": 0.0,
         "unkn1_0": 0.0, "unkn1_1": 0.0, "unkn1_2": 0.0,
@@ -2116,6 +2116,17 @@ class TestFieldResolution(unittest.TestCase):
         self.assertAlmostEqual(c.eval(10.0), 100.0)
         self.assertAlmostEqual(c.eval(99.0), 100.0)    # 右端夹取
 
+    def test_color_track_replaces_color_bytes(self):
+        """Color 通道按 RGBA 四分量插值，经 raw() 作用于颜色字段。"""
+        from efx_format.sim.resolve import FieldView
+        tracks = self._tracks_with("BILLBOARD3D", "color", 1,
+                                   [(0.0, (0.0, 0.0, 0.0, 255.0), 2),
+                                    (10.0, (200.0, 100.0, 50.0, 255.0), 2)])
+        r = self._resolver("BILLBOARD3D", billboard_fields(), tracks)
+        self.assertEqual(FieldView(r, 0, 5).raw("color"), [100, 50, 25, 255])
+        self.assertEqual(FieldView(r, 0, 5).raw("colorRange"),
+                         billboard_fields()["colorRange"])      # 没有轨道的字段原样返回
+
     def test_curve_constant_transition_holds(self):
         from efx_format.sim.resolve import Curve
         c = Curve([(0.0, 0.0, 1), (10.0, 100.0, 2)])   # 1 = CONSTANT
@@ -2358,6 +2369,10 @@ class TestRgbColoring(unittest.TestCase):
         p = self._color(RGBFIRE, rgbfire_fields(colorRate=2.0))
         self.assertAlmostEqual(p.color[0], 1.0, places=5)
         self.assertAlmostEqual(p.color[2], 1.0, places=5)
+
+    def test_alpha_factor_scales_alpha(self):
+        p = self._color(RGBFIRE, rgbfire_fields(alphaFactor=0.25))
+        self.assertAlmostEqual(p.alpha, 0.25, places=5)
 
     def test_tint_mode_can_force_one_layer(self):
         for mode, want in (("first", (1.0, 0.0)), ("second", (0.0, 1.0))):
@@ -3461,8 +3476,8 @@ class TestPtLifeActionScene(unittest.TestCase):
 
 
 class TestPtCollisionActionScene(unittest.TestCase):
-    """PTCOLLISION 模拟落地即停 + 可选单次触发 ACTION：粒子越过 Y=0（游戏坐标系，
-    对应 Blender Z=0）→ 位置/速度冻结在落地点，且触发一次 ACTION；不做真正反弹。"""
+    """PTCOLLISION 反弹后停留（physicsEnum=3、bounceCount=0）：粒子越过 Y=0（游戏坐标系，
+    对应 Blender Z=0）→ 位置/速度冻结在落地点，且触发一次 ACTION。"""
 
     def _scene(self, ptcollision=None, velocity=None, life=None, config=None):
         parent_blocks = [
@@ -3490,7 +3505,6 @@ class TestPtCollisionActionScene(unittest.TestCase):
         sc = self._scene(ptcollision=ptcollision_fields(ieIndex=-1))
         sc.run(10)
         self.assertEqual(sc.instance_count, 1)
-        self.assertTrue(any("-1" in n for n in sc.notes))
 
     def test_landing_freeze_happens_even_without_action(self):
         """ieIndex=-1 只关掉「触发 ACTION」，落地冻结是独立的物理表现，照常生效。"""
@@ -3552,6 +3566,245 @@ class TestPtCollisionActionScene(unittest.TestCase):
         parent_p = sc.root.sim.em.particles[0]
         self.assertLess(parent_p.pos.y, 0.0)              # 确实一路往下走了
         self.assertEqual(sc.instance_count, 1)            # 但从未触发
+
+
+class TestFadeBy(unittest.TestCase):
+    """FADEBYDEPTH / FADEBYANGLE：按相机修改渲染项 alpha。粒子固定在原点。"""
+
+    def _alpha(self, block, fields, cam, config=None):
+        from efx_format.sim.state import ViewContext
+        sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(), extra=[(block, fields)],
+                       config=config)
+        sim.run(1)
+        fwd = Vec3(-cam[0], -cam[1], -cam[2]).normalized()
+        view = ViewContext(cam_pos=Vec3(*cam), cam_forward=fwd)
+        return sim.build_render(view)[0].color[3]
+
+    def _depth(self, d, config=None):
+        f = {"typeFlag": 0, "nearFadeInStart": 100.0, "nearFadeInEnd": 200.0,
+             "farFadeOutStart": 1000.0, "farFadeOutEnd": 2000.0}
+        return self._alpha(FADEBYDEPTH, f, (0.0, 0.0, -d), config)
+
+    def test_depth_fade_ramps(self):
+        self.assertAlmostEqual(self._depth(50.0), 0.0)
+        self.assertAlmostEqual(self._depth(150.0), 0.5)
+        self.assertAlmostEqual(self._depth(500.0), 1.0)
+        self.assertAlmostEqual(self._depth(1500.0), 0.5)
+        self.assertAlmostEqual(self._depth(3000.0), 0.0)
+
+    def _angle(self, deg, flags=0, cutoff=10.0, fade=30.0, min_alpha=0.0, mode="outer"):
+        f = {"typeFlag": 0, "coneVisibilityFlags": flags, "cutoffConeAngle": cutoff,
+             "fadeConeAngle": fade, "minAlpha": min_alpha, "rotation": [0.0, 0.0, 0.0],
+             "baseAxis": 1, "rotOrder": 4}
+        a = math.radians(deg)
+        cam = (500.0 * math.sin(a), 500.0 * math.cos(a), 0.0)   # 与 +Y 夹角为 deg
+        return self._alpha(FADEBYANGLE, f, cam, SimConfig(fade_cone_mode=mode))
+
+    def test_angle_cone(self):
+        self.assertAlmostEqual(self._angle(5.0), 0.0)
+        self.assertAlmostEqual(self._angle(20.0), 0.5)
+        self.assertAlmostEqual(self._angle(60.0), 1.0)
+        self.assertAlmostEqual(self._angle(170.0), 1.0)
+        self.assertAlmostEqual(self._angle(20.0, min_alpha=0.5), 0.75)
+
+    def test_angle_flags(self):
+        self.assertAlmostEqual(self._angle(175.0, flags=1), 0.0)       # 双锥
+        self.assertAlmostEqual(self._angle(5.0, flags=2), 1.0)         # 排除锥体
+        self.assertAlmostEqual(self._angle(5.0, flags=4), 1.0)         # bit2 单独也反转
+        self.assertAlmostEqual(self._angle(5.0, flags=5), 0.0)         # bit0 置位时 bit2 无效
+
+    def test_angle_width_mode(self):
+        self.assertAlmostEqual(self._angle(25.0, cutoff=10.0, fade=30.0, mode="width"), 0.5)
+
+
+class TestTransform3DTiml(unittest.TestCase):
+    """TRANSFORM3D 的 A0 轨道逐帧改发射器的动态平移 / 旋转 / 缩放（只施加相对静态值的增量）。"""
+
+    def _sim(self, field, comp, keys, config=None, **t3d):
+        from efx_format.sim.resolve import Curve, TimlTracks
+        from efx_format.timl.names import BLOCK_TO_TLP, FIELD_TO_DT
+        tracks = TimlTracks()
+        dt = FIELD_TO_DT[("TRANSFORM3D", field)][comp][0]
+        tracks._curves[(0, BLOCK_TO_TLP["TRANSFORM3D"], dt)] = Curve(keys)
+        tracks.ok = True
+        return Simulator([(TRANSFORM3D, transform3d_fields(**t3d))], b"",
+                         config or SimConfig(), tracks=tracks)
+
+    def test_translate_curve_moves_by_delta_only(self):
+        sim = self._sim("translate", 0, [(0.0, 50.0, 2), (10.0, 150.0, 2)],
+                        translate=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        sim.run(11)                                  # 帧 0..10
+        self.assertAlmostEqual(sim.em.drift.x, 100.0)
+        sim.run(5)                                   # 曲线夹取在末端，不再累加
+        self.assertAlmostEqual(sim.em.drift.x, 100.0)
+
+    def test_translate_delta_undoes_static_rotation(self):
+        """entry 静态绕 Y 转 90° 时，父空间 +X 的位移在局部坐标里不能再是 +X。"""
+        sim = self._sim("translate", 0, [(0.0, 0.0, 2), (10.0, 100.0, 2)],
+                        rotate=[0.0, 0.0, 90.0, 0.0, 0.0, 0.0])
+        sim.run(11)
+        d = sim.em.drift
+        self.assertAlmostEqual(abs(d.x), 0.0, places=4)
+        self.assertAlmostEqual(abs(d.z), 100.0, places=4)
+
+    def test_rotate_curve_adds_to_rot_dynamic(self):
+        sim = self._sim("rotate", 1, [(0.0, 0.0, 2), (10.0, 90.0, 2)])
+        sim.run(11)
+        self.assertAlmostEqual(sim.em.rot_dynamic.y, 90.0)
+
+    def test_resize_curve_scales_relative_to_static(self):
+        sim = self._sim("resize", 0, [(0.0, 0.0, 2), (10.0, 4.0, 2)],
+                        resize=[2.0, 0.0, 1.0, 0.0, 1.0, 0.0])
+        sim.run(1)
+        self.assertAlmostEqual(sim.em.scale_dynamic.x, 0.0)      # 从 0 长起
+        sim.run(10)
+        self.assertAlmostEqual(sim.em.scale_dynamic.x, 2.0)      # 4 / 静态 2
+        self.assertAlmostEqual(sim.em.scale_dynamic.y, 1.0)
+
+
+class TestA1TrackWithDecay(unittest.TestCase):
+    """VELOCITY3D / SCALEANIM / ROTATEANIM 的 A1 轨道：每帧基准 = 曲线值 + 抖动偏移，
+    再乘以衰减系数按帧的累积乘积。"""
+
+    def _particle(self, block, fields, curves, frames):
+        from efx_format.sim.resolve import Curve, TimlTracks
+        from efx_format.timl.names import BLOCK_TO_TLP, FIELD_TO_DT
+        name = {VELOCITY3D: "VELOCITY3D", SCALEANIM: "SCALEANIM",
+                ROTATEANIM: "ROTATEANIM"}[block]
+        tracks = TimlTracks()
+        for (field, comp), keys in curves.items():
+            dt = FIELD_TO_DT[(name, field)][comp][0]
+            tracks._curves[(1, BLOCK_TO_TLP[name], dt)] = Curve(keys)
+        tracks.ok = True
+        blocks = [(SPAWN, spawn_fields(intervalFrame=1000)),
+                  (LIFE, life_fields(indefiniteLifespan=1)), (block, fields)]
+        sim = Simulator(blocks, b"", SimConfig(), tracks=tracks)
+        sim.run(frames)
+        return sim.particles[0]
+
+    def test_speed_curve_times_accumulated_coef(self):
+        p = self._particle(VELOCITY3D, velocity_fields(speed=10.0, speedCoef=0.5),
+                           {("speed", 0): [(0.0, 10.0, 2), (1.0, 20.0, 2)]}, 2)
+        self.assertAlmostEqual(p.vel.y, 20.0 * 0.25)         # 曲线 20 × 0.5²
+
+    def test_gravity_curve_is_per_frame_gravity(self):
+        p = self._particle(VELOCITY3D, velocity_fields(speed=0.0),
+                           {("gravity", 0): [(0.0, 2.0, 2), (10.0, 2.0, 2)]}, 3)
+        self.assertAlmostEqual(p.vel.y, -6.0)
+
+    def test_scale_speed_curve_times_accel(self):
+        p = self._particle(SCALEANIM, scaleanim_fields(initialScaleSpeed=1.0,
+                                                       initialScaleAccel=0.5),
+                           {("initialScaleSpeed", 0): [(0.0, 1.0, 2), (1.0, 3.0, 2)]}, 2)
+        self.assertAlmostEqual(p.scale.x, 1.0 + 1.0 + 3.0 * 0.5)
+
+    def test_billboard_rotation_curve(self):
+        p = self._particle(ROTATEANIM, rotateanim_fields(),
+                           {("billboardRotation", 0): [(0.0, 0.0, 2), (2.0, 4.0, 2)]}, 3)
+        self.assertAlmostEqual(p.rot.z, -(0.0 + 2.0 + 4.0))  # 自旋角取负
+
+    def test_spin_curve_drives_axis_with_zero_static(self):
+        p = self._particle(ROTATEANIM, rotateanim_fields(rotationModeMask=2),
+                           {("spin_velocity", 1): [(0.0, 3.0, 2), (10.0, 3.0, 2)]}, 2)
+        self.assertAlmostEqual(p.rot.y, -6.0)
+
+
+class TestPlaneScaleAnim(unittest.TestCase):
+
+    def test_scaleanim_adds_to_plane_size_fields(self):
+        sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
+                       life=life_fields(indefiniteLifespan=1),
+                       scaleanim=scaleanim_fields(scaleSpeedX=10.0),
+                       extra=[(PLANE, plane_fields())])
+        sim.run(3)
+        item = sim.build_render()[0]
+        self.assertAlmostEqual(item.size.x, 130.0)
+        self.assertAlmostEqual(item.size.y, 100.0)
+
+
+class TestPtCollisionPhysics(unittest.TestCase):
+    """PTCOLLISION 的物理类型、反弹、地面偏移与触地触发模式。"""
+
+    def _drop(self, frames=40, height=5.0, gravity=0.3, **kw):
+        """让一颗粒子从 height 高处以每帧 1 的初速下落（带重力），返回 (scene, 粒子)。"""
+        parent_blocks = [
+            (SPAWN, spawn_fields(intervalFrame=1000)),
+            (LIFE, kw.pop("life", None) or life_fields(indefiniteLifespan=1)),
+            (VELOCITY3D, velocity_fields(baseAxis=4, speed=1.0, gravity=gravity)),
+            (PTCOLLISION, ptcollision_fields(**kw)),
+            (BILLBOARD3D, billboard_fields()),
+        ]
+        child_blocks = [
+            (SPAWN, spawn_fields(intervalFrame=1000)),
+            (LIFE, life_fields(indefiniteLifespan=1)),
+            (BILLBOARD3D, billboard_fields()),
+        ]
+        templates = {0: EntryTemplate(0, parent_blocks),
+                     1: EntryTemplate(1, child_blocks)}
+        sc = SimScene(templates, {0: [ActionTarget(1)]}, root_key=0,
+                      config=SimConfig(seed=1))
+        sc.run(1)
+        p = sc.root.sim.em.particles[0]
+        p.pos.y = height
+        p.user[PtCollision]["prev_y"] = height
+        sc.run(frames)
+        return sc, p
+
+    def test_fall_through_passes_ground(self):
+        sc, p = self._drop(physicsEnum=0, bounceCount=3)
+        self.assertLess(p.pos.y, -20.0)
+        self.assertEqual(sc.instance_count, 2)        # 穿过地面那一次仍算触地
+
+    def test_bounce_reverses_vertical_velocity_by_summed_elasticity(self):
+        sc, p = self._drop(frames=6, gravity=0.0, physicsEnum=3, bounceCount=2,
+                           bounceElasticity=0.5, bounceElasticityMultiplier=0.3,
+                           ieIndex=-1)
+        self.assertAlmostEqual(p.vel.y, 0.8)
+        self.assertAlmostEqual(p.vel_free.y, 0.8)
+        self.assertGreater(p.pos.y, 0.0)
+
+    def test_stay_after_bounces_used_up(self):
+        sc, p = self._drop(frames=60, physicsEnum=3, bounceCount=1,
+                           bounceElasticity=0.5, ieIndex=-1)
+        self.assertEqual(p.user[PtCollision]["impacts"], 2)
+        self.assertEqual(p.pos.y, 0.0)
+        self.assertEqual(p.vel.y, 0.0)
+
+    def test_kill_after_bounces(self):
+        sc, p = self._drop(frames=60, physicsEnum=1, bounceCount=1,
+                           bounceElasticity=0.5, ieIndex=-1)
+        self.assertFalse(p.alive)
+
+    def test_fade_runs_life_fade_out_on_ground(self):
+        sc, p = self._drop(frames=7, physicsEnum=2, bounceCount=0, ieIndex=-1,
+                           life=life_fields(indefiniteLifespan=1, fadeOutDuration=10))
+        self.assertTrue(p.alive)
+        self.assertEqual(p.pos.y, 0.0)
+        self.assertLess(p.alpha, 1.0)
+        sc.run(15)
+        self.assertFalse(p.alive)
+
+    def test_bounce_then_fall_through(self):
+        sc, p = self._drop(frames=60, physicsEnum=4, bounceCount=1,
+                           bounceElasticity=0.5, ieIndex=-1)
+        self.assertEqual(p.user[PtCollision]["impacts"], 2)
+        self.assertLess(p.pos.y, -10.0)
+
+    def test_projection_offset_raises_ground(self):
+        sc, p = self._drop(frames=10, height=20.0, physicsEnum=3, projectionOffset=12.0,
+                           ieIndex=-1)
+        self.assertEqual(p.pos.y, 12.0)
+
+    def test_trigger_modes(self):
+        common = dict(frames=80, physicsEnum=3, bounceCount=2, bounceElasticity=0.7)
+        self.assertEqual(self._drop(impactPlayTriggerMode=0, **common)[0].instance_count, 4)
+        self.assertEqual(self._drop(impactPlayTriggerMode=1, impactPlayTriggerCount=1,
+                                    **common)[0].instance_count, 2)
+        sc, p = self._drop(impactPlayTriggerMode=2, **common)
+        self.assertEqual(p.user[PtCollision]["impacts"], 3)
+        self.assertEqual(sc.instance_count, 2)
 
 
 class TestParentOptions(unittest.TestCase):

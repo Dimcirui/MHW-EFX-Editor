@@ -23,6 +23,9 @@ billboard 的 rotation），自旋写入三个轴。
   `p.rolled["spin_ang"]`：billboard 每帧都朝向相机，只有绕法线（即视线方向）的自旋在屏幕上
   可见，由 BILLBOARD3D 在 `build_render` 中按相机朝向取分量（`SimConfig.rotateanim_billboard_axis`）。
 - 「随机方向」按 50% 概率取负、自旋三轴独立衰减、平面旋转的方向，三项均无实机样本验证。
+- TIML（A1）：billboardRotation / spin_velocity 每帧取「曲线值 + 出生时抽取的抖动偏移」为基准，
+  乘以出生时定下的方向符号与 Coef 自延迟结束起的累积衰减；没有轨道时与逐帧递推完全一致。
+  静态值为 0 的自旋轴同样跟随曲线。
 """
 
 from ...hashes import ROTATEANIM
@@ -46,6 +49,13 @@ class RotateAnim(Behavior):
     STAGE = XFORM
     ORDER = 110
 
+    _has_tracks = False
+
+    def on_emitter_init(self, em, rng):
+        f = em.f(ROTATEANIM)
+        if f is not None:
+            self._has_tracks = f.has_tracks
+
     def on_particle_spawn(self, p, em, rng):
         f = em.f(ROTATEANIM, p)
         if f is None:
@@ -60,11 +70,14 @@ class RotateAnim(Behavior):
         }
 
         if mode_v in (MODE_PLANE, MODE_PLANE_RANDOM_DIR):
-            speed = jitter(f.get("billboardRotation"), f.get("billboardRotationJitter"),
-                           rng, cfg.jitter_mode)
+            static = f.get("billboardRotation")
+            speed = jitter(static, f.get("billboardRotationJitter"), rng, cfg.jitter_mode)
+            sign = _SPIN_SIGN
             if mode_v == MODE_PLANE_RANDOM_DIR and rng.random() < 0.5:
-                speed = -speed
-            st["plane_v"] = speed * _SPIN_SIGN
+                sign = -sign
+            st["plane_v"] = speed * sign
+            if self._has_tracks:
+                st["tl"] = {"sign": sign, "off": speed - static, "decay": 1.0}
             st["plane_a"] = jitter(f.get("billboardRotationCoef", 1.0),
                                    f.get("billboardRotationCoefJitter"), rng,
                                    cfg.jitter_mode)
@@ -74,21 +87,28 @@ class RotateAnim(Behavior):
             amount = f.xyz_hi("spin_velocity")
             vel = []
             acc = []
+            signs = []
+            offs = []
             for i, ax in enumerate(("X", "Y", "Z")):
-                if not base[i] and not amount[i]:
+                if not base[i] and not amount[i] and not self._has_tracks:
                     # 该轴没有角速度即不旋转，不读取 spinAxisMask
                     vel.append(0.0)
                     acc.append(1.0)
                     continue
-                v = jitter(base[i], amount[i], rng, cfg.jitter_mode) * _SPIN_SIGN
+                raw = jitter(base[i], amount[i], rng, cfg.jitter_mode)
+                sign = _SPIN_SIGN
                 if mode_v == MODE_SPIN_RANDOM_DIR and rng.random() < 0.5:
-                    v = -v      # 各轴独立随机方向
-                vel.append(v)
+                    sign = -sign    # 各轴独立随机方向
+                vel.append(raw * sign)
+                signs.append(sign)
+                offs.append(raw - base[i])
                 acc.append(jitter(f.get("spinSpeedCoef" + ax, 1.0),
                                   f.get("spinSpeedCoef" + ax + "Jitter"), rng,
                                   cfg.jitter_mode))
             st["spin_v"] = vel
             st["spin_a"] = acc
+            if self._has_tracks:
+                st["tl"] = {"sign": signs, "off": offs, "decay": [1.0, 1.0, 1.0]}
             #: 累积的自旋角，供 BILLBOARD3D 按视线方向取分量
             p.rolled["spin_ang"] = [0.0, 0.0, 0.0]
 
@@ -99,13 +119,26 @@ class RotateAnim(Behavior):
         if st is None or p.age < st["delay"]:
             return
 
+        tl = st.get("tl")
+        f = em.f(ROTATEANIM, p) if tl is not None else None
+
         if "plane_v" in st:
+            if f is not None:
+                st["plane_v"] = ((f.get("billboardRotation") + tl["off"])
+                                 * tl["sign"] * tl["decay"])
+                tl["decay"] *= st["plane_a"]
             p.rot.z += st["plane_v"]          # 平面旋转即屏幕空间自转，写入 Z
             st["plane_v"] *= st["plane_a"]
             return
 
         vel = st["spin_v"]
         acc = st["spin_a"]
+        if f is not None:
+            cur = f.xyz_lo("spin_velocity")
+            dec = tl["decay"]
+            for i in range(3):
+                vel[i] = (cur[i] + tl["off"][i]) * tl["sign"][i] * dec[i]
+                dec[i] *= acc[i]
         p.rot.x += vel[0]
         p.rot.y += vel[1]
         p.rot.z += vel[2]

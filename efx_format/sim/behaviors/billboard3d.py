@@ -38,7 +38,7 @@ from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
 from . import _flowmap
-from ._common import pick_color, roll_rgba
+from ._common import pick_color, quad_size, roll_rgba
 
 BLEND_ALPHA = 0
 BLEND_ADDITIVE = 1
@@ -95,13 +95,7 @@ class Billboard3D(Behavior):
     @staticmethod
     def _size(p, em, scale, width, height):
         """返回本帧的宽高（`Vec3`，z 恒为 1），结果限定为非负。"""
-        if getattr(em.config, "scaleanim_add_target", "size") != "size":
-            return Vec3(width * scale * p.scale.x, height * scale * p.scale.y, 1.0)
-        ax = p.rolled.get("sa_axis")
-        s = max(0.0, scale + p.rolled.get("sa_scalar", 0.0))
-        if ax is None:
-            return Vec3(width * s, height * s, 1.0)
-        return Vec3(max(0.0, width + ax[0]) * s, max(0.0, height + ax[1]) * s, 1.0)
+        return quad_size(p, em.config, scale, width, height)
 
     @staticmethod
     def _spin_on_view(p, em, view):

@@ -106,6 +106,21 @@ def pick_color(f, roll=NO_ROLL, color_field="color", range_field="colorRange"):
     return _mix(rgba(f.raw(color_field)), rgba(f.raw(range_field)), roll)
 
 
+def quad_size(p, cfg, scale, width, height):
+    """面片本帧的宽高（`Vec3`，z 恒为 1），结果限定为非负。
+
+    `scaleanim_add_target='size'` 时 SCALEANIM 的增量加在尺寸字段上：SizeScalarAdd 加
+    `scale`，SizeXAdd / SizeYAdd 加 `width` / `height`；否则乘以归一化倍率 `p.scale`。
+    """
+    if getattr(cfg, "scaleanim_add_target", "size") != "size":
+        return Vec3(width * scale * p.scale.x, height * scale * p.scale.y, 1.0)
+    ax = p.rolled.get("sa_axis")
+    s = max(0.0, scale + p.rolled.get("sa_scalar", 0.0))
+    if ax is None:
+        return Vec3(width * s, height * s, 1.0)
+    return Vec3(max(0.0, width + ax[0]) * s, max(0.0, height + ax[1]) * s, 1.0)
+
+
 def blend_name(f, field="blendMode"):
     """ENUM_BLEND_MODE：0=Alpha 混合，1=加法混合。"""
     return "ADDITIVE" if f.i(field) == BLEND_ADDITIVE else "ALPHA"

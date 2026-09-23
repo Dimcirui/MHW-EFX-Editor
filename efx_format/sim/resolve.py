@@ -6,8 +6,10 @@
   这类未定语义因此集中在这里，靠 SimConfig 的开关切换，不必改各 behavior。
 - TIML 两条轴各有取样规则：animation0 是发射轴，按 `SimConfig.a0_sample` 取出生帧
   或当前帧；animation1 是寿命轴，一律按粒子 age 取。
-- 当前不处理 Color 通道与 BIG_FLAGS 通道。EXTERN 的触发条件是运行时状态，预览里
-  没有，故只支持宿主显式传入 `extern_overrides` 覆盖表。
+- Color 通道（data_type 3）的关键帧是 RGBA 四个字节，按分量插值，只经 `FieldView.raw()`
+  作用于颜色字段；标量取值路径不读它。
+- 当前不处理 BIG_FLAGS 通道。EXTERN 的触发条件是运行时状态，预览里没有，故只支持宿主显式
+  传入 `extern_overrides` 覆盖表。
 """
 
 from .state import Vec3
@@ -38,6 +40,7 @@ class Curve(object):
         return len(self.keys)
 
     def eval(self, t, interp_mode="native"):
+        """返回 t 处的值。Color 通道的值是四元组，按分量插值。"""
         keys = self.keys
         n = len(keys)
         if n == 0:
@@ -68,7 +71,10 @@ class Curve(object):
         span = f1 - f0
         if span <= 1e-9:
             return v1
-        return v0 + (v1 - v0) * ((t - f0) / span)
+        k = (t - f0) / span
+        if isinstance(v0, tuple):
+            return tuple(a + (b - a) * k for a, b in zip(v0, v1))
+        return v0 + (v1 - v0) * k
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -107,8 +113,7 @@ class TimlTracks(object):
             out._lengths[axis] = float(getattr(anim, "animation_length", 0.0) or 0.0)
             for tp in anim.types or []:
                 for tf in tp.transforms or []:
-                    if tf.data_type == 3:
-                        continue          # Color 通道，暂不支持（见模块 docstring）
+                    is_color = tf.data_type == 3
                     keys = []
                     for kf in tf.keyframes or []:
                         try:
@@ -118,9 +123,11 @@ class TimlTracks(object):
                         subs = d.get("subs") or []
                         if not subs:
                             continue
-                        keys.append((float(d["frame"]),
-                                     float(subs[0]["value"]),
-                                     int(d["transition"])))
+                        if is_color:
+                            value = tuple(float(sub["value"]) for sub in subs[:4])
+                        else:
+                            value = float(subs[0]["value"])
+                        keys.append((float(d["frame"]), value, int(d["transition"])))
                     if keys:
                         key = (axis, tp.timeline_param_hash, tf.datatype_hash)
                         out._curves[key] = Curve(keys, out._lengths.get(axis, 0.0))
@@ -248,6 +255,24 @@ class FieldResolver(object):
             return c0.eval(float(a0_frame), mode)
         return None
 
+    def color_value(self, field, a0_frame, age, default=None):
+        """颜色字段（`<4B`）的原始值，已套 TIML Color 通道；字段没有颜色通道时原样返回。
+
+        'multiply' 语义下按 0-255 归一化后逐分量相乘。
+        """
+        base = self.raw_value(field, default)
+        if not self.has_tracks or not isinstance(base, (list, tuple)) or len(base) < 4:
+            return base
+        entries = _field_dt(self.block_name, field)
+        if not entries or len(entries) != 1 or entries[0][1] != 3:
+            return base
+        tv = self._timl_value(field, 0, a0_frame, age)
+        if not isinstance(tv, tuple):
+            return base
+        if self.config is not None and self.config.timl_mode == "multiply":
+            tv = tuple(b * v / 255.0 for b, v in zip(base, tv))
+        return [int(round(max(0.0, min(255.0, v)))) for v in tv]
+
     def _apply(self, base, timl_v):
         if timl_v is None:
             return base
@@ -314,8 +339,8 @@ class FieldView(object):
         return self._r.scalar(field, self._a0, self._age, default=default)
 
     def raw(self, field, default=None):
-        """未经 TIML 调制的原始值（list 字段、枚举、位掩码用）。"""
-        return self._r.raw_value(field, default)
+        """原始值（list 字段、枚举、位掩码用）。只有颜色字段会套 TIML Color 通道，其余不经调制。"""
+        return self._r.color_value(field, self._a0, self._age, default)
 
     def i(self, field, default=0):
         """整数字段（帧数、枚举、位掩码）。TIML 调制后取整。"""

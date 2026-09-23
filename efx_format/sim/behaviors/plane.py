@@ -27,7 +27,7 @@ from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
 from . import _flowmap
 from ._common import (axis_normal, blend_name, epv_note, oriented_basis,
-                      pick_color, roll_rgba)
+                      pick_color, quad_size, roll_rgba)
 
 
 @register(PLANE)
@@ -84,16 +84,16 @@ class Plane(Behavior):
         if self._has_tracks:
             f = em.f(PLANE, p)
             s = f.get("scale", 1.0)
-            w, h = f.get("width", 1.0) * s, f.get("height", 1.0) * s
+            w, h = f.get("width", 1.0), f.get("height", 1.0)
             r0, g0, b0, a0 = pick_color(f, rolled.get("pl_coff"))
             bright = f.get("brightness", 1.0)
         else:
             s = rolled["pl_scale"]
-            w, h = rolled["pl_width"] * s, rolled["pl_height"] * s
+            w, h = rolled["pl_width"], rolled["pl_height"]
             r0, g0, b0, a0 = rolled["pl_rgba"]
             bright = rolled["pl_bright"]
 
-        item.size = Vec3(w * p.scale.x, h * p.scale.y, 1.0)
+        item.size = quad_size(p, em.config, s, w, h)
         # 自旋 = 自身的 rotation2 与 ROTATEANIM 在 p.rot.z 上累积的平面旋转之和
         item.axis_u, item.axis_v = oriented_basis(
             normal, rolled.get("pl_spin", 0.0) + p.rot.z)
