@@ -496,8 +496,14 @@
   "LAYOUT": {
    "typeFlag": 3,
    "unknFixed0_1": 16,
-   "unknEnum1_0": 65792,
-   "unknEnum1_1": 65536,
+   "unknFixed1_0_0": 0,
+   "useColumn0": 1,
+   "useColumn1": 1,
+   "unknFlag1_0_3": 0,
+   "useColumn2": 0,
+   "useColumn4": 0,
+   "useColumn6": 1,
+   "useColumn7": 0,
    "unknFixed1_2": 0,
    "unknFixed1_3": -1,
    "layoutBank": {

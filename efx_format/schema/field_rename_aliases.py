@@ -596,3 +596,16 @@ FIELD_RENAME_ALIASES = {
     ("STRAINRIBBON", "colorModeFlag"): "epv_color_slot1",
     ("STRAINRIBBON", "positionalAberration_04"): "epv_color_slot2",
 }
+
+
+# 一个 int 字段按小端字节拆成四个单字节字段；字节不变，旧值可以无损换算。
+FIELD_BYTE_SPLITS = {
+    ("LAYOUT", "unknEnum1_0"): ("unknFixed1_0_0", "useColumn0", "useColumn1", "unknFlag1_0_3"),
+    ("LAYOUT", "unknEnum1_1"): ("useColumn2", "useColumn4", "useColumn6", "useColumn7"),
+}
+
+
+def split_int_bytes(value) -> tuple:
+    """按小端把一个 32 位整数拆成四个无符号字节。"""
+    v = int(value) & 0xFFFFFFFF
+    return tuple((v >> (8 * i)) & 0xFF for i in range(4))

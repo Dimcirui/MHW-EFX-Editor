@@ -1685,14 +1685,33 @@ def describe_layoutbank(data: bytes) -> list:
 _LAYOUT_PREFIX_SCHEMA = [
     ('typeFlag', 'i'),
     ('unknFixed0_1', 'i'),
-    ('unknEnum1_0', 'i'),
-    ('unknEnum1_1', 'i'),
+    # 两个 int 按字节拆开，其中六个字节是嵌套 LayoutBank_Block 各列的开关：
+    # useColumn2 管列 2/3，useColumn4 管列 4/5，其余一字节对一列
+    ('unknFixed1_0_0', 'B'),
+    ('useColumn0', 'B'),
+    ('useColumn1', 'B'),
+    ('unknFlag1_0_3', 'B'),
+    ('useColumn2', 'B'),
+    ('useColumn4', 'B'),
+    ('useColumn6', 'B'),
+    ('useColumn7', 'B'),
     ('unknFixed1_2', 'i'),
     ('unknFixed1_3', 'i'),
 ]
 assert _schema_size(_LAYOUT_PREFIX_SCHEMA) == 24, \
     f"_LAYOUT_PREFIX_SCHEMA size mismatch: {_schema_size(_LAYOUT_PREFIX_SCHEMA)}"
-LAYOUT_ATTR = attr_from_legacy(_schema_size(_LAYOUT_PREFIX_SCHEMA), _LAYOUT_PREFIX_SCHEMA)
+LAYOUT_ATTR = attr_from_legacy(
+    _schema_size(_LAYOUT_PREFIX_SCHEMA), _LAYOUT_PREFIX_SCHEMA,
+    overrides={
+        'useColumn0': Bool('useColumn0', backing='B', label_zh="启用列 0"),
+        'useColumn1': Bool('useColumn1', backing='B', label_zh="启用列 1"),
+        'useColumn2': Bool('useColumn2', backing='B', label_zh="启用列 2/3"),
+        'useColumn4': Bool('useColumn4', backing='B', label_zh="启用列 4/5"),
+        'useColumn6': Bool('useColumn6', backing='B', label_zh="启用列 6"),
+        'useColumn7': Bool('useColumn7', backing='B', label_zh="启用列 7"),
+        'unknFlag1_0_3': Bool('unknFlag1_0_3', backing='B'),
+    },
+)
 
 def unpack_layout(data: bytes, off: int = 0):
     """解出固定前缀字段；LayoutBank_Block 整段存入 layoutbank_bytes 原样保留。"""
