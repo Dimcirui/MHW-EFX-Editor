@@ -1590,6 +1590,13 @@ class TestHoming(unittest.TestCase):
         sim.step()
         self.assertEqual(len(sim.particles), 0)
 
+    def test_force_field_mode_3_keeps_particles_spawned_inside(self):
+        """内部不转向只冻结球内转向，球内出生的粒子保留。"""
+        es3d = es3d_fields(shapeType=0, rangeXYZ=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        sim = self._sim(homing_fields(forceFieldMode=3, forceFieldRadius=50.0), es3d=es3d)
+        sim.step()
+        self.assertEqual(len(sim.particles), 1)
+
     def test_force_field_mode_2_slows_particles_inside(self):
         """forceFieldSpeedScale 的两种读法（`SimConfig.homing_ff_scale_mode`），
         两者的可观测差别就是**累不累积**：

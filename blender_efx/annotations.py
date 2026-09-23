@@ -738,15 +738,14 @@ FIELD_ANNOTATIONS = {
               "target, see force field radius). Cull Spawn Inside removes particles born "
               "inside the sphere and leaves ones flying in from outside untouched. No "
               "Turn Inside removes the turning force inside the sphere so particles coast "
-              "straight, then snaps them back the moment they leave; it also culls "
-              "particles born inside, which you can avoid by moving the spawn range "
-              "outside the sphere. Slow Inside and Slow Outside scale particle speed by "
+              "straight, then snaps them back the moment they leave; particles born inside "
+              "are kept. Slow Inside and Slow Outside scale particle speed by "
               "the force field speed scale, acting inside and outside the sphere "
               "respectively.",
         "ZH": "挂在力场球体（球心=归航目标，半径见力场半径）上的规则。「内部出生剔除」= 在"
               "球内出生的粒子直接消失，从球外飞进来的不受影响。「内部不转向」= 球内不受"
-              "转向力、粒子直线滑行，一出球立刻被拉回；球内出生的粒子同样会消失，把生成"
-              "范围挪到球外即可避免。「内部减速」和「外部减速」= 用力场速度倍率缩放粒子"
+              "转向力、粒子直线滑行，一出球立刻被拉回；球内出生的粒子保留。「内部减速」和"
+              "「外部减速」= 用力场速度倍率缩放粒子"
               "速度，前者作用于球内，后者作用于球外。",
     },
     ("HOMING", "unknownEnum1"): {

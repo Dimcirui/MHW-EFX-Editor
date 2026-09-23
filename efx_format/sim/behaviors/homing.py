@@ -71,7 +71,8 @@ INTEGRATE 阶段积分，故 HOMING 依赖同一 entry 中的 VELOCITY3D（其�
 
 力场与消失判定均以目标为球心，半径分别为 `forceFieldRadius` 与 `vanishRadius`：
 
-    forceFieldMode 1/3   在球内生成的粒子直接剔除；取 3 时，球内另外冻结转向
+    forceFieldMode 1     在球内生成的粒子直接剔除
+    forceFieldMode 3     球内冻结转向；球内生成的粒子不剔除
     forceFieldMode 2/4   在球内（2）或球外（4）按 forceFieldSpeedScale=k 减速。默认采用
                          'balanced' 模型：每帧先乘 k，再加固定增量 c = targetSpeed/48 回升，
                          平衡速度为 v* = min(targetSpeed, c/(1-k))
@@ -233,7 +234,7 @@ class Homing(Behavior):
         ff_radius = f.get("forceFieldRadius")
 
         target = self._target(target_mode, em)
-        if ff_mode in (FF_CULL_INSIDE, FF_NO_TURN_INSIDE):
+        if ff_mode == FF_CULL_INSIDE:
             if (p.pos - target).length() < ff_radius:
                 p.alive = False       # 球内出生剔除
                 return
