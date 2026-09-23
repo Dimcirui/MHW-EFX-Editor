@@ -187,7 +187,7 @@ class TestPackagingComplete(unittest.TestCase):
         self.assertEqual(bad, [], "随包代码引用了不在打包清单里的模块：\n  " + "\n  ".join(bad))
 
     def test_version_is_in_sync(self):
-        """`blender_manifest.toml`（4.2+ 扩展读）与根 `__init__.py` 的 `_VERSION`
+        """`blender_manifest.toml`（4.3+ 扩展读）与根 `__init__.py` 的 `_VERSION`
         （旧式 addon 的 bl_info 读）必须一致——两处分别服务两个安装路径。"""
         mf = _read(os.path.join(ROOT, "blender_manifest.toml"))
         m = re.search(r'^\s*version\s*=\s*["\']([\d.]+)["\']', mf, re.M)

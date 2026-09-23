@@ -2090,8 +2090,7 @@ class EFX_PT_entry_unkn(bpy.types.Panel):
 # 这是**加法不是替换**：逐属性的 EFX_PT_attribute_fields* 面板原样保留，两处共用
 # 同一个 _draw_attribute_fields_content，避免绘制逻辑分叉。
 #
-# 计划与后续期次见 docs/UI_REFACTOR_PLAN.md（P1 最小切片 = 模块头 + 折叠 + 复用字段
-# 绘制；删除按钮、出现率标注、字段分层等留待后续）。
+# 设计决定见 PROGRESS.md「Entry Inspector（UI 布局）」。
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _attribute_title(attr_obj, hash_to_name, pretty):

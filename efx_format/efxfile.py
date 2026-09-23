@@ -762,7 +762,7 @@ class EFXFile:
         timl_length = struct.unpack_from('<i', data, pos + 16)[0]
         pos += 20
 
-        # TIML 保持 opaque
+      
         timl_bytes = data[pos:pos + timl_length]
         pos += timl_length
 
