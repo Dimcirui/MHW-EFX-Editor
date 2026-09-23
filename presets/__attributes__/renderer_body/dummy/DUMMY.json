@@ -1,7 +1,7 @@
 {
     "efx_preset_kind": "attribute",
     "format_version": 2,
-    "display_name": "DUMMY（占位空块）",
+    "display_name": "DUMMY（占位空属性）",
     "category": "renderer_body",
     "subgroup": "dummy",
     "attribute": {

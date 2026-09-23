@@ -7,7 +7,7 @@
     "attribute": {
         "type": "RGBFIRE",
         "fields": {
-            "typeFlag": 2,
+            "typeFlag": 1,
             "fireColor": [
                 255,
                 255,

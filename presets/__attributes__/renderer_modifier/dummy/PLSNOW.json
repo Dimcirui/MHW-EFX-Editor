@@ -7,32 +7,32 @@
     "attribute": {
         "type": "PLSNOW",
         "fields": {
-            "typeFlag": 2,
+            "typeFlag": 7,
             "unknFixed0_1": 76,
             "spacer": -842150656,
             "body_part_id": 200,
-            "weapon_id": 14337,
+            "weapon_id": 14463,
             "color": [
-                255,
-                255,
+                193,
+                243,
                 255,
                 255
             ],
             "epvcolorslot": 0,
             "alpha_effect": -842202880,
-            "normal_map_strength": -110.0,
-            "alpha_threshold": -70.0,
+            "normal_map_strength": 80.0,
+            "alpha_threshold": 50.0,
             "unkn4_0": 0.5,
             "unkn4_1": 0.8,
-            "unkn5": -842150656,
-            "roughness_multiplier": 0.1,
-            "metallicness_multiplier": 0.0,
-            "subsurface_multipler": 0.5,
+            "unkn5": -842150655,
+            "roughness_multiplier": 0.0,
+            "metallicness_multiplier": 1.0,
+            "subsurface_multipler": 1.0,
             "unkn6_0": 0.5,
-            "craquelure_effect_diffumination": 1.0,
+            "craquelure_effect_diffumination": 2.0,
             "craquelure_threshold": 1.0,
             "unkn6_1": 1.0,
-            "craquelure_smoothing_threshold": 0.0
+            "craquelure_smoothing_threshold": 1.0
         }
     }
 }

@@ -6,14 +6,14 @@
     "attribute": {
         "type": "EMITTERSHAPE3D",
         "fields": {
-            "typeFlag": 6,
+            "typeFlag": 1,
             "rangeXYZ": [
                 0.0,
-                1.5,
                 0.0,
-                0.2,
                 0.0,
-                0.5
+                0.0,
+                0.0,
+                0.0
             ],
             "shapeType": 2,
             "rangeDivideAxis": 0,
@@ -25,7 +25,7 @@
             "scanAngleHorizontal": 360.0,
             "scanAngleVertical": 0.0,
             "rangeDivideHorizontalNum": 0,
-            "rangeDivideVerticalNum": 2,
+            "rangeDivideVerticalNum": 0,
             "radiusEnd": 1.0,
             "radiusOrigin": 1.0,
             "rayCastDependency": 0,

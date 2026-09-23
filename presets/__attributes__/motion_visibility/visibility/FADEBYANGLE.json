@@ -7,10 +7,10 @@
     "attribute": {
         "type": "FADEBYANGLE",
         "fields": {
-            "typeFlag": 2,
+            "typeFlag": 1,
             "coneVisibilityFlags": 2,
-            "cutoffConeAngle": 15.0,
-            "fadeConeAngle": 30.0,
+            "cutoffConeAngle": 10.0,
+            "fadeConeAngle": 20.0,
             "minAlpha": 0.0,
             "rotation": [
                 0.0,

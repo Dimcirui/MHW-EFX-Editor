@@ -7,18 +7,18 @@
     "attribute": {
         "type": "BLINK",
         "fields": {
-            "typeFlag": 2,
+            "typeFlag": 0,
             "section_length": 44,
             "unkn1_0": -431595520.0,
-            "minRate": 0.541463,
+            "minRate": 0.0,
             "maxRate": 1.0,
-            "lowFrequency": 0.2,
-            "lowFrequencyJitter": 0.6,
+            "lowFrequency": 0.5,
+            "lowFrequencyJitter": 0.0,
             "lowFrequencyWidth": 1.0,
             "lowFrequencyWidthJitter": 0.0,
-            "highFrequency": 2.5,
-            "highFrequencyJitter": 1.0,
-            "highFrequencyWidth": 0.02,
+            "highFrequency": 0.0,
+            "highFrequencyJitter": 0.0,
+            "highFrequencyWidth": 0.0,
             "highFrequencyWidthJitter": 0.0
         }
     }

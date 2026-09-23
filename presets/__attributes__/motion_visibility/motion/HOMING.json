@@ -7,12 +7,12 @@
     "attribute": {
         "type": "HOMING",
         "fields": {
-            "typeFlag": 12,
+            "typeFlag": 1,
             "section_length": 44,
             "spacer": -842150656,
-            "turnRate": 50.0,
-            "initialSpeed": 1.0,
-            "targetSpeed": 1.0,
+            "turnRate": 100.0,
+            "initialSpeed": 0.0,
+            "targetSpeed": 1000.0,
             "forceFieldSpeedScale": 1.0,
             "vanishRadius": 50.0,
             "forceFieldRadius": 1000.0,

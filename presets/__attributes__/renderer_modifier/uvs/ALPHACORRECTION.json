@@ -11,7 +11,7 @@
             "lowPass": 0.0,
             "contrast_gamma": 1.0,
             "unkn3": 0.0,
-            "unknFlag2": 1
+            "unknFlag2": 0
         }
     }
 }

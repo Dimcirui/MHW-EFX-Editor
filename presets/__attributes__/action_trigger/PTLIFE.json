@@ -6,11 +6,11 @@
     "attribute": {
         "type": "PTLIFE",
         "fields": {
-            "typeFlag": 6,
+            "typeFlag": 2,
             "unknFixed1": 0,
             "status": 0,
             "unknEnum3": 5,
-            "relationIndex": 0,
+            "relationIndex": -1,
             "unknEnum5": 0,
             "unknFrame0": 0,
             "unknFrame0Jitter": 0,

@@ -6,7 +6,7 @@
     "attribute": {
         "type": "EMITTERSHAPEMESH",
         "fields": {
-            "typeFlag": 7,
+            "typeFlag": 4,
             "unknFixed0_1": 24,
             "unkn1_0": -842150656,
             "unkn1_1": -842150451,

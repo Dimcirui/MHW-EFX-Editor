@@ -10,14 +10,14 @@
             "typeFlag": 1,
             "path": "vfx\\dds\\cm\\cm_exMap\\turbulance_000_T\u0000",
             "forceMultiplier": 1.0,
-            "unkn1_0": 0.121951,
+            "unkn1_0": 0.0,
             "unknEnum1_1": 0,
             "offsetPos": [
-                300.0,
+                500.0,
                 0.0,
-                300.0,
+                500.0,
                 0.0,
-                300.0,
+                500.0,
                 0.0
             ],
             "offsetPosVel": [

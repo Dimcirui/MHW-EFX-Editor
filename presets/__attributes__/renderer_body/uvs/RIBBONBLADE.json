@@ -11,8 +11,8 @@
             "unknFixed0_1": 72,
             "spacer0": -842150656,
             "widthDirection": 5,
-            "width": 125.0,
-            "length": 5,
+            "width": 200.0,
+            "length": 6,
             "unknEnum05_1": 4,
             "spacer1": -842150656,
             "unknFlag07_0": 0,
@@ -58,7 +58,7 @@
                     255,
                     255,
                     255,
-                    50
+                    0
                 ],
                 "null2": 0,
                 "color2": [

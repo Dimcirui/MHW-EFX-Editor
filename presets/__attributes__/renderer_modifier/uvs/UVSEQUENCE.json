@@ -8,18 +8,18 @@
         "type": "UVSEQUENCE",
         "fields": {
             "typeFlag": 5,
-            "sequenceNo": 1,
+            "sequenceNo": 0,
             "sequenceNoJitter": 0,
             "patternNo": 0,
             "patternNoJitter": 0,
-            "playSpeed": 0.0,
+            "playSpeed": 1.0,
             "playSpeedJitter": 0.0,
             "playSpeedCoef": 1.0,
             "playSpeedCoefJitter": 0.0,
-            "loopingMode": 8,
+            "loopingMode": 41,
             "loopingOrientation": 0,
             "loopingPad": 0,
-            "path": "vfx\\uvs\\cm\\cm_light_000\u0000"
+            "path": "vfx\\uvs\\cm\\cm_smoke_900\u0000"
         }
     }
 }

@@ -17,12 +17,12 @@
             "unknFloat0": 0.0,
             "unknFloat1": 0.0,
             "rotation": [
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0
+                -180.0,
+                360.0,
+                -180.0,
+                360.0,
+                -180.0,
+                360.0
             ],
             "scale": [
                 1.0,
@@ -32,8 +32,8 @@
                 1.0,
                 0.0
             ],
-            "global_scale": 1.0,
-            "global_scale_jitter": 0.0,
+            "global_scale": 0.2,
+            "global_scale_jitter": 0.4,
             "visconIndex": 0,
             "visconIndexJitter": 0,
             "color": [
@@ -43,15 +43,15 @@
                 255
             ],
             "colorRange": [
-                0,
-                0,
-                0,
+                255,
+                255,
+                255,
                 255
             ],
             "emissiveColor": [
-                255,
-                255,
-                255,
+                0,
+                0,
+                0,
                 255
             ],
             "emissiveColorRange": [
@@ -65,7 +65,7 @@
             "rotationOrder": 4,
             "tracking_flags": 0,
             "unknBitmask40": 2,
-            "affectedByLight": 32,
+            "affectedByLight": 1,
             "shadowCastBitflag": 1,
             "epv_color_slot1": 0,
             "unknEnum5": 0,
@@ -86,7 +86,7 @@
             "unknBool4": 0,
             "unknBool5": 0,
             "BeginMod3": 0,
-            "path1": "vfx\\mod\\cm\\md_hahen\\md_cm_dirt000\\md_cm_dirt000",
+            "path1": "vfx\\mod\\cm\\md_hahen\\md_cm_stone000\\md_cm_stone000",
             "path2": ""
         }
     }

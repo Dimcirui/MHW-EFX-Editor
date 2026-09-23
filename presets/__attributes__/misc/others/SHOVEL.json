@@ -10,11 +10,11 @@
             "typeFlag": 0,
             "section_length": 62,
             "spacer": -842150656,
-            "width": 60.0,
+            "width": 300.0,
             "widthJitter": 0.0,
-            "height": 60.0,
+            "height": 300.0,
             "heightJitter": 0.0,
-            "length": 60.0,
+            "length": 300.0,
             "lengthJitter": 0.0,
             "unkn09": -180.0,
             "unkn10": 360.0,
@@ -22,8 +22,8 @@
             "unknFixed12": 0,
             "unknEnum13": 0,
             "unknEnum14": 0,
-            "pattern": 2,
-            "unknBitmask16": 257,
+            "pattern": 0,
+            "unknBitmask16": 1,
             "unknEnum17": 0
         }
     }

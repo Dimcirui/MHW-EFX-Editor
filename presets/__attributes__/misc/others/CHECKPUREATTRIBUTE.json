@@ -7,13 +7,13 @@
     "attribute": {
         "type": "CHECKPUREATTRIBUTE",
         "fields": {
-            "typeFlag": 1,
+            "typeFlag": 3,
             "section_length": 32,
             "unkn1": -842150656,
-            "unknEnum2_0": 3,
-            "unknEnum2_1": 64,
-            "unknEnum2_2": 93,
-            "unknEnum2_3": 94,
+            "unknEnum2_0": 0,
+            "unknEnum2_1": -1,
+            "unknEnum2_2": -1,
+            "unknEnum2_3": -1,
             "unknEnum2_4": -1,
             "unknEnum2_5": -1,
             "unknFixed2_6": 0

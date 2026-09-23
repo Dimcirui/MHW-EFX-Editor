@@ -3,7 +3,7 @@
     "format_version": 2,
     "display_name": "SCREENSPACECOLLISION（屏幕空间碰撞）",
     "category": "motion_visibility",
-    "subgroup": "visibility",
+    "subgroup": "motion",
     "attribute": {
         "type": "SCREENSPACECOLLISION",
         "fields": {

@@ -7,8 +7,8 @@
     "attribute": {
         "type": "PLANE",
         "fields": {
-            "typeFlag": 5,
-            "applicationRule": 0,
+            "typeFlag": 1,
+            "applicationRule": 4,
             "color": [
                 255,
                 255,
@@ -21,25 +21,25 @@
                 255,
                 255
             ],
-            "brightness": 1.0,
+            "brightness": 10.0,
             "brightnessJitter": 0.0,
             "useColorRange": 0,
-            "blendMode": 0,
+            "blendMode": 1,
             "correctColorNo": 0,
             "colorRangeCorrectColorNo": 0,
             "rotation2": 0.0,
             "rotation2Jitter": 0.0,
-            "scale": 1.0,
+            "scale": 15.0,
             "scaleJitter": 0.0,
             "width": 100.0,
             "widthJitter": 0.0,
             "height": 100.0,
             "heightJitter": 0.0,
-            "flowmapSpeed": 0.0,
+            "flowmapSpeed": 1.0,
             "flowmapSpeedJitter": 0.0,
             "flowmapSpeedCoef": 1.0,
             "flowmapSpeedCoefJitter": 0.0,
-            "flowmapStrength": 0.0,
+            "flowmapStrength": 1.0,
             "flowmapStrengthJitter": 0.0,
             "flowmapStrengthCoef": 1.0,
             "flowmapStrengthCoefJitter": 0.0,
@@ -56,8 +56,8 @@
                 0.0
             ],
             "lightGroup": 1,
-            "unknFlag7_1": 1,
-            "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_007_F_NM\u0000"
+            "unknFlag7_1": 0,
+            "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_009_F_NM\u0000"
         }
     }
 }

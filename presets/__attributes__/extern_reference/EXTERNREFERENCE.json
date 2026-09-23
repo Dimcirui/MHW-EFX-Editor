@@ -8,11 +8,11 @@
         "fields": {
             "typeFlag": 0,
             "referenceIndex": -1,
-            "trigger_condition": 0,
+            "trigger_condition": 1,
             "index0": 0,
             "index1": 1,
             "lerp": 0.0,
-            "transitionDuration": 0,
+            "transitionDuration": 30,
             "triggerDelay": 0,
             "unknFlag1_6": 1
         }

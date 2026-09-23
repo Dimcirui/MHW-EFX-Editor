@@ -8,9 +8,9 @@
         "type": "SCALEANIM",
         "fields": {
             "typeFlag": 8,
-            "initialScaleSpeed": 0.02,
+            "initialScaleSpeed": 0.0,
             "initialScaleSpeedJitter": 0.0,
-            "initialScaleAccel": 0.99,
+            "initialScaleAccel": 1.0,
             "initialScaleAccelJitter": 0.0,
             "scaleSpeedX": 0.0,
             "scaleSpeedXJitter": 0.0,

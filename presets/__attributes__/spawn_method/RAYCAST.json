@@ -6,12 +6,12 @@
     "attribute": {
         "type": "RAYCAST",
         "fields": {
-            "typeFlag": 1,
+            "typeFlag": 0,
             "section_length": 70,
             "spacer0": -842150656,
-            "maxDistance": 500.0,
+            "maxDistance": 1000.0,
             "maxDistanceJitter": 0.0,
-            "startDistance": 500.0,
+            "startDistance": 100.0,
             "startDistanceJitter": 0.0,
             "spacer1": -842150451,
             "spacer2": -842150451,

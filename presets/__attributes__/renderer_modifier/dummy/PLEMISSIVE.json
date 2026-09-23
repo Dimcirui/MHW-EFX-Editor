@@ -7,11 +7,11 @@
     "attribute": {
         "type": "PLEMISSIVE",
         "fields": {
-            "typeFlag": 7,
-            "priority": 17,
+            "typeFlag": 6,
+            "priority": 20,
             "blend": 1.0,
-            "body_p": 4,
-            "wp_p": 32,
+            "body_p": 0,
+            "wp_p": 1,
             "NULL": 0,
             "correctColorNo": 0,
             "emissive": [
@@ -21,7 +21,7 @@
                 255
             ],
             "intensity": 1.0,
-            "rimWidth": 1.0,
+            "rimWidth": 0.1,
             "rimPower": 0.1,
             "rimAlpha": 1.0,
             "emitMaskFlags": 0,

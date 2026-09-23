@@ -7,9 +7,9 @@
     "attribute": {
         "type": "ROTATEANIM",
         "fields": {
-            "spinAxisMask": 19,
-            "rotationModeMask": 0,
-            "billboardRotation": 2.0,
+            "spinAxisMask": 1,
+            "rotationModeMask": 1,
+            "billboardRotation": 0.0,
             "billboardRotationJitter": 0.0,
             "spin_velocity": [
                 0.0,

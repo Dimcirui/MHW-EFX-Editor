@@ -13,12 +13,12 @@
             "unknFixed2_0": 200,
             "unknFixed2_1": 15,
             "color": [
-                32,
-                32,
-                32,
+                255,
+                255,
+                255,
                 255
             ],
-            "unknEnum3": 0,
+            "unknEnum3": 2,
             "unkn4": -842150656,
             "unknFixed5_0": -10.0,
             "unknFixed5_1": -70.0,
@@ -26,13 +26,13 @@
             "unknFixed5_3": 0.8,
             "unkn6": -842150655,
             "unknFixed7_0": 1.0,
-            "unkn7_1": 0.555556,
+            "unkn7_1": 0.1,
             "unknFixed7_2": 0.5,
-            "unkn7_3": 0.5,
-            "unkn7_4": 2.0,
+            "unkn7_3": 1.0,
+            "unkn7_4": 1.0,
             "unknFixed7_5": 1.0,
             "unknFixed7_6": 1.0,
-            "unkn7_7": 1.0
+            "unkn7_7": 0.5
         }
     }
 }
