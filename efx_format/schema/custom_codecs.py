@@ -1589,6 +1589,69 @@ def _read_layoutbank_block_columns(data: bytes, pos: int):
     return columns, pos
 
 
+def unpack_layoutbank_block(data: bytes, pos: int):
+    """结构化解出一个 LayoutBank_Block，步进与 _walk_layoutbank_block 一致。"""
+    (count,) = struct.unpack_from('<i', data, pos)
+    pos += 4
+    columns = []
+    if count > 0:
+        while True:
+            (block_type,) = struct.unpack_from('<i', data, pos)
+            pos += 4
+            if block_type == -1:
+                break
+            col = {'blockType': block_type}
+            if block_type == 0 or block_type == 6:
+                n, fmt = count * 3, ('f' if block_type == 0 else 'i')
+                col['values'] = list(struct.unpack_from(f'<{n}{fmt}', data, pos))
+                pos += n * 4
+            elif 0 < block_type < 6:
+                n = count * 4
+                col['values'] = list(struct.unpack_from(f'<{n}h', data, pos))
+                pos += n * 2
+            elif block_type == 7:
+                (sub,) = struct.unpack_from('<i', data, pos)
+                pos += 4
+                n = count * 4 * sub
+                col['subCount'] = sub
+                col['values'] = list(struct.unpack_from(f'<{n}h', data, pos))
+                pos += n * 2
+            else:
+                raise ValueError(f'LayoutBank_B: unknown block_type={block_type} at pos {pos-4}')
+            columns.append(col)
+    return {'count': count, 'columns': columns}, pos
+
+
+def pack_layoutbank_block(block: dict) -> bytes:
+    """按 unpack_layoutbank_block 的结构写回；count > 0 时总以 -1 结尾。"""
+    count = int(block['count'])
+    columns = block.get('columns', [])
+    out = struct.pack('<i', count)
+    if count <= 0:
+        if columns:
+            raise ValueError('LayoutBank_B: count <= 0 的块不能带列')
+        return out
+    for col in columns:
+        block_type = int(col['blockType'])
+        values = col['values']
+        out += struct.pack('<i', block_type)
+        if block_type == 0 or block_type == 6:
+            n, fmt = count * 3, ('f' if block_type == 0 else 'i')
+        elif 0 < block_type < 6:
+            n, fmt = count * 4, 'h'
+        elif block_type == 7:
+            sub = int(col['subCount'])
+            out += struct.pack('<i', sub)
+            n, fmt = count * 4 * sub, 'h'
+        else:
+            raise ValueError(f'LayoutBank_B: unknown block_type={block_type}')
+        if len(values) != n:
+            raise ValueError(
+                f'LayoutBank_B: block_type={block_type} 需要 {n} 个值，实际 {len(values)} 个')
+        out += struct.pack(f'<{n}{fmt}', *values)
+    return out + struct.pack('<i', -1)
+
+
 def describe_layoutbank(data: bytes) -> list:
     """解出 Root LayoutBank 子条目的全部列，按出现顺序摊平成一份平铺列表。
 
