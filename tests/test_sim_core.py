@@ -24,7 +24,8 @@ if _ROOT not in sys.path:
 from efx_format.hashes import (ALPHACORRECTION, BILLBOARD2D, BILLBOARD3D, DUMMY,  # noqa: E402
                                EMITTERSHAPE3D, FADEBYANGLE, FADEBYDEPTH, HOMING, LIGHTNING,
                                LIFE, MESH, NOISE, BLINK, PLANE, RIBBON, RIBBONBLADE,
-                               PARENTOPTIONS, PTCOLLISION, PTLIFE, REFRACTION, RGBFIRE,
+                               PARENTOPTIONS, PTBEHAVIOR, PTCOLLISION, PTLIFE, REFRACTION,
+                               RGBFIRE,
                                RGBWATER, ROTATEANIM, SCALEANIM,
                                SPAWN, TRANSFORM3D, TURBULENCE, UVSEQUENCE, VELOCITY3D)
 from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
@@ -2603,15 +2604,15 @@ class TestTransform3D(unittest.TestCase):
         sim.run(3)
         self.assertEqual(sim.particles[0].vel, Vec3())
 
-    def test_rotation_sign_can_be_taken_raw(self):
-        """'raw' = 照字面符号（改动前的行为）。"""
+    def test_rotation_sign_can_be_flipped(self):
+        """'flip' = 与字面符号相反，仅作对照。"""
         t = transform3d_fields(enableVelocityBitflag=1,
                                rotation_velocity=[0.0, 0.0, 600.0, 0.0, 0.0, 0.0])
         sim = make_sim(transform=t, spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
-                       config=SimConfig(t3d_rotation_sign="raw"))
+                       config=SimConfig(t3d_rotation_sign="flip"))
         sim.run(10)
-        self.assertAlmostEqual(sim.em.rot_dynamic.y, 100.0, places=4)
+        self.assertAlmostEqual(sim.em.rot_dynamic.y, -100.0, places=4)
 
     def test_velocities_are_per_second(self):
         """三组速度都是每秒（语料证据见 behaviors/transform3d.py）：
@@ -2625,8 +2626,8 @@ class TestTransform3D(unittest.TestCase):
         sec = make_sim(transform=t, **kw)
         sec.run(10)
         self.assertAlmostEqual(sec.em.origin.x, 10.0, places=5)       # 1/帧 × 10
-        # 10°/帧 × 10；符号取反（见 t3d_rotation_sign，默认 'flip'）
-        self.assertAlmostEqual(sec.em.rot_dynamic.y, -100.0, places=4)
+        # 10°/帧 × 10；照字面符号（见 t3d_rotation_sign，默认 'raw'）
+        self.assertAlmostEqual(sec.em.rot_dynamic.y, 100.0, places=4)
         self.assertAlmostEqual(sec.em.scale_dynamic.x, 11.0, places=4)  # 1 + 1/帧 × 10
 
         frm = make_sim(transform=t, config=SimConfig(t3d_velocity_unit="per_frame"),
@@ -4195,19 +4196,34 @@ class TestRibbon(unittest.TestCase):
         self.assertEqual(sim.build_render(), [])
 
     def test_trail_length_scales_with_subdivision(self):
-        """长度跟着细分数走：总长 = length × (细分数-1)。"""
+        """默认按帧：条带覆盖最近 细分数-1 帧的轨迹，length 不参与（取个大值验证）。"""
         spans = {}
         for n in (2, 5):
-            sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=10.0,
+            sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=999.0,
                                                  subdivisionCount=n),
                             velocity=velocity_fields(speed=10.0), frames=40)
             pts = [q for q, _w, _a in sim.build_render()[0].points]
             spans[n] = (pts[-1] - pts[0]).length()
-        self.assertAlmostEqual(spans[2], 10.0, delta=0.5)      # 1 段
-        self.assertAlmostEqual(spans[5], 40.0, delta=0.5)      # 4 段
+        self.assertAlmostEqual(spans[2], 10.0, delta=0.5)      # 1 帧 × 10/帧
+        self.assertAlmostEqual(spans[5], 40.0, delta=0.5)      # 4 帧 × 10/帧
+
+    def test_trail_frames_mode_exceeds_default_history_cap(self):
+        """细分数超过 config.trail_max（64）时，位置历史按需加长，条带不被截短。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, subdivisionCount=140),
+                        velocity=velocity_fields(speed=1.0), frames=200)
+        pts = [q for q, _w, _a in sim.build_render()[0].points]
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 139.0, delta=1.0)
+
+    def test_trail_length_mode_per_segment(self):
+        """'per_segment' 对照档：总长 = length × (细分数-1)。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=10.0, subdivisionCount=5),
+                        velocity=velocity_fields(speed=10.0), frames=40,
+                        config=SimConfig(ribbon_length_mode="per_segment"))
+        pts = [q for q, _w, _a in sim.build_render()[0].points]
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 40.0, delta=0.5)
 
     def test_trail_mode_ignores_spawn_anchor_offset(self):
-        """轨迹跟随模式下 spawnAnchorOffset 不生效：tip 恒等于粒子当前位置。
+        """轨迹跟随模式下 spawnAnchorOffset 不生效：头部（base）恒等于粒子当前位置。
 
         试过按"往前甩"（原样照抄 RIGID 的读法）和"往后拖"（在粒子当前位置之外
         再往身后偏一截）两种解读，都会导致粒子刚出生、历史还没积累够时条带的头
@@ -4224,21 +4240,20 @@ class TestRibbon(unittest.TestCase):
         pts_base = [q for q, _w, _a in base.build_render()[0].points]
         pts_anchored = [q for q, _w, _a in anchored.build_render()[0].points]
         p = anchored.particles[0]
-        self.assertAlmostEqual(pts_anchored[-1].x, p.pos.x, places=3)   # tip = 当前位置
+        self.assertAlmostEqual(pts_anchored[0].x, p.pos.x, places=3)    # 头部 = 当前位置
         for qa, qb in zip(pts_anchored, pts_base):
             self.assertAlmostEqual(qa.x, qb.x, places=4)                # 跟 anchor=0 一样
 
     def test_trail_mode_follows_particle_motion(self):
         """粒子自己动 → 沿粒子轨迹（pick_trail 的 auto 分支）。
 
-        默认 subdiv=5 → 总长上限 = 50 × 4 = 200；20 帧 × 10/帧只走了 190，
-        还没到上限，所以条带就是这 190。
+        默认 subdiv=5 → 最近 4 帧 × 10/帧 = 40。
         """
         sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=50.0),
                         velocity=velocity_fields(speed=10.0))
         pts = [q for q, _w, _a in sim.build_render()[0].points]
         span = (pts[-1] - pts[0]).length()
-        self.assertAlmostEqual(span, 190.0, delta=1.0)
+        self.assertAlmostEqual(span, 40.0, delta=1.0)
 
     def test_trail_length_mode_total_caps_at_length(self):
         """`ribbon_length_mode='total'` = 改动前的读法：length 就是总长。"""
@@ -4256,8 +4271,8 @@ class TestRibbon(unittest.TestCase):
                 enableVelocityBitflag=1,
                 translation_velocity=[300.0, 0.0, 0.0, 0.0, 0.0, 0.0]))   # 5/帧
         pts = [q for q, _w, _a in sim.build_render()[0].points]
-        # 发射器 20 帧 × 5/帧 = 95（默认 subdiv=5 → 上限 40×4=160，没到）
-        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 95.0, delta=1.0)
+        # 默认 subdiv=5 → 发射器最近 4 帧 × 5/帧 = 20
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 20.0, delta=1.0)
 
     def test_rigid_mode_is_a_straight_fixed_length_strip(self):
         sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=1))
@@ -4266,10 +4281,17 @@ class TestRibbon(unittest.TestCase):
         for q in pts:                                  # baseAxis=1 → 沿 +Y
             self.assertAlmostEqual(q.x, 0.0, places=6)
 
-    def test_rigid_mode_static_default_ignores_motion(self):
-        """默认 calibration（static）：即便粒子在动，方向仍然只看 baseAxis，不看速度。"""
+    def test_rigid_mode_extends_along_base_axis(self):
+        """伸展方向直接取 baseAxis，不取负：baseAxis=4（下）→ 自发射器向下伸展。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=4))
+        pts = [q for q, _w, _a in sim.build_render()[0].points]
+        self.assertAlmostEqual(pts[-1].y - pts[0].y, -60.0, places=4)
+
+    def test_rigid_mode_static_ignores_motion(self):
+        """static 档：即便粒子在动，方向仍然只看 baseAxis，不看速度。"""
         sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=1),
-                        velocity=velocity_fields(speed=10.0, baseAxis=2))
+                        velocity=velocity_fields(speed=10.0, baseAxis=2),
+                        config=SimConfig(ribbon_rigid_dir="static"))
         pts = [q for q, _w, _a in sim.build_render()[0].points]
         for q in pts:                                  # baseAxis=1 → 仍沿 +Y
             self.assertAlmostEqual(q.x, 0.0, places=4)
@@ -4297,6 +4319,45 @@ class TestRibbon(unittest.TestCase):
         em_dir = sim.em.velocity.normalized()
         self.assertAlmostEqual(abs(span.dot(em_dir)), 1.0, places=3)
 
+    def test_rigid_mode_velocity_option_rest_up_side_points_along_motion(self):
+        """velocity 档：静止朝上的一侧指向运动方向。"""
+        t = transform3d_fields(enableVelocityBitflag=1,
+                               translation_velocity=[300.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        for axis, sign in ((1, 1.0), (4, -1.0)):
+            sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=axis),
+                            transform=t, config=SimConfig(ribbon_rigid_dir="velocity"))
+            pts = [q for q, _w, _a in sim.build_render()[0].points]
+            span = (pts[-1] - pts[0]).normalized()
+            self.assertAlmostEqual(span.x, sign, places=3)
+
+    def test_rigid_mode_turns_with_emitter_spin(self):
+        """默认 parent 档：条带随发射器一起转。粒子在 +X 半径上、静止朝 +Y，转动后仍与
+        逆时针切向同向——反转自转方向时领先的一端随之互换。"""
+        for spin in (1200.0, -1200.0):                     # ±20°/帧
+            for axis, sign in ((1, 1.0), (4, -1.0)):
+                sim = make_sim(
+                    extra=[(PARENTOPTIONS, parentoptions_fields(
+                               particleUseLocal=1, relationRot=[1, 1, 1])),
+                           (RIBBON, ribbon_fields(ribbonMode=1, length=60.0,
+                                                  baseAxis=axis))],
+                    transform=transform3d_fields(
+                        enableVelocityBitflag=1,
+                        rotation_velocity=[0.0, 0.0, 0.0, 0.0, spin, 0.0]),
+                    spawn=spawn_fields(intervalFrame=1000),
+                    life=life_fields(indefiniteLifespan=1))
+                sim.step()
+                pt = sim.particles[0]
+                # 放到绕圈半径上，并与出生时已计入朝向的发射器旋转对齐
+                from efx_format.sim.behaviors._common import emitter_rotate
+                pt.pos = emitter_rotate(sim.em, Vec3(10.0, 0.0, 0.0))
+                for _ in range(5):
+                    sim.step()
+                r = pt.pos
+                ccw = Vec3(-r.y, r.x, 0.0).normalized()    # 绕 +Z 逆时针的切向
+                pts = [q for q, _w, _a in sim.build_render()[0].points]
+                d = (pts[-1] - pts[0]).normalized()
+                self.assertGreater(d.dot(ccw) * sign, 0.99, (spin, axis))
+
     def test_rigid_mode_velocity_calibration_holds_last_direction_when_still(self):
         """粒子和发射器都静止的那些帧，方向保留上一个有效值，不弹回 baseAxis。"""
         sim = make_sim(extra=[(RIBBON, ribbon_fields(ribbonMode=1, length=60.0,
@@ -4315,6 +4376,18 @@ class TestRibbon(unittest.TestCase):
             sim.step()
         moving_dir = sim.particles[0].user[_R]["dir"].copy()
         self.assertGreater(abs(moving_dir.x) + abs(moving_dir.z), 0.5)
+
+    def test_fade_length_switch_off_counts_both_spans_as_one(self):
+        """enableFadeLength=0：两个渐隐长度按 1 计，本地填的值不起作用。"""
+        kw = dict(ribbonMode=1, subdivisionCount=5, base_opacity=0.0, tip_opacity=1.0,
+                  base_fade_length=0.2, tip_fade_length=0.0)
+        off = self._sim(ribbon=ribbon_fields(enableFadeLength=0, **kw))
+        on = self._sim(ribbon=ribbon_fields(enableFadeLength=1, **kw))
+        a_off = [a for _q, _w, a in off.build_render()[0].points]
+        a_on = [a for _q, _w, a in on.build_render()[0].points]
+        for i, a in enumerate(a_off):                  # 跨度 1：由 0 线性升到 1
+            self.assertAlmostEqual(a, i / 4.0, places=6)
+        self.assertAlmostEqual(a_on[1], 1.0, places=6)  # 跨度 0.2：u=0.25 处已回到不透明
 
     def test_rigid_mode_length_grows_with_scaleanim_y(self):
         """SCALEANIM 的 Y 轴增量要拉伸 RIBBON 的长度（p.scale.y），不能只对宽度生效
@@ -4434,8 +4507,8 @@ class TestRibbon(unittest.TestCase):
         self.assertAlmostEqual((pb[0] - pa[0]).length(), 50.0, places=4)
 
     def test_flap_displaces_the_strip(self):
-        flat = self._sim(ribbon=ribbon_fields(ribbonMode=1, enableFlap=0))
-        wavy = self._sim(ribbon=ribbon_fields(ribbonMode=1, enableFlap=1,
+        flat = self._sim(ribbon=ribbon_fields(ribbonMode=2, enableFlap=0))
+        wavy = self._sim(ribbon=ribbon_fields(ribbonMode=2, enableFlap=1,
                                               flap1Frequency=2.0, flap1Amount=10.0))
         pf = [q for q, _w, _a in flat.build_render()[0].points]
         pw = [q for q, _w, _a in wavy.build_render()[0].points]
@@ -4443,11 +4516,172 @@ class TestRibbon(unittest.TestCase):
         self.assertGreater(moved, 1.0)
 
     def test_flap_is_deterministic(self):
-        r = ribbon_fields(ribbonMode=1, enableFlap=1, flap1Frequency=2.0,
+        r = ribbon_fields(ribbonMode=2, enableFlap=1, flap1Frequency=2.0,
                           flap1Amount=10.0)
         a = [q.as_tuple() for q, _w, _x in self._sim(ribbon=r).build_render()[0].points]
         b = [q.as_tuple() for q, _w, _x in self._sim(ribbon=r).build_render()[0].points]
         self.assertEqual(a, b)
+
+    def test_flap_only_applies_to_chain_mode(self):
+        """旗帜摆动是柔体链专属：定长面片开了 enableFlap 也保持平直。"""
+        flat = self._sim(ribbon=ribbon_fields(ribbonMode=1, enableFlap=0))
+        wavy = self._sim(ribbon=ribbon_fields(ribbonMode=1, enableFlap=1,
+                                              flap1Frequency=2.0, flap1Amount=10.0))
+        pf = [q.as_tuple() for q, _w, _a in flat.build_render()[0].points]
+        pw = [q.as_tuple() for q, _w, _a in wavy.build_render()[0].points]
+        self.assertEqual(pf, pw)
+
+    # ── 柔体链重力 ─────────────────────────────────────────────────────────
+    def _chain_tip(self, **kw):
+        base = dict(ribbonMode=2, length=60.0, baseAxis=4, restoreStrength=1.0,
+                    springiness=0.3, inertia=0.5)
+        base.update(kw)
+        sim = self._sim(ribbon=ribbon_fields(**base), frames=120)
+        return [q for q, _w, _a in sim.build_render()[0].points][-1]
+
+    def test_chain_gravity_pulls_tip_down(self):
+        still = self._chain_tip()
+        heavy = self._chain_tip(enableGravity=1, gravityY=-1.0)
+        self.assertLess(heavy.y, still.y - 1.0)
+
+    def test_chain_gravity_needs_enable_switch(self):
+        """只填了分量、没开 enableGravity 时不生效（实机：只开本地坐标系也不生效）。"""
+        still = self._chain_tip()
+        off = self._chain_tip(enableGravity=0, gravityLocalSpace=1, gravityY=-1.0)
+        self.assertAlmostEqual((off - still).length(), 0.0, places=6)
+
+    def test_chain_gravity_local_space_follows_emitter_rotation(self):
+        """gravityLocalSpace 开启时重力方向随发射器的动态旋转转动。"""
+        from efx_format.sim.behaviors.ribbon import Ribbon as _R
+        for local in (0, 1):
+            sim = make_sim(extra=[(RIBBON, ribbon_fields(
+                ribbonMode=2, enableGravity=1, gravityLocalSpace=local, gravityY=-1.0,
+                springiness=0.0, inertia=0.0))],
+                spawn=spawn_fields(intervalFrame=1000),
+                life=life_fields(indefiniteLifespan=1))
+            sim.step()
+            em = sim.em
+            em.rot_dynamic = Vec3(0.0, 0.0, 90.0)     # 绕 Z 转 90°，-Y 转到水平
+            sim.step()
+            dv = sim.particles[0].user[_R]["vels"][-1]   # 惯性与弹簧为 0，速度只剩重力
+            if local:
+                self.assertLess(abs(dv.y), 1e-6)
+                self.assertAlmostEqual(abs(dv.x), 1.0, places=6)
+            else:
+                self.assertAlmostEqual(dv.y, -1.0, places=6)
+
+    # ── 条带时间缩放 ───────────────────────────────────────────────────────
+    def _trail_pts(self, frames=60, **kw):
+        base = dict(ribbonMode=0, subdivisionCount=11)
+        base.update(kw)
+        sim = self._sim(ribbon=ribbon_fields(**base),
+                        velocity=velocity_fields(speed=1.0), frames=frames,
+                        config=SimConfig(ribbon_trail_time_frames=0.5))
+        return [q for q, _w, _a in sim.build_render()[0].points]
+
+    def test_trail_time_scale_multiplies_with_subdivision(self):
+        """开启后长度 = (细分数 − 1) × 每段帧数 × trailTimeScale。"""
+        pts = self._trail_pts(useTrailTimeScale=1, trailTimeScale=1.0)
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 5.0, delta=0.05)
+        pts = self._trail_pts(useTrailTimeScale=1, trailTimeScale=2.0)
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 10.0, delta=0.05)
+        pts = self._trail_pts(useTrailTimeScale=1, trailTimeScale=2.0,
+                              subdivisionCount=21)
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 20.0, delta=0.05)
+        self.assertEqual(len(pts), 21)
+
+    def test_trail_time_scale_interpolates_fractional_frames(self):
+        pts = self._trail_pts(useTrailTimeScale=1, trailTimeScale=0.3)   # 1.5 帧
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 1.5, delta=0.05)
+
+    def test_trail_time_scale_off_keeps_frame_model(self):
+        pts = self._trail_pts(useTrailTimeScale=0, trailTimeScale=3.0)
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 10.0, delta=0.05)
+
+    def test_trail_time_scale_zero_connects_spawn_to_current(self):
+        """0 及负值：条带从当前位置直线连到生成点。"""
+        for v in (0.0, -2.0):
+            pts = self._trail_pts(frames=30, useTrailTimeScale=1, trailTimeScale=v)
+            head, tip = pts[0], pts[-1]
+            self.assertAlmostEqual(tip.length(), 0.0, delta=1e-6)      # 生成点在原点
+            self.assertGreater(head.length(), 20.0)
+            mid = pts[len(pts) // 2]
+            cross = (mid - tip).cross(head - tip).length()
+            self.assertAlmostEqual(cross, 0.0, delta=1e-6)             # 共线
+
+    # ── 贴图缩放参数 ───────────────────────────────────────────────────────
+    def _uv(self, **kw):
+        base = dict(ribbonMode=1, length=60.0, width=20.0)
+        base.update(kw)
+        return self._sim(ribbon=ribbon_fields(**base)).build_render()[0].extra.get("uv_scale")
+
+    def test_uv_scale_absent_by_default(self):
+        self.assertIsNone(self._uv())
+        self.assertIsNone(self._uv(uvScaleMode=0, uvScaleLength=3.0))   # 不缩放时无效
+
+    def test_uv_scale_fixed_count(self):
+        self.assertEqual(self._uv(uvScaleMode=1, uvScaleLength=2.0), (2.0, 1.0))
+
+    def test_uv_scale_by_aspect_ratio(self):
+        rep, _w = self._uv(uvScaleMode=2, uvScaleLength=1.5)
+        self.assertAlmostEqual(rep, 1.5 * 60.0 / 20.0, places=4)
+        # 长宽相等时与固定次数相同：重复 1 次即不缩放，不附加参数
+        self.assertIsNone(self._uv(uvScaleMode=2, uvScaleLength=1.0, length=20.0))
+
+    def test_uv_scale_width_only(self):
+        self.assertEqual(self._uv(uvScaleWidth=2.0), (1.0, 2.0))
+
+
+class TestRibbonUV(unittest.TestCase):
+    """贴图缩放的几何切分（ribbon_uv）。"""
+
+    def test_width_columns_identity(self):
+        from efx_format.sim.ribbon_uv import width_columns
+        self.assertEqual(width_columns(1.0), [(0.0, 1.0, 0.0, 1.0)])
+
+    def test_width_columns_scale_two_clamps_edges(self):
+        """2：整张贴图压到中间一半，两侧恒取边缘像素。"""
+        from efx_format.sim.ribbon_uv import width_columns
+        cols = width_columns(2.0)
+        self.assertEqual(len(cols), 3)
+        (_a0, a1, au0, au1), (b0, b1, bu0, bu1), (_c0, _c1, cu0, cu1) = cols
+        self.assertAlmostEqual(a1, 0.25)
+        self.assertEqual((au0, au1), (0.0, 0.0))
+        self.assertAlmostEqual(b0, 0.25)
+        self.assertAlmostEqual(b1, 0.75)
+        self.assertEqual((bu0, bu1), (0.0, 1.0))
+        self.assertEqual((cu0, cu1), (1.0, 1.0))
+
+    def test_width_columns_half_shows_middle(self):
+        from efx_format.sim.ribbon_uv import width_columns
+        [(s0, s1, u0, u1)] = width_columns(0.5)
+        self.assertEqual((s0, s1), (0.0, 1.0))
+        self.assertAlmostEqual(u0, 0.25)
+        self.assertAlmostEqual(u1, 0.75)
+
+    def test_length_pieces_split_at_repeat_boundaries(self):
+        from efx_format.sim.ribbon_uv import length_pieces
+        pieces = length_pieces(2, 2.0)
+        self.assertEqual(pieces, [(0, 0.0, 0.5, 0.0, 1.0), (0, 0.5, 1.0, 0.0, 1.0)])
+
+    def test_length_pieces_identity_matches_row_param(self):
+        from efx_format.sim.ribbon_uv import length_pieces
+        pieces = length_pieces(5, 1.0)
+        self.assertEqual(len(pieces), 4)
+        for i, (seg, fa, fb, va, vb) in enumerate(pieces):
+            self.assertEqual((seg, fa, fb), (i, 0.0, 1.0))
+            self.assertAlmostEqual(va, i / 4.0)
+            self.assertAlmostEqual(vb, (i + 1) / 4.0)
+
+    def test_length_pieces_half(self):
+        from efx_format.sim.ribbon_uv import length_pieces
+        self.assertAlmostEqual(length_pieces(3, 0.5)[-1][4], 0.5)       # 只显示一半
+
+    def test_repeat_count(self):
+        from efx_format.sim.ribbon_uv import repeat_count
+        self.assertEqual(repeat_count(0, 3.0, 100.0, 10.0), 1.0)
+        self.assertEqual(repeat_count(1, 3.0, 100.0, 10.0), 3.0)
+        self.assertAlmostEqual(repeat_count(2, 1.5, 40.0, 20.0), 3.0)   # 两倍长、1.5 → 三张
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -4895,6 +5129,172 @@ class TestUvSequence(unittest.TestCase):
         sim = uvseq_sim(billboard=None, resources=self._res(4), frames=2)
         self.assertEqual(sim.build_render(), [])
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PTBEHAVIOR：贴花
+# ─────────────────────────────────────────────────────────────────────────────
+
+def ptb_fields(b_type, **params):
+    """造一个 PTBEHAVIOR 解码结果；参数按名字给，值类型按名字后缀推断的 t 由调用方给。
+
+    params 的值为 (t, payload_dict)。
+    """
+    from efx_format.ptbehavior.names import PTBEHAVIOR_NAMES
+    by_name = {v: k for k, v in PTBEHAVIOR_NAMES.items()}
+    out = []
+    for name, (t, payload) in params.items():
+        pr = {"unkn": by_name[name], "const0": 0, "t": t}
+        pr.update(payload)
+        out.append(pr)
+    bt = b_type.encode("latin-1") + b"\x00"
+    return {"typeFlag": 0, "behav_type_len": len(bt), "para_count": len(out),
+            "b_type": bt, "params": out}
+
+
+def decal_fields(**params):
+    base = {
+        "mRange": (0x14, {"unkn1": [40.0, 20.0, 50.0]}),
+        "mAxis": (0x06, {"decal_epv_color_slot": 4}),
+        "mUpVector": (0x06, {"decal_epv_color_slot": 2}),
+        "mBlendFactor": (0x0F, {"color": [255, 255, 255, 255]}),
+    }
+    base.update(params)
+    return ptb_fields("nEffect::MhEffectDecalBehavior", **base)
+
+
+def decal_sim(frames=1, resources=None, config=None, **params):
+    blocks = [(SPAWN, spawn_fields(intervalFrame=1000)),
+              (LIFE, life_fields(indefiniteLifespan=1)),
+              (PTBEHAVIOR, decal_fields(**params))]
+    sim = Simulator(blocks, b"", config or SimConfig(strict=True), resources)
+    for _ in range(frames):
+        sim.step()
+    return sim
+
+
+class TestDecal(unittest.TestCase):
+
+    def _res(self, n):
+        return SimResources(uvs_bytes([(i / float(n), 0.0, (i + 1) / float(n), 1.0)
+                                       for i in range(n)]))
+
+    def test_lies_flat_facing_up(self):
+        item = decal_sim().build_render()[0]
+        self.assertEqual(item.kind, "PLANE")
+        self.assertAlmostEqual(item.size.x, 40.0)
+        self.assertAlmostEqual(item.size.y, 20.0)
+        # 向下投射 → 面片两轴都在水平面内，并标记贴地
+        self.assertAlmostEqual(item.axis_u.y, 0.0)
+        self.assertAlmostEqual(item.axis_v.y, 0.0)
+        self.assertTrue(item.extra["decal_ground"])
+
+    def test_uvsequence_mapping_uses_sequence_frames(self):
+        sim = decal_sim(resources=self._res(4), frames=3,
+                        mMappingMode=(0x06, {"decal_epv_color_slot": 1}),
+                        mShadingMode=(0x06, {"decal_epv_color_slot": 0}),
+                        mPlayType=(0x06, {"decal_epv_color_slot": 1}),
+                        mPlaySpeed=(0x37, {"unkn1": [1.0, 0.0]}))
+        item = sim.build_render()[0]
+        self.assertEqual(item.extra["uvs_n"], 4)
+        self.assertEqual(item.extra["uvs_source"], "uvs")
+        self.assertEqual(item.extra["uvs_frame"], 3)
+        self.assertNotIn("layers", item.extra)
+
+    def test_start_only_by_default(self):
+        sim = decal_sim(resources=self._res(4), frames=5,
+                        mMappingMode=(0x06, {"decal_epv_color_slot": 1}),
+                        mPatternNo=(0x36, {"unkn1": [2, 0]}))
+        self.assertEqual(sim.build_render()[0].extra["uvs_frame"], 2)
+
+    def test_fire_shading_gives_two_layers(self):
+        sim = decal_sim(resources=self._res(4),
+                        mMappingMode=(0x06, {"decal_epv_color_slot": 1}),
+                        mShadingMode=(0x06, {"decal_epv_color_slot": 1}),
+                        mFireColor=(0x14, {"unkn1": [1.0, 0.5, 0.0]}),
+                        mFireColorRate=(0x0C, {"unkn0": 2.0}),
+                        mSmokeLerpAlphaToB=(0x0C, {"unkn0": 0.25}))
+        item = sim.build_render()[0]
+        fire, _smoke = item.extra["layers"]
+        self.assertEqual([round(c, 6) for c in fire], [2.0, 1.0, 0.0])
+        self.assertAlmostEqual(item.extra["rgbfire_lerp"], 0.25)
+
+    def test_texture_mapping_adds_emissive(self):
+        sim = decal_sim(mMappingMode=(0x06, {"decal_epv_color_slot": 0}),
+                        mpAlbedoMap=(0x80, {"file_type": 0, "path_len": 2, "path": b"a\x00"}),
+                        mpEmissiveMap=(0x80, {"file_type": 0, "path_len": 2, "path": b"e\x00"}),
+                        mEmissiveMapFactor=(0x0F, {"color": [255, 0, 0, 255]}),
+                        mEmissiveMapFactorIntensity=(0x0C, {"unkn0": 20.0}))
+        item = sim.build_render()[0]
+        r, g, b, _a = item.extra["decal_emissive"]
+        self.assertAlmostEqual(r, 20.0)
+        self.assertAlmostEqual(g, 0.0)
+        self.assertIsNone(item.uv_corners)
+
+    def test_other_btype_is_listed_unsupported(self):
+        blocks = [(SPAWN, spawn_fields(intervalFrame=1000)),
+                  (LIFE, life_fields(indefiniteLifespan=1)),
+                  (PTBEHAVIOR, ptb_fields("MhPointLightBehavior"))]
+        sim = Simulator(blocks, b"", SimConfig())
+        sim.step()
+        self.assertIn(PTBEHAVIOR, [h for h, _ in sim.unsupported])
+        self.assertEqual(sim.build_render(), [])
+
+
+class TestUVControl(unittest.TestCase):
+    """UVCONTROL：static+random 取值、逐帧 Coef、缩放加速度与 flowmap 组。"""
+
+    @staticmethod
+    def _sim(uvc, n=1):
+        from efx_format.hashes import UVCONTROL
+        blocks = [
+            (SPAWN, {"maxParticles": n, "spawnNum": n, "intervalFrame": 0,
+                     "loopNum": 1, "emitterRepeatCount": 1}),
+            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
+                           "blendMode": 0, "width": 100, "height": 100, "scale": 1}),
+            (UVCONTROL, dict({"uv1_unknFlag": 1}, **uvc)),
+        ]
+        return Simulator(blocks, b"", SimConfig())
+
+    def test_offset_rolls_between_static_and_static_plus_random(self):
+        sim = self._sim({"uv1_offset": [0.0, 0.5, 0.1, 0.2]}, n=40)
+        sim.run(1)
+        xs = [it.extra["uv_xform"] for it in sim.build_render()]
+        self.assertEqual(len(xs), 40)
+        for su, sv, ou, ov in xs:
+            self.assertTrue(0.0 <= ou <= 0.5)
+            self.assertTrue(0.1 <= ov <= 0.3 + 1e-9)
+        self.assertGreater(len(set(round(x[2], 6) for x in xs)), 1)
+
+    def test_offset_coef_is_per_frame(self):
+        # 每秒 60 = 每帧 1，逐帧乘 0.5：位移收敛到 1 / (1 − 0.5) = 2
+        sim = self._sim({"uv1_offsetAdd": [60.0, 0.0, 0.0, 0.0],
+                         "uv1_offsetCoef": [0.5, 0.0, 1.0, 0.0]})
+        sim.run(40)
+        su, sv, ou, ov = sim.build_render()[0].extra["uv_xform"]
+        self.assertAlmostEqual(ou, 2.0, places=4)
+        self.assertEqual(ov, 0.0)
+
+    def test_scale_coef_decays_scale_speed(self):
+        sim = self._sim({"uv1_scale": [1.0, 0.0, 1.0, 0.0],
+                         "uv1_scaleAdd": [60.0, 0.0, 0.0, 0.0],
+                         "uv1_scaleCoef": [0.5, 0.0, 1.0, 0.0]})
+        sim.run(40)
+        su, sv, ou, ov = sim.build_render()[0].extra["uv_xform"]
+        self.assertAlmostEqual(su, 3.0, places=4)
+        self.assertAlmostEqual(sv, 1.0)
+
+    def test_flowmap_group_follows_enable_flag(self):
+        on = self._sim({"enableFlowmap": 1, "flowmapSpeed": 1.0, "flowmapStrength": 0.2,
+                        "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0})
+        on.run(15)
+        amt = on.build_render()[0].extra.get("flowmap")
+        self.assertIsNotNone(amt)
+        self.assertLessEqual(abs(amt), 0.2 + 1e-6)
+        off = self._sim({"enableFlowmap": 0, "flowmapSpeed": 1.0, "flowmapStrength": 0.2})
+        off.run(15)
+        self.assertNotIn("flowmap", off.build_render()[0].extra)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ from . import stages as _stages
 from ..categories import ATTRIBUTE_CATEGORY_OF
 from ..hashes import TUBELIGHT
 from .config import SimConfig
-from .resolve import FieldResolver, FieldView, TimlTracks
+from .resolve import FieldView, TimlTracks
 from .state import Particle, RenderItem, Vec3, ViewContext
 from .uvs_table import SimResources
 
@@ -56,7 +56,7 @@ class EmitterState(object):
         "rotation", "scale", "rot_dynamic", "scale_dynamic", "rot_order",
         "host_rotation",
         "particles", "spawned_total", "spawn_requests",
-        "unsupported", "user", "cycle", "finished", "trail", "resources",
+        "unsupported", "user", "cycle", "finished", "trail", "trail_need", "resources",
         "_resolvers", "_pending_spawn", "_notes",
     )
 
@@ -100,6 +100,8 @@ class EmitterState(object):
         #: 发射器自己的位置历史（旧→新），供条带沿发射器路径绘制时使用。
         #: 与 p.trail 同样受 NEEDS_TRAIL 门控。
         self.trail = []
+        #: behavior 在 on_emitter_init 中声明所需的历史帧数；与 config.trail_max 取大者
+        self.trail_need = 0
         self.finished = False         # 发射器不再生成且粒子清空
 
         self._resolvers = {}
@@ -189,6 +191,7 @@ class Simulator(object):
         self._h_death = []
         self._h_render = []
         self._record_trail = False
+        self._trail_max = self.config.trail_max
         self.reset()
 
     # ── 生命周期 ─────────────────────────────────────────────────────────────
@@ -202,7 +205,7 @@ class Simulator(object):
         em.unsupported = list(unsupported)
 
         for b in self.bound:
-            em._resolvers[b.type_hash] = FieldResolver(
+            em._resolvers[b.type_hash] = type(b.behavior).make_resolver(
                 b.block_name, b.raw_fields, self.tracks, cfg)
 
         self._h_emitter_step = [b for b in self.bound if _reg.implements(b, "on_emitter_step")]
@@ -224,6 +227,8 @@ class Simulator(object):
 
         for h, name in unsupported:
             em.note("未模拟属性：%s" % (name or ("0x%08X" % h)))
+
+        self._trail_max = max(cfg.trail_max, em.trail_need)
 
         self.em = em
         return em
@@ -250,7 +255,7 @@ class Simulator(object):
         em.velocity = em.origin - em.prev_origin
         if self._record_trail:
             em.trail.append(em.origin.copy())
-            if len(em.trail) > cfg.trail_max:
+            if len(em.trail) > self._trail_max:
                 del em.trail[0]
 
         # 3. 消化生成队列
@@ -259,7 +264,7 @@ class Simulator(object):
         # 4. 逐粒子 step
         strict = cfg.strict
         record_trail = self._record_trail
-        trail_max = cfg.trail_max
+        trail_max = self._trail_max
         for p in em.particles:
             if not p.alive:
                 continue

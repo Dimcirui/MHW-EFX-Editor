@@ -41,6 +41,12 @@ class Behavior(object):
         self.type_hash = type_hash
         self.block_name = block_name
 
+    @classmethod
+    def make_resolver(cls, block_name, raw_fields, tracks, config):
+        """为本属性块建字段解析器。字段不是扁平 dict 的属性（如 PTBEHAVIOR）覆写此方法。"""
+        from .resolve import FieldResolver
+        return FieldResolver(block_name, raw_fields, tracks, config)
+
     # ── 钩子（默认全是 no-op）─────────────────────────────────────────────────
     def on_emitter_init(self, em, rng):
         """发射器开始播放时一次。预计算、播种、常量表都放这里。"""

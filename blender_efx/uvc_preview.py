@@ -5,7 +5,6 @@
 不解析或修改 EFX 字节数据。
 """
 
-import math
 from math import radians
 
 import bpy
@@ -77,58 +76,19 @@ def _read_field(obj, name):
     return None
 
 
-def _comp(val, idx, default=0.0):
-    """从 tuple/标量里取第 idx 个分量；越界或 None 返回 default。"""
-    if val is None:
-        return default
-    if isinstance(val, (tuple, list)):
-        return float(val[idx]) if idx < len(val) else default
-    return float(val) if idx == 0 else default
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 运动学：UVCONTROL 参数 → 时刻 t 的 UV 偏移 / 缩放
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _advance(init, speed, accel, t):
-    """按指数速度系数计算位置；无效系数回退线性运动。"""
-    if accel is None or accel <= 0.0 or abs(accel - 1.0) < 1e-6:
-        return init + speed * t
-    try:
-        return init + speed * (accel ** t - 1.0) / math.log(accel)
-    except (OverflowError, ValueError):
-        return init + speed * t
-
-
-def _compute_channel(ch, t):
-    """计算单通道在时刻 ``t`` 的偏移和缩放。
-
-    UVCONTROL 四分量字段的 U/V 分量固定取索引 0/2。
-    """
-    init = ch["init"]
-    speed = ch["speed"]
-    accel = ch["accel"]
-    scale = ch["scale"]
-    scale_speed = ch["scale_speed"]
-
-    loc_u = _advance(_comp(init, 0), _comp(speed, 0), _comp(accel, 0, 1.0), t)
-    loc_v = _advance(_comp(init, 2), _comp(speed, 2), _comp(accel, 2, 1.0), t)
-    s_u = _comp(scale, 0, 1.0) + _comp(scale_speed, 0) * t
-    s_v = _comp(scale, 2, 1.0) + _comp(scale_speed, 2) * t
-    return (loc_u, loc_v), (s_u, s_v)
+#: 游戏的逐帧速率。UVCONTROL 的 Coef 按游戏帧作用，与场景帧率无关。
+_GAME_FPS = 60.0
 
 
 def _compute_uv(params, t):
-    """叠加启用通道的偏移和缩放。"""
-    loc_u = loc_v = 0.0
-    s_u = s_v = 1.0
-    for ch in params["channels"]:
-        (lu, lv), (su, sv) = _compute_channel(ch, t)
-        loc_u += lu
-        loc_v += lv
-        s_u *= su
-        s_v *= sv
-    return (loc_u, loc_v), (s_u, s_v)
+    """叠加启用通道在第 ``t`` 秒的偏移和缩放，公式见 ``sim.behaviors.uvcontrol``。"""
+    from ..efx_format.sim.behaviors.uvcontrol import uv_xform
+    su, sv, ou, ov = uv_xform(params["channels"], t * _GAME_FPS, _GAME_FPS)
+    return (ou, ov), (su, sv)
 
 
 def _channel_enabled(uvc_obj, prefix) -> bool:
@@ -138,29 +98,15 @@ def _channel_enabled(uvc_obj, prefix) -> bool:
     return int(v) == 1 if v is not None else False
 
 
-def _read_channel(uvc_obj, prefix):
-    """读取单通道运动学参数 dict。"""
-    return {
-        "init":        _read_field(uvc_obj, prefix + "_offset"),
-        "speed":       _read_field(uvc_obj, prefix + "_offsetAdd"),
-        "accel":       _read_field(uvc_obj, prefix + "_offsetCoef"),
-        "scale":       _read_field(uvc_obj, prefix + "_scale"),
-        "scale_speed": _read_field(uvc_obj, prefix + "_scaleAdd"),
-    }
-
-
 def _extract_params(uvc_obj):
     """返回启用通道和所用 UV 层；仅 uv2 启用时使用第二层 UV。"""
     uv1_on = _channel_enabled(uvc_obj, "uv1")
     uv2_on = _channel_enabled(uvc_obj, "uv2")
 
-    channels = []
-    if uv1_on:
-        channels.append(_read_channel(uvc_obj, "uv1"))
-    if uv2_on:
-        channels.append(_read_channel(uvc_obj, "uv2"))
-    if not channels:
-        channels.append(_read_channel(uvc_obj, "uv1"))
+    from ..efx_format.sim.behaviors.uvcontrol import channel_names, roll_channels
+    # 网格预览没有逐粒子随机，只取 static 分量
+    channels = roll_channels(lambda name: _read_field(uvc_obj, name),
+                             channel_names(uv1_on, uv2_on))
 
     use_second = uv2_on and not uv1_on
     return {"channels": channels, "use_second_uv": use_second}

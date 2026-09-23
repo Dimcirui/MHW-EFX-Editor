@@ -31,8 +31,8 @@ TIML：translate / rotate / resize 的 A0 轨道逐帧按发射器当前帧求�
   摆放时，才启用该开关。
 - `em.scale_dynamic` 必须限定为非负：`scale_velocity` 为负时持续累减会使倍率变为负数，生成
   形状被镜像，粒子由收缩变为向外运动。
-- 旋转速度默认取反（`cfg.t3d_rotation_sign`）：按字面符号旋转的方向与实机相反。TIML 的
-  rotate 是静态旋转的替换值，与静态 rotate 同号，不取反。
+- 旋转速度按字面符号施加（`cfg.t3d_rotation_sign='raw'`）：Z 取正时，自 -Y 方向看为逆时针，
+  与实机一致。'flip' 仅保留作对照。TIML 的 rotate 是静态旋转的替换值，不受该开关影响。
 - 宿主摆位时粒子坐标会经过 entry 的旋转与缩放，TIML 平移增量须先逆变换静态旋转与缩放，
   否则 entry 带旋转时平移方向被一起转掉。基础变换由模拟层施加时（`t3d_apply_base`）不需要。
 - 基础变换取**不含 TIML** 的静态值加抖动；TIML 的影响全部由逐帧增量负责，避免初始化那一帧
@@ -195,8 +195,8 @@ class Transform3D(Behavior):
 
     @staticmethod
     def _rot_sign(cfg):
-        """返回旋转速度的符号；默认取反。"""
-        return -1.0 if getattr(cfg, "t3d_rotation_sign", "flip") == "flip" else 1.0
+        """返回旋转速度的符号；默认照字面符号。"""
+        return -1.0 if getattr(cfg, "t3d_rotation_sign", "raw") == "flip" else 1.0
 
     @staticmethod
     def _per_frame(cfg):

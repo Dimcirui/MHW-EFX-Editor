@@ -604,12 +604,12 @@ FIELD_ANNOTATIONS = {
 
     # ─── UVCONTROL ────────────────────────────────────────────────────────────
     ("UVCONTROL", "uv1_offsetCoef"): {
-        "EN": "Multiplies speed every second (UV1)",
-        "ZH": "每秒对速度做乘法（UV1）",
+        "EN": "Per-frame speed multiplier (UV1): the scroll speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates.",
+        "ZH": "逐帧速度倍率（UV1）：滚动速度每帧乘一次这个值，1 = 匀速，>1 越来越快，<1 越来越慢。",
     },
     ("UVCONTROL", "uv2_offsetCoef"): {
-        "EN": "Multiplies speed every second (UV2)",
-        "ZH": "每秒对速度做乘法（UV2）",
+        "EN": "Per-frame speed multiplier (UV2): the scroll speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates.",
+        "ZH": "逐帧速度倍率（UV2）：滚动速度每帧乘一次这个值，1 = 匀速，>1 越来越快，<1 越来越慢。",
     },
     ("UVCONTROL", "flowmapStrengthCoef"): {
         "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',

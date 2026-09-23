@@ -74,9 +74,12 @@ def _geometric(step, coef, t):
         return step * t
 
 
-def apply(p, em, item):
-    """将本帧位移量写入渲染项并返回 item；未启用时原样返回。"""
-    got = p.rolled.get(KEY)
+def apply(p, em, item, key=KEY):
+    """将本帧位移量写入 `item.extra[KEY]` 并返回 item；未启用时原样返回。
+
+    `key` 为参数在 p.rolled 里的键，UVCONTROL 的 flowmap 组另存一份。
+    """
+    got = p.rolled.get(key)
     if item is None or item.kind == "NONE" or not got:
         return item
     speed, strength, s_coef, t_coef, freeze = got

@@ -174,7 +174,7 @@ class FieldResolver(object):
     """一个属性块的字段解析：原始 dict + TIML 轨道 + 覆盖表。"""
 
     __slots__ = ("block_name", "raw", "tlp_hash", "tracks", "config",
-                 "extern_overrides", "_dt_cache", "has_tracks")
+                 "extern_overrides", "_dt_cache", "has_tracks", "_static")
 
     def __init__(self, block_name, raw_fields, tracks, config, extern_overrides=None):
         self.block_name = block_name or ""
@@ -184,11 +184,17 @@ class FieldResolver(object):
         self.config = config
         self.extern_overrides = extern_overrides or {}
         self._dt_cache = {}
+        #: 没有 TIML 通道的字段取值与粒子、帧都无关，`scalar` 算一次后存在这里。
+        self._static = {}
         #: 本块到底有没有 TIML 曲线。没有就整条调制路径短路——这是取值的热路径，
         #: 而「没有 TIML」是绝大多数 entry 的常态。
         self.has_tracks = bool(
             tracks is not None and self.tlp_hash is not None
             and tracks.has_param(self.tlp_hash))
+
+    def _entries(self, field):
+        """字段对应的 TIML 通道 `[(dt_hash, data_type), ...]`；子类可按自己的命名规则覆写。"""
+        return _field_dt(self.block_name, field)
 
     # ── 原始值 ───────────────────────────────────────────────────────────────
     def raw_value(self, field, default=0.0):
@@ -201,7 +207,7 @@ class FieldResolver(object):
         key = (field, comp)
         if key in self._dt_cache:
             return self._dt_cache[key]
-        entries = _field_dt(self.block_name, field)
+        entries = self._entries(field)
         dt = None
         if entries and 0 <= comp < len(entries):
             dt = entries[comp][0]
@@ -223,7 +229,7 @@ class FieldResolver(object):
         （通道名也是判断「这一对到底是什么」的最好证据：rangeXYZ 是 Min/Max，
         translate 是 值/抖动。别按单一惯例硬套。）
         """
-        entries = _field_dt(self.block_name, field)
+        entries = self._entries(field)
         if not entries:
             return None
         if len(entries) >= 6:
@@ -263,7 +269,7 @@ class FieldResolver(object):
         base = self.raw_value(field, default)
         if not self.has_tracks or not isinstance(base, (list, tuple)) or len(base) < 4:
             return base
-        entries = _field_dt(self.block_name, field)
+        entries = self._entries(field)
         if not entries or len(entries) != 1 or entries[0][1] != 3:
             return base
         tv = self._timl_value(field, 0, a0_frame, age)
@@ -282,10 +288,31 @@ class FieldResolver(object):
 
     # ── 对外 ─────────────────────────────────────────────────────────────────
     def scalar(self, field, a0_frame, age, comp=0, default=0.0):
+        key = (field, comp, default)
+        v = self._static.get(key)
+        if v is not None:
+            return v
         base = self.raw_value(field, default)
         if isinstance(base, (list, tuple)):
             base = base[comp] if comp < len(base) else default
-        return self._apply(float(base), self._timl_value(field, comp, a0_frame, age))
+        v = self._apply(float(base), self._timl_value(field, comp, a0_frame, age))
+        if not self._animated(field, comp):
+            self._static[key] = v
+        return v
+
+    def _animated(self, field, comp):
+        """该字段分量是否挂着 TIML 曲线。has_tracks 现查：子类（PTBEHAVIOR）会在构造后改写它。"""
+        if not self.has_tracks:
+            return False
+        key = (field, comp, "anim")
+        r = self._dt_cache.get(key)
+        if r is None:
+            dt = self._dt_for(field, comp)
+            r = dt is not None and (
+                self.tracks.curve(1, self.tlp_hash, dt) is not None
+                or self.tracks.curve(0, self.tlp_hash, dt) is not None)
+            self._dt_cache[key] = r
+        return r
 
     def xyz_half(self, field, a0_frame, age, high=False, default=(0.0, 0.0, 0.0)):
         """FLOAT6（XYZ type 0）的一半 → Vec3，已套 TIML。

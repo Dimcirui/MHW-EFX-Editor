@@ -207,12 +207,12 @@ def _config_from_scene(scene):
         age_during_delay=bool(getattr(scene, "efx_sim_age_during_delay", False)),
         es3d_range_mode=getattr(scene, "efx_sim_es3d_range", "shell"),
         rot_order_applied=getattr(scene, "efx_sim_rot_order", "forward"),
-        ribbon_length_mode=getattr(scene, "efx_sim_ribbon_length", "per_segment"),
+        ribbon_length_mode=getattr(scene, "efx_sim_ribbon_length", "frames"),
         parent_release_clock=getattr(scene, "efx_sim_parent_clock", "particle_age"),
         color_range_mode=getattr(scene, "efx_sim_color_range", "channel"),
         t3d_velocity_unit=getattr(scene, "efx_sim_t3d_vel_unit", "per_second"),
         spawn_interval_jitter=getattr(scene, "efx_sim_spawn_jitter", "per_burst"),
-        t3d_rotation_sign=getattr(scene, "efx_sim_t3d_rot_sign", "flip"),
+        t3d_rotation_sign=getattr(scene, "efx_sim_t3d_rot_sign", "raw"),
         rgb_tint_mode=getattr(scene, "efx_sim_rgb_tint", "weighted"),
         uvs_speed_unit=getattr(scene, "efx_sim_uvs_speed_unit", "per_frame"),
         uvs_once_span=getattr(scene, "efx_sim_uvs_once_span", "to_end"),
@@ -226,7 +226,10 @@ def _config_from_scene(scene):
         fade_depth_metric=getattr(scene, "efx_sim_fade_depth_metric", "view_depth"),
         fade_cone_mode=getattr(scene, "efx_sim_fade_cone_mode", "outer"),
         ribbon_subdiv_max=int(getattr(scene, "efx_sim_ribbon_subdiv_max", 0)),
-        ribbon_rigid_dir=getattr(scene, "efx_sim_ribbon_rigid_dir", "static"),
+        ribbon_rigid_dir=getattr(scene, "efx_sim_ribbon_rigid_dir", "parent"),
+        ribbon_gravity_scale=float(getattr(scene, "efx_sim_ribbon_gravity_scale", 1.0)),
+        ribbon_trail_time_frames=float(
+            getattr(scene, "efx_sim_ribbon_trail_time_frames", 0.42)),
         homing_compose=getattr(scene, "efx_sim_homing_compose", "pursuit"),
         homing_orbit_axial_falloff=float(
             getattr(scene, "efx_sim_homing_axial_falloff", 0.0)),
@@ -332,6 +335,7 @@ def _clear_flow_cache():
 
 def _clear_material_cache():
     _MAT_TEX_CACHE.clear()
+    _DECAL_UVS_CACHE.clear()
 
 
 def _material_tex_paths(attr_objs):
@@ -366,10 +370,14 @@ def _material_tex_paths(attr_objs):
 def _material_image_name(entry_obj, attr_objs, slot, chunk_root):
     """解析并载入 MATERIAL 槽贴图；调用方应仅在构建 track 时调用。"""
     paths = _material_tex_paths(attr_objs)
-    rel = paths.get(slot) or ""
+    return _game_tex_image(entry_obj, paths.get(slot) or "", chunk_root, _MAT_TEX_CACHE)
+
+
+def _game_tex_image(entry_obj, rel, chunk_root, cache):
+    """游戏相对路径的 .tex → 已载入的图名；取不到返回 ""。失败也缓存，避免重复解析路径。"""
     if not rel:
         return ""
-    cached = _MAT_TEX_CACHE.get(rel)
+    cached = cache.get(rel)
     if cached is not None:
         return cached if cached in bpy.data.images else ""
     try:
@@ -389,7 +397,7 @@ def _material_image_name(entry_obj, attr_objs, slot, chunk_root):
                 name = img.name
     except Exception:
         name = ""
-    _MAT_TEX_CACHE[rel] = name      # 失败也缓存，避免重复路径解析。
+    cache[rel] = name
     return name
 
 
@@ -418,33 +426,92 @@ def _flowmap_path(attr_objs):
     return ""
 
 
+def _uvc_flowmap_on(attr_objs):
+    """UVCONTROL 是否启用了 flowmap 组。"""
+    from ..efx_format.hashes import UVCONTROL
+
+    for blk in attr_objs:
+        pair = _block_fields(blk)
+        if pair is not None and pair[0] == UVCONTROL and pair[1].get("enableFlowmap"):
+            return True
+    return False
+
+
 def _flowmap_image_name(entry_obj, attr_objs, chunk_root):
-    """flowmap 贴图 → 已载入的图名；取不到返回 ""。链路同 `_material_image_name`。"""
+    """flowmap 贴图 → 已载入的图名；取不到返回 ""。
+
+    渲染体没有启用的路径时，UVCONTROL 的 flowmap 取 MATERIAL 的 tFlowMap 槽。
+    """
     rel = _flowmap_path(attr_objs)
+    if not rel and _uvc_flowmap_on(attr_objs):
+        rel = _material_tex_paths(attr_objs).get("tFlowMap") or ""
+    return _game_tex_image(entry_obj, rel, chunk_root, _FLOW_TEX_CACHE)
+
+
+#: 贴花 .uvs 游戏路径到文件字节的缓存；取不到存 b""。
+_DECAL_UVS_CACHE = {}
+
+
+def _decal_uvs_bytes(entry_obj, rel, chunk_root):
+    """读取贴花引用的 .uvs；取不到返回 b""。"""
     if not rel:
-        return ""
-    cached = _FLOW_TEX_CACHE.get(rel)
-    if cached is not None:
-        return cached if cached in bpy.data.images else ""
+        return b""
+    got = _DECAL_UVS_CACHE.get(rel)
+    if got is not None:
+        return got
+    data = b""
     try:
         from . import uvs_link as _ul
-    except Exception:
-        return ""
-    try:
-        efx_dir = _ul.efx_dir_of(entry_obj)
-    except Exception:
-        efx_dir = None
-    name = ""
-    try:
-        abspath = _ul.resolve_game_path(rel, ".tex", chunk_root, efx_dir)
+        abspath = _ul.resolve_game_path(rel, ".uvs", chunk_root, _ul.efx_dir_of(entry_obj))
         if abspath:
-            img = _ul.load_tex_image(abspath, rel)
-            if img is not None:
-                name = img.name
+            with open(abspath, "rb") as f:
+                data = f.read()
     except Exception:
-        name = ""
-    _FLOW_TEX_CACHE[rel] = name
-    return name
+        data = b""
+    _DECAL_UVS_CACHE[rel] = data
+    return data
+
+
+def _decal_assets(entry_obj, blocks, chunk_root, use_tex=True):
+    """返回 Entry 中贴花 PTBEHAVIOR 用到的外部资源；没有贴花返回 None。
+
+    结果含 ``resources``（序列帧模式的 .uvs）、``image``（序列帧贴图或 BaseMap）、
+    ``emissive`` 与 ``flow`` 图名。
+    """
+    from ..efx_format.hashes import PTBEHAVIOR
+    from ..efx_format.sim import SimResources
+    from ..efx_format.sim.behaviors import decal as _decal
+    from ..efx_format.sim.uvs_table import from_uvs_bytes
+
+    d = None
+    for h, fields in blocks:
+        if int(h) == PTBEHAVIOR:
+            flat = _decal.flatten(fields)
+            if flat.get("b_type") == _decal.DECAL_CLASS:
+                d = flat
+                break
+    if d is None:
+        return None
+
+    out = {"resources": None, "image": "", "emissive": "", "flow": ""}
+    if int(d.get("mMappingMode", _decal.MAP_TEXTURES)) == _decal.MAP_UVSEQUENCE:
+        data = _decal_uvs_bytes(entry_obj, d.get("mpUVSequence", ""), chunk_root)
+        if data:
+            out["resources"] = SimResources(data)
+            table = from_uvs_bytes(data, int(d.get("mSequenceNo", 0)))
+            paths = table.tex_paths if table is not None else ()
+            if paths and use_tex:
+                out["image"] = _game_tex_image(entry_obj, paths[0], chunk_root,
+                                               _MAT_TEX_CACHE)
+    elif use_tex:
+        out["image"] = _game_tex_image(entry_obj, d.get("mpAlbedoMap", ""), chunk_root,
+                                       _MAT_TEX_CACHE)
+        out["emissive"] = _game_tex_image(entry_obj, d.get("mpEmissiveMap", ""),
+                                          chunk_root, _MAT_TEX_CACHE)
+    if use_tex and int(d.get("mFlowEnable", 0)):
+        out["flow"] = _game_tex_image(entry_obj, d.get("mpFlowMap", ""), chunk_root,
+                                      _FLOW_TEX_CACHE)
+    return out
 
 
 def _attributes_by_entry():
@@ -546,6 +613,7 @@ def build_track(entry_obj, scene):
     images = {}
     mesh_images = {}
     flow_images = {}
+    emissive_images = {}
     mat_slot = getattr(scene, "efx_sim_material_slot", "tAlbedoMap")
     chunk_root = getattr(scene, "efx_chunk_root", "") or ""
     root_uvs_info = None
@@ -562,13 +630,23 @@ def build_track(entry_obj, scene):
         res, info = _uvs_state(obj)
         resources[name] = res
         images[name] = _uvs_image_name(obj)
+        decal = _decal_assets(obj, blocks, chunk_root)
+        if decal is not None:
+            # 贴花是该 Entry 的渲染主体，贴图与序列帧均取自贴花自身的参数。
+            if decal["resources"] is not None:
+                resources[name] = decal["resources"]
+            images[name] = decal["image"] or images[name]
+            if decal["emissive"]:
+                emissive_images[name] = decal["emissive"]
+            if decal["flow"]:
+                flow_images[name] = decal["flow"]
         # MATERIAL 槽贴图优先于网格自带材质，且仅在构建时解析。
         if mat_slot != "none":
             got = _material_image_name(obj, attrs, mat_slot, chunk_root)
             if got:
                 mesh_images[name] = got
         got = _flowmap_image_name(obj, attrs, chunk_root)
-        if got:
+        if got and name not in flow_images:
             flow_images[name] = got
         if obj is entry_obj:
             root_uvs_info = info
@@ -601,6 +679,8 @@ def build_track(entry_obj, scene):
         "mesh_images": mesh_images,
         #: Entry 名到已启用 flowmap 图像名的映射。
         "flow_images": flow_images,
+        #: Entry 名到贴花自发光贴图名的映射。
+        "emissive_images": emissive_images,
         "uvs": root_uvs_info,
     }
 
@@ -1274,6 +1354,70 @@ def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
             uvs.extend((u_l0, u_r0, u_r1, u_l0, u_r1, u_l1))
 
 
+def _emit_ribbon_uv(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
+                    corners, uv_scale, col2s=None, core=None):
+    """带贴图缩放的条带：按重复边界与宽度钳制边界切片后逐片展开，只走 Python 路径。"""
+    from ..efx_format.sim import ribbon_uv as _ruv
+    pts = list(item.points)
+    n = len(pts)
+    if n < 2:
+        return
+    repeat, width_scale = uv_scale
+    world = [world_fn(q) for q, _hw, _a in pts]
+    k = size_mul * _UNIT
+    lo = []
+    hi = []
+    for i in range(n):
+        a = world[i - 1] if i else world[0]
+        b = world[i + 1] if i < n - 1 else world[n - 1]
+        s_ = _norm(_cross((b[0] - a[0], b[1] - a[1], b[2] - a[2]), view_dir))
+        if s_ is None:
+            lo.append(None)
+            hi.append(None)
+            continue
+        w = world[i]
+        h = max(1e-5, abs(pts[i][1]) * k)
+        lo.append((w[0] - s_[0] * h, w[1] - s_[1] * h, w[2] - s_[2] * h))
+        hi.append((w[0] + s_[0] * h, w[1] + s_[1] * h, w[2] + s_[2] * h))
+
+    ca, cb, cc, cd = col[0], col[1], col[2], col[3]
+    core_rgb = core if core is not None else col
+    cols = _ruv.width_columns(width_scale)
+
+    def lerp3(p0, p1, t):
+        return (p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t,
+                p0[2] + (p1[2] - p0[2]) * t)
+
+    for i, fa, fb, va, vb in _ruv.length_pieces(n, repeat):
+        if lo[i] is None or lo[i + 1] is None:
+            continue
+        l0 = lerp3(lo[i], lo[i + 1], fa)
+        l1 = lerp3(lo[i], lo[i + 1], fb)
+        r0 = lerp3(hi[i], hi[i + 1], fa)
+        r1 = lerp3(hi[i], hi[i + 1], fb)
+        a_i = pts[i][2]
+        a_j = pts[i + 1][2]
+        a0 = (ca, cb, cc, cd * (a_i + (a_j - a_i) * fa))
+        a1 = (ca, cb, cc, cd * (a_i + (a_j - a_i) * fb))
+        for s0, s1, u0, u1 in cols:
+            p00 = lerp3(l0, r0, s0)
+            p10 = lerp3(l0, r0, s1)
+            p01 = lerp3(l1, r1, s0)
+            p11 = lerp3(l1, r1, s1)
+            verts.extend((p00, p10, p11, p00, p11, p01))
+            colors.extend((a0, a0, a1, a0, a1, a1))
+            if col2s is not None:
+                b0 = (core_rgb[0], core_rgb[1], core_rgb[2], a0[3])
+                b1 = (core_rgb[0], core_rgb[1], core_rgb[2], a1[3])
+                col2s.extend((b0, b0, b1, b0, b1, b1))
+            if uvs is not None:
+                q00 = _ruv.corner_uv(corners, u0, va)
+                q10 = _ruv.corner_uv(corners, u1, va)
+                q01 = _ruv.corner_uv(corners, u0, vb)
+                q11 = _ruv.corner_uv(corners, u1, vb)
+                uvs.extend((q00, q10, q11, q00, q11, q01))
+
+
 #: MESH 未绑定网格时使用的占位几何。
 _PLACEHOLDER_TRIS = None
 
@@ -1460,38 +1604,59 @@ def _bound_meshes_for(entry_obj, viscon=None):
     return []
 
 
-def _join_chunks(verts, colors, uvs, col2s, chunks):
-    """把网格的 numpy 分块和普通三角（片/条带）拼成一对可直接喂 batch 的数组。"""
+def _join_chunks(verts, colors, uvs, col2s, chunks, luvs=None, flowoffs=None):
+    """把网格的 numpy 分块和普通三角（片/条带）拼成可直接喂 batch 的数组。
+
+    flowmap 桶（``luvs`` 不为 None）同时拼接流动贴图 UV 与位移量，返回值依次为
+    ``(pos, color, uv, col2, luv, flowoff)``，后两项在非 flowmap 桶为 None。
+    """
+    flow = luvs is not None
     try:
         import numpy
         vs = [c[0] for c in chunks]
         cs = [c[1] for c in chunks]
         us = [c[2][0] for c in chunks if c[2] is not None]
         c2 = [c[2][1] for c in chunks if c[2] is not None]
+        lu = [c[2][2] for c in chunks if flow and c[2] is not None and len(c[2]) > 2]
+        fo = [c[2][3] for c in chunks if flow and c[2] is not None and len(c[2]) > 2]
         if verts:
             vs.insert(0, numpy.array(verts, dtype="f4"))
             cs.insert(0, numpy.array(colors, dtype="f4"))
             if us:
                 us.insert(0, numpy.array(uvs, dtype="f4"))
                 c2.insert(0, numpy.array(col2s, dtype="f4"))
+            if lu and luvs:
+                lu.insert(0, numpy.array(luvs, dtype="f4"))
+                fo.insert(0, numpy.array(flowoffs, dtype="f4"))
         cat = lambda a: (numpy.concatenate(a) if len(a) > 1 else a[0])
-        return cat(vs), cat(cs), (cat(us) if us else None), (cat(c2) if c2 else None)
+        return (cat(vs), cat(cs), (cat(us) if us else None), (cat(c2) if c2 else None),
+                (cat(lu) if lu else luvs), (cat(fo) if fo else flowoffs))
     except Exception:
         out_v, out_c = list(verts), list(colors)
         out_u = list(uvs) if uvs else []
         out_2 = list(col2s) if col2s else []
+        out_l = list(luvs) if luvs else []
+        out_f = list(flowoffs) if flowoffs else []
         for a, c, ex in chunks:
             out_v.extend(a.tolist())
             out_c.extend(c.tolist())
             if ex is not None:
                 out_u.extend(ex[0].tolist())
                 out_2.extend(ex[1].tolist())
-        return out_v, out_c, (out_u or None), (out_2 or None)
+                if flow and len(ex) > 2:
+                    out_l.extend(ex[2].tolist())
+                    out_f.extend(ex[3].tolist())
+        return (out_v, out_c, (out_u or None), (out_2 or None),
+                (out_l if flow else None), (out_f if flow else None))
 
 
 def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
-               uvs=None, col2s=None, core=None):
-    """将网格按粒子变换输出三角形；numpy 不可用时回退逐顶点路径。"""
+               uvs=None, col2s=None, core=None, luvs=None, flowoffs=None, flow_amt=0.0):
+    """将网格按粒子变换输出三角形；numpy 不可用时回退逐顶点路径。
+
+    ``luvs`` 不为 None 时另输出 flowmap 数据：流动贴图按网格自身 UV 采样，位移量为整张
+    贴图的比例。
+    """
     tris, arr, muv = geom
     if not tris:
         return
@@ -1509,12 +1674,16 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
                 c2 = numpy.empty((len(tris), 4), dtype="f4")
                 c2[:] = (core if core is not None else col)
                 c2[:, 3] = col[3]
-                uvarr = numpy.array(muv, dtype="f4")
+                base = uvarr = numpy.array(muv, dtype="f4")
                 xf = item.extra.get("uv_xform")
                 if xf:      # UVCONTROL：uv' = uv × 缩放 + 偏移
                     uvarr = uvarr * numpy.array((xf[0], xf[1]), dtype="f4")
                     uvarr += numpy.array((xf[2], xf[3]), dtype="f4")
-                extra = (uvarr, c2)
+                if luvs is not None:
+                    fo = numpy.full((len(tris), 2), flow_amt, dtype="f4")
+                    extra = (uvarr, c2, base, fo)
+                else:
+                    extra = (uvarr, c2)
             chunks.append((out, cc, extra))
             return
         except Exception:
@@ -1535,6 +1704,9 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
             uvs.extend(muv)
         c = core if core is not None else col
         col2s.extend([(c[0], c[1], c[2], col[3])] * len(tris))
+        if luvs is not None:
+            luvs.extend(muv)
+            flowoffs.extend([(flow_amt, flow_amt)] * len(tris))
 
 
 #: 贴图 shader；``False`` 表示创建失败并回退纯色绘制。
@@ -1792,6 +1964,8 @@ def _clear_tex_cache():
 def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                    line_colors):
     """将一个 track 的渲染项装配到按绘制状态分组的顶点桶。"""
+    from ..efx_format.sim.state import RenderItem as _RenderItem
+
     items = tr.get("items") or ()
     rows = tr.get("ref_rows")
     entry = bpy.data.objects.get(tr["entry_name"])
@@ -1901,6 +2075,12 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     track_order = tr.get("order") or ("", 0)
     mat_images = tr.get("mesh_images") or {}
     flow_images = (tr.get("flow_images") or {}) if use_tex else {}
+    emissive_images = (tr.get("emissive_images") or {}) if use_tex else {}
+
+    def _emissive_of(it):
+        """贴花自发光贴图名；未载入返回 ""。"""
+        name = emissive_images.get(it.extra.get("entry_key") or tr["entry_name"], "")
+        return name if (name and _gpu_texture(name) is not None) else ""
     root_flow = flow_images.get(tr["entry_name"], "")
     flow_gain = float(getattr(scene, "efx_sim_flowmap_gain", 1.0))
     luma_mode = getattr(scene, "efx_sim_alpha_source", "auto")
@@ -1992,6 +2172,9 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
 
     for it in items:
         center = _world(it.pos)
+        if it.extra.get("decal_ground"):
+            # 向下投射的贴花贴在地面（世界 Z=0）上，不跟随发射器高度。
+            center = (center[0], center[1], 0.0)
         tex_name = _tex_of(it)
         if it.blend == "MULTIPLY":
             # 乘法路径不能经过 HDR 映射，否则会丢失 brightness 语义。
@@ -2004,7 +2187,12 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             key, b = _bucket_for(it, tex_name)
             edge, core = _layers_of(it, col, tex_name)
             corners = _corners_of(it, tex_name)
-            if np_ctx is not None:
+            uv_scale = it.extra.get("uv_scale")
+            if uv_scale is not None and corners and b[2] is not None:
+                # 贴图缩放需要按重复边界切片，不进批量路径
+                _emit_ribbon_uv(b[0], b[1], b[2], it, edge, size_mul, _world,
+                                view_dir, corners, uv_scale, col2s=b[3], core=core)
+            elif np_ctx is not None:
                 # 延后到本轮末尾按桶批量展开。
                 pend = ribbon_pend.get(key)
                 if pend is None:
@@ -2016,10 +2204,14 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         elif kind == "MESH":
             # 子实例按其所属 Entry 查询绑定网格。
             geom, tex_name = _geom_of(it)
-            _key, (bv, bc, bu, b2, bnp, _lu, _fo) = _bucket_for(it, tex_name)
+            # 网格没有 UV 时无从采样流动贴图
+            flow_tex, flow_amt = (_flow_of(it, tex_name) if geom[2] is not None
+                                  else ("", 0.0))
+            _key, (bv, bc, bu, b2, bnp, blu, bfo) = _bucket_for(it, tex_name, flow_tex)
             edge, core = _layers_of(it, col, tex_name)
             _emit_mesh(bv, bc, bnp, it, edge, size_mul, rows, geom,
-                       uvs=bu, col2s=b2, core=core)
+                       uvs=bu, col2s=b2, core=core, luvs=blu, flowoffs=bfo,
+                       flow_amt=flow_amt)
         elif draw_mode in ("QUADS", "BOTH"):
             # 片尺寸与位置同为游戏单位，统一应用坐标换算。
             hw = max(1e-5, size_mul * abs(it.size.x) * _UNIT * 0.5)
@@ -2047,6 +2239,19 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                        flow_amt * (max(vs) - min(vs)))
                 blu.extend(_QUAD_LUV)
                 bfo.extend([off] * 6)
+            emis = it.extra.get("decal_emissive")
+            etex = _emissive_of(it) if emis is not None else ""
+            if etex:
+                # 贴花自发光：用 EmissiveMap 以加法混合再画一层同形面片。
+                e_it = _RenderItem(kind="PLANE")
+                e_it.blend = "ADDITIVE"
+                e_it.extra["entry_key"] = it.extra.get("entry_key")
+                _key, (ev, ec, eu, e2, _np, _lu, _fo) = _bucket_for(e_it, etex)
+                ecol = _display_color(emis, hdr_mode)
+                ev.extend(_quad_verts(center, qr, qu, hw, hh))
+                ec.extend([ecol] * 6)
+                e2.extend([ecol] * 6)
+                eu.extend(_quad_uvs(_corners_of(it, etex)))
 
         if draw_mode in ("POINTS", "BOTH") and kind not in ("RIBBON", "MESH"):
             points.append(center)
@@ -2122,7 +2327,7 @@ def _build_payload(scene, rv3d, trs):
             continue
         _bo, mode, tex_name, fix, flow_name, lerp = key
         if bnp:
-            bv, bc, bu, b2 = _join_chunks(bv, bc, bu, b2, bnp)
+            bv, bc, bu, b2, blu, bfo = _join_chunks(bv, bc, bu, b2, bnp, blu, bfo)
         tex = _gpu_texture(tex_name) if (bu is not None) else None
         # 折射替换完整输出通道，优先于只偏移 UV 的 flowmap。
         ftex = (_gpu_texture(flow_name)
@@ -3299,11 +3504,11 @@ def register():
         default="weighted")
     S.efx_sim_t3d_rot_sign = EnumProperty(
         name="Emitter spin direction", update=_on_knob_changed,
-        items=[("flip", "Flip",
+        items=[("raw", "Raw", "Take the authored sign as-is (matches the game)"),
+               ("flip", "Flip",
                 "TRANSFORM3D's rotation velocity turns the emitter the opposite way "
-                "from the raw sign"),
-               ("raw", "Raw", "Take the authored sign as-is")],
-        default="flip")
+                "from the raw sign")],
+        default="raw")
     S.efx_sim_spawn_jitter = EnumProperty(
         name="Burst interval jitter", update=_on_knob_changed,
         items=[("per_burst", "Per burst",
@@ -3361,23 +3566,31 @@ def register():
         description="Whether spawnWaitFrame still advances the particle's age")
     S.efx_sim_ribbon_length = EnumProperty(
         name="Ribbon length", update=_on_knob_changed,
-        items=[("per_segment", "length x (subdiv-1)",
+        items=[("frames", "One frame per subdivision",
+                "Trail-follow ribbons cover the last (subdiv-1) frames of movement, "
+                "so they get longer the faster they move; 'length' has no effect "
+                "(matches the game)"),
+               ("per_segment", "length x (subdiv-1)",
                 "Trail-follow ribbons get one 'length' per subdivision, so the strip "
                 "gets longer as you raise the subdivision count"),
                ("total", "length is the whole strip",
                 "Trail-follow ribbons are 'length' long no matter the subdivision count")],
-        default="per_segment")
+        default="frames")
     S.efx_sim_ribbon_rigid_dir = EnumProperty(
         name="Ribbon Length direction", update=_on_knob_changed,
-        items=[("static", "baseAxis + rotation",
-                "Fixed direction set once at spawn from baseAxis/rotationX-Y-Z; "
-                "never changes for the rest of the particle's life"),
+        items=[("parent", "Turns with emitter",
+                "Shape set at spawn from baseAxis/rotationX-Y-Z, then turned along "
+                "with the emitter whenever PARENTOPTIONS follows its rotation "
+                "(matches the game)"),
                ("velocity", "Current movement",
-                "Tracks current velocity every frame - the particle's own first, "
-                "falling back to the emitter's movement if the particle itself "
-                "isn't moving, holding the last valid direction if both are still "
-                "(the way Unity's Stretched Billboard works)")],
-        default="static")
+                "The ribbon turns so the side that faces up at rest points along the "
+                "current movement - the particle's own first, falling back to the "
+                "emitter's movement if the particle itself isn't moving, holding the "
+                "last valid direction if both are still"),
+               ("static", "baseAxis + rotation",
+                "Fixed direction set once at spawn from baseAxis/rotationX-Y-Z; "
+                "never changes for the rest of the particle's life")],
+        default="parent")
     S.efx_sim_color_range = EnumProperty(
         name="Colour range", update=_on_knob_changed,
         items=[("channel", "Per channel", "Every channel (alpha included) draws its own "

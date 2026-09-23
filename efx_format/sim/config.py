@@ -71,11 +71,6 @@ UNKNOWNS = {
         "起的归一化倍率。⚠ 只有 BILLBOARD3D / PLANE 走 'size'，MESH / RIBBON 仍读归一化倍率。",
         ("size", "multiplier"), "size",
     ),
-    "t3d_rotation_sign": (
-        "TRANSFORM3D 的 rotation_velocity 往哪边转。'flip' 与字面符号相反；"
-        "'raw' 照字面符号。",
-        ("flip", "raw"), "flip",
-    ),
     "rgb_tint_mode": (
         "RGBFIRE / RGBWATER 的两层颜色怎么压成粒子的单一颜色。'weighted' 各按自己的"
         "强度与生命期权重加权平均；'mix' 等权平均；'first' 只取 fireColor/colorSpecular；"
@@ -117,6 +112,17 @@ UNKNOWNS = {
         "'auto' 粒子动过就用粒子的、否则退回发射器的；另两个值强制指定。",
         ("auto", "particle", "emitter"), "auto",
     ),
+    "ribbon_gravity_scale": (
+        "RIBBON 柔体链的重力（gravityX/Y/Z）换算成每帧加到链节点速度上的量时乘的倍率。"
+        "方向与开关已确认，量纲未实测。",
+        (0.0, 4.0), 1.0,
+    ),
+    "ribbon_trail_time_frames": (
+        "RIBBON 轨迹跟随开启 useTrailTimeScale 后，trailTimeScale = 1 时每段覆盖的帧数；"
+        "总时长 = (细分数 − 1) × 该值 × trailTimeScale。已确认按时间计、与细分数相乘，"
+        "比例常数按「值为 1 时约相当于细分数 60」估算，未精测。",
+        (0.1, 2.0), 0.42,
+    ),
     "color_range_mode": (
         "color 与 colorRange 怎么组成一个颜色。'channel' 逐通道（含 alpha）各自独立在"
         "两者之间抽；'shared' 整条通道共用一个系数插值；"
@@ -128,13 +134,6 @@ UNKNOWNS = {
         "'particle_age' 每个粒子出生后各自数——这个字段自带 Jitter，逐粒子抽才用得上；"
         "'emitter_frame' 发射器时间轴，到点全体一起锁定。",
         ("particle_age", "emitter_frame"), "particle_age",
-    ),
-    "ribbon_length_mode": (
-        "RIBBON 轨迹跟随的总长怎么来。'per_segment' 为 length × (细分数-1)，"
-        "一段一个 length；'total' 为 length 即总长。"
-        "还有第三种读法未实现：每段存一帧历史，长度会随运动速度变，"
-        "需要改 p.trail 的记录长度才能做。",
-        ("per_segment", "total"), "per_segment",
     ),
     "uvs_speed_unit": (
         "UVSEQUENCE.playSpeed 的单位：'per_frame' 每帧推进这么多格，"
@@ -188,12 +187,6 @@ UNKNOWNS = {
         "⚠ 具体倾斜量未实测。",
         (0.0, 2.0), 1.0,
     ),
-    "ribbon_rigid_dir": (
-        "RIBBON 定长面片（ribbonMode=1）的伸展方向。'velocity' 跟随当前运动方向"
-        "（粒子速度优先，粒子不动则看发射器位移，都为零时保留上一个有效方向）；"
-        "'static' 出生时用 baseAxis 加 rotationX/Y/Z 定死、终生不变。",
-        ("static", "velocity"), "static",
-    ),
     "fade_depth_metric": (
         "FADEBYDEPTH 的距离怎么量。'view_depth' 为视线方向上的深度；"
         "'distance' 为粒子到相机的直线距离。",
@@ -235,7 +228,7 @@ class SimConfig(object):
         "max_particles_hard", "max_frames", "max_spawn_depth", "trail_max",
         "max_instances", "max_particles_total", "child_cull_grace",
         "child_pending_grace",
-        "ribbon_subdiv_max",
+        "ribbon_subdiv_max", "ribbon_gravity_scale", "ribbon_trail_time_frames",
         "strict",
     )
 
@@ -265,8 +258,10 @@ class SimConfig(object):
         self.homing_orbit_handed = "fixed"
         self.homing_orbit_retarget = "once"
         self.ribbon_trail_source = "auto"
-        self.ribbon_length_mode = "per_segment"
-        self.ribbon_rigid_dir = "static"
+        self.ribbon_length_mode = "frames"
+        self.ribbon_rigid_dir = "parent"
+        self.ribbon_gravity_scale = 1.0
+        self.ribbon_trail_time_frames = 0.42
         self.parent_release_clock = "particle_age"
         self.color_range_mode = "channel"
         self.t3d_velocity_unit = "per_second"
@@ -274,7 +269,7 @@ class SimConfig(object):
         self.spawn_after_cycle = "stop"
         self.rotateanim_billboard_axis = "view"
         self.scaleanim_add_target = "size"
-        self.t3d_rotation_sign = "flip"
+        self.t3d_rotation_sign = "raw"
         self.rgb_tint_mode = "weighted"
         self.uvc_clock = "particle_age"
         self.flowmap_speed_unit = "per_second"
@@ -326,7 +321,8 @@ class SimConfig(object):
         #: 还一个粒子都没吐过的子实例能等多久。SPAWN.emitterDelayFrame 可以很长，
         #: 用 child_cull_grace 那 30 帧去卡它会让子特效「完全不触发」。
         self.child_pending_grace = 600
-        self.trail_max = 64                 # 逐粒子位置历史的最大帧数（条带类渲染体用）
+        #: 逐粒子位置历史的最大帧数（条带类渲染体用）；behavior 可按需声明更长，见 EmitterState.trail_need
+        self.trail_max = 64
 
         # ── 开发期 ───────────────────────────────────────────────────────────
         self.strict = False                 # 逐调用校验 behavior 没越阶段写字段

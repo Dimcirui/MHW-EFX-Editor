@@ -18,7 +18,8 @@ relationScl 决定。
 跟随以**增量**方式实现：每帧施加发射器相对上一帧的位移、旋转增量与缩放比例，而非每帧重新计算
 出生时的偏移——后者会抹去粒子自身的运动（VELOCITY3D 积分的位移）。增量方式下两者叠加：粒子按
 自身速度运动，同时随发射器整体平移、旋转与缩放。旋转跟随除旋转位置偏移外，还同时旋转
-`p.vel` 与 `p.vel_free`，否则下一帧的运动方向与已旋转的位置不一致；缩放跟随同理，按比例缩放
+`p.vel` 与 `p.vel_free`，否则下一帧的运动方向与已旋转的位置不一致；累计的旋转量存在
+`rot_applied`，RIBBON 等自带朝向的渲染体据此同步转动；缩放跟随同理，按比例缩放
 偏移与速度。发射器持续旋转且粒子径向运动时，世界空间轨迹为螺旋线。
 
 维护约束：
@@ -108,6 +109,7 @@ class ParentOptions(Behavior):
             "last_rot": _total_rotation(em),    # 上一帧的发射器总旋转，用于计算旋转增量
             "last_scale": em.scale_dynamic.copy(),  # 上一帧的发射器动态缩放
             "release": release,                 # 0 表示始终跟随
+            "rot_applied": Vec3(),              # 累计施加到本粒子的旋转，供渲染体同步朝向
             "birth": em.frame,
         }
 
@@ -154,6 +156,10 @@ class ParentOptions(Behavior):
                 # 自由速度通道同步旋转；HOMING 的部分在下一帧按新方向重新计算
                 p.vel_free = rotate_euler(p.vel_free, drx, dry, drz, order=order,
                                           applied=applied)
+                acc = st["rot_applied"]
+                acc.x += drx
+                acc.y += dry
+                acc.z += drz
             st["last_rot"] = total_rot
 
         if self._follow_scale:
