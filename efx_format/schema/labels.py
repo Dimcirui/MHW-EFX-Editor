@@ -81,11 +81,10 @@ _LABELS_GLOBAL = {
     'tip_width_multiplier': '前端宽度乘数',
     'tip_opacity': '前端不透明度',
     'tip_fade_length': '前端渐隐长度',
-    # RIBBON 尾端的全局力
-    'unknGlobalForceEnable': '启用全局力',
-    'unknGlobalForceX': '全局力 X',
-    'unknGlobalForceY': '全局力 Y（竖直）',
-    'unknGlobalForceZ': '全局力 Z',
+    # RIBBON 柔体链的重力
+    'gravityX': '重力 X',
+    'gravityY': '重力 Y（竖直）',
+    'gravityZ': '重力 Z',
     'loopingOrientation': '贴图朝向',
     'loopingPad': '保留',
 

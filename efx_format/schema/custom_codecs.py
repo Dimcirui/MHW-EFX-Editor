@@ -21,6 +21,7 @@ from .enums import (
     BITS_APPLICATION_RULE, BITS_LOOPING_MODE, BITS_LIGHT_GROUP,
     BITS_PLANE_UNKN5_1,
     ENUM_LOOPING_ORIENTATION, ENUM_MESH_TRACKING_FLAGS, ENUM_RIBBON_MODE,
+    ENUM_RIBBON_UV_SCALE_MODE,
     _AXIS_DIRECTION6, _TRANSFORM_ROT_ORDER,
 )
 from ..hashes import *  # noqa: F401,F403  —— 各 custom 类型 hash 常量
@@ -390,14 +391,16 @@ _RIBBON_FIXED_SCHEMA = [
     ('width_jitter',             'f'),
     ('length',                   'f'),  # TIML DT 0xF92E647B("Length")
     ('length_jitter',            'f'),
-    ('uv_map_height',            'i'),
-    ('material_tesselation_density', 'f'),
-    ('material_tesselation_jitter',  'f'),
-    ('uv_map_width',             'f'),
+    # 长度方向的贴图缩放由 uvScaleMode 决定是否生效；宽度方向以中心缩放
+    ('uvScaleMode',              'i'),
+    ('uvScaleLength',            'f'),
+    ('uvScaleLengthJitter',      'f'),
+    ('uvScaleWidth',             'f'),
     # 沿条带长度方向的细分数
     ('subdivisionCount',         'i'),
-    ('unknBool15',               'i'),
-    ('unkn15',                   'f'),
+    # 开启后每段覆盖的轨迹时长随 trailTimeScale 缩放，与细分数相乘决定条带长度
+    ('useTrailTimeScale',        'i'),
+    ('trailTimeScale',           'f'),
     ('baseAxis',                 'i'),
     ('rotationOrder',            'i'),
     # rotationX/Y/Z 的 value 与 jitter 在字节上交错排列，不是顺序成对，改动顺序会错位。
@@ -467,10 +470,10 @@ _RIBBON_FIXED_SCHEMA = [
     ('base_opacity',             'f'),
     ('tip_width_multiplier',     'f'),
     ('tip_opacity',              'f'),
-    # 低字节为未知 bool，剩余字节为保留填充
-    ('unknBool8',                'B'),
+    # 低字节为渐隐长度开关，剩余字节为保留填充
+    ('enableFadeLength',         'B'),
     ('spacer8',                  ('B', 3)),
-    # 从两端 opacity 过渡至中段的相对长度
+    # 从两端 opacity 过渡至中段的相对长度；enableFadeLength 关闭时两者均按 1 计
     ('base_fade_length',         'f'),
     ('tip_fade_length',          'f'),
     # 两个独立字节：可见性修正和 flap 总开关
@@ -487,12 +490,12 @@ _RIBBON_FIXED_SCHEMA = [
     ('flap2Amount',              'f'),
     ('flap2AmountJitter',        'f'),
     ('unknFixed28_0',            'B'),
-    ('unknGlobalForceEnable',    'B'),
-    ('unknBool28_2',             'B'),
+    ('enableGravity',            'B'),
+    ('gravityLocalSpace',        'B'),
     ('spacer28',                 ('B', 13)),
-    ('unknGlobalForceX',         'f'),
-    ('unknGlobalForceY',         'f'),
-    ('unknGlobalForceZ',         'f'),
+    ('gravityX',                 'f'),
+    ('gravityY',                 'f'),
+    ('gravityZ',                 'f'),
     ('unknFixed28_param3',      'f'),
 ]
 assert _schema_size(_RIBBON_FIXED_SCHEMA) == 360, \
@@ -513,18 +516,27 @@ RIBBON_ATTR = attr_from_legacy(
         'unknFlag22_2':            Bool('unknFlag22_2'),
         'visiblePreview':          Bool('visiblePreview', backing='B', label_zh="可见性修正"),
         'enableFlap':              Bool('enableFlap', backing='B', label_zh="启用抖动"),
-        'unknGlobalForceEnable':   Bool('unknGlobalForceEnable', backing='B'),
-        'unknBool28_2':            Bool('unknBool28_2', backing='B'),
+        'enableGravity':           Bool('enableGravity', backing='B', label_zh="启用重力"),
+        'gravityLocalSpace':       Bool('gravityLocalSpace', backing='B',
+                                        label_en="Gravity In Local Space",
+                                        label_zh="重力使用本地坐标系"),
         'useColorRange': Bool('useColorRange', backing='B', label_zh="启用颜色范围"),
         'ribbonMode':    Enum('ribbonMode', ENUM_RIBBON_MODE, label_zh="条带模式"),
+        'uvScaleMode':   Enum('uvScaleMode', ENUM_RIBBON_UV_SCALE_MODE,
+                              label_en="UV Scale Mode", label_zh="长度缩放方式"),
+        'uvScaleLength': Float('uvScaleLength', label_en="UV Scale Length",
+                               label_zh="长度方向贴图缩放"),
+        'uvScaleWidth':  Float('uvScaleWidth', label_en="UV Scale Width",
+                               label_zh="宽度方向贴图缩放"),
         # 只有 Alpha Blend(0) / Additive(1) 两值，Additive 即自发光叠加，故用勾选框
         'blendMode':     Bool('blendMode', backing='B', label_en="Enable Emissive", label_zh="启用自发光"),
-        'unknBool15':  Bool('unknBool15'),
+        'useTrailTimeScale': Bool('useTrailTimeScale', label_zh="启用条带时间缩放"),
+        'trailTimeScale':    Float('trailTimeScale', label_zh="条带时间缩放"),
         'unknBool3a':  Bool('unknBool3a', backing='B'),
         'unknBool3b':  Bool('unknBool3b', backing='B'),
         'unknBool5':   Bool('unknBool5', backing='B'),
         'unknBool7':   Bool('unknBool7', backing='B'),
-        'unknBool8':   Bool('unknBool8', backing='B'),
+        'enableFadeLength': Bool('enableFadeLength', backing='B', label_zh="启用渐隐长度"),
         'flowmapPlayOnce': Bool('flowmapPlayOnce', backing='B', label_zh="流动只播放一次"),
         'flowmapReverse':  Bool('flowmapReverse', backing='B', label_zh="流动逆向播放"),
         # epvcolor_0 覆盖 color，epvcolor_1 覆盖 colorRange

@@ -7,6 +7,7 @@
 # 谓词
 def _eq0(v): return v == 0
 def _eq1(v): return v == 1
+def _eq2(v): return v == 2
 def _eq3(v): return v == 3
 def _in01(v): return v in (0, 1)
 def _in23(v): return v in (2, 3)
@@ -21,6 +22,13 @@ def _shape3d(*allowed):
     """EMITTERSHAPE3D 谓词：允许形状或 Point 变体均显示。"""
     allowed_set = set(allowed)
     return lambda v: v in allowed_set or v >= 3
+
+
+# 规则可写成单个 (mode_field, pred)，或多个条件组成的列表（全部满足才显示）
+_RIBBON_CHAIN = ("ribbonMode", _eq2)
+_RIBBON_FLAP = [_RIBBON_CHAIN, ("enableFlap", _truthy)]
+_RIBBON_GRAVITY = [_RIBBON_CHAIN, ("enableGravity", _truthy)]
+_RIBBON_FOLLOW = ("ribbonMode", _eq0)
 
 
 FIELD_VISIBILITY = {
@@ -117,6 +125,34 @@ FIELD_VISIBILITY = {
         "flowmapStrengthCoefJitter": ("enableFlowmap", _truthy),
         "flowmapPlayOnce":         ("enableFlowmap", _truthy),
         "flowmapReverse":          ("enableFlowmap", _truthy),
+        "base_fade_length":        ("enableFadeLength", _truthy),
+        "tip_fade_length":         ("enableFadeLength", _truthy),
+        "uvScaleLength":           ("uvScaleMode", _truthy),
+        "uvScaleLengthJitter":     ("uvScaleMode", _truthy),
+        # 柔体链专属
+        "restoreStrength":         _RIBBON_CHAIN,
+        "restoreStrengthJitter":   _RIBBON_CHAIN,
+        "inertia":                 _RIBBON_CHAIN,
+        "inertiaJitter":           _RIBBON_CHAIN,
+        "springiness":             _RIBBON_CHAIN,
+        "springiness_jitter":      _RIBBON_CHAIN,
+        "enableFlap":              _RIBBON_CHAIN,
+        "flap1Frequency":          _RIBBON_FLAP,
+        "flap1FrequencyJitter":    _RIBBON_FLAP,
+        "flap1Amount":             _RIBBON_FLAP,
+        "flap1AmountJitter":       _RIBBON_FLAP,
+        "flap2Frequency":          _RIBBON_FLAP,
+        "flap2FrequencyJitter":    _RIBBON_FLAP,
+        "flap2Amount":             _RIBBON_FLAP,
+        "flap2AmountJitter":       _RIBBON_FLAP,
+        "enableGravity":           _RIBBON_CHAIN,
+        "gravityLocalSpace":       _RIBBON_GRAVITY,
+        "gravityX":                _RIBBON_GRAVITY,
+        "gravityY":                _RIBBON_GRAVITY,
+        "gravityZ":                _RIBBON_GRAVITY,
+        # 轨迹跟随专属
+        "useTrailTimeScale":       _RIBBON_FOLLOW,
+        "trailTimeScale":          [_RIBBON_FOLLOW, ("useTrailTimeScale", _truthy)],
     },
     "STRAINRIBBON": {
         "colorRange":              ("useColorRange", _truthy),
@@ -214,6 +250,11 @@ FIELD_VISIBILITY = {
 }
 
 
+def rule_conditions(rule):
+    """把单条规则统一成 [(mode_field, pred), ...]。"""
+    return list(rule) if isinstance(rule, list) else [rule]
+
+
 def field_hidden(type_name, ori_name, get_value) -> bool:
     """该字段当前是否应隐藏（据其模式字段的当前值）。get_value(field_name)->int|None。"""
     rules = FIELD_VISIBILITY.get(type_name)
@@ -222,11 +263,13 @@ def field_hidden(type_name, ori_name, get_value) -> bool:
     r = rules.get(ori_name)
     if r is None:
         return False
-    mode_field, pred = r
-    cur = get_value(mode_field)
-    if cur is None:
-        return False   # 读不到模式值 → 保守显示
-    try:
-        return not pred(int(cur))
-    except Exception:
-        return False
+    for mode_field, pred in rule_conditions(r):
+        cur = get_value(mode_field)
+        if cur is None:
+            continue   # 读不到模式值 → 该条件保守放行
+        try:
+            if not pred(int(cur)):
+                return True
+        except Exception:
+            continue
+    return False

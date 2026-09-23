@@ -285,6 +285,13 @@ ENUM_RIBBON_MODE = EnumDef("RibbonMode", [
     (2, "Ribbon Chain", "柔体链"),
 ])
 
+# RIBBON：长度方向贴图缩放方式
+ENUM_RIBBON_UV_SCALE_MODE = EnumDef("RibbonUVScaleMode", [
+    (0, "Off", "不缩放"),
+    (1, "Fixed Count", "固定次数"),
+    (2, "By Aspect Ratio", "按长宽比"),
+])
+
 # UVSEQUENCE：贴图朝向，与水平/垂直翻转独立
 ENUM_LOOPING_ORIENTATION = EnumDef("LoopingOrientation", [
     (0, "Normal", "正常"),

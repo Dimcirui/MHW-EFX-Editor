@@ -1188,9 +1188,22 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── RIBBON (fixed part fields) ───────────────────────────────────────────
-    ("RIBBON", "material_tesselation_density"): {
-        "EN": "Material Repeating Density",
-        "ZH": "材质重复密度",
+    ("RIBBON", "uvScaleMode"): {
+        "EN": "How the texture is scaled along the ribbon's length. Off: UV Scale Length "
+              "has no effect. Fixed Count: the texture repeats UV Scale Length times over the "
+              "whole ribbon. By Aspect Ratio: the repeat count is UV Scale Length times the "
+              "ribbon's length-to-width ratio, so the texture keeps its proportions — at "
+              "twice the length it tiles twice as often.",
+        "ZH": "长度缩放方式。不缩放：长度方向贴图缩放不生效。固定次数：整条带上贴图重复"
+              "「长度方向贴图缩放」次。按长宽比：重复次数为「长度方向贴图缩放」乘以条带的长宽比，贴图保持"
+              "原比例——条带长度翻倍时平铺次数也翻倍。",
+    },
+    ("RIBBON", "uvScaleLength"): {
+        "EN": "Texture repeat count along the length: 1 shows the whole texture once, 2 shows "
+              "two copies end to end, 0.5 shows only half. Takes effect only when UV Scale "
+              "Mode is not Off.",
+        "ZH": "长度方向的贴图重复次数：1 显示整张贴图，2 首尾相接显示两张，0.5 只显示一半。"
+              "仅在缩放方式不为「不缩放」时生效。",
     },
     ("RIBBON", "subdivisionCount"): {
         "EN": "Number of cross-edges along the ribbon's length. N edges give N-1 segments of "
@@ -1222,9 +1235,10 @@ FIELD_ANNOTATIONS = {
         "EN": "Purpose unknown.",
         "ZH": "作用未知。",
     },
-    ("RIBBON", "unknBool8"): {
-        "EN": "Purpose unknown.",
-        "ZH": "作用未知。",
+    ("RIBBON", "enableFadeLength"): {
+        "EN": "Switch for the two fade lengths. When off, both fade lengths count as 1, "
+              "so each end's opacity fades across the whole ribbon.",
+        "ZH": "两个渐隐长度的开关。关闭时两个渐隐长度都按 1 计，两端的不透明度沿整条带子渐变。",
     },
     ("RIBBON", "flowmapPlayOnce"): {
         "EN": "Plays the flowmap scroll once instead of looping.",
@@ -1260,27 +1274,30 @@ FIELD_ANNOTATIONS = {
               "fields only do anything while this is on.",
         "ZH": "抖动组的总开关——下面的抖动频率／幅度字段只有在它开启时才起作用。",
     },
-    ("RIBBON", "unknGlobalForceEnable"): {
-        "EN": "Master switch for the three global force fields below.",
-        "ZH": "下面三个全局力字段的总开关。",
+    ("RIBBON", "enableGravity"): {
+        "EN": "Switch for the gravity applied to the ribbon chain. The three gravity axes "
+              "below only take effect while this is on.",
+        "ZH": "柔体链所受重力的开关。下面三个重力分量只在它开启时生效。",
     },
-    ("RIBBON", "unknBool28_2"): {
-        "EN": "Purpose unknown — appears to layer on top of the global force switch.",
-        "ZH": "作用未知——似乎是叠加在全局力开关之上的。",
+    ("RIBBON", "gravityLocalSpace"): {
+        "EN": "When on, gravity is measured in the emitter's local space: rotating the "
+              "emitter turns the gravity direction with it, while the particle's own "
+              "direction does not. When off, gravity uses fixed world axes. Only takes "
+              "effect while Enable Gravity is on.",
+        "ZH": "开启后重力改按发射器的本地坐标系计算：发射器旋转时重力方向跟着转，粒子自身的朝向"
+              "不影响重力方向。关闭时重力沿固定的世界轴。只在启用重力时生效。",
     },
-    ("RIBBON", "unknGlobalForceX"): {
-        "EN": 'Force applied to the ribbon from its tail end, along a fixed axis. The three force axes are orthogonal and their directions never change — they follow neither the local rotation nor the TRANSFORM3D rotation. Which way each axis points is unknown.',
-        "ZH": '自尾端施加到条带上的力，沿一个固定轴向。三个力的轴向互相正交、方向恒定不变——既不跟随局部旋转，也不跟随 TRANSFORM3D 的旋转。各轴具体指向哪一侧未知。',
+    ("RIBBON", "gravityX"): {
+        "EN": "Gravity along the X axis, applied to the ribbon from its tail end.",
+        "ZH": "沿 X 轴的重力分量，自尾端施加到条带上。",
     },
-    ("RIBBON", "unknGlobalForceY"): {
-        "EN": "Force along the vertical axis. A negative value behaves much like gravity. "
-              "See unknGlobalForceX for the shared behaviour of this group.",
-        "ZH": "沿竖直轴的力。填负值时表现近似重力。这一组的共同行为说明见 unknGlobalForceX。",
+    ("RIBBON", "gravityY"): {
+        "EN": "Gravity along the vertical axis. A negative value pulls the ribbon downward.",
+        "ZH": "沿竖直轴的重力分量。填负值时把条带往下拉。",
     },
-    ("RIBBON", "unknGlobalForceZ"): {
-        "EN": "Force along a fixed axis. See unknGlobalForceX for the shared behaviour of "
-              "this group.",
-        "ZH": "沿一个固定轴向的力。这一组的共同行为说明见 unknGlobalForceX。",
+    ("RIBBON", "gravityZ"): {
+        "EN": "Gravity along the Z axis, applied to the ribbon from its tail end.",
+        "ZH": "沿 Z 轴的重力分量，自尾端施加到条带上。",
     },
 
     # ─── UVSEQUENCE (fixed part fields) ───────────────────────────────────────
@@ -3377,9 +3394,9 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("RIBBON", "material_tesselation_jitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
+    ("RIBBON", "uvScaleLengthJitter"): {
+        "EN": "Random range added to the length-direction texture scale.",
+        "ZH": "长度方向贴图缩放的随机范围。",
     },
     ("RIBBON", "restoreStrength"): {
         "EN": "How strongly Ribbon Chain pulls back toward a straight shape. At 0 there is no "
@@ -3501,16 +3518,20 @@ FIELD_ANNOTATIONS = {
     ("RIBBON", "base_fade_length"): {
         "EN": "How far the rear fade reaches, as a fraction of the ribbon's total length. "
               "The rear end sits at Rear Opacity and climbs back to fully opaque across this "
-              "span; 0 makes the rear edge a hard cut. Common range: 0~1, most often 0.3.",
+              "span; 0 makes the rear edge a hard cut. Common range: 0~1, most often 0.3. "
+              "Only used when Enable Fade Length is on; otherwise it counts as 1.",
         "ZH": "后端的渐隐延伸多长，按条带全长的比例算。端点处是「后端不透明度」，在这段"
-              "长度里回到完全不透明；为 0 则后端是硬边。常见取值在 0~1 之间，多数为 0.3。",
+              "长度里回到完全不透明；为 0 则后端是硬边。常见取值在 0~1 之间，多数为 0.3。"
+              "仅在「启用渐隐长度」开启时生效，否则按 1 计。",
     },
     ("RIBBON", "tip_fade_length"): {
         "EN": "How far the front fade reaches, as a fraction of the ribbon's total length. "
               "The front end sits at Front Opacity and climbs back to fully opaque across "
-              "this span; 0 makes the front edge a hard cut. Common range: 0~1, most often 0.4.",
+              "this span; 0 makes the front edge a hard cut. Common range: 0~1, most often 0.4. "
+              "Only used when Enable Fade Length is on; otherwise it counts as 1.",
         "ZH": "前端的渐隐延伸多长，按条带全长的比例算。端点处是「前端不透明度」，在这段"
-              "长度里回到完全不透明；为 0 则前端是硬边。常见取值在 0~1 之间，多数为 0.4。",
+              "长度里回到完全不透明；为 0 则前端是硬边。常见取值在 0~1 之间，多数为 0.4。"
+              "仅在「启用渐隐长度」开启时生效，否则按 1 计。",
     },
     ("RIBBON", "spawnAnchorOffset"): {
         "EN": "Where along the ribbon's length the spawn point sits, in ribbon-length units. "
@@ -3519,13 +3540,26 @@ FIELD_ANNOTATIONS = {
         "ZH": "生成点落在条带长度方向上的位置，以条带自身长度为单位。0=前端贴住生成点；"
               "数值越大，整条带越往身后拖。",
     },
-    ("RIBBON", "uv_map_width"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("RIBBON", "uvScaleWidth"): {
+        "EN": "Texture scale across the width, centred on the ribbon's middle line. 2 squeezes "
+              "the whole texture into the middle half and stretches the edge pixels out to "
+              "both sides; 0.5 shows only the middle half of the texture across the full width.",
+        "ZH": "宽度方向的贴图缩放，以条带中线为基准。2 时整张贴图压到中间一半，两侧拉伸边缘像素；"
+              "0.5 时只显示贴图中间一半并铺满整个宽度。",
     },
-    ("RIBBON", "unknBool15"): {
-        "EN": "Purpose unknown.",
-        "ZH": "作用未知。",
+    ("RIBBON", "useTrailTimeScale"): {
+        "EN": "Ribbon Follow only. When on, the stretch of motion history each segment covers "
+              "is scaled by Trail Time Scale, so the ribbon's length depends on both that value "
+              "and the subdivision count. When off, each segment covers one frame.",
+        "ZH": "仅轨迹跟随模式有效。开启后每一段覆盖的轨迹时长按「条带时间缩放」缩放，条带长度由该值"
+              "与细分数共同决定；关闭时每段对应一帧。",
+    },
+    ("RIBBON", "trailTimeScale"): {
+        "EN": "Scales how much motion history each segment covers: larger values make the "
+              "ribbon longer, smaller values shorter. At 0 or below the ribbon collapses into a "
+              "straight line from the spawn point to the particle's current position.",
+        "ZH": "每段覆盖的轨迹时长的缩放：值越大条带越长，越小越短。0 及负值时条带退化为从生成点直线"
+              "连到粒子当前位置。",
     },
     ("RIBBONBLADE", "NULL9"): {
         "EN": "Common values: [0, 1, 256].",
