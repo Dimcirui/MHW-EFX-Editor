@@ -7,7 +7,7 @@
 """
 
 # 与 blender_manifest.toml 保持同步；扩展路径使用此常量而非 bl_info。
-_VERSION = (0, 7, 0)
+_VERSION = (0, 7, 1)
 
 # bl_info 供传统 addon 加载路径使用；扩展路径使用 manifest。
 bl_info = {
