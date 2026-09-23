@@ -1,8 +1,35 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1003792849",
-    "type_name": "EMITTERSHAPE3D",
+    "format_version": 2,
     "display_name": "EMITTERSHAPE3D（发射器形状）",
     "category": "spawn_method",
-    "data_bytes": "BgAAAAAAAAAAAMA/AAAAAM3MTD4AAAAAAAAAPwIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAALRDAAAAAAAAAAACAAAAAACAPwAAgD8AAAAAAQAAAA=="
+    "attribute": {
+        "type": "EMITTERSHAPE3D",
+        "fields": {
+            "typeFlag": 6,
+            "rangeXYZ": [
+                0.0,
+                1.5,
+                0.0,
+                0.2,
+                0.0,
+                0.5
+            ],
+            "shapeType": 2,
+            "rangeDivideAxis": 0,
+            "rotationCorrect": 0,
+            "localRotationX": 0.0,
+            "localRotationY": 0.0,
+            "localRotationZ": 0.0,
+            "rotationOrder": 4,
+            "scanAngleHorizontal": 360.0,
+            "scanAngleVertical": 0.0,
+            "rangeDivideHorizontalNum": 0,
+            "rangeDivideVerticalNum": 2,
+            "radiusEnd": 1.0,
+            "radiusOrigin": 1.0,
+            "rayCastDependency": 0,
+            "unknFlag4": 1
+        }
+    }
 }

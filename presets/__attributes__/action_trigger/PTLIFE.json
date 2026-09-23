@@ -1,8 +1,21 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "493311524",
-    "type_name": "PTLIFE",
+    "format_version": 2,
     "display_name": "PTLIFE（粒子生命事件）",
     "category": "action_trigger",
-    "data_bytes": "BgAAAAAABQAAAAAAAAAAAAAAAAA="
+    "attribute": {
+        "type": "PTLIFE",
+        "fields": {
+            "typeFlag": 6,
+            "unknFixed1": 0,
+            "status": 0,
+            "unknEnum3": 5,
+            "relationIndex": 0,
+            "unknEnum5": 0,
+            "unknFrame0": 0,
+            "unknFrame0Jitter": 0,
+            "unknFrame1": 0,
+            "unknFrame1Jitter": 0
+        }
+    }
 }

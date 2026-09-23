@@ -1,9 +1,50 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "459578090",
-    "type_name": "RGBFIRE",
+    "format_version": 2,
     "display_name": "RGBFIRE（火焰双色）",
     "category": "renderer_modifier",
-    "data_bytes": "AgAAAP////8AAIA//////wAAgD8AAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAUAAAAAAAAACgAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAAAoAAAAAAAAAAEAAAAAAAAAAAAAAA==",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "RGBFIRE",
+        "fields": {
+            "typeFlag": 2,
+            "fireColor": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "fireFactor": 1.0,
+            "smokeColor": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "redChFactor": 1.0,
+            "lerpAlphaToBlue": 0.0,
+            "alphaFactor": 1.0,
+            "colorRate": 1.0,
+            "fireColorParam_useLife": 0,
+            "fireColorParam_appearFrame": 0,
+            "fireColorParam_appearFrameJitter": 0,
+            "fireColorParam_keepFrame": 20,
+            "fireColorParam_keepFrameJitter": 0,
+            "fireColorParam_vanishFrame": 40,
+            "fireColorParam_vanishFrameJitter": 0,
+            "fireColorParam_lighting": 1,
+            "fireColorParam_lifeType": 0,
+            "fireColorParam_correctColorNo": 0,
+            "smokeColorParam_useLife": 0,
+            "smokeColorParam_appearFrame": 0,
+            "smokeColorParam_appearFrameJitter": 0,
+            "smokeColorParam_keepFrame": 20,
+            "smokeColorParam_keepFrameJitter": 0,
+            "smokeColorParam_vanishFrame": 40,
+            "smokeColorParam_vanishFrameJitter": 0,
+            "smokeColorParam_lighting": 1,
+            "smokeColorParam_lifeType": 0,
+            "smokeColorParam_correctColorNo": 0
+        }
+    }
 }

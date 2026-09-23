@@ -1,9 +1,15 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "201720946",
-    "type_name": "DUMMY",
+    "format_version": 2,
     "display_name": "DUMMY（占位空块）",
     "category": "renderer_body",
-    "data_bytes": "BgAAAAEAAAAA",
-    "subgroup": "dummy"
+    "subgroup": "dummy",
+    "attribute": {
+        "type": "DUMMY",
+        "fields": {
+            "typeFlag": 6,
+            "section_length": 1,
+            "unknFixed1": 0
+        }
+    }
 }

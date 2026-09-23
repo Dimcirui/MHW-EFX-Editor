@@ -1,9 +1,16 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "71967929",
-    "type_name": "LUMINANCEBLEED",
+    "format_version": 2,
     "display_name": "LUMINANCEBLEED（亮度辉光）",
     "category": "renderer_modifier",
-    "data_bytes": "zc3NzQAAAD8AAIA/AACAPw==",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "LUMINANCEBLEED",
+        "fields": {
+            "unkn0": -842150451,
+            "bleed": 0.5,
+            "colorScaler": 1.0,
+            "texelScaler": 1.0
+        }
+    }
 }

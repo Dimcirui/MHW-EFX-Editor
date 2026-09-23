@@ -1,8 +1,33 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "275476317",
-    "type_name": "RAYCAST",
+    "format_version": 2,
     "display_name": "RAYCAST（射线检测）",
     "category": "spawn_method",
-    "data_bytes": "AQAAAEYAAAAAzc3NAAD6QwAAAAAAAPpDAAAAAM3Nzc3Nzc3Nzc3NzQAAAAAAAAAAAAAAAAAAAAAEAAAAAAB6RAAAAAD9/////////wAA"
+    "attribute": {
+        "type": "RAYCAST",
+        "fields": {
+            "typeFlag": 1,
+            "section_length": 70,
+            "spacer0": -842150656,
+            "maxDistance": 500.0,
+            "maxDistanceJitter": 0.0,
+            "startDistance": 500.0,
+            "startDistanceJitter": 0.0,
+            "spacer1": -842150451,
+            "spacer2": -842150451,
+            "spacer3": -842150451,
+            "prop2": 0.0,
+            "startOffset": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "direction": 4,
+            "speed": 1000.0,
+            "speedJitter": 0.0,
+            "rayCastAttr": -3,
+            "rayCastID": -1,
+            "rayCastFlags": 0
+        }
+    }
 }

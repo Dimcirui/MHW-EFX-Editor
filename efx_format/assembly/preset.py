@@ -332,8 +332,16 @@ def _v1_entry_body(preset: dict):
     raise PresetError(f'未知 entry_kind {kind!r}')
 
 
+def is_v1_preset(preset) -> bool:
+    return (isinstance(preset, dict) and preset.get('format_version') is None
+            and preset.get('efx_preset_kind') in ('attribute', 'entry', 'body'))
+
+
 def upgrade_preset(preset: dict) -> dict:
-    """返回 v2 预设；已是 v2 时返回副本。v1 预设中的字节在此转为字段值。"""
+    """返回 v2 预设；已是 v2 时返回副本。
+
+    v1 预设中的字节在此转为字段值；转换结果重新组装后必须与原字节一致，否则抛 ``PresetError``。
+    """
     if preset.get('format_version') == FORMAT_VERSION:
         return copy.deepcopy(preset)
     if preset.get('format_version') is not None:
@@ -342,11 +350,19 @@ def upgrade_preset(preset: dict) -> dict:
     kind = preset.get('efx_preset_kind')
     if kind == 'attribute':
         meta = {k: preset[k] for k in _V1_ATTRIBUTE_META if k in preset}
-        return attribute_preset(int(str(preset['type_hash'])),
-                                base64.b64decode(preset['data_bytes']), **meta)
+        type_hash = int(str(preset['type_hash']))
+        data = base64.b64decode(preset['data_bytes'])
+        out = attribute_preset(type_hash, data, **meta)
+        if build_attribute(out['attribute']) != (type_hash, data):
+            raise PresetError(f'{type_key(type_hash)}：转换后字节与原预设不一致')
+        return out
     if kind == 'entry':
         meta = {k: preset[k] for k in _V1_ENTRY_META if k in preset}
-        return entry_preset(_v1_entry_body(preset), **meta)
+        body = _v1_entry_body(preset)
+        out = entry_preset(body, **meta)
+        if build_entry(out['entry']).serialize() != body.serialize():
+            raise PresetError('Entry：转换后字节与原预设不一致')
+        return out
     raise PresetError(f'未知预设种类 {kind!r}')
 
 

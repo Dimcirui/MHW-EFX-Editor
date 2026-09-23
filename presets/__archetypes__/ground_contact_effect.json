@@ -1,16 +1,7 @@
 {
     "efx_preset_kind": "entry",
-    "entry_kind": "standard",
+    "format_version": 2,
     "display_name": "地面接触特效",
-    "props": {
-        "body_type": "3496625053",
-        "unkn0": "2",
-        "attr_count": "6",
-        "null": "0",
-        "timl_length": "0"
-    },
-    "timl_bytes": "",
-    "raw": "",
     "source_label": "地面接触特效",
     "source_counts": {
         "extern": 0,
@@ -18,30 +9,190 @@
         "action": 0
     },
     "in_eof": false,
-    "attributes": [
-        {
-            "type_hash": "10286765",
-            "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA0wwAAtEMAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAKBAAAAAAAAAAD8AAAAAAACgQAAAAADNzEw/AAAAAM3MTD8AAAAAzcxMPwAAAAAAAAAA"
-        },
-        {
-            "type_hash": "368199626",
-            "data_bytes": "AwAAAAEAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAD/////"
-        },
-        {
-            "type_hash": "1921765292",
-            "data_bytes": "AgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-        },
-        {
-            "type_hash": "1320868484",
-            "data_bytes": "CAAAAAAAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-        },
-        {
-            "type_hash": "201720946",
-            "data_bytes": "BwAAAAEAAAAA"
-        },
-        {
-            "type_hash": "1240420851",
-            "data_bytes": "AAAAAD4AAAAAzc3NAAAWQwAAAAAAABZDAAAAAAAAFkMAAAAAAAA0wwAAtEMAAAAAAAAAAAAAAAAAAAAABgAAAAEAAAAAAA=="
-        }
-    ]
+    "entry": {
+        "kind": "standard",
+        "bodyType": 3496625053,
+        "unkn0": 2,
+        "null": 0,
+        "timl": null,
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "translate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        0.0,
+                        0.0,
+                        -180.0,
+                        360.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        5.0,
+                        0.0,
+                        0.5,
+                        0.0,
+                        5.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        0.8,
+                        0.0,
+                        0.8,
+                        0.0,
+                        0.8,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 3,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 0,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 2,
+                    "maxParticles": 1,
+                    "spawnNum": 1,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 0,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 0,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 8,
+                    "fadeInDuration": 0,
+                    "fadeInDurationJitter": 0,
+                    "duration": 10,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 0,
+                    "fadeOutDurationJitter": 0,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 0
+                }
+            },
+            {
+                "type": "DUMMY",
+                "fields": {
+                    "typeFlag": 7,
+                    "section_length": 1,
+                    "unknFixed1": 0
+                }
+            },
+            {
+                "type": "SHOVEL",
+                "fields": {
+                    "typeFlag": 0,
+                    "section_length": 62,
+                    "spacer": -842150656,
+                    "width": 150.0,
+                    "widthJitter": 0.0,
+                    "height": 150.0,
+                    "heightJitter": 0.0,
+                    "length": 150.0,
+                    "lengthJitter": 0.0,
+                    "unkn09": -180.0,
+                    "unkn10": 360.0,
+                    "unkn11": 0.0,
+                    "unknFixed12": 0,
+                    "unknEnum13": 0,
+                    "unknEnum14": 0,
+                    "pattern": 6,
+                    "unknBitmask16": 1,
+                    "unknEnum17": 0
+                }
+            }
+        ]
+    }
 }

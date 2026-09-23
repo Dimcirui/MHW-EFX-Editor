@@ -1,9 +1,16 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "2115227124",
-    "type_name": "PTTRIGGER",
+    "format_version": 2,
     "display_name": "PTTRIGGER",
     "category": "misc",
-    "data_bytes": "EwAAAAgAAAAAzc3NAQAAAA==",
-    "subgroup": "others"
+    "subgroup": "others",
+    "attribute": {
+        "type": "PTTRIGGER",
+        "fields": {
+            "typeFlag": 19,
+            "section_length": 8,
+            "unkn1": -842150656,
+            "unknEnum2": 1
+        }
+    }
 }

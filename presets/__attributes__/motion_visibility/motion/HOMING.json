@@ -1,9 +1,25 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1535857470",
-    "type_name": "HOMING",
-    "display_name": "HOMING\uff08\u8ffd\u8e2a\u76ee\u6807\uff09",
+    "format_version": 2,
+    "display_name": "HOMING（追踪目标）",
     "category": "motion_visibility",
-    "data_bytes": "DAAAACwAAAAAzc3NAABIQgAAgD8AAIA/AACAPwAASEIAAHpEAAAAAAAAAAAAAAAAAAAAAA==",
-    "subgroup": "motion"
+    "subgroup": "motion",
+    "attribute": {
+        "type": "HOMING",
+        "fields": {
+            "typeFlag": 12,
+            "section_length": 44,
+            "spacer": -842150656,
+            "turnRate": 50.0,
+            "initialSpeed": 1.0,
+            "targetSpeed": 1.0,
+            "forceFieldSpeedScale": 1.0,
+            "vanishRadius": 50.0,
+            "forceFieldRadius": 1000.0,
+            "homingTarget": 0,
+            "vanishMode": 0,
+            "forceFieldMode": 0,
+            "unknownEnum1": 0
+        }
+    }
 }

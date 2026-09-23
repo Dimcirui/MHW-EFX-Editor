@@ -1,9 +1,25 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1698970185",
-    "type_name": "UVSEQUENCE",
+    "format_version": 2,
     "display_name": "UVSEQUENCE（UV序列帧）",
     "category": "renderer_modifier",
-    "data_bytes": "BQAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAACAAAABgAAAB2ZnhcdXZzXGNtXGNtX2xpZ2h0XzAwMAA=",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "UVSEQUENCE",
+        "fields": {
+            "typeFlag": 5,
+            "sequenceNo": 1,
+            "sequenceNoJitter": 0,
+            "patternNo": 0,
+            "patternNoJitter": 0,
+            "playSpeed": 0.0,
+            "playSpeedJitter": 0.0,
+            "playSpeedCoef": 1.0,
+            "playSpeedCoefJitter": 0.0,
+            "loopingMode": 8,
+            "loopingOrientation": 0,
+            "loopingPad": 0,
+            "path": "vfx\\uvs\\cm\\cm_light_000\u0000"
+        }
+    }
 }

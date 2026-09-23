@@ -1,8 +1,71 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1179069619",
-    "type_name": "PTBEHAVIOR",
+    "format_version": 2,
     "display_name": "PTBEHAVIOR：MhPointLightBehavior",
     "category": "pt_behavior",
-    "data_bytes": "BQAAABUAAAAIAAAATWhQb2ludExpZ2h0QmVoYXZpb3IABN50kOLZ8KsGAAAA/wAAACjS4pvi2fCrDwAAAL9yP//WNia14tnwqwwAAAAAAEhCa8fgBeLZ8KsMAAAAAAAMQji3PEji2fCrDAAAAAAApUOiuCQO4tnwqwMAAAAAAAAAe8/j4uLZ8Ks3AAAAAAAAAAAAyEKhDRzD4tnwqwwAAAAAAHBB"
+    "attribute": {
+        "type": "PTBEHAVIOR",
+        "fields": {
+            "typeFlag": 5,
+            "b_type": "MhPointLightBehavior\u0000",
+            "params": [
+                {
+                    "unkn": -1871389180,
+                    "const0": -1410278942,
+                    "t": 6,
+                    "decal_epv_color_slot": 255
+                },
+                {
+                    "unkn": -1679633880,
+                    "const0": -1410278942,
+                    "t": 15,
+                    "color": [
+                        191,
+                        114,
+                        63,
+                        255
+                    ]
+                },
+                {
+                    "unkn": -1255786794,
+                    "const0": -1410278942,
+                    "t": 12,
+                    "unkn0": 50.0
+                },
+                {
+                    "unkn": 98617195,
+                    "const0": -1410278942,
+                    "t": 12,
+                    "unkn0": 35.0
+                },
+                {
+                    "unkn": 1211938616,
+                    "const0": -1410278942,
+                    "t": 12,
+                    "unkn0": 330.0
+                },
+                {
+                    "unkn": 237287586,
+                    "const0": -1410278942,
+                    "t": 3,
+                    "NULL": 0
+                },
+                {
+                    "unkn": -488386693,
+                    "const0": -1410278942,
+                    "t": 55,
+                    "unkn1": [
+                        0.0,
+                        100.0
+                    ]
+                },
+                {
+                    "unkn": -1021571679,
+                    "const0": -1410278942,
+                    "t": 12,
+                    "unkn0": 15.0
+                }
+            ]
+        }
+    }
 }

@@ -1,16 +1,7 @@
 {
     "efx_preset_kind": "entry",
-    "entry_kind": "standard",
+    "format_version": 2,
     "display_name": "玩家光圈",
-    "props": {
-        "body_type": "1008078920",
-        "unkn0": "0",
-        "attr_count": "6",
-        "null": "0",
-        "timl_length": "220"
-    },
-    "timl_bytes": "dGltbAAIAhgACAIYAAAAACAAAAAAAAAAAQAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAABAAAAAAAAAAEAAAADAAAAAADwQQAAAAADAAAAy1wFhQAAAAAAAAAAgAAAAAAAAAABAAAAAAAAAOFyglkAAAAAAAAAAAAAAACgAAAAAAAAAAMAAAAAAAAAzsW8lAIAAAAAAAAAAAAAAAAAIEEAAAAAAAAAAAAAAAADAAIAAAAAPwAAAAAAAAAAAACIQQMAAgAAACBBAAAAAAAAAAAAAPBBAQACAA==",
-    "raw": "",
     "source_label": "玩家光圈",
     "source_counts": {
         "extern": 0,
@@ -18,30 +9,266 @@
         "action": 3
     },
     "in_eof": false,
-    "attributes": [
-        {
-            "type_hash": "10286765",
-            "data_bytes": "CQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
+    "entry": {
+        "kind": "standard",
+        "bodyType": 1008078920,
+        "unkn0": 0,
+        "null": 0,
+        "timl": {
+            "header": [
+                402786304,
+                402786304,
+                0,
+                32,
+                0
+            ],
+            "animations": [
+                {
+                    "dataIx0": 1,
+                    "dataIx1": 3,
+                    "length": 30.0,
+                    "loopStart": 0.0,
+                    "loopControl": 3,
+                    "labelHash": 2231721163,
+                    "types": [
+                        {
+                            "timelineParam": 1501721313,
+                            "null": 0,
+                            "transforms": [
+                                {
+                                    "datatype": 2495399374,
+                                    "dataType": 2,
+                                    "keyframes": [
+                                        {
+                                            "frame": 0.0,
+                                            "transition": 3,
+                                            "kfDtype": 2,
+                                            "subs": [
+                                                {
+                                                    "value": 10.0,
+                                                    "back": 0.0,
+                                                    "period": 0.0
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "frame": 17.0,
+                                            "transition": 3,
+                                            "kfDtype": 2,
+                                            "subs": [
+                                                {
+                                                    "value": 0.5,
+                                                    "back": 0.0,
+                                                    "period": 0.0
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "frame": 30.0,
+                                            "transition": 1,
+                                            "kfDtype": 2,
+                                            "subs": [
+                                                {
+                                                    "value": 10.0,
+                                                    "back": 0.0,
+                                                    "period": 0.0
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
         },
-        {
-            "type_hash": "368199626",
-            "data_bytes": "CwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAD/////"
-        },
-        {
-            "type_hash": "1921765292",
-            "data_bytes": "CgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-        },
-        {
-            "type_hash": "1320868484",
-            "data_bytes": "EAAAAB4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB4AAAAAAAAAAAAAAAAAAAABAAAA"
-        },
-        {
-            "type_hash": "201720946",
-            "data_bytes": "AQAAAAEAAAAA"
-        },
-        {
-            "type_hash": "597394907",
-            "data_bytes": "DQAAAB4AAAAAAIA/AjgAAAAAAAD/Vzf/AACgQM3MTD4AAAAAzczMPQAAAAAAAHBBAAB6QwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
-        }
-    ]
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 9,
+                    "translate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 11,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 0,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 10,
+                    "maxParticles": 1,
+                    "spawnNum": 1,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 0,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 0,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 16,
+                    "fadeInDuration": 30,
+                    "fadeInDurationJitter": 0,
+                    "duration": 0,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 30,
+                    "fadeOutDurationJitter": 0,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 1
+                }
+            },
+            {
+                "type": "DUMMY",
+                "fields": {
+                    "typeFlag": 1,
+                    "section_length": 1,
+                    "unknFixed1": 0
+                }
+            },
+            {
+                "type": "PLEMISSIVE",
+                "fields": {
+                    "typeFlag": 13,
+                    "priority": 30,
+                    "blend": 1.0,
+                    "body_p": 2,
+                    "wp_p": 56,
+                    "NULL": 0,
+                    "correctColorNo": 0,
+                    "emissive": [
+                        255,
+                        87,
+                        55,
+                        255
+                    ],
+                    "intensity": 5.0,
+                    "rimWidth": 0.2,
+                    "rimPower": 0.0,
+                    "rimAlpha": 0.1,
+                    "emitMaskFlags": 0,
+                    "mask0": 15.0,
+                    "mask1": 250.0,
+                    "enableUseEmitMask": 0,
+                    "unknFixed5_0": 0.0,
+                    "addMask0": 0.0,
+                    "addMask1": 0.0,
+                    "unknFixed5_3": 0.0,
+                    "unknFixed5_4": 0.0
+                }
+            }
+        ]
+    }
 }

@@ -1,9 +1,95 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "2020068998",
-    "type_name": "UVCONTROL",
+    "format_version": 2,
     "display_name": "UVCONTROL（UV滚动控制）",
     "category": "renderer_modifier",
-    "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAA=",
-    "subgroup": "mesh"
+    "subgroup": "mesh",
+    "attribute": {
+        "type": "UVCONTROL",
+        "fields": {
+            "uv1_unknFlag": 1,
+            "uv1_offset": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "uv1_offsetAdd": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "uv1_offsetCoef": [
+                1.0,
+                0.0,
+                1.0,
+                0.0
+            ],
+            "uv1_scale": [
+                1.0,
+                0.0,
+                4.0,
+                0.0
+            ],
+            "uv1_scaleAdd": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "uv1_scaleCoef": [
+                1.0,
+                0.0,
+                1.0,
+                0.0
+            ],
+            "uv2_enable": 0,
+            "uv2_offset": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "uv2_offsetAdd": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "uv2_offsetCoef": [
+                1.0,
+                0.0,
+                1.0,
+                0.0
+            ],
+            "uv2_scale": [
+                1.0,
+                0.0,
+                1.0,
+                0.0
+            ],
+            "uv2_scaleAdd": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "uv2_scaleCoef": [
+                1.0,
+                0.0,
+                1.0,
+                0.0
+            ],
+            "enableFlowmap": 0,
+            "flowmapSpeed": 1.0,
+            "flowmapSpeedJitter": 0.0,
+            "flowmapSpeedCoef": 1.0,
+            "flowmapSpeedCoefJitter": 0.0,
+            "flowmapStrength": 1.0,
+            "flowmapStrengthJitter": 0.0,
+            "flowmapStrengthCoef": 1.0,
+            "flowmapStrengthCoefJitter": 0.0
+        }
+    }
 }

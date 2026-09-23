@@ -1,9 +1,15 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "638869640",
-    "type_name": "PARENTMATERIAL",
+    "format_version": 2,
     "display_name": "PARENTMATERIAL",
     "category": "renderer_modifier",
-    "data_bytes": "AwAAAP8AAAAAAIA/",
-    "subgroup": "dummy"
+    "subgroup": "dummy",
+    "attribute": {
+        "type": "PARENTMATERIAL",
+        "fields": {
+            "typeFlag": 3,
+            "unknFixed0_1": 255,
+            "unknFixed1": 1.0
+        }
+    }
 }

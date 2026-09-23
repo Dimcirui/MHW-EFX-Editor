@@ -1,9 +1,13 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1616705008",
-    "type_name": "MASTERONLY",
+    "format_version": 2,
     "display_name": "MASTERONLY（仅主玩家可见）",
     "category": "motion_visibility",
-    "data_bytes": "AQAAAA==",
-    "subgroup": "visibility"
+    "subgroup": "visibility",
+    "attribute": {
+        "type": "MASTERONLY",
+        "fields": {
+            "typeFlag": 1
+        }
+    }
 }

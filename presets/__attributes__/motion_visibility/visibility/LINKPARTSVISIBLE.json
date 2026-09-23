@@ -1,9 +1,15 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "812022019",
-    "type_name": "LINKPARTSVISIBLE",
+    "format_version": 2,
     "display_name": "LINKPARTSVISIBLE",
     "category": "motion_visibility",
-    "data_bytes": "AQAAAAEAAAANAAAA",
-    "subgroup": "visibility"
+    "subgroup": "visibility",
+    "attribute": {
+        "type": "LINKPARTSVISIBLE",
+        "fields": {
+            "typeFlag": 1,
+            "unknFixed0_1": 1,
+            "unknEnum0_2": 13
+        }
+    }
 }

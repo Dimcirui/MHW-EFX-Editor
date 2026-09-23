@@ -1,67 +1,413 @@
 {
- "efx_preset_kind": "entry",
- "entry_kind": "standard",
- "display_name": "悬浮粒子(水)",
- "props": {
-  "body_type": "1572963158",
-  "unkn0": "0",
-  "attr_count": "10",
-  "null": "0",
-  "timl_length": "0"
- },
- "timl_bytes": "",
- "raw": "",
- "source_label": "悬浮粒子(水)",
- "source_counts": {
-  "extern": 0,
-  "entry": 10,
-  "action": 0
- },
- "in_eof": false,
- "attributes": [
-  {
-   "type_hash": "10286765",
-   "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAANBBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
-  },
-  {
-   "type_hash": "368199626",
-   "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAD/////"
-  },
-  {
-   "type_hash": "1921765292",
-   "data_bytes": "AgAAAAIAAAACAAAAAAAAAA4AAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1320868484",
-   "data_bytes": "CAAAAA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA0AAAAAAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1003792849",
-   "data_bytes": "AQAAAAAAEEEAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAALRDAAAAAAAAAAACAAAAAACAPwAAgD8AAAAAAQAAAA=="
-  },
-  {
-   "type_hash": "222458580",
-   "data_bytes": "BwAAAAEAAAAEAAAAAAAAAAAAAAAAAHDBAADwQQAAAAAAAAAAmpnZPwAAgD9I4Xo/AAAAAAAAAAAAAIBBAABQQQAAIEDNzIw/zcyMPwEAAAAK1yM9CtcjPQAAAAAAAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1136904414",
-   "data_bytes": "BAAAAAAAAADMzMz//////5qZmT8AAAAAAAAAAAEAAAAAAAAAAAAAAAAANMMAALRDMzPzP5qZGT8AAOBBAACAQAAA4EEAAIBAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAABAAAAAAAAAAAAAAAAAAAAAACAPwEAAAAAAAAAAA=="
-  },
-  {
-   "type_hash": "480396424",
-   "data_bytes": "CAAAAArXozwAAAAApHB9PwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAA=="
-  },
-  {
-   "type_hash": "1698970185",
-   "data_bytes": "BQAAAAEAAAAAAAAAAAAAAAAAAADNzEw/zczMPQAAgD8AAAAAKwAAABkAAAB2ZnhcdXZzXGNtXGNtX2xpcXVpZF8wMDAA"
-  },
-  {
-   "type_hash": "1978267738",
-   "data_bytes": "AgAAAGgAAAAAzc3NAQAAAAAAAAAAAHBCAQAAAAAAAAABAAAAzcxMPgAAgD8AAAAAAACAPwAAgD8AAIA/AACAPwAAyEI7Qb+yAAAAAAAASEIAAAAAAAAAAAAASEIAAAAAAAAAAP////8AAQEAAAAAAAEAAAA="
-  },
-  {
-   "type_hash": "1660327299",
-   "data_bytes": "AQAAAP//////////AACAPwAAAAAAAAAAAACAPwAAgD8AAIA/zczMPgAAAAAAAAAAAAAAABQAAAAAAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFAAAAAAAAAAoAAAAAAAAAAAAAAAAAAAAJQAAAHZmeFxkZHNcY21cY21fY3ViZW1hcFxjbV9jdWJlXzAwMV9DTQA="
-  }
- ]
+    "efx_preset_kind": "entry",
+    "format_version": 2,
+    "display_name": "悬浮粒子(水)",
+    "source_label": "悬浮粒子(水)",
+    "source_counts": {
+        "extern": 0,
+        "entry": 10,
+        "action": 0
+    },
+    "in_eof": false,
+    "entry": {
+        "kind": "standard",
+        "bodyType": 1572963158,
+        "unkn0": 0,
+        "null": 0,
+        "timl": null,
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "translate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        26.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 3,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 0,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 2,
+                    "maxParticles": 2,
+                    "spawnNum": 2,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 14,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 0,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 8,
+                    "fadeInDuration": 15,
+                    "fadeInDurationJitter": 0,
+                    "duration": 0,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 13,
+                    "fadeOutDurationJitter": 0,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 0
+                }
+            },
+            {
+                "type": "EMITTERSHAPE3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "rangeXYZ": [
+                        9.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        0.0
+                    ],
+                    "shapeType": 0,
+                    "rangeDivideAxis": 0,
+                    "rotationCorrect": 0,
+                    "localRotationX": 0.0,
+                    "localRotationY": 0.0,
+                    "localRotationZ": 0.0,
+                    "rotationOrder": 0,
+                    "scanAngleHorizontal": 360.0,
+                    "scanAngleVertical": 0.0,
+                    "rangeDivideHorizontalNum": 0,
+                    "rangeDivideVerticalNum": 2,
+                    "radiusEnd": 1.0,
+                    "radiusOrigin": 1.0,
+                    "rayCastDependency": 0,
+                    "unknFlag4": 1
+                }
+            },
+            {
+                "type": "VELOCITY3D",
+                "fields": {
+                    "typeFlag": 7,
+                    "baseAxis": 1,
+                    "rotOrder": 4,
+                    "rotationX": 0.0,
+                    "rotationXJitter": 0.0,
+                    "rotationY": -15.0,
+                    "rotationYJitter": 30.0,
+                    "rotationZ": 0.0,
+                    "rotationZJitter": 0.0,
+                    "speed": 1.7,
+                    "speedJitter": 1.0,
+                    "speedCoef": 0.98,
+                    "speedCoefJitter": 0.0,
+                    "offsetX": 0.0,
+                    "offsetY": 16.0,
+                    "offsetZ": 13.0,
+                    "sizeX": 2.5,
+                    "sizeY": 1.1,
+                    "sizeZ": 1.1,
+                    "velocityType": 1,
+                    "gravity": 0.04,
+                    "gravity_jitter": 0.04,
+                    "movementDelay": 0,
+                    "movementDelayJitter": 0,
+                    "gravityDelay": 0,
+                    "gravityDelayJitter": 0,
+                    "minMovementThreshold": 0.0
+                }
+            },
+            {
+                "type": "BILLBOARD3D",
+                "fields": {
+                    "typeFlag": 4,
+                    "applicationRule": 0,
+                    "color": [
+                        204,
+                        204,
+                        204,
+                        255
+                    ],
+                    "colorRange": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "brightness": 1.2,
+                    "brightnessJitter": 0.0,
+                    "useColorRange": 0,
+                    "blendMode": 1,
+                    "correctColorNo": 0,
+                    "colorRangeCorrectColorNo": 0,
+                    "rotation": -180.0,
+                    "rotationJitter": 360.0,
+                    "scale": 1.9,
+                    "scaleJitter": 0.6,
+                    "width": 28.0,
+                    "widthJitter": 4.0,
+                    "height": 28.0,
+                    "heightJitter": 4.0,
+                    "flowmapSpeed": 1.0,
+                    "flowmapSpeedJitter": 0.0,
+                    "flowmapSpeedCoef": 1.0,
+                    "flowmapSpeedCoefJitter": 0.0,
+                    "flowmapStrength": 1.0,
+                    "flowmapStrengthJitter": 0.0,
+                    "flowmapStrengthCoef": 1.0,
+                    "flowmapStrengthCoefJitter": 0.0,
+                    "divideNum": 0,
+                    "enableGPUParticle": 0,
+                    "fieldInfluenceRate": 0.0,
+                    "fieldInfluenceRateMultiplier": 1.0,
+                    "lightGroup": 1,
+                    "unknFlag9": 0,
+                    "path": "\u0000"
+                }
+            },
+            {
+                "type": "SCALEANIM",
+                "fields": {
+                    "typeFlag": 8,
+                    "initialScaleSpeed": 0.02,
+                    "initialScaleSpeedJitter": 0.0,
+                    "initialScaleAccel": 0.99,
+                    "initialScaleAccelJitter": 0.0,
+                    "scaleSpeedX": 0.0,
+                    "scaleSpeedXJitter": 0.0,
+                    "scaleAccelX": 1.0,
+                    "scaleAccelXJitter": 0.0,
+                    "scaleSpeedY": 0.0,
+                    "scaleSpeedYJitter": 0.0,
+                    "scaleAccelY": 1.0,
+                    "scaleAccelYJitter": 0.0,
+                    "scaleSpeedZ": 0.0,
+                    "scaleSpeedZJitter": 0.0,
+                    "scaleAccelZ": 1.0,
+                    "scaleAccelZJitter": 0.0,
+                    "animUpdateStart": 0,
+                    "animUpdateStartJitter": 0
+                }
+            },
+            {
+                "type": "UVSEQUENCE",
+                "fields": {
+                    "typeFlag": 5,
+                    "sequenceNo": 1,
+                    "sequenceNoJitter": 0,
+                    "patternNo": 0,
+                    "patternNoJitter": 0,
+                    "playSpeed": 0.8,
+                    "playSpeedJitter": 0.1,
+                    "playSpeedCoef": 1.0,
+                    "playSpeedCoefJitter": 0.0,
+                    "loopingMode": 43,
+                    "loopingOrientation": 0,
+                    "loopingPad": 0,
+                    "path": "vfx\\uvs\\cm\\cm_liquid_000\u0000"
+                }
+            },
+            {
+                "type": "SHADERSETTINGS",
+                "fields": {
+                    "typeFlag": 2,
+                    "unknEnum1": 104,
+                    "spacer": -842150656,
+                    "unknFlag2": 1,
+                    "depthBias": 0.0,
+                    "softParticleDistance": 60.0,
+                    "unknBitmask3_0": 1,
+                    "unknEnum3_1": 0,
+                    "controlBitflag": 1,
+                    "unkn4_0": 0.2,
+                    "unkn4_1": 1.0,
+                    "unkn4_2": 0.0,
+                    "unkn4_3": 1.0,
+                    "unkn4_4": 1.0,
+                    "unkn4_5": 1.0,
+                    "unkn4_6": 1.0,
+                    "unkn4_7": 100.0,
+                    "presetId": -1296088773,
+                    "unkn4_9": 0.0,
+                    "unkn4_10": 50.0,
+                    "unkn4_11": 0.0,
+                    "unknFixed4_12": 0.0,
+                    "unkn4_13": 50.0,
+                    "unknBitmask4_14": 0,
+                    "unkn4_15": 0,
+                    "objectInteractionFlag0": 255,
+                    "objectInteractionFlag1": 255,
+                    "objectInteractionFlag2": 255,
+                    "objectInteractionFlag3": 255,
+                    "unknBool0": 0,
+                    "unknBool1": 1,
+                    "unknBool2": 1,
+                    "unknBool3": 0,
+                    "unknEnum5_0": 0,
+                    "unknBitmask5_1": 1
+                }
+            },
+            {
+                "type": "RGBWATER",
+                "fields": {
+                    "typeFlag": 1,
+                    "colorSpecular": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "colorSheet": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "colorRate": 1.0,
+                    "waterLerpGtoB": 0.0,
+                    "intensityCubeMap": 0.0,
+                    "intensitySpecular": 1.0,
+                    "intensitySheet": 1.0,
+                    "intensityAlpha": 1.0,
+                    "normalSharpness": 0.4,
+                    "specularColorParam_useLife": 0,
+                    "specularColorParam_appearFrame": 0,
+                    "specularColorParam_appearFrameJitter": 0,
+                    "specularColorParam_keepFrame": 20,
+                    "specularColorParam_keepFrameJitter": 0,
+                    "specularColorParam_vanishFrame": 40,
+                    "specularColorParam_vanishFrameJitter": 0,
+                    "specularColorParam_lighting": 0,
+                    "specularColorParam_lifeType": 0,
+                    "specularColorParam_correctColorNo": 0,
+                    "sheetColorParam_useLife": 0,
+                    "sheetColorParam_appearFrame": 0,
+                    "sheetColorParam_appearFrameJitter": 0,
+                    "sheetColorParam_keepFrame": 20,
+                    "sheetColorParam_keepFrameJitter": 0,
+                    "sheetColorParam_vanishFrame": 40,
+                    "sheetColorParam_vanishFrameJitter": 0,
+                    "sheetColorParam_lighting": 0,
+                    "sheetColorParam_lifeType": 0,
+                    "sheetColorParam_correctColorNo": 0,
+                    "waterLerpParam_useLife": 0,
+                    "waterLerpParam_appearFrame": 0,
+                    "waterLerpParam_appearFrameJitter": 0,
+                    "waterLerpParam_keepFrame": 20,
+                    "waterLerpParam_keepFrameJitter": 0,
+                    "waterLerpParam_vanishFrame": 40,
+                    "waterLerpParam_vanishFrameJitter": 0,
+                    "waterLerpParam_lighting": 0,
+                    "waterLerpParam_lifeType": 0,
+                    "path": "vfx\\dds\\cm\\cm_cubemap\\cm_cube_001_CM\u0000"
+                }
+            }
+        ]
+    }
 }

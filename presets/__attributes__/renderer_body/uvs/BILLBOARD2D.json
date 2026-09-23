@@ -1,9 +1,51 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1524169119",
-    "type_name": "BILLBOARD2D",
+    "format_version": 2,
     "display_name": "BILLBOARD2D",
     "category": "renderer_body",
-    "data_bytes": "BQAAAAAAAABXa8hk/////wAAIEEAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8AAIBDAAAAAAAAgEMAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAABAAAAAAAAAAAAAAAA",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "BILLBOARD2D",
+        "fields": {
+            "typeFlag": 5,
+            "applicationRule": 0,
+            "color": [
+                87,
+                107,
+                200,
+                100
+            ],
+            "colorRange": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "brightness": 10.0,
+            "brightnessJitter": 0.0,
+            "useColorRange": 0,
+            "blendMode": 1,
+            "correctColorNo": 0,
+            "colorRangeCorrectColorNo": 0,
+            "rotation": 0.0,
+            "rotationJitter": 0.0,
+            "scale": 1.0,
+            "scaleJitter": 1.0,
+            "width": 256.0,
+            "widthJitter": 0.0,
+            "height": 256.0,
+            "heightJitter": 0.0,
+            "flowmapSpeed": 0.0,
+            "flowmapSpeedJitter": 0.0,
+            "flowmapSpeedCoef": 1.0,
+            "flowmapSpeedCoefJitter": 0.0,
+            "flowmapStrength": 0.0,
+            "flowmapStrengthJitter": 0.0,
+            "flowmapStrengthCoef": 1.0,
+            "flowmapStrengthCoefJitter": 0.0,
+            "unknFixed5_0": 0,
+            "unknEnum5_1": 0,
+            "path": "\u0000"
+        }
+    }
 }

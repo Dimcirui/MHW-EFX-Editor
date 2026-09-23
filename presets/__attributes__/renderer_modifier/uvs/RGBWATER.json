@@ -1,9 +1,62 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1660327299",
-    "type_name": "RGBWATER",
+    "format_version": 2,
     "display_name": "RGBWATER（水面颜色）",
     "category": "renderer_modifier",
-    "data_bytes": "AQAAAP////9ef5//AACAPwAAAD8AAAAAmpmZPwAAgD8AAIA/mpmZPgAAAAAAAAAAAAAAABQAAAAAAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoAAAAAAAAAAAAAAAAAAAAAQAAAAA=",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "RGBWATER",
+        "fields": {
+            "typeFlag": 1,
+            "colorSpecular": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "colorSheet": [
+                94,
+                127,
+                159,
+                255
+            ],
+            "colorRate": 1.0,
+            "waterLerpGtoB": 0.5,
+            "intensityCubeMap": 0.0,
+            "intensitySpecular": 1.2,
+            "intensitySheet": 1.0,
+            "intensityAlpha": 1.0,
+            "normalSharpness": 0.3,
+            "specularColorParam_useLife": 0,
+            "specularColorParam_appearFrame": 0,
+            "specularColorParam_appearFrameJitter": 0,
+            "specularColorParam_keepFrame": 20,
+            "specularColorParam_keepFrameJitter": 0,
+            "specularColorParam_vanishFrame": 40,
+            "specularColorParam_vanishFrameJitter": 0,
+            "specularColorParam_lighting": 0,
+            "specularColorParam_lifeType": 0,
+            "specularColorParam_correctColorNo": 0,
+            "sheetColorParam_useLife": 0,
+            "sheetColorParam_appearFrame": 0,
+            "sheetColorParam_appearFrameJitter": 0,
+            "sheetColorParam_keepFrame": 20,
+            "sheetColorParam_keepFrameJitter": 0,
+            "sheetColorParam_vanishFrame": 40,
+            "sheetColorParam_vanishFrameJitter": 0,
+            "sheetColorParam_lighting": 0,
+            "sheetColorParam_lifeType": 0,
+            "sheetColorParam_correctColorNo": 0,
+            "waterLerpParam_useLife": 0,
+            "waterLerpParam_appearFrame": 0,
+            "waterLerpParam_appearFrameJitter": 0,
+            "waterLerpParam_keepFrame": 0,
+            "waterLerpParam_keepFrameJitter": 0,
+            "waterLerpParam_vanishFrame": 40,
+            "waterLerpParam_vanishFrameJitter": 0,
+            "waterLerpParam_lighting": 0,
+            "waterLerpParam_lifeType": 0,
+            "path": "\u0000"
+        }
+    }
 }

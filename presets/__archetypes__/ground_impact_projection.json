@@ -1,79 +1,449 @@
 {
- "efx_preset_kind": "entry",
- "entry_kind": "standard",
- "display_name": "地面撞击投影",
- "props": {
-  "body_type": "4091939395",
-  "unkn0": "0",
-  "attr_count": "14",
-  "null": "0",
-  "timl_length": "0"
- },
- "timl_bytes": "",
- "raw": "",
- "source_label": "地面撞击投影",
- "source_counts": {
-  "extern": 26,
-  "entry": 205,
-  "action": 20
- },
- "in_eof": false,
- "attributes": [
-  {
-   "type_hash": "10286765",
-   "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAEjCAAAAAAAAtEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
-  },
-  {
-   "type_hash": "368199626",
-   "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAD/////"
-  },
-  {
-   "type_hash": "275476317",
-   "data_bytes": "CwAAAEYAAAAAzc3NAKAMRgAAAAAAoAxGAAAAAM3Nzc3Nzc3Nzc3NzQAAAAAAAAAAAABIwgAAAAABAAAAAKAMRgAAAAD/////AAAAAAAA"
-  },
-  {
-   "type_hash": "1921765292",
-   "data_bytes": "AgAAAAUAAAABAAAAAAAAAA8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1320868484",
-   "data_bytes": "DAAAAAQAAAAAAAAADwAAAAAAAAAAAAAAAAAAAB4AAAAAAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1257264016",
-   "data_bytes": "AQAAADQAAAAAAQAAAIA7RQQAAADNzc3NAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPpEAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1003792849",
-   "data_bytes": "AQAAAAAAIEEAACBBAADIwgAAyEIAACBBAAAgQQIAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAALRDAAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAQAAAA=="
-  },
-  {
-   "type_hash": "222458580",
-   "data_bytes": "AQAAAAMAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABIQgAAAADsUXg/AAAAAAAAIEEAAEhCAAAAAM3MjD8AAIA/zcyMPwEAAACamRm+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1136904414",
-   "data_bytes": "BAAAAAQAAAD/1sz//////wAAAD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAANMMAALRDZmbeQM3MzD0AAMhCAAAAAAAAyEIAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAnAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAdmZ4XGRkc1xjbVxjbV9mbG93bWFwXGNtX2Zsb3dfMDA5X0ZfTk0A"
-  },
-  {
-   "type_hash": "480396424",
-   "data_bytes": "CAAAAJqZmT4AAAAAj8J1PwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAA=="
-  },
-  {
-   "type_hash": "1698970185",
-   "data_bytes": "BQAAAAcAAAAAAAAAAQAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAKgAAABcAAAB2ZnhcdXZzXGNtXGNtX2ZpcmVfOTAxAA=="
-  },
-  {
-   "type_hash": "1978267738",
-   "data_bytes": "AgAAAGgAAAAAzc3NAQAAAAAASMIAAEhCAAAAAAAAAAABAAAAAACAP83MzD1mZmY/AACAPwAAgD8AAIA/AACAPwAAyEL/////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8Nj///////8AAQEAAAAAAAAAAAA="
-  },
-  {
-   "type_hash": "957228464",
-   "data_bytes": "AQAAAAEAAACamRk+"
-  },
-  {
-   "type_hash": "280719621",
-   "data_bytes": "DAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAABIQwAAAAAAAMhCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAgD8zMzM/AAAAADMzMz8AAAAAAAAAAAAAAAAAAAAA/////wUAAAAAAAAAAAAAAA=="
-  }
- ]
+    "efx_preset_kind": "entry",
+    "format_version": 2,
+    "display_name": "地面撞击投影",
+    "source_label": "地面撞击投影",
+    "source_counts": {
+        "extern": 26,
+        "entry": 205,
+        "action": 20
+    },
+    "in_eof": false,
+    "entry": {
+        "kind": "standard",
+        "bodyType": 4091939395,
+        "unkn0": 0,
+        "null": 0,
+        "timl": null,
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "translate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        -50.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        90.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 3,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 0,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "RAYCAST",
+                "fields": {
+                    "typeFlag": 11,
+                    "section_length": 70,
+                    "spacer0": -842150656,
+                    "maxDistance": 9000.0,
+                    "maxDistanceJitter": 0.0,
+                    "startDistance": 9000.0,
+                    "startDistanceJitter": 0.0,
+                    "spacer1": -842150451,
+                    "spacer2": -842150451,
+                    "spacer3": -842150451,
+                    "prop2": 0.0,
+                    "startOffset": [
+                        0.0,
+                        -50.0,
+                        0.0
+                    ],
+                    "direction": 1,
+                    "speed": 9000.0,
+                    "speedJitter": 0.0,
+                    "rayCastAttr": -1,
+                    "rayCastID": 0,
+                    "rayCastFlags": 0
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 2,
+                    "maxParticles": 5,
+                    "spawnNum": 1,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 15,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 0,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 0,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 12,
+                    "fadeInDuration": 4,
+                    "fadeInDurationJitter": 0,
+                    "duration": 15,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 30,
+                    "fadeOutDurationJitter": 0,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 0
+                }
+            },
+            {
+                "type": "FAKEPLANE",
+                "fields": {
+                    "typeFlag": 1,
+                    "section_length": 52,
+                    "unknFixed1_0": 0,
+                    "unknFlag1_1": 1,
+                    "unknFlag1_2": 0,
+                    "unknFlag1_3": 0,
+                    "unkn2": 3000.0,
+                    "unknEnum3": 4,
+                    "unkn4": -842150451,
+                    "unkn5_0": 0.0,
+                    "unkn5_1": 0.0,
+                    "unkn5_2": 0.0,
+                    "unknFixed5_3": 0.0,
+                    "unkn5_4": 0.0,
+                    "unkn5_5": 2000.0,
+                    "unkn5_6": 0.0,
+                    "unknFixed5_7": 0.0,
+                    "unknEnum5_8": 0
+                }
+            },
+            {
+                "type": "EMITTERSHAPE3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "rangeXYZ": [
+                        10.0,
+                        10.0,
+                        -100.0,
+                        100.0,
+                        10.0,
+                        10.0
+                    ],
+                    "shapeType": 2,
+                    "rangeDivideAxis": 1,
+                    "rotationCorrect": 0,
+                    "localRotationX": 0.0,
+                    "localRotationY": 0.0,
+                    "localRotationZ": 0.0,
+                    "rotationOrder": 4,
+                    "scanAngleHorizontal": 360.0,
+                    "scanAngleVertical": 0.0,
+                    "rangeDivideHorizontalNum": 0,
+                    "rangeDivideVerticalNum": 0,
+                    "radiusEnd": 1.0,
+                    "radiusOrigin": 1.0,
+                    "rayCastDependency": 0,
+                    "unknFlag4": 1
+                }
+            },
+            {
+                "type": "VELOCITY3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "baseAxis": 3,
+                    "rotOrder": 4,
+                    "rotationX": 0.0,
+                    "rotationXJitter": 0.0,
+                    "rotationY": 0.0,
+                    "rotationYJitter": 0.0,
+                    "rotationZ": 0.0,
+                    "rotationZJitter": 0.0,
+                    "speed": 50.0,
+                    "speedJitter": 0.0,
+                    "speedCoef": 0.97,
+                    "speedCoefJitter": 0.0,
+                    "offsetX": 10.0,
+                    "offsetY": 50.0,
+                    "offsetZ": 0.0,
+                    "sizeX": 1.1,
+                    "sizeY": 1.0,
+                    "sizeZ": 1.1,
+                    "velocityType": 1,
+                    "gravity": -0.15,
+                    "gravity_jitter": 0.0,
+                    "movementDelay": 0,
+                    "movementDelayJitter": 0,
+                    "gravityDelay": 0,
+                    "gravityDelayJitter": 0,
+                    "minMovementThreshold": 0.0
+                }
+            },
+            {
+                "type": "BILLBOARD3D",
+                "fields": {
+                    "typeFlag": 4,
+                    "applicationRule": 4,
+                    "color": [
+                        255,
+                        214,
+                        204,
+                        255
+                    ],
+                    "colorRange": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "brightness": 0.5,
+                    "brightnessJitter": 0.0,
+                    "useColorRange": 0,
+                    "blendMode": 0,
+                    "correctColorNo": 0,
+                    "colorRangeCorrectColorNo": 0,
+                    "rotation": -180.0,
+                    "rotationJitter": 360.0,
+                    "scale": 6.95,
+                    "scaleJitter": 0.1,
+                    "width": 100.0,
+                    "widthJitter": 0.0,
+                    "height": 100.0,
+                    "heightJitter": 0.0,
+                    "flowmapSpeed": 0.0,
+                    "flowmapSpeedJitter": 0.0,
+                    "flowmapSpeedCoef": 1.0,
+                    "flowmapSpeedCoefJitter": 0.0,
+                    "flowmapStrength": 1.0,
+                    "flowmapStrengthJitter": 0.0,
+                    "flowmapStrengthCoef": 1.0,
+                    "flowmapStrengthCoefJitter": 0.0,
+                    "divideNum": 0,
+                    "enableGPUParticle": 0,
+                    "fieldInfluenceRate": 0.0,
+                    "fieldInfluenceRateMultiplier": 1.0,
+                    "lightGroup": 0,
+                    "unknFlag9": 0,
+                    "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_009_F_NM\u0000"
+                }
+            },
+            {
+                "type": "SCALEANIM",
+                "fields": {
+                    "typeFlag": 8,
+                    "initialScaleSpeed": 0.3,
+                    "initialScaleSpeedJitter": 0.0,
+                    "initialScaleAccel": 0.96,
+                    "initialScaleAccelJitter": 0.0,
+                    "scaleSpeedX": 0.0,
+                    "scaleSpeedXJitter": 0.0,
+                    "scaleAccelX": 1.0,
+                    "scaleAccelXJitter": 0.0,
+                    "scaleSpeedY": 0.0,
+                    "scaleSpeedYJitter": 0.0,
+                    "scaleAccelY": 1.0,
+                    "scaleAccelYJitter": 0.0,
+                    "scaleSpeedZ": 0.0,
+                    "scaleSpeedZJitter": 0.0,
+                    "scaleAccelZ": 1.0,
+                    "scaleAccelZJitter": 0.0,
+                    "animUpdateStart": 0,
+                    "animUpdateStartJitter": 0
+                }
+            },
+            {
+                "type": "UVSEQUENCE",
+                "fields": {
+                    "typeFlag": 5,
+                    "sequenceNo": 7,
+                    "sequenceNoJitter": 0,
+                    "patternNo": 1,
+                    "patternNoJitter": 0,
+                    "playSpeed": 1.0,
+                    "playSpeedJitter": 0.0,
+                    "playSpeedCoef": 1.0,
+                    "playSpeedCoefJitter": 0.0,
+                    "loopingMode": 42,
+                    "loopingOrientation": 0,
+                    "loopingPad": 0,
+                    "path": "vfx\\uvs\\cm\\cm_fire_901\u0000"
+                }
+            },
+            {
+                "type": "SHADERSETTINGS",
+                "fields": {
+                    "typeFlag": 2,
+                    "unknEnum1": 104,
+                    "spacer": -842150656,
+                    "unknFlag2": 1,
+                    "depthBias": -50.0,
+                    "softParticleDistance": 50.0,
+                    "unknBitmask3_0": 0,
+                    "unknEnum3_1": 0,
+                    "controlBitflag": 1,
+                    "unkn4_0": 1.0,
+                    "unkn4_1": 0.1,
+                    "unkn4_2": 0.9,
+                    "unkn4_3": 1.0,
+                    "unkn4_4": 1.0,
+                    "unkn4_5": 1.0,
+                    "unkn4_6": 1.0,
+                    "unkn4_7": 100.0,
+                    "presetId": -1,
+                    "unkn4_9": 0.0,
+                    "unkn4_10": 0.0,
+                    "unkn4_11": 0.0,
+                    "unknFixed4_12": 0.0,
+                    "unkn4_13": 0.0,
+                    "unknBitmask4_14": 0,
+                    "unkn4_15": -10000,
+                    "objectInteractionFlag0": 255,
+                    "objectInteractionFlag1": 255,
+                    "objectInteractionFlag2": 255,
+                    "objectInteractionFlag3": 255,
+                    "unknBool0": 0,
+                    "unknBool1": 1,
+                    "unknBool2": 1,
+                    "unknBool3": 0,
+                    "unknEnum5_0": 0,
+                    "unknBitmask5_1": 0
+                }
+            },
+            {
+                "type": "REFRACTION",
+                "fields": {
+                    "typeFlag": 1,
+                    "pixelNormalOffset": 1,
+                    "seeThroughBlend": 0.15
+                }
+            },
+            {
+                "type": "PTCOLLISION",
+                "fields": {
+                    "typeFlag": 12,
+                    "physicsEnum": 1,
+                    "unkn02": 0,
+                    "unkn03": 0,
+                    "unknEnum04": 0,
+                    "unknFixed05": 0,
+                    "projectionOffset": 200.0,
+                    "projectionDist": 0.0,
+                    "unkn1_0": 100.0,
+                    "unkn1_1": 0.0,
+                    "unkn1_2": 0.0,
+                    "bounceCount": 0,
+                    "bounceCountJitter": 0,
+                    "bounceElasticity": 0.0,
+                    "bounceElasticityJitter": 0.0,
+                    "bounceElasticityMultiplier": 1.0,
+                    "horizontalBounce": 1.0,
+                    "unkn34": 0.7,
+                    "unkn35": 0.0,
+                    "unkn36": 0.7,
+                    "unkn37": 0.0,
+                    "impactPlayTriggerMode": 0,
+                    "impactPlayTriggerCount": 0,
+                    "impactPlayTriggerCountJitter": 0,
+                    "ieIndex": -1,
+                    "unknEnum6_0": 5,
+                    "unknEnum6_1": 0,
+                    "unknFixed6_2": 0
+                }
+            }
+        ]
+    }
 }

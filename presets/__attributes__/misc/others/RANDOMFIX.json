@@ -1,9 +1,22 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "674258598",
-    "type_name": "RANDOMFIX",
+    "format_version": 2,
     "display_name": "RANDOMFIX（固定随机种子）",
     "category": "misc",
-    "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAA==",
-    "subgroup": "others"
+    "subgroup": "others",
+    "attribute": {
+        "type": "RANDOMFIX",
+        "fields": {
+            "useRandomSeedTableCount": 1,
+            "randomSeedTable0": 0,
+            "randomSeedTable1": 0,
+            "randomSeedTable2": 0,
+            "randomSeedTable3": 0,
+            "randomSeedTable4": 0,
+            "randomSeedTable5": 0,
+            "randomSeedTable6": 0,
+            "randomSeedTable7": 0,
+            "tableSelectionGroup": 1
+        }
+    }
 }

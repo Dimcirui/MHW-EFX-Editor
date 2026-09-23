@@ -1,9 +1,22 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "873436648",
-    "type_name": "EMITTERBOUNDARY",
+    "format_version": 2,
     "display_name": "EMITTERBOUNDARY（发射边界）",
     "category": "motion_visibility",
-    "data_bytes": "AAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-    "subgroup": "visibility"
+    "subgroup": "visibility",
+    "attribute": {
+        "type": "EMITTERBOUNDARY",
+        "fields": {
+            "typeFlag": 0,
+            "unknEnum0_1": 2,
+            "unkn1_0": 0.0,
+            "unkn1_1": 0.0,
+            "unkn1_2": 0.0,
+            "unkn1_3": 0.0,
+            "unkn1_4": 0.0,
+            "unkn1_5": 0.0,
+            "unkn1_6": 0.0,
+            "unkn1_7": 0.0
+        }
+    }
 }

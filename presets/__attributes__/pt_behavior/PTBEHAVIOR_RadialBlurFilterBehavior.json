@@ -1,8 +1,54 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1179069619",
-    "type_name": "PTBEHAVIOR",
+    "format_version": 2,
     "display_name": "PTBEHAVIOR：RadialBlurFilterBehavior",
     "category": "pt_behavior",
-    "data_bytes": "BQAAACIAAAAGAAAAbkVmZmVjdDo6UmFkaWFsQmx1ckZpbHRlckJlaGF2aW9yAEusEErgRj/FBgAAAAEAAACXjMNO4EY/xQYAAAABAAAATEgPPOBGP8UMAAAAKVyPvSjS4pvgRj/FFQAAAM3MzD3NzMw9zczMPQAAgD+yGbga4EY/xQwAAAAAAAAAcuPTPOBGP8UMAAAAAEAcRg=="
+    "attribute": {
+        "type": "PTBEHAVIOR",
+        "fields": {
+            "typeFlag": 5,
+            "b_type": "nEffect::RadialBlurFilterBehavior\u0000",
+            "params": [
+                {
+                    "unkn": 1242606667,
+                    "const0": -985708832,
+                    "t": 6,
+                    "decal_epv_color_slot": 1
+                },
+                {
+                    "unkn": 1321438359,
+                    "const0": -985708832,
+                    "t": 6,
+                    "decal_epv_color_slot": 1
+                },
+                {
+                    "unkn": 1007634508,
+                    "const0": -985708832,
+                    "t": 12,
+                    "unkn0": -0.07
+                },
+                {
+                    "unkn": -1679633880,
+                    "const0": -985708832,
+                    "t": 21,
+                    "unkn0": 0.1,
+                    "unkn1": 0.1,
+                    "unkn2": 0.1,
+                    "unkn3": 1.0
+                },
+                {
+                    "unkn": 448272818,
+                    "const0": -985708832,
+                    "t": 12,
+                    "unkn0": 0.0
+                },
+                {
+                    "unkn": 1020519282,
+                    "const0": -985708832,
+                    "t": 12,
+                    "unkn0": 10000.0
+                }
+            ]
+        }
+    }
 }

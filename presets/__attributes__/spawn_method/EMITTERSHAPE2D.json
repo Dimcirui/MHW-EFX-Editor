@@ -1,8 +1,20 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "584030352",
-    "type_name": "EMITTERSHAPE2D",
+    "format_version": 2,
     "display_name": "EMITTERSHAPE2D（2D 版发射器形状，等价 V. Emitter / Space）",
     "category": "spawn_method",
-    "data_bytes": "AQAAAAAAAADNzMw9AAAAAM3MzD0BAAAAAAAAAAAAAAAAAAAA"
+    "attribute": {
+        "type": "EMITTERSHAPE2D",
+        "fields": {
+            "typeFlag": 1,
+            "rangeX": 0.0,
+            "rangeXJitter": 0.1,
+            "rangeY": 0.0,
+            "rangeYJitter": 0.1,
+            "shapeType": 1,
+            "rangeDivideHorizontalNum": 0,
+            "rangeDivideAxis": 0,
+            "unknFixed22_1": 0
+        }
+    }
 }

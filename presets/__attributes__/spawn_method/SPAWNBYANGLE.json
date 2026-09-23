@@ -1,8 +1,17 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1916268445",
-    "type_name": "SPAWNBYANGLE",
+    "format_version": 2,
     "display_name": "SPAWNBYANGLE",
     "category": "spawn_method",
-    "data_bytes": "AAAAAA4AAAAAzc3NAAAMQwEAAAAAAQ=="
+    "attribute": {
+        "type": "SPAWNBYANGLE",
+        "fields": {
+            "typeFlag": 0,
+            "section_length": 14,
+            "unkn1": -842150656,
+            "unkn2": 140.0,
+            "unknEnum3": 1,
+            "unknFixed4": 256
+        }
+    }
 }

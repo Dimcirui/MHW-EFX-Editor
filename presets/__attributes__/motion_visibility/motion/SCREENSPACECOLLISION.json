@@ -1,9 +1,21 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "697457224",
-    "type_name": "SCREENSPACECOLLISION",
+    "format_version": 2,
     "display_name": "SCREENSPACECOLLISION（屏幕空间碰撞）",
     "category": "motion_visibility",
-    "data_bytes": "CgAAABwAAAAAzc3NAAAAAJqZGT6amRk+BQAAAAAAAAAAQJxF",
-    "subgroup": "visibility"
+    "subgroup": "visibility",
+    "attribute": {
+        "type": "SCREENSPACECOLLISION",
+        "fields": {
+            "typeFlag": 10,
+            "section_length": 28,
+            "spacer": -842150656,
+            "unknEnum1": 0,
+            "bounce": 0.15,
+            "bounceJitter": 0.15,
+            "lifespan": 5,
+            "lifespanJitter": 0,
+            "bounceConditional": 5000.0
+        }
+    }
 }

@@ -1,9 +1,93 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "276670093",
-    "type_name": "MESH",
+    "format_version": 2,
     "display_name": "MESH（模型网格）",
     "category": "renderer_body",
-    "data_bytes": "AQAAAKcAAAAAzc3NAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAP////8AAAD//////wAAAP8AAAAAAAAAAAQAAAAAAAAAAgAAACAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHZmeFxtb2RcY21cbWRfaGFoZW5cbWRfY21fZGlydDAwMFxtZF9jbV9kaXJ0MDAwAAA=",
-    "subgroup": "mesh"
+    "subgroup": "mesh",
+    "attribute": {
+        "type": "MESH",
+        "fields": {
+            "typeFlag": 1,
+            "unknFixed0_1": 167,
+            "CD1": -842150656,
+            "colorRate": 1.0,
+            "colorRateJitter": 0.0,
+            "emissiveColorRate": 0.0,
+            "emissiveColorRateJitter": 0.0,
+            "unknFloat0": 0.0,
+            "unknFloat1": 0.0,
+            "rotation": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "scale": [
+                1.0,
+                0.0,
+                1.0,
+                0.0,
+                1.0,
+                0.0
+            ],
+            "global_scale": 1.0,
+            "global_scale_jitter": 0.0,
+            "visconIndex": 0,
+            "visconIndexJitter": 0,
+            "color": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "colorRange": [
+                0,
+                0,
+                0,
+                255
+            ],
+            "emissiveColor": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "emissiveColorRange": [
+                0,
+                0,
+                0,
+                255
+            ],
+            "unknEnum7_0": 0,
+            "unknFlag7_1": 0,
+            "rotationOrder": 4,
+            "tracking_flags": 0,
+            "unknBitmask40": 2,
+            "affectedByLight": 32,
+            "shadowCastBitflag": 1,
+            "epv_color_slot1": 0,
+            "unknEnum5": 0,
+            "epv_color_slot2": 0,
+            "unknFixed6_1": 0,
+            "enableIntensity1": 0,
+            "useColorRange": 0,
+            "enableIntensity2": 0,
+            "useEmissiveColor": 0,
+            "useEmissiveColorRange": 0,
+            "enableEmissiveIntensity": 0,
+            "disableAllColorRange": 0,
+            "unknFlag_cm2_3": 0,
+            "unknBool0": 0,
+            "unknBool1": 0,
+            "unknBool2": 0,
+            "unknBool3": 0,
+            "unknBool4": 0,
+            "unknBool5": 0,
+            "BeginMod3": 0,
+            "path1": "vfx\\mod\\cm\\md_hahen\\md_cm_dirt000\\md_cm_dirt000",
+            "path2": ""
+        }
+    }
 }

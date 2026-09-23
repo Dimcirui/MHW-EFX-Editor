@@ -1,9 +1,17 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "859243212",
-    "type_name": "FADEBYDEPTH",
+    "format_version": 2,
     "display_name": "FADEBYDEPTH（按深度渐隐）",
     "category": "motion_visibility",
-    "data_bytes": "AQAAAAAAlkMAABZEAEAcRgCAO0Y=",
-    "subgroup": "visibility"
+    "subgroup": "visibility",
+    "attribute": {
+        "type": "FADEBYDEPTH",
+        "fields": {
+            "typeFlag": 1,
+            "nearFadeInStart": 300.0,
+            "nearFadeInEnd": 600.0,
+            "farFadeOutStart": 10000.0,
+            "farFadeOutEnd": 12000.0
+        }
+    }
 }

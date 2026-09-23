@@ -1,9 +1,30 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "341394325",
-    "type_name": "VELOCITY2D",
+    "format_version": 2,
     "display_name": "VELOCITY2D",
     "category": "motion_visibility",
-    "data_bytes": "CAAAAAAAAAAAALRDAACAPwAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-    "subgroup": "motion"
+    "subgroup": "motion",
+    "attribute": {
+        "type": "VELOCITY2D",
+        "fields": {
+            "typeFlag": 8,
+            "rotation": 0.0,
+            "rotationJitter": 360.0,
+            "speed": 1.0,
+            "speedJitter": 0.0,
+            "speedCoef": 1.0,
+            "speedCoefJitter": 0.0,
+            "velocityX": 0.0,
+            "velocityY": 0.0,
+            "divergenceX": 1.0,
+            "divergenceY": 1.0,
+            "velocityType": 0,
+            "gravity": 0.0,
+            "gravityJitter": 0.0,
+            "movementDelay": 0,
+            "movementDelayJitter": 0,
+            "gravityDelay": 0,
+            "gravityDelayJitter": 0
+        }
+    }
 }

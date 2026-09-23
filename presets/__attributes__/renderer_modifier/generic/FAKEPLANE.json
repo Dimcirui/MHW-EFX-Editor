@@ -1,9 +1,30 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1257264016",
-    "type_name": "FAKEPLANE",
+    "format_version": 2,
     "display_name": "FAKEPLANE（伪平面投影）",
     "category": "renderer_modifier",
-    "data_bytes": "AQAAADQAAAAAAQAAAIA7RQEAAADNzc3NAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPpEAAAAAAAAAAAAAAAA",
-    "subgroup": "generic"
+    "subgroup": "generic",
+    "attribute": {
+        "type": "FAKEPLANE",
+        "fields": {
+            "typeFlag": 1,
+            "section_length": 52,
+            "unknFixed1_0": 0,
+            "unknFlag1_1": 1,
+            "unknFlag1_2": 0,
+            "unknFlag1_3": 0,
+            "unkn2": 3000.0,
+            "unknEnum3": 1,
+            "unkn4": -842150451,
+            "unkn5_0": 0.0,
+            "unkn5_1": 0.0,
+            "unkn5_2": 0.0,
+            "unknFixed5_3": 0.0,
+            "unkn5_4": 0.0,
+            "unkn5_5": 2000.0,
+            "unkn5_6": 0.0,
+            "unknFixed5_7": 0.0,
+            "unknEnum5_8": 0
+        }
+    }
 }

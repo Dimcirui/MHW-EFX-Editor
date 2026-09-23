@@ -1,8 +1,29 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1921765292",
-    "type_name": "SPAWN",
+    "format_version": 2,
     "display_name": "SPAWN（生成/挂骨）",
     "category": "skeleton",
-    "data_bytes": "AgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
+    "attribute": {
+        "type": "SPAWN",
+        "fields": {
+            "typeFlag": 2,
+            "maxParticles": 1,
+            "spawnNum": 1,
+            "spawnNumJitter": 0,
+            "intervalFrame": 0,
+            "intervalFrameJitter": 0,
+            "loopNum": 1,
+            "loopNumJitter": 0,
+            "spawnFrame": 0,
+            "spawnFrameJitter": 0,
+            "emitterDelayFrame": 0,
+            "emitterDelayFrameJitter": 0,
+            "spawnWaitFrame": 0,
+            "spawnWaitFrameJitter": 0,
+            "emitterRepeatCount": 1,
+            "altBurstInterval": 0,
+            "altBurstIntervalJitter": 0,
+            "spawnFlags": 0
+        }
+    }
 }

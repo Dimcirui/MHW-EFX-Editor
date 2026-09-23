@@ -1,16 +1,7 @@
 {
     "efx_preset_kind": "entry",
-    "entry_kind": "standard",
+    "format_version": 2,
     "display_name": "触发体(不可见)",
-    "props": {
-        "body_type": "3205436635",
-        "unkn0": "2",
-        "attr_count": "5",
-        "null": "0",
-        "timl_length": "0"
-    },
-    "timl_bytes": "",
-    "raw": "",
     "source_label": "触发体(不可见)",
     "source_counts": {
         "extern": 0,
@@ -18,26 +9,165 @@
         "action": 1
     },
     "in_eof": false,
-    "attributes": [
-        {
-            "type_hash": "10286765",
-            "data_bytes": "AQAAAAAAlEIAAAAAAAAgwgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
-        },
-        {
-            "type_hash": "368199626",
-            "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAABAAAAAAAAAD/////"
-        },
-        {
-            "type_hash": "1921765292",
-            "data_bytes": "AgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAADcAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-        },
-        {
-            "type_hash": "201720946",
-            "data_bytes": "BQAAAAEAAAAA"
-        },
-        {
-            "type_hash": "493311524",
-            "data_bytes": "BgAAAAAABQAAAAAAAAAAAAAAAAA="
-        }
-    ]
+    "entry": {
+        "kind": "standard",
+        "bodyType": 3205436635,
+        "unkn0": 2,
+        "null": 0,
+        "timl": null,
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "translate": [
+                        74.0,
+                        0.0,
+                        -40.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 3,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 1,
+                    "unknFlag1": 0,
+                    "constRelease": 4,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 2,
+                    "maxParticles": 1,
+                    "spawnNum": 1,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 0,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 55,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "DUMMY",
+                "fields": {
+                    "typeFlag": 5,
+                    "section_length": 1,
+                    "unknFixed1": 0
+                }
+            },
+            {
+                "type": "PTLIFE",
+                "fields": {
+                    "typeFlag": 6,
+                    "unknFixed1": 0,
+                    "status": 0,
+                    "unknEnum3": 5,
+                    "relationIndex": 0,
+                    "unknEnum5": 0,
+                    "unknFrame0": 0,
+                    "unknFrame0Jitter": 0,
+                    "unknFrame1": 0,
+                    "unknFrame1Jitter": 0
+                }
+            }
+        ]
+    }
 }

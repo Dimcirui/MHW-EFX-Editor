@@ -1,8 +1,26 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1111321825",
-    "type_name": "EMITTERSHAPEMESH",
+    "format_version": 2,
     "display_name": "EMITTERSHAPEMESH（网格顶点发射器——粒子从引用 mesh 的顶点生成）",
     "category": "spawn_method",
-    "data_bytes": "BwAAABgAAAAAzc3Nzc3Nzc3Nzc0BAQAAAAAAAAAAAAAA"
+    "attribute": {
+        "type": "EMITTERSHAPEMESH",
+        "fields": {
+            "typeFlag": 7,
+            "unknFixed0_1": 24,
+            "unkn1_0": -842150656,
+            "unkn1_1": -842150451,
+            "unkn1_2": -842150451,
+            "unknFlag2_0": 1,
+            "ddsUsageType": 1,
+            "unknFlag2_2": 0,
+            "visconIndex": 0,
+            "unknEnum2_4": 0,
+            "unknEnum2_5": 0,
+            "unknEnum2_6": 0,
+            "unknEnum2_7": 0,
+            "unknBitmask3": 0,
+            "path1": ""
+        }
+    }
 }

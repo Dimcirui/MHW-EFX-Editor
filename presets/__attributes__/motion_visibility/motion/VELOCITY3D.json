@@ -1,9 +1,39 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "222458580",
-    "type_name": "VELOCITY3D",
-    "display_name": "VELOCITY3D\uff08\u901f\u5ea6/\u8fd0\u52a8\uff09",
+    "format_version": 2,
+    "display_name": "VELOCITY3D（速度/运动）",
     "category": "motion_visibility",
-    "data_bytes": "AQAAAAEAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-    "subgroup": "motion"
+    "subgroup": "motion",
+    "attribute": {
+        "type": "VELOCITY3D",
+        "fields": {
+            "typeFlag": 1,
+            "baseAxis": 1,
+            "rotOrder": 4,
+            "rotationX": 0.0,
+            "rotationXJitter": 0.0,
+            "rotationY": 0.0,
+            "rotationYJitter": 0.0,
+            "rotationZ": 0.0,
+            "rotationZJitter": 0.0,
+            "speed": 0.0,
+            "speedJitter": 0.0,
+            "speedCoef": 1.0,
+            "speedCoefJitter": 0.0,
+            "offsetX": 0.0,
+            "offsetY": 0.0,
+            "offsetZ": 0.0,
+            "sizeX": 1.0,
+            "sizeY": 1.0,
+            "sizeZ": 1.0,
+            "velocityType": 1,
+            "gravity": 0.0,
+            "gravity_jitter": 0.0,
+            "movementDelay": 0,
+            "movementDelayJitter": 0,
+            "gravityDelay": 0,
+            "gravityDelayJitter": 0,
+            "minMovementThreshold": 0.0
+        }
+    }
 }

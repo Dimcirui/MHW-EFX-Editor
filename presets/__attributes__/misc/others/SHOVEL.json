@@ -1,9 +1,30 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1240420851",
-    "type_name": "SHOVEL",
+    "format_version": 2,
     "display_name": "SHOVEL（地面扰动）",
     "category": "misc",
-    "data_bytes": "AAAAAD4AAAAAzc3NAABwQgAAAAAAAHBCAAAAAAAAcEIAAAAAAAA0wwAAtEMAAAA/AAAAAAAAAAAAAAAAAgAAAAEBAAAAAA==",
-    "subgroup": "others"
+    "subgroup": "others",
+    "attribute": {
+        "type": "SHOVEL",
+        "fields": {
+            "typeFlag": 0,
+            "section_length": 62,
+            "spacer": -842150656,
+            "width": 60.0,
+            "widthJitter": 0.0,
+            "height": 60.0,
+            "heightJitter": 0.0,
+            "length": 60.0,
+            "lengthJitter": 0.0,
+            "unkn09": -180.0,
+            "unkn10": 360.0,
+            "unkn11": 0.5,
+            "unknFixed12": 0,
+            "unknEnum13": 0,
+            "unknEnum14": 0,
+            "pattern": 2,
+            "unknBitmask16": 257,
+            "unknEnum17": 0
+        }
+    }
 }

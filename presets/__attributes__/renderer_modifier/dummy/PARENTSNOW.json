@@ -1,9 +1,37 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "215153612",
-    "type_name": "PARENTSNOW",
+    "format_version": 2,
     "display_name": "PARENTSNOW",
     "category": "renderer_modifier",
-    "data_bytes": "BwAAAEgAAAAAzc3NyAAAALKysv8AAAAAAADNzQAA8MEAAEjCAAAAP83MTD8Azc3NzczMPQAAAAAAAAA/AAAAPwAAAD8AAAA/AACAPwAAgD8=",
-    "subgroup": "dummy"
+    "subgroup": "dummy",
+    "attribute": {
+        "type": "PARENTSNOW",
+        "fields": {
+            "typeFlag": 7,
+            "section_length": 72,
+            "unkn1": -842150656,
+            "unknFixed2": 200,
+            "color": [
+                178,
+                178,
+                178,
+                255
+            ],
+            "unknEnum3_0": 0,
+            "unkn3_1": -842203136,
+            "unkn4_0": -30.0,
+            "unkn4_1": -50.0,
+            "unkn4_2": 0.5,
+            "unkn4_3": 0.8,
+            "unkn4_4": -431595520.0,
+            "unkn4_5": 0.1,
+            "unknFlag4_6": 0.0,
+            "unkn4_7": 0.5,
+            "unkn4_8": 0.5,
+            "unkn4_9": 0.5,
+            "unkn4_10": 0.5,
+            "unknFixed4_11": 1.0,
+            "unkn4_12": 1.0
+        }
+    }
 }

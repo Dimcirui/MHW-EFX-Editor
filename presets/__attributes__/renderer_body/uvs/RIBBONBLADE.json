@@ -1,9 +1,90 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "319363982",
-    "type_name": "RIBBONBLADE",
+    "format_version": 2,
     "display_name": "RIBBONBLADE（刀刃拖尾）",
     "category": "renderer_body",
-    "data_bytes": "AQAAAEgAAAAAzc3NBQAAAAAA+kIFAAAABAAAAADNzc0AAAAAAQAAAAAA+kMAAAAAAAAAAAAAgD8AAIA/AM3NzQAAAAAAAIA/AAAAAAAAAAAgAAAAAM3NzQAAAAD/////AAAAAP////8Azc3NAAAAAAAAgD8gAAAAAM3NzQAAAAD///8yAAAAAP////8Azc3NAAAAAM3MzD0mAAAAAAHNzQAAAAAAAAAAAACAPwAAAAAAAKBAAAAAAAAAgD8AAAAAAAAnAAAAdmZ4XGRkc1xjbVxjbV9mbG93bWFwXGNtX2Zsb3dfMDA5X0ZfTk0A",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "RIBBONBLADE",
+        "fields": {
+            "typeFlag": 1,
+            "unknFixed0_1": 72,
+            "spacer0": -842150656,
+            "widthDirection": 5,
+            "width": 125.0,
+            "length": 5,
+            "unknEnum05_1": 4,
+            "spacer1": -842150656,
+            "unknFlag07_0": 0,
+            "lengthMode": 1,
+            "maxLengthLimit": 500.0,
+            "contractionSpeed": 0.0,
+            "colourTransitionPoint": 0.0,
+            "emissiveStrength": 1.0,
+            "unknFlag08": 1.0,
+            "spacer2": -842150656,
+            "unknEnum10": 0,
+            "uvRepetition": 1.0,
+            "unknFlag12_0": 0.0,
+            "unknFlag12_1": 0,
+            "unknFixed12_2": 32,
+            "spacer3": -842150656,
+            "head": {
+                "epvColorSlot": 0,
+                "color1": [
+                    255,
+                    255,
+                    255,
+                    255
+                ],
+                "null2": 0,
+                "color2": [
+                    255,
+                    255,
+                    255,
+                    255
+                ],
+                "spacer4": -842150656,
+                "unkn15": 0,
+                "size": 1.0,
+                "unkn17": 32,
+                "unkn18_0": 0,
+                "unkn18_1": 205,
+                "spacer5": -12851
+            },
+            "tailEnd": {
+                "epvColorSlot": 0,
+                "color1": [
+                    255,
+                    255,
+                    255,
+                    50
+                ],
+                "null2": 0,
+                "color2": [
+                    255,
+                    255,
+                    255,
+                    255
+                ],
+                "spacer4": -842150656,
+                "unkn15": 0,
+                "size": 0.1,
+                "unkn17": 38,
+                "unkn18_0": 0,
+                "unkn18_1": 1,
+                "spacer5": -12851
+            },
+            "flowmapSpeed": 0.0,
+            "flowmapSpeedJitter": 0.0,
+            "flowmapSpeedCoef": 1.0,
+            "flowmapSpeedCoefJitter": 0.0,
+            "flowmapStrength": 5.0,
+            "flowmapStrengthJitter": 0.0,
+            "flowmapStrengthCoef": 1.0,
+            "flowmapStrengthCoefJitter": 0.0,
+            "NULL9": 0,
+            "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_009_F_NM\u0000"
+        }
+    }
 }

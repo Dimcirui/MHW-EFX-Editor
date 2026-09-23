@@ -1,16 +1,7 @@
 {
     "efx_preset_kind": "entry",
-    "entry_kind": "standard",
+    "format_version": 2,
     "display_name": "刀光拖尾",
-    "props": {
-        "body_type": "1782718100",
-        "unkn0": "0",
-        "attr_count": "8",
-        "null": "0",
-        "timl_length": "0"
-    },
-    "timl_bytes": "",
-    "raw": "",
     "source_label": "刀光拖尾",
     "source_counts": {
         "extern": 0,
@@ -18,38 +9,310 @@
         "action": 0
     },
     "in_eof": false,
-    "attributes": [
-        {
-            "type_hash": "10286765",
-            "data_bytes": "AQAAAAAA+MEAAAAAAADYwQAAAAAAAMBCAAAAAAAAskIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAB6RAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
-        },
-        {
-            "type_hash": "368199626",
-            "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAD/////"
-        },
-        {
-            "type_hash": "1921765292",
-            "data_bytes": "AgAAAAEAAAABAAAAAAAAAA8AAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-        },
-        {
-            "type_hash": "1320868484",
-            "data_bytes": "CgAAAAAAAAAAAAAABQAAAAAAAAAAAAAAAAAAAB4AAAAAAAAAAAAAAAAAAAABAAAA"
-        },
-        {
-            "type_hash": "319363982",
-            "data_bytes": "AQAAAEgAAAAAzc3NBQAAAAAAyEIeAAAABAAAAADNzc0AAAAAAQAAAACAu0QAAMhEAAAAAAAAQEEAAAAAAM3NzQEAAABmZiY/AAAAAAAAAAAgAAAAAM3NzQAAAAD/////AAAAAP////8Azc3NAAAAAAAAgD8gAAAAAM3NzQAAAAD/////AAAAAP////8Azc3NAAAAAAAAgD8mAAAAAADNzQAAAD8AAAAAAACAPwAAAADNzEw9AAAAAAAAgD8AAAAAAAAnAAAAdmZ4XGRkc1xjbVxjbV9mbG93bWFwXGNtX2Zsb3dfMDA4X0ZfTk0A"
-        },
-        {
-            "type_hash": "1698970185",
-            "data_bytes": "BgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAABsAAAB2ZnhcdXZzXGVtXGVtMDM3XGVtMDM3XzAwMAA="
-        },
-        {
-            "type_hash": "61219887",
-            "data_bytes": "BwAAAAAAgD4AAIA/AAAAAAEAAAA="
-        },
-        {
-            "type_hash": "1978267738",
-            "data_bytes": "BAAAAGgAAAAAzc3NAQAAAAAAoMAAAKBAAAAAAAAAAAACAAAAAACAPwAAgD8AAAAAAACAPwAAgD8AAIA/zcxMPwAAAAAihdK1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP4AAQAAAAAAAAAAAAA="
-        }
-    ]
+    "entry": {
+        "kind": "standard",
+        "bodyType": 1782718100,
+        "unkn0": 0,
+        "null": 0,
+        "timl": null,
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "translate": [
+                        -31.0,
+                        0.0,
+                        -27.0,
+                        0.0,
+                        96.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        89.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        1000.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 3,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 1,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 2,
+                    "maxParticles": 1,
+                    "spawnNum": 1,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 15,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 0,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 10,
+                    "fadeInDuration": 0,
+                    "fadeInDurationJitter": 0,
+                    "duration": 5,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 30,
+                    "fadeOutDurationJitter": 0,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 1
+                }
+            },
+            {
+                "type": "RIBBONBLADE",
+                "fields": {
+                    "typeFlag": 1,
+                    "unknFixed0_1": 72,
+                    "spacer0": -842150656,
+                    "widthDirection": 5,
+                    "width": 100.0,
+                    "length": 30,
+                    "unknEnum05_1": 4,
+                    "spacer1": -842150656,
+                    "unknFlag07_0": 0,
+                    "lengthMode": 1,
+                    "maxLengthLimit": 1500.0,
+                    "contractionSpeed": 1600.0,
+                    "colourTransitionPoint": 0.0,
+                    "emissiveStrength": 12.0,
+                    "unknFlag08": 0.0,
+                    "spacer2": -842150656,
+                    "unknEnum10": 1,
+                    "uvRepetition": 0.65,
+                    "unknFlag12_0": 0.0,
+                    "unknFlag12_1": 0,
+                    "unknFixed12_2": 32,
+                    "spacer3": -842150656,
+                    "head": {
+                        "epvColorSlot": 0,
+                        "color1": [
+                            255,
+                            255,
+                            255,
+                            255
+                        ],
+                        "null2": 0,
+                        "color2": [
+                            255,
+                            255,
+                            255,
+                            255
+                        ],
+                        "spacer4": -842150656,
+                        "unkn15": 0,
+                        "size": 1.0,
+                        "unkn17": 32,
+                        "unkn18_0": 0,
+                        "unkn18_1": 205,
+                        "spacer5": -12851
+                    },
+                    "tailEnd": {
+                        "epvColorSlot": 0,
+                        "color1": [
+                            255,
+                            255,
+                            255,
+                            255
+                        ],
+                        "null2": 0,
+                        "color2": [
+                            255,
+                            255,
+                            255,
+                            255
+                        ],
+                        "spacer4": -842150656,
+                        "unkn15": 0,
+                        "size": 1.0,
+                        "unkn17": 38,
+                        "unkn18_0": 0,
+                        "unkn18_1": 0,
+                        "spacer5": -12851
+                    },
+                    "flowmapSpeed": 0.5,
+                    "flowmapSpeedJitter": 0.0,
+                    "flowmapSpeedCoef": 1.0,
+                    "flowmapSpeedCoefJitter": 0.0,
+                    "flowmapStrength": 0.05,
+                    "flowmapStrengthJitter": 0.0,
+                    "flowmapStrengthCoef": 1.0,
+                    "flowmapStrengthCoefJitter": 0.0,
+                    "NULL9": 0,
+                    "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_008_F_NM\u0000"
+                }
+            },
+            {
+                "type": "UVSEQUENCE",
+                "fields": {
+                    "typeFlag": 6,
+                    "sequenceNo": 0,
+                    "sequenceNoJitter": 0,
+                    "patternNo": 0,
+                    "patternNoJitter": 0,
+                    "playSpeed": 0.0,
+                    "playSpeedJitter": 0.0,
+                    "playSpeedCoef": 1.0,
+                    "playSpeedCoefJitter": 0.0,
+                    "loopingMode": 0,
+                    "loopingOrientation": 0,
+                    "loopingPad": 0,
+                    "path": "vfx\\uvs\\em\\em037\\em037_000\u0000"
+                }
+            },
+            {
+                "type": "ALPHACORRECTION",
+                "fields": {
+                    "unkn0": 7,
+                    "lowPass": 0.25,
+                    "contrast_gamma": 1.0,
+                    "unkn3": 0.0,
+                    "unknFlag2": 1
+                }
+            },
+            {
+                "type": "SHADERSETTINGS",
+                "fields": {
+                    "typeFlag": 4,
+                    "unknEnum1": 104,
+                    "spacer": -842150656,
+                    "unknFlag2": 1,
+                    "depthBias": -5.0,
+                    "softParticleDistance": 5.0,
+                    "unknBitmask3_0": 0,
+                    "unknEnum3_1": 0,
+                    "controlBitflag": 2,
+                    "unkn4_0": 1.0,
+                    "unkn4_1": 1.0,
+                    "unkn4_2": 0.0,
+                    "unkn4_3": 1.0,
+                    "unkn4_4": 1.0,
+                    "unkn4_5": 1.0,
+                    "unkn4_6": 0.8,
+                    "unkn4_7": 0.0,
+                    "presetId": -1244494558,
+                    "unkn4_9": 0.0,
+                    "unkn4_10": 0.0,
+                    "unkn4_11": 0.0,
+                    "unknFixed4_12": 0.0,
+                    "unkn4_13": 0.0,
+                    "unknBitmask4_14": 0,
+                    "unkn4_15": 0,
+                    "objectInteractionFlag0": 0,
+                    "objectInteractionFlag1": 0,
+                    "objectInteractionFlag2": 0,
+                    "objectInteractionFlag3": 254,
+                    "unknBool0": 0,
+                    "unknBool1": 1,
+                    "unknBool2": 0,
+                    "unknBool3": 0,
+                    "unknEnum5_0": 0,
+                    "unknBitmask5_1": 0
+                }
+            }
+        ]
+    }
 }

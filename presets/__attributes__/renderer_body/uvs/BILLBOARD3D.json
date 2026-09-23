@@ -1,9 +1,55 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1136904414",
-    "type_name": "BILLBOARD3D",
+    "format_version": 2,
     "display_name": "BILLBOARD3D（摄像机面片）",
     "category": "renderer_body",
-    "data_bytes": "DAAAAAAAAAD/////AAAA/wAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAMhCAAAAAAAAyEIAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAABAAAAAAAAAAAAAAAAAAAAAACAPwEAAAAAAAAAAA==",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "BILLBOARD3D",
+        "fields": {
+            "typeFlag": 12,
+            "applicationRule": 0,
+            "color": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "colorRange": [
+                0,
+                0,
+                0,
+                255
+            ],
+            "brightness": 1.0,
+            "brightnessJitter": 0.0,
+            "useColorRange": 0,
+            "blendMode": 0,
+            "correctColorNo": 0,
+            "colorRangeCorrectColorNo": 0,
+            "rotation": 0.0,
+            "rotationJitter": 0.0,
+            "scale": 1.0,
+            "scaleJitter": 0.0,
+            "width": 100.0,
+            "widthJitter": 0.0,
+            "height": 100.0,
+            "heightJitter": 0.0,
+            "flowmapSpeed": 0.0,
+            "flowmapSpeedJitter": 0.0,
+            "flowmapSpeedCoef": 1.0,
+            "flowmapSpeedCoefJitter": 0.0,
+            "flowmapStrength": 0.0,
+            "flowmapStrengthJitter": 0.0,
+            "flowmapStrengthCoef": 1.0,
+            "flowmapStrengthCoefJitter": 0.0,
+            "divideNum": 0,
+            "enableGPUParticle": 0,
+            "fieldInfluenceRate": 0.0,
+            "fieldInfluenceRateMultiplier": 1.0,
+            "lightGroup": 1,
+            "unknFlag9": 0,
+            "path": "\u0000"
+        }
+    }
 }

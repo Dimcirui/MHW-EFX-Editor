@@ -1,8 +1,32 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "368199626",
-    "type_name": "PARENTOPTIONS",
+    "format_version": 2,
     "display_name": "PARENTOPTIONS（父级跟随）",
     "category": "skeleton",
-    "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAD/////"
+    "attribute": {
+        "type": "PARENTOPTIONS",
+        "fields": {
+            "typeFlag": 3,
+            "relationPos": [
+                1,
+                1,
+                1
+            ],
+            "relationRot": [
+                1,
+                1,
+                1
+            ],
+            "relationScl": [
+                1,
+                1,
+                1
+            ],
+            "particleUseLocal": 1,
+            "unknFlag1": 0,
+            "constRelease": 0,
+            "constReleaseJitter": 0,
+            "jointNo": -1
+        }
+    }
 }

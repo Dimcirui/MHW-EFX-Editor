@@ -1,63 +1,340 @@
 {
- "efx_preset_kind": "entry",
- "entry_kind": "standard",
- "display_name": "带外部引用的面片",
- "props": {
-  "body_type": "2275591116",
-  "unkn0": "2",
-  "attr_count": "9",
-  "null": "0",
-  "timl_length": "0"
- },
- "timl_bytes": "",
- "raw": "",
- "source_label": "带外部引用的面片",
- "source_counts": {
-  "extern": 6,
-  "entry": 7,
-  "action": 0
- },
- "in_eof": false,
- "attributes": [
-  {
-   "type_hash": "351869514",
-   "data_bytes": "AAAAAAUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAA"
-  },
-  {
-   "type_hash": "10286765",
-   "data_bytes": "AQAAAAAAAAAAAAAAAACgwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADMzMz8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
-  },
-  {
-   "type_hash": "368199626",
-   "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAD/////"
-  },
-  {
-   "type_hash": "1921765292",
-   "data_bytes": "AgAAAAMAAAADAAAAAAAAAAYAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1320868484",
-   "data_bytes": "AQAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABYAAAAEAAAAAAAAAAAAAAABAAAA"
-  },
-  {
-   "type_hash": "1003792849",
-   "data_bytes": "AwAAAAAAQEAAAAAAAACAwAAA4EEAAOBAAAAAQAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAALRDAAAAAAMAAAADAAAAAACAPwAAgD8AAAAAAQAAAA=="
-  },
-  {
-   "type_hash": "1136904414",
-   "data_bytes": "AgAAACQAAAD///8ADTUA/wAAoEAAAAAAAAAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAEhCAAAAAAAASEIAAAAAAAAAPwAAAAAAAIA/AAAAAAAAAD8AAAAAAACAPwAAAAAnAAAAAAAAAAAAAAAAAAAAAACAPwIAAAAAAAAAdmZ4XGRkc1xjbVxjbV9mbG93bWFwXGNtX2Zsb3dfMDA5X0ZfTk0A"
-  },
-  {
-   "type_hash": "480396424",
-   "data_bytes": "CAAAAArXozwAAAAApHB9PwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAA=="
-  },
-  {
-   "type_hash": "1698970185",
-   "data_bytes": "BQAAAAAAAAAAAAAAAAAAAD8AAAAAAIA/AAAAAAAAgD8AAAAAKQMAABYAAAB2ZnhcdXZzXGNtXGNtX2V0Y18wMDAA"
-  },
-  {
-   "type_hash": "1978267738",
-   "data_bytes": "AQAAAGgAAAAAzc3NAAAAAAAAkMEAAPDBAAAAAAAAAAACAAAAAACAP5qZmT7NzEw+AACAPwAAgD8AAIA/AACAPwAAyEL/////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////8AAQEAAAAAAAAAAAA="
-  }
- ]
+    "efx_preset_kind": "entry",
+    "format_version": 2,
+    "display_name": "带外部引用的面片",
+    "source_label": "带外部引用的面片",
+    "source_counts": {
+        "extern": 6,
+        "entry": 7,
+        "action": 0
+    },
+    "in_eof": false,
+    "entry": {
+        "kind": "standard",
+        "bodyType": 2275591116,
+        "unkn0": 2,
+        "null": 0,
+        "timl": null,
+        "attributes": [
+            {
+                "type": "EXTERNREFERENCE",
+                "fields": {
+                    "typeFlag": 0,
+                    "referenceIndex": 5,
+                    "trigger_condition": 0,
+                    "index0": 0,
+                    "index1": 0,
+                    "lerp": 0.0,
+                    "transitionDuration": 0,
+                    "triggerDelay": 0,
+                    "unknFlag1_6": 1
+                }
+            },
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "translate": [
+                        0.0,
+                        0.0,
+                        -20.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        0.7,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 3,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 1,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 2,
+                    "maxParticles": 3,
+                    "spawnNum": 3,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 6,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 0,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 1,
+                    "fadeInDuration": 10,
+                    "fadeInDurationJitter": 0,
+                    "duration": 0,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 22,
+                    "fadeOutDurationJitter": 4,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 1
+                }
+            },
+            {
+                "type": "EMITTERSHAPE3D",
+                "fields": {
+                    "typeFlag": 3,
+                    "rangeXYZ": [
+                        3.0,
+                        0.0,
+                        -4.0,
+                        28.0,
+                        7.0,
+                        2.0
+                    ],
+                    "shapeType": 2,
+                    "rangeDivideAxis": 0,
+                    "rotationCorrect": 0,
+                    "localRotationX": 0.0,
+                    "localRotationY": 0.0,
+                    "localRotationZ": 0.0,
+                    "rotationOrder": 4,
+                    "scanAngleHorizontal": 360.0,
+                    "scanAngleVertical": 0.0,
+                    "rangeDivideHorizontalNum": 3,
+                    "rangeDivideVerticalNum": 3,
+                    "radiusEnd": 1.0,
+                    "radiusOrigin": 1.0,
+                    "rayCastDependency": 0,
+                    "unknFlag4": 1
+                }
+            },
+            {
+                "type": "BILLBOARD3D",
+                "fields": {
+                    "typeFlag": 2,
+                    "applicationRule": 36,
+                    "color": [
+                        255,
+                        255,
+                        255,
+                        0
+                    ],
+                    "colorRange": [
+                        13,
+                        53,
+                        0,
+                        255
+                    ],
+                    "brightness": 5.0,
+                    "brightnessJitter": 0.0,
+                    "useColorRange": 0,
+                    "blendMode": 1,
+                    "correctColorNo": 1,
+                    "colorRangeCorrectColorNo": 0,
+                    "rotation": 0.0,
+                    "rotationJitter": 0.0,
+                    "scale": 1.0,
+                    "scaleJitter": 0.0,
+                    "width": 50.0,
+                    "widthJitter": 0.0,
+                    "height": 50.0,
+                    "heightJitter": 0.0,
+                    "flowmapSpeed": 0.5,
+                    "flowmapSpeedJitter": 0.0,
+                    "flowmapSpeedCoef": 1.0,
+                    "flowmapSpeedCoefJitter": 0.0,
+                    "flowmapStrength": 0.5,
+                    "flowmapStrengthJitter": 0.0,
+                    "flowmapStrengthCoef": 1.0,
+                    "flowmapStrengthCoefJitter": 0.0,
+                    "divideNum": 0,
+                    "enableGPUParticle": 0,
+                    "fieldInfluenceRate": 0.0,
+                    "fieldInfluenceRateMultiplier": 1.0,
+                    "lightGroup": 2,
+                    "unknFlag9": 0,
+                    "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_009_F_NM\u0000"
+                }
+            },
+            {
+                "type": "SCALEANIM",
+                "fields": {
+                    "typeFlag": 8,
+                    "initialScaleSpeed": 0.02,
+                    "initialScaleSpeedJitter": 0.0,
+                    "initialScaleAccel": 0.99,
+                    "initialScaleAccelJitter": 0.0,
+                    "scaleSpeedX": 0.0,
+                    "scaleSpeedXJitter": 0.0,
+                    "scaleAccelX": 1.0,
+                    "scaleAccelXJitter": 0.0,
+                    "scaleSpeedY": 0.0,
+                    "scaleSpeedYJitter": 0.0,
+                    "scaleAccelY": 1.0,
+                    "scaleAccelYJitter": 0.0,
+                    "scaleSpeedZ": 0.0,
+                    "scaleSpeedZJitter": 0.0,
+                    "scaleAccelZ": 1.0,
+                    "scaleAccelZJitter": 0.0,
+                    "animUpdateStart": 0,
+                    "animUpdateStartJitter": 0
+                }
+            },
+            {
+                "type": "UVSEQUENCE",
+                "fields": {
+                    "typeFlag": 5,
+                    "sequenceNo": 0,
+                    "sequenceNoJitter": 0,
+                    "patternNo": 0,
+                    "patternNoJitter": 63,
+                    "playSpeed": 1.0,
+                    "playSpeedJitter": 0.0,
+                    "playSpeedCoef": 1.0,
+                    "playSpeedCoefJitter": 0.0,
+                    "loopingMode": 41,
+                    "loopingOrientation": 3,
+                    "loopingPad": 0,
+                    "path": "vfx\\uvs\\cm\\cm_etc_000\u0000"
+                }
+            },
+            {
+                "type": "SHADERSETTINGS",
+                "fields": {
+                    "typeFlag": 1,
+                    "unknEnum1": 104,
+                    "spacer": -842150656,
+                    "unknFlag2": 0,
+                    "depthBias": -18.0,
+                    "softParticleDistance": -30.0,
+                    "unknBitmask3_0": 0,
+                    "unknEnum3_1": 0,
+                    "controlBitflag": 2,
+                    "unkn4_0": 1.0,
+                    "unkn4_1": 0.3,
+                    "unkn4_2": 0.2,
+                    "unkn4_3": 1.0,
+                    "unkn4_4": 1.0,
+                    "unkn4_5": 1.0,
+                    "unkn4_6": 1.0,
+                    "unkn4_7": 100.0,
+                    "presetId": -1,
+                    "unkn4_9": 0.0,
+                    "unkn4_10": 0.0,
+                    "unkn4_11": 0.0,
+                    "unknFixed4_12": 0.0,
+                    "unkn4_13": 0.0,
+                    "unknBitmask4_14": 0,
+                    "unkn4_15": 0,
+                    "objectInteractionFlag0": 255,
+                    "objectInteractionFlag1": 255,
+                    "objectInteractionFlag2": 255,
+                    "objectInteractionFlag3": 255,
+                    "unknBool0": 0,
+                    "unknBool1": 1,
+                    "unknBool2": 1,
+                    "unknBool3": 0,
+                    "unknEnum5_0": 0,
+                    "unknBitmask5_1": 0
+                }
+            }
+        ]
+    }
 }

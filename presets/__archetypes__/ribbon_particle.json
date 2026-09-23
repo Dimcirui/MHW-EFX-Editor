@@ -1,67 +1,518 @@
 {
- "efx_preset_kind": "entry",
- "entry_kind": "standard",
- "display_name": "丝带粒子",
- "props": {
-  "body_type": "4132340719",
-  "unkn0": "0",
-  "attr_count": "10",
-  "null": "0",
-  "timl_length": "0"
- },
- "timl_bytes": "",
- "raw": "",
- "source_label": "丝带粒子",
- "source_counts": {
-  "extern": 0,
-  "entry": 19,
-  "action": 3
- },
- "in_eof": false,
- "attributes": [
-  {
-   "type_hash": "10286765",
-   "data_bytes": "AQAAAAAAAAAAAAAAAAAAQQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAoEEAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
-  },
-  {
-   "type_hash": "368199626",
-   "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAD/////"
-  },
-  {
-   "type_hash": "1921765292",
-   "data_bytes": "AgAAAAgAAAAIAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1320868484",
-   "data_bytes": "CwAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAA8AAAAAAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1003792849",
-   "data_bytes": "CQAAAAAAQEEAAAAAzczMPQAAAAAAAEBBAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAALRDAAA0QwAAAAAIAAAAAACAPwAAgD8AAAAAAQAAAA=="
-  },
-  {
-   "type_hash": "222458580",
-   "data_bytes": "CgAAAAEAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABIQgAAAACamVk/AAAAAAAAAADNzMy8AAAAAM3MjD/NzIw/zcyMPwEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "733291506",
-   "data_bytes": "CAAAAGABAAAAzc3N/uWZ/wDNzc3/////Ac3NzQAAoEAAAAAAAAAAAM3MTD4AAAAAAADIQQAAAAAAAMhCAAAAAAAAAAAAAIA/AAAAAAAAgD8IAAAAAAAAAM3MzD0BAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQEBAADNzQAAgD/Nzc3NAAAAPzMzcz8AAIA/AAAAAGZmZj8AAAAAzczMPQAAAAAAzc3NAAAAAAAAAAAAAAAAAAAAAM3MzD0AAAAAAQAAAAAAAAAAzc3NAACAPwAAAAAAAIA/AAAAAM3MzD0AAAAAAACAPwAAAAAAAM3NAAAAAAAAAAAAzc3NAACAPwAAgD8AAIA/AACAPwDNzc2amZk+zczMPgAAzc0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM3Nzc3Nzc3Nzc3Nzc0AAAAAAAAAAAAAAAAAAAAAdmZ4XGRkc1xjbVxjbV9mbG93bWFwXGNtX2Zsb3dfMDA5X0ZfTk0A"
-  },
-  {
-   "type_hash": "480396424",
-   "data_bytes": "CAAAAArXozwAAAAApHB9PwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAA=="
-  },
-  {
-   "type_hash": "1698970185",
-   "data_bytes": "BgAAABcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAACAAAABgAAAB2ZnhcdXZzXGNtXGNtX2xpZ2h0XzAwMAA="
-  },
-  {
-   "type_hash": "1978267738",
-   "data_bytes": "BAAAAGgAAAAAzc3NAQAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAACAPwAAgD8AAAAAAACAPwAAgD8AAIA/AACAPwAAyEL/////AAAAAAAAyEEAAAAAAAAAAAAAAAAAAAAAAAAAAP////8AAQAAAAAAAAAAAAA="
-  },
-  {
-   "type_hash": "459578090",
-   "data_bytes": "BwAAAAAAAP8AAAAA/////wAAgD8AAAAAAADAPwAAgD8AAAAAAAAAAAAAAAAUAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAA=="
-  }
- ]
+    "efx_preset_kind": "entry",
+    "format_version": 2,
+    "display_name": "丝带粒子",
+    "source_label": "丝带粒子",
+    "source_counts": {
+        "extern": 0,
+        "entry": 19,
+        "action": 3
+    },
+    "in_eof": false,
+    "entry": {
+        "kind": "standard",
+        "bodyType": 4132340719,
+        "unkn0": 0,
+        "null": 0,
+        "timl": null,
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "translate": [
+                        0.0,
+                        0.0,
+                        8.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        20.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 3,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 1,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 2,
+                    "maxParticles": 8,
+                    "spawnNum": 8,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 0,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 4,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 11,
+                    "fadeInDuration": 0,
+                    "fadeInDurationJitter": 0,
+                    "duration": 1,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 15,
+                    "fadeOutDurationJitter": 0,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 0
+                }
+            },
+            {
+                "type": "EMITTERSHAPE3D",
+                "fields": {
+                    "typeFlag": 9,
+                    "rangeXYZ": [
+                        12.0,
+                        0.0,
+                        0.1,
+                        0.0,
+                        12.0,
+                        0.0
+                    ],
+                    "shapeType": 2,
+                    "rangeDivideAxis": 0,
+                    "rotationCorrect": 0,
+                    "localRotationX": 0.0,
+                    "localRotationY": 0.0,
+                    "localRotationZ": 0.0,
+                    "rotationOrder": 4,
+                    "scanAngleHorizontal": 360.0,
+                    "scanAngleVertical": 180.0,
+                    "rangeDivideHorizontalNum": 0,
+                    "rangeDivideVerticalNum": 8,
+                    "radiusEnd": 1.0,
+                    "radiusOrigin": 1.0,
+                    "rayCastDependency": 0,
+                    "unknFlag4": 1
+                }
+            },
+            {
+                "type": "VELOCITY3D",
+                "fields": {
+                    "typeFlag": 10,
+                    "baseAxis": 1,
+                    "rotOrder": 4,
+                    "rotationX": 0.0,
+                    "rotationXJitter": 0.0,
+                    "rotationY": 0.0,
+                    "rotationYJitter": 0.0,
+                    "rotationZ": 0.0,
+                    "rotationZJitter": 0.0,
+                    "speed": 50.0,
+                    "speedJitter": 0.0,
+                    "speedCoef": 0.85,
+                    "speedCoefJitter": 0.0,
+                    "offsetX": 0.0,
+                    "offsetY": -0.025,
+                    "offsetZ": 0.0,
+                    "sizeX": 1.1,
+                    "sizeY": 1.1,
+                    "sizeZ": 1.1,
+                    "velocityType": 1,
+                    "gravity": 0.0,
+                    "gravity_jitter": 0.0,
+                    "movementDelay": 0,
+                    "movementDelayJitter": 0,
+                    "gravityDelay": 0,
+                    "gravityDelayJitter": 0,
+                    "minMovementThreshold": 0.0
+                }
+            },
+            {
+                "type": "RIBBON",
+                "fields": {
+                    "typeFlag": 8,
+                    "section_length": 352,
+                    "spacer0": -842150656,
+                    "color": [
+                        254,
+                        229,
+                        153,
+                        255
+                    ],
+                    "useColorRange": 0,
+                    "spacer1": [
+                        205,
+                        205,
+                        205
+                    ],
+                    "colorRange": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "blendMode": 1,
+                    "spacer2": [
+                        205,
+                        205,
+                        205
+                    ],
+                    "brightness": 5.0,
+                    "brightnessJitter": 0.0,
+                    "ribbonMode": 0,
+                    "scale": 0.2,
+                    "scale_jitter": 0.0,
+                    "width": 25.0,
+                    "width_jitter": 0.0,
+                    "length": 100.0,
+                    "length_jitter": 0.0,
+                    "uv_map_height": 0,
+                    "material_tesselation_density": 1.0,
+                    "material_tesselation_jitter": 0.0,
+                    "uv_map_width": 1.0,
+                    "subdivisionCount": 8,
+                    "unknBool15": 0,
+                    "unkn15": 0.1,
+                    "baseAxis": 1,
+                    "rotationOrder": 4,
+                    "rotationX": 0.0,
+                    "rotationXJitter": 0.0,
+                    "rotationYJitter": 0.0,
+                    "rotationY": 0.0,
+                    "rotationZJitter": 0.0,
+                    "rotationZ": 0.0,
+                    "unknFlag16_0_1": 0,
+                    "unknFixed16_1_lo": 1,
+                    "unknBool16_1": 1,
+                    "unknBool16_2_0": 1,
+                    "unknBool16_2_1": 1,
+                    "unknBool3a": 0,
+                    "unknBool3b": 0,
+                    "spacer3": [
+                        205,
+                        205
+                    ],
+                    "unknFixed17": 1.0,
+                    "spacer4": -842150451,
+                    "lengthwise_offset_relative_to_camera": 0.5,
+                    "spawnAnchorOffset": 0.95,
+                    "restoreStrength": 1.0,
+                    "restoreStrengthJitter": 0.0,
+                    "inertia": 0.9,
+                    "inertiaJitter": 0.0,
+                    "springiness": 0.1,
+                    "springiness_jitter": 0.0,
+                    "unknBool5": 0,
+                    "spacer5": [
+                        205,
+                        205,
+                        205
+                    ],
+                    "unkn20_0": 0.0,
+                    "unkn20_1": 0.0,
+                    "unkn20_2": 0.0,
+                    "unkn20_3": 0.0,
+                    "unkn21": 0.1,
+                    "unkn22_0": 0.0,
+                    "lightGroup": 1,
+                    "unknFlag22_2": 0,
+                    "enableFlowmap": 0,
+                    "spacer6": [
+                        205,
+                        205,
+                        205
+                    ],
+                    "flowmapSpeed": 1.0,
+                    "flowmapSpeedJitter": 0.0,
+                    "flowmapSpeedCoef": 1.0,
+                    "flowmapSpeedCoefJitter": 0.0,
+                    "flowmapStrength": 0.1,
+                    "flowmapStrengthJitter": 0.0,
+                    "flowmapStrengthCoef": 1.0,
+                    "flowmapStrengthCoefJitter": 0.0,
+                    "flowmapPlayOnce": 0,
+                    "flowmapReverse": 0,
+                    "unkn24": [
+                        205,
+                        205
+                    ],
+                    "epvcolor_0": 0,
+                    "epvcolor_1": 0,
+                    "unknBool7": 0,
+                    "spacer7": [
+                        205,
+                        205,
+                        205
+                    ],
+                    "base_width_multiplier": 1.0,
+                    "base_opacity": 1.0,
+                    "tip_width_multiplier": 1.0,
+                    "tip_opacity": 1.0,
+                    "unknBool8": 0,
+                    "spacer8": [
+                        205,
+                        205,
+                        205
+                    ],
+                    "base_fade_length": 0.3,
+                    "tip_fade_length": 0.4,
+                    "visiblePreview": 0,
+                    "enableFlap": 0,
+                    "spacer9": -12851,
+                    "flap1Frequency": 0.0,
+                    "flap1FrequencyJitter": 0.0,
+                    "flap1Amount": 0.0,
+                    "flap1AmountJitter": 0.0,
+                    "flap2Frequency": 0.0,
+                    "flap2FrequencyJitter": 0.0,
+                    "flap2Amount": 0.0,
+                    "flap2AmountJitter": 0.0,
+                    "unknFixed28_0": 0,
+                    "unknGlobalForceEnable": 0,
+                    "unknBool28_2": 0,
+                    "spacer28": [
+                        205,
+                        205,
+                        205,
+                        205,
+                        205,
+                        205,
+                        205,
+                        205,
+                        205,
+                        205,
+                        205,
+                        205,
+                        205
+                    ],
+                    "unknGlobalForceX": 0.0,
+                    "unknGlobalForceY": 0.0,
+                    "unknGlobalForceZ": 0.0,
+                    "unknFixed28_param3": 0.0,
+                    "path1": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_009_F_NM"
+                }
+            },
+            {
+                "type": "SCALEANIM",
+                "fields": {
+                    "typeFlag": 8,
+                    "initialScaleSpeed": 0.02,
+                    "initialScaleSpeedJitter": 0.0,
+                    "initialScaleAccel": 0.99,
+                    "initialScaleAccelJitter": 0.0,
+                    "scaleSpeedX": 0.0,
+                    "scaleSpeedXJitter": 0.0,
+                    "scaleAccelX": 1.0,
+                    "scaleAccelXJitter": 0.0,
+                    "scaleSpeedY": 0.0,
+                    "scaleSpeedYJitter": 0.0,
+                    "scaleAccelY": 1.0,
+                    "scaleAccelYJitter": 0.0,
+                    "scaleSpeedZ": 0.0,
+                    "scaleSpeedZJitter": 0.0,
+                    "scaleAccelZ": 1.0,
+                    "scaleAccelZJitter": 0.0,
+                    "animUpdateStart": 0,
+                    "animUpdateStartJitter": 0
+                }
+            },
+            {
+                "type": "UVSEQUENCE",
+                "fields": {
+                    "typeFlag": 6,
+                    "sequenceNo": 23,
+                    "sequenceNoJitter": 0,
+                    "patternNo": 0,
+                    "patternNoJitter": 0,
+                    "playSpeed": 0.0,
+                    "playSpeedJitter": 0.0,
+                    "playSpeedCoef": 1.0,
+                    "playSpeedCoefJitter": 0.0,
+                    "loopingMode": 8,
+                    "loopingOrientation": 0,
+                    "loopingPad": 0,
+                    "path": "vfx\\uvs\\cm\\cm_light_000\u0000"
+                }
+            },
+            {
+                "type": "SHADERSETTINGS",
+                "fields": {
+                    "typeFlag": 4,
+                    "unknEnum1": 104,
+                    "spacer": -842150656,
+                    "unknFlag2": 1,
+                    "depthBias": 0.0,
+                    "softParticleDistance": 0.0,
+                    "unknBitmask3_0": 0,
+                    "unknEnum3_1": 0,
+                    "controlBitflag": 1,
+                    "unkn4_0": 1.0,
+                    "unkn4_1": 1.0,
+                    "unkn4_2": 0.0,
+                    "unkn4_3": 1.0,
+                    "unkn4_4": 1.0,
+                    "unkn4_5": 1.0,
+                    "unkn4_6": 1.0,
+                    "unkn4_7": 100.0,
+                    "presetId": -1,
+                    "unkn4_9": 0.0,
+                    "unkn4_10": 25.0,
+                    "unkn4_11": 0.0,
+                    "unknFixed4_12": 0.0,
+                    "unkn4_13": 0.0,
+                    "unknBitmask4_14": 0,
+                    "unkn4_15": 0,
+                    "objectInteractionFlag0": 255,
+                    "objectInteractionFlag1": 255,
+                    "objectInteractionFlag2": 255,
+                    "objectInteractionFlag3": 255,
+                    "unknBool0": 0,
+                    "unknBool1": 1,
+                    "unknBool2": 0,
+                    "unknBool3": 0,
+                    "unknEnum5_0": 0,
+                    "unknBitmask5_1": 0
+                }
+            },
+            {
+                "type": "RGBFIRE",
+                "fields": {
+                    "typeFlag": 7,
+                    "fireColor": [
+                        0,
+                        0,
+                        0,
+                        255
+                    ],
+                    "fireFactor": 0.0,
+                    "smokeColor": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "redChFactor": 1.0,
+                    "lerpAlphaToBlue": 0.0,
+                    "alphaFactor": 1.5,
+                    "colorRate": 1.0,
+                    "fireColorParam_useLife": 0,
+                    "fireColorParam_appearFrame": 0,
+                    "fireColorParam_appearFrameJitter": 0,
+                    "fireColorParam_keepFrame": 20,
+                    "fireColorParam_keepFrameJitter": 0,
+                    "fireColorParam_vanishFrame": 40,
+                    "fireColorParam_vanishFrameJitter": 0,
+                    "fireColorParam_lighting": 0,
+                    "fireColorParam_lifeType": 0,
+                    "fireColorParam_correctColorNo": 0,
+                    "smokeColorParam_useLife": 0,
+                    "smokeColorParam_appearFrame": 0,
+                    "smokeColorParam_appearFrameJitter": 0,
+                    "smokeColorParam_keepFrame": 0,
+                    "smokeColorParam_keepFrameJitter": 0,
+                    "smokeColorParam_vanishFrame": 40,
+                    "smokeColorParam_vanishFrameJitter": 0,
+                    "smokeColorParam_lighting": 0,
+                    "smokeColorParam_lifeType": 0,
+                    "smokeColorParam_correctColorNo": 0
+                }
+            }
+        ]
+    }
 }

@@ -1,55 +1,486 @@
 {
- "efx_preset_kind": "entry",
- "entry_kind": "standard",
- "display_name": "拔刀链条",
- "props": {
-  "body_type": "2305104298",
-  "unkn0": "2",
-  "attr_count": "7",
-  "null": "0",
-  "timl_length": "304"
- },
- "timl_bytes": "dGltbAAIAhgACAIYAAAAACAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAADAAAAAAAAAAYAAAAAAAAAABAAAAAAAAAAIAAAAGAAAAAIA7RQAAAAACAAAA+yTkzgAAAAAAAAAAgAAAAAAAAAACAAAAAAAAAA6FCR8AAAAAAAAAAAAAAACwAAAAAAAAAAIAAAAAAAAAe2Qu+QIAAADgAAAAAAAAAAQAAAAAAAAAmzPf8AIAAAAAAHBCAAAAAAAAAAAAAAAAAwACAAAAAkMAAAAAAAAAAAAA8EIDAAIAAAAAAAAAAAAAAIBAAAAAAAAAAAAAAAAAAwACAAAAgEAAAAAAAAAAAAAAjEIDAAIAAAAAQAAAAAAAAAAAAAAMQwMAAgAAAAAAAAAAAAAAAAAAABZDAwACAA==",
- "raw": "",
- "source_label": "拔刀链条",
- "source_counts": {
-  "extern": 0,
-  "entry": 14,
-  "action": 0
- },
- "in_eof": false,
- "attributes": [
-  {
-   "type_hash": "10286765",
-   "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
-  },
-  {
-   "type_hash": "368199626",
-   "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAD/////"
-  },
-  {
-   "type_hash": "1921765292",
-   "data_bytes": "AgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1320868484",
-   "data_bytes": "DAAAAAAAAAAAAAAAZAAAAAAAAAAAAAAAAAAAAEYAAAAAAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "480396424",
-   "data_bytes": "CAAAAArXozwAAAAApHB9PwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAA=="
-  },
-  {
-   "type_hash": "1698970185",
-   "data_bytes": "BgAAAA0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAEAAAABkAAAB2ZnhcdXZzXGNtXGNtX2xpcXVpZF8wMDAA"
-  },
-  {
-   "type_hash": "1062052310",
-   "data_bytes": "AQAAAPQAAAAAzc3N0s3ClgDNzc3/////Ac3NzQAA8EEAAAAAzc3NzQAAAAAAACDBAABAwAAAAAAAAMjBAAAgwQAA6EIAAAAAAABAQAAAAAAAAAJDAAAAAAAAgD/HSC4/AACAP0ZbYT8KAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAADNAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAD6QwAAAAAAAAA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAZmZmPwAAAADNzMw9AAAAAP////8BAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAALRDAAAAAAAAAAAAAAAAAACAPwAAgD8AAAAAAQAAAAAAAAA="
-  },
-  {
-   "type_hash": "1978267738",
-   "data_bytes": "BAAAAGgAAAAAzc3NAAAAAAAAAAAAACBBAQAAAAAAAAABAAAAAACAPwAAgD8AAAAAAACAPwAAgD8AAAA/MzNzPwAAyEL/////AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////8AAQAAAAAAAAAAAAA="
-  }
- ]
+    "efx_preset_kind": "entry",
+    "format_version": 2,
+    "display_name": "拔刀链条",
+    "source_label": "拔刀链条",
+    "source_counts": {
+        "extern": 0,
+        "entry": 14,
+        "action": 0
+    },
+    "in_eof": false,
+    "entry": {
+        "kind": "standard",
+        "bodyType": 2305104298,
+        "unkn0": 2,
+        "null": 0,
+        "timl": {
+            "header": [
+                402786304,
+                402786304,
+                0,
+                32,
+                0
+            ],
+            "animations": [
+                null,
+                {
+                    "dataIx0": 2,
+                    "dataIx1": 6,
+                    "length": 3000.0,
+                    "loopStart": 0.0,
+                    "loopControl": 2,
+                    "labelHash": 3471058171,
+                    "types": [
+                        {
+                            "timelineParam": 520717582,
+                            "null": 0,
+                            "transforms": [
+                                {
+                                    "datatype": 4180567163,
+                                    "dataType": 2,
+                                    "keyframes": [
+                                        {
+                                            "frame": 0.0,
+                                            "transition": 3,
+                                            "kfDtype": 2,
+                                            "subs": [
+                                                {
+                                                    "value": 60.0,
+                                                    "back": 0.0,
+                                                    "period": 0.0
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "frame": 120.0,
+                                            "transition": 3,
+                                            "kfDtype": 2,
+                                            "subs": [
+                                                {
+                                                    "value": 130.0,
+                                                    "back": 0.0,
+                                                    "period": 0.0
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
+                                    "datatype": 4041159579,
+                                    "dataType": 2,
+                                    "keyframes": [
+                                        {
+                                            "frame": 0.0,
+                                            "transition": 3,
+                                            "kfDtype": 2,
+                                            "subs": [
+                                                {
+                                                    "value": 4.0,
+                                                    "back": 0.0,
+                                                    "period": 0.0
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "frame": 70.0,
+                                            "transition": 3,
+                                            "kfDtype": 2,
+                                            "subs": [
+                                                {
+                                                    "value": 4.0,
+                                                    "back": 0.0,
+                                                    "period": 0.0
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "frame": 140.0,
+                                            "transition": 3,
+                                            "kfDtype": 2,
+                                            "subs": [
+                                                {
+                                                    "value": 2.0,
+                                                    "back": 0.0,
+                                                    "period": 0.0
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "frame": 150.0,
+                                            "transition": 3,
+                                            "kfDtype": 2,
+                                            "subs": [
+                                                {
+                                                    "value": 0.0,
+                                                    "back": 0.0,
+                                                    "period": 0.0
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "translate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 3,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 1,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 2,
+                    "maxParticles": 1,
+                    "spawnNum": 1,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 0,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 0,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 12,
+                    "fadeInDuration": 0,
+                    "fadeInDurationJitter": 0,
+                    "duration": 100,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 70,
+                    "fadeOutDurationJitter": 0,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 0
+                }
+            },
+            {
+                "type": "SCALEANIM",
+                "fields": {
+                    "typeFlag": 8,
+                    "initialScaleSpeed": 0.02,
+                    "initialScaleSpeedJitter": 0.0,
+                    "initialScaleAccel": 0.99,
+                    "initialScaleAccelJitter": 0.0,
+                    "scaleSpeedX": 0.0,
+                    "scaleSpeedXJitter": 0.0,
+                    "scaleAccelX": 1.0,
+                    "scaleAccelXJitter": 0.0,
+                    "scaleSpeedY": 0.0,
+                    "scaleSpeedYJitter": 0.0,
+                    "scaleAccelY": 1.0,
+                    "scaleAccelYJitter": 0.0,
+                    "scaleSpeedZ": 0.0,
+                    "scaleSpeedZJitter": 0.0,
+                    "scaleAccelZ": 1.0,
+                    "scaleAccelZJitter": 0.0,
+                    "animUpdateStart": 0,
+                    "animUpdateStartJitter": 0
+                }
+            },
+            {
+                "type": "UVSEQUENCE",
+                "fields": {
+                    "typeFlag": 6,
+                    "sequenceNo": 13,
+                    "sequenceNoJitter": 0,
+                    "patternNo": 0,
+                    "patternNoJitter": 0,
+                    "playSpeed": 0.0,
+                    "playSpeedJitter": 0.0,
+                    "playSpeedCoef": 1.0,
+                    "playSpeedCoefJitter": 0.0,
+                    "loopingMode": 16,
+                    "loopingOrientation": 0,
+                    "loopingPad": 0,
+                    "path": "vfx\\uvs\\cm\\cm_liquid_000\u0000"
+                }
+            },
+            {
+                "type": "STRAINRIBBON",
+                "fields": {
+                    "typeFlag": 1,
+                    "unknFixed00_1": 244,
+                    "unknFixed00_2": 0,
+                    "spacer00": [
+                        205,
+                        205,
+                        205
+                    ],
+                    "color": [
+                        210,
+                        205,
+                        194,
+                        150
+                    ],
+                    "useColorRange": 0,
+                    "spacer01": [
+                        205,
+                        205,
+                        205
+                    ],
+                    "colorRange": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "useEmission": 1,
+                    "spacer02": [
+                        205,
+                        205,
+                        205
+                    ],
+                    "emissionStrength": 30.0,
+                    "emissionStrengthJitter": 0.0,
+                    "spacer03": -842150451,
+                    "startPosition": [
+                        0.0,
+                        -10.0,
+                        -3.0
+                    ],
+                    "unknFixed03_06": 0.0,
+                    "endPosition": [
+                        -25.0,
+                        -10.0,
+                        116.0
+                    ],
+                    "unknFixed03_10": 0.0,
+                    "width": 3.0,
+                    "widthJitter": 0.0,
+                    "length": 130.0,
+                    "lengthJitter": 0.0,
+                    "startWidth": 1.0,
+                    "startOpacity": 0.680798,
+                    "endWidth": 1.0,
+                    "endOpacity": 0.880299,
+                    "subdivisionCount": 10,
+                    "unknFixed04_01": 0,
+                    "uvRepetition": 0,
+                    "widthwiseUVScalingAlpha": 1.0,
+                    "spacer04": 0.0,
+                    "widthwiseUVScalingBML": 1.0,
+                    "endPointScatter": 0,
+                    "originReleaseFlag": 0,
+                    "enableFlowmap": 0,
+                    "color3_w": 205,
+                    "flowmapSpeed": 1.0,
+                    "flowmapSpeedJitter": 0.0,
+                    "flowmapSpeedCoef": 1.0,
+                    "flowmapSpeedCoefJitter": 0.0,
+                    "flowmapStrength": 1.0,
+                    "flowmapStrengthJitter": 0.0,
+                    "flowmapStrengthCoef": 1.0,
+                    "flowmapStrengthCoefJitter": 0.0,
+                    "unknEnum06_08_00": 0,
+                    "unknEnum06_08_01": 0,
+                    "lengthBreakpoint": 500.0,
+                    "lengthBreakpointJitter": 0.0,
+                    "breakpointLocation": 0.5,
+                    "breakpointLocationJitter": 0.0,
+                    "breakDelay": 0.0,
+                    "breakDelayJitter": 0.0,
+                    "tension": 1.0,
+                    "tensionJitter": 0.0,
+                    "unkn06_17": 0.0,
+                    "unkn06_18": 0.0,
+                    "gravityMultiplier": 0.0,
+                    "gravityMultiplierJitter": 0.0,
+                    "inertia": 0.9,
+                    "inertiaJitter": 0.0,
+                    "poseSnapping": 0.1,
+                    "poseSnappingJitter": 0.0,
+                    "endBoneID": -1,
+                    "positionalAberration_01": 1,
+                    "positionalAberration_02": 1,
+                    "epv_color_slot1": 0,
+                    "epv_color_slot2": 0,
+                    "positionalAberration_05": 0,
+                    "displacement": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "displacementToggle": 0,
+                    "unknEnum09_0": 2,
+                    "unknFixed09_1": 0.0,
+                    "unkn09_2": 0.0,
+                    "unkn09_3": 0.0,
+                    "unkn09_4": 0.0,
+                    "unknEnum10_00": 4,
+                    "angleRelated": 360.0,
+                    "angleRelatedJitter": 0.0,
+                    "unknEnum11": 0,
+                    "unknEnum12_00": 0,
+                    "unknFixed12_01": 1.0,
+                    "unknFixed12_02": 1.0,
+                    "unknFixed12_03": 0.0,
+                    "unknFixed13": 1,
+                    "path": ""
+                }
+            },
+            {
+                "type": "SHADERSETTINGS",
+                "fields": {
+                    "typeFlag": 4,
+                    "unknEnum1": 104,
+                    "spacer": -842150656,
+                    "unknFlag2": 0,
+                    "depthBias": 0.0,
+                    "softParticleDistance": 10.0,
+                    "unknBitmask3_0": 1,
+                    "unknEnum3_1": 0,
+                    "controlBitflag": 1,
+                    "unkn4_0": 1.0,
+                    "unkn4_1": 1.0,
+                    "unkn4_2": 0.0,
+                    "unkn4_3": 1.0,
+                    "unkn4_4": 1.0,
+                    "unkn4_5": 0.5,
+                    "unkn4_6": 0.95,
+                    "unkn4_7": 100.0,
+                    "presetId": -1,
+                    "unkn4_9": 0.0,
+                    "unkn4_10": 0.0,
+                    "unkn4_11": 0.0,
+                    "unknFixed4_12": 0.0,
+                    "unkn4_13": 0.0,
+                    "unknBitmask4_14": 0,
+                    "unkn4_15": 0,
+                    "objectInteractionFlag0": 255,
+                    "objectInteractionFlag1": 255,
+                    "objectInteractionFlag2": 255,
+                    "objectInteractionFlag3": 255,
+                    "unknBool0": 0,
+                    "unknBool1": 1,
+                    "unknBool2": 0,
+                    "unknBool3": 0,
+                    "unknEnum5_0": 0,
+                    "unknBitmask5_1": 0
+                }
+            }
+        ]
+    }
 }

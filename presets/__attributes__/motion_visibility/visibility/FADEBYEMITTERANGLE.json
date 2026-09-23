@@ -1,9 +1,19 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "2116359897",
-    "type_name": "FADEBYEMITTERANGLE",
+    "format_version": 2,
     "display_name": "FADEBYEMITTERANGLE（按发射角渐隐）",
     "category": "motion_visibility",
-    "data_bytes": "AAAAABQAAAAAzc3NAAA0QwAAoEEAAJZEAAAWRA==",
-    "subgroup": "visibility"
+    "subgroup": "visibility",
+    "attribute": {
+        "type": "FADEBYEMITTERANGLE",
+        "fields": {
+            "typeFlag": 0,
+            "section_length": 20,
+            "unkn": -842150656,
+            "outerConeAngle": 180.0,
+            "innerConeAngle": 20.0,
+            "fadeInStart": 1200.0,
+            "fadeInEnd": 600.0
+        }
+    }
 }

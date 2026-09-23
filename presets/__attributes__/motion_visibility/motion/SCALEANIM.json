@@ -1,9 +1,31 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "480396424",
-    "type_name": "SCALEANIM",
+    "format_version": 2,
     "display_name": "SCALEANIM（缩放动画）",
     "category": "motion_visibility",
-    "data_bytes": "CAAAAArXozwAAAAApHB9PwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAA==",
-    "subgroup": "motion"
+    "subgroup": "motion",
+    "attribute": {
+        "type": "SCALEANIM",
+        "fields": {
+            "typeFlag": 8,
+            "initialScaleSpeed": 0.02,
+            "initialScaleSpeedJitter": 0.0,
+            "initialScaleAccel": 0.99,
+            "initialScaleAccelJitter": 0.0,
+            "scaleSpeedX": 0.0,
+            "scaleSpeedXJitter": 0.0,
+            "scaleAccelX": 1.0,
+            "scaleAccelXJitter": 0.0,
+            "scaleSpeedY": 0.0,
+            "scaleSpeedYJitter": 0.0,
+            "scaleAccelY": 1.0,
+            "scaleAccelYJitter": 0.0,
+            "scaleSpeedZ": 0.0,
+            "scaleSpeedZJitter": 0.0,
+            "scaleAccelZ": 1.0,
+            "scaleAccelZJitter": 0.0,
+            "animUpdateStart": 0,
+            "animUpdateStartJitter": 0
+        }
+    }
 }

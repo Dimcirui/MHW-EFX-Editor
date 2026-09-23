@@ -1,9 +1,63 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "37870541",
-    "type_name": "PLANE",
+    "format_version": 2,
     "display_name": "PLANE（固定平面片）",
     "category": "renderer_body",
-    "data_bytes": "BQAAAAAAAAD//////////wAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAMhCAAAAAAAAyEIAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAnAAAAAAAAAAAAAAABAAAABAAAAAAAAAAAAAAAAAA0wwAAtEMAAAAAAAAAAAEAAAABAAAAdmZ4XGRkc1xjbVxjbV9mbG93bWFwXGNtX2Zsb3dfMDA3X0ZfTk0A",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "PLANE",
+        "fields": {
+            "typeFlag": 5,
+            "applicationRule": 0,
+            "color": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "colorRange": [
+                255,
+                255,
+                255,
+                255
+            ],
+            "brightness": 1.0,
+            "brightnessJitter": 0.0,
+            "useColorRange": 0,
+            "blendMode": 0,
+            "correctColorNo": 0,
+            "colorRangeCorrectColorNo": 0,
+            "rotation2": 0.0,
+            "rotation2Jitter": 0.0,
+            "scale": 1.0,
+            "scaleJitter": 0.0,
+            "width": 100.0,
+            "widthJitter": 0.0,
+            "height": 100.0,
+            "heightJitter": 0.0,
+            "flowmapSpeed": 0.0,
+            "flowmapSpeedJitter": 0.0,
+            "flowmapSpeedCoef": 1.0,
+            "flowmapSpeedCoefJitter": 0.0,
+            "flowmapStrength": 0.0,
+            "flowmapStrengthJitter": 0.0,
+            "flowmapStrengthCoef": 1.0,
+            "flowmapStrengthCoefJitter": 0.0,
+            "unknBitmask5_0": 0,
+            "unknEnum5_1": 0,
+            "baseAxis": 1,
+            "rotationOrder": 4,
+            "rotation": [
+                0.0,
+                0.0,
+                -180.0,
+                360.0,
+                0.0,
+                0.0
+            ],
+            "lightGroup": 1,
+            "unknFlag7_1": 1,
+            "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_007_F_NM\u0000"
+        }
+    }
 }

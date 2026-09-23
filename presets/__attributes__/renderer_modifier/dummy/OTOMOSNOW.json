@@ -1,9 +1,38 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "180261702",
-    "type_name": "OTOMOSNOW",
+    "format_version": 2,
     "display_name": "OTOMOSNOW",
     "category": "renderer_modifier",
-    "data_bytes": "AQAAAEwAAAAAzc3NyAAAAA8AAAAgICD/AAAAAADNzc0AACDBAACMwgAAAD/NzEw/Ac3NzQAAgD/rOA4/AAAAPwAAAD8AAABAAACAPwAAgD8AAIA/",
-    "subgroup": "dummy"
+    "subgroup": "dummy",
+    "attribute": {
+        "type": "OTOMOSNOW",
+        "fields": {
+            "typeFlag": 1,
+            "section_length": 76,
+            "unkn1": -842150656,
+            "unknFixed2_0": 200,
+            "unknFixed2_1": 15,
+            "color": [
+                32,
+                32,
+                32,
+                255
+            ],
+            "unknEnum3": 0,
+            "unkn4": -842150656,
+            "unknFixed5_0": -10.0,
+            "unknFixed5_1": -70.0,
+            "unknFixed5_2": 0.5,
+            "unknFixed5_3": 0.8,
+            "unkn6": -842150655,
+            "unknFixed7_0": 1.0,
+            "unkn7_1": 0.555556,
+            "unknFixed7_2": 0.5,
+            "unkn7_3": 0.5,
+            "unkn7_4": 2.0,
+            "unknFixed7_5": 1.0,
+            "unknFixed7_6": 1.0,
+            "unkn7_7": 1.0
+        }
+    }
 }

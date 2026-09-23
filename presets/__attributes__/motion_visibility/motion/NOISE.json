@@ -1,9 +1,23 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "523015778",
-    "type_name": "NOISE",
+    "format_version": 2,
     "display_name": "NOISE（噪声）",
     "category": "motion_visibility",
-    "data_bytes": "BgAAACQAAAAAzc3NmpmZPs3MTD4AAPBAAACgQAAAAAAAAAAAAAAAAAAAAAA=",
-    "subgroup": "motion"
+    "subgroup": "motion",
+    "attribute": {
+        "type": "NOISE",
+        "fields": {
+            "typeFlag": 6,
+            "section_length": 36,
+            "spacer": -842150656,
+            "lowFrequency": 0.3,
+            "lowFrequencyJitter": 0.2,
+            "lowFrequencyWidth": 7.5,
+            "lowFrequencyWidthJitter": 5.0,
+            "highFrequency": 0.0,
+            "highFrequencyJitter": 0.0,
+            "highFrequencyWidth": 0.0,
+            "highFrequencyWidthJitter": 0.0
+        }
+    }
 }

@@ -1,9 +1,25 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1354601878",
-    "type_name": "BLINK",
+    "format_version": 2,
     "display_name": "BLINK（闪烁）",
     "category": "renderer_modifier",
-    "data_bytes": "AgAAACwAAAAAzc3NUp0KPwAAgD/NzEw+mpkZPwAAgD8AAAAAAAAgQAAAgD8K16M8AAAAAA==",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "BLINK",
+        "fields": {
+            "typeFlag": 2,
+            "section_length": 44,
+            "unkn1_0": -431595520.0,
+            "minRate": 0.541463,
+            "maxRate": 1.0,
+            "lowFrequency": 0.2,
+            "lowFrequencyJitter": 0.6,
+            "lowFrequencyWidth": 1.0,
+            "lowFrequencyWidthJitter": 0.0,
+            "highFrequency": 2.5,
+            "highFrequencyJitter": 1.0,
+            "highFrequencyWidth": 0.02,
+            "highFrequencyWidthJitter": 0.0
+        }
+    }
 }

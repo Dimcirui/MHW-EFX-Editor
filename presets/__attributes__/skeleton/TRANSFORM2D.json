@@ -1,8 +1,17 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "428328940",
-    "type_name": "TRANSFORM2D",
+    "format_version": 2,
     "display_name": "TRANSFORM2D（2D 版骨架变换，等价 I. Entry Skeleton）",
     "category": "skeleton",
-    "data_bytes": "AQAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/"
+    "attribute": {
+        "type": "TRANSFORM2D",
+        "fields": {
+            "typeFlag": 1,
+            "offsetX": 0.0,
+            "offsetY": 0.0,
+            "rotation": 0.0,
+            "scaleX": 1.0,
+            "scaleY": 1.0
+        }
+    }
 }

@@ -92,6 +92,19 @@ class UpgradeTest(unittest.TestCase):
         self.assertEqual(body.attr_blocks[0].data_bytes, spawn)
         self.assertEqual(struct.unpack_from('<I', body.serialize(), 0)[0], 0x1F68613A)
 
+    def test_is_v1_preset(self):
+        self.assertTrue(A.is_v1_preset({'efx_preset_kind': 'body'}))
+        self.assertFalse(A.is_v1_preset({'efx_preset_kind': 'attribute', 'format_version': 2}))
+        self.assertFalse(A.is_v1_preset({'display_name': 'x'}))
+        self.assertFalse(A.is_v1_preset([]))
+
+    def test_v1_attribute_with_extra_bytes_is_rejected(self):
+        spawn = A.encode_attribute(H.SPAWN, default_attribute(H.SPAWN))
+        v1 = {'efx_preset_kind': 'attribute', 'type_hash': str(H.SPAWN),
+              'data_bytes': base64.b64encode(spawn + b'\0' * 4).decode('ascii')}
+        with self.assertRaises(ValueError):
+            A.upgrade_preset(v1)
+
     def test_unknown_version_raises(self):
         with self.assertRaises(A.PresetError):
             A.upgrade_preset({'efx_preset_kind': 'attribute', 'format_version': 99})

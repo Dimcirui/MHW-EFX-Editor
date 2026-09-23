@@ -29,5 +29,5 @@ from .preset import (
     FORMAT_VERSION, DERIVED_KEYS, PresetError, strip_derived, normalize_fields,
     attribute_preset, entry_preset, extern_preset, action_preset,
     build_attribute, build_entry, build_extern, build_action, build_preset,
-    preset_meta, upgrade_preset, attribute_preset_type,
+    preset_meta, upgrade_preset, is_v1_preset, attribute_preset_type,
 )

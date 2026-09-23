@@ -1,9 +1,62 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "937428146",
-    "type_name": "TURBULENCE",
+    "format_version": 2,
     "display_name": "TURBULENCE（湍流扰动）",
     "category": "motion_visibility",
-    "data_bytes": "AQAAACUAAAB2ZnhcZGRzXGNtXGNtX2V4TWFwXHR1cmJ1bGFuY2VfMDAwX1QAAACAP3LB+T0AAAAAAACWQwAAAAAAAJZDAAAAAAAAlkMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-    "subgroup": "motion"
+    "subgroup": "motion",
+    "attribute": {
+        "type": "TURBULENCE",
+        "fields": {
+            "typeFlag": 1,
+            "path": "vfx\\dds\\cm\\cm_exMap\\turbulance_000_T\u0000",
+            "forceMultiplier": 1.0,
+            "unkn1_0": 0.121951,
+            "unknEnum1_1": 0,
+            "offsetPos": [
+                300.0,
+                0.0,
+                300.0,
+                0.0,
+                300.0,
+                0.0
+            ],
+            "offsetPosVel": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "offsetAngle": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "offsetAngleVel": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "offsetScale": [
+                1.0,
+                0.0,
+                1.0,
+                0.0,
+                1.0,
+                0.0
+            ],
+            "unkn3_0": 0.0,
+            "unkn3_1": 0.0,
+            "unkn3_2": 0,
+            "unknEnum3_3": 0,
+            "unknFlag3_4": 0
+        }
+    }
 }

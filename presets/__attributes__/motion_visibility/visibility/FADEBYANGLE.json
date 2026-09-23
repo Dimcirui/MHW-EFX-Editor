@@ -1,9 +1,24 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1226136492",
-    "type_name": "FADEBYANGLE",
+    "format_version": 2,
     "display_name": "FADEBYANGLE（按角度渐隐）",
     "category": "motion_visibility",
-    "data_bytes": "AgAAAAIAAAAAAHBBAADwQQAAAAAAAAAAAAAAAAAAAAABAAAABAAAAA==",
-    "subgroup": "visibility"
+    "subgroup": "visibility",
+    "attribute": {
+        "type": "FADEBYANGLE",
+        "fields": {
+            "typeFlag": 2,
+            "coneVisibilityFlags": 2,
+            "cutoffConeAngle": 15.0,
+            "fadeConeAngle": 30.0,
+            "minAlpha": 0.0,
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "baseAxis": 1,
+            "rotOrder": 4
+        }
+    }
 }

@@ -1,51 +1,984 @@
 {
- "efx_preset_kind": "entry",
- "entry_kind": "standard",
- "display_name": "MESH流动贴图",
- "props": {
-  "body_type": "1355113153",
-  "unkn0": "0",
-  "attr_count": "7",
-  "null": "0",
-  "timl_length": "0"
- },
- "timl_bytes": "",
- "raw": "",
- "source_label": "MESH流动贴图",
- "source_counts": {
-  "extern": 0,
-  "entry": 50,
-  "action": 0
- },
- "in_eof": false,
- "attributes": [
-  {
-   "type_hash": "10286765",
-   "data_bytes": "AQAAAAAAoMAAAAAAAAAgwQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAA"
-  },
-  {
-   "type_hash": "368199626",
-   "data_bytes": "AwAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAD/////"
-  },
-  {
-   "type_hash": "1921765292",
-   "data_bytes": "AgAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAA"
-  },
-  {
-   "type_hash": "1320868484",
-   "data_bytes": "BgAAABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwAAAAAAAAAAAAAAAAAAAABAAAA"
-  },
-  {
-   "type_hash": "2020068998",
-   "data_bytes": "CQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM3MTL4AAAAAAACAPwAAAAAAAIA/AAAAAAAAQEAAAAAAAADAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAABAAAAAACAPwAAAAAAAIA/AAAAAJqZmT4AAAAAAACAPwAAAAA="
-  },
-  {
-   "type_hash": "276670093",
-   "data_bytes": "BQAAAKcAAAAAzc3NAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAABwwQAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAADNzEw/AAAAAGZmpj8AAAAAAADAQAAAAAAAAAAAAAAAAP//////////AAAA/wAAAP8AAAAAAAAAAAQAAAAAAAAAAgAAAAEAAAABAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHZmeFxtb2RcZW1cZW1fY21cbWRfZWNtX21pYXNtYTAwMFxtZF9lY21fbWlhc21hMDAwAAA="
-  },
-  {
-   "type_hash": "1659025771",
-   "data_bytes": "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"
-  }
- ]
+    "efx_preset_kind": "entry",
+    "format_version": 2,
+    "display_name": "MESH流动贴图",
+    "source_label": "MESH流动贴图",
+    "source_counts": {
+        "extern": 0,
+        "entry": 50,
+        "action": 0
+    },
+    "in_eof": false,
+    "entry": {
+        "kind": "standard",
+        "bodyType": 1355113153,
+        "unkn0": 0,
+        "null": 0,
+        "timl": null,
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 1,
+                    "translate": [
+                        -5.0,
+                        0.0,
+                        -10.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 0
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 3,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 1,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 2,
+                    "maxParticles": 1,
+                    "spawnNum": 1,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 0,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 0,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 0,
+                    "altBurstIntervalJitter": 0,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 6,
+                    "fadeInDuration": 20,
+                    "fadeInDurationJitter": 0,
+                    "duration": 0,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 60,
+                    "fadeOutDurationJitter": 0,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 1
+                }
+            },
+            {
+                "type": "UVCONTROL",
+                "fields": {
+                    "uv1_unknFlag": 9,
+                    "uv1_offset": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "uv1_offsetAdd": [
+                        0.0,
+                        0.0,
+                        -0.2,
+                        0.0
+                    ],
+                    "uv1_offsetCoef": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "uv1_scale": [
+                        3.0,
+                        0.0,
+                        1.5,
+                        0.0
+                    ],
+                    "uv1_scaleAdd": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "uv1_scaleCoef": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "uv2_enable": 0,
+                    "uv2_offset": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "uv2_offsetAdd": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "uv2_offsetCoef": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "uv2_scale": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "uv2_scaleAdd": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "uv2_scaleCoef": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableFlowmap": 1,
+                    "flowmapSpeed": 1.0,
+                    "flowmapSpeedJitter": 0.0,
+                    "flowmapSpeedCoef": 1.0,
+                    "flowmapSpeedCoefJitter": 0.0,
+                    "flowmapStrength": 0.3,
+                    "flowmapStrengthJitter": 0.0,
+                    "flowmapStrengthCoef": 1.0,
+                    "flowmapStrengthCoefJitter": 0.0
+                }
+            },
+            {
+                "type": "MESH",
+                "fields": {
+                    "typeFlag": 5,
+                    "unknFixed0_1": 167,
+                    "CD1": -842150656,
+                    "colorRate": 1.0,
+                    "colorRateJitter": 0.0,
+                    "emissiveColorRate": 0.0,
+                    "emissiveColorRateJitter": 0.0,
+                    "unknFloat0": 0.0,
+                    "unknFloat1": 0.0,
+                    "rotation": [
+                        -15.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale": [
+                        1.0,
+                        0.0,
+                        0.8,
+                        0.0,
+                        1.3,
+                        0.0
+                    ],
+                    "global_scale": 6.0,
+                    "global_scale_jitter": 0.0,
+                    "visconIndex": 0,
+                    "visconIndexJitter": 0,
+                    "color": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "colorRange": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "emissiveColor": [
+                        0,
+                        0,
+                        0,
+                        255
+                    ],
+                    "emissiveColorRange": [
+                        0,
+                        0,
+                        0,
+                        255
+                    ],
+                    "unknEnum7_0": 0,
+                    "unknFlag7_1": 0,
+                    "rotationOrder": 4,
+                    "tracking_flags": 0,
+                    "unknBitmask40": 2,
+                    "affectedByLight": 1,
+                    "shadowCastBitflag": 1,
+                    "epv_color_slot1": 3,
+                    "unknEnum5": 0,
+                    "epv_color_slot2": 0,
+                    "unknFixed6_1": 0,
+                    "enableIntensity1": 0,
+                    "useColorRange": 0,
+                    "enableIntensity2": 0,
+                    "useEmissiveColor": 0,
+                    "useEmissiveColorRange": 0,
+                    "enableEmissiveIntensity": 0,
+                    "disableAllColorRange": 0,
+                    "unknFlag_cm2_3": 0,
+                    "unknBool0": 0,
+                    "unknBool1": 0,
+                    "unknBool2": 0,
+                    "unknBool3": 0,
+                    "unknBool4": 0,
+                    "unknBool5": 0,
+                    "BeginMod3": 0,
+                    "path1": "vfx\\mod\\em\\em_cm\\md_ecm_miasma000\\md_ecm_miasma000",
+                    "path2": ""
+                }
+            },
+            {
+                "type": "MATERIAL",
+                "fields": {
+                    "typeFlag": 1,
+                    "blocks": [
+                        {
+                            "mat_name_hash": 440360526,
+                            "mat_shader": -2002544026,
+                            "unkn03": 0,
+                            "sets": [
+                                {
+                                    "set": -1304637329,
+                                    "unkn0": 1,
+                                    "t": 991242969,
+                                    "type": 128,
+                                    "head": 606035435,
+                                    "null": 0,
+                                    "path": "vfx\\mod\\em\\em_cm\\md_ecm_miasma000\\md_ecm_miasma000_BM\u0000"
+                                },
+                                {
+                                    "set": -1294850464,
+                                    "unkn0": 0,
+                                    "t": 31204677,
+                                    "type": 128,
+                                    "head": 606035435,
+                                    "null": 0,
+                                    "path": "Assets\\default_tex\\null_NM\u0000"
+                                },
+                                {
+                                    "set": 785361865,
+                                    "unkn0": 0,
+                                    "t": -1509464026,
+                                    "type": 128,
+                                    "head": 606035435,
+                                    "null": 0,
+                                    "path": "Assets\\default_tex\\null_black\u0000"
+                                },
+                                {
+                                    "set": 1392606574,
+                                    "unkn0": 1,
+                                    "t": 706285017,
+                                    "type": 128,
+                                    "head": 606035435,
+                                    "null": 0,
+                                    "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_008_F_NM\u0000"
+                                },
+                                {
+                                    "set": 1757612296,
+                                    "unkn0": 0,
+                                    "t": 1940088275,
+                                    "type": 128,
+                                    "head": 606035435,
+                                    "null": 0,
+                                    "path": "Assets\\default_tex\\null_white\u0000"
+                                },
+                                {
+                                    "set": -937394123,
+                                    "unkn0": 0,
+                                    "t": -839356995,
+                                    "type": 6,
+                                    "null": 0,
+                                    "unkn": 5
+                                },
+                                {
+                                    "set": -995955736,
+                                    "unkn0": 0,
+                                    "t": 2027578091,
+                                    "type": 6,
+                                    "null": 0,
+                                    "unkn": 5
+                                },
+                                {
+                                    "set": 1697465898,
+                                    "unkn0": 0,
+                                    "t": 444405512,
+                                    "type": 6,
+                                    "null": 0,
+                                    "unkn": 5
+                                },
+                                {
+                                    "set": 1747072844,
+                                    "unkn0": 0,
+                                    "t": -486871287,
+                                    "type": 6,
+                                    "null": 0,
+                                    "unkn": 5
+                                },
+                                {
+                                    "set": 766986369,
+                                    "unkn0": 0,
+                                    "t": -223570649,
+                                    "type": 6,
+                                    "null": 0,
+                                    "unkn": 5
+                                },
+                                {
+                                    "set": 1241619191,
+                                    "unkn0": 0,
+                                    "t": -1510176639,
+                                    "type": 21,
+                                    "unkn": [
+                                        0.0,
+                                        0.0,
+                                        1.0,
+                                        1.0,
+                                        1.0,
+                                        1.0
+                                    ]
+                                },
+                                {
+                                    "set": 445596010,
+                                    "unkn0": 0,
+                                    "t": 908025973,
+                                    "type": 21,
+                                    "unkn": [
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        1.0
+                                    ]
+                                },
+                                {
+                                    "set": -1309167888,
+                                    "unkn0": 0,
+                                    "t": -33258585,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -193544208,
+                                    "unkn0": 0,
+                                    "t": -1993877440,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": 377573148,
+                                    "unkn0": 0,
+                                    "t": 1545329923,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1065353216
+                                    ]
+                                },
+                                {
+                                    "set": 1743231762,
+                                    "unkn0": 0,
+                                    "t": -1118822788,
+                                    "type": 21,
+                                    "unkn": [
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        1.0,
+                                        1.0
+                                    ]
+                                },
+                                {
+                                    "set": -17904984,
+                                    "unkn0": 0,
+                                    "t": 609832902,
+                                    "type": 21,
+                                    "unkn": [
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        0.0,
+                                        1.0,
+                                        1.0
+                                    ]
+                                },
+                                {
+                                    "set": 1344668594,
+                                    "unkn0": 0,
+                                    "t": -1990456483,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": 928319921,
+                                    "unkn0": 0,
+                                    "t": 2081857212,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -8813959,
+                                    "unkn0": 0,
+                                    "t": 634259223,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -834142757,
+                                    "unkn0": 0,
+                                    "t": 390750772,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -1288434809,
+                                    "unkn0": 0,
+                                    "t": -81723330,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": 263645508,
+                                    "unkn0": 0,
+                                    "t": -691215957,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": 1798308126,
+                                    "unkn0": 0,
+                                    "t": 2135195473,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -1592535819,
+                                    "unkn0": 0,
+                                    "t": -872621084,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1065353216
+                                    ]
+                                },
+                                {
+                                    "set": -1362133206,
+                                    "unkn0": 0,
+                                    "t": -514007597,
+                                    "type": 21,
+                                    "unkn": [
+                                        0.0,
+                                        0.0,
+                                        1.0,
+                                        1.0,
+                                        1.0,
+                                        1.0
+                                    ]
+                                },
+                                {
+                                    "set": 739176420,
+                                    "unkn0": 0,
+                                    "t": -80522865,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": 1683943728,
+                                    "unkn0": 1,
+                                    "t": -16390653,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        -1124744561
+                                    ]
+                                },
+                                {
+                                    "set": 835218120,
+                                    "unkn0": 0,
+                                    "t": 27586345,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -482348306,
+                                    "unkn0": 0,
+                                    "t": 314222592,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1065353216
+                                    ]
+                                },
+                                {
+                                    "set": -681791922,
+                                    "unkn0": 0,
+                                    "t": 1474910253,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -1815528640,
+                                    "unkn0": 0,
+                                    "t": 1156875563,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -1552021945,
+                                    "unkn0": 0,
+                                    "t": -578537107,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": 1433185118,
+                                    "unkn0": 0,
+                                    "t": 997263223,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": 860440304,
+                                    "unkn0": 0,
+                                    "t": -976167352,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -443507748,
+                                    "unkn0": 0,
+                                    "t": 336970034,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -1948501261,
+                                    "unkn0": 0,
+                                    "t": 1366015901,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1065353216
+                                    ]
+                                },
+                                {
+                                    "set": -2120139011,
+                                    "unkn0": 0,
+                                    "t": -1480332463,
+                                    "type": 12,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1056964608
+                                    ]
+                                },
+                                {
+                                    "set": 1860717446,
+                                    "unkn0": 0,
+                                    "t": -2110208556,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": 391871677,
+                                    "unkn0": 0,
+                                    "t": 668753836,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -642861988,
+                                    "unkn0": 0,
+                                    "t": 155131081,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1
+                                    ]
+                                },
+                                {
+                                    "set": -92687923,
+                                    "unkn0": 0,
+                                    "t": 197645096,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -1898235093,
+                                    "unkn0": 0,
+                                    "t": -1498781623,
+                                    "type": 10,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -237023584,
+                                    "unkn0": 0,
+                                    "t": -642900542,
+                                    "type": 10,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -5726648,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 10,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        4
+                                    ]
+                                },
+                                {
+                                    "set": -1911309605,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1
+                                    ]
+                                },
+                                {
+                                    "set": -1215775135,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -1563474898,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": 2122227513,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 10,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        128
+                                    ]
+                                },
+                                {
+                                    "set": -1829098321,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -717046771,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 10,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -1227392784,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 10,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        2
+                                    ]
+                                },
+                                {
+                                    "set": 350989964,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 10,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        0
+                                    ]
+                                },
+                                {
+                                    "set": -1849850651,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 10,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        4
+                                    ]
+                                },
+                                {
+                                    "set": -1742643961,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1
+                                    ]
+                                },
+                                {
+                                    "set": 756508331,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1
+                                    ]
+                                },
+                                {
+                                    "set": -1092527987,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1
+                                    ]
+                                },
+                                {
+                                    "set": 905594838,
+                                    "unkn0": 0,
+                                    "t": 0,
+                                    "type": 3,
+                                    "NULL": [
+                                        0,
+                                        0,
+                                        1
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    }
 }

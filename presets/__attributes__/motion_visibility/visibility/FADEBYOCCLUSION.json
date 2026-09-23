@@ -1,9 +1,18 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "64111316",
-    "type_name": "FADEBYOCCLUSION",
+    "format_version": 2,
     "display_name": "FADEBYOCCLUSION",
     "category": "motion_visibility",
-    "data_bytes": "AgAAABAAAAAAzc3NAACgQAAAAAAAAIA/",
-    "subgroup": "visibility"
+    "subgroup": "visibility",
+    "attribute": {
+        "type": "FADEBYOCCLUSION",
+        "fields": {
+            "typeFlag": 2,
+            "section_length": 16,
+            "spacer0": -842150656,
+            "occlusionRadius": 5.0,
+            "minScale": 0.0,
+            "minAlpha": 1.0
+        }
+    }
 }

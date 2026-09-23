@@ -294,6 +294,52 @@ def _migrate_presets_once(new_root: str):
             except OSError:
                 pass
 
+    _upgrade_v1_presets(new_root)
+
+
+_PRESET_KIND_DIRS = ("__attributes__", "__archetypes__", "__entries__", "__bodies__")
+
+
+def _upgrade_v1_presets(new_root: str):
+    """把用户目录中的 v1 预设就地转为 v2。
+
+    覆盖前把原文件复制到 ``__v1_backup``；转换失败的文件保持原样并在控制台列出。
+    """
+    import shutil
+    from ..efx_format.assembly import is_v1_preset, upgrade_preset
+
+    backup_root = os.path.join(new_root, "__v1_backup")
+    failed = []
+    for kind_dir in _PRESET_KIND_DIRS:
+        for dirpath, _dirs, files in os.walk(os.path.join(new_root, kind_dir)):
+            for fname in files:
+                if not fname.lower().endswith(".json"):
+                    continue
+                path = os.path.join(dirpath, fname)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                except Exception:
+                    continue
+                if not is_v1_preset(d):
+                    continue
+                try:
+                    text = json.dumps(upgrade_preset(d), ensure_ascii=False, indent=4,
+                                      allow_nan=False)
+                    backup = os.path.join(backup_root, os.path.relpath(path, new_root))
+                    os.makedirs(os.path.dirname(backup), exist_ok=True)
+                    if not os.path.exists(backup):
+                        shutil.copy2(path, backup)
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(text)
+                except Exception as e:
+                    failed.append((os.path.relpath(path, new_root), e))
+    if failed:
+        print("EFX Editor: {} preset(s) could not be upgraded and were left unchanged:".format(
+            len(failed)))
+        for rel, e in failed:
+            print("  {}: {}".format(rel, e))
+
 
 def _item_to_json_value(item):
     """将字段值转换为 JSON 兼容表示；浮点使用 repr，opaque 返回 None。"""

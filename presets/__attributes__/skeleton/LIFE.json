@@ -1,8 +1,23 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1320868484",
-    "type_name": "LIFE",
+    "format_version": 2,
     "display_name": "LIFE（生命周期）",
     "category": "skeleton",
-    "data_bytes": "DAAAAAAAAAAAAAAAPAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "attribute": {
+        "type": "LIFE",
+        "fields": {
+            "typeFlag": 12,
+            "fadeInDuration": 0,
+            "fadeInDurationJitter": 0,
+            "duration": 60,
+            "durationJitter": 0,
+            "unknFrame": 0,
+            "unknFrameJitter": 0,
+            "fadeOutDuration": 0,
+            "fadeOutDurationJitter": 0,
+            "timeToDeath": 0,
+            "timeToDeathJitter": 0,
+            "indefiniteLifespan": 0
+        }
+    }
 }

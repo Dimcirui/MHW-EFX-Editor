@@ -1,9 +1,35 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "14579343",
-    "type_name": "PARENTEMISSIVE",
+    "format_version": 2,
     "display_name": "PARENTEMISSIVE（父级自发光）",
     "category": "renderer_modifier",
-    "data_bytes": "AQAAAAkAAAAAAIA/AQAAAD5g8/8AAABBzczMPZqZGT4AAIA/CQAAAAAAAAAAAEhCpHB9PwAAAAAAAAAAAAAAAAAAAAAAAAAA",
-    "subgroup": "dummy"
+    "subgroup": "dummy",
+    "attribute": {
+        "type": "PARENTEMISSIVE",
+        "fields": {
+            "typeFlag": 1,
+            "unknEnum1": 9,
+            "blend": 1.0,
+            "correctColorNo": 1,
+            "emissive": [
+                62,
+                96,
+                243,
+                255
+            ],
+            "intensity": 8.0,
+            "rimWidth": 0.1,
+            "rimPower": 0.15,
+            "rimAlpha": 1.0,
+            "unknEnum4": 9,
+            "mask0": 0.0,
+            "mask1": 50.0,
+            "unkn7_2": 0.99,
+            "unknFixed8_0": 0.0,
+            "unkn8_1": 0.0,
+            "unkn8_2": 0.0,
+            "unknFixed8_3": 0.0,
+            "unknFixed8_4": 0.0
+        }
+    }
 }

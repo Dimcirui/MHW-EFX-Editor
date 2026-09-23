@@ -1,9 +1,22 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "283684959",
-    "type_name": "CHECKPUREATTRIBUTE",
+    "format_version": 2,
     "display_name": "CHECKPUREATTRIBUTE",
     "category": "misc",
-    "data_bytes": "AQAAACAAAAAAzc3NAwAAAEAAAABdAAAAXgAAAP//////////AAAAAA==",
-    "subgroup": "others"
+    "subgroup": "others",
+    "attribute": {
+        "type": "CHECKPUREATTRIBUTE",
+        "fields": {
+            "typeFlag": 1,
+            "section_length": 32,
+            "unkn1": -842150656,
+            "unknEnum2_0": 3,
+            "unknEnum2_1": 64,
+            "unknEnum2_2": 93,
+            "unknEnum2_3": 94,
+            "unknEnum2_4": -1,
+            "unknEnum2_5": -1,
+            "unknFixed2_6": 0
+        }
+    }
 }

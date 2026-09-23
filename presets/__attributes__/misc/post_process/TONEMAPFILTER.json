@@ -1,9 +1,19 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "845585410",
-    "type_name": "TONEMAPFILTER",
+    "format_version": 2,
     "display_name": "TONEMAPFILTER",
     "category": "misc",
-    "data_bytes": "AAAAABAAAAAAzc3NAAAAPwCAO0UAAABAIAAAAGxpZ2h0XExVVFxDQ19lZmZlY3RfdHlwZTAwX0xVVE0A",
-    "subgroup": "post_process"
+    "subgroup": "post_process",
+    "attribute": {
+        "type": "TONEMAPFILTER",
+        "fields": {
+            "typeFlag": 0,
+            "unknFixed0_1": 16,
+            "unkn1": -842150656,
+            "intensity": 0.5,
+            "triggerRadius": 3000.0,
+            "unknFixed2_2": 2.0,
+            "path": "light\\LUT\\CC_effect_type00_LUTM\u0000"
+        }
+    }
 }

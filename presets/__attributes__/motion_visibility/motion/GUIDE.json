@@ -1,9 +1,40 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1123011591",
-    "type_name": "GUIDE",
-    "display_name": "GUIDE\uff08\u8def\u5f84\u5f15\u5bfc\uff09",
+    "format_version": 2,
+    "display_name": "GUIDE（路径引导）",
     "category": "motion_visibility",
-    "data_bytes": "AAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAAAAAAEhCAAAAAAAAAD8AAAAAAAAAPwAAAAAAACBBAAAAADMzMz8AAIA/AAAAQAAAwD8AAMA/AAAAPwAAAAACAAAACAAAAAAAgD8AAIA/AABwQg==",
-    "subgroup": "motion"
+    "subgroup": "motion",
+    "attribute": {
+        "type": "GUIDE",
+        "fields": {
+            "initialPosition": 0.0,
+            "initialPositionJitter": 0,
+            "speed": 1.0,
+            "speedJitter": 0.0,
+            "accel": 1.0,
+            "accelJitter": 0.0,
+            "innerRadius": 0.0,
+            "innerRadiusJitter": 0.0,
+            "outerRadius": 50.0,
+            "outerRadiusJitter": 0.0,
+            "restitutionDelay": 0.5,
+            "restitutionDelayJitter": 0.0,
+            "restitutionEccentricity": 0.5,
+            "restitutionEccentricityJitter": 0.0,
+            "restitutionElasticity": 10.0,
+            "restitutionElasticityJitter": 0.0,
+            "unkn16": 0.7,
+            "unkn17": 1.0,
+            "unkn18": 2.0,
+            "unkn19": 1.5,
+            "unknFixed20": 1.5,
+            "unkn21": 0.5,
+            "unkn22": 0.0,
+            "int_unkn1_0": 2,
+            "int_unkn1_1": 8,
+            "float_unkn2_0": 1.0,
+            "float_unkn2_1": 1.0,
+            "float_unkn2_2": 60.0
+        }
+    }
 }

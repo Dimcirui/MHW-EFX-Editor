@@ -1,9 +1,15 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "957228464",
-    "type_name": "REFRACTION",
+    "format_version": 2,
     "display_name": "REFRACTION（折射）",
     "category": "renderer_modifier",
-    "data_bytes": "AgAAAAAAAAAAAAAA",
-    "subgroup": "uvs"
+    "subgroup": "uvs",
+    "attribute": {
+        "type": "REFRACTION",
+        "fields": {
+            "typeFlag": 2,
+            "pixelNormalOffset": 0,
+            "seeThroughBlend": 0.0
+        }
+    }
 }

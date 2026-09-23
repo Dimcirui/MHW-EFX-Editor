@@ -1,9 +1,22 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "156539255",
-    "type_name": "LAYOUT",
+    "format_version": 2,
     "display_name": "LAYOUT",
     "category": "misc",
-    "data_bytes": "AgAAABAAAAAAAAAAAAAAAAAAAAD/////AAAAAA==",
-    "subgroup": "others"
+    "subgroup": "others",
+    "attribute": {
+        "type": "LAYOUT",
+        "fields": {
+            "typeFlag": 2,
+            "unknFixed0_1": 16,
+            "unknEnum1_0": 0,
+            "unknEnum1_1": 0,
+            "unknFixed1_2": 0,
+            "unknFixed1_3": -1,
+            "layoutBank": {
+                "count": 0,
+                "columns": []
+            }
+        }
+    }
 }

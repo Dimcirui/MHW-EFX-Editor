@@ -1,8 +1,39 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "280719621",
-    "type_name": "PTCOLLISION",
+    "format_version": 2,
     "display_name": "PTCOLLISION（粒子碰撞）",
     "category": "action_trigger",
-    "data_bytes": "CAAAAAQAAABEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAmpmZPgAAgD8zMzM/AAAAADMzMz8AAAAAAAAAAAEAAAAAAAAA/////wUAAAAAAAAAAAAAAA=="
+    "attribute": {
+        "type": "PTCOLLISION",
+        "fields": {
+            "typeFlag": 8,
+            "physicsEnum": 4,
+            "unkn02": 68,
+            "unkn03": 0,
+            "unknEnum04": 0,
+            "unknFixed05": 0,
+            "projectionOffset": 0.0,
+            "projectionDist": 0.0,
+            "unkn1_0": 1.0,
+            "unkn1_1": 0.0,
+            "unkn1_2": 0.0,
+            "bounceCount": 1,
+            "bounceCountJitter": 0,
+            "bounceElasticity": 0.0,
+            "bounceElasticityJitter": 0.0,
+            "bounceElasticityMultiplier": 0.3,
+            "horizontalBounce": 1.0,
+            "unkn34": 0.7,
+            "unkn35": 0.0,
+            "unkn36": 0.7,
+            "unkn37": 0.0,
+            "impactPlayTriggerMode": 0,
+            "impactPlayTriggerCount": 1,
+            "impactPlayTriggerCountJitter": 0,
+            "ieIndex": -1,
+            "unknEnum6_0": 5,
+            "unknEnum6_1": 0,
+            "unknFixed6_2": 0
+        }
+    }
 }

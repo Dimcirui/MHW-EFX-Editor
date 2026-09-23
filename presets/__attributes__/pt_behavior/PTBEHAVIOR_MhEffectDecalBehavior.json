@@ -1,8 +1,113 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1179069619",
-    "type_name": "PTBEHAVIOR",
+    "format_version": 2,
     "display_name": "PTBEHAVIOR：MhEffectDecalBehavior",
     "category": "pt_behavior",
-    "data_bytes": "CwAAAB8AAAAOAAAAbkVmZmVjdDo6TWhFZmZlY3REZWNhbEJlaGF2aW9yAJeMw06v20BDBgAAAAMAAABdxqNcr9tAQwYAAAAAAAAAsHKaqK/bQEOAAAAA610fJDAAAAB2ZnhcZXZjXGV2YzAwMDlcZGRzXG1kX2V2YzAwMTFfcnl1X2FzaWF0b18wMV9CTQC/hHSor9tAQ4AAAADrXR8kLQAAAHZmeFxldmNcZXZjMDAwOVxkZHNcbWRfZXZjMDAxMV9yeXVfYXNpYXRvX05NAKdGEoCv20BDDwAAADcnH5EEvBs3r9tAQwwAAADNzEw/iMAzbq/bQEMUAAAAAAAgQQAAcEEAAMhCVjpt7q/bQEMVAAAAAAAAAAAAAAAAAIA/AACAP2Yrb7mv20BDDAAAAAAANEJQbTLer9tAQwYAAAAAAAAAByciRq/bQEMMAAAAzcxMP7lrfB+v20BDBgAAAAEAAAAOaPEAr9tAQwwAAAAAAIA/iyO72q/bQEMMAAAAzcyMPw=="
+    "attribute": {
+        "type": "PTBEHAVIOR",
+        "fields": {
+            "typeFlag": 11,
+            "b_type": "nEffect::MhEffectDecalBehavior\u0000",
+            "params": [
+                {
+                    "unkn": 1321438359,
+                    "const0": 1128324015,
+                    "t": 6,
+                    "decal_epv_color_slot": 3
+                },
+                {
+                    "unkn": 1554237021,
+                    "const0": 1128324015,
+                    "t": 6,
+                    "decal_epv_color_slot": 0
+                },
+                {
+                    "unkn": -1466273104,
+                    "const0": 1128324015,
+                    "t": 128,
+                    "file_type": 606035435,
+                    "path": "vfx\\evc\\evc0009\\dds\\md_evc0011_ryu_asiato_01_BM\u0000"
+                },
+                {
+                    "unkn": -1468758849,
+                    "const0": 1128324015,
+                    "t": 128,
+                    "file_type": 606035435,
+                    "path": "vfx\\evc\\evc0009\\dds\\md_evc0011_ryu_asiato_NM\u0000"
+                },
+                {
+                    "unkn": -2146285913,
+                    "const0": 1128324015,
+                    "t": 15,
+                    "color": [
+                        55,
+                        39,
+                        31,
+                        145
+                    ]
+                },
+                {
+                    "unkn": 924564484,
+                    "const0": 1128324015,
+                    "t": 12,
+                    "unkn0": 0.8
+                },
+                {
+                    "unkn": 1848885384,
+                    "const0": 1128324015,
+                    "t": 20,
+                    "unkn1": [
+                        10.0,
+                        15.0,
+                        100.0
+                    ]
+                },
+                {
+                    "unkn": -294831530,
+                    "const0": 1128324015,
+                    "t": 21,
+                    "unkn0": 0.0,
+                    "unkn1": 0.0,
+                    "unkn2": 1.0,
+                    "unkn3": 1.0
+                },
+                {
+                    "unkn": -1183896730,
+                    "const0": 1128324015,
+                    "t": 12,
+                    "unkn0": 45.0
+                },
+                {
+                    "unkn": -567120560,
+                    "const0": 1128324015,
+                    "t": 6,
+                    "decal_epv_color_slot": 0
+                },
+                {
+                    "unkn": 1176643335,
+                    "const0": 1128324015,
+                    "t": 12,
+                    "unkn0": 0.8
+                },
+                {
+                    "unkn": 528247737,
+                    "const0": 1128324015,
+                    "t": 6,
+                    "decal_epv_color_slot": 1
+                },
+                {
+                    "unkn": 15820814,
+                    "const0": 1128324015,
+                    "t": 12,
+                    "unkn0": 1.0
+                },
+                {
+                    "unkn": -625269877,
+                    "const0": 1128324015,
+                    "t": 12,
+                    "unkn0": 1.1
+                }
+            ]
+        }
+    }
 }

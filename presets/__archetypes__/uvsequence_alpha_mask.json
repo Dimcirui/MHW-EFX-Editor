@@ -1,59 +1,307 @@
 {
- "efx_preset_kind": "entry",
- "entry_kind": "standard",
- "display_name": "序列帧+精确形状遮罩",
- "props": {
-  "body_type": "673359943",
-  "unkn0": "0",
-  "attr_count": "8",
-  "null": "0",
-  "timl_length": "0"
- },
- "timl_bytes": "",
- "raw": "",
- "source_label": "序列帧+精确形状遮罩",
- "source_counts": {
-  "extern": 0,
-  "entry": 15,
-  "action": 1
- },
- "in_eof": false,
- "attributes": [
-  {
-   "type_hash": "10286765",
-   "data_bytes": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAgD8AAAAAAACAPwAAAAACAAAA"
-  },
-  {
-   "type_hash": "368199626",
-   "data_bytes": "BAAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAD/////"
-  },
-  {
-   "type_hash": "1921765292",
-   "data_bytes": "AwAAAAEAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAABQAAAAUAAAAAAAAA"
-  },
-  {
-   "type_hash": "1320868484",
-   "data_bytes": "BgAAAJYAAAAAAAAABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAA"
-  },
-  {
-   "type_hash": "1136904414",
-   "data_bytes": "EQAAAAAAAABZWVn//////wAAgD8AAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACgQQAAAAAAAMhCAAAAAAAAyEIAAAAAzczMPQAAAAAAAIA/AAAAAAAAAADNzEw+pHB9PwAAAAAnAAAAAAAAAAAAAAAAAAAAAACAPwEAAAAAAAAAdmZ4XGRkc1xjbVxjbV9mbG93bWFwXGNtX2Zsb3dfMDA5X0ZfTk0A"
-  },
-  {
-   "type_hash": "480396424",
-   "data_bytes": "CAAAAArXozwAAAAApHB9PwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAA=="
-  },
-  {
-   "type_hash": "1698970185",
-   "data_bytes": "EgAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAABgAAAB2ZnhcdXZzXGNtXGNtX2xpZ2h0XzAwMAA="
-  },
-  {
-   "type_hash": "61219887",
-   "data_bytes": "AgAAAAAAAADNzMw9AAAAAAEAAAA="
-  },
-  {
-   "type_hash": "1978267738",
-   "data_bytes": "FQAAAGgAAAAAzc3NAQAAAAAASMMAABbEAQAAAAAAAAABAAAAAACAPwAAgD8AAAAAAACAPwAAAAAAAIA/zczMPQAAyEKBOXh3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP////8AAAAAAAAAAAAAAAA="
-  }
- ]
+    "efx_preset_kind": "entry",
+    "format_version": 2,
+    "display_name": "序列帧+精确形状遮罩",
+    "source_label": "序列帧+精确形状遮罩",
+    "source_counts": {
+        "extern": 0,
+        "entry": 15,
+        "action": 1
+    },
+    "in_eof": false,
+    "entry": {
+        "kind": "standard",
+        "bodyType": 673359943,
+        "unkn0": 0,
+        "null": 0,
+        "timl": null,
+        "attributes": [
+            {
+                "type": "TRANSFORM3D",
+                "fields": {
+                    "typeFlag": 2,
+                    "translate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotate": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "resize": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotationOrder": 4,
+                    "translation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "translation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "rotation_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "rotation_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "scale_velocity": [
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0
+                    ],
+                    "scale_velocity_modifier": [
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0,
+                        1.0,
+                        0.0
+                    ],
+                    "enableVelocityBitflag": 2
+                }
+            },
+            {
+                "type": "PARENTOPTIONS",
+                "fields": {
+                    "typeFlag": 4,
+                    "relationPos": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationRot": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "relationScl": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "particleUseLocal": 1,
+                    "unknFlag1": 0,
+                    "constRelease": 0,
+                    "constReleaseJitter": 0,
+                    "jointNo": -1
+                }
+            },
+            {
+                "type": "SPAWN",
+                "fields": {
+                    "typeFlag": 3,
+                    "maxParticles": 1,
+                    "spawnNum": 1,
+                    "spawnNumJitter": 0,
+                    "intervalFrame": 0,
+                    "intervalFrameJitter": 0,
+                    "loopNum": 1,
+                    "loopNumJitter": 0,
+                    "spawnFrame": 0,
+                    "spawnFrameJitter": 0,
+                    "emitterDelayFrame": 0,
+                    "emitterDelayFrameJitter": 0,
+                    "spawnWaitFrame": 0,
+                    "spawnWaitFrameJitter": 0,
+                    "emitterRepeatCount": 1,
+                    "altBurstInterval": 5,
+                    "altBurstIntervalJitter": 5,
+                    "spawnFlags": 0
+                }
+            },
+            {
+                "type": "LIFE",
+                "fields": {
+                    "typeFlag": 6,
+                    "fadeInDuration": 150,
+                    "fadeInDurationJitter": 0,
+                    "duration": 5,
+                    "durationJitter": 0,
+                    "unknFrame": 0,
+                    "unknFrameJitter": 0,
+                    "fadeOutDuration": 0,
+                    "fadeOutDurationJitter": 0,
+                    "timeToDeath": 0,
+                    "timeToDeathJitter": 0,
+                    "indefiniteLifespan": 1
+                }
+            },
+            {
+                "type": "BILLBOARD3D",
+                "fields": {
+                    "typeFlag": 17,
+                    "applicationRule": 0,
+                    "color": [
+                        89,
+                        89,
+                        89,
+                        255
+                    ],
+                    "colorRange": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "brightness": 1.0,
+                    "brightnessJitter": 2.0,
+                    "useColorRange": 0,
+                    "blendMode": 0,
+                    "correctColorNo": 0,
+                    "colorRangeCorrectColorNo": 0,
+                    "rotation": 0.0,
+                    "rotationJitter": 0.0,
+                    "scale": 20.0,
+                    "scaleJitter": 0.0,
+                    "width": 100.0,
+                    "widthJitter": 0.0,
+                    "height": 100.0,
+                    "heightJitter": 0.0,
+                    "flowmapSpeed": 0.1,
+                    "flowmapSpeedJitter": 0.0,
+                    "flowmapSpeedCoef": 1.0,
+                    "flowmapSpeedCoefJitter": 0.0,
+                    "flowmapStrength": 0.0,
+                    "flowmapStrengthJitter": 0.2,
+                    "flowmapStrengthCoef": 0.99,
+                    "flowmapStrengthCoefJitter": 0.0,
+                    "divideNum": 0,
+                    "enableGPUParticle": 0,
+                    "fieldInfluenceRate": 0.0,
+                    "fieldInfluenceRateMultiplier": 1.0,
+                    "lightGroup": 1,
+                    "unknFlag9": 0,
+                    "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_009_F_NM\u0000"
+                }
+            },
+            {
+                "type": "SCALEANIM",
+                "fields": {
+                    "typeFlag": 8,
+                    "initialScaleSpeed": 0.02,
+                    "initialScaleSpeedJitter": 0.0,
+                    "initialScaleAccel": 0.99,
+                    "initialScaleAccelJitter": 0.0,
+                    "scaleSpeedX": 0.0,
+                    "scaleSpeedXJitter": 0.0,
+                    "scaleAccelX": 1.0,
+                    "scaleAccelXJitter": 0.0,
+                    "scaleSpeedY": 0.0,
+                    "scaleSpeedYJitter": 0.0,
+                    "scaleAccelY": 1.0,
+                    "scaleAccelYJitter": 0.0,
+                    "scaleSpeedZ": 0.0,
+                    "scaleSpeedZJitter": 0.0,
+                    "scaleAccelZ": 1.0,
+                    "scaleAccelZJitter": 0.0,
+                    "animUpdateStart": 0,
+                    "animUpdateStartJitter": 0
+                }
+            },
+            {
+                "type": "UVSEQUENCE",
+                "fields": {
+                    "typeFlag": 18,
+                    "sequenceNo": 4,
+                    "sequenceNoJitter": 0,
+                    "patternNo": 0,
+                    "patternNoJitter": 0,
+                    "playSpeed": 0.0,
+                    "playSpeedJitter": 0.0,
+                    "playSpeedCoef": 1.0,
+                    "playSpeedCoefJitter": 0.0,
+                    "loopingMode": 0,
+                    "loopingOrientation": 0,
+                    "loopingPad": 0,
+                    "path": "vfx\\uvs\\cm\\cm_light_000\u0000"
+                }
+            },
+            {
+                "type": "ALPHACORRECTION",
+                "fields": {
+                    "unkn0": 2,
+                    "lowPass": 0.0,
+                    "contrast_gamma": 0.1,
+                    "unkn3": 0.0,
+                    "unknFlag2": 1
+                }
+            },
+            {
+                "type": "SHADERSETTINGS",
+                "fields": {
+                    "typeFlag": 21,
+                    "unknEnum1": 104,
+                    "spacer": -842150656,
+                    "unknFlag2": 1,
+                    "depthBias": -200.0,
+                    "softParticleDistance": -600.0,
+                    "unknBitmask3_0": 1,
+                    "unknEnum3_1": 0,
+                    "controlBitflag": 1,
+                    "unkn4_0": 1.0,
+                    "unkn4_1": 1.0,
+                    "unkn4_2": 0.0,
+                    "unkn4_3": 1.0,
+                    "unkn4_4": 0.0,
+                    "unkn4_5": 1.0,
+                    "unkn4_6": 0.1,
+                    "unkn4_7": 100.0,
+                    "presetId": 2004367745,
+                    "unkn4_9": 0.0,
+                    "unkn4_10": 0.0,
+                    "unkn4_11": 0.0,
+                    "unknFixed4_12": 0.0,
+                    "unkn4_13": 0.0,
+                    "unknBitmask4_14": 0,
+                    "unkn4_15": 0,
+                    "objectInteractionFlag0": 255,
+                    "objectInteractionFlag1": 255,
+                    "objectInteractionFlag2": 255,
+                    "objectInteractionFlag3": 255,
+                    "unknBool0": 0,
+                    "unknBool1": 0,
+                    "unknBool2": 0,
+                    "unknBool3": 0,
+                    "unknEnum5_0": 0,
+                    "unknBitmask5_1": 0
+                }
+            }
+        ]
+    }
 }

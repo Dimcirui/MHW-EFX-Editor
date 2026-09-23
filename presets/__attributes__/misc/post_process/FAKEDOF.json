@@ -1,9 +1,20 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "212167510",
-    "type_name": "FAKEDOF",
+    "format_version": 2,
     "display_name": "FAKEDOF（伪景深）",
     "category": "misc",
-    "data_bytes": "AQAAABgAAAAAzc3NAAAAAABAHEbNzEw+AgAAAAAAAAA=",
-    "subgroup": "post_process"
+    "subgroup": "post_process",
+    "attribute": {
+        "type": "FAKEDOF",
+        "fields": {
+            "typeFlag": 1,
+            "section_length": 24,
+            "unkn2": -842150656,
+            "unkn3_0": 0.0,
+            "unkn3_1": 10000.0,
+            "unkn4": 0.2,
+            "unknBitmask5": 2,
+            "unknFixed6": 0
+        }
+    }
 }

@@ -1,9 +1,34 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1774142981",
-    "type_name": "ROTATEANIM",
+    "format_version": 2,
     "display_name": "ROTATEANIM（旋转动画）",
     "category": "motion_visibility",
-    "data_bytes": "EwAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AAAAAAAAgD8AAAAAAAAAAAAAAAA=",
-    "subgroup": "motion"
+    "subgroup": "motion",
+    "attribute": {
+        "type": "ROTATEANIM",
+        "fields": {
+            "spinAxisMask": 19,
+            "rotationModeMask": 0,
+            "billboardRotation": 2.0,
+            "billboardRotationJitter": 0.0,
+            "spin_velocity": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+            ],
+            "billboardRotationCoef": 1.0,
+            "billboardRotationCoefJitter": 0.0,
+            "spinSpeedCoefX": 1.0,
+            "spinSpeedCoefXJitter": 0.0,
+            "spinSpeedCoefY": 1.0,
+            "spinSpeedCoefYJitter": 0.0,
+            "spinSpeedCoefZ": 1.0,
+            "spinSpeedCoefZJitter": 0.0,
+            "rotateDelayStart": 0,
+            "rotateDelayStartJitter": 0
+        }
+    }
 }

@@ -1,8 +1,74 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1179069619",
-    "type_name": "PTBEHAVIOR",
+    "format_version": 2,
     "display_name": "PTBEHAVIOR：PointLightBehavior",
     "category": "pt_behavior",
-    "data_bytes": "CwAAABwAAAAJAAAAbkVmZmVjdDo6UG9pbnRMaWdodEJlaGF2aW9yAATedJD1zpcGBgAAAC4AAAC67ChK9c6XBgYAAAB+AAAAKNLim/XOlwYPAAAA/3Az/9Y2JrX1zpcGDAAAAAAAoEBwjVj89c6XBgwAAAAAAIA/0t8YX/XOlwYDAAAAAAAAAHUWXuv1zpcGAwAAAAAAAABrx+AF9c6XBgwAAAAAACBBOLc8SPXOlwYMAAAAAABIQw=="
+    "attribute": {
+        "type": "PTBEHAVIOR",
+        "fields": {
+            "typeFlag": 11,
+            "b_type": "nEffect::PointLightBehavior\u0000",
+            "params": [
+                {
+                    "unkn": -1871389180,
+                    "const0": 110612213,
+                    "t": 6,
+                    "decal_epv_color_slot": 46
+                },
+                {
+                    "unkn": 1244196026,
+                    "const0": 110612213,
+                    "t": 6,
+                    "decal_epv_color_slot": 126
+                },
+                {
+                    "unkn": -1679633880,
+                    "const0": 110612213,
+                    "t": 15,
+                    "color": [
+                        255,
+                        112,
+                        51,
+                        255
+                    ]
+                },
+                {
+                    "unkn": -1255786794,
+                    "const0": 110612213,
+                    "t": 12,
+                    "unkn0": 5.0
+                },
+                {
+                    "unkn": -61305488,
+                    "const0": 110612213,
+                    "t": 12,
+                    "unkn0": 1.0
+                },
+                {
+                    "unkn": 1595465682,
+                    "const0": 110612213,
+                    "t": 3,
+                    "NULL": 0
+                },
+                {
+                    "unkn": -346155403,
+                    "const0": 110612213,
+                    "t": 3,
+                    "NULL": 0
+                },
+                {
+                    "unkn": 98617195,
+                    "const0": 110612213,
+                    "t": 12,
+                    "unkn0": 10.0
+                },
+                {
+                    "unkn": 1211938616,
+                    "const0": 110612213,
+                    "t": 12,
+                    "unkn0": 200.0
+                }
+            ]
+        }
+    }
 }

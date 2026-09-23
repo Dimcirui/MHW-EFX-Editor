@@ -1,9 +1,39 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "842043995",
-    "type_name": "REPEATAREA",
+    "format_version": 2,
     "display_name": "REPEATAREA（重复区域）",
     "category": "motion_visibility",
-    "data_bytes": "AgAAACwAAAAAzc3Nzc3Nzc3Nzc3Nzc3NAAAAAAAAAAAAAAAAAAAAAAAAlkQAAAAABQAAAA==",
-    "subgroup": "motion"
+    "subgroup": "motion",
+    "attribute": {
+        "type": "REPEATAREA",
+        "fields": {
+            "typeFlag": 2,
+            "section_length": 44,
+            "unkn2": [
+                0,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51,
+                -51
+            ],
+            "unkn3_0": 0.0,
+            "unkn3_1": 0.0,
+            "unknFixed3_2": 0.0,
+            "unknFixed3_3": 0.0,
+            "unkn3_4": 1200.0,
+            "unkn3_5": 0.0,
+            "unknEnum4": 5
+        }
+    }
 }

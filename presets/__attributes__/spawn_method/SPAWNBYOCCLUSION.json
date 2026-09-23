@@ -1,8 +1,16 @@
 {
     "efx_preset_kind": "attribute",
-    "type_hash": "1913890808",
-    "type_name": "SPAWNBYOCCLUSION",
+    "format_version": 2,
     "display_name": "SPAWNBYOCCLUSION",
     "category": "spawn_method",
-    "data_bytes": "AAAAAAwAAAAAzc3NAAAMQwEAAAA="
+    "attribute": {
+        "type": "SPAWNBYOCCLUSION",
+        "fields": {
+            "typeFlag": 0,
+            "section_length": 12,
+            "unkn1": -842150656,
+            "unknFixed2": 140.0,
+            "unknFixed3": 1
+        }
+    }
 }
