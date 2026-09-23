@@ -1569,6 +1569,11 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                 )
                 _add_row.operator("efx.ptb_add_override_search", text="", icon="VIEWZOOM")
 
+            # LAYOUT：前缀字段之后是内嵌布局表的表格编辑器
+            if type_name == "LAYOUT" and not _color_only:
+                from . import layoutbank_ops as _lbo
+                _lbo.draw_layout_bank_editor(col, obj)
+
     else:
         # 不可编辑（_custom / 未知 / 含嵌套结构）
         box = layout.box()

@@ -317,6 +317,18 @@ STRINGS = {
         "ZH": "只读：这张表的结构因实例而变，套不进固定字段布局"},
     "attribute.layoutbank_decode_failed": {
         "EN": "Could not decode this LayoutBank", "ZH": "无法解析这个 LayoutBank"},
+    "layoutbank.title":        {"EN": "Layout Table ({n} rows)", "ZH": "布局表（{n} 行）"},
+    "layoutbank.add_column":   {"EN": "Add Column",          "ZH": "新增列"},
+    "layoutbank.column":       {"EN": "Column {bt}",         "ZH": "列 {bt}"},
+    "layoutbank.no_addable":   {"EN": "(no column can be added)", "ZH": "（没有可新增的列）"},
+    "layoutbank.no_columns":   {"EN": "(no columns)",        "ZH": "（没有列）"},
+    "layoutbank.add_row":      {"EN": "Add Row",             "ZH": "新增行"},
+    "layoutbank.row":          {"EN": "Row {i}",             "ZH": "第 {i} 行"},
+    "layoutbank.page":         {"EN": "Rows {a}–{b} of {n}", "ZH": "第 {a}–{b} 行，共 {n} 行"},
+    "layoutbank.edit_title":   {"EN": "Column {bt}, row {row}", "ZH": "列 {bt}，第 {row} 行"},
+    "layoutbank.flags_hint": {
+        "EN": "Adding or removing a column updates its column switch above",
+        "ZH": "增删列时，上方对应的列开关会自动同步"},
 
     # ── 导入/导出算子（operators.py）弹窗 ─────────────────────────────────────
     "op.export_validation_failed_header": {"EN": "Pre-export validation found errors, cancelled:", "ZH": "导出前校验发现错误，已取消："},

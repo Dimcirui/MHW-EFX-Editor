@@ -2231,6 +2231,27 @@ def ptbehavior_current_bytes(bp) -> bytes:
     return rebuild_ptbehavior_attribute(bp)
 
 
+def reinit_custom_field_from_bytes(bp, type_hash: int, new_bytes: bytes) -> bool:
+    """用 new_bytes 重置 custom 属性：写 raw_b64 并按导入流程重建 field_items。
+
+    供直接改写整块字节的结构编辑算子（如 LAYOUT 的 LayoutBank 增删）调用；期间置 _LOADING
+    抑制脏标记误触发，由调用方显式置脏。返回重建后是否仍可编辑。
+    """
+    global _LOADING
+    from ..efx_format.efxfile import AttrBlock
+
+    prev = _LOADING
+    _LOADING = True
+    try:
+        bp.field_items.clear()
+        bp.is_editable = False
+        bp.raw_b64 = base64.b64encode(new_bytes).decode("ascii")
+        _init_path_attribute_props(AttrBlock(type_hash=type_hash, data_bytes=new_bytes), bp)
+        return bool(bp.is_editable)
+    finally:
+        _LOADING = prev
+
+
 def reinit_ptbehavior_from_bytes(bp, new_bytes: bytes) -> bool:
     """
     用 new_bytes 重置 PTBEHAVIOR 属性：写 raw_b64 + 重建 field_items。

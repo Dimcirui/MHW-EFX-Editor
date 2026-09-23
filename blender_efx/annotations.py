@@ -925,6 +925,36 @@ FIELD_ANNOTATIONS = {
         "EN": "Meaning unknown.",
         "ZH": "含义未知。",
     },
+    ("LAYOUT", "useColumn0"): {
+        "EN": "Switch for column 0 of the layout table below. Updates automatically when "
+              "that column is added or removed.",
+        "ZH": "下方布局表列 0 的开关。增删该列时自动同步。",
+    },
+    ("LAYOUT", "useColumn1"): {
+        "EN": "Switch for column 1 of the layout table below. Updates automatically when "
+              "that column is added or removed.",
+        "ZH": "下方布局表列 1 的开关。增删该列时自动同步。",
+    },
+    ("LAYOUT", "useColumn2"): {
+        "EN": "Switch for columns 2 and 3 of the layout table below; follows column 2. "
+              "Updates automatically when column 2 or 3 is added or removed.",
+        "ZH": "下方布局表列 2/3 的开关，随列 2 的有无。增删列 2 或列 3 时自动同步。",
+    },
+    ("LAYOUT", "useColumn4"): {
+        "EN": "Switch for columns 4 and 5 of the layout table below; follows column 4. "
+              "Updates automatically when column 4 or 5 is added or removed.",
+        "ZH": "下方布局表列 4/5 的开关，随列 4 的有无。增删列 4 或列 5 时自动同步。",
+    },
+    ("LAYOUT", "useColumn6"): {
+        "EN": "Switch for column 6 of the layout table below. Updates automatically when "
+              "that column is added or removed.",
+        "ZH": "下方布局表列 6 的开关。增删该列时自动同步。",
+    },
+    ("LAYOUT", "useColumn7"): {
+        "EN": "Switch for column 7 of the layout table below. Updates automatically when "
+              "that column is added or removed.",
+        "ZH": "下方布局表列 7 的开关。增删该列时自动同步。",
+    },
     ("LAYOUT", "typeFlag"): {
         "EN": "Header field present in most attribute types, a type/category "
               "marker rather than a tunable value.",

@@ -27,6 +27,7 @@ from . import add_ops       # 从整 Entry 预设新增 Entry + Active EFX 文�
 from . import add_section_ops  # 从无到有新建 Action / Extern / Subselect 段条目
 from . import attribute_ops     # 单个 Attribute 的复制 / 粘贴 / 存预设 / 从预设新增
 from . import part_mask_ops # PLEMISSIVE 部位位掩码（body_p / wp_p）勾选编辑器
+from . import layoutbank_ops  # LAYOUT 内嵌布局表：增删行 / 增删列 / 逐行改值
 from . import bitmask_ops    # 通用位掩码弹窗编辑器（typed Field bitmask 字段）
 from . import shadersettings_preset_ops  # SHADERSETTINGS.presetId 已知预设名下拉
 from . import color_ops      # Color Editor 全局改色工具（色系偏移 / 直接替换）
@@ -132,6 +133,7 @@ def register():
     attribute_ops.register()
 
     part_mask_ops.register()
+    layoutbank_ops.register()
     bitmask_ops.register()
     shadersettings_preset_ops.register()
 
@@ -234,6 +236,7 @@ def unregister():
     # ── 单 Attribute 组装算子 ──────────────────────────────────────────────────────────
     shadersettings_preset_ops.unregister()
     bitmask_ops.unregister()
+    layoutbank_ops.unregister()
     part_mask_ops.unregister()
     attribute_ops.unregister()
 
