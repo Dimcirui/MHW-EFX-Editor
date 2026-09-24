@@ -124,7 +124,7 @@ ENUM_BLEND_STATE = EnumDef("BlendState", [
     (5, "PtBehavior (decal)", "PtBehavior (decal)"),
     (6, "NoDraw", "不绘制(dummy)"),
     (7, "Additive (7)", "加法 (7)"),
-    (8, "Multiply x2", "乘法 x2"),
+    (8, "Multiply", "乘法"),
     (9, "Alpha (9)", "Alpha 混合 (9)", True),
     (10, "Opaque (10)", "不透明 (10)", True),
 ])
@@ -318,11 +318,11 @@ ENUM_LOOPING_ORIENTATION = EnumDef("LoopingOrientation", [
     (3, "Random", "随机"),
 ])
 
-# REFRACTION：pixelNormalOffset
-ENUM_REFRACTION_OFFSET = EnumDef("RefractionOffset", [
-    (0, "None", "不偏移"),
-    (1, "Single", "单次偏移"),
-    (2, "Multiple", "多重偏移"),
+# REFRACTION：distortionType
+ENUM_DISTORTION_TYPE = EnumDef("DistortionType", [
+    (0, "Light Refraction", "轻度折射"),
+    (1, "Refraction", "折射"),
+    (2, "Directional Blur", "方向模糊"),
 ])
 
 # Root.UnitBoundary：语义仍待确认

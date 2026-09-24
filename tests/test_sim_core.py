@@ -3024,8 +3024,8 @@ class TestPtLifeActionScene(unittest.TestCase):
             (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 0, 0, 255], "brightness": 10,
                            "blendMode": 1, "width": 100, "height": 100, "scale": 1}),
-            (REFRACTION, {"typeFlag": 2, "pixelNormalOffset": 0,
-                          "seeThroughBlend": 0.0}),
+            (REFRACTION, {"typeFlag": 2, "distortionType": 0,
+                          "alphaBlend": 0.0}),
         ]
         sim = Simulator(blocks, b"", SimConfig())
         sim.run(3)
@@ -3047,16 +3047,16 @@ class TestPtLifeActionScene(unittest.TestCase):
                 (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                                "blendMode": 1, "width": 100, "height": 100,
                                "scale": 1}),
-                (REFRACTION, {"typeFlag": 2, "pixelNormalOffset": offset,
-                              "seeThroughBlend": blend}),
+                (REFRACTION, {"typeFlag": 2, "distortionType": offset,
+                              "alphaBlend": blend}),
             ]
             sim = Simulator(blocks, b"", SimConfig())
             sim.run(2)
             return [n for n in sim.notes if "REFRACTION" in n]
 
         self.assertEqual(notes(0, 0.0), [])
-        self.assertTrue(any("pixelNormalOffset" in n for n in notes(1, 0.0)))
-        self.assertTrue(any("seeThroughBlend" in n for n in notes(0, 0.35)))
+        self.assertTrue(any("distortionType" in n for n in notes(1, 0.0)))
+        self.assertTrue(any("alphaBlend" in n for n in notes(0, 0.35)))
 
     def test_scale_item_array_path_matches_per_point(self):
         """条带的数组形态（RibbonStrip）走 `_scale_item` 要和逐点路完全一致。

@@ -15,7 +15,7 @@ from .enums import (
     ENUM_EXTERNREF_TRIGGER,
     ENUM_RAYCAST_DIR, ENUM_RAYCAST_ID, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
     ENUM_RENDER_LAYER, ENUM_BLEND_STATE, ENUM_ROTATION_MODE,
-    ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE, ENUM_REFRACTION_OFFSET,
+    ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE, ENUM_DISTORTION_TYPE,
     ENUM_UNITBOUNDARY_TYPE,
     BITS_ENABLE_VELOCITY, BITS_ROTATEANIM_SPIN_FLAGS, BITS_RANDOMFIX_TABLE,
     BITS_FADEBYANGLE_FLAGS,
@@ -419,8 +419,9 @@ assert _schema_size(LUMINANCEBLEED_SCHEMA) == 16, \
 
 REFRACTION_ATTR = Attribute(size=12, fields=[
     Int("typeFlag"),
-    Enum("pixelNormalOffset", ENUM_REFRACTION_OFFSET, label_zh="像素法线偏移"),
-    Float("seeThroughBlend", label_zh="透视混合系数"),
+    Enum("distortionType", ENUM_DISTORTION_TYPE, label_en="Distortion Type",
+         label_zh="畸变方式"),
+    Float("alphaBlend", label_en="Alpha Blend", label_zh="交替混合"),
 ])
 REFRACTION_SCHEMA = REFRACTION_ATTR.schema
 assert _schema_size(REFRACTION_SCHEMA) == 12, \

@@ -223,12 +223,12 @@ FIELD_ANNOTATIONS = {
         "EN": "How the particle is combined with the background; overrides the renderer's "
               "own setting. Opaque: alpha is ignored. Alpha: normal transparency. Additive: "
               "brightens the background and black disappears. Inverse Multiply: background "
-              "× (1 − colour), so white turns it black. Multiply x2: background × colour × 2, "
-              "so mid-grey leaves it unchanged. PtBehavior (decal): used by decals. NoDraw: the "
+              "× (1 − colour), so white turns it black. Multiply: background × colour, so "
+              "white leaves it unchanged. PtBehavior (decal): used by decals. NoDraw: the "
               "particle itself is not drawn.",
         "ZH": "粒子与背景的混合方式，覆盖渲染体自身的设置。不透明：忽略 alpha。Alpha 混合："
               "普通半透明。加法：提亮背景，黑色部分不可见。反相乘法：背景 × (1 − 颜色)，白色会"
-              "把背景压黑。乘法 x2：背景 × 颜色 × 2，中灰不改变背景。PtBehavior (decal)：贴花使用。"
+              "把背景压黑。乘法：背景 × 颜色，白色不改变背景。PtBehavior (decal)：贴花使用。"
               "不绘制(dummy)：粒子本身不绘制。",
     },
     ("SHADERSETTINGS", "objectInteractionFlag0"): {
@@ -3172,10 +3172,18 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [-4, -3, -2, -1].",
         "ZH": "常见取值为 [-4, -3, -2, -1]。",
     },
-    ("REFRACTION", "seeThroughBlend"): {
-        "EN": "Range 0~1. Its effect is unknown; at 0 the background is still "
-              "visible through the effect.",
-        "ZH": "取值 0~1，作用未知；取 0 时仍能透过特效看到背后的画面。",
+    ("REFRACTION", "distortionType"): {
+        "EN": "How the background behind the particle is distorted along the flowmap. "
+              "Light Refraction shifts it slightly, Refraction shifts it about six times "
+              "as far, Directional Blur smears it along the flow. Needs the renderer's "
+              "flowmap enabled.",
+        "ZH": "背后画面沿流动贴图方向的畸变方式。轻度折射小幅平移，折射平移约为其 6 倍，"
+              "方向模糊沿流向拖影。需开启渲染体的流动贴图。",
+    },
+    ("REFRACTION", "alphaBlend"): {
+        "EN": "Above 0, the original and the distorted background show in alternating "
+              "vertical stripes. No effect on Directional Blur. Common values 0~0.5.",
+        "ZH": "大于 0 时，原背景与畸变后的背景按竖条交替显示；对方向模糊无效。常见取值 0～0.5。",
     },
     ("REPEATAREA", "typeFlag"): {
         "EN": "Header field present in most attribute types, a type/category "

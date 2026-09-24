@@ -2505,8 +2505,8 @@
   },
   "REFRACTION": {
    "typeFlag": 2,
-   "pixelNormalOffset": 0,
-   "seeThroughBlend": 0.0
+   "distortionType": 0,
+   "alphaBlend": 0.0
   },
   "REPEATAREA": {
    "typeFlag": 2,

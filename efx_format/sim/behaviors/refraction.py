@@ -6,8 +6,8 @@
 该乘法**覆盖渲染体自身的 blendMode**：即使渲染体设为加法混合，附加 REFRACTION 后仍按乘法
 输出。`brightness` 乘入源色，因此白色且 brightness=1 的渲染体不改变背景，视觉上完全消失。
 
-`pixelNormalOffset` 取 0 时不产生像素位移，无需读回帧缓冲，glue 层以乘法混合即可实现。取 1 / 2
-时为屏幕空间位移，未实现，按取 0 处理并记录 note。`seeThroughBlend` 语义未确认，不参与计算。
+`distortionType` 取 0 时不产生像素位移，无需读回帧缓冲，glue 层以乘法混合即可实现。取 1 / 2
+时为屏幕空间位移，未实现，按取 0 处理并记录 note。`alphaBlend` 语义未确认，不参与计算。
 
 维护约束：
 - 必须显式设置 `item.blend = "MULTIPLY"`，不得沿用渲染体自身的混合模式。
@@ -30,11 +30,11 @@ class Refraction(Behavior):
         f = em.f(REFRACTION)
         if f is None:
             return
-        if f.i("pixelNormalOffset"):
-            em.note("REFRACTION.pixelNormalOffset 非 0（像素位移）未模拟，"
+        if f.i("distortionType"):
+            em.note("REFRACTION.distortionType 非 0（像素位移）未模拟，"
                     "预览只画不位移的那一档")
-        if f.get("seeThroughBlend", 0.0):
-            em.note("REFRACTION.seeThroughBlend 语义未确认，未参与预览")
+        if f.get("alphaBlend", 0.0):
+            em.note("REFRACTION.alphaBlend 语义未确认，未参与预览")
         from ._flowmap import BIT_ENABLE as _FLOW_BIT
         from ...hashes import BILLBOARD3D, BILLBOARD2D, PLANE
         for h in (BILLBOARD3D, BILLBOARD2D, PLANE):
@@ -52,6 +52,6 @@ class Refraction(Behavior):
             return item
         item.blend = "MULTIPLY"
         # glue 仅支持 offset==0，两个字段仍原样传递
-        item.extra["refraction"] = (int(f.i("pixelNormalOffset") or 0),
-                                    float(f.get("seeThroughBlend", 0.0) or 0.0))
+        item.extra["refraction"] = (int(f.i("distortionType") or 0),
+                                    float(f.get("alphaBlend", 0.0) or 0.0))
         return item

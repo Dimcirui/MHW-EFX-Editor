@@ -407,8 +407,8 @@
                 "type": "REFRACTION",
                 "fields": {
                     "typeFlag": 1,
-                    "pixelNormalOffset": 1,
-                    "seeThroughBlend": 0.15
+                    "distortionType": 1,
+                    "alphaBlend": 0.15
                 }
             },
             {
