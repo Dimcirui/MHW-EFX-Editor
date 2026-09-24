@@ -8,15 +8,11 @@
         "type": "EMITTERBOUNDARY",
         "fields": {
             "typeFlag": 0,
-            "unknEnum0_1": 0,
-            "unkn1_0": 0.0,
-            "unkn1_1": 0.0,
-            "unkn1_2": 0.0,
-            "unkn1_3": 0.0,
-            "unkn1_4": 0.0,
-            "unkn1_5": 0.0,
-            "unkn1_6": 0.0,
-            "unkn1_7": 0.0
+            "boundaryType": 0,
+            "radius": 0.0,
+            "boundaryMin": [0.0, 0.0, 0.0],
+            "boundaryMax": [0.0, 0.0, 0.0],
+            "radius2": 0.0
         }
     }
 }

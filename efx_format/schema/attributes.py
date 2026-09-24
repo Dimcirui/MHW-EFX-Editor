@@ -705,17 +705,15 @@ assert _schema_size(PTLIFE_SCHEMA) == 20, \
 # EmitterBoundary
 # ─────────────────────────────────────────────────────────────────────────────
 
+# 与 UnitBoundary 同构：两者各 float 随 boundaryType 取用的模式一致，
+# 但文件内的 UnitBoundary 不是 EmitterBoundary 的汇总，各自独立填值。
 EMITTERBOUNDARY_ATTR = Attribute(size=40, fields=[
     Int("typeFlag"),
-    Int("unknEnum0_1"),
-    Float("unkn1_0"),
-    Float("unkn1_1"),
-    Float("unkn1_2"),
-    Float("unkn1_3"),
-    Float("unkn1_4"),
-    Float("unkn1_5"),
-    Float("unkn1_6"),
-    Float("unkn1_7"),
+    Enum("boundaryType", ENUM_UNITBOUNDARY_TYPE, label_zh="边界类型?"),
+    Float("radius", label_zh="半径?"),
+    Raw("boundaryMin", ('XYZ', 3), label_zh="边界最小角?"),
+    Raw("boundaryMax", ('XYZ', 3), label_zh="边界最大角?"),
+    Float("radius2", label_zh="次级半径?"),
 ])
 EMITTERBOUNDARY_SCHEMA = EMITTERBOUNDARY_ATTR.schema
 assert _schema_size(EMITTERBOUNDARY_SCHEMA) == 40, \

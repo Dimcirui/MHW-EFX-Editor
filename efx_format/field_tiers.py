@@ -56,15 +56,6 @@ ADVANCED_FIELDS = {
     }),
     'EMITTERBOUNDARY': frozenset({
         'typeFlag',
-        'unkn1_0',
-        'unkn1_1',
-        'unkn1_2',
-        'unkn1_3',
-        'unkn1_4',
-        'unkn1_5',
-        'unkn1_6',
-        'unkn1_7',
-        'unknEnum0_1',
     }),
     'EMITTERSHAPE2D': frozenset({
         'typeFlag',

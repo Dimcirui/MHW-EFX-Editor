@@ -127,7 +127,7 @@ ATTRIBUTE_CATEGORY_OF = {
     FADEBYEMITTERANGLE:"motion_visibility",
     FADEBYOCCLUSION:   "motion_visibility",
     MASTERONLY:        "motion_visibility",
-    EMITTERBOUNDARY:   "motion_visibility",   # 位置数据落尾部，逐帧边界判定而非生成时形状定义
+    EMITTERBOUNDARY:   "motion_visibility",
     SCREENSPACECOLLISION: "motion_visibility",
     LINKPARTSVISIBLE:  "motion_visibility",
 
