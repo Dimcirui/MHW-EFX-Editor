@@ -68,8 +68,8 @@ AXIS_GROUPS: dict = {
         ("range", [("X", "rangeX"), ("Y", "rangeY")]),
     ],
     "SCALEANIM": [
-        ("scaleSpeed", [("X", "scaleSpeedX"), ("Y", "scaleSpeedY"), ("Z", "scaleSpeedZ")]),
-        ("scaleAccel", [("X", "scaleAccelX"), ("Y", "scaleAccelY"), ("Z", "scaleAccelZ")]),
+        ("sizeAdd", [("X", "sizeXAdd"), ("Y", "sizeYAdd"), ("Z", "sizeZAdd")]),
+        ("sizeAddCoef", [("X", "sizeXAddCoef"), ("Y", "sizeYAddCoef"), ("Z", "sizeZAddCoef")]),
     ],
     # RIBBON 的 rotationX/Y/Z：字节布局里 Y/Z 两组的 value/jitter 顺序是反的（rotationYJitter
     # 排在 rotationY 前面，rotationZJitter 排在 rotationZ 前面），相邻位置配对逻辑找不到，

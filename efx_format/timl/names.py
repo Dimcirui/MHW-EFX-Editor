@@ -2337,10 +2337,10 @@ FIELD_TO_DT = {
     ("RGBWATER", "intensityAlpha"):    [(0x19DCE197, 2)],
     ("RGBWATER", "colorSpecular"):     [(0x60D69856, 3)],
     ("RGBWATER", "colorSheet"):        [(0xD6AD0996, 3)],
-    ("SCALEANIM", "initialScaleSpeed"): [(0xC24DF97C, 2)],
-    ("SCALEANIM", "scaleSpeedY"):       [(0x2822A722, 2)],
-    ("SCALEANIM", "scaleSpeedX"):       [(0x909EC047, 2)],
-    ("SCALEANIM", "scaleSpeedZ"):       [(0x3A9708CC, 2)],
+    ("SCALEANIM", "sizeScalarAdd"): [(0xC24DF97C, 2)],
+    ("SCALEANIM", "sizeYAdd"):       [(0x2822A722, 2)],
+    ("SCALEANIM", "sizeXAdd"):       [(0x909EC047, 2)],
+    ("SCALEANIM", "sizeZAdd"):       [(0x3A9708CC, 2)],
     ("TUBELIGHT", "headColor"):   [(0x3BA67E7C, 3)],
     ("TUBELIGHT", "tailColor"):   [(0x2AA40DE9, 3)],
     # ── 2026-08 补漏：已有 BLOCK_TO_TLP 映射、但字段表漏掉的 DT ────────────────
@@ -2396,7 +2396,7 @@ FIELD_TO_DT = {
     #   RotationAddX 最大 10、SizeScalarAdd 最大 6），给"最大只到 1.2 的系数"做的
     #   动画不可能跑到 20。速度类字段则是小中位+宽范围（billboardRotation 中位
     #   0.65/最大 500，spin_velocity 中位 2~3/最大 300），与 DT 分布吻合。
-    #   同一判据也确认了 SCALEANIM 既有的 SizeXAdd↔scaleSpeedX 等四条是对的。
+    #   同一判据也确认了 SCALEANIM 既有的 SizeXAdd↔sizeXAdd 等四条是对的。
     ("ROTATEANIM", "billboardRotation"): [(0xE81961E4, 2)],                          # RotationAdd
     ("ROTATEANIM", "spin_velocity"): [(0xC23FE6C6, 2), (0xB538D650, 2), (0x2C3187EA, 2)],  # RotationAdd X/Y/Z
 }

@@ -64,7 +64,7 @@ restoreStrength 插值，以 springiness 为劲度系数拉向目标，以 inert
   「自出生起始终贴合运动」不符。该字段只对刚性矩形与柔体链生效，二者没有轨迹历史，仅沿自身
   长度方向平移。
 - 长度须乘 `p.scale.y`，宽度乘 `p.scale.x`：RIBBON 的约定为 X=width / Y=length。长度未乘时，
-  SCALEANIM 的 scaleSpeedY（沿长度方向拉伸）完全不生效。
+  SCALEANIM 的 sizeYAdd（沿长度方向拉伸）完全不生效。
 - RIBBON 的 rotationX/Y/Z 为三个**标量**字段，各配一个 Jitter，不是 PLANE / TRANSFORM3D 使用的
   XYZ type 0 六元组。
 - 伸展方向直接取 `axis_normal` 的结果，不取负：baseAxis 为下时条带自发射器向下伸展，

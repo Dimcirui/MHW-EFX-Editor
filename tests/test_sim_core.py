@@ -111,14 +111,14 @@ def es3d_fields(**kw):
 
 def scaleanim_fields(**kw):
     f = {"typeFlag": 8,
-         "initialScaleSpeed": 0.0, "initialScaleSpeedJitter": 0.0,
-         "initialScaleAccel": 1.0, "initialScaleAccelJitter": 0.0,
+         "sizeScalarAdd": 0.0, "sizeScalarAddJitter": 0.0,
+         "sizeScalarAddCoef": 1.0, "sizeScalarAddCoefJitter": 0.0,
          "animUpdateStart": 0, "animUpdateStartJitter": 0}
     for ax in ("X", "Y", "Z"):
-        f["scaleSpeed" + ax] = 0.0
-        f["scaleSpeed" + ax + "Jitter"] = 0.0
-        f["scaleAccel" + ax] = 1.0
-        f["scaleAccel" + ax + "Jitter"] = 0.0
+        f["size" + ax + "Add"] = 0.0
+        f["size" + ax + "AddJitter"] = 0.0
+        f["size" + ax + "AddCoef"] = 1.0
+        f["size" + ax + "AddCoefJitter"] = 0.0
     f.update(kw)
     return f
 
@@ -2247,31 +2247,31 @@ class TestScaleAnim(unittest.TestCase):
 
     def test_uniform_growth_is_additive_on_all_axes(self):
         """通道名是 SizeScalarAdd —— 加法，不是乘法。"""
-        p, _ = one_particle(frames=3, scaleanim=scaleanim_fields(initialScaleSpeed=0.1))
+        p, _ = one_particle(frames=3, scaleanim=scaleanim_fields(sizeScalarAdd=0.1))
         for v in (p.scale.x, p.scale.y, p.scale.z):
             self.assertAlmostEqual(v, 1.0 + 0.3, places=6)
 
     def test_uniform_accel_decays_the_increment(self):
         """iv=0.02 / ia=0.99 / 60 帧 ≈ +0.91（floating_particle_fire 的实测组合）。"""
         p, _ = one_particle(frames=60, scaleanim=scaleanim_fields(
-            initialScaleSpeed=0.02, initialScaleAccel=0.99))
+            sizeScalarAdd=0.02, sizeScalarAddCoef=0.99))
         expect = 1.0 + sum(0.02 * (0.99 ** n) for n in range(60))
         self.assertAlmostEqual(p.scale.x, expect, places=6)
         self.assertAlmostEqual(p.scale.x, 1.91, places=2)
 
     def test_per_axis_is_independent(self):
         p, _ = one_particle(frames=4, scaleanim=scaleanim_fields(
-            scaleSpeedX=0.5, scaleSpeedY=0.25, scaleSpeedZ=0.0))
+            sizeXAdd=0.5, sizeYAdd=0.25, sizeZAdd=0.0))
         self.assertAlmostEqual(p.scale.x, 1.0 + 2.0, places=6)
         self.assertAlmostEqual(p.scale.y, 1.0 + 1.0, places=6)
         self.assertAlmostEqual(p.scale.z, 1.0, places=6)
 
-    def test_anim_update_start_delays_only_the_per_axis_part(self):
-        """animUpdateStart 门控逐轴那组；整体那组不受影响。"""
+    def test_anim_update_start_delays_both_parts(self):
+        """animUpdateStart 同时延迟整体与逐轴两组。"""
         p, _ = one_particle(frames=5, scaleanim=scaleanim_fields(
-            initialScaleSpeed=0.1, scaleSpeedX=1.0, animUpdateStart=3))
-        self.assertAlmostEqual(p.scale.y, 1.0 + 0.5, places=6)   # 整体：5 帧都算
-        self.assertAlmostEqual(p.scale.x, 1.0 + 0.5 + 2.0, places=6)  # 逐轴：只有 2 帧
+            sizeScalarAdd=0.1, sizeXAdd=1.0, animUpdateStart=3))
+        self.assertAlmostEqual(p.scale.y, 1.0 + 0.2, places=6)        # 整体：只有 2 帧
+        self.assertAlmostEqual(p.scale.x, 1.0 + 0.2 + 2.0, places=6)  # 逐轴：同样 2 帧
 
     def test_stage_is_xform(self):
         from efx_format.sim import XFORM
@@ -2286,16 +2286,15 @@ class TestScaleAnim(unittest.TestCase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestScaleAnimTimings(unittest.TestCase):
-    """用户在 test.efx（BILLBOARD3D scale=30 / width=height=1）上的三条计时。
+    """BILLBOARD3D 上 SCALEANIM 的收缩计时。
 
-    结论：两组速度都是**每帧加在同名尺寸字段上**——逐轴那组加 width/height，
-    整体那组加 scale。同为 -0.1 差 30 倍，就是 1 与 30 的差距。
+    整体那组每帧加在 scale 字段上；逐轴那组加在从 1 起的倍率上，与宽高无关。
     """
 
-    def _frames_to_vanish(self, scaleanim, limit=600):
+    def _frames_to_vanish(self, scaleanim, limit=600, width=1.0):
         sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
                        life=life_fields(indefiniteLifespan=1),
-                       billboard=billboard_fields(scale=30.0, width=1.0, height=1.0),
+                       billboard=billboard_fields(scale=30.0, width=width, height=1.0),
                        scaleanim=scaleanim)
         for n in range(1, limit + 1):
             sim.step()
@@ -2304,28 +2303,18 @@ class TestScaleAnimTimings(unittest.TestCase):
                 return n
         return None
 
-    def test_axis_speed_adds_to_width(self):
-        """scaleSpeedX=-0.1 → width 1→0，10 帧；-0.01 → 100 帧。"""
+    def test_axis_speed_is_independent_of_width(self):
+        """sizeXAdd=-1/60 → 不论宽度多少都在 60 帧缩到 0。"""
+        for width in (1.0, 100.0, 500.0):
+            n = self._frames_to_vanish(scaleanim_fields(sizeXAdd=-1.0 / 60.0), width=width)
+            self.assertIn(n, (60, 61))
         self.assertEqual(self._frames_to_vanish(
-            scaleanim_fields(scaleSpeedX=-0.1)), 10)
-        self.assertEqual(self._frames_to_vanish(
-            scaleanim_fields(scaleSpeedX=-0.01)), 100)
+            scaleanim_fields(sizeXAdd=-0.1), width=100.0), 10)
 
     def test_initial_speed_adds_to_scale(self):
-        """initialScaleSpeed=-0.1 → scale 30→0，300 帧（= 5 秒 @60fps）。"""
+        """sizeScalarAdd=-0.1 → scale 30→0，300 帧（= 5 秒 @60fps）。"""
         self.assertEqual(self._frames_to_vanish(
-            scaleanim_fields(initialScaleSpeed=-0.1)), 300)
-
-    def test_multiplier_mode_is_still_available(self):
-        """'multiplier'（改动前的行为）：两组都按归一化倍率，30 倍的差距就没了。"""
-        sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
-                       life=life_fields(indefiniteLifespan=1),
-                       billboard=billboard_fields(scale=30.0, width=1.0, height=1.0),
-                       scaleanim=scaleanim_fields(initialScaleSpeed=-0.1),
-                       config=SimConfig(scaleanim_add_target="multiplier"))
-        for _ in range(10):
-            sim.step()
-        self.assertAlmostEqual(sim.build_render()[0].size.x, 0.0, places=5)
+            scaleanim_fields(sizeScalarAdd=-0.1)), 300)
 
 
 class TestRgbColoring(unittest.TestCase):
@@ -2691,7 +2680,7 @@ class TestBillboard3D(unittest.TestCase):
     def test_scaleanim_multiplies_the_size(self):
         it, _ = self._item(frames=10,
                            billboard=billboard_fields(width=100.0, height=100.0, scale=1.0),
-                           scaleanim=scaleanim_fields(initialScaleSpeed=0.1))
+                           scaleanim=scaleanim_fields(sizeScalarAdd=0.1))
         self.assertAlmostEqual(it.size.x, 100.0 * 2.0, places=4)
 
     def test_color_is_ubyte_scaled(self):
@@ -3727,9 +3716,9 @@ class TestA1TrackWithDecay(unittest.TestCase):
         self.assertAlmostEqual(p.vel.y, -6.0)
 
     def test_scale_speed_curve_times_accel(self):
-        p = self._particle(SCALEANIM, scaleanim_fields(initialScaleSpeed=1.0,
-                                                       initialScaleAccel=0.5),
-                           {("initialScaleSpeed", 0): [(0.0, 1.0, 2), (1.0, 3.0, 2)]}, 2)
+        p = self._particle(SCALEANIM, scaleanim_fields(sizeScalarAdd=1.0,
+                                                       sizeScalarAddCoef=0.5),
+                           {("sizeScalarAdd", 0): [(0.0, 1.0, 2), (1.0, 3.0, 2)]}, 2)
         self.assertAlmostEqual(p.scale.x, 1.0 + 1.0 + 3.0 * 0.5)
 
     def test_billboard_rotation_curve(self):
@@ -3748,7 +3737,7 @@ class TestPlaneScaleAnim(unittest.TestCase):
     def test_scaleanim_adds_to_plane_size_fields(self):
         sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
                        life=life_fields(indefiniteLifespan=1),
-                       scaleanim=scaleanim_fields(scaleSpeedX=10.0),
+                       scaleanim=scaleanim_fields(sizeXAdd=0.1),
                        extra=[(PLANE, plane_fields())])
         sim.run(3)
         item = sim.build_render()[0]
@@ -4471,7 +4460,7 @@ class TestRibbon(unittest.TestCase):
         base = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=100.0), frames=1)
         it0 = base.build_render()[0]
         grown = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=100.0),
-                          scaleanim=scaleanim_fields(scaleSpeedY=1.0, scaleAccelY=1.0),
+                          scaleanim=scaleanim_fields(sizeYAdd=1.0, sizeYAddCoef=1.0),
                           frames=10)
         it1 = grown.build_render()[0]
         self.assertAlmostEqual(it0.size.y, 100.0, places=3)

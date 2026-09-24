@@ -37,10 +37,10 @@ FIELD_OFFICIAL_NAMES = {
     ("EMITTERSHAPE3D", "localRotationY"): ("LocalRotationY", "0x0718D2B3", "确认"),
     ("EMITTERSHAPE3D", "localRotationZ"): ("LocalRotationZ", "0x9E118309", "确认"),
     ("EMITTERSHAPE3D", "rangeXYZ"):       ("RangeMin/Max[XYZ]", "0x760F3D43", "确认"),
-    ("SCALEANIM", "initialScaleSpeed"): ("SizeScalarAdd", "0xC24DF97C", "确认"),
-    ("SCALEANIM", "scaleSpeedX"):       ("SizeXAdd", "0x909EC047", "确认"),
-    ("SCALEANIM", "scaleSpeedY"):       ("SizeYAdd", "0x2822A722", "确认"),
-    ("SCALEANIM", "scaleSpeedZ"):       ("SizeZAdd", "0x3A9708CC", "确认"),
+    ("SCALEANIM", "sizeScalarAdd"): ("SizeScalarAdd", "0xC24DF97C", "确认"),
+    ("SCALEANIM", "sizeXAdd"):       ("SizeXAdd", "0x909EC047", "确认"),
+    ("SCALEANIM", "sizeYAdd"):       ("SizeYAdd", "0x2822A722", "确认"),
+    ("SCALEANIM", "sizeZAdd"):       ("SizeZAdd", "0x3A9708CC", "确认"),
     ("ROTATEANIM", "spin_velocity"):    ("RotationAdd", "0xE81961E4", "确认"),
     ("LIFE", "duration"):               ("KeepFrame", "0xBD8D5203", "确认"),
 }
@@ -293,9 +293,9 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── SCALEANIM ────────────────────────────────────────────────────────────
-    ("SCALEANIM", "initialScaleSpeed"): {
-        "EN": "Initial expansion speed (the overall scale-in at animation start).",
-        "ZH": "初始扩散速度（动画刚进来时的整体缩放）。",
+    ("SCALEANIM", "sizeScalarAdd"): {
+        "EN": "Added to the renderer's Scale every frame. Negative values shrink the particle.",
+        "ZH": "每帧加到渲染体「缩放」上的量，负值收缩。",
     },
 
     # ─── ROTATEANIM ───────────────────────────────────────────────────────────
@@ -1859,33 +1859,37 @@ FIELD_ANNOTATIONS = {
         "ZH": _EMISSIVE_TIP_ZH,
     },
     # SCALEANIM
-    ("SCALEANIM", "initialScaleAccel"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
+    ("SCALEANIM", "sizeScalarAddCoef"): {
+        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down.",
+        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢。",
     },
-    ("SCALEANIM", "initialScaleSpeedJitter"): {
-        "EN": "Jitter paired with initialScaleSpeed.",
-        "ZH": "与初始扩散速度配对的抖动量。未知。",
+    ("SCALEANIM", "sizeXAdd"): {
+        "EN": "Added to the X size ratio every frame; the ratio starts at 1. -0.0167 shrinks to 0 in about 1 second.",
+        "ZH": "每帧加到 X 方向尺寸倍率上的量，倍率从 1 开始。-0.0167 约 1 秒缩到 0。",
     },
-    ("SCALEANIM", "scaleSpeedX"): {
-        "EN": "X-axis scale speed during playback (billboard = X/Y; mesh = X/Y/Z).",
-        "ZH": "播放过程中 X 轴缩放速度（billboard 用 X/Y 两轴；模型用 X/Y/Z 三轴）。",
+    ("SCALEANIM", "sizeXAddCoef"): {
+        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down.",
+        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢。",
     },
-    ("SCALEANIM", "scaleAccelX"): {
-        "EN": "X-axis scale acceleration during playback.",
-        "ZH": "播放过程中 X 轴缩放加速度。",
+    ("SCALEANIM", "sizeYAdd"): {
+        "EN": "Added to the Y size ratio every frame; the ratio starts at 1.",
+        "ZH": "每帧加到 Y 方向尺寸倍率上的量，倍率从 1 开始。",
     },
-    ("SCALEANIM", "scaleSpeedY"): {
-        "EN": "Y-axis scale speed during playback.",
-        "ZH": "播放过程中 Y 轴缩放速度。",
+    ("SCALEANIM", "sizeYAddCoef"): {
+        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down.",
+        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢。",
     },
-    ("SCALEANIM", "scaleSpeedZ"): {
-        "EN": "Z-axis scale speed during playback (meshes only).",
-        "ZH": "播放过程中 Z 轴缩放速度（仅模型有 Z 轴）。",
+    ("SCALEANIM", "sizeZAdd"): {
+        "EN": "Added to the Z size ratio every frame; the ratio starts at 1. Only affects meshes.",
+        "ZH": "每帧加到 Z 方向尺寸倍率上的量，倍率从 1 开始。仅对模型有效。",
+    },
+    ("SCALEANIM", "sizeZAddCoef"): {
+        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down.",
+        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢。",
     },
     ("SCALEANIM", "animUpdateStart"): {
-        "EN": "Frame time when the per-axis scale animation starts updating.",
-        "ZH": "逐轴缩放动画开始更新的时间（帧）。",
+        "EN": "Frames to wait before any scaling starts.",
+        "ZH": "开始缩放前等待的帧数。",
     },
     # ROTATEANIM
     ("ROTATEANIM", "billboardRotation"): {
@@ -2429,10 +2433,6 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见范围 "
               "1~11（个别情况可达 45）。",
     },
-    ("ALPHACORRECTION", "unknFlag2"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
     ("BILLBOARD2D", "scaleJitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
@@ -2448,10 +2448,6 @@ FIELD_ANNOTATIONS = {
               "(loops). 12=Flowmap plays once and stops at the end.",
         "ZH": "枚举。常见取值为 [0, 4, 12, 32]。4=流动贴图持续循环流动；"
               "12=流动贴图只播放一次，到终点后停止。",
-    },
-    ("BILLBOARD2D", "useColorRange"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
     },
     ("BILLBOARD2D", "blendMode"): {
         "EN": _EMISSIVE_TIP_EN,
@@ -2513,13 +2509,13 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
+    ("BILLBOARD3D", "enableGPUParticle"): {
+        "EN": "When on, extra brightness is added on top of Brightness; the particle glows even at Brightness 0.",
+        "ZH": "开启后在亮度之外叠加额外的亮度，亮度为 0 时也会发光。",
+    },
     ("BILLBOARD3D", "divideNum"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 10].",
         "ZH": "常见取值为 [0, 1, 2, 3, 4, 10]。",
-    },
-    ("BILLBOARD3D", "enableGPUParticle"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
     },
     ("BILLBOARD3D", "fieldInfluenceRate"): {
         "EN": "Common range: 0~1.",
@@ -2652,8 +2648,8 @@ FIELD_ANNOTATIONS = {
               "360=完全不生成。配上横向限制就能切出球体的一个角。",
     },
     ("EMITTERSHAPE3D", "unknFlag4"): {
-        "EN": "0/1, exact mechanism unclear. Mostly 1.",
-        "ZH": "0/1，具体机制不明，大部分情况下取 1。",
+        "EN": "Purpose unknown. Usually on.",
+        "ZH": "作用未知，大多开启。",
     },
     ("EMITTERSHAPE3D", "rayCastDependency"): {
         "EN": "How a RayCast hit distance is applied to the spawn range. "
@@ -2730,10 +2726,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Frame count to wait after the trigger event before the transition starts.",
         "ZH": "触发事件发生后，等待多少帧再开始过渡。",
     },
-    ("EXTERNREFERENCE", "unknFlag1_6"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
     ("FADEBYANGLE", "cutoffConeAngle"): {
         "EN": 'half-angle of the cone (around baseAxis) inside which the effect is fully invisible.',
         "ZH": "以 baseAxis 为中心的锥角（半角），落在这个角度以内特效完全不可见。",
@@ -2777,18 +2769,6 @@ FIELD_ANNOTATIONS = {
     ("FAKEDOF", "unkn4"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
-    },
-    ("FAKEPLANE", "unknFlag1_1"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
-    ("FAKEPLANE", "unknFlag1_2"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
-    ("FAKEPLANE", "unknFlag1_3"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
     },
     ("FAKEPLANE", "unknEnum3"): {
         "EN": "Common values: [1, 2, 4].",
@@ -3108,10 +3088,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [2, 4].",
         "ZH": "常见取值为 [2, 4]。",
     },
-    ("PATHCHAIN", "unknFlag6"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
     ("PLANE", "correctColorNo"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
@@ -3306,33 +3282,17 @@ FIELD_ANNOTATIONS = {
         "EN": "Common values: [0, 5, 10, 14, 30, 40, 62].",
         "ZH": "常见取值为 [0, 5, 10, 14, 30, 40, 62]。",
     },
-    ("RGBWATER", "sheetColorParam_lighting"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
     ("RGBWATER", "sheetColorParam_correctColorNo"): {
         "EN": "EPV colour slot id, same mechanism as BILLBOARD3D correctColorNo: 0 = use the local sheet colour; non-zero = take it from that slot in the calling .epv instead. Common values: [0, 1, 2, 6, 7, 8].",
         "ZH": "EPV 颜色槽位 id，跟 BILLBOARD3D 的 correctColorNo 是同一机制：0 = 用本地水膜色；非 0 = 改用调用方 .epv 对应槽位的颜色。常见取值为 [0, 1, 2, 6, 7, 8]。",
-    },
-    ("RGBWATER", "waterLerpParam_useLife"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
     },
     ("RGBWATER", "waterLerpParam_appearFrameJitter"): {
         "EN": "Common values: [0, 5].",
         "ZH": "常见取值为 [0, 5]。",
     },
-    ("RGBWATER", "waterLerpParam_lighting"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
     ("RGBWATER", "specularColorParam_vanishFrameJitter"): {
         "EN": "Common values: [0, 5, 10, 14, 20, 24, 25, 30].",
         "ZH": "常见取值为 [0, 5, 10, 14, 20, 24, 25, 30]。",
-    },
-    ("RGBWATER", "specularColorParam_lighting"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
     },
     ("RGBWATER", "specularColorParam_lifeType"): {
         "EN": "Common values: 0/1.",
@@ -3342,10 +3302,6 @@ FIELD_ANNOTATIONS = {
         "EN": "EPV colour slot id, same mechanism as BILLBOARD3D correctColorNo: 0 = use the local specular colour; non-zero = take it from that slot in the calling .epv instead. Common values: [0, 2].",
         "ZH": "EPV 颜色槽位 id，跟 BILLBOARD3D 的 correctColorNo 是同一机制：0 = 用本地高光色；非 0 = 改用调用方 .epv 对应槽位的颜色。常见取值为 [0, 2]。",
     },
-    ("RGBWATER", "sheetColorParam_useLife"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
     ("RGBWATER", "sheetColorParam_appearFrame"): {
         "EN": "Common values: [0, 5, 10, 15, 25, 40, 50, 60].",
         "ZH": "常见取值为 [0, 5, 10, 15, 25, 40, 50, 60]。",
@@ -3353,10 +3309,6 @@ FIELD_ANNOTATIONS = {
     ("RGBWATER", "sheetColorParam_appearFrameJitter"): {
         "EN": "Common values: [0, 25].",
         "ZH": "常见取值为 [0, 25]。",
-    },
-    ("RGBWATER", "specularColorParam_useLife"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
     },
     ("RGBWATER", "specularColorParam_appearFrame"): {
         "EN": "Common values: [0, 10, 16, 20, 25, 30, 60].",
@@ -3712,31 +3664,27 @@ FIELD_ANNOTATIONS = {
         "ZH": "rotateDelayStart 的随机分量；通常为 0；其余常见取值为 "
               "[1, 2, 5, 10, 15, 20, 30, 60, 128]。",
     },
-    ("SCALEANIM", "initialScaleAccelJitter"): {
+    ("SCALEANIM", "sizeScalarAddCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("SCALEANIM", "scaleAccelXJitter"): {
+    ("SCALEANIM", "sizeXAddCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("SCALEANIM", "scaleAccelYJitter"): {
+    ("SCALEANIM", "sizeYAddCoefJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("SCALEANIM", "scaleAccelZ"): {
+    ("SCALEANIM", "sizeXAddJitter"): {
+        "EN": "Common range: 0~1.",
+        "ZH": "常见取值在 0~1 之间。",
+    },
+    ("SCALEANIM", "sizeYAddJitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("SCALEANIM", "scaleSpeedXJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("SCALEANIM", "scaleSpeedYJitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("SCALEANIM", "scaleSpeedZJitter"): {
+    ("SCALEANIM", "sizeZAddJitter"): {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
@@ -3893,10 +3841,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("STRAINRIBBON", "enableFlowmap"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
     ("STRAINRIBBON", "gravityMultiplierJitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
@@ -4014,8 +3958,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "流光贴图强度的随机偏差。属于 flowmap 八件套之一。常见取值在 0~100 之间。",
     },
     ("UVCONTROL", "enableFlowmap"): {
-        "EN": "Master switch for the flowmap scroll. Common values: 0/1.",
-        "ZH": "流动贴图的总开关。常见取值为 0/1。",
+        "EN": "Master switch for the flowmap scroll.",
+        "ZH": "流动贴图的总开关。",
     },
     ("UVCONTROL", "uv2_enable"): {
         "EN": "Enables the second UV channel. A mod3 mesh may carry two UV sets; this switches on the uv2 group's own offset/scale/speed controls. (Not vertex-animation related.)",

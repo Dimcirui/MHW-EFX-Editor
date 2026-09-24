@@ -105,16 +105,13 @@ def pick_color(f, roll=NO_ROLL, color_field="color", range_field="colorRange"):
 def quad_size(p, cfg, scale, width, height):
     """面片本帧的宽高（`Vec3`，z 恒为 1），结果限定为非负。
 
-    `scaleanim_add_target='size'` 时 SCALEANIM 的增量加在尺寸字段上：SizeScalarAdd 加
-    `scale`，SizeXAdd / SizeYAdd 加 `width` / `height`；否则乘以归一化倍率 `p.scale`。
+    SizeScalarAdd 的增量加在 `scale` 上，SizeXAdd / SizeYAdd 的增量加在从 1 起的逐轴倍率上。
     """
-    if getattr(cfg, "scaleanim_add_target", "size") != "size":
-        return Vec3(width * scale * p.scale.x, height * scale * p.scale.y, 1.0)
     ax = p.rolled.get("sa_axis")
     s = max(0.0, scale + p.rolled.get("sa_scalar", 0.0))
     if ax is None:
         return Vec3(width * s, height * s, 1.0)
-    return Vec3(max(0.0, width + ax[0]) * s, max(0.0, height + ax[1]) * s, 1.0)
+    return Vec3(width * max(0.0, 1.0 + ax[0]) * s, height * max(0.0, 1.0 + ax[1]) * s, 1.0)
 
 
 def emissive_on(f):
