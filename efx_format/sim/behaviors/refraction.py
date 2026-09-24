@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
-"""REFRACTION —— 将渲染体从叠加光照改为与背景相乘。
+"""REFRACTION（官方名 Distortion）—— 渲染体的源色换成背后画面。
 
-    输出 = 背景 × (渲染体颜色 × brightness)
+    源色 = 背后画面的采样 × 渲染体颜色 × brightness
 
-该乘法**覆盖渲染体自身的 blendMode**：即使渲染体设为加法混合，附加 REFRACTION 后仍按乘法
-输出。`brightness` 乘入源色，因此白色且 brightness=1 的渲染体不改变背景，视觉上完全消失。
+贴图 RGB 不参与，贴图 alpha 仍决定覆盖范围。源色之后照常走 SHADERSETTINGS 的混合方式：
 
-`distortionType` 取 0 时不产生像素位移，无需读回帧缓冲，glue 层以乘法混合即可实现。取 1 / 2
-时为屏幕空间位移，未实现，按取 0 处理并记录 note。`alphaBlend` 语义未确认，不参与计算。
+    Alpha 等    输出 = 背景 × 颜色              'REFRACT'      白色即透明
+    加法        输出 = 背景 × (1 + 颜色)        'REFRACT_ADD'
+
+开启流动贴图时，背后画面的采样点沿流动方向位移，`distortionType` 决定方式：0 = 轻度折射
+（小幅位移）、1 = 折射（约为 0 的 6 倍）、2 = 方向模糊（沿流向多次采样）。位移需要读回
+帧缓冲，预览未实现，只按不位移的采样画，并记录 note。`alphaBlend` 使原背景与畸变背景按竖条
+交替显示，同样未实现。
 
 维护约束：
-- 必须显式设置 `item.blend = "MULTIPLY"`，不得沿用渲染体自身的混合模式。
-- 折射替换整条输出通道，flowmap 仅偏移 UV。同一渲染体同时启用两者时，预览保留折射。
+- 必须排在 SHADERSETTINGS 之后：折射的输出取决于其混合方式。
+- 乘法必须作用于已画出的内容（含背后的粒子），glue 层按绘制顺序画在后面。
 """
 
 from ...hashes import REFRACTION
@@ -21,28 +25,29 @@ from ..stages import RENDER_MOD
 
 @register(REFRACTION)
 class Refraction(Behavior):
-    """RENDER_MOD 阶段将渲染项改为乘法混合，逐像素处理由 glue 层完成。"""
+    """RENDER_MOD 阶段按混合方式改为折射通道，逐像素处理由 glue 层完成。"""
 
     STAGE = RENDER_MOD
-    ORDER = 90          # 必须排在颜色与序列帧之后：前者确定颜色，此处只更换混合方式
+    ORDER = 90          # 必须排在颜色、序列帧与 SHADERSETTINGS(85) 之后
 
     def on_emitter_init(self, em, rng):
         f = em.f(REFRACTION)
         if f is None:
             return
-        if f.i("distortionType"):
-            em.note("REFRACTION.distortionType 非 0（像素位移）未模拟，"
-                    "预览只画不位移的那一档")
-        if f.get("alphaBlend", 0.0):
-            em.note("REFRACTION.alphaBlend 语义未确认，未参与预览")
         from ._flowmap import BIT_ENABLE as _FLOW_BIT
-        from ...hashes import BILLBOARD3D, BILLBOARD2D, PLANE
-        for h in (BILLBOARD3D, BILLBOARD2D, PLANE):
+        from ...hashes import (BILLBOARD3D, BILLBOARD2D, PLANE, RIBBON, STRAINRIBBON,
+                               LIGHTNING)
+        for h in (BILLBOARD3D, BILLBOARD2D, PLANE, RIBBON, STRAINRIBBON, LIGHTNING):
             rf = em.f(h)
-            if rf is not None and (int(rf.i("applicationRule") or 0) & _FLOW_BIT):
-                em.note("同一个渲染体上折射与流动贴图同时启用，预览保折射、"
-                        "不做流动位移")
+            if rf is None:
+                continue
+            if (int(rf.i("applicationRule") or 0) & _FLOW_BIT
+                    or int(rf.i("enableFlowmap") or 0)):
+                em.note("REFRACTION 的畸变位移（distortionType）未模拟，"
+                        "预览按不位移的背景画")
                 break
+        if f.get("alphaBlend", 0.0):
+            em.note("REFRACTION.alphaBlend（原背景与畸变背景交替）未模拟")
 
     def build_render(self, p, em, view, item):
         if item is None or item.kind == "NONE":
@@ -50,8 +55,7 @@ class Refraction(Behavior):
         f = em.f(REFRACTION, p)
         if f is None:
             return item
-        item.blend = "MULTIPLY"
-        # glue 仅支持 offset==0，两个字段仍原样传递
+        item.blend = "REFRACT_ADD" if item.blend == "ADDITIVE" else "REFRACT"
         item.extra["refraction"] = (int(f.i("distortionType") or 0),
                                     float(f.get("alphaBlend", 0.0) or 0.0))
         return item

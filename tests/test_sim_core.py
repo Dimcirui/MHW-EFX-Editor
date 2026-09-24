@@ -2437,7 +2437,7 @@ class TestBillboard3D(unittest.TestCase):
     def test_blend_state_picks_the_blend(self):
         """SHADERSETTINGS.blendStateType 覆盖渲染体（实机四象限贴图对拍的映射）。"""
         expect = {0: "OPAQUE", 1: "ALPHA", 2: "ADDITIVE", 3: "INV_MULTIPLY",
-                  4: "OPAQUE", 5: "ALPHA", 7: "ADDITIVE", 8: "MUL2X", 9: "ALPHA",
+                  4: "OPAQUE", 5: "ALPHA", 7: "ADDITIVE", 8: "MULTIPLY", 9: "ALPHA",
                   10: "OPAQUE"}
         for state, mode in expect.items():
             it, _ = self._item(billboard=billboard_fields(blendMode=1),
@@ -3011,13 +3011,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         self.assertNotIn("flowmap", sim.build_render()[0].extra)
 
     def test_refraction_turns_the_body_into_a_multiply_pass(self):
-        """REFRACTION：渲染体改走乘法，源色 = 颜色 × brightness。
-
-        实机对拍（单个 BILLBOARD3D，width=height=100，无 UVSEQUENCE）：
-        白色 brightness=10 明显提亮背景、改成 1 则面片完全消失；换成纯红之后方片内
-        绿蓝通道整个消失——而渲染体自己写的是 blendMode=1(加法)，加法抹不掉背景的
-        绿蓝，所以 REFRACTION 是**覆盖**渲染体的混合模式。
-        """
+        """REFRACTION：源色换成背后画面 × 颜色 × brightness；Alpha 混合下即背景 × 颜色。"""
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
                      "loopNum": 1, "emitterRepeatCount": 1}),
@@ -3030,15 +3024,30 @@ class TestPtLifeActionScene(unittest.TestCase):
         sim = Simulator(blocks, b"", SimConfig())
         sim.run(3)
         it = sim.build_render()[0]
-        self.assertEqual(it.blend, "MULTIPLY")      # 覆盖了 blendMode=1(加法)
+        self.assertEqual(it.blend, "REFRACT")       # 无 SHADERSETTINGS = Alpha 混合
         self.assertAlmostEqual(it.color[0], 10.0, places=5)   # 红 × brightness
         self.assertAlmostEqual(it.color[1], 0.0, places=5)
         self.assertEqual(it.extra["refraction"], (0, 0.0))
         self.assertFalse([n for n in sim.notes if "REFRACTION" in n])
 
+    def test_refraction_with_additive_blend_brightens(self):
+        """加法混合下折射为 背景 × (1 + 颜色)。"""
+        blocks = [
+            (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
+                     "loopNum": 1, "emitterRepeatCount": 1}),
+            (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
+            (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
+                           "blendMode": 0, "width": 100, "height": 100, "scale": 1}),
+            (SHADERSETTINGS, {"blendStateType": 2}),
+            (REFRACTION, {"typeFlag": 2, "distortionType": 0, "alphaBlend": 0.0}),
+        ]
+        sim = Simulator(blocks, b"", SimConfig())
+        sim.run(3)
+        self.assertEqual(sim.build_render()[0].blend, "REFRACT_ADD")
+
     def test_refraction_reports_the_parts_it_does_not_draw(self):
-        """没做的那两档要如实说，别让面板显示成「已模拟」就完事。"""
-        def notes(offset, blend):
+        """没做的畸变位移与交替混合要如实说，别让面板显示成「已模拟」就完事。"""
+        def notes(flow, blend):
             blocks = [
                 (SPAWN, {"maxParticles": 1, "spawnNum": 1,
                          "intervalFrame": 0, "loopNum": 1,
@@ -3046,17 +3055,18 @@ class TestPtLifeActionScene(unittest.TestCase):
                 (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
                 (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                                "blendMode": 1, "width": 100, "height": 100,
-                               "scale": 1}),
-                (REFRACTION, {"typeFlag": 2, "distortionType": offset,
+                               "scale": 1, "applicationRule": 0x04 if flow else 0,
+                               "flowStrength": 1.0}),
+                (REFRACTION, {"typeFlag": 2, "distortionType": 1,
                               "alphaBlend": blend}),
             ]
             sim = Simulator(blocks, b"", SimConfig())
             sim.run(2)
             return [n for n in sim.notes if "REFRACTION" in n]
 
-        self.assertEqual(notes(0, 0.0), [])
-        self.assertTrue(any("distortionType" in n for n in notes(1, 0.0)))
-        self.assertTrue(any("alphaBlend" in n for n in notes(0, 0.35)))
+        self.assertEqual(notes(False, 0.0), [])
+        self.assertTrue(any("distortionType" in n for n in notes(True, 0.0)))
+        self.assertTrue(any("alphaBlend" in n for n in notes(False, 0.35)))
 
     def test_scale_item_array_path_matches_per_point(self):
         """条带的数组形态（RibbonStrip）走 `_scale_item` 要和逐点路完全一致。

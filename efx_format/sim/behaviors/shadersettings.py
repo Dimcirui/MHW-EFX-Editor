@@ -9,13 +9,13 @@
     5            ALPHA         只出现在贴花 PtBehavior 上，贴花不受本属性覆盖
     2 / 7        ADDITIVE      颜色 × alpha 叠加到背景上，黑色不可见
     3            INV_MULTIPLY  背景 × (1 − 颜色 × alpha)
-    8            MUL2X         背景 × lerp(0.5, 颜色, alpha) × 2，中灰不改变背景
+    8            MULTIPLY      背景 × lerp(1, 颜色, alpha)，白色不改变背景
     6            不绘制         粒子本身不画，多用于承载 PTLIFE 等的 dummy Entry
 
 没有 SHADERSETTINGS 的 entry 保持渲染体产出的 'ALPHA'。其余字段不参与计算。
 
 维护约束：
-- 必须排在 REFRACTION 之前：折射替换整条输出通道，以它的乘法为准。
+- 必须排在 REFRACTION 之前：折射的输出取决于这里定下的混合方式。
 - 贴花有自己的 mBlendMode（`extra["own_blend"]`），不受本属性覆盖。
 """
 
@@ -30,7 +30,7 @@ BLEND_OF_STATE = {
     1: "ALPHA", 5: "ALPHA", 9: "ALPHA",
     2: "ADDITIVE", 7: "ADDITIVE",
     3: "INV_MULTIPLY",
-    8: "MUL2X",
+    8: "MULTIPLY",
     6: None,
 }
 

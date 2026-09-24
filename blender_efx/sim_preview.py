@@ -797,9 +797,15 @@ def _display_color(c, mode):
     return (r / m, g / m, b / m, a)
 
 
-def _multiply_tint(c, gain=1.0):
-    """为乘法通道将覆盖度折入 RGB；透明端必须回到乘法恒等色 ``(1,1,1)``。"""
+def _multiply_tint(c, gain=1.0, add=False):
+    """为乘法通道将覆盖度折入 RGB；透明端必须回到乘法恒等色 ``(1,1,1)``。
+
+    ``add`` 为折射的加法档：乘数为 ``1 + 颜色 × 覆盖度``。
+    """
     a = c[3] * gain
+    if add:
+        a = max(0.0, a)
+        return (1.0 + c[0] * a, 1.0 + c[1] * a, 1.0 + c[2] * a, 1.0)
     if a == 1.0:
         return (c[0], c[1], c[2], 1.0)
     if a <= 0.0:
@@ -1667,13 +1673,17 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
 
 
 #: 渲染项可用的混合方式；其余值按 'ALPHA' 画。
-_BLEND_MODES = ("ALPHA", "ADDITIVE", "MULTIPLY", "OPAQUE", "INV_MULTIPLY", "MUL2X")
+_BLEND_MODES = ("ALPHA", "ADDITIVE", "MULTIPLY", "OPAQUE", "INV_MULTIPLY",
+                "REFRACT", "REFRACT_ADD")
+#: 折射通道（REFRACTION）：源色为背后画面，贴图 RGB 不参与
+_REFRACT_MODES = ("REFRACT", "REFRACT_ADD")
 #: 以乘法混合实现、颜色不经过 HDR 映射的模式
-_MULTIPLY_MODES = ("MULTIPLY", "INV_MULTIPLY", "MUL2X")
+_MULTIPLY_MODES = ("MULTIPLY", "INV_MULTIPLY") + _REFRACT_MODES
 #: 渲染项混合方式 → ``gpu.state.blend_set`` 预设
-_GPU_BLEND = {"OPAQUE": "NONE", "INV_MULTIPLY": "MULTIPLY", "MUL2X": "MULTIPLY"}
+_GPU_BLEND = {"OPAQUE": "NONE", "INV_MULTIPLY": "MULTIPLY",
+              "REFRACT": "MULTIPLY", "REFRACT_ADD": "MULTIPLY"}
 #: 贴图 shader 的 ``blendOut`` 取值
-_BLEND_OUT = {"INV_MULTIPLY": 1.0, "MUL2X": 2.0}
+_BLEND_OUT = {"INV_MULTIPLY": 1.0, "MULTIPLY": 2.0}
 
 
 def _flat_blend_colors(colors, mode):
@@ -1682,9 +1692,9 @@ def _flat_blend_colors(colors, mode):
     for c in colors:
         r, g, b = float(c[0]), float(c[1]), float(c[2])
         a = max(0.0, min(1.0, float(c[3])))
-        if mode == "MUL2X":
-            out.append(((0.5 + (r - 0.5) * a) * 2.0, (0.5 + (g - 0.5) * a) * 2.0,
-                        (0.5 + (b - 0.5) * a) * 2.0, 1.0))
+        if mode == "MULTIPLY":
+            out.append((1.0 + (r - 1.0) * a, 1.0 + (g - 1.0) * a,
+                        1.0 + (b - 1.0) * a, 1.0))
         else:
             out.append((max(0.0, 1.0 - r * a), max(0.0, 1.0 - g * a),
                         max(0.0, 1.0 - b * a), 1.0))
@@ -1710,7 +1720,7 @@ void main()
 
 #: ``alphaFix`` 逐纹素修正不透明度（低阈值、对比度伽马）；不透明度取贴图 alpha。
 #: ``blendOut`` 为 1 / 2 时输出乘法混合的乘数：反相乘法 ``1 − 颜色×alpha``、
-#: 乘法×2 ``lerp(0.5, 颜色, alpha)×2``。
+#: 乘法 ``lerp(1, 颜色, alpha)``。
 #: RGBFIRE 与 RGBWATER 使用互斥的双层通道遮罩；其他项逐通道染色。
 _FRAG_SRC = """
 void main()
@@ -1734,7 +1744,7 @@ void main()
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
   a *= v_col.a;
   if (blendOut > 1.5) {
-    fragColor = vec4(mix(vec3(0.5), rgb, clamp(a, 0.0, 1.0)) * 2.0, 1.0);
+    fragColor = vec4(mix(vec3(1.0), rgb, clamp(a, 0.0, 1.0)), 1.0);
   } else if (blendOut > 0.5) {
     fragColor = vec4(max(vec3(0.0), 1.0 - rgb * a), 1.0);
   } else {
@@ -1757,7 +1767,8 @@ void main()
 }
 """
 
-#: 折射以乘法颜色混合；``refrParam`` 控制贴图颜色参与度和预览增益。
+#: 折射输出对背景的乘数；贴图只取 alpha 作覆盖度，RGB 不参与。
+#: ``refrParam`` = (加法档标记, 预览增益)：Alpha 档 ``lerp(1, 颜色, a)``，加法档 ``1 + 颜色 × a``。
 _REFR_FRAG_SRC = """
 void main()
 {
@@ -1765,8 +1776,9 @@ void main()
   float a = t.a;
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
   a *= clamp(v_col.a, 0.0, 1.0) * refrParam.y;
-  vec3 src = mix(vec3(1.0), t.rgb, refrParam.x) * v_col.rgb;
-  fragColor = vec4(mix(vec3(1.0), src, a), 1.0);
+  vec3 m = (refrParam.x > 0.5) ? vec3(1.0) + v_col.rgb * a
+                               : mix(vec3(1.0), v_col.rgb, a);
+  fragColor = vec4(m, 1.0);
 }
 """
 
@@ -1853,7 +1865,7 @@ void main()
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
   a *= v_col.a;
   if (blendOut > 1.5) {
-    fragColor = vec4(mix(vec3(0.5), rgb, clamp(a, 0.0, 1.0)) * 2.0, 1.0);
+    fragColor = vec4(mix(vec3(1.0), rgb, clamp(a, 0.0, 1.0)), 1.0);
   } else if (blendOut > 0.5) {
     fragColor = vec4(max(vec3(0.0), 1.0 - rgb * a), 1.0);
   } else {
@@ -2061,9 +2073,8 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         都是**逐 entry**的，一个场景里就那么几种取值，分桶开销可忽略。
         """
         mode = it.blend
-        if mode == "MULTIPLY":
-            # 折射是整条通道的性质（REFRACTION 覆盖渲染体自己的 blendMode，实机
-            # 确认），不该被「强制混合模式」那个调试开关顶掉
+        if mode in _REFRACT_MODES:
+            # 折射是整条通道的性质，不该被「强制混合模式」那个调试开关顶掉
             pass
         elif blend != "AUTO":
             mode = blend
@@ -2141,8 +2152,9 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
 
     def _layers_of(it, col, tex=""):
         """返回外缘和核心色；折射不使用双层染色，保留其亮度语义。"""
-        if it.blend == "MULTIPLY":
-            c = col if tex else _multiply_tint(col, refr_gain)
+        if it.blend in _REFRACT_MODES:
+            c = col if tex else _multiply_tint(col, refr_gain,
+                                              add=it.blend == "REFRACT_ADD")
             return c, c
         lay = it.extra.get("layers")
         if not lay:
@@ -2300,7 +2312,7 @@ _DRAW_KNOBS = ("efx_sim_particle_size", "efx_sim_draw_mode", "efx_sim_blend",
                "efx_sim_show_velocity", "efx_sim_uv_flip_v", "efx_sim_textured",
                "efx_sim_draw_order", "efx_sim_point_px",
                "efx_sim_ribbon_subdiv_max",
-               "efx_sim_refraction_tex", "efx_sim_refraction_gain",
+               "efx_sim_refraction_gain",
                "efx_sim_flowmap_gain", "efx_sim_show_shape")
 
 
@@ -2336,9 +2348,7 @@ def _build_payload(scene, rv3d, trs):
         order = sorted(buckets.keys(), key=lambda k: (k[1] == "ADDITIVE",))
 
     refr_shader = _refraction_shader()
-    refr_param = (0.0 if getattr(scene, "efx_sim_refraction_tex", "color") == "mask"
-                  else 1.0,
-                  float(getattr(scene, "efx_sim_refraction_gain", 1.0)))
+    refr_gain = float(getattr(scene, "efx_sim_refraction_gain", 1.0))
     tris = []
     for key in order:
         bv, bc, bu, b2, bnp, blu, bfo = buckets[key]
@@ -2350,7 +2360,8 @@ def _build_payload(scene, rv3d, trs):
         tex = _gpu_texture(tex_name) if (bu is not None) else None
         # 折射替换完整输出通道，优先于只偏移 UV 的 flowmap。
         ftex = (_gpu_texture(flow_name)
-                if (flow_name and blu is not None and mode != "MULTIPLY") else None)
+                if (flow_name and blu is not None and mode not in _REFRACT_MODES)
+                else None)
         if ftex is not None and tex is not None and flow_shader is not None:
             tris.append((mode, flow_shader, (tex, ftex), fix, lerp,
                          batch_for_shader(flow_shader, "TRIS",
@@ -2358,9 +2369,10 @@ def _build_payload(scene, rv3d, trs):
                                            "col2": b2, "luv": blu,
                                            "flowoff": bfo})))
             continue
-        if mode == "MULTIPLY":
+        if mode in _REFRACT_MODES:
             # 折射不使用双层通道混合；贴图 shader 不可用时回退整片乘法。
             if tex is not None and refr_shader is not None:
+                refr_param = (1.0 if mode == "REFRACT_ADD" else 0.0, refr_gain)
                 tris.append((mode, refr_shader, tex, (fix, refr_param), None,
                              batch_for_shader(refr_shader, "TRIS",
                                               {"pos": bv, "uv": bu, "color": bc})))
@@ -3132,7 +3144,6 @@ class EFX_PT_sim_unknowns(Panel):
         # 已有稳定默认值的开关不在校准面板重复显示。
         col.prop(scene, "efx_sim_spawn_jitter")
         col.prop(scene, "efx_sim_material_slot")
-        col.prop(scene, "efx_sim_refraction_tex")
         col.prop(scene, "efx_sim_refraction_gain")
         col.prop(scene, "efx_sim_flowmap_gain")
         col.prop(scene, "efx_sim_blink_phase")
@@ -3334,15 +3345,6 @@ def register():
                ("width", "Fade width",
                 "Fade Cone Angle is how wide the fade is, counted from Cutoff Cone Angle")],
         default="outer")
-    S.efx_sim_refraction_tex = EnumProperty(
-        name="Refraction sprite",
-        items=[("color", "Tints the background",
-                "Multiply the background by the sprite's own colour, so the sprite "
-                "both shapes and tints the layer"),
-               ("mask", "Shapes it only",
-                "Use the sprite only to decide where the layer covers; its colour "
-                "stays out, so a white renderer colour leaves the background alone")],
-        default="mask")
     S.efx_sim_refraction_gain = FloatProperty(
         name="Refraction strength x", default=1.0, min=0.0, max=8.0,
         soft_min=0.0, soft_max=4.0,
