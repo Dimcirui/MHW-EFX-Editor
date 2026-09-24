@@ -7,12 +7,13 @@ BILLBOARD3D / PLANE / BILLBOARD2D 各自带有同一组八个字段，flowmap �
 
 字段职能：
 
-    applicationRule                位域。bit 0x04 = 启用，bit 0x08 = 播放一次后停止
+    applicationRule                位域。0x04 = 启用，0x08 = 播放一次后停止，
+                                   0x10 = 逆向播放（仅播放一次时生效）
     path                           流动贴图的游戏路径
-    flowmapSpeed(+Jitter)          相位推进速度
-    flowmapSpeedCoef(+Jitter)      逐帧速度倍率
-    flowmapStrength(+Jitter)       扭曲幅度
-    flowmapStrengthCoef(+Jitter)   逐帧强度倍率
+    flowmapSpeed(+Jitter)             相位推进速度，每秒轮数
+    flowmapSpeedCoef(+Jitter)         逐帧速度倍率
+    flowmapStrength(+Jitter)          扭曲幅度
+    flowmapStrengthCoef(+Jitter)      逐帧强度倍率
 
 两个 Coef 是每帧作用一次的衰减率，与 TRANSFORM3D 的 `_modifier` 属于同一类。相位与强度均有
 闭式解，无需逐帧递推：
@@ -21,43 +22,30 @@ BILLBOARD3D / PLANE / BILLBOARD2D 各自带有同一组八个字段，flowmap �
            step·(c^t − 1)/(c − 1) （等比数列求和）
     强度   strength · c^t
 
-实机的速度为字段值的 2 倍（`_SPEED_SCALE`）；强度换算乘 `_STRENGTH_SCALE` = 0.5。
+一层的采样位置 = UV − strength × p × f，f 为流动方向（`rg×2−1`，y 以贴图像素向下为正），
+p 为一轮内的位置，从 0 走到 1；越界取边缘像素。
 
-`cycle` 档的位移为锯齿波：一轮之内从 +strength 线性走到 −strength，两端扭曲最大、中间经过 0，
-回绕发生在两端之间。一轮内的位置取 (0, 1]，整数相位算作一轮末尾：速度为 0 时停在 −strength
-一端（固定扭曲），「播放一次后停止」也停在这一端。「播放一次后停止」开启时速度减半、强度加倍
-（`_FREEZE_SPEED_SCALE`、`_FREEZE_STRENGTH_SCALE`）。
+- 循环：两层相位错开半轮叠加，权重为三角波 1 − |2p − 1|，两层之和为 1。一层回绕时权重正好
+  为 0，因此没有跳变。速度为 0 时只剩 p = 0.5 的一层，即 UV − 0.5 × strength × f。
+- 播放一次后停止：只有一层，p 从 0 走到 1 后停住；逆向模式下从 1 走到 0。
 
-输出 `item.extra["flowmap"]` 为标量位移量 = 相位映射 × 当前强度。逐纹素位移按流动贴图的 RG
-通道（`rg×2−1` 即二维方向，y 以贴图像素向下为正）偏移 UV，位移量再乘以当前序列帧单格的尺寸。
-速度为 0 时采样位置 = UV − 0.5 × 强度 × 流动方向，越界取边缘像素。
-
-两项未确定的读法以 `SimConfig.UNKNOWNS` 开关保留：`flowmap_speed_unit`（speed 的单位为每秒
-或每帧，默认每秒）与 `flowmap_phase`（相位到位移的映射：`cycle` 取小数部分映射到 −1..1，
-结果有界；`linear` 持续累积）。`applicationRule` 中三选一的应用模式完全未知，不参与计算。
+输出 `item.extra`：`flowmap` = 当前强度，`flowmap_phase` = 相位，`flowmap_loop` = 是否按
+两层循环。逐纹素位移由预览 shader 计算，位移量再乘以当前序列帧单格的尺寸。
 
 维护约束：
 - 位移量必须按序列帧单格的尺寸缩放，而非整张贴图。`strength` 的常见取值 0.2 若按整张贴图计算，
   一次即跨过一格半。
 """
 
-import math
-
 from ..rng import jitter
 
 #: applicationRule 的位，与 schema/enums.py::BITS_APPLICATION_RULE 同一套
 BIT_ENABLE = 0x04
 BIT_FREEZE = 0x08
+BIT_REVERSE = 0x10
 
 #: 存进 p.rolled 的键
 KEY = "flowmap"
-#: 速度的实机效果相对字段值的倍率
-_SPEED_SCALE = 2.0
-#: 强度换算倍率
-_STRENGTH_SCALE = 0.5
-#: 「播放一次后停止」开启时在上面两个倍率之外再乘的倍率
-_FREEZE_SPEED_SCALE = 0.5
-_FREEZE_STRENGTH_SCALE = 2.0
 
 
 def roll(p, f, rng, mode):
@@ -72,10 +60,12 @@ def roll(p, f, rng, mode):
                       rng, mode)
     if not strength:
         return              # 强度为 0 时无位移，速度取值不影响画面
+    freeze = bool(rule & BIT_FREEZE)
     p.rolled[KEY] = (float(speed), float(strength),
                      float(f.get("flowmapSpeedCoef", 1.0) or 1.0),
                      float(f.get("flowmapStrengthCoef", 1.0) or 1.0),
-                     bool(rule & BIT_FREEZE))
+                     freeze,
+                     freeze and bool(rule & BIT_REVERSE))
 
 
 def _geometric(step, coef, t):
@@ -89,39 +79,31 @@ def _geometric(step, coef, t):
 
 
 def apply(p, em, item, key=KEY):
-    """将本帧位移量写入 `item.extra[KEY]` 并返回 item；未启用时原样返回。
+    """将本帧强度与相位写入 `item.extra` 并返回 item；未启用时原样返回。
 
     `key` 为参数在 p.rolled 里的键，UVCONTROL 的 flowmap 组另存一份。
     """
     got = p.rolled.get(key)
     if item is None or item.kind == "NONE" or not got:
         return item
-    speed, strength, s_coef, t_coef, freeze = got
-    cfg = em.config
+    speed, strength, s_coef, t_coef, freeze, reverse = got
     t = float(p.age)
 
-    fps = float(getattr(cfg, "fps", 60) or 60)
-    step = (speed / fps
-            if getattr(cfg, "flowmap_speed_unit", "per_second") == "per_second"
-            else speed) * _SPEED_SCALE
-    strength *= _STRENGTH_SCALE
+    fps = float(getattr(em.config, "fps", 60) or 60)
+    phase = _geometric(speed / fps, s_coef, t)
     if freeze:
-        step *= _FREEZE_SPEED_SCALE
-        strength *= _FREEZE_STRENGTH_SCALE
-    phase = _geometric(step, s_coef, t)
-    if freeze and phase > 1.0:
-        phase = 1.0             # 播放一次后停止：相位保持在一轮末尾
+        # 播放一次后停止：相位停在一轮末尾，负速度对称
+        phase = max(-1.0, min(1.0, phase))
+        if reverse:
+            phase = (1.0 if phase >= 0.0 else -1.0) - phase
     if abs(t_coef - 1.0) > 1e-9:
         try:
             strength = strength * (t_coef ** t)
         except (OverflowError, ValueError):
             pass
 
-    if getattr(cfg, "flowmap_phase", "cycle") == "cycle":
-        # 一轮内的位置取 (0, 1]，映射到 +1 → −1，位移有界，不随寿命无限增长
-        q = phase - math.ceil(phase) + 1.0
-        phase = (0.5 - q) * 2.0
-    amount = phase * strength
-    if amount:
-        item.extra[KEY] = amount
+    if strength:
+        item.extra[KEY] = strength
+        item.extra[KEY + "_phase"] = phase
+        item.extra[KEY + "_loop"] = not freeze
     return item

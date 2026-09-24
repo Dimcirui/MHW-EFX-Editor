@@ -139,7 +139,7 @@ class UVControl(Behavior):
             or 1.0,
             jitter(f.get("flowmapStrengthCoef", 1.0), f.get("flowmapStrengthCoefJitter"),
                    rng, mode) or 1.0,
-            False)
+            False, False)
 
     def build_render(self, p, em, view, item):
         if item is None or item.kind == "NONE":

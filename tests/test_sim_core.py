@@ -2918,11 +2918,9 @@ class TestPtLifeActionScene(unittest.TestCase):
         self.assertGreaterEqual(pz0, oz0 - eps)
         self.assertLessEqual(pz1, oz1 + eps)
 
-    def test_flowmap_speed_and_strength_are_doubled(self):
-        """速度按字段值的 2 倍、强度按 0.5 倍换算。`cycle` 档为锯齿：speed 1.0 → 每秒 2 轮，
-        位移在 ±strength 之间、随时间递减；`linear` 档位移量 = 累计相位 × 强度。
-        """
-        def items(unit, phase, frames):
+    def test_flowmap_loop_outputs_strength_and_phase(self):
+        """循环：强度照字段值输出，相位按每秒 speed 轮推进，标记为两层循环。"""
+        def items(frames):
             blocks = [
                 (SPAWN, {"maxParticles": 1, "spawnNum": 1,
                          "intervalFrame": 0, "loopNum": 1,
@@ -2934,8 +2932,7 @@ class TestPtLifeActionScene(unittest.TestCase):
                                "flowmapSpeed": 1.0, "flowmapStrength": 0.2,
                                "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0}),
             ]
-            sim = Simulator(blocks, b"", SimConfig(flowmap_speed_unit=unit,
-                                                   flowmap_phase=phase))
+            sim = Simulator(blocks, b"", SimConfig())
             out = []
             for t in frames:
                 while sim.frame < t:
@@ -2943,18 +2940,13 @@ class TestPtLifeActionScene(unittest.TestCase):
                 out.append(sim.build_render()[0].extra)
             return out
 
-        a, b = items("per_second", "cycle", (5, 20))
-        # 每帧推进 2/60 轮，位移斜率 = 2 × strength × 2/60；15 帧 = 半轮，未跨回绕
-        self.assertAlmostEqual(b["flowmap"] - a["flowmap"], -15 * 2.0 * 0.1 * 2.0 / 60.0,
-                               places=6)
-        for e in (a, b):
-            self.assertLessEqual(abs(e["flowmap"]), 0.1 + 1e-9)
-        lin5, lin20 = items("per_second", "linear", (5, 20))
-        self.assertAlmostEqual(lin20["flowmap"] - lin5["flowmap"], 15 * 0.1 * 2.0 / 60.0,
-                               places=6)
+        a, b = items((5, 20))
+        self.assertAlmostEqual(a["flowmap"], 0.2)
+        self.assertAlmostEqual(b["flowmap_phase"] - a["flowmap_phase"], 15 / 60.0, places=6)
+        self.assertTrue(a["flowmap_loop"])
 
     def test_flowmap_zero_speed_is_a_static_distortion(self):
-        """速度为 0 时不走交叠，固定扭曲的幅度由强度决定。"""
+        """速度为 0 时相位停在 0，循环两层中只剩 p = 0.5 的一层，扭曲幅度由强度决定。"""
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
                      "loopNum": 1, "emitterRepeatCount": 1}),
@@ -2968,10 +2960,12 @@ class TestPtLifeActionScene(unittest.TestCase):
         sim = Simulator(blocks, b"", SimConfig())
         sim.run(10)
         extra = sim.build_render()[0].extra
-        self.assertAlmostEqual(abs(extra["flowmap"]), 0.5, places=6)
+        self.assertAlmostEqual(extra["flowmap"], 1.0)
+        self.assertEqual(extra["flowmap_phase"], 0.0)
+        self.assertTrue(extra["flowmap_loop"])
 
-    def test_flowmap_play_once_ends_at_the_static_end(self):
-        """播放一次后停止：速度减半、强度加倍，停在末端（−strength 一端），不跳回起点。"""
+    def test_flowmap_play_once_holds_at_the_end(self):
+        """播放一次后停止：单层，相位 0 → 1 后停住，不跳回起点；逆向模式 1 → 0。"""
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
                      "loopNum": 1, "emitterRepeatCount": 1}),
@@ -2982,15 +2976,24 @@ class TestPtLifeActionScene(unittest.TestCase):
                            "flowmapSpeed": 1.0, "flowmapStrength": 1.0,
                            "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0}),
         ]
-        sim = Simulator(blocks, b"", SimConfig())
-        sim.run(10)
-        mid = sim.build_render()[0].extra["flowmap"]
-        sim.run(30)                 # 速度减半：一轮 60 帧，第 40 帧尚未播完
-        self.assertNotAlmostEqual(sim.build_render()[0].extra["flowmap"], -1.0, places=3)
-        sim.run(40)
-        end = sim.build_render()[0].extra["flowmap"]
-        self.assertGreater(mid, -1.0)
-        self.assertAlmostEqual(end, -1.0, places=6)
+        def phases(rule):
+            blocks[2][1]["applicationRule"] = rule
+            sim = Simulator(blocks, b"", SimConfig())
+            sim.run(30)             # 一轮 60 帧，第 30 帧在半程
+            mid = sim.build_render()[0].extra
+            sim.run(60)
+            return mid, sim.build_render()[0].extra
+
+        mid, end = phases(0x04 | 0x08)
+        self.assertFalse(mid["flowmap_loop"])
+        self.assertAlmostEqual(mid["flowmap_phase"], 0.5, places=1)
+        self.assertEqual(end["flowmap_phase"], 1.0)
+        self.assertAlmostEqual(end["flowmap"], 1.0)
+        _mid, end = phases(0x04 | 0x08 | 0x10)
+        self.assertEqual(end["flowmap_phase"], 0.0)
+        # 逆向模式只在播放一次时生效
+        _mid, end = phases(0x04 | 0x10)
+        self.assertAlmostEqual(end["flowmap_phase"], 1.5, places=1)
 
     def test_flowmap_off_leaves_nothing_on_the_item(self):
         """没开 bit 0x04 就完全不挂——glue 据此决定要不要分流动桶。"""
@@ -5031,10 +5034,9 @@ class TestUVControl(unittest.TestCase):
     def test_flowmap_group_follows_enable_flag(self):
         on = self._sim({"enableFlowmap": 1, "flowmapSpeed": 1.0, "flowmapStrength": 0.2,
                         "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0})
-        on.run(10)          # 15 帧恰为半轮，锯齿过零
+        on.run(10)
         amt = on.build_render()[0].extra.get("flowmap")
-        self.assertIsNotNone(amt)
-        self.assertLessEqual(abs(amt), 0.1 + 1e-6)
+        self.assertAlmostEqual(amt, 0.2, places=6)
         off = self._sim({"enableFlowmap": 0, "flowmapSpeed": 1.0, "flowmapStrength": 0.2})
         off.run(15)
         self.assertNotIn("flowmap", off.build_render()[0].extra)

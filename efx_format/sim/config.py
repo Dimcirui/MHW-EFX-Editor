@@ -54,17 +54,6 @@ UNKNOWNS = {
         "照旧吃完整的三轴自旋。",
         ("view", "z"), "view",
     ),
-    "flowmap_speed_unit": (
-        "flowmapSpeed 的单位。'per_second' 每秒推进这么多相位、逐帧走 speed/fps；"
-        "'per_frame' 每帧这么多。"
-        "⚠ 两个 Coef 不受此开关影响，它们恒是逐帧乘一次的衰减率。",
-        ("per_second", "per_frame"), "per_second",
-    ),
-    "flowmap_phase": (
-        "flowmap 的相位怎么映射成 UV 位移。'cycle' 取相位的小数部分映到 −1..1，"
-        "位移有界；'linear' 一路累积，相位即位移倍数。",
-        ("cycle", "linear"), "cycle",
-    ),
     "blink_phase": (
         "BLINK 两重正弦的初相位。'zero' 以粒子出生为相位 0，同一时刻出生的粒子同步闪烁；"
         "'random' 每个粒子在出生时各自抽取初相位。",
@@ -155,7 +144,6 @@ class SimConfig(object):
         "rotateanim_billboard_axis", "uvc_clock",
         "uvs_speed_unit", "uvs_once_span", "uvs_start_wrap",
         "uvs_grid_h", "uvs_grid_v", "uvs_grid_scan",
-        "flowmap_speed_unit", "flowmap_phase",
         "blink_phase",
         "rot_order_applied", "ribbon_trail_source", "t3d_apply_base",
         "homing_ff_recover_frames",
@@ -190,8 +178,6 @@ class SimConfig(object):
         self.spawn_after_cycle = "stop"
         self.rotateanim_billboard_axis = "view"
         self.uvc_clock = "particle_age"
-        self.flowmap_speed_unit = "per_second"
-        self.flowmap_phase = "cycle"
         self.blink_phase = "zero"
         self.uvs_speed_unit = "per_frame"
         self.uvs_once_span = "to_end"

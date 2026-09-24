@@ -212,8 +212,6 @@ def _config_from_scene(scene):
         uvs_start_wrap=getattr(scene, "efx_sim_uvs_start_wrap", "wrap"),
         uvs_grid_h=int(getattr(scene, "efx_sim_uvs_grid", (8, 8))[0]),
         uvs_grid_v=int(getattr(scene, "efx_sim_uvs_grid", (8, 8))[1]),
-        flowmap_speed_unit=getattr(scene, "efx_sim_flowmap_speed_unit", "per_second"),
-        flowmap_phase=getattr(scene, "efx_sim_flowmap_phase", "cycle"),
         blink_phase=getattr(scene, "efx_sim_blink_phase", "zero"),
         fade_depth_metric=getattr(scene, "efx_sim_fade_depth_metric", "view_depth"),
         fade_cone_mode=getattr(scene, "efx_sim_fade_cone_mode", "outer"),
@@ -1563,7 +1561,7 @@ def _bound_meshes_for(entry_obj, viscon=None):
 def _join_chunks(verts, colors, uvs, col2s, chunks, luvs=None, flowoffs=None):
     """把网格的 numpy 分块和普通三角（片/条带）拼成可直接喂 batch 的数组。
 
-    flowmap 桶（``luvs`` 不为 None）同时拼接流动贴图 UV 与位移量，返回值依次为
+    flowmap 桶（``luvs`` 不为 None）同时拼接流动贴图 UV 与位移参数，返回值依次为
     ``(pos, color, uv, col2, luv, flowoff)``，后两项在非 flowmap 桶为 None。
     """
     flow = luvs is not None
@@ -1607,11 +1605,11 @@ def _join_chunks(verts, colors, uvs, col2s, chunks, luvs=None, flowoffs=None):
 
 
 def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
-               uvs=None, col2s=None, core=None, luvs=None, flowoffs=None, flow_amt=0.0):
+               uvs=None, col2s=None, core=None, luvs=None, flowoffs=None, flow_amt=None):
     """将网格按粒子变换输出三角形；numpy 不可用时回退逐顶点路径。
 
     ``luvs`` 不为 None 时另输出 flowmap 数据：流动贴图按网格自身 UV 采样，位移量为整张
-    贴图的比例。
+    贴图的比例。``flow_amt`` 为 `_flow_of` 返回的 (强度, 相位, 循环标记)。
     """
     tris, arr, muv = geom
     if not tris:
@@ -1636,7 +1634,9 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
                     uvarr = uvarr * numpy.array((xf[0], xf[1]), dtype="f4")
                     uvarr += numpy.array((xf[2], xf[3]), dtype="f4")
                 if luvs is not None:
-                    fo = numpy.full((len(tris), 2), flow_amt, dtype="f4")
+                    amt, ph, lap = flow_amt
+                    fo = numpy.empty((len(tris), 4), dtype="f4")
+                    fo[:] = (amt, amt, ph, lap)
                     extra = (uvarr, c2, base, fo)
                 else:
                     extra = (uvarr, c2)
@@ -1662,7 +1662,8 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
         col2s.extend([(c[0], c[1], c[2], col[3])] * len(tris))
         if luvs is not None:
             luvs.extend(muv)
-            flowoffs.extend([(flow_amt, flow_amt)] * len(tris))
+            amt, ph, lap = flow_amt
+            flowoffs.extend([(amt, amt, ph, lap)] * len(tris))
 
 
 #: 渲染项可用的混合方式；其余值按 'ALPHA' 画。
@@ -1817,12 +1818,23 @@ void main()
 
 #: flowmap 按局部 UV 采样；其偏移量已在 CPU 侧换算到当前贴图格。流动矢量的 G 以贴图像素
 #: 向下为正，而 v 向上为正，y 分量须取反。
+#: ``v_flowoff`` = (x 量, y 量, 相位, 循环标记)。循环时两层相位错开半轮各采样一次，按三角波
+#: 权重混合：一层回绕时权重为 0，另一层权重为 1，因此没有跳变。
 _FLOW_FRAG_SRC = """
 void main()
 {
   vec2 f = texture(flowTex, v_luv).rg * 2.0 - 1.0;
   f.y = -f.y;
-  vec4 t = texture(image, v_uv + f * v_flowoff);
+  vec4 t;
+  if (v_flowoff.w > 0.5) {
+    float p0 = fract(v_flowoff.z);
+    float p1 = fract(v_flowoff.z + 0.5);
+    vec4 t0 = texture(image, v_uv - f * v_flowoff.xy * p0);
+    vec4 t1 = texture(image, v_uv - f * v_flowoff.xy * p1);
+    t = mix(t1, t0, 1.0 - abs(p0 * 2.0 - 1.0));
+  } else {
+    t = texture(image, v_uv - f * v_flowoff.xy * v_flowoff.z);
+  }
   vec3 rgb;
   float a = t.a;
   if (fireLerp >= 0.0) {
@@ -1863,7 +1875,7 @@ def _flow_shader():
         iface.smooth("VEC4", "v_col")
         iface.smooth("VEC4", "v_col2")
         iface.smooth("VEC2", "v_luv")
-        iface.smooth("VEC2", "v_flowoff")
+        iface.smooth("VEC4", "v_flowoff")
         info = gpu.types.GPUShaderCreateInfo()
         info.push_constant("MAT4", "ModelViewProjectionMatrix")
         info.push_constant("VEC3", "alphaFix")
@@ -1877,7 +1889,7 @@ def _flow_shader():
         info.vertex_in(2, "VEC4", "color")
         info.vertex_in(3, "VEC4", "col2")
         info.vertex_in(4, "VEC2", "luv")
-        info.vertex_in(5, "VEC2", "flowoff")
+        info.vertex_in(5, "VEC4", "flowoff")
         info.vertex_out(iface)
         info.fragment_out(0, "VEC4", "fragColor")
         info.vertex_source(_FLOW_VERT_SRC)
@@ -2020,19 +2032,21 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         return got
 
     def _flow_of(it, tex):
-        """这一项的 (flowmap 贴图名, 位移量)；不该走 flowmap 就 ("", 0.0)。
+        """这一项的 (flowmap 贴图名, (强度, 相位, 循环标记))；不该走 flowmap 就 ("", None)。
 
         没有序列帧贴图就没有可推的 UV，直接不走——`use_tex` 关掉时同理。
         """
         if not tex or not flow_images:
-            return "", 0.0
+            return "", None
         amt = it.extra.get("flowmap")
         if not amt:
-            return "", 0.0
+            return "", None
         name = flow_images.get(it.extra.get("entry_key"), root_flow)
         if not name or _gpu_texture(name) is None:
-            return "", 0.0
-        return name, float(amt) * flow_gain
+            return "", None
+        return name, (float(amt) * flow_gain,
+                      float(it.extra.get("flowmap_phase", 0.0)),
+                      1.0 if it.extra.get("flowmap_loop") else 0.0)
 
     def _bucket_for(it, tex, flow_tex=""):
         """返回 `(桶 key, 桶)`。key = (绘制次序, 混合模式, 贴图, alpha 修正, 流动贴图,
@@ -2211,7 +2225,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             geom, tex_name = _geom_of(it)
             # 网格没有 UV 时无从采样流动贴图
             flow_tex, flow_amt = (_flow_of(it, tex_name) if geom[2] is not None
-                                  else ("", 0.0))
+                                  else ("", None))
             _key, (bv, bc, bu, b2, bnp, blu, bfo) = _bucket_for(it, tex_name, flow_tex)
             edge, core = _layers_of(it, col, tex_name)
             _emit_mesh(bv, bc, bnp, it, edge, size_mul, rows, geom,
@@ -2240,7 +2254,8 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                 # flowmap 位移按当前序列格尺寸缩放。
                 us = [c[0] for c in corners]
                 vs = [c[1] for c in corners]
-                off = (flow_amt * (max(us) - min(us)), flow_amt * (max(vs) - min(vs)))
+                amt, ph, lap = flow_amt
+                off = (amt * (max(us) - min(us)), amt * (max(vs) - min(vs)), ph, lap)
                 blu.extend(_QUAD_LUV)
                 bfo.extend([off] * 6)
             emis = it.extra.get("decal_emissive")
@@ -3119,8 +3134,6 @@ class EFX_PT_sim_unknowns(Panel):
         col.prop(scene, "efx_sim_material_slot")
         col.prop(scene, "efx_sim_refraction_tex")
         col.prop(scene, "efx_sim_refraction_gain")
-        col.prop(scene, "efx_sim_flowmap_speed_unit")
-        col.prop(scene, "efx_sim_flowmap_phase")
         col.prop(scene, "efx_sim_flowmap_gain")
         col.prop(scene, "efx_sim_blink_phase")
         col.prop(scene, "efx_sim_fade_depth_metric")
@@ -3300,13 +3313,6 @@ def register():
                 "in game, but without its tone mapping a high brightness turns "
                 "the whole sprite white")],
         default="preserve_hue")
-    S.efx_sim_flowmap_speed_unit = EnumProperty(
-        name="Flowmap speed", update=_on_knob_changed,
-        items=[("per_second", "Per second",
-                "The stored speed is how many flow cycles pass in a second"),
-               ("per_frame", "Per frame",
-                "The stored speed is how many flow cycles pass in a single frame")],
-        default="per_second")
     S.efx_sim_blink_phase = EnumProperty(
         name="Blink start", update=_on_knob_changed,
         items=[("zero", "From birth",
@@ -3328,15 +3334,6 @@ def register():
                ("width", "Fade width",
                 "Fade Cone Angle is how wide the fade is, counted from Cutoff Cone Angle")],
         default="outer")
-    S.efx_sim_flowmap_phase = EnumProperty(
-        name="Flowmap travel", update=_on_knob_changed,
-        items=[("cycle", "Cycles",
-                "Sweep back and forth over one flow cycle, so the distortion stays "
-                "bounded however long a particle lives"),
-               ("linear", "Keeps going",
-                "Let the distortion build up with age, so a pixel keeps drifting "
-                "the way the flowmap points")],
-        default="cycle")
     S.efx_sim_refraction_tex = EnumProperty(
         name="Refraction sprite",
         items=[("color", "Tints the background",
