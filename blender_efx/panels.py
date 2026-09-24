@@ -112,7 +112,8 @@ def reorder_items_for_display(type_name: str, items):
         from ..efx_format.field_order import display_anchors
     except ImportError:
         return list(items)
-    return _lm.reorder_units(items, display_anchors(type_name))
+    from .field_groups import move_groups_to_end
+    return move_groups_to_end(type_name, _lm.reorder_units(items, display_anchors(type_name)))
 
 
 def addon_prefs():
@@ -570,6 +571,42 @@ def _draw_bitmask_bit_row(layout, item, type_name, bit_index, label, *, anno_nam
     if show_info:
         _draw_field_row_buttons(row, type_name, item.ori_name, item=item,
                                  anno_name=anno_name or item.ori_name)
+
+
+def _draw_toggle_pair_row(layout, type_name, first, second):
+    """两个开关画在同一行，后者在前者关闭时置灰。
+
+    每项为 (item, 位序号或 None, 标签, 注释键)；位序号为 None 时按 Bool 字段画。
+    """
+    row = layout.row(align=True)
+    row.scale_y = 1.1
+    row.use_property_split = False
+    first_on = True
+    for k, (it, bit, label, anno) in enumerate((first, second)):
+        sub = row.row(align=True)
+        if k == 1:
+            sub.active = first_on
+        if bit is None:
+            sub.prop(it, "bool_proxy", text=label)
+            on = bool(it.bool_proxy)
+        else:
+            sub.prop(it, "bitmask_bools", index=bit, text=label)
+            on = bool(it.bitmask_bools[bit])
+        _draw_field_row_buttons(sub, type_name, it.ori_name, item=it, timl=False,
+                                 anno_name=anno)
+        if k == 0:
+            first_on = on
+
+
+def _draw_group_bit_rows(layout, item_by_name, type_name, rows, zh):
+    """画 field_groups 里的位行：一项画单行，两项画成同一行的一对开关。"""
+    got = [(item_by_name.get(f), b, z if zh else e, a) for f, b, z, e, a in rows]
+    got = [g for g in got if g[0] is not None]
+    if len(got) == 2:
+        _draw_toggle_pair_row(layout, type_name, got[0], got[1])
+        return
+    for it, bit, label, anno in got:
+        _draw_bitmask_bit_row(layout, it, type_name, bit, label, anno_name=anno)
 
 
 def _draw_tubelight_int_as_color(layout, item, type_name, label):
@@ -1260,6 +1297,10 @@ def _draw_attribute_fields_content(layout, context, obj=None):
             _adv_body_col = col.column(align=True)
             _adv_count = 0
 
+            from . import field_groups as _fg
+            from .i18n import get_lang as _get_lang_grp
+            _zh_grp = _get_lang_grp() == "ZH"
+
             i = 0
             while i < n:
                 item = items[i]
@@ -1272,6 +1313,14 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                 if item.ori_name.startswith("__") and item.ori_name.endswith("__"):
                     i += 1
                     continue
+                # 跨类型字段分组（field_groups.py）：组标题和从位掩码拆出的总开关画在
+                # 隐藏判定之前——组首行字段被总开关隐藏时，标题和开关仍要可见。
+                _grp = None if _color_only else _fg.group_led_by(type_name, item.ori_name)
+                if _grp is not None:
+                    _common_col.separator(factor=1.0)
+                    _draw_section_header(_common_col, _zh_grp, *_grp.header)
+                    _draw_group_bit_rows(_common_col, _item_by_name, type_name,
+                                         _fg.lead_bit_rows(_grp, type_name), _zh_grp)
                 # TRANSFORM3D / SPAWN：从位掩码里拆出来、挪到别的字段前面当门控开关的
                 # 勾选框，必须画在"模式过滤隐藏判定"**之前**——它们门控的字段（velocity/
                 # modifier 组、spawnFrame）关着的时候会被下面那条隐藏判定跳过，如果勾选
@@ -1507,6 +1556,25 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                                               label_override=_lbl_text, obj=obj)
                             i += 1
                         continue
+                # 跨类型字段分组：位掩码被分组接管后，自身位置只画剩下的位；
+                # 成对的两个开关画成一行。
+                _own_rows = _fg.own_bit_rows(type_name, item.ori_name)
+                if _own_rows is not None:
+                    _draw_group_bit_rows(_tcol, _item_by_name, type_name, _own_rows, _zh_grp)
+                    i += 1
+                    continue
+                _pair = _fg.paired_partner(type_name, item.ori_name)
+                if _pair is not None and _item_by_name.get(_pair[1]) is not None:
+                    _second = _item_by_name[_pair[1]]
+                    _draw_toggle_pair_row(
+                        _tcol, type_name,
+                        (item, None, _fg.row_label(type_name, _pair[0], _zh_grp), _pair[0]),
+                        (_second, None, _fg.row_label(type_name, _pair[1], _zh_grp), _pair[1]))
+                    i += 1
+                    continue
+                if _fg.is_paired_follower(type_name, item.ori_name):
+                    i += 1
+                    continue
                 # SPAWN：spawnFlags 6 个位拆开平铺——UseSpawnFrame(bit5) 单独挪到
                 # spawnFrame 上面当门控（field_visibility.py 已配置 spawnFrame/-Jitter
                 # 只在它打开时显示），其余 5 位留在 spawnFlags 原本的字节位置。
@@ -1527,6 +1595,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     i += 1
                     continue
                 # value + jitter 配对（位置性：下一个是同类型 jitter 标量）
+                _glbl = None if _color_only else _fg.row_label(type_name, item.ori_name, _zh_grp)
                 nxt = items[i + 1] if i + 1 < n else None
                 if (nxt is not None
                         and item.data_type in _SCALAR_PROP_ATTR
@@ -1534,11 +1603,16 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                         and not item.ori_name.startswith("__")
                         and nxt.data_type == item.data_type
                         and _is_matching_jitter(item.ori_name, nxt.ori_name)):
-                    _draw_value_jitter_pair(_tcol, item, nxt, type_name=type_name)
+                    _draw_value_jitter_pair(_tcol, item, nxt, type_name=type_name,
+                                            label_override=_glbl)
                     i += 2
-                    continue
-                _draw_field_item(_tcol, item, type_name=type_name, obj=obj)
-                i += 1
+                else:
+                    _draw_field_item(_tcol, item, type_name=type_name, obj=obj,
+                                     label_override=_glbl)
+                    i += 1
+                _after_rows = _fg.bit_rows_after(type_name, item.ori_name)
+                if _after_rows:
+                    _draw_group_bit_rows(_tcol, _item_by_name, type_name, _after_rows, _zh_grp)
 
             # 「高级」折叠头回填：循环跑完才知道计数，但 _adv_hdr_col 的槽位在循环前
             # 就占好了，所以它仍然渲染在高级字段之前。

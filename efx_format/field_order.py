@@ -8,43 +8,35 @@
 """
 
 FIELD_ORDER_ANCHORS = {
-    # 开关应紧邻其控制字段；flowmapPath 锚点须指向 value/jitter 单元的 value 字段。
+    # 开关应紧邻其控制字段。流动贴图组的位置由 blender_efx/field_groups.py 决定。
     "BILLBOARD2D":  {
         "correctColorNo":          "applicationRule",
         "useColorRange":           "color",
         "colorRangeCorrectColorNo": "useColorRange",
         "blendMode":               "colorRange",
-        "flowmapPath":             "height",
     },
     "BILLBOARD3D":  {
         "correctColorNo":          "applicationRule",
         "useColorRange":           "color",
         "colorRangeCorrectColorNo": "useColorRange",
         "blendMode":               "colorRange",
-        "flowmapPath":             "height",
     },
     "PLANE":        {
         "correctColorNo":          "applicationRule",
         "useColorRange":           "color",
         "colorRangeCorrectColorNo": "useColorRange",
         "blendMode":               "colorRange",
-        "flowmapPath":             "height",
     },
     "RIBBON":       {
-        "flowmapPath": "enableFlowmap",
         # 两个 EPV 色槽分别紧邻 color 与 colorRange。
         "epvcolor_0": "spacer0",
         "epvcolor_1": "spacer1",
     },
     "STRAINRIBBON": {
-        "flowmapPath": "enableFlowmap",
         # 两个 EPV 色槽分别紧邻 color 与 colorRange。
         "epv_color_slot1": "spacer00",
         "epv_color_slot2": "useColorRange",
     },
-    "LIGHTNING":    {"flowmapPath": "enableFlowmap"},
-    # RIBBONBLADE 的 flowmapPath 以相邻的稳定叶字段作锚点。
-    "RIBBONBLADE":  {"flowmapPath": "tailEnd.spacer5"},
     # MESH 的颜色、发光和旋转控制按其所属字段组显示。
     "MESH": {
         "useColorRange":         "color",
