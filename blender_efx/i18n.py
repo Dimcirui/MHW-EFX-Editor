@@ -280,6 +280,8 @@ STRINGS = {
     "attribute.advanced":        {"EN": "Advanced",            "ZH": "高级"},
     "attribute.advanced_hint":   {"EN": "Rarely edited — still fully editable",
                                   "ZH": "极少改动的字段，仍可编辑"},
+    "attribute.suggest_toggle":  {"EN": "Show commonly paired attributes",
+                                  "ZH": "显示常用搭配属性"},
     "attribute.suggest_title":   {"EN": "Commonly paired (missing here)",
                                   "ZH": "这类特效常用、但这里没有"},
     "inspector.no_attributes":   {"EN": "This entry has no attributes yet",

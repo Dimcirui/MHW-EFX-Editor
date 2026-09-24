@@ -1737,9 +1737,12 @@ def _draw_add_attribute_block(layout, context):
 
     # 「常用但缺失」建议：按该 entry 的渲染主体线，列出官方通常还会带、但这里没有的
     # 属性，一键补上（插到规范顺序位）。纯建议，不是校验——见
-    # efx_format/categories.py::suggest_missing_attributes。
+    # efx_format/categories.py::suggest_missing_attributes。默认收起，勾选才列出。
     if targets:
-        _draw_suggested_attributes(layout, targets[0])
+        layout.prop(wm, "efx_show_suggested_attributes",
+                    text=T("attribute.suggest_toggle"))
+        if wm.efx_show_suggested_attributes:
+            _draw_suggested_attributes(layout, targets[0])
 
     # 全局模糊搜索新增：不用先猜类型归在哪个分类，键盘打字过滤全部 72 个预设。
     layout.operator("efx.attribute_add_search", text=T("attribute.search_add"), icon="VIEWZOOM")

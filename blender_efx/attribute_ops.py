@@ -12,7 +12,7 @@ import os
 import time
 
 import bpy
-from bpy.props import EnumProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, StringProperty
 
 from .presets import _presets_root, _unique_ascii_filename, _read_display_name, _encode_path_ident, _decode_path_ident
 from ..efx_format.categories import (
@@ -882,9 +882,17 @@ def register():
         items=_get_attribute_category_items,
         options={"SKIP_SAVE"},
     )
+    bpy.types.WindowManager.efx_show_suggested_attributes = BoolProperty(
+        name="Show Suggestions",
+        description="List attributes commonly used with this kind of entry but missing here",
+        default=False,
+        options={"SKIP_SAVE"},
+    )
 
 
 def unregister():
+    if hasattr(bpy.types.WindowManager, "efx_show_suggested_attributes"):
+        del bpy.types.WindowManager.efx_show_suggested_attributes
     if hasattr(bpy.types.WindowManager, "efx_block_category_enum"):
         del bpy.types.WindowManager.efx_block_category_enum
     if hasattr(bpy.types.WindowManager, "efx_preset_mode"):
