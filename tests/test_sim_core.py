@@ -2929,8 +2929,8 @@ class TestPtLifeActionScene(unittest.TestCase):
                 (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                                "blendMode": 0, "width": 100, "height": 100,
                                "scale": 1, "applicationRule": 0x04,
-                               "flowmapSpeed": 1.0, "flowmapStrength": 0.2,
-                               "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0}),
+                               "flowSpeed": 1.0, "flowStrength": 0.2,
+                               "flowSpeedCoef": 1.0, "flowStrengthCoef": 1.0}),
             ]
             sim = Simulator(blocks, b"", SimConfig())
             out = []
@@ -2954,8 +2954,8 @@ class TestPtLifeActionScene(unittest.TestCase):
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100,
                            "scale": 1, "applicationRule": 0x04,
-                           "flowmapSpeed": 0.0, "flowmapStrength": 1.0,
-                           "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0}),
+                           "flowSpeed": 0.0, "flowStrength": 1.0,
+                           "flowSpeedCoef": 1.0, "flowStrengthCoef": 1.0}),
         ]
         sim = Simulator(blocks, b"", SimConfig())
         sim.run(10)
@@ -2973,8 +2973,8 @@ class TestPtLifeActionScene(unittest.TestCase):
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100,
                            "scale": 1, "applicationRule": 0x04 | 0x08,
-                           "flowmapSpeed": 1.0, "flowmapStrength": 1.0,
-                           "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0}),
+                           "flowSpeed": 1.0, "flowStrength": 1.0,
+                           "flowSpeedCoef": 1.0, "flowStrengthCoef": 1.0}),
         ]
         def phases(rule):
             blocks[2][1]["applicationRule"] = rule
@@ -3004,7 +3004,7 @@ class TestPtLifeActionScene(unittest.TestCase):
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100, "scale": 1,
                            "applicationRule": 0,           # 位没开
-                           "flowmapSpeed": 1.0, "flowmapStrength": 0.2}),
+                           "flowSpeed": 1.0, "flowStrength": 0.2}),
         ]
         sim = Simulator(blocks, b"", SimConfig())
         sim.run(5)
@@ -5032,12 +5032,12 @@ class TestUVControl(unittest.TestCase):
         self.assertAlmostEqual(sv, 1.0)
 
     def test_flowmap_group_follows_enable_flag(self):
-        on = self._sim({"enableFlowmap": 1, "flowmapSpeed": 1.0, "flowmapStrength": 0.2,
-                        "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0})
+        on = self._sim({"enableFlowmap": 1, "flowSpeed": 1.0, "flowStrength": 0.2,
+                        "flowSpeedCoef": 1.0, "flowStrengthCoef": 1.0})
         on.run(10)
         amt = on.build_render()[0].extra.get("flowmap")
         self.assertAlmostEqual(amt, 0.2, places=6)
-        off = self._sim({"enableFlowmap": 0, "flowmapSpeed": 1.0, "flowmapStrength": 0.2})
+        off = self._sim({"enableFlowmap": 0, "flowSpeed": 1.0, "flowStrength": 0.2})
         off.run(15)
         self.assertNotIn("flowmap", off.build_render()[0].extra)
 

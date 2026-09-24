@@ -129,15 +129,15 @@ class UVControl(Behavior):
 
         if not f.i("enableFlowmap"):
             return
-        strength = jitter(f.get("flowmapStrength"), f.get("flowmapStrengthJitter"), rng, mode)
+        strength = jitter(f.get("flowStrength"), f.get("flowStrengthJitter"), rng, mode)
         if not strength:
             return              # 强度为 0 时无位移
         p.rolled[FLOW_KEY] = (
-            jitter(f.get("flowmapSpeed"), f.get("flowmapSpeedJitter"), rng, mode),
+            jitter(f.get("flowSpeed"), f.get("flowSpeedJitter"), rng, mode),
             strength,
-            jitter(f.get("flowmapSpeedCoef", 1.0), f.get("flowmapSpeedCoefJitter"), rng, mode)
+            jitter(f.get("flowSpeedCoef", 1.0), f.get("flowSpeedCoefJitter"), rng, mode)
             or 1.0,
-            jitter(f.get("flowmapStrengthCoef", 1.0), f.get("flowmapStrengthCoefJitter"),
+            jitter(f.get("flowStrengthCoef", 1.0), f.get("flowStrengthCoefJitter"),
                    rng, mode) or 1.0,
             False, False)
 

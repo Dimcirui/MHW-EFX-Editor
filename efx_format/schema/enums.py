@@ -212,11 +212,8 @@ BITS_PLANE_UNKN5_1 = [
 BITS_APPLICATION_RULE = [
     BitDef(0x04, "Enable Flowmap", "启用流动贴图"),
     BitDef(0x08, "Freeze After One Play", "播放一次后冻结"),
-    BitEnum(0x30, [
-        (0, "Default", "默认"),
-        (1, "Mode 1", "模式1"),
-        (2, "Mode 2", "模式2"),
-    ], "Application Mode", "应用模式"),
+    BitDef(0x10, "Reverse Playback", "逆向播放"),
+    BitDef(0x20, "Unknown Bit 0x20", "未知位 0x20"),
 ]
 
 # UVSEQUENCE：四个互斥的 2 位组

@@ -171,9 +171,9 @@ class _FlowFields(object):
 
     __slots__ = ("_f",)
 
-    _NAMES = {"flowmapSpeed": "mFlowSpeed", "flowmapSpeedCoef": "mFlowSpeedCoef",
-              "flowmapStrength": "mFlowStrength",
-              "flowmapStrengthCoef": "mFlowStrengthCoef"}
+    _NAMES = {"flowSpeed": "mFlowSpeed", "flowSpeedCoef": "mFlowSpeedCoef",
+              "flowStrength": "mFlowStrength",
+              "flowStrengthCoef": "mFlowStrengthCoef"}
 
     def __init__(self, f):
         self._f = f

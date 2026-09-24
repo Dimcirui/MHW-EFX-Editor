@@ -921,14 +921,14 @@ UVCONTROL_ATTR = Attribute(size=236, fields=[
     Raw("uv2_scaleCoef", ('f', 4), label_zh="UV2 缩放加速度"),
     # flowmap 组，与 RIBBON / BILLBOARD3D / PLANE 等同款
     Bool("enableFlowmap", label_zh="启用流动贴图"),
-    Float("flowmapSpeed", label_zh="流动贴图速度"),
-    Float("flowmapSpeedJitter", label_zh="流动贴图速度抖动"),
-    Float("flowmapSpeedCoef", label_zh="流动贴图加速度"),
-    Float("flowmapSpeedCoefJitter", label_zh="流动贴图加速度抖动"),
-    Float("flowmapStrength", label_zh="流动贴图强度"),
-    Float("flowmapStrengthJitter", label_zh="流动贴图强度抖动"),
-    Float("flowmapStrengthCoef", label_zh="流动贴图强度加速度"),
-    Float("flowmapStrengthCoefJitter", label_zh="流动贴图强度加速度抖动"),
+    Float("flowSpeed", label_zh="流动贴图速度"),
+    Float("flowSpeedJitter", label_zh="流动贴图速度抖动"),
+    Float("flowSpeedCoef", label_zh="流动贴图加速度"),
+    Float("flowSpeedCoefJitter", label_zh="流动贴图加速度抖动"),
+    Float("flowStrength", label_zh="流动贴图强度"),
+    Float("flowStrengthJitter", label_zh="流动贴图强度抖动"),
+    Float("flowStrengthCoef", label_zh="流动贴图强度加速度"),
+    Float("flowStrengthCoefJitter", label_zh="流动贴图强度加速度抖动"),
 ])
 UVCONTROL_SCHEMA = UVCONTROL_ATTR.schema
 assert _schema_size(UVCONTROL_SCHEMA) == 236, \

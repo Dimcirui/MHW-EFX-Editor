@@ -233,14 +233,14 @@
                         "unkn18_1": 0,
                         "spacer5": -12851
                     },
-                    "flowmapSpeed": 0.5,
-                    "flowmapSpeedJitter": 0.0,
-                    "flowmapSpeedCoef": 1.0,
-                    "flowmapSpeedCoefJitter": 0.0,
-                    "flowmapStrength": 0.05,
-                    "flowmapStrengthJitter": 0.0,
-                    "flowmapStrengthCoef": 1.0,
-                    "flowmapStrengthCoefJitter": 0.0,
+                    "flowSpeed": 0.5,
+                    "flowSpeedJitter": 0.0,
+                    "flowSpeedCoef": 1.0,
+                    "flowSpeedCoefJitter": 0.0,
+                    "flowStrength": 0.05,
+                    "flowStrengthJitter": 0.0,
+                    "flowStrengthCoef": 1.0,
+                    "flowStrengthCoefJitter": 0.0,
                     "NULL9": 0,
                     "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_008_F_NM\u0000"
                 }

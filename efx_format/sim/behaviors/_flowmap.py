@@ -10,10 +10,10 @@ BILLBOARD3D / PLANE / BILLBOARD2D 各自带有同一组八个字段，flowmap �
     applicationRule                位域。0x04 = 启用，0x08 = 播放一次后停止，
                                    0x10 = 逆向播放（仅播放一次时生效）
     path                           流动贴图的游戏路径
-    flowmapSpeed(+Jitter)             相位推进速度，每秒轮数
-    flowmapSpeedCoef(+Jitter)         逐帧速度倍率
-    flowmapStrength(+Jitter)          扭曲幅度
-    flowmapStrengthCoef(+Jitter)      逐帧强度倍率
+    flowSpeed(+Jitter)             相位推进速度，每秒轮数
+    flowSpeedCoef(+Jitter)         逐帧速度倍率
+    flowStrength(+Jitter)          扭曲幅度
+    flowStrengthCoef(+Jitter)      逐帧强度倍率
 
 两个 Coef 是每帧作用一次的衰减率，与 TRANSFORM3D 的 `_modifier` 属于同一类。相位与强度均有
 闭式解，无需逐帧递推：
@@ -55,15 +55,15 @@ def roll(p, f, rng, mode):
     rule = int(f.i("applicationRule") or 0)
     if not (rule & BIT_ENABLE):
         return
-    speed = jitter(f.get("flowmapSpeed", 0.0), f.get("flowmapSpeedJitter"), rng, mode)
-    strength = jitter(f.get("flowmapStrength", 0.0), f.get("flowmapStrengthJitter"),
+    speed = jitter(f.get("flowSpeed", 0.0), f.get("flowSpeedJitter"), rng, mode)
+    strength = jitter(f.get("flowStrength", 0.0), f.get("flowStrengthJitter"),
                       rng, mode)
     if not strength:
         return              # 强度为 0 时无位移，速度取值不影响画面
     freeze = bool(rule & BIT_FREEZE)
     p.rolled[KEY] = (float(speed), float(strength),
-                     float(f.get("flowmapSpeedCoef", 1.0) or 1.0),
-                     float(f.get("flowmapStrengthCoef", 1.0) or 1.0),
+                     float(f.get("flowSpeedCoef", 1.0) or 1.0),
+                     float(f.get("flowStrengthCoef", 1.0) or 1.0),
                      freeze,
                      freeze and bool(rule & BIT_REVERSE))
 

@@ -623,10 +623,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Per-frame speed multiplier (UV2): the scroll speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates.",
         "ZH": "逐帧速度倍率（UV2）：滚动速度每帧乘一次这个值，1 = 匀速，>1 越来越快，<1 越来越慢。",
     },
-    ("UVCONTROL", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
 
     # ─── EMITTERSHAPE2D ───────────────────────────────────────────────────────
 
@@ -1278,15 +1274,6 @@ FIELD_ANNOTATIONS = {
               "so each end's opacity fades across the whole ribbon.",
         "ZH": "两个渐隐长度的开关。关闭时两个渐隐长度都按 1 计，两端的不透明度沿整条带子渐变。",
     },
-    ("RIBBON", "flowmapPlayOnce"): {
-        "EN": "Plays the flowmap scroll once instead of looping.",
-        "ZH": "流动贴图只播放一次，不循环。",
-    },
-    ("RIBBON", "flowmapReverse"): {
-        "EN": "Plays the flowmap scroll backwards. Only takes effect when Play Once is "
-              "also enabled.",
-        "ZH": "逆向播放流动贴图。仅在同时启用「流动只播放一次」时才生效。",
-    },
     ("RIBBON", "ribbonMode"): {
         "EN": "Ribbon Follow draws the shape along the path the emitter actually travelled. "
               "Ribbon Length is a plain rigid rectangle that faces the camera by rotating on "
@@ -1363,10 +1350,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── BILLBOARD3D (fixed part fields) ──────────────────────────────────────
-    ("BILLBOARD3D", "applicationRule"): {
-        "EN": 'Packed flags edited via the popup: two mixable toggles (enable flowmap / play once then freeze) plus a 3-way application mode (default / mode 1 / mode 2).',
-        "ZH": '打包标志，用弹窗编辑：两个可混合开关（启用流动贴图／播一次后冻结）加一个三选一应用模式（默认／模式1／模式2）。模式具体含义未知。',
-    },
     ("BILLBOARD3D", "brightness"): {
         "EN": "Brightness",
         "ZH": "亮度",
@@ -1385,10 +1368,6 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── PLANE (fixed part fields — same layout as BILLBOARD3D dds_data) ──────
-    ("PLANE", "applicationRule"): {
-        "EN": 'Packed flags edited via the popup: two mixable toggles (enable flowmap / play once then freeze) plus a 3-way application mode (default / mode 1 / mode 2).',
-        "ZH": '打包标志，用弹窗编辑：两个可混合开关（启用流动贴图／播一次后冻结）加一个三选一应用模式（默认／模式1／模式2）。模式具体含义未知。',
-    },
     ("PLANE", "brightness"): {
         "EN": "Brightness",
         "ZH": "亮度",
@@ -2443,12 +2422,6 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[1, 5, 6, 7, 8, 10]。",
     },
-    ("BILLBOARD2D", "applicationRule"): {
-        "EN": "Enum. Common values: [0, 4, 12, 32]. 4=Flowmap animates continuously "
-              "(loops). 12=Flowmap plays once and stops at the end.",
-        "ZH": "枚举。常见取值为 [0, 4, 12, 32]。4=流动贴图持续循环流动；"
-              "12=流动贴图只播放一次，到终点后停止。",
-    },
     ("BILLBOARD2D", "blendMode"): {
         "EN": _EMISSIVE_TIP_EN,
         "ZH": _EMISSIVE_TIP_ZH,
@@ -2461,18 +2434,6 @@ FIELD_ANNOTATIONS = {
         "EN": 'EPV colour slot id, same mechanism as correctColorNo. Exactly which attribute this targets is unknown; non-zero takes the attribute from that slot instead of the value here. 0 = use the local value.',
         "ZH": 'EPV 颜色槽位 id，机制同 correctColorNo。具体对应哪个属性未知；写非 0 就改用对应 id 槽位里的属性，顶掉本属性上的值；0 = 用本地值。',
     },
-    ("BILLBOARD2D", "flowmapSpeedJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("BILLBOARD2D", "flowmapStrength"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("BILLBOARD2D", "flowmapStrengthJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
     ("BILLBOARD2D", "unknEnum5_1"): {
         "EN": "Common values: [0, 1, 3].",
         "ZH": "常见取值为 [0, 1, 3]。",
@@ -2484,30 +2445,6 @@ FIELD_ANNOTATIONS = {
     ("BILLBOARD3D", "colorRangeCorrectColorNo"): {
         "EN": 'EPV colour slot id, same mechanism as correctColorNo. Exactly which attribute this targets is unknown; non-zero takes the attribute from that slot instead of the value here. 0 = use the local value.',
         "ZH": 'EPV 颜色槽位 id，机制同 correctColorNo。具体对应哪个属性未知；写非 0 就改用对应 id 槽位里的属性，顶掉本属性上的值；0 = 用本地值。',
-    },
-    ("BILLBOARD3D", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("BILLBOARD3D", "flowmapSpeedCoefJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("BILLBOARD3D", "flowmapSpeedJitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("BILLBOARD3D", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("BILLBOARD3D", "flowmapStrengthCoefJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("BILLBOARD3D", "flowmapStrengthJitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
     },
     ("BILLBOARD3D", "enableGPUParticle"): {
         "EN": "When on, extra brightness is added on top of Brightness; the particle glows even at Brightness 0.",
@@ -3107,30 +3044,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Random jitter added to rotation2 each time the effect plays.",
         "ZH": "rotation2 的随机抖动范围，每次播放特效时随机浮动。",
     },
-    ("PLANE", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("PLANE", "flowmapSpeedCoefJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("PLANE", "flowmapSpeedJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("PLANE", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("PLANE", "flowmapStrengthCoefJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("PLANE", "flowmapStrengthJitter"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
     ("PLANE", "heightJitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
@@ -3477,12 +3390,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Purpose unknown.",
         "ZH": "作用未知。",
     },
-    ("RIBBON", "enableFlowmap"): {
-        "EN": "Master switch for the flowmap scroll — the flowmap speed/strength fields and "
-              "the play-once/reverse toggles only do anything while this is on.",
-        "ZH": "流动贴图的总开关——下面的流动速度／强度以及只播一次／逆向播放等开关，只有"
-              "在它开启时才起作用。",
-    },
     ("RIBBON", "base_fade_length"): {
         "EN": "How far the rear fade reaches, as a fraction of the ribbon's total length. "
               "The rear end sits at Rear Opacity and climbs back to fully opaque across this "
@@ -3583,40 +3490,6 @@ FIELD_ANNOTATIONS = {
     ("RIBBONBLADE", "unknFlag12_1"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
-    },
-    ("RIBBONBLADE", "flowmapSpeed"): {
-        "EN": "Flowmap speed. Common range: 0~1. Part of the flowmap quartet "
-              "(speed/acceleration/strength/strengthAcceleration).",
-        "ZH": "流光贴图速度。常见取值在 0~1 之间。属于 flowmap 四件套"
-              "（速度/加速度/强度/强度加速度）之一。",
-    },
-    ("RIBBONBLADE", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("RIBBONBLADE", "flowmapStrength"): {
-        "EN": "Flowmap strength. Common range: 0~100.",
-        "ZH": "流光贴图强度。常见取值在 0~100 之间。",
-    },
-    ("RIBBONBLADE", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("RIBBONBLADE", "flowmapSpeedJitter"): {
-        "EN": "Random variation of flowmap speed.",
-        "ZH": "流光贴图速度的随机偏差。",
-    },
-    ("RIBBONBLADE", "flowmapSpeedCoefJitter"): {
-        "EN": "Random variation of the flowmap speed multiplier.",
-        "ZH": "流光贴图速度倍率的随机偏差。",
-    },
-    ("RIBBONBLADE", "flowmapStrengthJitter"): {
-        "EN": "Random variation of flowmap strength.",
-        "ZH": "流光贴图强度的随机偏差。",
-    },
-    ("RIBBONBLADE", "flowmapStrengthCoefJitter"): {
-        "EN": "Random variation of the flowmap strength multiplier.",
-        "ZH": "流光贴图强度倍率的随机偏差。",
     },
     ("RIBBONBLADE", "uvRepetition"): {
         "EN": "Common range: 0~100.",
@@ -3881,30 +3754,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Unknown. About 10% use 1.",
         "ZH": "作用未知。约 10% 取 1。",
     },
-    ("STRAINRIBBON", "flowmapSpeedJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
-    ("STRAINRIBBON", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("STRAINRIBBON", "flowmapStrength"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
-    ("STRAINRIBBON", "flowmapStrengthJitter"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
-    },
-    ("STRAINRIBBON", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("STRAINRIBBON", "flowmapStrengthCoefJitter"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
-    },
     ("STRAINRIBBON", "unkn09_3"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
@@ -3944,22 +3793,6 @@ FIELD_ANNOTATIONS = {
     ("TURBULENCE", "unknFlag3_4"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
-    },
-    ("UVCONTROL", "flowmapSpeedJitter"): {
-        "EN": "Random variation of flowmap speed. Part of the flowmap octet. Common range: 0~1.",
-        "ZH": "流光贴图速度的随机偏差。属于 flowmap 八件套之一。常见取值在 0~1 之间。",
-    },
-    ("UVCONTROL", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("UVCONTROL", "flowmapStrengthJitter"): {
-        "EN": "Random variation of flowmap strength. Part of the flowmap octet. Common range: 0~100.",
-        "ZH": "流光贴图强度的随机偏差。属于 flowmap 八件套之一。常见取值在 0~100 之间。",
-    },
-    ("UVCONTROL", "enableFlowmap"): {
-        "EN": "Master switch for the flowmap scroll.",
-        "ZH": "流动贴图的总开关。",
     },
     ("UVCONTROL", "uv2_enable"): {
         "EN": "Enables the second UV channel. A mod3 mesh may carry two UV sets; this switches on the uv2 group's own offset/scale/speed controls. (Not vertex-animation related.)",
@@ -4082,34 +3915,6 @@ FIELD_ANNOTATIONS = {
         "ZH": 'EPV 颜色槽位 id。调用本 .efx 的 .epv（Effect Provider）里带 7 个槽位，每个槽位按自定义 id 存着颜色/亮度一类属性。这里写非 0 就表示：改用对应 id 槽位里的属性，顶掉本属性上的值。0 = 用本地值——所以只要槽位 id 非 0，在这里改颜色是不生效的。',
     },
     # Flowmap 与法线贴图是不同输入，tooltip 只说明该区别。
-    ("BILLBOARD2D", "flowmapPath"): {
-        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
-        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
-    },
-    ("BILLBOARD3D", "flowmapPath"): {
-        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
-        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
-    },
-    ("LIGHTNING", "flowmapPath"): {
-        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
-        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
-    },
-    ("PLANE", "flowmapPath"): {
-        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
-        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
-    },
-    ("RIBBONBLADE", "flowmapPath"): {
-        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
-        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
-    },
-    ("STRAINRIBBON", "flowmapPath"): {
-        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
-        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
-    },
-    ("RIBBON", "flowmapPath"): {
-        "EN": "Flowmap texture path. This is the flow/distortion map, not the visible artwork — every UVS-system body pairs it with flowmapSpeed / flowmapStrength. What you actually see comes from UVSEQUENCE's own path. (These files are named *_F_NM.tex even though they are not normal maps.)",
-        "ZH": '流动贴图（flowmap）路径。这是流动/扰动图，不是看得见的画面 —— UVS 系每个渲染主体都配着 flowmapSpeed / flowmapStrength 一起用。真正显色的图来自 UVSEQUENCE 自己的 path。（这类文件名以 *_F_NM.tex 结尾，但它不是法线贴图。）',
-    },
     ("RGBWATER", "colorRate"): {
         "EN": "Overall colour rate, driven by the ColorRate timeline parameter — animating it only works on the A0 (emitter) axis.",
         "ZH": '整体颜色比率。对应 ColorRate 时间线参数，动画只在 A0（发射轴）上生效。',
@@ -4178,40 +3983,90 @@ FIELD_ANNOTATIONS = {
         "EN": "Path to the .mod3 whose surface is used as the emitter shape — particles spawn on this mesh rather than on a primitive.",
         "ZH": '用作发射器形状的 .mod3 路径 —— 粒子从这个网格表面上生成，而不是从基本体上。',
     },
-    ("BILLBOARD2D", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("BILLBOARD2D", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("LIGHTNING", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("LIGHTNING", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("RIBBON", "flowmapSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
-    ("RIBBON", "flowmapStrengthCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
-    },
     ("UVSEQUENCE", "patternNo"): {
         "EN": 'Starting frame of the sprite sheet (0 = top-left). Pair it with the Jitter field to randomise the start: an 8x8 sheet has 64 cells, so Jitter=63 picks any cell at spawn.',
         "ZH": '序列帧的起始帧（0 = 左上第一格）。配旁边的 Jitter 可让每个粒子随机起手：8×8 的图共 64 格，Jitter 给 63 就是全随机抽一格。',
     },
 }
 
+# ─── 流动贴图组（BILLBOARD3D / PLANE / BILLBOARD2D / RIBBON / STRAINRIBBON / LIGHTNING /
+#     RIBBONBLADE / UVCONTROL 共用）────────────────────────────────────────────────
+# 前三类的开关是 applicationRule 的位，面板拆成独立行，注释键为 "applicationRule.<开关>"。
+_FLOWMAP_ANNOTATIONS = {
+    "enableFlowmap": {
+        "EN": "Distorts the main texture's UVs along the flowmap.",
+        "ZH": "按流动贴图扭曲主贴图的 UV。",
+    },
+    "flowmapPath": {
+        "EN": "The flowmap texture. Its R and G channels give the direction pixels are "
+              "pushed; 0.5 means no movement.",
+        "ZH": "流动贴图。R、G 通道给出像素被推开的方向，0.5 表示不动。",
+    },
+    "flowSpeed": {
+        "EN": "Flow cycles per second. When looping, two layers half a cycle apart fade "
+              "in and out in turn. 0 holds a fixed distortion.",
+        "ZH": "每秒播放的轮数。循环时两层错开半轮交替淡入淡出；为 0 时保持固定扭曲。",
+    },
+    "flowSpeedCoef": {
+        "EN": "Multiplies the speed once per frame. 1 = constant speed, above 1 speeds up, "
+              "below 1 slows down.",
+        "ZH": "速度每帧乘一次的倍率。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢。",
+    },
+    "flowStrength": {
+        "EN": "How far pixels are pushed. At 1 a full-length flow direction moves them one "
+              "whole texture cell by the end of a cycle; negative values push the other way.",
+        "ZH": "扭曲幅度。强度 1 时，满幅的流动方向在一轮末尾推开一整格贴图；负值反向。",
+    },
+    "flowStrengthCoef": {
+        "EN": "Multiplies the strength once per frame. 1 = unchanged, below 1 fades the "
+              "distortion out.",
+        "ZH": "强度每帧乘一次的倍率。1 为不变，小于 1 逐渐减弱。",
+    },
+    "flowOnce": {
+        "EN": "Plays a single cycle and holds the final distortion. Off = loop.",
+        "ZH": "只播放一轮，停在最后的扭曲上；关闭时循环播放。",
+    },
+    "flowReverse": {
+        "EN": "Plays the cycle backwards. Only works with Freeze After One Play.",
+        "ZH": "反向播放这一轮。仅在「播放一次后冻结」开启时生效。",
+    },
+}
+
+FIELD_ANNOTATIONS.update({
+    (_t, _f): _v
+    for _t in ('RIBBON', 'STRAINRIBBON', 'LIGHTNING', 'RIBBONBLADE', 'UVCONTROL')
+    for _f, _v in _FLOWMAP_ANNOTATIONS.items()
+    if (_f not in ("flowOnce", "flowReverse") or _t == "RIBBON")
+    and (_t, _f) not in (("RIBBONBLADE", "enableFlowmap"), ("UVCONTROL", "flowmapPath"))
+})
+FIELD_ANNOTATIONS.update({
+    (_t, "applicationRule." + _f): _FLOWMAP_ANNOTATIONS[_f]
+    for _t in ('BILLBOARD3D', 'PLANE', 'BILLBOARD2D')
+    for _f in ("enableFlowmap", "flowOnce", "flowReverse")
+})
+FIELD_ANNOTATIONS.update({
+    (_t, _f): _FLOWMAP_ANNOTATIONS[_f]
+    for _t in ('BILLBOARD3D', 'PLANE', 'BILLBOARD2D')
+    for _f in ("flowmapPath", "flowSpeed", "flowSpeedCoef", "flowStrength", "flowStrengthCoef")
+})
+FIELD_ANNOTATIONS.update({
+    (_t, "applicationRule"): {
+        "EN": "Unknown effect; not part of the flowmap settings. Usually off.",
+        "ZH": "作用未知，不属于流动贴图设置。通常关闭。",
+    }
+    for _t in ('BILLBOARD3D', 'PLANE', 'BILLBOARD2D')
+})
+# UVCONTROL 的流动贴图取材质里的 FlowMap 槽，扭曲的是网格 UV
+FIELD_ANNOTATIONS[("UVCONTROL", "enableFlowmap")] = {
+    "EN": "Distorts the mesh UVs along the material's flowmap.",
+    "ZH": "按材质里的流动贴图扭曲网格 UV。",
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 公共查询函数
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def get_annotation(type_name: str, field_name: str) -> str:
     """

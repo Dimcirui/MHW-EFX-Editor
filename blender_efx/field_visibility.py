@@ -15,6 +15,7 @@ def _in24(v): return v in (2, 4)
 def _truthy(v): return v != 0
 def _bit0(v): return bool(v & 0x1)
 def _bit1(v): return bool(v & 0x2)
+def _bit2(v): return bool(v & 0x4)
 def _bit5(v): return bool(v & 0x20)
 
 
@@ -23,6 +24,12 @@ def _shape3d(*allowed):
     allowed_set = set(allowed)
     return lambda v: v in allowed_set or v >= 3
 
+
+#: 流动贴图组中由总开关控制显示的字段
+_FLOW_FIELDS = ("flowmapPath",
+                "flowSpeed", "flowSpeedJitter", "flowSpeedCoef", "flowSpeedCoefJitter",
+                "flowStrength", "flowStrengthJitter",
+                "flowStrengthCoef", "flowStrengthCoefJitter")
 
 # 规则可写成单个 (mode_field, pred)，或多个条件组成的列表（全部满足才显示）
 _RIBBON_CHAIN = ("ribbonMode", _eq2)
@@ -62,14 +69,14 @@ FIELD_VISIBILITY = {
         "uv2_scale":            ("uv2_enable", _truthy),
         "uv2_scaleAdd":       ("uv2_enable", _truthy),
         "uv2_scaleCoef":("uv2_enable", _truthy),
-        "flowmapSpeed":              ("enableFlowmap", _truthy),
-        "flowmapSpeedJitter":        ("enableFlowmap", _truthy),
-        "flowmapSpeedCoef":          ("enableFlowmap", _truthy),
-        "flowmapSpeedCoefJitter":    ("enableFlowmap", _truthy),
-        "flowmapStrength":           ("enableFlowmap", _truthy),
-        "flowmapStrengthJitter":     ("enableFlowmap", _truthy),
-        "flowmapStrengthCoef":       ("enableFlowmap", _truthy),
-        "flowmapStrengthCoefJitter": ("enableFlowmap", _truthy),
+        "flowSpeed":               ("enableFlowmap", _truthy),
+        "flowSpeedJitter":         ("enableFlowmap", _truthy),
+        "flowSpeedCoef":           ("enableFlowmap", _truthy),
+        "flowSpeedCoefJitter":     ("enableFlowmap", _truthy),
+        "flowStrength":            ("enableFlowmap", _truthy),
+        "flowStrengthJitter":      ("enableFlowmap", _truthy),
+        "flowStrengthCoef":        ("enableFlowmap", _truthy),
+        "flowStrengthCoefJitter":  ("enableFlowmap", _truthy),
     },
     "TRANSFORM3D": {
         "translation_velocity":          ("enableVelocityBitflag", _bit0),
@@ -115,16 +122,16 @@ FIELD_VISIBILITY = {
         "brightness":              ("blendMode", _truthy),
         "brightnessJitter":        ("blendMode", _truthy),
         "flowmapPath":             ("enableFlowmap", _truthy),
-        "flowmapSpeed":            ("enableFlowmap", _truthy),
-        "flowmapSpeedJitter":      ("enableFlowmap", _truthy),
-        "flowmapSpeedCoef":        ("enableFlowmap", _truthy),
-        "flowmapSpeedCoefJitter":  ("enableFlowmap", _truthy),
-        "flowmapStrength":         ("enableFlowmap", _truthy),
-        "flowmapStrengthJitter":   ("enableFlowmap", _truthy),
-        "flowmapStrengthCoef":     ("enableFlowmap", _truthy),
-        "flowmapStrengthCoefJitter": ("enableFlowmap", _truthy),
-        "flowmapPlayOnce":         ("enableFlowmap", _truthy),
-        "flowmapReverse":          ("enableFlowmap", _truthy),
+        "flowSpeed":               ("enableFlowmap", _truthy),
+        "flowSpeedJitter":         ("enableFlowmap", _truthy),
+        "flowSpeedCoef":           ("enableFlowmap", _truthy),
+        "flowSpeedCoefJitter":     ("enableFlowmap", _truthy),
+        "flowStrength":            ("enableFlowmap", _truthy),
+        "flowStrengthJitter":      ("enableFlowmap", _truthy),
+        "flowStrengthCoef":        ("enableFlowmap", _truthy),
+        "flowStrengthCoefJitter":  ("enableFlowmap", _truthy),
+        "flowOnce":                ("enableFlowmap", _truthy),
+        "flowReverse":             ("enableFlowmap", _truthy),
         "base_fade_length":        ("enableFadeLength", _truthy),
         "tip_fade_length":         ("enableFadeLength", _truthy),
         "uvScaleLength":           ("uvScaleMode", _truthy),
@@ -160,43 +167,34 @@ FIELD_VISIBILITY = {
         "emissionStrength":        ("useEmission", _truthy),
         "emissionStrengthJitter":  ("useEmission", _truthy),
         "flowmapPath":             ("enableFlowmap", _truthy),
-        "flowmapSpeed":            ("enableFlowmap", _truthy),
-        "flowmapSpeedJitter":      ("enableFlowmap", _truthy),
-        "flowmapSpeedCoef":        ("enableFlowmap", _truthy),
-        "flowmapSpeedCoefJitter":  ("enableFlowmap", _truthy),
-        "flowmapStrength":         ("enableFlowmap", _truthy),
-        "flowmapStrengthJitter":   ("enableFlowmap", _truthy),
-        "flowmapStrengthCoef":     ("enableFlowmap", _truthy),
-        "flowmapStrengthCoefJitter": ("enableFlowmap", _truthy),
+        "flowSpeed":               ("enableFlowmap", _truthy),
+        "flowSpeedJitter":         ("enableFlowmap", _truthy),
+        "flowSpeedCoef":           ("enableFlowmap", _truthy),
+        "flowSpeedCoefJitter":     ("enableFlowmap", _truthy),
+        "flowStrength":            ("enableFlowmap", _truthy),
+        "flowStrengthJitter":      ("enableFlowmap", _truthy),
+        "flowStrengthCoef":        ("enableFlowmap", _truthy),
+        "flowStrengthCoefJitter":  ("enableFlowmap", _truthy),
     },
     "LIGHTNING": {
         "flowmapPath":             ("enableFlowmap", _truthy),
-        "flowmapSpeed":            ("enableFlowmap", _truthy),
-        "flowmapSpeedJitter":      ("enableFlowmap", _truthy),
-        "flowmapSpeedCoef":        ("enableFlowmap", _truthy),
-        "flowmapSpeedCoefJitter":  ("enableFlowmap", _truthy),
-        "flowmapStrength":         ("enableFlowmap", _truthy),
-        "flowmapStrengthJitter":   ("enableFlowmap", _truthy),
-        "flowmapStrengthCoef":     ("enableFlowmap", _truthy),
-        "flowmapStrengthCoefJitter": ("enableFlowmap", _truthy),
+        "flowSpeed":               ("enableFlowmap", _truthy),
+        "flowSpeedJitter":         ("enableFlowmap", _truthy),
+        "flowSpeedCoef":           ("enableFlowmap", _truthy),
+        "flowSpeedCoefJitter":     ("enableFlowmap", _truthy),
+        "flowStrength":            ("enableFlowmap", _truthy),
+        "flowStrengthJitter":      ("enableFlowmap", _truthy),
+        "flowStrengthCoef":        ("enableFlowmap", _truthy),
+        "flowStrengthCoefJitter":  ("enableFlowmap", _truthy),
     },
-    "BILLBOARD3D": {
-        "colorRange":              ("useColorRange", _truthy),
-        "colorRangeCorrectColorNo": ("useColorRange", _truthy),
-        "brightness":              ("blendMode", _truthy),
-        "brightnessJitter":        ("blendMode", _truthy),
-    },
-    "BILLBOARD2D": {
-        "colorRange":              ("useColorRange", _truthy),
-        "colorRangeCorrectColorNo": ("useColorRange", _truthy),
-        "brightness":              ("blendMode", _truthy),
-        "brightnessJitter":        ("blendMode", _truthy),
-    },
-    "PLANE": {
-        "colorRange":              ("useColorRange", _truthy),
-        "colorRangeCorrectColorNo": ("useColorRange", _truthy),
-        "brightness":              ("blendMode", _truthy),
-        "brightnessJitter":        ("blendMode", _truthy),
+    **{
+        # 这三类的流动贴图开关是 applicationRule 的 0x04 位
+        _t: {"colorRange":               ("useColorRange", _truthy),
+             "colorRangeCorrectColorNo": ("useColorRange", _truthy),
+             "brightness":               ("blendMode", _truthy),
+             "brightnessJitter":         ("blendMode", _truthy),
+             **{_f: ("applicationRule", _bit2) for _f in _FLOW_FIELDS}}
+        for _t in ("BILLBOARD3D", "BILLBOARD2D", "PLANE")
     },
     "MESH": {
         "colorRange":            ("useColorRange", _truthy),
