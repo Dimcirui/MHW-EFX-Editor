@@ -2919,8 +2919,8 @@ class TestPtLifeActionScene(unittest.TestCase):
         self.assertLessEqual(pz1, oz1 + eps)
 
     def test_flowmap_speed_and_strength_are_doubled(self):
-        """强度按字段值的 0.5 倍换算。`cycle` 档交叠播放：输出当前强度与累计相位
-        （speed 1.0 按每秒 → 每帧推进 1/60）；`linear` 档单次播放：位移量 = 相位 × 强度。
+        """速度按字段值的 2 倍、强度按 0.5 倍换算。`cycle` 档为锯齿：speed 1.0 → 每秒 2 轮，
+        位移在 ±strength 之间、随时间递减；`linear` 档位移量 = 累计相位 × 强度。
         """
         def items(unit, phase, frames):
             blocks = [
@@ -2943,13 +2943,15 @@ class TestPtLifeActionScene(unittest.TestCase):
                 out.append(sim.build_render()[0].extra)
             return out
 
-        a, b = items("per_second", "cycle", (10, 25))
-        self.assertAlmostEqual(a["flowmap"], 0.1, places=6)
-        self.assertAlmostEqual(b["flowmap_phase"] - a["flowmap_phase"], 15 / 60.0,
+        a, b = items("per_second", "cycle", (5, 20))
+        # 每帧推进 2/60 轮，位移斜率 = 2 × strength × 2/60；15 帧 = 半轮，未跨回绕
+        self.assertAlmostEqual(b["flowmap"] - a["flowmap"], -15 * 2.0 * 0.1 * 2.0 / 60.0,
                                places=6)
-        lin, = items("per_second", "linear", (10,))
-        self.assertNotIn("flowmap_phase", lin)
-        self.assertAlmostEqual(lin["flowmap"], 0.1 * a["flowmap_phase"], places=6)
+        for e in (a, b):
+            self.assertLessEqual(abs(e["flowmap"]), 0.1 + 1e-9)
+        lin5, lin20 = items("per_second", "linear", (5, 20))
+        self.assertAlmostEqual(lin20["flowmap"] - lin5["flowmap"], 15 * 0.1 * 2.0 / 60.0,
+                               places=6)
 
     def test_flowmap_zero_speed_is_a_static_distortion(self):
         """速度为 0 时不走交叠，固定扭曲的幅度由强度决定。"""
@@ -2966,8 +2968,29 @@ class TestPtLifeActionScene(unittest.TestCase):
         sim = Simulator(blocks, b"", SimConfig())
         sim.run(10)
         extra = sim.build_render()[0].extra
-        self.assertNotIn("flowmap_phase", extra)
         self.assertAlmostEqual(abs(extra["flowmap"]), 0.5, places=6)
+
+    def test_flowmap_play_once_ends_at_the_static_end(self):
+        """播放一次后停止：速度减半、强度加倍，停在末端（−strength 一端），不跳回起点。"""
+        blocks = [
+            (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
+                     "loopNum": 1, "emitterRepeatCount": 1}),
+            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
+                           "blendMode": 0, "width": 100, "height": 100,
+                           "scale": 1, "applicationRule": 0x04 | 0x08,
+                           "flowmapSpeed": 1.0, "flowmapStrength": 1.0,
+                           "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0}),
+        ]
+        sim = Simulator(blocks, b"", SimConfig())
+        sim.run(10)
+        mid = sim.build_render()[0].extra["flowmap"]
+        sim.run(30)                 # 速度减半：一轮 60 帧，第 40 帧尚未播完
+        self.assertNotAlmostEqual(sim.build_render()[0].extra["flowmap"], -1.0, places=3)
+        sim.run(40)
+        end = sim.build_render()[0].extra["flowmap"]
+        self.assertGreater(mid, -1.0)
+        self.assertAlmostEqual(end, -1.0, places=6)
 
     def test_flowmap_off_leaves_nothing_on_the_item(self):
         """没开 bit 0x04 就完全不挂——glue 据此决定要不要分流动桶。"""
@@ -5008,10 +5031,10 @@ class TestUVControl(unittest.TestCase):
     def test_flowmap_group_follows_enable_flag(self):
         on = self._sim({"enableFlowmap": 1, "flowmapSpeed": 1.0, "flowmapStrength": 0.2,
                         "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0})
-        on.run(15)
-        extra = on.build_render()[0].extra
-        self.assertAlmostEqual(extra.get("flowmap"), 0.1, places=6)
-        self.assertIn("flowmap_phase", extra)
+        on.run(10)          # 15 帧恰为半轮，锯齿过零
+        amt = on.build_render()[0].extra.get("flowmap")
+        self.assertIsNotNone(amt)
+        self.assertLessEqual(abs(amt), 0.1 + 1e-6)
         off = self._sim({"enableFlowmap": 0, "flowmapSpeed": 1.0, "flowmapStrength": 0.2})
         off.run(15)
         self.assertNotIn("flowmap", off.build_render()[0].extra)

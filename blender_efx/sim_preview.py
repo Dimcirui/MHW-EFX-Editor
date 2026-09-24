@@ -1607,7 +1607,7 @@ def _join_chunks(verts, colors, uvs, col2s, chunks, luvs=None, flowoffs=None):
 
 
 def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
-               uvs=None, col2s=None, core=None, luvs=None, flowoffs=None, flow_amt=None):
+               uvs=None, col2s=None, core=None, luvs=None, flowoffs=None, flow_amt=0.0):
     """将网格按粒子变换输出三角形；numpy 不可用时回退逐顶点路径。
 
     ``luvs`` 不为 None 时另输出 flowmap 数据：流动贴图按网格自身 UV 采样，位移量为整张
@@ -1636,9 +1636,7 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
                     uvarr = uvarr * numpy.array((xf[0], xf[1]), dtype="f4")
                     uvarr += numpy.array((xf[2], xf[3]), dtype="f4")
                 if luvs is not None:
-                    amt, ph, lap = flow_amt
-                    fo = numpy.empty((len(tris), 4), dtype="f4")
-                    fo[:] = (amt, amt, ph, lap)
+                    fo = numpy.full((len(tris), 2), flow_amt, dtype="f4")
                     extra = (uvarr, c2, base, fo)
                 else:
                     extra = (uvarr, c2)
@@ -1664,8 +1662,7 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
         col2s.extend([(c[0], c[1], c[2], col[3])] * len(tris))
         if luvs is not None:
             luvs.extend(muv)
-            amt, ph, lap = flow_amt
-            flowoffs.extend([(amt, amt, ph, lap)] * len(tris))
+            flowoffs.extend([(flow_amt, flow_amt)] * len(tris))
 
 
 #: 渲染项可用的混合方式；其余值按 'ALPHA' 画。
@@ -1818,23 +1815,14 @@ void main()
 }
 """
 
-#: flowmap 按局部 UV 采样；其偏移量已在 CPU 侧换算到当前贴图格。
-#: ``v_flowoff`` = (x 量, y 量, 相位, 交叠标记)。交叠时两组相位错开半轮各采样一次，按三角
-#: 权重混合：一组即将回绕时权重降到 0，另一组正处中段，因此没有跳变。
+#: flowmap 按局部 UV 采样；其偏移量已在 CPU 侧换算到当前贴图格。流动矢量的 G 以贴图像素
+#: 向下为正，而 v 向上为正，y 分量须取反。
 _FLOW_FRAG_SRC = """
 void main()
 {
   vec2 f = texture(flowTex, v_luv).rg * 2.0 - 1.0;
-  vec4 t;
-  if (v_flowoff.w > 0.5) {
-    float p0 = fract(v_flowoff.z);
-    float p1 = fract(v_flowoff.z + 0.5);
-    vec4 t0 = texture(image, v_uv + f * v_flowoff.xy * ((p0 - 0.5) * 2.0));
-    vec4 t1 = texture(image, v_uv + f * v_flowoff.xy * ((p1 - 0.5) * 2.0));
-    t = mix(t0, t1, abs((p0 - 0.5) * 2.0));
-  } else {
-    t = texture(image, v_uv + f * v_flowoff.xy);
-  }
+  f.y = -f.y;
+  vec4 t = texture(image, v_uv + f * v_flowoff);
   vec3 rgb;
   float a = t.a;
   if (fireLerp >= 0.0) {
@@ -1875,7 +1863,7 @@ def _flow_shader():
         iface.smooth("VEC4", "v_col")
         iface.smooth("VEC4", "v_col2")
         iface.smooth("VEC2", "v_luv")
-        iface.smooth("VEC4", "v_flowoff")
+        iface.smooth("VEC2", "v_flowoff")
         info = gpu.types.GPUShaderCreateInfo()
         info.push_constant("MAT4", "ModelViewProjectionMatrix")
         info.push_constant("VEC3", "alphaFix")
@@ -1889,7 +1877,7 @@ def _flow_shader():
         info.vertex_in(2, "VEC4", "color")
         info.vertex_in(3, "VEC4", "col2")
         info.vertex_in(4, "VEC2", "luv")
-        info.vertex_in(5, "VEC4", "flowoff")
+        info.vertex_in(5, "VEC2", "flowoff")
         info.vertex_out(iface)
         info.fragment_out(0, "VEC4", "fragColor")
         info.vertex_source(_FLOW_VERT_SRC)
@@ -1952,6 +1940,18 @@ def _gpu_texture(name):
         tex = gpu.texture.from_image(img)
     except Exception:
         return None
+    if hasattr(tex, "mipmap_mode"):
+        # 缩小采样时取 mip 层级，变模糊而非出锯齿
+        try:
+            tex.mipmap_mode(use_mipmap=True, use_filter=True)
+        except Exception:
+            pass
+    if hasattr(tex, "extend_mode"):
+        # 采样越界取边缘像素，与游戏一致（flowmap 位移会把采样点推出贴图）
+        try:
+            tex.extend_mode("EXTEND")
+        except Exception:
+            pass
     _GPU_TEX[name] = tex
     return tex
 
@@ -2020,23 +2020,19 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         return got
 
     def _flow_of(it, tex):
-        """这一项的 (flowmap 贴图名, (量, 相位, 交叠标记))；不该走 flowmap 就 ("", None)。
+        """这一项的 (flowmap 贴图名, 位移量)；不该走 flowmap 就 ("", 0.0)。
 
-        交叠播放时「量」为强度、相位为累计相位；单次播放时「量」为位移量、相位不用。
         没有序列帧贴图就没有可推的 UV，直接不走——`use_tex` 关掉时同理。
         """
         if not tex or not flow_images:
-            return "", None
+            return "", 0.0
         amt = it.extra.get("flowmap")
         if not amt:
-            return "", None
+            return "", 0.0
         name = flow_images.get(it.extra.get("entry_key"), root_flow)
         if not name or _gpu_texture(name) is None:
-            return "", None
-        phase = it.extra.get("flowmap_phase")
-        return name, (float(amt) * flow_gain,
-                      0.0 if phase is None else float(phase),
-                      0.0 if phase is None else 1.0)
+            return "", 0.0
+        return name, float(amt) * flow_gain
 
     def _bucket_for(it, tex, flow_tex=""):
         """返回 `(桶 key, 桶)`。key = (绘制次序, 混合模式, 贴图, alpha 修正, 流动贴图,
@@ -2215,7 +2211,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             geom, tex_name = _geom_of(it)
             # 网格没有 UV 时无从采样流动贴图
             flow_tex, flow_amt = (_flow_of(it, tex_name) if geom[2] is not None
-                                  else ("", None))
+                                  else ("", 0.0))
             _key, (bv, bc, bu, b2, bnp, blu, bfo) = _bucket_for(it, tex_name, flow_tex)
             edge, core = _layers_of(it, col, tex_name)
             _emit_mesh(bv, bc, bnp, it, edge, size_mul, rows, geom,
@@ -2244,8 +2240,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                 # flowmap 位移按当前序列格尺寸缩放。
                 us = [c[0] for c in corners]
                 vs = [c[1] for c in corners]
-                amt, ph, lap = flow_amt
-                off = (amt * (max(us) - min(us)), amt * (max(vs) - min(vs)), ph, lap)
+                off = (flow_amt * (max(us) - min(us)), flow_amt * (max(vs) - min(vs)))
                 blu.extend(_QUAD_LUV)
                 bfo.extend([off] * 6)
             emis = it.extra.get("decal_emissive")
