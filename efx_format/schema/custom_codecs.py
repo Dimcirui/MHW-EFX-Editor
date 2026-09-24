@@ -277,9 +277,9 @@ _MOD3_PROPERTIES_SCHEMA = [
     # emissiveColor 通道的强度系数与其 jitter
     ('emissiveColorRate',       'f'),  # TIML DT 0x18C577DE("EmissiveColorRate")
     ('emissiveColorRateJitter', 'f'),
-    # 不属于 rotation；三轴 rotation 紧随其后
-    ('unknFloat0',              'f'),
-    ('unknFloat1',              'f'),
+    # 模型动画播放速度与其 jitter
+    ('playSpeed',               'f'),
+    ('playSpeedJitter',         'f'),
     # rotation 为三组 value/jitter，前两个 float 不可并入该字段
     ('rotation',                ('XYZ', 0)),
     ('scale',                   ('XYZ', 0)),

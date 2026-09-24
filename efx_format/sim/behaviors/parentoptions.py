@@ -5,6 +5,7 @@
 
     particleUseLocal        跟随发射器。开启时，已发射的粒子随发射器移动；关闭时，粒子只以
                             **出生时刻**的原点为准，与此后发射器的运动无关
+    invalidParticleScale    开启时粒子大小不受发射器尺寸影响
     constRelease(+Jitter)   停止跟随的帧数，到达后固定在当前位置。0 表示始终跟随
     relationPos /           逐轴的平移／旋转／缩放跟随模式。跟随对象是**父级（发射该粒子的
     relationRot /           发射器）**，而非玩家或地图。0=不跟随、1=跟随（默认），2 / 3 语义
@@ -22,6 +23,10 @@ relationScl 决定。
 `rot_applied`，RIBBON 等自带朝向的渲染体据此同步转动；缩放跟随同理，按比例缩放
 偏移与速度。发射器持续旋转且粒子径向运动时，世界空间轨迹为螺旋线。
 
+粒子**大小**按 TRANSFORM3D 的当前尺寸（基础大小加缩放速度累积）缩放，不受 relationScl 控制：
+出生时取发射器当前尺寸；开启跟随发射器时持续跟随，停止跟随后保持停止时的尺寸。
+`invalidParticleScale` 开启时粒子大小完全不受发射器尺寸影响，平移与旋转跟随照常。
+
 维护约束：
 - 必须排在其它 CONSTRAIN 之前：先随发射器移动，再由约束类属性覆写位置。
 - 停止跟随的计时时钟未确认，由 `SimConfig.parent_release_clock` 选择，默认取逐粒子 age：该
@@ -35,6 +40,7 @@ from ..rng import jitter_int
 from ..stages import CONSTRAIN
 from ..state import Vec3
 from ..vecmath import rotate_euler
+from .transform3d import emitter_size
 
 #: relationPos/Rot/Scl 的两个已确认取值：0=不跟随该通道，1=跟随（默认）。
 _TRACK_STOP = 0
@@ -55,6 +61,13 @@ def _total_rotation(em):
     return Vec3(r.x + h.x, r.y + h.y, r.z + h.z)
 
 
+def _follow_size(p, em):
+    """把发射器当前尺寸记到 `p.rolled["emitter_size"]`，渲染时乘进粒子大小。"""
+    got = emitter_size(em)
+    if got is not None:
+        p.rolled["emitter_size"] = got
+
+
 @register(PARENTOPTIONS)
 class ParentOptions(Behavior):
     """CONSTRAIN 阶段按开关将发射器的位移、旋转增量与缩放比例施加到粒子上。"""
@@ -68,12 +81,14 @@ class ParentOptions(Behavior):
     _release_jitter = 0
     _follow_rot = False
     _follow_scale = False
+    _scale_size = True
 
     def on_emitter_init(self, em, rng):
         f = em.f(PARENTOPTIONS)
         if f is None:
             return
         self._follow = bool(f.i("particleUseLocal"))
+        self._scale_size = not f.i("invalidParticleScale")
         self._release = max(0, f.i("constRelease"))
         self._release_jitter = max(0, f.i("constReleaseJitter"))
 
@@ -98,6 +113,8 @@ class ParentOptions(Behavior):
             em.note("PARENTOPTIONS 未开「跟随发射器」：粒子只认出生那一刻的原点")
 
     def on_particle_spawn(self, p, em, rng):
+        if self._scale_size:
+            _follow_size(p, em)       # 出生时取发射器当前尺寸，与是否跟随无关
         if not self._follow:
             return
         release = self._release
@@ -127,6 +144,8 @@ class ParentOptions(Behavior):
             if elapsed >= release:
                 return                    # 停止跟随，固定在当前位置
 
+        if self._scale_size:
+            _follow_size(p, em)
         origin = em.origin
         last = st["last"]
         dx = origin.x - last.x

@@ -94,25 +94,16 @@ def _compute_uv(params, t):
     return (ou, ov), (su, sv)
 
 
-def _channel_enabled(uvc_obj, prefix) -> bool:
-    """判断 uv1/uv2 通道是否启用；两者使用不同字段名。"""
-    field = prefix + ("_unknFlag" if prefix == "uv1" else "_enable")
-    v = _read_field(uvc_obj, field)
-    return int(v) == 1 if v is not None else False
-
-
 def _extract_params(uvc_obj):
-    """返回启用通道和所用 UV 层；仅 uv2 启用时使用第二层 UV。"""
-    uv1_on = _channel_enabled(uvc_obj, "uv1")
-    uv2_on = _channel_enabled(uvc_obj, "uv2")
+    """返回生效通道和所用 UV 层；uv1 恒生效，因此始终使用第一层 UV。"""
+    v = _read_field(uvc_obj, "uv2_enable")
+    uv2_on = v is not None and int(v) == 1
 
     from ..efx_format.sim.behaviors.uvcontrol import channel_names, roll_channels
     # 网格预览没有逐粒子随机，只取 static 分量
     channels = roll_channels(lambda name: _read_field(uvc_obj, name),
-                             channel_names(uv1_on, uv2_on))
-
-    use_second = uv2_on and not uv1_on
-    return {"channels": channels, "use_second_uv": use_second}
+                             channel_names(uv2_on))
+    return {"channels": channels, "use_second_uv": False}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

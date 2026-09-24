@@ -2028,8 +2028,8 @@
    "colorRateJitter": 0.0,
    "emissiveColorRate": 0.0,
    "emissiveColorRateJitter": 0.0,
-   "unknFloat0": 0.0,
-   "unknFloat1": 0.0,
+   "playSpeed": 0.0,
+   "playSpeedJitter": 0.0,
    "rotation": [
     -180.0,
     360.0,
@@ -2192,7 +2192,7 @@
     1
    ],
    "particleUseLocal": 0,
-   "unknFlag1": 0,
+   "invalidParticleScale": 0,
    "constRelease": 0,
    "constReleaseJitter": 0,
    "jointNo": -1
@@ -3334,7 +3334,7 @@
    "unknFlag3_4": 0
   },
   "UVCONTROL": {
-   "uv1_unknFlag": 1,
+   "typeFlag": 1,
    "uv1_offset": [
     0.0,
     0.0,
@@ -3630,8 +3630,8 @@
    "colorRateJitter": 0.0,
    "emissiveColorRate": 125.0,
    "emissiveColorRateJitter": 0.0,
-   "unknFloat0": 0.0,
-   "unknFloat1": 0.0,
+   "playSpeed": 0.0,
+   "playSpeedJitter": 0.0,
    "rotation": [
     0.0,
     0.0,
@@ -4491,7 +4491,7 @@
    "path1": ""
   },
   "EXTERNUVCONTROL": {
-   "uv1_unknFlag": 1,
+   "typeFlag": 1,
    "uv1_offset": [
     0.0,
     0.0,

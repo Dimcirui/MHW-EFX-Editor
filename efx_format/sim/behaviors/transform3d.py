@@ -17,7 +17,8 @@
 EMITTERSHAPE3D 的生成点与 VELOCITY3D 的初速度方向在出生时使用，使旋转中的发射器按当前朝向
 发射。`translation_velocity` 写入 `em.drift`，`em.origin` 由核心每帧合成；核心再由 origin 的
 变化求得 `em.velocity`，供 VELOCITY3D 的 velocityType=3（EmitterMotion）使用。
-`scale_velocity` 加在缩放上，动态倍率同样按加法累积。
+`scale_velocity` 加在缩放上，动态倍率同样按加法累积。`em.scale` 是含基础大小的当前尺寸，
+PARENTOPTIONS 开启跟随发射器时粒子大小按它缩放（见 `emitter_size`）。
 
 TIML：translate / rotate / resize 的 A0 轨道逐帧按发射器当前帧求值，取「曲线值 − 静态值」作为
 动态增量（静态部分已由宿主或出生时的基础变换施加），每帧只施加增量的变化量：平移进
@@ -117,6 +118,8 @@ class Transform3D(Behavior):
             em.note("TRANSFORM3D 静态变换未套用（宿主已摆位；开 t3d_apply_base 可改）")
         #: scale_velocity 的加法累积部分；em.scale_dynamic = 它 × TIML 倍率
         st["scale_add"] = em.scale_dynamic.copy()
+        #: 含基础大小的加法累积；em.scale = 它 × TIML 倍率
+        st["scale_full"] = resize.copy()
 
     def on_emitter_step(self, em):
         st = em.user.get(Transform3D)
@@ -150,20 +153,21 @@ class Transform3D(Behavior):
 
         sv = st["scale_vel"]
         if sv.x or sv.y or sv.z:
-            em.scale += sv * dt
             # 按加法累积：base 为 1 的常见情形下，1+Σ(sv·dt) 即实际倍率
-            sa = st["scale_add"]
-            sa.x = max(0.0, sa.x + sv.x * dt)
-            sa.y = max(0.0, sa.y + sv.y * dt)
-            sa.z = max(0.0, sa.z + sv.z * dt)
+            for acc in (st["scale_add"], st["scale_full"]):
+                acc.x = max(0.0, acc.x + sv.x * dt)
+                acc.y = max(0.0, acc.y + sv.y * dt)
+                acc.z = max(0.0, acc.z + sv.z * dt)
             if st["accel_on"]:
                 m = st["scale_vel_mod"]
                 sv.x *= m.x
                 sv.y *= m.y
                 sv.z *= m.z
         if st["timl"] or sv.x or sv.y or sv.z:
-            sa, k, sd = st["scale_add"], st["tl_scale"], em.scale_dynamic
+            sa, sf, k = st["scale_add"], st["scale_full"], st["tl_scale"]
+            sd = em.scale_dynamic
             sd.x, sd.y, sd.z = sa.x * k.x, sa.y * k.y, sa.z * k.z
+            em.scale = Vec3(sf.x * k.x, sf.y * k.y, sf.z * k.z)
 
     @staticmethod
     def _apply_timl(em, st):
@@ -204,6 +208,20 @@ class Transform3D(Behavior):
         if getattr(cfg, "t3d_velocity_unit", "per_second") == "per_frame":
             return 1.0
         return 1.0 / float(getattr(cfg, "fps", 60) or 60)
+
+
+def emitter_size(em):
+    """返回 `(当前尺寸, 宿主已套用的尺寸)`；没有 TRANSFORM3D 时返回 None。
+
+    当前尺寸 = 基础大小 + 缩放速度累积，再乘 TIML 倍率。宿主摆位时 entry 已按静态
+    resize 缩放，第二项即该静态值；模拟层自行施加基础变换时为 1。
+    """
+    st = em.user.get(Transform3D)
+    if st is None:
+        return None
+    host = (Vec3(1.0, 1.0, 1.0) if em.config.t3d_apply_base
+            else st["static"]["resize"].copy())
+    return em.scale.copy(), host
 
 
 def _static_half(f, field):

@@ -106,6 +106,8 @@ _LABELS_GLOBAL = {
 # custom-codec 字段的类型专属中文名，优先于全局表
 _LABELS_BY_TYPE = {
     # ── MESH ──
+    ('MESH', 'playSpeed'): '播放速度',
+    ('MESH', 'playSpeedJitter'): '播放速度抖动',
     ('MESH', 'rotation2'): '附加旋转',
     ('MESH', 'rotation2Jitter'): '附加旋转抖动',
     ('MESH', 'scale'): '缩放',

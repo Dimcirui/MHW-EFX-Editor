@@ -263,7 +263,7 @@ def blade_fields(**kw):
 def mesh_fields(**kw):
     f = {"typeFlag": 1, "colorRate": 1.0, "colorRateJitter": 0.0,
          "emissiveColorRate": 1.0, "emissiveColorRateJitter": 0.0,
-         "unknFloat0": 0.0, "unknFloat1": 0.0,
+         "playSpeed": 0.0, "playSpeedJitter": 0.0,
          "rotation": [0.0] * 6, "rotationOrder": 4,
          "scale": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0],
          "global_scale": 1.0, "global_scale_jitter": 0.0,
@@ -280,7 +280,7 @@ def mesh_fields(**kw):
 def parentoptions_fields(**kw):
     f = {"typeFlag": 0,
          "relationPos": [0, 0, 0], "relationRot": [0, 0, 0], "relationScl": [0, 0, 0],
-         "particleUseLocal": 0, "unknFlag1": 0,
+         "particleUseLocal": 0, "invalidParticleScale": 0,
          "constRelease": 0, "constReleaseJitter": 0, "jointNo": -1}
     f.update(kw)
     return f
@@ -3957,6 +3957,51 @@ class TestParentOptions(unittest.TestCase):
         self.assertGreater(p.pos.x, before)          # 偏移被放大跟着涨
         self.assertGreater(p.vel.length(), speed_before)   # 速度也按比例放大
 
+    # ── 跟随发射器时粒子大小取 TRANSFORM3D 尺寸，与 relationScl 无关 ──────────
+    def _size_x(self, parent, transform, frames=1):
+        sim = self._sim(parent=parent, transform=transform, frames=frames,
+                        billboard=billboard_fields())
+        return sim.build_render()[0].size.x
+
+    def test_follow_scales_particle_size_by_base_resize(self):
+        """尺寸全 2 → 粒子大小 2 倍，relationScl 为 0 也一样。"""
+        t1 = transform3d_fields()
+        t2 = transform3d_fields(resize=[2.0, 0.0, 2.0, 0.0, 2.0, 0.0])
+        for scl in ([0, 0, 0], [1, 1, 1]):
+            par = parentoptions_fields(particleUseLocal=1, relationScl=scl)
+            self.assertAlmostEqual(self._size_x(par, t2),
+                                   2.0 * self._size_x(par, t1), places=5)
+
+    def test_follow_scales_particle_size_by_scale_velocity(self):
+        t = transform3d_fields(enableVelocityBitflag=1,
+                               scale_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # +1/帧
+        par = parentoptions_fields(particleUseLocal=1)
+        base = self._size_x(par, transform3d_fields(), frames=5)
+        self.assertAlmostEqual(self._size_x(par, t, frames=5), 6.0 * base, places=4)
+
+    def test_without_follow_particle_takes_birth_size(self):
+        """不跟随：出生时取发射器尺寸，之后缩放速度不再影响已发出的粒子。"""
+        par = parentoptions_fields(particleUseLocal=0)
+        t2 = transform3d_fields(resize=[2.0, 0.0, 2.0, 0.0, 2.0, 0.0])
+        self.assertAlmostEqual(self._size_x(par, t2),
+                               2.0 * self._size_x(par, transform3d_fields()), places=5)
+        grow = transform3d_fields(enableVelocityBitflag=1,
+                                  scale_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        self.assertAlmostEqual(self._size_x(par, grow, frames=5),
+                               self._size_x(par, grow, frames=1), places=5)
+
+    def test_invalid_particle_scale_ignores_emitter_size(self):
+        """invalidParticleScale 开启：大小不跟发射器尺寸，位置照常跟随。"""
+        t2 = transform3d_fields(resize=[2.0, 0.0, 2.0, 0.0, 2.0, 0.0])
+        for follow in (0, 1):
+            par = parentoptions_fields(particleUseLocal=follow, invalidParticleScale=1)
+            self.assertAlmostEqual(self._size_x(par, t2),
+                                   self._size_x(par, transform3d_fields()), places=5)
+        sim = self._sim(parent=parentoptions_fields(particleUseLocal=1,
+                                                    invalidParticleScale=1),
+                        drift=(5.0, 0.0, 0.0), frames=10)
+        self.assertAlmostEqual(sim.particles[0].pos.x, sim.em.origin.x, places=4)
+
 
 class TestEmitterRotationReachesParticles(unittest.TestCase):
     """TRANSFORM3D 的 rotation_velocity / scale_velocity 要真的作用到发出去的东西上
@@ -5298,7 +5343,7 @@ class TestUVControl(unittest.TestCase):
             (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100, "scale": 1}),
-            (UVCONTROL, dict({"uv1_unknFlag": 1}, **uvc)),
+            (UVCONTROL, dict(uvc)),
         ]
         return Simulator(blocks, b"", SimConfig())
 

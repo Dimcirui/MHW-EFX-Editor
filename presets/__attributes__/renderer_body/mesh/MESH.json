@@ -14,8 +14,8 @@
             "colorRateJitter": 0.0,
             "emissiveColorRate": 0.0,
             "emissiveColorRateJitter": 0.0,
-            "unknFloat0": 0.0,
-            "unknFloat1": 0.0,
+            "playSpeed": 0.0,
+            "playSpeedJitter": 0.0,
             "rotation": [
                 -180.0,
                 360.0,

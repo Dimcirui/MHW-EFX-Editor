@@ -15,8 +15,8 @@
 
 Coef 不大于 0 时按 1 计。缩放以 U=0 / V=0 为锚点，不绕贴图中心。
 
-uv1 与 uv2 两套通道共用同一批贴图，布局相同，启用开关分别为 `uv1_unknFlag` 与 `uv2_enable`
-（字段名不对称）。两套同时启用时叠加：**偏移相加，缩放相乘**；均未启用时按 uv1 处理。
+uv1 与 uv2 两套通道共用同一批贴图，布局相同。uv1 恒生效，uv2 由 `uv2_enable` 开启；两套同时
+生效时叠加：**偏移相加，缩放相乘**。
 时间基准由 `SimConfig.uvc_clock` 决定，默认取粒子自身的年龄。
 
 输出 `item.extra["uv_xform"] = (su, sv, ou, ov)`，由 glue 变换顶点 UV：
@@ -49,14 +49,9 @@ def _comp(vec, i, default=0.0):
         return default
 
 
-def channel_names(uv1_flag, uv2_enable):
+def channel_names(uv2_enable):
     """返回参与计算的通道前缀。"""
-    names = []
-    if uv1_flag:
-        names.append("uv1")
-    if uv2_enable:
-        names.append("uv2")
-    return names or ["uv1"]
+    return ["uv1", "uv2"] if uv2_enable else ["uv1"]
 
 
 def roll_channels(raw, names, rng=None, mode=None):
@@ -129,7 +124,7 @@ class UVControl(Behavior):
         if f is None:
             return
         mode = em.config.jitter_mode
-        names = channel_names(f.i("uv1_unknFlag"), f.i("uv2_enable"))
+        names = channel_names(f.i("uv2_enable"))
         p.rolled["uvc"] = roll_channels(f.raw, names, rng, mode)
 
         if not f.i("enableFlowmap"):

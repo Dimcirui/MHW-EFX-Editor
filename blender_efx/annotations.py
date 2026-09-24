@@ -130,9 +130,9 @@ FIELD_ANNOTATIONS = {
         "ZH": "骨骼限制。绑定到的骨骼的序号。−1 = 不绑定任何骨骼，是最常见的设置；"
               "骨骼序号是针对特效原本所属模型的，把 entry 复用到别处时通常不通用。",
     },
-    ("PARENTOPTIONS", "unknFlag1"): {
-        "EN": "Unknown. Common values: {0:20433, 1:9199}",
-        "ZH": "未知。常见取值：{0:20433, 1:9199}",
+    ("PARENTOPTIONS", "invalidParticleScale"): {
+        "EN": "When on, particle size does not change with the Transform3D scale.",
+        "ZH": "开启后，粒子大小不随 Transform3D 的缩放而变化。",
     },
 
     # ─── SPAWN ────────────────────────────────────────────────────────────────
@@ -2950,16 +2950,6 @@ FIELD_ANNOTATIONS = {
     ("MESH", "global_scale_jitter"): {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
-    },
-    ("MESH", "unknFloat0"): {
-        "EN": "Effect unknown. Almost always 0 (99.6% of blocks); the few non-zero "
-              "values sit between 0 and 1.",
-        "ZH": "作用未知。几乎恒为 0（99.6% 的块），少数非零值落在 0~1 之间。",
-    },
-    ("MESH", "unknFloat1"): {
-        "EN": "Effect unknown. Almost always 0 (99.8% of blocks); the few non-zero "
-              "values are 1 or 3.",
-        "ZH": "作用未知。几乎恒为 0（99.8% 的块），少数非零值是 1 或 3。",
     },
     ("MESH", "rotationOrder"): {
         "EN": "Order the rotation axes are applied in. ZXY is the usual choice (about 88%).",

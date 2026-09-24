@@ -291,8 +291,6 @@ ADVANCED_FIELDS = {
         'unknFixed6_1',
         'unknFlag7_1',
         'unknFlag_cm2_3',
-        'unknFloat0',
-        'unknFloat1',
     }),
     'NOISE': frozenset({
         'section_length',
@@ -339,7 +337,6 @@ ADVANCED_FIELDS = {
     }),
     'PARENTOPTIONS': frozenset({
         'typeFlag',
-        'unknFlag1',
     }),
     'PARENTSNOW': frozenset({
         'section_length',
@@ -670,6 +667,9 @@ ADVANCED_FIELDS = {
         'unknFlag3_4',
     }),
     'UVSEQUENCE': frozenset({
+        'typeFlag',
+    }),
+    'UVCONTROL': frozenset({
         'typeFlag',
     }),
     'VELOCITY2D': frozenset({

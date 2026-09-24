@@ -18,7 +18,7 @@ from ..categories import ATTRIBUTE_CATEGORY_OF
 from ..hashes import TUBELIGHT
 from .config import SimConfig
 from .resolve import FieldView, TimlTracks
-from .state import Particle, RenderItem, Vec3, ViewContext
+from .state import Particle, RenderItem, RibbonStrip, Vec3, ViewContext
 from .uvs_table import SimResources
 
 #: 没有可用渲染体时，退化点的显示尺寸（游戏单位；100 游戏单位 = 1 Blender 单位）。
@@ -41,6 +41,30 @@ def _has_renderer_body(blocks):
         if h in _SELF_RENDERING_EXTRA or ATTRIBUTE_CATEGORY_OF.get(h) == "renderer_body":
             return True
     return False
+
+
+def _apply_emitter_size(item, size, host):
+    """按发射器尺寸缩放渲染项的大小（跟随发射器时），位置不动。
+
+    MESH 的顶点经过 entry 的世界矩阵，宿主摆位时已含静态 resize，只补剩下的倍率；
+    其余渲染项的大小不经过该矩阵，乘全量。
+    """
+    s = size
+    if item.kind == "MESH":
+        s = Vec3(*[c / b if abs(b) > 1e-9 else c
+                   for c, b in ((size.x, host.x), (size.y, host.y), (size.z, host.z))])
+    if s.x == 1.0 and s.y == 1.0 and s.z == 1.0:
+        return
+    sz = item.size
+    item.size = Vec3(sz.x * s.x, sz.y * s.y, sz.z * s.z)
+    pts = item.points
+    if not pts:
+        return
+    if getattr(pts, "pos", None) is not None:
+        item.points = RibbonStrip(pts.pos, pts.half * s.x, pts.alpha)
+    else:
+        # 条带半宽是标量，取 x 那一路，与 scene._scale_item 一致
+        item.points = [(q, hw * s.x, a) for q, hw, a in pts]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -371,6 +395,9 @@ class Simulator(object):
                 # 调试量：没有真渲染体的时候，速度矢量是判断运动对不对的主要抓手
                 item.extra["vel"] = p.vel.copy()
                 item.extra["age"] = p.age
+            es = p.rolled.get("emitter_size")
+            if es is not None:
+                _apply_emitter_size(item, es[0], es[1])
             out.append(item)
         return out
 

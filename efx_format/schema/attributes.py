@@ -62,7 +62,7 @@ PARENTOPTIONS_ATTR = Attribute(size=60, fields=[
     EnumVec3("relationRot", ENUM_TRACKING_ANGLE, label_zh="角度跟踪"),
     EnumVec3("relationScl", ENUM_TRACKING_POS, label_zh="缩放跟踪"),
     Bool("particleUseLocal", label_en="Follow Emitter", label_zh="跟随发射器"),
-    Bool("unknFlag1"),
+    Bool("invalidParticleScale", label_en="Ignore Emitter Size", label_zh="大小不随发射器"),
     Int("constRelease", label_zh="停止追踪帧数"),
     Int("constReleaseJitter", label_zh="停止追踪帧数抖动"),
     Int("jointNo", label_zh="绑定骨骼"),
@@ -904,9 +904,8 @@ assert _schema_size(SHOVEL_SCHEMA) == 70, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 UVCONTROL_ATTR = Attribute(size=236, fields=[
+    Int("typeFlag"),
     # uv1 Material_Animation_Data
-    # 形态像位掩码但各位含义未确认，保持整数不拆位。
-    Int("uv1_unknFlag", label_zh="UV1 未知标志"),
     Raw("uv1_offset", ('f', 4), label_zh="UV1 初始位置"),
     Raw("uv1_offsetAdd", ('f', 4), label_zh="UV1 速度"),
     Raw("uv1_offsetCoef", ('f', 4), label_zh="UV1 加速度"),

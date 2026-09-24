@@ -184,7 +184,7 @@
                         1
                     ],
                     "particleUseLocal": 0,
-                    "unknFlag1": 0,
+                    "invalidParticleScale": 0,
                     "constRelease": 0,
                     "constReleaseJitter": 0,
                     "jointNo": -1

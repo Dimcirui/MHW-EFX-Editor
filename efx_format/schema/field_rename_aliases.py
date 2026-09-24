@@ -112,7 +112,8 @@ FIELD_RENAME_ALIASES = {
     ("PTCOLLISION", "unknFlag4_1"): "impactPlayTriggerCountJitter",
 
     # UVCONTROL
-    ("UVCONTROL", "uv1_unkn0"): "uv1_unknFlag",
+    ("UVCONTROL", "uv1_unkn0"): "typeFlag",
+    ("UVCONTROL", "uv1_unknFlag"): "typeFlag",
     ("UVCONTROL", "unknFlag2"): "enableFlowmap",
     ("UVCONTROL", "extraMaterialInitialPosition"): "flowmapSpeed",
     ("UVCONTROL", "extraMaterialInitialPositionJitter"): "flowmapSpeedJitter",
@@ -427,6 +428,8 @@ FIELD_RENAME_ALIASES = {
     ("UVSEQUENCE", "startingFrame"): "patternNo",
     ("UVSEQUENCE", "startingFrameJitter"): "patternNoJitter",
     # MESH
+    ("MESH", "unknFloat0"): "playSpeed",
+    ("MESH", "unknFloat1"): "playSpeedJitter",
     ("MESH", "emissive_saturation"): "colorRate",
     ("MESH", "emissive_saturation_j"): "colorRateJitter",
     ("MESH", "emissive_brightness"): "emissiveColorRate",
@@ -468,6 +471,7 @@ FIELD_RENAME_ALIASES = {
     ("PARENTOPTIONS", "lockToPositionFrame"): "constRelease",
     ("PARENTOPTIONS", "lockToPositionFrameJitter"): "constReleaseJitter",
     ("PARENTOPTIONS", "spawnLock"): "constRelease",
+    ("PARENTOPTIONS", "unknFlag1"): "invalidParticleScale",
     ("PARENTOPTIONS", "bleedPos"): "constReleaseJitter",
     ("PARENTOPTIONS", "bone_lim"): "jointNo",
 
