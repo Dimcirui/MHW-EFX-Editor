@@ -320,12 +320,15 @@ def load_tex_image(texpath, rel_for_cache=None):
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
         except Exception:
             pass
+        stale = _cache_is_stale(texpath, out_path)
         for use_dds in _dds_attempts(addon_name):
             try:
                 conv = texconv_cls() if texconv_cls is not None else None
-                images = load_tex(texpath, out_path, conv, False, use_dds)
+                images = load_tex(texpath, out_path, conv, stale, use_dds)
                 for img in images or ():
                     if img is not None:
+                        if stale:
+                            img = _reload_same_path(img)
                         return _mark_persistent(img)
             except Exception:
                 continue
@@ -337,6 +340,39 @@ def load_tex_image(texpath, rel_for_cache=None):
         except Exception:
             return None
     return None
+
+
+def _cache_is_stale(texpath, out_path):
+    """转换缓存比 .tex 旧时返回 True；没有缓存返回 False（转换器会自行生成）。"""
+    try:
+        src = os.path.getmtime(texpath)
+    except OSError:
+        return False
+    base = os.path.splitext(out_path)[0]
+    for ext in (".dds", ".tif", ".tga", ".exr"):
+        p = base + ext
+        if os.path.isfile(p):
+            try:
+                if os.path.getmtime(p) < src:
+                    return True
+            except OSError:
+                pass
+    return False
+
+
+def _reload_same_path(img):
+    """缓存重新生成后重读已有的同路径图像，并删掉转换器新建的副本。"""
+    path = bpy.path.abspath(img.filepath)
+    same = [i for i in bpy.data.images
+            if i is not img and bpy.path.abspath(i.filepath) == path]
+    if not same:
+        img.reload()
+        return img
+    keep = same[0]
+    keep.reload()
+    if img.users - (1 if img.use_fake_user else 0) == 0:
+        bpy.data.images.remove(img)
+    return keep
 
 
 def _dds_attempts(addon_name):
