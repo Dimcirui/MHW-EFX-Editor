@@ -10,7 +10,6 @@ tests/test_sim_core.py  —  efx_format/sim 的单元测试（零 bpy，脱离 B
 哪些结论被推翻了。
 """
 
-import base64
 import json
 import math
 import os
@@ -1730,13 +1729,9 @@ def _load_archetype(name):
     path = os.path.join(ARCHETYPE_DIR, name)
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
-    from efx_format.efxfile import AttrBlock
-    blocks = [AttrBlock(int(a["type_hash"]), base64.b64decode(a["data_bytes"]))
-              for a in data.get("attributes", [])]
-    timl = data.get("timl_bytes") or b""
-    if isinstance(timl, str):
-        timl = base64.b64decode(timl)
-    return blocks, timl
+    from efx_format.assembly.preset import build_preset
+    body = build_preset(data)
+    return body.attr_blocks, body.timl_bytes
 
 
 class TestArchetypeEndToEnd(unittest.TestCase):
@@ -1793,10 +1788,10 @@ class TestArchetypeEndToEnd(unittest.TestCase):
                 sim.build_render()
 
     def test_unsupported_list_is_populated(self):
-        """ribbon_particle 有 RIBBON 之类还没实现的属性 → 应该被如实列出。"""
-        blocks, timl = _load_archetype("ribbon_particle.json")
+        """draw_chain 的 STRAINRIBBON 不模拟 → 应该被如实列出。"""
+        blocks, timl = _load_archetype("draw_chain.json")
         sim = from_attr_blocks(blocks, timl)
-        self.assertTrue(sim.unsupported)
+        self.assertIn("STRAINRIBBON", [n for _h, n in sim.unsupported])
         for h, name in sim.unsupported:
             self.assertIsInstance(h, int)
 
