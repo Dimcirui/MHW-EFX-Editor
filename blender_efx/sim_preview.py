@@ -2040,6 +2040,157 @@ def _refraction_shader():
     return _REFR_SHADER or None
 
 
+#: 带流动贴图的折射 shader：从读回的背后画面按流向偏移采样。
+_DIST_SHADER = None
+_DIST_SHADER_KEEP = []
+
+#: distortionType → 位移倍率，单位为视口高度 / (强度 × p × |f|)。
+#: 0 档按实机网格截图估算，1 档约为 0 档的 6 倍；2 档（方向模糊）的采样跨度沿用 1 档。
+_DISTORT_SCALE = {0: 0.075, 1: 0.45, 2: 0.45}
+#: 方向模糊沿流向的采样数
+_DISTORT_BLUR_TAPS = 7
+
+_DIST_VERT_SRC = """
+void main()
+{
+  v_uv = uv;
+  v_col = color;
+  v_luv = luv;
+  v_flowoff = flowoff;
+  gl_Position = ModelViewProjectionMatrix * vec4(pos, 1.0);
+}
+"""
+
+#: 流向按局部 UV 采样后换算到屏幕方向，长度只取决于 |f|，与渲染体在屏幕上多大无关。
+#: 位移 = 倍率 × 强度 × p × |f|（视口高度为单位），p 与两层交叠同 flowmap shader。
+#: ``distParam`` = (distortionType, alphaBlend, 倍率, 未使用)；
+#: ``screenRect`` = 视口 (x, y, 宽, 高)。输出 = 背后画面采样 × 颜色，覆盖度取贴图 alpha，
+#: 由 ALPHA / ADDITIVE 混合完成两种档位。alphaBlend 按线性把未畸变的背景混回，1 时各半。
+_DIST_FRAG_SRC = """
+vec4 sample_wrap(vec2 uv)
+{
+  return textureGrad(image, uv - floor(uv), dFdx(uv), dFdy(uv));
+}
+
+// 视口帧缓冲为 sRGB 格式：读回的是编码值，写入时会再编码一次，须先解码为线性
+vec3 scene_at(vec2 suv)
+{
+  vec3 c = clamp(texture(sceneTex, clamp(suv, vec2(0.0), vec2(1.0))).rgb, 0.0, 1.0);
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+}
+
+vec3 displaced(vec2 suv, vec2 d)
+{
+  if (distParam.x > 1.5) {
+    vec3 acc = vec3(0.0);
+    for (int i = 0; i < BLUR_TAPS; i++) {
+      acc += scene_at(suv - d * (float(i) / float(BLUR_TAPS - 1) - 0.5));
+    }
+    return acc / float(BLUR_TAPS);
+  }
+  return scene_at(suv - d);
+}
+
+void main()
+{
+  vec4 t = sample_wrap(v_uv);
+  float a = t.a;
+  a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
+  a *= clamp(v_col.a, 0.0, 1.0) * refrParam.y;
+
+  vec2 f = texture(flowTex, v_luv).rg * 2.0 - 1.0;
+  f.y = -f.y;
+  // 局部 UV 方向 → 屏幕像素方向：对 d(luv)/d(像素) 求逆
+  vec2 jx = dFdx(v_luv);
+  vec2 jy = dFdy(v_luv);
+  float det = jx.x * jy.y - jy.x * jx.y;
+  vec2 dir = vec2(0.0);
+  if (abs(det) > 1e-12) {
+    vec2 px = vec2(jy.y * f.x - jy.x * f.y, -jx.y * f.x + jx.x * f.y) / det;
+    float l = length(px);
+    if (l > 0.0) {
+      dir = px / l * length(f);
+    }
+  }
+  // 以视口高度为单位 → 屏幕 UV
+  vec2 unit = dir * distParam.z * v_flowoff.x * vec2(screenRect.w / screenRect.z, 1.0);
+  vec2 suv = (gl_FragCoord.xy - screenRect.xy) / screenRect.zw;
+
+  vec3 bg;
+  if (v_flowoff.w > 0.5) {
+    float p0 = fract(v_flowoff.z);
+    float p1 = fract(v_flowoff.z + 0.5);
+    bg = mix(displaced(suv, unit * p1), displaced(suv, unit * p0), 1.0 - abs(p0 * 2.0 - 1.0));
+  } else {
+    bg = displaced(suv, unit * v_flowoff.z);
+  }
+  bg = mix(bg, scene_at(suv), 0.5 * clamp(distParam.y, 0.0, 1.0));
+  fragColor = vec4(bg * v_col.rgb, a);
+}
+"""
+
+
+def _distortion_shader():
+    """带流动贴图的折射 shader；建不出来返回 None（调用方退回不位移的乘法）。"""
+    global _DIST_SHADER
+    if _DIST_SHADER is not None:
+        return _DIST_SHADER or None
+    try:
+        import gpu
+        iface = gpu.types.GPUStageInterfaceInfo("efx_dist_iface")
+        iface.smooth("VEC2", "v_uv")
+        iface.smooth("VEC4", "v_col")
+        iface.smooth("VEC2", "v_luv")
+        iface.smooth("VEC4", "v_flowoff")
+        info = gpu.types.GPUShaderCreateInfo()
+        info.push_constant("MAT4", "ModelViewProjectionMatrix")
+        info.push_constant("VEC3", "alphaFix")
+        info.push_constant("VEC2", "refrParam")
+        info.push_constant("VEC4", "distParam")
+        info.push_constant("VEC4", "screenRect")
+        info.sampler(0, "FLOAT_2D", "image")
+        info.sampler(1, "FLOAT_2D", "flowTex")
+        info.sampler(2, "FLOAT_2D", "sceneTex")
+        info.vertex_in(0, "VEC3", "pos")
+        info.vertex_in(1, "VEC2", "uv")
+        info.vertex_in(2, "VEC4", "color")
+        info.vertex_in(3, "VEC2", "luv")
+        info.vertex_in(4, "VEC4", "flowoff")
+        info.vertex_out(iface)
+        info.fragment_out(0, "VEC4", "fragColor")
+        info.vertex_source(_DIST_VERT_SRC)
+        info.fragment_source(_DIST_FRAG_SRC.replace("BLUR_TAPS", str(_DISTORT_BLUR_TAPS)))
+        _DIST_SHADER = gpu.shader.create_from_info(info)
+        _DIST_SHADER_KEEP[:] = [iface, info]
+    except Exception:
+        _DIST_SHADER = False
+    return _DIST_SHADER or None
+
+
+#: 读回背后画面用的缓冲，按视口尺寸复用
+_SCENE_BUF = {}
+
+
+def _grab_scene():
+    """读回当前帧缓冲作为背后画面，返回 (GPUTexture, 视口矩形)；失败返回 None。"""
+    try:
+        import gpu
+        fb = gpu.state.active_framebuffer_get()
+        x, y, w, h = gpu.state.viewport_get()
+        if w <= 0 or h <= 0:
+            return None
+        buf = _SCENE_BUF.get((w, h))
+        if buf is None:
+            _SCENE_BUF.clear()
+            buf = gpu.types.Buffer("FLOAT", w * h * 4)
+            _SCENE_BUF[(w, h)] = buf
+        fb.read_color(x, y, w, h, 4, 0, "FLOAT", data=buf)
+        tex = gpu.types.GPUTexture((w, h), format="RGBA16F", data=buf)
+    except Exception:
+        return None
+    return tex, (float(x), float(y), float(w), float(h))
+
+
 #: flowmap shader 在采样前偏移主贴图 UV。
 _FLOW_SHADER = None
 _FLOW_SHADER_KEEP = []
@@ -2321,7 +2472,10 @@ def _tex_sampling(tex):
 
 
 def _clear_refraction_shader():
-    global _REFR_SHADER, _FLOW_SHADER, _MASK_SHADER
+    global _REFR_SHADER, _FLOW_SHADER, _MASK_SHADER, _DIST_SHADER
+    _DIST_SHADER = None
+    _DIST_SHADER_KEEP[:] = []
+    _SCENE_BUF.clear()
     _MASK_SHADER = None
     _MASK_SHADER_KEEP[:] = []
     _REFR_SHADER = None
@@ -2421,7 +2575,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         是按 entry 在文件里的排布定的，所以桶必须能按它排序，见 `entry_order`。
 
         alpha 修正（ALPHACORRECTION）、RGBFIRE 的 `fireLerp`、RGBWATER 的
-        `waterLerp` 都是 shader 的 push constant，逐 draw 生效，所以都必须进 key，
+        `waterLerp`（折射项为 distortionType 与 alphaBlend）都是 shader 的 push constant，逐 draw 生效，所以都必须进 key，
         否则同一个 shader 程序画完其中一种的桶又画别的桶时会沿用上一次的取值。
         都是**逐 entry**的，一个场景里就那么几种取值，分桶开销可忽略。
         """
@@ -2440,6 +2594,9 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         water_lerp = it.extra.get("rgbwater_lerp")
         water_lerp = -1.0 if water_lerp is None else water_lerp
         lerp = (fire_lerp, water_lerp)
+        if mode in _REFRACT_MODES:
+            # 折射不走双层通道，这一格改放 (distortionType, alphaBlend)
+            lerp = tuple(it.extra.get("refraction") or (0, 0.0))
         root, idx = _order_of(it)
         if dist is None:
             order = (root, idx, 0, 0, 0.0, idx, int(after))
@@ -2675,7 +2832,11 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                 us = [c[0] for c in corners]
                 vs = [c[1] for c in corners]
                 amt, ph, lap = flow_amt
-                off = (amt * (max(us) - min(us)), amt * (max(vs) - min(vs)), ph, lap)
+                if it.blend in _REFRACT_MODES:
+                    # 折射位移按屏幕计，不随序列格缩放
+                    off = (amt, amt, ph, lap)
+                else:
+                    off = (amt * (max(us) - min(us)), amt * (max(vs) - min(vs)), ph, lap)
                 blu.extend(_QUAD_LUV)
                 bfo.extend([off] * 6)
             emis = it.extra.get("decal_emissive")
@@ -2774,6 +2935,7 @@ def _build_payload(scene, rv3d, trs):
         order = sorted(buckets.keys(), key=lambda k: (k[1] == "ADDITIVE",))
 
     refr_shader = _refraction_shader()
+    dist_shader = _distortion_shader()
     refr_gain = float(getattr(scene, "efx_sim_refraction_gain", 1.0))
     tris = []
     for key in order:
@@ -2796,10 +2958,22 @@ def _build_payload(scene, rv3d, trs):
                                           {"pos": bv, "uv": bu, "color": bc,
                                            "col2": b2, "muv": bmu})))
             continue
-        # 折射替换完整输出通道，优先于只偏移 UV 的 flowmap。
         ftex = (_gpu_texture(flow_name)
-                if (flow_name and blu is not None and mode not in _REFRACT_MODES)
-                else None)
+                if (flow_name and blu is not None) else None)
+        if (mode in _REFRACT_MODES and ftex is not None and tex is not None
+                and dist_shader is not None):
+            # 折射 + 流动贴图：背后画面按流向位移，流动贴图不再偏移主贴图 UV
+            dtype = int(lerp[0])
+            dist_param = (float(dtype), float(lerp[1]),
+                          _DISTORT_SCALE.get(dtype, _DISTORT_SCALE[0]), 0.0)
+            refr_param = (1.0 if mode == "REFRACT_ADD" else 0.0, refr_gain)
+            tris.append((mode, dist_shader, (tex, ftex), (fix, refr_param, dist_param), None,
+                         batch_for_shader(dist_shader, "TRIS",
+                                          {"pos": bv, "uv": bu, "color": bc,
+                                           "luv": blu, "flowoff": bfo})))
+            continue
+        if mode in _REFRACT_MODES:
+            ftex = None
         if ftex is not None and tex is not None and flow_shader is not None:
             tris.append((mode, flow_shader, (tex, ftex), fix, lerp,
                          batch_for_shader(flow_shader, "TRIS",
@@ -2888,8 +3062,28 @@ def _draw():
 
     gpu.state.depth_test_set("LESS_EQUAL")
     gpu.state.depth_mask_set(False)      # 粒子间不写深度，仍受场景深度测试约束。
+    dist_shader = _DIST_SHADER or None
+    #: 背后画面在第一个位移折射桶之前读回一次，之后的桶共用
+    grabbed = None
     try:
         for mode, shader, tex, fix, lerp, batch in tris:
+            if dist_shader is not None and shader is dist_shader:
+                if grabbed is None:
+                    grabbed = _grab_scene() or False
+                if not grabbed:
+                    continue
+                # 源色已是背后画面 × 颜色，按 Alpha / 加法正常混合
+                gpu.state.blend_set("ADDITIVE" if mode == "REFRACT_ADD" else "ALPHA")
+                shader.bind()
+                shader.uniform_sampler("image", tex[0])
+                shader.uniform_sampler("flowTex", tex[1])
+                shader.uniform_sampler("sceneTex", grabbed[0])
+                shader.uniform_float("alphaFix", fix[0])
+                shader.uniform_float("refrParam", fix[1])
+                shader.uniform_float("distParam", fix[2])
+                shader.uniform_float("screenRect", grabbed[1])
+                batch.draw(shader)
+                continue
             gpu.state.blend_set(_GPU_BLEND.get(mode, mode))
             if tex is not None:
                 shader.bind()

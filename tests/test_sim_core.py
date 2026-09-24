@@ -3022,9 +3022,9 @@ class TestPtLifeActionScene(unittest.TestCase):
         sim.run(3)
         self.assertEqual(sim.build_render()[0].blend, "REFRACT_ADD")
 
-    def test_refraction_reports_the_parts_it_does_not_draw(self):
-        """没做的畸变位移与交替混合要如实说，别让面板显示成「已模拟」就完事。"""
-        def notes(flow, blend):
+    def test_refraction_hands_flowmap_and_params_to_the_preview(self):
+        """面片上的畸变位移与 alphaBlend 已由预览画出：不报 note，流动贴图参数照常带出。"""
+        def run(flow, blend):
             blocks = [
                 (SPAWN, {"maxParticles": 1, "spawnNum": 1,
                          "intervalFrame": 0, "loopNum": 1,
@@ -3039,11 +3039,13 @@ class TestPtLifeActionScene(unittest.TestCase):
             ]
             sim = Simulator(blocks, b"", SimConfig())
             sim.run(2)
-            return [n for n in sim.notes if "REFRACTION" in n]
+            return sim, sim.build_render()[0]
 
-        self.assertEqual(notes(False, 0.0), [])
-        self.assertTrue(any("distortionType" in n for n in notes(True, 0.0)))
-        self.assertTrue(any("alphaBlend" in n for n in notes(False, 0.35)))
+        for flow, blend in ((False, 0.0), (True, 0.0), (True, 0.35)):
+            sim, it = run(flow, blend)
+            self.assertEqual([n for n in sim.notes if "REFRACTION" in n], [])
+            self.assertEqual(it.extra["refraction"], (1, blend))
+            self.assertEqual(bool(it.extra.get("flowmap")), flow)
 
     def test_scale_item_array_path_matches_per_point(self):
         """条带的数组形态（RibbonStrip）走 `_scale_item` 要和逐点路完全一致。

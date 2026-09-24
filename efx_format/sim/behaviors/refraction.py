@@ -8,10 +8,10 @@
     Alpha 等    输出 = 背景 × 颜色              'REFRACT'      白色即透明
     加法        输出 = 背景 × (1 + 颜色)        'REFRACT_ADD'
 
-开启流动贴图时，背后画面的采样点沿流动方向位移，`distortionType` 决定方式：0 = 轻度折射
-（小幅位移）、1 = 折射（约为 0 的 6 倍）、2 = 方向模糊（沿流向多次采样）。位移需要读回
-帧缓冲，预览未实现，只按不位移的采样画，并记录 note。`alphaBlend` 把未畸变的背景按比例混回，
-同样未实现。
+开启流动贴图时，背后画面的采样点沿流动方向位移，位移量随流动贴图的相位推进，与镜头位置无关。
+`distortionType` 决定方式：0 = 轻度折射（小幅位移）、1 = 折射（约为 0 的 6 倍）、2 = 方向模糊
+（沿流向多次采样）。`alphaBlend` 按线性把未畸变的背景混回，1 时两者各半。读回帧缓冲与位移
+由 glue 层完成；条带类渲染体不带流动贴图数据，按不位移的背景画并记录 note。
 
 维护约束：
 - 必须排在 SHADERSETTINGS 之后：折射的输出取决于其混合方式。
@@ -35,19 +35,15 @@ class Refraction(Behavior):
         if f is None:
             return
         from ._flowmap import BIT_ENABLE as _FLOW_BIT
-        from ...hashes import (BILLBOARD3D, BILLBOARD2D, PLANE, RIBBON, STRAINRIBBON,
-                               LIGHTNING)
-        for h in (BILLBOARD3D, BILLBOARD2D, PLANE, RIBBON, STRAINRIBBON, LIGHTNING):
+        from ...hashes import RIBBON, STRAINRIBBON, LIGHTNING
+        for h in (RIBBON, STRAINRIBBON, LIGHTNING):
             rf = em.f(h)
             if rf is None:
                 continue
             if (int(rf.i("applicationRule") or 0) & _FLOW_BIT
                     or int(rf.i("enableFlowmap") or 0)):
-                em.note("REFRACTION 的畸变位移（distortionType）未模拟，"
-                        "预览按不位移的背景画")
+                em.note("条带上的 REFRACTION 畸变位移未模拟，预览按不位移的背景画")
                 break
-        if f.get("alphaBlend", 0.0):
-            em.note("REFRACTION.alphaBlend（按比例混回原背景）未模拟")
 
     def build_render(self, p, em, view, item):
         if item is None or item.kind == "NONE":
