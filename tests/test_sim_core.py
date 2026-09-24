@@ -331,9 +331,13 @@ def ptcollision_fields(**kw):
     return f
 
 
+#: 一帧内加速到 maxSpeed：只关心轨道几何的用例用它得到「从第二帧起恒速」
+INSTANT_ACCEL = 1e6
+
+
 def homing_fields(**kw):
     f = {
-        "turnRate": 360.0, "initialSpeed": 2.0, "targetSpeed": 2.0,
+        "turnRate": 360.0, "acceleration": INSTANT_ACCEL, "maxSpeed": 2.0,
         "forceFieldSpeedScale": 1.0, "vanishRadius": 0.0, "forceFieldRadius": 0.0,
         "homingTarget": 0, "vanishMode": 0, "forceFieldMode": 0, "unknownEnum1": 0,
     }
@@ -977,7 +981,7 @@ class TestHoming(unittest.TestCase):
 
     def test_approach_flies_straight_and_monotonically_closes_in(self):
         es3d = es3d_fields(shapeType=0, rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        sim = self._sim(homing_fields(initialSpeed=2.0, targetSpeed=2.0), es3d=es3d)
+        sim = self._sim(homing_fields(maxSpeed=2.0), es3d=es3d)
         sim.step()
         p = sim.particles[0]
         for _ in range(5):
@@ -992,7 +996,7 @@ class TestHoming(unittest.TestCase):
         （不管球面上哪个方向生成的）摔进同一个回退常量、转向完全一致，实机表现是
         全部粒子到达后一起往同一个方向甩出去。2026-09-12 用户实机截图坐实。"""
         es3d = es3d_fields(shapeType=1, rangeXYZ=[30.0, 0.0, 30.0, 0.0, 30.0, 0.0])
-        sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0, targetSpeed=1.0),
+        sim = self._sim(homing_fields(turnRate=90.0, maxSpeed=1.0),
                         es3d=es3d,
                         velocity=velocity_fields(speed=0.0, velocityType=1))
         sim.em.request_spawn(200)
@@ -1012,7 +1016,7 @@ class TestHoming(unittest.TestCase):
         涨到一百多，单调发散）。切向状态改成只留垂直于轴的部分 + 独立轴向回拉后，
         沿轴偏移应该在有界范围内起伏，不再单调发散。"""
         es3d = es3d_fields(shapeType=1, rangeXYZ=[30.0, 0.0, 30.0, 0.0, 30.0, 0.0])
-        sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0, targetSpeed=1.0),
+        sim = self._sim(homing_fields(turnRate=90.0, maxSpeed=1.0),
                         es3d=es3d,
                         velocity=velocity_fields(speed=0.0, velocityType=1))
         sim.em.request_spawn(200)
@@ -1023,11 +1027,9 @@ class TestHoming(unittest.TestCase):
         for i in range(1200):
             sim.step()
             if i == 100:
-                early_axial = [abs(p.pos.y) for p in particles
-                              if p.user.get(Homing, {}).get("phase") == "orbit"]
+                early_axial = [abs(p.pos.y) for p in particles]
             if i == 1100:
-                late_axial = [abs(p.pos.y) for p in particles
-                             if p.user.get(Homing, {}).get("phase") == "orbit"]
+                late_axial = [abs(p.pos.y) for p in particles]
         self.assertTrue(early_axial and late_axial)
         # 发散的话晚期均值会比早期大出一个数量级；有界起伏的话量级相近。
         early_mean = sum(early_axial) / len(early_axial)
@@ -1037,7 +1039,7 @@ class TestHoming(unittest.TestCase):
     def test_orbit_stays_bounded_after_arrival(self):
         """到达后既不会飞出去也不会定住——半径量级围着 r=v/turnRate 打转，有界。"""
         es3d = es3d_fields(shapeType=0, rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        sim = self._sim(homing_fields(turnRate=360.0, initialSpeed=2.0, targetSpeed=2.0),
+        sim = self._sim(homing_fields(turnRate=360.0, maxSpeed=2.0),
                         es3d=es3d)
         sim.step()
         p = sim.particles[0]
@@ -1051,34 +1053,46 @@ class TestHoming(unittest.TestCase):
         self.assertLess(max(tail), 2.5 * expected_r)
         self.assertGreater(max(tail), 0.5 * expected_r)
 
-    def test_equal_speeds_orbit_without_ramp(self):
-        """initialSpeed==targetSpeed → 出生即闭合圆，速度全程不变。"""
+    def _probe_sim(self, acceleration, max_speed, v3d, turn_rate=360.0):
+        """实机探针同款：出生在 (±15, 0, 0)，V3D 竖直向上的初速度把轨道锁在 X-Y 平面。"""
+        es3d = es3d_fields(shapeType=2, rangeXYZ=[15.0, 0.0, 0.0, 0.0, 15.0, 0.0],
+                           rangeDivideVerticalNum=2)
+        return self._sim(homing_fields(turnRate=turn_rate, acceleration=acceleration,
+                                       maxSpeed=max_speed),
+                         es3d=es3d, velocity=velocity_fields(speed=v3d))
+
+    def test_speed_holds_once_max_speed_is_reached(self):
+        """到达 maxSpeed 后速度不再变化，轨道是闭合的圆。"""
         es3d = es3d_fields(shapeType=0, rangeXYZ=[10.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        sim = self._sim(homing_fields(initialSpeed=3.0, targetSpeed=3.0), es3d=es3d)
+        sim = self._sim(homing_fields(maxSpeed=3.0), es3d=es3d)
         sim.step()
         p = sim.particles[0]
         for _ in range(20):
             sim.step()
-        st = p.user[Homing]
-        self.assertEqual(st["phase"], "orbit")
-        self.assertAlmostEqual(st["speed"], 3.0, places=9)
+            self.assertAlmostEqual(p.user[Homing]["speed"], 3.0, places=9)
 
-    def test_speed_ramps_toward_target_speed_when_unequal(self):
-        es3d = es3d_fields(shapeType=0, rangeXYZ=[10.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        sim = self._sim(homing_fields(initialSpeed=1.0, targetSpeed=4.0), es3d=es3d)
-        sim.step()
-        p = sim.particles[0]
-        for _ in range(10):
+    def test_start_speed_comes_from_velocity3d(self):
+        """探针 C1（2026-09-24 实机）：acceleration=0 时粒子保持 V3D 初速度绕圈，轨道
+        直径与 V3D 速度成正比。旧读法「初速度为 0 则不动」只在 V3D 也为 0 时成立。"""
+        for v in (1.0, 2.0, 4.0):
+            sim = self._probe_sim(0.0, 1000.0, v)
             sim.step()
-        st = p.user[Homing]
-        self.assertEqual(st["phase"], "orbit")
-        self.assertGreater(st["speed"], 1.0)
-        self.assertLess(st["speed"], 4.0)
+            p = sim.particles[0]
+            start = p.pos.copy()
+            for _ in range(30):
+                sim.step()
+            self.assertAlmostEqual(p.user[Homing]["speed"], v, places=9)
+            self.assertNotEqual(p.pos, start)
+            self.assertAlmostEqual(p.pos.z, 0.0, places=9)   # 留在正对镜头的平面内
 
-    def test_either_speed_zero_means_stationary(self):
-        """memory：initialSpeed/targetSpeed 任一为 0 → 全程不动（`locked` 单独锁死）。"""
-        es3d = es3d_fields(shapeType=0, rangeXYZ=[10.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        sim = self._sim(homing_fields(initialSpeed=5.0, targetSpeed=0.0), es3d=es3d)
+    def test_start_speed_is_capped_by_max_speed(self):
+        sim = self._probe_sim(0.0, 1.0, 4.0)
+        sim.step()
+        self.assertAlmostEqual(sim.particles[0].user[Homing]["speed"], 1.0, places=9)
+
+    def test_zero_max_speed_is_stationary(self):
+        """maxSpeed=0 时粒子不动，V3D 初速度也被覆盖。"""
+        sim = self._probe_sim(5.0, 0.0, 3.0)
         sim.step()
         p = sim.particles[0]
         start = p.pos.copy()
@@ -1086,39 +1100,44 @@ class TestHoming(unittest.TestCase):
             sim.step()
         self.assertEqual(p.pos, start)
 
-    def test_initial_speed_above_target_is_clamped_away(self):
-        """⚠ 这条测试在本会话里**被反转过一次**，别再改回去。
-
-        它最初叫 test_speed_decays_when_initial_speed_exceeds_target，守的是
-        「删掉 min(initialSpeed, targetSpeed) 钳制」——依据是用户说「扩张后还会
-        再收缩」，我据此认为速度必须能从大收敛到小。**那是归因错了**：扩张再收缩
-        是**轨道几何本身**（圆过目标点，|p|=2r·sin(θ/2) 的呼吸），与速度无关。
-
-        2026-09-12 用户逐项实拍：1.0→0.5 与 0.9→0.1 都是「第一圈就已经是终态半径」，
-        且圈的大小只随 targetSpeed 走 ⇒ **initialSpeed 更大时完全不起作用**，就是
-        最早那份文档写的「上限被 targetSpeed 钳住」。"""
-        es3d = es3d_fields(shapeType=0, rangeXYZ=[10.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        sim = self._sim(homing_fields(initialSpeed=4.0, targetSpeed=1.0), es3d=es3d)
+    def test_acceleration_is_speed_added_per_second(self):
+        """探针 B2/C2（2026-09-24 实机）：每秒加 acceleration，至 maxSpeed 为止，自出生起
+        即开始加速。"""
+        sim = self._probe_sim(2.0, 1000.0, 1.0)
         sim.step()
-        st = sim.particles[0].user[Homing]
-        self.assertAlmostEqual(st["speed"], 1.0, places=9)   # 出生即终速度，不经过 4.0
-        for _ in range(120):
+        p = sim.particles[0]
+        for _ in range(60):
             sim.step()
-            self.assertAlmostEqual(st["speed"], 1.0, places=9)
+        self.assertAlmostEqual(p.user[Homing]["speed"], 3.0, places=6)
 
-        # 圈只随 targetSpeed 走：initialSpeed 固定 0.9，终速度越小起手速度越小
-        for tgt in (0.1, 0.5):
-            sim2 = self._sim(homing_fields(initialSpeed=0.9, targetSpeed=tgt),
-                             es3d=es3d)
-            sim2.step()
-            self.assertAlmostEqual(sim2.particles[0].user[Homing]["speed"], tgt,
-                                   places=9)
+        sim = self._probe_sim(2.0, 1.5, 1.0)
+        sim.step()
+        p = sim.particles[0]
+        for _ in range(60):
+            sim.step()
+        self.assertAlmostEqual(p.user[Homing]["speed"], 1.5, places=9)
 
+    def test_time_to_max_speed_scales_inversely_with_acceleration(self):
+        """探针 C3（2026-09-24 实机）：0.2→3 与 1→3（V3D=1）入轨时间差 5 倍。
+        旧标定「0.1→1 与 0.5→1 都是 4 圈」是 V3D=0 下的误读，已作废。"""
+        def frames_to_max(acc, top=3.0):
+            sim = self._probe_sim(acc, top, 1.0)
+            sim.step()
+            p = sim.particles[0]
+            n = 0
+            while p.user[Homing]["speed"] < top - 1e-9 and n < 5000:
+                sim.step()
+                n += 1
+            return n
+
+        slow, fast = frames_to_max(0.2), frames_to_max(1.0)
+        self.assertAlmostEqual(slow, 600, delta=2)      # (3 − 1) / (0.2 / 60)
+        self.assertAlmostEqual(fast, 120, delta=2)
     def _swarm_flatness(self, frames, n=300):
         """球壳生成一批粒子，跑 `frames` 帧后返回 extY/max(extX,extZ)。
         1.0=各向同性的球，<1=竖直方向被压扁。"""
         es3d = es3d_fields(shapeType=1, rangeXYZ=[30.0, 0.0, 30.0, 0.0, 30.0, 0.0])
-        sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0, targetSpeed=1.0),
+        sim = self._sim(homing_fields(turnRate=90.0, maxSpeed=1.0),
                         es3d=es3d,
                         velocity=velocity_fields(speed=0.0, velocityType=1))
         sim.em.request_spawn(n)
@@ -1156,62 +1175,29 @@ class TestHoming(unittest.TestCase):
         self.assertGreater(near_contract, 0.85)
         self.assertGreater(near_contract, at_peak)
 
-    def test_linear_converge_makes_an_equidistant_spiral(self):
-        """initialSpeed=0.1 的实机轨迹是**等距螺旋**：每圈径向增量恒定、起手半径很小。
-        判据：取连续几圈的轨道半径，逐圈增量近似恒定。"""
-        def lap_radii():
-            es3d = es3d_fields(shapeType=0, rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=0.1,
-                                          targetSpeed=1.0),
-                            es3d=es3d)
+    def test_spiral_gap_scales_with_acceleration(self):
+        """未到上限时轨道是等距螺旋，每圈半径增量与 acceleration 成正比（探针 C2）。"""
+        def lap_gaps(acc, laps=4):
+            sim = self._probe_sim(acc, 1000.0, 1.0)
             sim.step()
             p = sim.particles[0]
-            lap = 240                      # turnRate=90 @60fps ⇒ 一圈 240 帧
-            radii, seen = [], 0
-            # 先飞到目标（初速 0.1、距离 ~20，给足帧数）
-            while p.user[Homing]["phase"] != "orbit" and seen < 4000:
-                sim.step()
-                seen += 1
-            self.assertEqual(p.user[Homing]["phase"], "orbit")
-            for _ in range(4):
+            origin = sim.em.origin
+            radii = []
+            for _ in range(laps):
                 far = 0.0
-                for _ in range(lap):
+                for _ in range(60):           # turnRate=360 @60fps ⇒ 一圈 60 帧
                     sim.step()
-                    far = max(far, p.pos.length())
+                    far = max(far, (p.pos - origin).length())
                 radii.append(far)
-            return radii
+            return [b - a for a, b in zip(radii, radii[1:])]
 
-        radii = lap_radii()
-        gaps = [b - a for a, b in zip(radii, radii[1:])]
-        self.assertTrue(all(g > 0 for g in gaps), "半径应当逐圈增大: %r" % (radii,))
-        # 等距：最大增量不超过最小增量的 2 倍
-        self.assertLess(max(gaps), 2.0 * min(gaps),
-                        "线性收敛应给出近似等距的螺旋，实际逐圈增量 %r" % (gaps,))
-
-    def test_speed_ramp_takes_a_fixed_number_of_laps(self):
-        """2026-09-12 用户实拍：0.1→1.0 与 0.5→1.0 **都是 4 圈**——差值减半而圈数
-        不变，所以是「**固定圈数**」而不是「固定加速度」（后者差值减半应当只要 2 圈）。
-        降那个方向不在这里测：initialSpeed > targetSpeed 时被钳掉、根本没有爬升，
-        见 test_initial_speed_above_target_is_clamped_away。"""
-        def laps_to_settle(initial, target, limit=3000):
-            es3d = es3d_fields(shapeType=0, rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-            sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=initial,
-                                          targetSpeed=target),
-                            es3d=es3d)
-            sim.step()
-            p = sim.particles[0]
-            frames = 0
-            while p.user[Homing]["phase"] != "orbit" and frames < limit:
-                sim.step()
-                frames += 1
-            settled = 0
-            while abs(p.user[Homing]["speed"] - target) > 1e-6 and settled < limit:
-                sim.step()
-                settled += 1
-            return settled / 240.0        # turnRate=90 @60fps ⇒ 一圈 240 帧
-
-        self.assertAlmostEqual(laps_to_settle(0.1, 1.0), 4.0, delta=0.15)
-        self.assertAlmostEqual(laps_to_settle(0.5, 1.0), 4.0, delta=0.15)
+        gaps = {acc: lap_gaps(acc) for acc in (0.5, 1.0, 2.0)}
+        for acc, g in gaps.items():
+            self.assertTrue(all(x > 0 for x in g), (acc, g))
+            self.assertLess(max(g), 1.5 * min(g), "应近似等距 %r" % (g,))
+        mean = {acc: sum(g) / len(g) for acc, g in gaps.items()}
+        self.assertAlmostEqual(mean[1.0] / mean[0.5], 2.0, delta=0.3)
+        self.assertAlmostEqual(mean[2.0] / mean[1.0], 2.0, delta=0.3)
 
     def test_arrival_is_a_lateral_force_not_a_ninety_degree_corner(self):
         """回归（2026-09-12 用户看 Blender 预览当场指出）：到达目标处的轨迹必须是
@@ -1222,8 +1208,7 @@ class TestHoming(unittest.TestCase):
         ① 原点是锐角拐点；② 圆心在 `-r·d`，圆挂在来向的反侧（"在上面"而不是
         "在左侧"）；③ 转完再投影还丢速度，各段圆半径不一致。"""
         es3d = es3d_fields(shapeType=0, rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0,
-                                      targetSpeed=1.0), es3d=es3d)
+        sim = self._sim(homing_fields(turnRate=90.0, maxSpeed=1.0), es3d=es3d)
         sim.step()
         p = sim.particles[0]
         dirs, poss = [], []
@@ -1267,8 +1252,7 @@ class TestHoming(unittest.TestCase):
                 es3d=es3d_fields(shapeType=1,
                                  rangeXYZ=[30.0, 0.0, 30.0, 0.0, 30.0, 0.0]),
                 velocity=velocity_fields(speed=1.0, velocityType=2, speedCoef=0.95),
-                extra=[(HOMING, homing_fields(turnRate=90.0, initialSpeed=1.0,
-                                              targetSpeed=1.0))])
+                extra=[(HOMING, homing_fields(turnRate=90.0, maxSpeed=1.0))])
             sim.step()
             out = []
             for _ in range(600):
@@ -1292,8 +1276,7 @@ class TestHoming(unittest.TestCase):
         半径 r=v/ω、方向处处连续——这些**都没有**在 _pursue 里写出来，是「每帧朝
         目标转 turnRate」自己长出来的。（弦切角定理：圆过目标点时「指向目标」的
         方向以 ω/2 旋转，粒子以 ω 追它，每整圈正好回到目标点一次 ⇒ 切圆是不变集。）"""
-        sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0,
-                                      targetSpeed=1.0),
+        sim = self._sim(homing_fields(turnRate=90.0, maxSpeed=1.0),
                         es3d=es3d_fields(shapeType=0,
                                          rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         sim.step()
@@ -1336,10 +1319,11 @@ class TestHoming(unittest.TestCase):
         """球内每帧阻尼因子先乘 k、再加 1/48 回升，速度 = speed × 阻尼因子。"""
         def run(frames):
             es3d = es3d_fields(shapeType=0, rangeXYZ=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+            # V3D 给满速，第一帧起速度即为 maxSpeed
             sim = self._sim(homing_fields(forceFieldMode=2, forceFieldRadius=50.0,
                                           forceFieldSpeedScale=0.1,
-                                          initialSpeed=2.0, targetSpeed=2.0),
-                            es3d=es3d)
+                                          maxSpeed=2.0),
+                            es3d=es3d, velocity=velocity_fields(speed=2.0))
             sim.step()
             p = sim.particles[0]
             for _ in range(frames):
@@ -1363,15 +1347,14 @@ class TestHoming(unittest.TestCase):
         （纯 1/(1-k) 外推会给 50）。中段高约 25%，在目测比例的误差内。
 
         ⚠ 阻尼必须记在**独立的** ff_damp 上，不能写进 speed 状态：后者是
-        initialSpeed→targetSpeed 那条**慢**爬升（4 圈）的载体，被这条**快**回拉
-        （48 帧）碰到就会被整个接管。"""
+        acceleration 那条**慢**加速的载体，被这条**快**回拉（48 帧）碰到就会被整个接管。"""
         def settled_damp(k, recover=48.0, frames=3000):
             cfg = SimConfig()
             cfg.homing_ff_recover_frames = recover
             es3d = es3d_fields(shapeType=0, rangeXYZ=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             sim = self._sim(homing_fields(forceFieldMode=2, forceFieldRadius=1e9,
                                           forceFieldSpeedScale=k,
-                                          initialSpeed=1.0, targetSpeed=1.0),
+                                          maxSpeed=1.0),
                             es3d=es3d, config=cfg)
             sim.step()
             p = sim.particles[0]
@@ -1386,10 +1369,10 @@ class TestHoming(unittest.TestCase):
         # k 足够接近 1 时撞上限，不再随 k 增长
         self.assertAlmostEqual(settled_damp(0.999), 1.0, places=6)
 
-        # 爬升状态不受影响：speed 仍停在 targetSpeed
+        # 加速状态不受影响：speed 仍停在 maxSpeed
         sim = self._sim(homing_fields(forceFieldMode=2, forceFieldRadius=1e9,
                                       forceFieldSpeedScale=0.5,
-                                      initialSpeed=1.0, targetSpeed=1.0),
+                                      maxSpeed=1.0),
                         es3d=es3d_fields(shapeType=0,
                                          rangeXYZ=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         sim.step()
@@ -1400,7 +1383,7 @@ class TestHoming(unittest.TestCase):
     def test_vanish_mode_immediate_kills_particle_near_target(self):
         """spawn 距离(30) > vanishRadius(5)，先确认活着，逼近到球内才应该死。"""
         es3d = es3d_fields(shapeType=0, rangeXYZ=[30.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        sim = self._sim(homing_fields(initialSpeed=2.0, targetSpeed=2.0,
+        sim = self._sim(homing_fields(maxSpeed=2.0,
                                      vanishMode=2, vanishRadius=5.0),
                         es3d=es3d)
         sim.step()
@@ -1416,7 +1399,7 @@ class TestHoming(unittest.TestCase):
         """memory：寿命计时器从出生就在跑、没有被重置——只是把 indefinite 摘掉。"""
         es3d = es3d_fields(shapeType=0, rangeXYZ=[30.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         life = life_fields(indefiniteLifespan=1, duration=3)
-        sim = self._sim(homing_fields(initialSpeed=2.0, targetSpeed=2.0,
+        sim = self._sim(homing_fields(maxSpeed=2.0,
                                      vanishMode=1, vanishRadius=5.0),
                         es3d=es3d, life=life)
         sim.step()

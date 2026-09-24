@@ -662,35 +662,27 @@ FIELD_ANNOTATIONS = {
         "ZH": "恒为 0xCDCDCD00，请勿修改",
     },
     ("HOMING", "turnRate"): {
-        "EN": "The particle first flies straight at the homing target; the moment it "
-              "arrives it gains a velocity perpendicular to its incoming path, then "
-              "circles in that plane, returning to the target once per revolution. This "
-              "field is the angular rate of that turn, in degrees per second (360 = one "
-              "full revolution per second). Orbit radius = speed / turn rate, so higher "
-              "values turn tighter and faster.",
-        "ZH": "粒子先径直飞向归航目标；到达目标的瞬间获得一个与入射方向垂直的速度，之后"
-              "在这个平面内转圈，每绕一圈回到目标点，如此往复。本字段是转弯的角速度，"
-              "单位是度/秒（360 = 每秒转一整圈）。轨道半径 = 速度 ÷ 转向速率，所以数值"
-              "越大，转得越快、圈子越小。",
+        "EN": "How fast the particle's direction turns toward the homing target, in "
+              "degrees per second (360 = one full turn per second). Past the target the "
+              "particle circles back through it; orbit radius = speed / turn rate, so "
+              "higher values give tighter, faster circles.",
+        "ZH": "粒子运动方向朝归航目标转过去的速度，单位是度/秒（360 = 每秒转一整圈）。"
+              "越过目标后粒子会绕回来再次经过它；轨道半径 = 速度 ÷ 转向速率，数值越大，"
+              "圈越小、转得越快。",
     },
-    ("HOMING", "initialSpeed"): {
-        "EN": "The starting speed of the homing motion, capped by the target speed — a "
-              "higher value has no extra effect, the particle simply starts at the target "
-              "speed. Below the target speed the orbit starts small and spirals outward. "
-              "If this or the target speed is 0 the particle does not move.",
-        "ZH": "归航运动的起始速度，上限被终速度钳住——填得比终速度大不会有额外效果，粒子"
-              "一开始就以终速度运动。低于终速度时，轨道从小圈开始向外旋开。本字段或终"
-              "速度为 0 时，粒子不会运动。",
+    ("HOMING", "acceleration"): {
+        "EN": "Speed added per second, starting from the particle's initial speed set "
+              "by VELOCITY3D, until Max Speed is reached. 0 keeps that initial speed; "
+              "with a high Max Speed the orbit keeps widening in an evenly spaced spiral.",
+        "ZH": "每秒增加的速度，从 VELOCITY3D 给出的初速度开始加，直到最大速度为止。"
+              "0 表示保持初速度不变；最大速度很大时，轨道会以等距螺旋一直向外扩。",
     },
-    ("HOMING", "targetSpeed"): {
-        "EN": "The speed the homing motion settles at, which sets the orbit size "
-              "(radius = speed / turn rate). Equal to the initial speed, the orbit is a "
-              "closed circle; larger than it, the orbit spirals outward and approaches "
-              "the size this speed implies. If this or the initial speed is 0 the "
-              "particle does not move.",
-        "ZH": "归航运动最终稳定到的速度，决定轨道大小（半径 = 速度 ÷ 转向速率）。与起始"
-              "速度相等时轨道是严格闭合的圆；大于起始速度时，轨道从小圈向外旋开、逐渐"
-              "逼近这个速度对应的大小。本字段或起始速度为 0 时，粒子不会运动。",
+    ("HOMING", "maxSpeed"): {
+        "EN": "Upper limit of the homing speed; a larger initial speed is capped to it. "
+              "Once reached, the orbit settles into a closed circle "
+              "(radius = speed / turn rate). 0 stops the particle.",
+        "ZH": "归航速度的上限，初速度超过它时也按它算。达到上限后轨道稳定为闭合的圆"
+              "（半径 = 速度 ÷ 转向速率）。为 0 时粒子不动。",
     },
     ("HOMING", "forceFieldSpeedScale"): {
         "EN": "The factor applied to particle speed inside the force field's affected "

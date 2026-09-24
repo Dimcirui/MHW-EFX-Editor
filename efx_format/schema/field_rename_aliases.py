@@ -15,8 +15,10 @@ FIELD_RENAME_ALIASES = {
 
     # HOMING
     ("HOMING", "restoringForce"): "turnRate",
-    ("HOMING", "speed"): "initialSpeed",
-    ("HOMING", "speedMultiplier"): "targetSpeed",
+    ("HOMING", "speed"): "acceleration",
+    ("HOMING", "speedMultiplier"): "maxSpeed",
+    ("HOMING", "initialSpeed"): "acceleration",
+    ("HOMING", "targetSpeed"): "maxSpeed",
     ("HOMING", "f3"): "forceFieldSpeedScale",
     ("HOMING", "vanishDistance"): "vanishRadius",
     ("HOMING", "forceFieldDistance"): "forceFieldRadius",

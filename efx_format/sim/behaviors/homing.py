@@ -3,8 +3,8 @@
 
 HOMING 的运动模型为纯追踪（实现见 `Homing._pursue`）：
 
-    速度方向每帧向「指向目标」的方向旋转 turnRate/fps 度；速度大小由 initialSpeed 与
-    targetSpeed 单独决定。
+    速度方向每帧向「指向目标」的方向旋转 turnRate/fps 度；速度大小由 acceleration 与
+    maxSpeed 单独决定。
 
 `turnRate` 为角速度，单位度/秒（360 即每秒一圈）。已确认的单粒子行为均可由该模型导出，
 不构成独立机制：
@@ -15,7 +15,8 @@ HOMING 的运动模型为纯追踪（实现见 `Homing._pursue`）：
                     圆心位于侧向，而非目标点。
     · 轨道稳定      圆经过目标点时，由弦切角定理，「指向目标」的方向以 ω/2 旋转；粒子以 ω
                     追随，每一整圈恰好回到目标点一次。因此该切圆是追踪方程的不变集。
-    · 速度为设定值  轨道直径与出生距离无关，说明速度大小由参数设定，而非累积所得。
+    · 速度为设定值  轨道直径与出生距离无关，速度大小只由初速度、acceleration 与 maxSpeed
+                    决定，与转向无关。
 
 其它速度来源自然参与合成：V3D 初速度决定初始方向，重力逐帧改变方向，speedCoef 缩放当帧输出。
 本 behavior 在 FORCE 阶段只写 `p.vel`，位移由 VELOCITY3D 在 INTEGRATE 阶段积分，故 HOMING 依赖
@@ -35,10 +36,11 @@ HOMING 的运动模型为纯追踪（实现见 `Homing._pursue`）：
 
 速度大小：
 
-    初始速度 = min(initialSpeed, targetSpeed)；任一为 0 时粒子保持静止（`locked`）。
-    initialSpeed 大于 targetSpeed 时不起作用，即速度上限由 targetSpeed 限定。
-    越过目标后速度线性增至 targetSpeed：每帧增量固定，按初始差值计算，历经 `_RAMP_TURNS`
-    圈完成。半径 r = v/ω 随之线性增长，轨迹为等距螺旋。增长过程的圈数固定：差值减半时圈数不变。
+    起始速度 = min(VELOCITY3D 给出的初速度, maxSpeed)
+    每帧速度 += acceleration / fps，至 maxSpeed 为止；自出生起即开始加速
+
+    acceleration 为每秒增加的速度，0 表示保持初速度；maxSpeed 为 0 时粒子静止。半径
+    r = v/ω 随速度线性增长，未到上限时轨迹为等距螺旋。
 
 归航目标 `homingTarget`（取模 4）在核心层的对应量：
 
@@ -60,11 +62,9 @@ HOMING 的运动模型为纯追踪（实现见 `Homing._pursue`）：
     vanishMode 2         进入消失球时触发一次，粒子立即消失
 
 维护约束：
-- 直线接近段必须以初始速度匀速运动，不参与增速。该段速度决定等距生成的粒子能否同时到达
-  中心；一旦增速，各粒子的到达时刻错开，收缩点随之发散。
+- 起始速度必须在第一帧读取：出生时 VELOCITY3D 尚未写入初速度。
 - 力场减速必须记录在独立的阻尼因子 `ff_damp` 上，不得写入 `speed`。`speed` 承载
-  initialSpeed→targetSpeed 的慢速增长（约 4 圈）；若约 48 帧的快速回升作用于 `speed`，将完全
-  覆盖增长过程，螺旋在数十帧内即告结束。
+  acceleration 的慢速增长；若约 48 帧的快速回升作用于 `speed`，将完全覆盖增长过程。
 - 必须排在 EMITTERSHAPE3D 之后：出生剔除须基于 ES3D 确定后的实际生成位置。
 """
 
@@ -89,9 +89,6 @@ VANISH_IMMEDIATE = 2
 
 _UP = Vec3(0.0, 1.0, 0.0)
 _FRONT = Vec3(0.0, 0.0, 1.0)
-
-#: 速度由初始值增至 targetSpeed 所经历的轨道圈数。
-_RAMP_TURNS = 4.0
 
 
 def _rotate_axis(v, axis, deg):
@@ -178,22 +175,13 @@ class Homing(Behavior):
                 return
 
         fps = max(1, em.config.fps)
-        initial_speed = f.get("initialSpeed")
-        target_speed = f.get("targetSpeed")
-
-        # 初始速度以 targetSpeed 为上限。轨迹先扩张后收缩是轨道几何本身的周期变化
-        # （|p|=2r·sin(θ/2)），与速度收敛无关，不构成否定上限的依据
-        locked = initial_speed <= 0.0 or target_speed <= 0.0
-        start_speed = 0.0 if locked else min(initial_speed, target_speed)
         p.user[Homing] = {
             "target_mode": target_mode,
-            "speed": start_speed,
-            # 增速按初始差值计算；若按剩余差值计算，则退化为指数逼近
-            "initial_speed": start_speed,
-            "target_speed": target_speed,
-            "locked": locked,
+            # 第一帧取 VELOCITY3D 的初速度
+            "speed": None,
+            "accel": f.get("acceleration") / fps,
+            "max_speed": max(0.0, f.get("maxSpeed")),
             "turn_step": math.radians(f.get("turnRate")) / fps,
-            "phase": "approach",
             "vanished": False,
             "vanish_mode": f.i("vanishMode"),
             "vanish_radius": f.get("vanishRadius"),
@@ -231,14 +219,11 @@ class Homing(Behavior):
 
         turn_step = st["turn_step"]
         speed = st["speed"]
-        tgt_speed = st["target_speed"]
-        if not st["locked"] and speed < tgt_speed and st["phase"] == "orbit":
-            # 仅在越过目标后增速，增速圈数按轨道圈数计：每帧增量 = 初始差值 /
-            # (增速圈数 × 每圈帧数)
-            span = tgt_speed - st["initial_speed"]
-            speed = min(tgt_speed,
-                        speed + span * (abs(turn_step) / (2.0 * math.pi)) / _RAMP_TURNS)
-            st["speed"] = speed
+        if speed is None:
+            speed = min(p.vel.length(), st["max_speed"])
+        else:
+            speed = max(0.0, min(st["max_speed"], speed + st["accel"]))
+        st["speed"] = speed
 
         # 场内 ff_damp *= k；每帧（含场外）ff_damp += 1/recover_frames
         damp = st["ff_damp"]
@@ -255,19 +240,11 @@ class Homing(Behavior):
     # ── 内部 ─────────────────────────────────────────────────────────────────
     @staticmethod
     def _pursue(st, p, to_target, dist, turn_step):
-        """执行一帧纯追踪，返回新的速度方向，并更新 `st["phase"]`。
-
-        `phase` 仅用于控制增速，以**转向饱和**为切换判据：可对准目标时转角不超过 turn_step
-        （直线接近段恒为 0），无法对准即表明已越过目标。
-        """
+        """执行一帧纯追踪，返回新的速度方向。"""
         goal = to_target * (1.0 / dist) if dist > 1e-9 else None
         cur = p.vel.normalized(fallback=(goal if goal is not None else _FRONT))
         if goal is None:
             goal = -cur          # 恰位于目标点：视为刚越过目标，由退化分支确定转向
-        if st["phase"] == "approach":
-            c = max(-1.0, min(1.0, cur.dot(goal)))
-            if math.acos(c) > max(turn_step, 1e-9):
-                st["phase"] = "orbit"
         return _rotate_toward(cur, goal, turn_step, st["lateral_tilt"])
 
     @staticmethod

@@ -833,8 +833,8 @@ HOMING_ATTR = Attribute(size=52, fields=[
     Int("section_length", label_zh="段长度"),
     Int("spacer"),
     Float("turnRate", label_zh="转向速率"),  # 单位为度/秒
-    Float("initialSpeed", label_zh="起始速度"),
-    Float("targetSpeed", label_zh="终速度"),
+    Float("acceleration", label_zh="加速度"),  # 每秒增加的速度
+    Float("maxSpeed", label_zh="最大速度"),
     Float("forceFieldSpeedScale", label_zh="力场速度倍率"),
     Float("vanishRadius", label_zh="消失半径"),
     Float("forceFieldRadius", label_zh="力场半径"),

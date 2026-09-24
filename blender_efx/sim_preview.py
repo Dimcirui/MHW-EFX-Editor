@@ -3991,7 +3991,7 @@ def register():
     S.efx_sim_homing_ff_recover = FloatProperty(
         name="Homing field recovery", default=48.0, min=4.0, max=600.0,
         description="How many frames it takes a homing particle to pull its speed "
-                    "back up to the target speed after a force field has slowed it. "
+                    "back up to its full speed after a force field has slowed it. "
                     "Only used by the damped force field. Preview only")
     S.efx_sim_homing_lateral_tilt = FloatProperty(
         name="Homing lateral tilt", default=0.0, min=0.0, max=2.0,
