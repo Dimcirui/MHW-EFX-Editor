@@ -72,13 +72,12 @@ class Billboard3D(Behavior):
         f = em.f(BILLBOARD3D, p)
         if f is None:
             return
-        mode = em.config.jitter_mode
 
-        p.rolled["bb_scale"] = jitter(f.get("scale", 1.0), f.get("scaleJitter"), rng, mode)
-        p.rolled["bb_width"] = jitter(f.get("width", 1.0), f.get("widthJitter"), rng, mode)
-        p.rolled["bb_height"] = jitter(f.get("height", 1.0), f.get("heightJitter"), rng, mode)
+        p.rolled["bb_scale"] = jitter(f.get("scale", 1.0), f.get("scaleJitter"), rng)
+        p.rolled["bb_width"] = jitter(f.get("width", 1.0), f.get("widthJitter"), rng)
+        p.rolled["bb_height"] = jitter(f.get("height", 1.0), f.get("heightJitter"), rng)
         p.rolled["bb_bright"] = jitter(f.get("brightness", 1.0), f.get("brightnessJitter"),
-                                       rng, mode)
+                                       rng)
         p.rolled["bb_rgba"], p.rolled["bb_coff"] = roll_rgba(f, rng, em.config)
         if self._has_tracks:
             p.rolled["bb_off"] = jitter_offsets(f, {
@@ -86,11 +85,11 @@ class Billboard3D(Behavior):
                 "height": p.rolled["bb_height"], "brightness": p.rolled["bb_bright"]})
 
         # 初始平面角，ROTATEANIM 的平面旋转在其上累积
-        p.rot.z += jitter(f.get("rotation"), f.get("rotationJitter"), rng, mode)
+        p.rot.z += jitter(f.get("rotation"), f.get("rotationJitter"), rng)
 
         p.rolled["bb_emissive"] = emissive_on(f)
 
-        _flowmap.roll(p, f, rng, mode)
+        _flowmap.roll(p, f, rng)
 
     @staticmethod
     def _size(p, em, scale, width, height):

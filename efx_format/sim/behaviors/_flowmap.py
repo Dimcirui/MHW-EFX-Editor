@@ -48,16 +48,16 @@ BIT_REVERSE = 0x10
 KEY = "flowmap"
 
 
-def roll(p, f, rng, mode):
+def roll(p, f, rng):
     """出生时抽取四个 Jitter 并写入 p.rolled；未启用或未配置时不写入。"""
     if f is None:
         return
     rule = int(f.i("applicationRule") or 0)
     if not (rule & BIT_ENABLE):
         return
-    speed = jitter(f.get("flowSpeed", 0.0), f.get("flowSpeedJitter"), rng, mode)
+    speed = jitter(f.get("flowSpeed", 0.0), f.get("flowSpeedJitter"), rng)
     strength = jitter(f.get("flowStrength", 0.0), f.get("flowStrengthJitter"),
-                      rng, mode)
+                      rng)
     if not strength:
         return              # 强度为 0 时无位移，速度取值不影响画面
     freeze = bool(rule & BIT_FREEZE)

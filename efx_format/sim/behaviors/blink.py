@@ -51,14 +51,13 @@ class Blink(Behavior):
         if f is None:
             return
         cfg = em.config
-        mode = cfg.jitter_mode
         random_phase = getattr(cfg, "blink_phase", "zero") == "random"
         groups = []
         for prefix in ("low", "high"):
             freq = jitter(f.get(prefix + "Frequency"),
-                          f.get(prefix + "FrequencyJitter"), rng, mode)
+                          f.get(prefix + "FrequencyJitter"), rng)
             width = jitter(f.get(prefix + "FrequencyWidth"),
-                           f.get(prefix + "FrequencyWidthJitter"), rng, mode)
+                           f.get(prefix + "FrequencyWidthJitter"), rng)
             # 相位无论是否启用都抽取，使两种模式消耗的随机数数量一致
             phase = rng.uniform(0.0, 2.0 * math.pi)
             groups.append((oscillator_omega(cfg, freq) * _FREQ_SCALE, width,

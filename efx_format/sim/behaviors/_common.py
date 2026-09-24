@@ -4,16 +4,12 @@
 BILLBOARD3D / PLANE / RIBBON / MESH 具有同一组语义相同的颜色字段（color / colorRange /
 useColorRange / brightness / blendMode（启用自发光）），统一在此实现，避免四处重复及由此产生的不一致。
 
-染色模型：`color` 与 `colorRange` 构成 RGBA 四元组的固定值与随机范围，各通道**独立**在两者
-之间取值，**alpha（第 4 字节）同样参与**：
+染色模型：`color` 与 `colorRange` 是 RGBA 四元组的两端，所有通道（含 alpha）共用一个随机
+系数在两者之间插值，颜色落在两端连线上：
 
-    通道值 = color[i] + (colorRange[i] − color[i]) × t[i]，t[i] 逐通道独立抽取
+    通道值 = color[i] + (colorRange[i] − color[i]) × t，t 每个粒子抽一次
 
 仅在 `useColorRange=1` 时抽取，否则直接使用 color；MESH 另有总开关 `disableAllColorRange`。
-不采用「color + 随机[0, colorRange]」的加法读法，依据是 `colorRange` 的第 4 字节绝大多数为
-255：视作第二个颜色的 alpha 合理，视作 alpha 的随机量则不合理。`SimConfig.color_range_mode`
-提供三档：`'channel'`（默认，逐通道各抽一个 t）、`'shared'`（所有通道共用一个 t）、`'add'`
-（加法读法）。
 
 发射器动态旋转：`rot_dynamic` 为发射器自身的旋转量，`host_rotation` 为从 PTLIFE 父实例继承的
 旋转量。父发射器旋转时，其派生的子发射器（包括生成位置与初速度）须随之旋转，否则子特效始终朝
@@ -63,11 +59,8 @@ def _clamp01(v):
 
 def _mix(base, other, roll):
     """将出生时抽取的系数应用于静态色（可能已由 TIML 更新）。"""
-    kind, k = roll
-    if kind == "add":
-        out = [base[i] + k[i] for i in range(4)]
-    else:
-        out = [base[i] + (other[i] - base[i]) * k[i] for i in range(4)]
+    _kind, k = roll
+    out = [base[i] + (other[i] - base[i]) * k[i] for i in range(4)]
     return (out[0], out[1], out[2], _clamp01(out[3]))
 
 
@@ -83,15 +76,8 @@ def roll_rgba(f, rng, cfg, color_field="color", range_field="colorRange",
     if not on:
         return base, NO_ROLL
 
-    mode = getattr(cfg, "color_range_mode", "channel")
-    if mode == "add":
-        amt = rgba(f.raw(range_field), missing=0.0)
-        roll = ("add", tuple(jitter(0.0, a, rng, cfg.jitter_mode) for a in amt))
-    elif mode == "shared":
-        t = rng.random()
-        roll = ("lerp", (t, t, t, t))
-    else:                                    # 'channel'（默认）：各通道独立抽取
-        roll = ("lerp", tuple(rng.random() for _ in range(4)))
+    t = rng.random()
+    roll = ("lerp", (t, t, t, t))
     return _mix(base, rgba(f.raw(range_field)), roll), roll
 
 
@@ -237,13 +223,12 @@ def roll_color_param(f, rng, cfg, prefix):
     """出生时抽取一段 ColorParam，返回供 `color_param_weight` 使用的 dict。"""
     if not f.i(prefix + "useLife"):
         return None                 # 整段不生效，权重恒为 1
-    mode = cfg.jitter_mode
     appear = max(0, jitter_int(f.get(prefix + "appearFrame"),
-                               f.get(prefix + "appearFrameJitter"), rng, mode))
+                               f.get(prefix + "appearFrameJitter"), rng))
     keep = max(0, jitter_int(f.get(prefix + "keepFrame"),
-                             f.get(prefix + "keepFrameJitter"), rng, mode))
+                             f.get(prefix + "keepFrameJitter"), rng))
     vanish = max(0, jitter_int(f.get(prefix + "vanishFrame"),
-                               f.get(prefix + "vanishFrameJitter"), rng, mode))
+                               f.get(prefix + "vanishFrameJitter"), rng))
     return {"appear": appear, "keep": keep, "vanish": vanish}
 
 

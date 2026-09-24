@@ -232,7 +232,7 @@ def ribbon_fields(**kw):
          "rotationX": 0.0, "rotationXJitter": 0.0,
          "rotationY": 0.0, "rotationYJitter": 0.0,
          "rotationZ": 0.0, "rotationZJitter": 0.0,
-         "spawnAnchorOffset": 0.0,
+         "spawnAnchorOffset": 1.0,
          "restoreStrength": 1.0, "restoreStrengthJitter": 0.0,
          "inertia": 0.9, "inertiaJitter": 0.0,
          "springiness": 0.1, "springiness_jitter": 0.0,
@@ -493,14 +493,6 @@ class TestRng(unittest.TestCase):
         r = simrng.particle_rng(123, 0)
         vals = [simrng.jitter(5.0, 2.0, r) for _ in range(500)]
         self.assertGreaterEqual(min(vals), 5.0)
-        self.assertLessEqual(max(vals), 7.0)
-
-    def test_symmetric_mode(self):
-        r = simrng.particle_rng(123, 0)
-        vals = [simrng.jitter(5.0, 2.0, r, simrng.JITTER_SYMMETRIC) for _ in range(500)]
-        self.assertLess(min(vals), 5.0)
-        self.assertGreater(max(vals), 5.0)
-        self.assertGreaterEqual(min(vals), 3.0)
         self.assertLessEqual(max(vals), 7.0)
 
     def test_zero_amount_still_draws(self):
@@ -942,6 +934,17 @@ class TestVelocity3D(unittest.TestCase):
                       es3d=es3d)
         expect = Vec3(3.0, 0.0, 4.0).normalized() * 5.0
         self.assertAlmostEqual(p.vel.x, expect.x, places=6)
+        self.assertAlmostEqual(p.vel.z, expect.z, places=6)
+
+    def test_directional_spread_offset_counts_double(self):
+        """offset 按 2 倍计入：Vi = (size - 1) * 生成坐标 + 2 * offset。"""
+        es3d = es3d_fields(shapeType=3, rangeXYZ=[3.0, 3.0, 0.0, 0.0, 4.0, 4.0])
+        p = self._one(velocity_fields(velocityType=1, speed=5.0,
+                                      sizeX=2.0, sizeY=1.0, sizeZ=2.0, offsetY=1.0),
+                      es3d=es3d)
+        expect = Vec3(3.0, 2.0, 4.0).normalized() * 5.0
+        self.assertAlmostEqual(p.vel.x, expect.x, places=6)
+        self.assertAlmostEqual(p.vel.y, expect.y, places=6)
         self.assertAlmostEqual(p.vel.z, expect.z, places=6)
 
     def test_unknown_velocity_type_is_reported(self):
@@ -2546,7 +2549,7 @@ class TestT2EndToEnd(unittest.TestCase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestColorAndAlpha(unittest.TestCase):
-    """color / colorRange 是 RGBA 四元组的 static/random 对（逐通道独立），
+    """color / colorRange 是 RGBA 四元组的两端，所有通道共用一个系数插值，
     第 4 通道当 alpha 用并乘上 LIFE 的淡入淡出。"""
 
     BLACK = [0, 0, 0, 0]
@@ -2571,17 +2574,10 @@ class TestColorAndAlpha(unittest.TestCase):
             self.assertAlmostEqual(it.color[1], 64 / 255.0, places=5)
             self.assertAlmostEqual(it.color[2], 32 / 255.0, places=5)
 
-    def test_each_channel_draws_independently(self):
-        """默认 'channel'：四个通道各自抽，所以同一个粒子的 R/G/B 会不一样。"""
+    def test_channels_share_one_factor(self):
         items = self._items(color=list(self.BLACK), colorRange=list(self.WHITE),
                             useColorRange=1)
         self.assertGreater(len({tuple(it.color) for it in items}), 1)   # 粒子之间不同
-        self.assertTrue(any(abs(it.color[0] - it.color[1]) > 1e-6 for it in items))
-
-    def test_shared_mode_keeps_channels_locked(self):
-        cfg = SimConfig(color_range_mode="shared")
-        items = self._items(color=list(self.BLACK), colorRange=list(self.WHITE),
-                            useColorRange=1, config=cfg)
         for it in items:                       # 端点三通道相同 + 共用系数 → R=G=B
             self.assertAlmostEqual(it.color[0], it.color[1], places=6)
             self.assertAlmostEqual(it.color[1], it.color[2], places=6)
@@ -2600,20 +2596,6 @@ class TestColorAndAlpha(unittest.TestCase):
         alphas = {round(it.color[3], 6) for it in items}
         self.assertGreater(len(alphas), 1)                     # alpha 真的在随机
         self.assertTrue(all(0.0 <= a <= 1.0 for a in alphas))
-
-    def test_alpha_is_clamped_to_one(self):
-        cfg = SimConfig(color_range_mode="add")
-        items = self._items(color=list(self.WHITE), colorRange=list(self.WHITE),
-                            useColorRange=1, config=cfg)
-        self.assertTrue(all(it.color[3] <= 1.0 + 1e-9 for it in items))
-
-    def test_add_mode_is_additive(self):
-        cfg = SimConfig(color_range_mode="add")
-        items = self._items(color=[100, 100, 100, 255], colorRange=[100, 100, 100, 0],
-                            useColorRange=1, config=cfg)
-        for it in items:                       # 100/255 起，最多再加 100/255
-            self.assertGreaterEqual(it.color[0], 100 / 255.0 - 1e-6)
-            self.assertLessEqual(it.color[0], 200 / 255.0 + 1e-6)
 
     def test_life_fade_multiplies_the_colour_alpha(self):
         """LIFE 的淡入 × 颜色自带的 alpha —— 两者相乘，不是二选一。"""
@@ -4161,12 +4143,9 @@ class TestRibbon(unittest.TestCase):
         self.assertLess(abs(span.x), 1.0)
         self.assertGreater(abs(span.y), 50.0)
 
-    def test_rgbfire_does_not_override_ribbon_color(self):
-        """RGBFIRE 的双层染色（贴图亮度→核心/外缘）是给 BILLBOARD3D 那种单张贴图
-        设计的，RIBBON 的贴图是沿长度走的序列帧，没有这层语义。曾经这套机制会把
-        RIBBON 自己算好的 item.color 整个顶掉，实测表现为"设的颜色被显示成贴图/
-        RGBFIRE 原色"（比如设蓝色却显示成贴图本身的绿色）。
-        """
+    def test_rgbfire_on_ribbon_keeps_the_ribbon_color(self):
+        """RGBFIRE 的两层颜色交给 shader 按通道遮罩解码，RIBBON 自身颜色记在 base_tint
+        里一起乘上，不会被两层颜色顶掉。"""
         sim = make_sim(
             extra=[(RIBBON, ribbon_fields(ribbonMode=1, color=[0, 0, 255, 255])),
                   (RGBFIRE, rgbfire_fields())],   # 默认 fireColor=红 smokeColor=蓝，跟上面不是同一回事
@@ -4174,8 +4153,11 @@ class TestRibbon(unittest.TestCase):
             life=life_fields(indefiniteLifespan=1))
         sim.step()
         it = sim.build_render()[0]
-        self.assertNotIn("layers", it.extra)
-        self.assertGreater(it.color[2], it.color[0])   # 蓝仍然是主导通道
+        self.assertIn("layers", it.extra)
+        self.assertIn("rgbfire_lerp", it.extra)
+        tint = it.extra["base_tint"]
+        self.assertGreater(tint[2], tint[0])          # 蓝仍然是主导通道
+        self.assertGreater(it.color[2], it.color[0])
 
     def test_chain_mode_settles_toward_straight(self):
         """restoreStrength=1 → 柔体链最终归位成平直。"""
@@ -4239,14 +4221,93 @@ class TestRibbon(unittest.TestCase):
         alphas = [a for _q, _w, a in sim.build_render()[0].points]
         self.assertTrue(all(abs(a - 1.0) < 1e-6 for a in alphas), alphas)
 
-    def test_spawn_anchor_offset_shifts_the_strip(self):
-        a = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=50.0,
-                                           spawnAnchorOffset=0.0))
-        b = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=50.0,
-                                           spawnAnchorOffset=1.0))
-        pa = [q for q, _w, _x in a.build_render()[0].points]
-        pb = [q for q, _w, _x in b.build_render()[0].points]
-        self.assertAlmostEqual((pb[0] - pa[0]).length(), 50.0, places=4)
+    def test_rigid_ribbon_follows_the_velocity(self):
+        """开启朝向运动方向的定长面片沿速度伸展（base→tip 指向速度），baseAxis 不起作用。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, baseAxis=1, length=50.0,
+                                             faceVelocity=1),
+                        velocity=velocity_fields(velocityType=0, baseAxis=0, speed=5.0,
+                                                 speedCoef=1.0))
+        pts = [q for q, _w, _x in sim.build_render()[0].points]
+        d = (pts[-1] - pts[0]).normalized()
+        self.assertAlmostEqual(d.x, 1.0, places=5)
+
+    def test_rigid_ribbon_without_face_velocity_keeps_base_axis(self):
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, baseAxis=1, length=50.0,
+                                             fixedDirection=1),
+                        velocity=velocity_fields(velocityType=0, baseAxis=0, speed=5.0,
+                                                 speedCoef=1.0))
+        pts = [q for q, _w, _x in sim.build_render()[0].points]
+        d = (pts[-1] - pts[0]).normalized()
+        self.assertAlmostEqual(d.y, 1.0, places=5)
+
+    def test_lock_initial_velocity_ignores_gravity(self):
+        """朝向运动方向 + 锁定初速度：重力压弯速度后条带仍指向出生时的方向。"""
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=50.0, faceVelocity=1,
+                                             lockInitialVelocity=1),
+                        velocity=velocity_fields(velocityType=0, baseAxis=0, speed=5.0,
+                                                 speedCoef=1.0, gravity=1.0))
+        self.assertLess(sim.particles[0].vel.y, -1.0)       # 速度已被重力压弯
+        pts = [q for q, _w, _x in sim.build_render()[0].points]
+        d = (pts[-1] - pts[0]).normalized()
+        self.assertAlmostEqual(d.x, 1.0, places=5)
+
+    def test_still_rigid_ribbon_facing_velocity_draws_nothing(self):
+        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, faceVelocity=1),
+                        velocity=velocity_fields(speed=0.0))
+        self.assertFalse([it for it in sim.build_render() if it.kind != "NONE"])
+
+    def _stretch(self, frames, **rb):
+        rb.setdefault("ribbonMode", 1)
+        rb.setdefault("faceVelocity", 1)
+        rb.setdefault("stretchFromSpawn", 1)
+        rb.setdefault("length", 50.0)
+        rb.setdefault("spawnAnchorOffset", 0.7)
+        sim = self._sim(ribbon=ribbon_fields(**rb), frames=frames,
+                        velocity=velocity_fields(velocityType=0, baseAxis=1, speed=1.0,
+                                                 speedCoef=1.0))
+        pts = [q for q, _w, _x in sim.build_render()[0].points]
+        return sim, pts
+
+    def test_stretch_keeps_the_base_at_the_spawn_point(self):
+        """base 固定在生成点，tip 在粒子前方锚点 × 长度处。"""
+        sim, pts = self._stretch(20)
+        p = sim.particles[0]
+        self.assertAlmostEqual((pts[0] - p.spawn_pos).length(), 0.0, places=4)
+        self.assertAlmostEqual((pts[-1] - p.pos).length(), 35.0, places=4)
+
+    def test_stretch_max_length_drags_the_base(self):
+        sim, pts = self._stretch(40, stretchMaxLength=40.0)
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 40.0, places=3)
+        self.assertGreater((pts[0] - sim.particles[0].spawn_pos).length(), 1.0)
+
+    def test_stretch_reset_restarts_from_the_tip(self):
+        """超出重置距离后 base 跳到 tip，条带从零重新拉伸，长度回落到阈值以下。"""
+        _sim, pts = self._stretch(40, stretchResetDistance=40.0)
+        self.assertLess((pts[-1] - pts[0]).length(), 40.0)
+
+    def test_stretch_smaller_threshold_wins(self):
+        _sim, pts = self._stretch(40, stretchMaxLength=45.0, stretchResetDistance=40.0)
+        self.assertLess((pts[-1] - pts[0]).length(), 40.0)          # 重置先到
+        _sim, pts = self._stretch(40, stretchMaxLength=38.0, stretchResetDistance=40.0)
+        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 38.0, places=3)   # 上限先到
+
+    def test_spawn_anchor_offset_places_the_spawn_point(self):
+        """1 = 条带自生成点伸出，0.5 = 生成点居中，0 = 整条落在另一侧。"""
+        def ends(anchor):
+            sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=50.0,
+                                                 spawnAnchorOffset=anchor))
+            pts = [q for q, _w, _x in sim.build_render()[0].points]
+            return pts[0] - sim.particles[0].pos, pts[-1] - sim.particles[0].pos
+
+        base, tip = ends(1.0)
+        self.assertAlmostEqual(base.length(), 0.0, places=4)
+        self.assertAlmostEqual(tip.length(), 50.0, places=4)
+        base, tip = ends(0.5)
+        self.assertAlmostEqual(base.length(), 25.0, places=4)
+        self.assertAlmostEqual(tip.length(), 25.0, places=4)
+        base, tip = ends(0.0)
+        self.assertAlmostEqual(base.length(), 50.0, places=4)
+        self.assertAlmostEqual(tip.length(), 0.0, places=4)
 
     def test_flap_displaces_the_strip(self):
         flat = self._sim(ribbon=ribbon_fields(ribbonMode=2, enableFlap=0))
@@ -4455,6 +4516,20 @@ class TestRibbonBlade(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].kind, "RIBBON")
         self.assertGreater(items[0].size.y, 0.0)
+
+    def test_rgbfire_keeps_the_blade_color(self):
+        """挂 RGBFIRE 时两层颜色交给 shader，刀光自身颜色记在 base_tint 里。"""
+        sim = make_sim(extra=[(RIBBONBLADE, blade_fields()), (RGBFIRE, rgbfire_fields())],
+                       spawn=spawn_fields(intervalFrame=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       transform=transform3d_fields(
+                           enableVelocityBitflag=1,
+                           translation_velocity=[20.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+        for _ in range(20):
+            sim.step()
+        it = sim.build_render()[0]
+        self.assertIn("layers", it.extra)
+        self.assertIn("base_tint", it.extra)
 
     def test_length_is_capped_by_the_limit(self):
         sim = self._sim(

@@ -6,7 +6,7 @@
     0 轨迹跟随  沿**发射器**实际经过的轨迹绘制；粒子自身有位移时改用粒子轨迹（见
                 `_common.pick_trail`）。需要逐帧位置历史，因此 `NEEDS_TRAIL = True`
     1 定长面片  刚性矩形，仅绕单个轴旋转以朝向相机。相机经过侧面时整条翻转 180°，是该构造的
-                固有表现。伸展方向见下文「朝向」
+                固有表现。伸展方向见下文「朝向」；带 VELOCITY3D 时速度为 0 即不绘制
     2 柔体链    自发射器向外延伸，带有弹性
 
 几何与外观字段：
@@ -18,7 +18,14 @@
     base_/tip_opacity            两端**端点**的不透明度，中间部分始终不透明
     base_/tip_fade_length        各自在该长度（占全长比例）内过渡到端点值；
     enableFadeLength             两个渐隐长度的开关，关闭时两者均按 1 计
-    spawnAnchorOffset            生成点在条带长度方向上的位置，以条带自身跨度为单位
+    spawnAnchorOffset            生成点在条带上的位置比例：1 = base 端（条带自生成点伸出），
+                                 0.5 = 正中，0 = tip 端
+    faceVelocity /               定长面片的朝向开关，见下文「朝向」
+    fixedDirection /
+    lockInitialVelocity
+    stretchFromSpawn +           定长面片专用：base 固定在生成点、tip 随粒子前进的拉伸，见下文
+    stretchMaxLength /           「拉伸」
+    stretchResetDistance(+Jitter)
     enableFlap +                 柔体链专用：旗帜式摆动，两组叠加
     flap1/flap2(Frequency,Amount)
     restoreStrength /            柔体链专用：恢复平直形态的强度 / 弹簧刚度 / 分段惯性
@@ -43,6 +50,24 @@
 朝向（定长面片与柔体链）：出生时由 baseAxis 与 rotationX/Y/Z 确定静止形状，此后随发射器一起
 转动——PARENTOPTIONS 跟随旋转时，施加到粒子位置上的旋转同样施加到条带朝向上。粒子位于旋转
 半径上时，反转自转方向会使领先的一端互换。
+
+定长面片的朝向由三个开关决定：
+
+    faceVelocity 开、lockInitialVelocity 关   每帧指向粒子最终速度（VELOCITY3D、重力、HOMING），
+                                             速度为 0 时不绘制；TRANSFORM3D 的速度不在其中
+    faceVelocity 开、lockInitialVelocity 开   固定为出生时的初速度方向
+    fixedDirection 开（faceVelocity 关）      baseAxis + rotationOrder + rotation，不随速度改变
+    其余                                      baseAxis 定形后随发射器转（上一段）
+
+fixedDirection 与「其余」的差别未实测，目前按同一方式处理。
+
+拉伸（stretchFromSpawn，定长面片）：base 固定在生成点，tip = 粒子位置 + 锚点 × 长度 × 方向，条带
+为两点直连的矩形。两个阈值都比较生成点（base）到 tip 的距离，每个粒子出生时各自抽取：
+
+    stretchMaxLength       超出后 base 被拖着跟上，长度封顶
+    stretchResetDistance   超出后 base 跳到 tip，条带从零重新拉伸；值小时反复刷新，看起来像闪烁
+
+两者同时设置时较小的一个先触发（相等按重置）。取 0 为不启用。
 
 贴图方向：各模式一律以粒子所在一端为 base（贴图底边）。轨迹跟随的头部即粒子当前位置，
 因此贴图底边在条带头部。
@@ -90,6 +115,8 @@ MODE_CHAIN = 2
 #: 轨迹弧长低于该值（游戏单位）时视为发射器静止。不取 0，因为绑定骨骼的发射器存在微小的
 #: 数值抖动，取 0 会使应当消失的条带残留一条细线。
 _STATIC_ARC_EPS = 1e-4
+#: 带 VELOCITY3D 的定长面片低于此速度（游戏单位/帧）视为静止，不绘制
+_STILL_SPEED = 1e-4
 
 #: 定长面片与柔体链走批量路径的最少点数。点数更少时逐条计算更快；带旗帜摆动的也逐条计算，
 #: 摆动只有标量实现。
@@ -170,6 +197,70 @@ def _arc_length(points):
     return total
 
 
+def _anchor_shift(f):
+    """spawnAnchorOffset 换算成沿首尾跨度的平移倍数；字段缺省按 1（不平移）。"""
+    if f is None:
+        return 0.0
+    v = f.get("spawnAnchorOffset", 1.0)
+    return float(1.0 if v is None else v) - 1.0
+
+
+#: 定长面片的朝向模式，见模块 docstring「朝向」
+ORIENT_VELOCITY = "velocity"
+ORIENT_INITIAL = "initial"
+ORIENT_BASE = "base"
+
+
+def _orient_mode(f):
+    if f.i("faceVelocity"):
+        return ORIENT_INITIAL if f.i("lockInitialVelocity") else ORIENT_VELOCITY
+    return ORIENT_BASE
+
+
+def _initial_velocity_dir(p):
+    """出生时的速度方向；没有 VELOCITY3D 或初速度为 0 时返回 None。"""
+    d = p.rolled.get("v_dir")
+    speed = p.rolled.get("v_speed", 0.0)
+    if d is None or abs(speed) < _STILL_SPEED or d.length() < _STILL_SPEED:
+        return None
+    return (d * (1.0 if speed > 0.0 else -1.0)).normalized()
+
+
+def _rigid_dir(p, em, st):
+    """定长面片本帧的伸展方向；返回 None 表示不绘制。"""
+    orient = st.get("orient", ORIENT_BASE)
+    if orient == ORIENT_VELOCITY:
+        if p.vel.length() < _STILL_SPEED:
+            return None
+        return p.vel.normalized()
+    if orient == ORIENT_INITIAL:
+        return _initial_velocity_dir(p)
+    # 逐帧 step 可能先于 PARENTOPTIONS 执行，渲染前再同步一次，否则朝向落后一帧
+    _sync_parent_rot(p, em, st)
+    return st["dir"]
+
+
+def _stretch_tip(p, st, d):
+    """拉伸时的 tip：粒子位置沿方向前移锚点 × 长度。"""
+    return p.pos + d * (st["anchor"] * st["length"])
+
+
+def _update_stretch(p, em, st):
+    """按两个阈值更新拉伸的 base；逐帧调用一次，渲染只读取结果。"""
+    d = _rigid_dir(p, em, st)
+    if d is None:
+        return
+    tip = _stretch_tip(p, st, d)
+    span = tip - st["base"]
+    dist = span.length()
+    cap, reset = st["max_len"], st["reset"]
+    if cap > 0.0 and (reset <= 0.0 or cap < reset):
+        if dist > cap:
+            st["base"] = tip - span * (cap / dist)
+    elif reset > 0.0 and dist > reset:
+        st["base"] = tip.copy()
+
+
 def _sync_parent_rot(p, em, st):
     """把 PARENTOPTIONS 新施加到粒子上的旋转同步到条带朝向；按累计量求差，可重复调用。"""
     po = p.user.get(ParentOptions)
@@ -222,15 +313,14 @@ class Ribbon(Behavior):
         if f is None:
             return
         cfg = em.config
-        mode = cfg.jitter_mode
 
-        scale = jitter(f.get("scale", 1.0), f.get("scale_jitter"), rng, mode)
+        scale = jitter(f.get("scale", 1.0), f.get("scale_jitter"), rng)
         p.rolled["rb_scale"] = scale
-        p.rolled["rb_width"] = jitter(f.get("width", 1.0), f.get("width_jitter"), rng, mode)
+        p.rolled["rb_width"] = jitter(f.get("width", 1.0), f.get("width_jitter"), rng)
         p.rolled["rb_length"] = jitter(f.get("length", 1.0), f.get("length_jitter"),
-                                       rng, mode)
+                                       rng)
         p.rolled["rb_bright"] = jitter(f.get("brightness", 1.0), f.get("brightnessJitter"),
-                                       rng, mode)
+                                       rng)
         if self._has_tracks:
             p.rolled["rb_off"] = jitter_offsets(f, {
                 "scale": scale, "width": p.rolled["rb_width"],
@@ -238,13 +328,13 @@ class Ribbon(Behavior):
 
         p.rolled["rb_rgba"], p.rolled["rb_coff"] = roll_rgba(f, rng, cfg)
         p.rolled["rb_uvlen"] = jitter(f.get("uvScaleLength", 1.0),
-                                      f.get("uvScaleLengthJitter"), rng, mode)
+                                      f.get("uvScaleLengthJitter"), rng)
         p.rolled["rb_emissive"] = emissive_on(f)
 
         # 条带的基准伸展方向，即定长面片与柔体链的平直形态
-        rolled_rot = (jitter(f.get("rotationX"), f.get("rotationXJitter"), rng, mode),
-                      jitter(f.get("rotationY"), f.get("rotationYJitter"), rng, mode),
-                      jitter(f.get("rotationZ"), f.get("rotationZJitter"), rng, mode))
+        rolled_rot = (jitter(f.get("rotationX"), f.get("rotationXJitter"), rng),
+                      jitter(f.get("rotationY"), f.get("rotationYJitter"), rng),
+                      jitter(f.get("rotationZ"), f.get("rotationZJitter"), rng))
         direction = axis_normal(f, cfg, rolled=rolled_rot)
         # 父实例旋转时，子 entry 的伸展方向随之旋转；只叠加这一项整体旋转，
         # 由 baseAxis 与 rotationX/Y/Z 确定的本地朝向不变
@@ -258,14 +348,26 @@ class Ribbon(Behavior):
         st = {"mode": ribbon_mode, "n": n, "frames": frames,
               "dir": direction,
               "restore": jitter(f.get("restoreStrength"), f.get("restoreStrengthJitter"),
-                                rng, mode),
-              "inertia": jitter(f.get("inertia"), f.get("inertiaJitter"), rng, mode),
+                                rng),
+              "inertia": jitter(f.get("inertia"), f.get("inertiaJitter"), rng),
               "spring": jitter(f.get("springiness"), f.get("springiness_jitter"),
-                               rng, mode),
+                               rng),
               "flap": [], "gravity": None,
               "time_frames": (_trail_time_frames(f, cfg) if ribbon_mode == MODE_TRAIL
                               else None),
               "spawn_p": p.pos.copy(), "spawn_em": em.origin.copy(), }
+
+        if ribbon_mode == MODE_RIGID:
+            st["orient"] = _orient_mode(f)
+            if f.i("stretchFromSpawn"):
+                st["stretch"] = True
+                st["base"] = p.pos.copy()
+                st["anchor"] = _anchor_shift(f) + 1.0
+                st["length"] = p.rolled["rb_length"] * scale
+                st["max_len"] = jitter(f.get("stretchMaxLength"),
+                                       f.get("stretchMaxLengthJitter"), rng)
+                st["reset"] = jitter(f.get("stretchResetDistance"),
+                                     f.get("stretchResetDistanceJitter"), rng)
 
         if ribbon_mode == MODE_CHAIN and f.i("enableGravity"):
             k = float(getattr(cfg, "ribbon_gravity_scale", 1.0))
@@ -276,8 +378,8 @@ class Ribbon(Behavior):
         if ribbon_mode == MODE_CHAIN and f.i("enableFlap"):
             for k in ("flap1", "flap2"):
                 st["flap"].append((
-                    jitter(f.get(k + "Frequency"), f.get(k + "FrequencyJitter"), rng, mode),
-                    jitter(f.get(k + "Amount"), f.get(k + "AmountJitter"), rng, mode)))
+                    jitter(f.get(k + "Frequency"), f.get(k + "FrequencyJitter"), rng),
+                    jitter(f.get(k + "Amount"), f.get(k + "AmountJitter"), rng)))
 
         if ribbon_mode == MODE_CHAIN:
             seg = (p.rolled["rb_length"] * scale) / (n - 1)
@@ -296,6 +398,8 @@ class Ribbon(Behavior):
             return
 
         _sync_parent_rot(p, em, st)
+        if st.get("stretch"):
+            _update_stretch(p, em, st)
 
         if st["mode"] != MODE_CHAIN:
             return
@@ -366,12 +470,16 @@ class Ribbon(Behavior):
             st.pop("_pre", None)
             st.pop("_flap_pts", None)
             if st["mode"] != MODE_TRAIL:
-                if numpy is None or n < _BODY_BATCH_MIN_N or st["flap"]:
+                if (numpy is None or n < _BODY_BATCH_MIN_N or st["flap"]
+                        or st.get("stretch")):
                     st["_pre"] = (f, length, width, n, None, None)
                     continue
                 if st["mode"] != MODE_CHAIN:
-                    # 逐帧 step 可能先于 PARENTOPTIONS 执行，渲染前再同步一次，否则朝向落后一帧
-                    _sync_parent_rot(p, em, st)
+                    d = _rigid_dir(p, em, st)
+                    if d is None:
+                        st["_pre"] = (f, length, width, n, None, [])
+                        continue
+                    st["_rdir"] = d
                 body.append((p, st, f, length, width, n))
                 continue
             pend.append((p, st, f, length, width, n))
@@ -423,7 +531,7 @@ class Ribbon(Behavior):
                 chain.append(k)
                 chain_xyz.extend((q.x, q.y, q.z) for q in st["nodes"])
             else:
-                d = st["dir"].normalized(fallback=Vec3(0.0, 1.0, 0.0))
+                d = st.pop("_rdir", st["dir"]).normalized(fallback=Vec3(0.0, 1.0, 0.0))
                 step = float(length) / (n - 1)
                 rig.append(k)
                 rig_o.append((p.pos.x, p.pos.y, p.pos.z))
@@ -448,9 +556,8 @@ class Ribbon(Behavior):
             blocks.append(numpy.array(chain_xyz, dtype="f8").reshape(-1, 3))
         Q = blocks[0] if len(blocks) == 1 else numpy.concatenate(blocks)
 
-        # spawnAnchorOffset：沿各条带自身的首尾跨度平移
-        anc = [((recs[k][2].get("spawnAnchorOffset") if recs[k][2] is not None else 0.0)
-                or 0.0) for k in order]
+        # spawnAnchorOffset：沿各条带自身的首尾跨度平移 (锚点 − 1) 倍
+        anc = [_anchor_shift(recs[k][2]) for k in order]
         if any(anc):
             span = Q[first + cnt - 1] - Q[first]
             Q += numpy.repeat(span * numpy.array(anc, dtype="f8")[:, None], cnt, axis=0)
@@ -581,6 +688,8 @@ class Ribbon(Behavior):
                       g0 * bright * p.color[1],
                       b0 * bright * p.color[2],
                       a0 * p.alpha]
+        # 渲染主体自身的颜色；RGBFIRE / RGBWATER 的两层颜色在 glue 侧再乘上它
+        item.extra["base_tint"] = (r0 * bright, g0 * bright, b0 * bright)
         item.extra["mode"] = st["mode"]
         item.extra["age"] = p.age
         uv = self._uv_scale(p, f, points, width)
@@ -610,11 +719,10 @@ class Ribbon(Behavior):
         用于没有 numpy、柔体链／刚性矩形或带旗帜摆动的情形。
         """
         # spawnAnchorOffset 只对刚性矩形与柔体链生效，见模块 docstring
-        anchor = 0.0 if (skip_anchor or st["mode"] == MODE_TRAIL) else (
-            (f.get("spawnAnchorOffset") if f is not None else 0.0) or 0.0)
+        anchor = (0.0 if (skip_anchor or st["mode"] == MODE_TRAIL or st.get("stretch"))
+                  else _anchor_shift(f))
         if anchor:
-            # 0=前端对齐生成点，1=后端对齐。位移量按该条带实际的首尾跨度计算，刚性矩形与
-            # 柔体链的实际跨度即等于配置长度
+            # 位移量按该条带实际的首尾跨度计算，刚性矩形与柔体链的实际跨度即等于配置长度
             span = pts[-1] - pts[0]
             shift = span * anchor
             sx, sy, sz = shift.x, shift.y, shift.z
@@ -662,10 +770,16 @@ class Ribbon(Behavior):
             pts, _arc = _trail.clip_resample(trail, max_len, n, min_arc=_STATIC_ARC_EPS)
             return pts                                      # 新→旧即 base→tip
 
-        # MODE_RIGID：刚性矩形，沿基准方向延伸。逐帧 step 可能先于 PARENTOPTIONS 执行，
-        # 渲染前再同步一次，否则朝向落后一帧
-        _sync_parent_rot(p, em, st)
-        return _trail.straight(p.pos, st["dir"], length, n)
+        # MODE_RIGID：刚性矩形
+        d = _rigid_dir(p, em, st)
+        if d is None:
+            return []
+        if st.get("stretch"):
+            span = _stretch_tip(p, st, d) - st["base"]
+            if span.length() < _STILL_SPEED:
+                return []
+            return _trail.straight(st["base"], span, span.length(), n)
+        return _trail.straight(p.pos, d, length, n)
 
     @staticmethod
     def _apply_flap(pts, st, p, em):

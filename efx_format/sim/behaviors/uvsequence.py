@@ -118,7 +118,6 @@ class UVSequence(Behavior):
         if f is None or self._table is None:
             return
         cfg = em.config
-        mode = cfg.jitter_mode
         n = len(self._table)
         if n <= 0:
             return
@@ -140,11 +139,11 @@ class UVSequence(Behavior):
             sign = -1.0 if rng.random() < 0.5 else 1.0
 
         static_speed = f.get("playSpeed", 0.0)
-        speed = jitter(static_speed, f.get("playSpeedJitter"), rng, mode)
+        speed = jitter(static_speed, f.get("playSpeedJitter"), rng)
         coef = jitter(f.get("playSpeedCoef", 1.0), f.get("playSpeedCoefJitter"),
-                      rng, mode)
+                      rng)
 
-        start = jitter_int(f.get("patternNo", 0), f.get("patternNoJitter"), rng, mode)
+        start = jitter_int(f.get("patternNo", 0), f.get("patternNoJitter"), rng)
         wrap = cfg.uvs_start_wrap == "wrap"
         start = self._table.index(start, wrap)
 

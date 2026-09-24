@@ -44,23 +44,22 @@ class ScaleAnim(Behavior):
         f = em.f(SCALEANIM, p)
         if f is None:
             return
-        mode = em.config.jitter_mode
 
         uniform_v = jitter(f.get("sizeScalarAdd"), f.get("sizeScalarAddJitter"),
-                           rng, mode)
+                           rng)
         uniform_a = jitter(f.get("sizeScalarAddCoef", 1.0),
-                           f.get("sizeScalarAddCoefJitter"), rng, mode)
+                           f.get("sizeScalarAddCoefJitter"), rng)
 
         axis_v = []
         axis_a = []
         for ax in ("X", "Y", "Z"):
             axis_v.append(jitter(f.get("size" + ax + "Add"),
-                                 f.get("size" + ax + "AddJitter"), rng, mode))
+                                 f.get("size" + ax + "AddJitter"), rng))
             axis_a.append(jitter(f.get("size" + ax + "AddCoef", 1.0),
-                                 f.get("size" + ax + "AddCoefJitter"), rng, mode))
+                                 f.get("size" + ax + "AddCoefJitter"), rng))
 
         delay = max(0, jitter_int(f.get("animUpdateStart"),
-                                  f.get("animUpdateStartJitter"), rng, mode))
+                                  f.get("animUpdateStartJitter"), rng))
 
         st = {
             "uv": uniform_v, "ua": uniform_a,

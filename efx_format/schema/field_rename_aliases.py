@@ -443,6 +443,14 @@ FIELD_RENAME_ALIASES = {
         )
     },
     ("RIBBON", "flowmapPlayOnce"): "flowOnce",
+    ("RIBBON", "unknBool16_2_1"): "faceVelocity",
+    ("RIBBON", "unknBool3a"): "fixedDirection",
+    ("RIBBON", "unknBool3b"): "lockInitialVelocity",
+    ("RIBBON", "unknBool5"): "stretchFromSpawn",
+    ("RIBBON", "unkn20_0"): "stretchMaxLength",
+    ("RIBBON", "unkn20_1"): "stretchMaxLengthJitter",
+    ("RIBBON", "unkn20_2"): "stretchResetDistance",
+    ("RIBBON", "unkn20_3"): "stretchResetDistanceJitter",
     ("RIBBON", "flowmapReverse"): "flowReverse",
 
     # UVCONTROL

@@ -50,20 +50,19 @@ class Plane(Behavior):
         f = em.f(PLANE, p)
         if f is None:
             return
-        mode = em.config.jitter_mode
 
-        p.rolled["pl_scale"] = jitter(f.get("scale", 1.0), f.get("scaleJitter"), rng, mode)
-        p.rolled["pl_width"] = jitter(f.get("width", 1.0), f.get("widthJitter"), rng, mode)
-        p.rolled["pl_height"] = jitter(f.get("height", 1.0), f.get("heightJitter"), rng, mode)
+        p.rolled["pl_scale"] = jitter(f.get("scale", 1.0), f.get("scaleJitter"), rng)
+        p.rolled["pl_width"] = jitter(f.get("width", 1.0), f.get("widthJitter"), rng)
+        p.rolled["pl_height"] = jitter(f.get("height", 1.0), f.get("heightJitter"), rng)
         p.rolled["pl_bright"] = jitter(f.get("brightness", 1.0), f.get("brightnessJitter"),
-                                       rng, mode)
-        p.rolled["pl_spin"] = jitter(f.get("rotation2"), f.get("rotation2Jitter"), rng, mode)
+                                       rng)
+        p.rolled["pl_spin"] = jitter(f.get("rotation2"), f.get("rotation2Jitter"), rng)
 
         base = f.xyz_lo("rotation")
         amt = f.xyz_hi("rotation")
-        rolled_rot = (jitter(base.x, amt.x, rng, mode),
-                      jitter(base.y, amt.y, rng, mode),
-                      jitter(base.z, amt.z, rng, mode))
+        rolled_rot = (jitter(base.x, amt.x, rng),
+                      jitter(base.y, amt.y, rng),
+                      jitter(base.z, amt.z, rng))
         normal = axis_normal(f, em.config, rolled=rolled_rot)
         p.user[Plane] = {"normal": normal}
 
@@ -74,7 +73,7 @@ class Plane(Behavior):
                 "height": p.rolled["pl_height"], "brightness": p.rolled["pl_bright"]})
         p.rolled["pl_emissive"] = emissive_on(f)
 
-        _flowmap.roll(p, f, rng, mode)
+        _flowmap.roll(p, f, rng)
 
     def build_render(self, p, em, view, item):
         rolled = p.rolled

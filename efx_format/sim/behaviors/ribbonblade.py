@@ -164,6 +164,10 @@ class RibbonBlade(Behavior):
                       (tb + (hb - tb) * mid) * emissive * p.color[2],
                       p.alpha]
         item.blend = _BLEND
+        # 渲染主体自身的颜色；RGBFIRE / RGBWATER 的两层颜色在 glue 侧再乘上它
+        item.extra["base_tint"] = ((tr + (hr - tr) * mid) * emissive,
+                                   (tg + (hg - tg) * mid) * emissive,
+                                   (tb + (hb - tb) * mid) * emissive)
         item.extra["width_dir"] = st["width_dir"]
         item.extra["age"] = p.age
         return item

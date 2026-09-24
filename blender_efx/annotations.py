@@ -1249,21 +1249,38 @@ FIELD_ANNOTATIONS = {
         "EN": "Purpose unknown. Turning it off stops the ribbon from facing the camera.",
         "ZH": "作用未知。关闭后将无法朝向摄像机。",
     },
-    ("RIBBON", "unknBool16_2_1"): {
-        "EN": "Purpose unknown.",
-        "ZH": "作用未知。",
+    ("RIBBON", "faceVelocity"): {
+        "EN": "The ribbon always points along the particle's current motion, including gravity "
+              "and homing but not Transform3D velocity. Invisible while the particle is still.",
+        "ZH": "条带始终指向粒子当前的运动方向，包括重力与追踪的影响，不含 Transform3D 的速度。"
+              "粒子静止时不可见。",
     },
-    ("RIBBON", "unknBool3a"): {
-        "EN": "Purpose unknown.",
-        "ZH": "作用未知。",
+    ("RIBBON", "fixedDirection"): {
+        "EN": "The ribbon's direction is set by Base Axis, Rotation Order and Rotation and does "
+              "not follow the velocity. No effect when Face Velocity is on.",
+        "ZH": "条带朝向由基准轴、旋转顺序与旋转决定，不随速度改变。开启朝向运动方向时无效。",
     },
-    ("RIBBON", "unknBool3b"): {
-        "EN": "Purpose unknown.",
-        "ZH": "作用未知。",
+    ("RIBBON", "lockInitialVelocity"): {
+        "EN": "With Face Velocity on, the ribbon keeps the direction the particle was born "
+              "moving in, ignoring later gravity and homing.",
+        "ZH": "与朝向运动方向同时开启时，朝向固定为粒子出生时的速度方向，不再受重力与追踪影响。",
     },
-    ("RIBBON", "unknBool5"): {
-        "EN": "Hides the back half of the ribbon — only the front half renders.",
-        "ZH": "隐藏条带的后半部分，只显示前半部分。",
+    ("RIBBON", "stretchFromSpawn"): {
+        "EN": "The start of the ribbon stays at the spawn point while the front moves with the "
+              "particle, stretching into one straight strip.",
+        "ZH": "条带起点固定在生成点，前端随粒子移动，拉伸成一条直的长条。",
+    },
+    ("RIBBON", "stretchMaxLength"): {
+        "EN": "Longest distance from the spawn point to the front; beyond it the start is dragged "
+              "along behind. 0 = no limit. Needs Stretch From Spawn.",
+        "ZH": "生成点到条带前端的最大距离，超出后起点被拖着跟上。0 为不限制。需开启从生成点拉伸。",
+    },
+    ("RIBBON", "stretchResetDistance"): {
+        "EN": "When the front gets this far from the spawn point, the ribbon starts stretching "
+              "again from where it is. Small values make it flicker. 0 = never resets. Needs "
+              "Stretch From Spawn.",
+        "ZH": "条带前端离生成点超过该距离时，从当前位置重新拉伸；值越小刷新越频繁、越像闪烁。"
+              "0 为不重置。需开启从生成点拉伸。",
     },
     ("RIBBON", "unknBool7"): {
         "EN": "Purpose unknown.",
@@ -3417,11 +3434,11 @@ FIELD_ANNOTATIONS = {
               "仅在「启用渐隐长度」开启时生效，否则按 1 计。",
     },
     ("RIBBON", "spawnAnchorOffset"): {
-        "EN": "Where along the ribbon's length the spawn point sits, in ribbon-length units. "
-              "0 puts the front tip at the spawn point; higher values drag the whole ribbon "
-              "further behind it.",
-        "ZH": "生成点落在条带长度方向上的位置，以条带自身长度为单位。0=前端贴住生成点；"
-              "数值越大，整条带越往身后拖。",
+        "EN": "Where the spawn point sits along the ribbon. 1: the ribbon grows out of the "
+              "spawn point; 0.5: the spawn point is in the middle; 0: the whole ribbon lies on "
+              "the other side. No effect in Trail mode. Common values 1 and 0.5.",
+        "ZH": "生成点在条带上的位置。1：条带从生成点伸出；0.5：生成点在条带正中；0：整条落在"
+              "生成点另一侧。轨迹跟随模式下无效。常见值 1、0.5。",
     },
     ("RIBBON", "uvScaleWidth"): {
         "EN": "Texture scale across the width, centred on the ribbon's middle line. 2 squeezes "

@@ -11,8 +11,7 @@ from . import behaviors  # noqa: F401  —— import 即注册，必须在 regis
 from .config import UNKNOWNS, SimConfig
 from .registry import Behavior, BoundBehavior, register, registered_hashes
 from .resolve import Curve, FieldResolver, FieldView, TimlTracks
-from .rng import (JITTER_GAUSSIAN, JITTER_ONESIDED, JITTER_SYMMETRIC, jitter,
-                  jitter_int, jitter_vec, noise1, noise3)
+from .rng import jitter, jitter_int, jitter_vec, noise1, noise3
 from .scene import (ActionTarget, EntryTemplate, SimScene, action_targets,
                     from_efx_file)
 from .simulator import EmitterState, Simulator
@@ -39,7 +38,6 @@ __all__ = [
     "FieldResolver", "FieldView", "TimlTracks", "Curve",
     # 随机
     "jitter", "jitter_int", "jitter_vec", "noise1", "noise3",
-    "JITTER_ONESIDED", "JITTER_SYMMETRIC", "JITTER_GAUSSIAN",
     # 便捷入口
     "from_attr_blocks",
 ]

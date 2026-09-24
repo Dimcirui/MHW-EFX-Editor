@@ -13,16 +13,10 @@ Blender 里对拍，不是改代码重装插件。
 """
 
 from . import stages as _stages
-from .rng import JITTER_ONESIDED
 
 
 #: 未确认语义的登记表：key → (说明, 候选值, 默认值)
 UNKNOWNS = {
-    "jitter_mode": (
-        "抖动分布。已确认是在 static 基础上追加 [0, amount] 的单边加法，"
-        "具体取值分布未确认。",
-        ("onesided", "symmetric", "gaussian"), "onesided",
-    ),
     "a0_sample": (
         "TIML A0（发射轴）对粒子级字段的采样点：'spawn' 在粒子出生那一帧冻结，"
         "'current' 每帧跟着发射器时间走。",
@@ -80,12 +74,6 @@ UNKNOWNS = {
         "比例常数按「值为 1 时约相当于细分数 60」估算，未精测。",
         (0.1, 2.0), 0.42,
     ),
-    "color_range_mode": (
-        "color 与 colorRange 怎么组成一个颜色。'channel' 逐通道（含 alpha）各自独立在"
-        "两者之间抽；'shared' 整条通道共用一个系数插值；"
-        "'add' 把 colorRange 当加法随机量 color+随机[0,range]。",
-        ("channel", "shared", "add"), "channel",
-    ),
     "parent_release_clock": (
         "PARENTOPTIONS.constRelease（停止追踪帧数）数的是哪个时钟。"
         "'particle_age' 每个粒子出生后各自数——这个字段自带 Jitter，逐粒子抽才用得上；"
@@ -138,8 +126,8 @@ class SimConfig(object):
 
     __slots__ = (
         "fps", "seed",
-        "jitter_mode", "a0_sample", "timl_interp",
-        "age_during_delay", "parent_release_clock", "color_range_mode",
+        "a0_sample", "timl_interp",
+        "age_during_delay", "parent_release_clock",
         "spawn_interval_jitter", "spawn_after_cycle",
         "rotateanim_billboard_axis", "uvc_clock",
         "uvs_speed_unit", "uvs_once_span", "uvs_start_wrap",
@@ -162,7 +150,6 @@ class SimConfig(object):
         self.seed = 0                       # 基础种子；换它 = 换一次随机形态
 
         # ── 未确认语义的开关（见 UNKNOWNS）──────────────────────────────────
-        self.jitter_mode = JITTER_ONESIDED
         self.a0_sample = "spawn"
         self.timl_interp = "native"
         self.age_during_delay = False
@@ -173,7 +160,6 @@ class SimConfig(object):
         self.ribbon_gravity_scale = 1.0
         self.ribbon_trail_time_frames = 0.42
         self.parent_release_clock = "particle_age"
-        self.color_range_mode = "channel"
         self.spawn_interval_jitter = "per_burst"
         self.spawn_after_cycle = "stop"
         self.rotateanim_billboard_axis = "view"
@@ -249,5 +235,5 @@ class SimConfig(object):
         return out
 
     def __repr__(self):
-        return ("<SimConfig fps=%d seed=%d jitter=%s a0=%s strict=%s>"
-                % (self.fps, self.seed, self.jitter_mode, self.a0_sample, self.strict))
+        return ("<SimConfig fps=%d seed=%d a0=%s strict=%s>"
+                % (self.fps, self.seed, self.a0_sample, self.strict))

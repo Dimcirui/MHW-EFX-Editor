@@ -77,14 +77,13 @@ class PtCollision(Behavior):
         f = em.f(PTCOLLISION, p)
         if f is None:
             return
-        mode = em.config.jitter_mode
         if self._phys == PHYS_FALL_THROUGH:
             bounces = 0
         else:
             bounces = max(0, jitter_int(f.get("bounceCount"), f.get("bounceCountJitter"),
-                                        rng, mode))
+                                        rng))
         elasticity = (jitter(f.get("bounceElasticity"), f.get("bounceElasticityJitter"),
-                             rng, mode)
+                             rng)
                       + float(f.get("bounceElasticityMultiplier", 0.0)))
         p.user[PtCollision] = {
             "prev_y": p.pos.y,
@@ -94,7 +93,7 @@ class PtCollision(Behavior):
             "elasticity": max(0.0, elasticity),
             "trigger_n": max(0, jitter_int(f.get("impactPlayTriggerCount"),
                                            f.get("impactPlayTriggerCountJitter"),
-                                           rng, mode)),
+                                           rng)),
             "rest_pos": None,
         }
 

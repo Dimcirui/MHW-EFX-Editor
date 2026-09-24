@@ -6,7 +6,7 @@
   rng，逐帧重抽在这套 API 下写不出来。
 - 逐帧变化的量用 `noise1` / `noise3`，它们是 (seed, frame, channel) 的纯函数，
   重启必然复现。不要在 step 里抽随机数。
-- 所有抖动必须经 `jitter()`，分布由 `SimConfig.jitter_mode` 统一切换。
+- 所有抖动必须经 `jitter()`：在 static 基础上追加 U[0, amount]。
 - ⚠ `amount == 0` 时仍然抽一次。这是刻意的：把某个 jitter 从 0 改成非 0 时不会
   连带打乱其他字段已抽到的值。省掉这次抽取会让编辑期的随机流不稳定。
 """
@@ -15,43 +15,24 @@ import random
 
 from .state import Vec3
 
-# ── 抖动分布 ─────────────────────────────────────────────────────────────────
-JITTER_ONESIDED  = "onesided"    # base + U[0, amount]      ← 默认
-JITTER_SYMMETRIC = "symmetric"   # base + U[-amount, amount]
-JITTER_GAUSSIAN  = "gaussian"    # base + N(0, amount / 2)
+# ── 抖动 ─────────────────────────────────────────────────────────────────────
 
-JITTER_MODES = (JITTER_ONESIDED, JITTER_SYMMETRIC, JITTER_GAUSSIAN)
-
-JITTER_LABELS = {
-    JITTER_ONESIDED:  {"EN": "base + U[0, a]",  "ZH": "基值 + 均匀[0, a]"},
-    JITTER_SYMMETRIC: {"EN": "base + U[-a, a]", "ZH": "基值 + 均匀[-a, a]"},
-    JITTER_GAUSSIAN:  {"EN": "base + N(0, a/2)", "ZH": "基值 + 高斯(0, a/2)"},
-}
+def jitter(base, amount, rng):
+    """base + U[0, amount]；rng 由 particle_rng 逐粒子播种。"""
+    return float(base) + rng.uniform(0.0, float(amount))
 
 
-def jitter(base, amount, rng, mode=JITTER_ONESIDED):
-    """在 base 上叠加 amount 规模的抖动；rng 由 particle_rng 逐粒子播种。"""
-    base = float(base)
-    amount = float(amount)
-    if mode == JITTER_SYMMETRIC:
-        return base + rng.uniform(-amount, amount)
-    if mode == JITTER_GAUSSIAN:
-        return base + rng.gauss(0.0, amount * 0.5)
-    # JITTER_ONESIDED（默认）
-    return base + rng.uniform(0.0, amount)
-
-
-def jitter_int(base, amount, rng, mode=JITTER_ONESIDED):
+def jitter_int(base, amount, rng):
     """整数字段（帧数一类）的抖动：按浮点抽完取整。"""
-    return int(round(jitter(base, amount, rng, mode)))
+    return int(round(jitter(base, amount, rng)))
 
 
-def jitter_vec(base, amount, rng, mode=JITTER_ONESIDED):
+def jitter_vec(base, amount, rng):
     """逐分量抖动。`base`/`amount` 是三元序列。"""
     return Vec3(
-        jitter(base[0], amount[0], rng, mode),
-        jitter(base[1], amount[1], rng, mode),
-        jitter(base[2], amount[2], rng, mode),
+        jitter(base[0], amount[0], rng),
+        jitter(base[1], amount[1], rng),
+        jitter(base[2], amount[2], rng),
     )
 
 

@@ -193,13 +193,13 @@ def _rgb3(f, prefix, default=1.0):
             float(f.get(prefix + "Z", default)))
 
 
-def _roll_life(f, rng, mode, use, appear, keep, vanish):
+def _roll_life(f, rng, use, appear, keep, vanish):
     """两层着色的生命期时序，与 `_common.roll_color_param` 同义。"""
     if not f.i(use):
         return None
-    return {"appear": max(0, jitter_int(f.get(appear), f.get(appear + "Jitter"), rng, mode)),
-            "keep": max(0, jitter_int(f.get(keep), f.get(keep + "Jitter"), rng, mode)),
-            "vanish": max(0, jitter_int(f.get(vanish), f.get(vanish + "Jitter"), rng, mode))}
+    return {"appear": max(0, jitter_int(f.get(appear), f.get(appear + "Jitter"), rng)),
+            "keep": max(0, jitter_int(f.get(keep), f.get(keep + "Jitter"), rng)),
+            "vanish": max(0, jitter_int(f.get(vanish), f.get(vanish + "Jitter"), rng))}
 
 
 def _axis(idx, fallback):
@@ -273,24 +273,23 @@ class PtBehavior(Behavior):
         if not self._decal:
             return
         f = em.f(PTBEHAVIOR, p)
-        mode = em.config.jitter_mode
         st = {"flip_u": _roll_flip(f.i("mHorizontalFlip"), rng),
               "flip_v": _roll_flip(f.i("mVerticalFlip"), rng),
               "blend": "ADDITIVE" if f.i("mBlendMode") == 1 else "ALPHA"}
 
         if self._table is not None and len(self._table) > 0:
-            self._spawn_sequence(st, f, rng, mode, em.config)
+            self._spawn_sequence(st, f, rng, em.config)
         if self._mapping == MAP_UVSEQUENCE and self._shading == SHADE_FIRE:
             st["fire"] = {
-                "fp": _roll_life(f, rng, mode, "mUseFireLife", "mFireAppearFrame",
+                "fp": _roll_life(f, rng, "mUseFireLife", "mFireAppearFrame",
                                  "mFireKeepFrame", "mFireVanishFrame"),
-                "sp": _roll_life(f, rng, mode, "mUseSmokeLife", "mSmokeAppearFrame",
+                "sp": _roll_life(f, rng, "mUseSmokeLife", "mSmokeAppearFrame",
                                  "mSmokeKeepFrame", "mSmokeVanishFrame"),
             }
-        _flowmap.roll(p, _FlowFields(f), rng, mode)
+        _flowmap.roll(p, _FlowFields(f), rng)
         p.user[PtBehavior] = st
 
-    def _spawn_sequence(self, st, f, rng, mode, cfg):
+    def _spawn_sequence(self, st, f, rng, cfg):
         """序列帧的起始格、速度与方向；状态字段与 UVSEQUENCE 相同，供 `_frame_of` 使用。"""
         n = len(self._table)
         order = f.i("mPlayOrder")
@@ -299,16 +298,16 @@ class PtBehavior(Behavior):
             sign = -1.0 if rng.random() < 0.5 else 1.0
         wrap = cfg.uvs_start_wrap == "wrap"
         start = self._table.index(
-            jitter_int(f.get("mPatternNo"), f.get("mPatternNoJitter"), rng, mode), wrap)
+            jitter_int(f.get("mPatternNo"), f.get("mPatternNoJitter"), rng), wrap)
         if cfg.uvs_once_span == "full_cycle":
             span = n - 1
         else:
             span = start if sign < 0 else n - 1 - start
         st.update({
             "phase": 0.0,
-            "speed": jitter(f.get("mPlaySpeed", 1.0), f.get("mPlaySpeedJitter"), rng, mode),
+            "speed": jitter(f.get("mPlaySpeed", 1.0), f.get("mPlaySpeedJitter"), rng),
             "coef": jitter(f.get("mPlaySpeedCoef", 1.0), f.get("mPlaySpeedCoefJitter"),
-                           rng, mode),
+                           rng),
             "start": start, "frame": start, "n": n, "sign": sign,
             "span": max(0, span), "wrap": wrap,
             "playback": _PLAY_TYPE.get(f.i("mPlayType"), PB_START_ONLY),

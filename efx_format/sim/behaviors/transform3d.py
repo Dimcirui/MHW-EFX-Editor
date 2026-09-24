@@ -62,12 +62,11 @@ class Transform3D(Behavior):
         if f is None:
             return
         cfg = em.config
-        mode = cfg.jitter_mode
 
         static = {k: _static_half(f, k) for k in ("translate", "rotate", "resize")}
-        translate = jitter_vec(static["translate"], f.xyz_hi("translate"), rng, mode)
-        rotate = jitter_vec(static["rotate"], f.xyz_hi("rotate"), rng, mode)
-        resize = jitter_vec(static["resize"], f.xyz_hi("resize"), rng, mode)
+        translate = jitter_vec(static["translate"], f.xyz_hi("translate"), rng)
+        rotate = jitter_vec(static["rotate"], f.xyz_hi("rotate"), rng)
+        resize = jitter_vec(static["resize"], f.xyz_hi("resize"), rng)
 
         flags = f.i("enableVelocityBitflag")
         vel_on = bool(flags & BIT_ENABLE_VELOCITY)
@@ -79,22 +78,22 @@ class Transform3D(Behavior):
             "resize": resize,
             "rot_order": rot_order_name(f.i("rotationOrder"), ROT_ORDER_TRANSFORM),
             "vel": jitter_vec(f.xyz_lo("translation_velocity"),
-                              f.xyz_hi("translation_velocity"), rng, mode)
+                              f.xyz_hi("translation_velocity"), rng)
                    if vel_on else Vec3(),
             "vel_mod": jitter_vec(f.xyz_lo("translation_velocity_modifier"),
-                                  f.xyz_hi("translation_velocity_modifier"), rng, mode)
+                                  f.xyz_hi("translation_velocity_modifier"), rng)
                        if acc_on else Vec3(1.0, 1.0, 1.0),
             "rot_vel": jitter_vec(f.xyz_lo("rotation_velocity"),
-                                  f.xyz_hi("rotation_velocity"), rng, mode)
+                                  f.xyz_hi("rotation_velocity"), rng)
                        if vel_on else Vec3(),
             "rot_vel_mod": jitter_vec(f.xyz_lo("rotation_velocity_modifier"),
-                                      f.xyz_hi("rotation_velocity_modifier"), rng, mode)
+                                      f.xyz_hi("rotation_velocity_modifier"), rng)
                            if acc_on else Vec3(1.0, 1.0, 1.0),
             "scale_vel": jitter_vec(f.xyz_lo("scale_velocity"),
-                                    f.xyz_hi("scale_velocity"), rng, mode)
+                                    f.xyz_hi("scale_velocity"), rng)
                          if vel_on else Vec3(),
             "scale_vel_mod": jitter_vec(f.xyz_lo("scale_velocity_modifier"),
-                                        f.xyz_hi("scale_velocity_modifier"), rng, mode)
+                                        f.xyz_hi("scale_velocity_modifier"), rng)
                              if acc_on else Vec3(1.0, 1.0, 1.0),
             "accel_on": acc_on,
             "static": static,

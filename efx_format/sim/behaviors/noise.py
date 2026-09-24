@@ -85,13 +85,12 @@ class Noise(Behavior):
         if f is None:
             return
         cfg = em.config
-        mode = cfg.jitter_mode
         groups = []
         for prefix in ("low", "high"):
             freq = jitter(f.get(prefix + "Frequency"),
-                          f.get(prefix + "FrequencyJitter"), rng, mode)
+                          f.get(prefix + "FrequencyJitter"), rng)
             width = jitter(f.get(prefix + "FrequencyWidth"),
-                           f.get(prefix + "FrequencyWidthJitter"), rng, mode)
+                           f.get(prefix + "FrequencyWidthJitter"), rng)
             axis = _random_unit(rng)
             e1 = _random_perp(axis, rng)
             groups.append({

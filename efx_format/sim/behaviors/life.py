@@ -32,14 +32,13 @@ class Life(Behavior):
         if f is None:
             return
         cfg = em.config
-        mode = cfg.jitter_mode
 
         fade_in = max(0, jitter_int(f.get("fadeInDuration"), f.get("fadeInDurationJitter"),
-                                    rng, mode))
+                                    rng))
         duration = max(0, jitter_int(f.get("duration"), f.get("durationJitter"),
-                                     rng, mode))
+                                     rng))
         fade_out = max(0, jitter_int(f.get("fadeOutDuration"), f.get("fadeOutDurationJitter"),
-                                     rng, mode))
+                                     rng))
 
         total = fade_in + duration + fade_out
 

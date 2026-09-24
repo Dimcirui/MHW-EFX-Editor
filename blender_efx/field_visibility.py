@@ -117,6 +117,10 @@ FIELD_VISIBILITY = {
         "spawnFrameJitter": ("spawnFlags", _bit5),
     },
     "RIBBON": {
+        "stretchMaxLength":           ("stretchFromSpawn", _truthy),
+        "stretchMaxLengthJitter":     ("stretchFromSpawn", _truthy),
+        "stretchResetDistance":       ("stretchFromSpawn", _truthy),
+        "stretchResetDistanceJitter": ("stretchFromSpawn", _truthy),
         "colorRange":              ("useColorRange", _truthy),
         "epvcolor_1":              ("useColorRange", _truthy),
         "brightness":              ("blendMode", _truthy),

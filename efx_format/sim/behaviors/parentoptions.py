@@ -119,8 +119,7 @@ class ParentOptions(Behavior):
             return
         release = self._release
         if release and self._release_jitter:
-            release = max(0, jitter_int(release, self._release_jitter, rng,
-                                        em.config.jitter_mode))
+            release = max(0, jitter_int(release, self._release_jitter, rng))
         p.user[ParentOptions] = {
             "last": em.origin.copy(),           # 上一帧的发射器原点，用于计算位移增量
             "last_rot": _total_rotation(em),    # 上一帧的发射器总旋转，用于计算旋转增量

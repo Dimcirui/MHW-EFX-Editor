@@ -68,7 +68,7 @@ def roll_channels(raw, names, rng=None, mode=None):
                 v = raw(pre + suffix)
                 base = _comp(v, i, dflt)
                 if rng is not None:
-                    base = jitter(base, _comp(v, i + 1), rng, mode)
+                    base = jitter(base, _comp(v, i + 1), rng)
                 vals.append(base)
             axes.append(tuple(vals))
         chans.append(tuple(axes))
@@ -123,22 +123,21 @@ class UVControl(Behavior):
         f = em.f(UVCONTROL, p)
         if f is None:
             return
-        mode = em.config.jitter_mode
         names = channel_names(f.i("uv2_enable"))
-        p.rolled["uvc"] = roll_channels(f.raw, names, rng, mode)
+        p.rolled["uvc"] = roll_channels(f.raw, names, rng)
 
         if not f.i("enableFlowmap"):
             return
-        strength = jitter(f.get("flowStrength"), f.get("flowStrengthJitter"), rng, mode)
+        strength = jitter(f.get("flowStrength"), f.get("flowStrengthJitter"), rng)
         if not strength:
             return              # 强度为 0 时无位移
         p.rolled[FLOW_KEY] = (
-            jitter(f.get("flowSpeed"), f.get("flowSpeedJitter"), rng, mode),
+            jitter(f.get("flowSpeed"), f.get("flowSpeedJitter"), rng),
             strength,
-            jitter(f.get("flowSpeedCoef", 1.0), f.get("flowSpeedCoefJitter"), rng, mode)
+            jitter(f.get("flowSpeedCoef", 1.0), f.get("flowSpeedCoefJitter"), rng)
             or 1.0,
             jitter(f.get("flowStrengthCoef", 1.0), f.get("flowStrengthCoefJitter"),
-                   rng, mode) or 1.0,
+                   rng) or 1.0,
             False, False)
 
     def build_render(self, p, em, view, item):

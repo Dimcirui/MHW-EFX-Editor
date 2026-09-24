@@ -10,7 +10,7 @@
     speed(+Jitter)          初速度大小
     speedCoef(+Jitter)      逐帧速度倍率，速度每帧乘以此值。1 为匀速，大于 1 加速，小于 1 减速
     velocityType            0=Directional：由 baseAxis 与 rotation 确定方向
-                            1=DirectionalSpread：Vi=(size-1)·生成坐标+offset，再归一化
+                            1=DirectionalSpread：Vi=(size-1)·生成坐标+2·offset，再归一化
                             2=Radial：始终向外，rotation / velocity / divergence 均无效
                             3=EmitterMotion：继承发射器自身的运动，受 minMovementThreshold 限制
                             4 / 5 在语料中出现，含义未知，按 0 处理并记录 note
@@ -46,6 +46,8 @@ VT_DIRECTIONAL = 0
 VT_DIRECTIONAL_SPREAD = 1
 VT_RADIAL = 2
 VT_EMITTER_MOTION = 3
+#: 定向扩散里 offset 相对生成坐标的倍率
+_SPREAD_OFFSET_SCALE = 2.0
 
 
 @register(VELOCITY3D)
@@ -67,13 +69,12 @@ class Velocity3D(Behavior):
         if f is None:
             return
         cfg = em.config
-        mode = cfg.jitter_mode
 
-        p.rolled["v_speed"] = jitter(f.get("speed"), f.get("speedJitter"), rng, mode)
+        p.rolled["v_speed"] = jitter(f.get("speed"), f.get("speedJitter"), rng)
         p.rolled["v_coef"] = jitter(f.get("speedCoef", 1.0), f.get("speedCoefJitter"),
-                                    rng, mode)
+                                    rng)
         p.rolled["v_gravity"] = jitter(f.get("gravity"), f.get("gravity_jitter"),
-                                       rng, mode)
+                                       rng)
         if self._has_tracks:
             # TIML 基准 = 曲线值 + 这两个偏移；v_base 为上一帧用过的 speed 基准
             p.rolled["v_speed_off"] = p.rolled["v_speed"] - f.get("speed")
@@ -81,9 +82,9 @@ class Velocity3D(Behavior):
             p.rolled["v_base"] = p.rolled["v_speed"]
             p.rolled["v_decay"] = 1.0
         p.rolled["v_move_delay"] = max(0, jitter_int(
-            f.get("movementDelay"), f.get("movementDelayJitter"), rng, mode))
+            f.get("movementDelay"), f.get("movementDelayJitter"), rng))
         p.rolled["v_grav_delay"] = max(0, jitter_int(
-            f.get("gravityDelay"), f.get("gravityDelayJitter"), rng, mode))
+            f.get("gravityDelay"), f.get("gravityDelayJitter"), rng))
 
         vtype = f.i("velocityType")
         if vtype > VT_EMITTER_MOTION:
@@ -103,7 +104,8 @@ class Velocity3D(Behavior):
         if vtype == VT_DIRECTIONAL_SPREAD:
             div = Vec3(f.get("sizeX", 1.0), f.get("sizeY", 1.0),
                        f.get("sizeZ", 1.0))
-            base = Vec3(f.get("offsetX"), f.get("offsetY"), f.get("offsetZ"))
+            base = Vec3(f.get("offsetX"), f.get("offsetY"),
+                        f.get("offsetZ")) * _SPREAD_OFFSET_SCALE
             v = Vec3((div.x - 1.0) * p.spawn_pos.x + base.x,
                      (div.y - 1.0) * p.spawn_pos.y + base.y,
                      (div.z - 1.0) * p.spawn_pos.z + base.z)
@@ -121,10 +123,9 @@ class Velocity3D(Behavior):
 
         axis_idx = f.i("baseAxis")
         axis = BASE_AXES[axis_idx] if 0 <= axis_idx < len(BASE_AXES) else BASE_AXES[1]
-        mode = cfg.jitter_mode
-        rx = jitter(f.get("rotationX"), f.get("rotationXJitter"), rng, mode)
-        ry = jitter(f.get("rotationY"), f.get("rotationYJitter"), rng, mode)
-        rz = jitter(f.get("rotationZ"), f.get("rotationZJitter"), rng, mode)
+        rx = jitter(f.get("rotationX"), f.get("rotationXJitter"), rng)
+        ry = jitter(f.get("rotationY"), f.get("rotationYJitter"), rng)
+        rz = jitter(f.get("rotationZ"), f.get("rotationZJitter"), rng)
         order = rot_order_name(f.i("rotOrder"), ROT_ORDER_VELOCITY)
         return rotate_euler(axis, rx, ry, rz, order=order,
                             applied=cfg.rot_order_applied)

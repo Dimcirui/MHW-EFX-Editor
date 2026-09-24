@@ -199,13 +199,11 @@ def _config_from_scene(scene):
 
     return SimConfig(
         seed=int(getattr(scene, "efx_sim_seed", 0)),
-        jitter_mode=getattr(scene, "efx_sim_jitter_mode", "onesided"),
         a0_sample=getattr(scene, "efx_sim_a0_sample", "spawn"),
         timl_interp=getattr(scene, "efx_sim_timl_interp", "native"),
         age_during_delay=bool(getattr(scene, "efx_sim_age_during_delay", False)),
         rot_order_applied=getattr(scene, "efx_sim_rot_order", "forward"),
         parent_release_clock=getattr(scene, "efx_sim_parent_clock", "particle_age"),
-        color_range_mode=getattr(scene, "efx_sim_color_range", "channel"),
         spawn_interval_jitter=getattr(scene, "efx_sim_spawn_jitter", "per_burst"),
         uvs_speed_unit=getattr(scene, "efx_sim_uvs_speed_unit", "per_frame"),
         uvs_once_span=getattr(scene, "efx_sim_uvs_once_span", "to_end"),
@@ -3140,7 +3138,6 @@ class EFX_PT_sim_unknowns(Panel):
         scene = context.scene
         layout.label(text=T("sim.calib_hint"), icon="INFO")
         col = layout.column(align=True)
-        col.prop(scene, "efx_sim_jitter_mode")
         # 已有稳定默认值的开关不在校准面板重复显示。
         col.prop(scene, "efx_sim_spawn_jitter")
         col.prop(scene, "efx_sim_material_slot")
@@ -3159,7 +3156,6 @@ class EFX_PT_sim_unknowns(Panel):
         # 仅保留仍需校准的 HOMING 选项。
         col.prop(scene, "efx_sim_homing_lateral_tilt")
         col.prop(scene, "efx_sim_parent_clock")
-        col.prop(scene, "efx_sim_color_range")
         col.prop(scene, "efx_sim_uvs_speed_unit")
         col.prop(scene, "efx_sim_uvs_once_span")
         col.prop(scene, "efx_sim_uvs_start_wrap")
@@ -3304,12 +3300,6 @@ def register():
                     "if the artwork shows up upside down")
 
     # ── 校准 ────────────────────────────────────────────────────────────────
-    S.efx_sim_jitter_mode = EnumProperty(
-        name="Jitter", update=_on_knob_changed,
-        items=[("onesided", "base + U[0, a]", "Confirmed: jitter is added on top of the static value"),
-               ("symmetric", "base + U[-a, a]", "Symmetric around the static value"),
-               ("gaussian", "base + N(0, a/2)", "Gaussian instead of uniform")],
-        default="onesided")
     # 新属性名避免旧场景保存的废弃值覆盖当前默认行为。
     S.efx_sim_hdr_mode = EnumProperty(
         name="Over-bright colours",
@@ -3423,15 +3413,6 @@ def register():
     S.efx_sim_age_during_delay = BoolProperty(
         name="Age during spawn delay", default=False, update=_on_knob_changed,
         description="Whether spawnWaitFrame still advances the particle's age")
-    S.efx_sim_color_range = EnumProperty(
-        name="Colour range", update=_on_knob_changed,
-        items=[("channel", "Per channel", "Every channel (alpha included) draws its own "
-                                          "value between Colour and Colour Range"),
-               ("shared", "Locked channels", "One random factor shared by all channels, "
-                                             "so the hue stays on the line between the two"),
-               ("add", "Colour + random", "Colour Range read as an additive amount: "
-                                          "Colour + random[0, Range]")],
-        default="channel")
     S.efx_sim_parent_clock = EnumProperty(
         name="Stop tracking after", update=_on_knob_changed,
         items=[("particle_age", "Each particle's own age",

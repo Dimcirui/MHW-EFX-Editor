@@ -65,13 +65,12 @@ class RotateAnim(Behavior):
         st = {
             "mode": mode_v,
             "delay": max(0, jitter_int(f.get("rotateDelayStart"),
-                                       f.get("rotateDelayStartJitter"), rng,
-                                       cfg.jitter_mode)),
+                                       f.get("rotateDelayStartJitter"), rng)),
         }
 
         if mode_v in (MODE_PLANE, MODE_PLANE_RANDOM_DIR):
             static = f.get("billboardRotation")
-            speed = jitter(static, f.get("billboardRotationJitter"), rng, cfg.jitter_mode)
+            speed = jitter(static, f.get("billboardRotationJitter"), rng)
             sign = _SPIN_SIGN
             if mode_v == MODE_PLANE_RANDOM_DIR and rng.random() < 0.5:
                 sign = -sign
@@ -79,8 +78,7 @@ class RotateAnim(Behavior):
             if self._has_tracks:
                 st["tl"] = {"sign": sign, "off": speed - static, "decay": 1.0}
             st["plane_a"] = jitter(f.get("billboardRotationCoef", 1.0),
-                                   f.get("billboardRotationCoefJitter"), rng,
-                                   cfg.jitter_mode)
+                                   f.get("billboardRotationCoefJitter"), rng)
         else:
             # spin_velocity 为 XYZ type 0：各轴由固定值与随机幅度成对组成
             base = f.xyz_lo("spin_velocity")
@@ -95,7 +93,7 @@ class RotateAnim(Behavior):
                     vel.append(0.0)
                     acc.append(1.0)
                     continue
-                raw = jitter(base[i], amount[i], rng, cfg.jitter_mode)
+                raw = jitter(base[i], amount[i], rng)
                 sign = _SPIN_SIGN
                 if mode_v == MODE_SPIN_RANDOM_DIR and rng.random() < 0.5:
                     sign = -sign    # 各轴独立随机方向
@@ -103,8 +101,7 @@ class RotateAnim(Behavior):
                 signs.append(sign)
                 offs.append(raw - base[i])
                 acc.append(jitter(f.get("spinSpeedCoef" + ax, 1.0),
-                                  f.get("spinSpeedCoef" + ax + "Jitter"), rng,
-                                  cfg.jitter_mode))
+                                  f.get("spinSpeedCoef" + ax + "Jitter"), rng))
             st["spin_v"] = vel
             st["spin_a"] = acc
             if self._has_tracks:

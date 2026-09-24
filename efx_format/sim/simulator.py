@@ -369,14 +369,11 @@ class Simulator(object):
                 item = b.behavior.build_render(p, em, view, item)
             if item is not None and item.kind == "NONE":
                 continue      # 渲染体明说「我不该有视觉输出」（DUMMY），不走退化点
-            if item is not None and "layers" in p.rolled and item.kind != "RIBBON":
+            if item is not None and "layers" in p.rolled:
                 # 双层染色（RGBFIRE/RGBWATER）在 SHADE 阶段算好两层留在 p.rolled 里，
                 # 这里统一转交给贴图 glue 的 fragment shader，靠 `*_lerp` 键选 shader
                 # 分支；两个键都没有时退回按贴图亮度插值。没贴图的用 item.color。
-                #
-                # ⚠ RIBBON 必须排除：这套模型针对单张贴图，而 RIBBON 的贴图是沿长度走的
-                # 序列帧。RIBBON 自己的 build_render 已经把 p.color 乘进 item.color，
-                # 这里再叠一层会整个替换掉，表现为设定的颜色变成贴图原色。
+                # 渲染主体须写 `extra["base_tint"]`，否则两层颜色会顶掉它自身的颜色。
                 item.extra.setdefault("layers", p.rolled["layers"])
                 if "rgbfire_lerp" in p.rolled:
                     item.extra.setdefault("rgbfire_lerp", p.rolled["rgbfire_lerp"])

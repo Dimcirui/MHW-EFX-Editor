@@ -55,7 +55,7 @@ class Spawn(Behavior):
             "rng": srng,
             "delay": jitter_int(f.get("emitterDelayFrame"),
                                 f.get("emitterDelayFrameJitter"),
-                                srng, em.config.jitter_mode),
+                                srng),
             "wait": 0,
             "bursts_left": None,     # None 表示本轮不计数：不换位置，持续生成
             "burst_index": 0,
@@ -70,10 +70,9 @@ class Spawn(Behavior):
         f = em.f(SPAWN)
         cfg = em.config
         rng = st["rng"]
-        mode = cfg.jitter_mode
 
         per_cycle = jitter_int(f.get("loopNum"), f.get("loopNumJitter"),
-                               rng, mode)
+                               rng)
         repeat = f.i("emitterRepeatCount")
 
         st["interval_field"] = ("altBurstInterval", "altBurstIntervalJitter")             if per_cycle == 1 else ("intervalFrame", "intervalFrameJitter")
@@ -91,7 +90,7 @@ class Spawn(Behavior):
         """抽取一次批间隔；`per_burst` 下每批调用一次。"""
         f = em.f(SPAWN)
         key, jkey = st["interval_field"]
-        v = jitter_int(f.get(key), f.get(jkey), st["rng"], em.config.jitter_mode)
+        v = jitter_int(f.get(key), f.get(jkey), st["rng"])
         st["interval"] = max(0, v)
         return st["interval"]
 
@@ -125,7 +124,7 @@ class Spawn(Behavior):
         rng = st["rng"]
 
         count = jitter_int(f.get("spawnNum"), f.get("spawnNumJitter"),
-                           rng, cfg.jitter_mode)
+                           rng)
         if count > 0:
             cap = f.i("maxParticles")
             if cap > 0:
@@ -166,4 +165,4 @@ class Spawn(Behavior):
             return
         p.delay_left = max(0, jitter_int(f.get("spawnWaitFrame"),
                                          f.get("spawnWaitFrameJitter"),
-                                         rng, em.config.jitter_mode))
+                                         rng))

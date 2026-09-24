@@ -73,19 +73,18 @@ class Mesh(Behavior):
         f = em.f(MESH, p)
         if f is None:
             return
-        mode = em.config.jitter_mode
         p.rolled["me_draw"] = bool(f.i("shadowCastBitflag", 1) & 0x01)
 
         rb, ra = f.xyz_lo("rotation"), f.xyz_hi("rotation")
-        p.rolled["me_rot"] = Vec3(jitter(rb.x, ra.x, rng, mode),
-                                  jitter(rb.y, ra.y, rng, mode),
-                                  jitter(rb.z, ra.z, rng, mode))
+        p.rolled["me_rot"] = Vec3(jitter(rb.x, ra.x, rng),
+                                  jitter(rb.y, ra.y, rng),
+                                  jitter(rb.z, ra.z, rng))
         p.rolled["me_order"] = rot_order_name(f.i("rotationOrder"), ROT_ORDER_TRANSFORM)
 
         sb, sa = f.xyz_lo("scale"), f.xyz_hi("scale")
-        g = jitter(f.get("global_scale", 1.0), f.get("global_scale_jitter"), rng, mode)
-        sx, sy, sz = (jitter(sb.x, sa.x, rng, mode), jitter(sb.y, sa.y, rng, mode),
-                      jitter(sb.z, sa.z, rng, mode))
+        g = jitter(f.get("global_scale", 1.0), f.get("global_scale_jitter"), rng)
+        sx, sy, sz = (jitter(sb.x, sa.x, rng), jitter(sb.y, sa.y, rng),
+                      jitter(sb.z, sa.z, rng))
         p.rolled["me_scale"] = Vec3(sx * g, sy * g, sz * g)
         if self._has_tracks:
             # 三轴 scale / rotation 是 XYZ 字段，不能按字段名取，偏移单独存
@@ -97,12 +96,12 @@ class Mesh(Behavior):
             }
 
         p.rolled["me_viscon"] = jitter_int(f.get("visconIndex"),
-                                           f.get("visconIndexJitter"), rng, mode)
+                                           f.get("visconIndexJitter"), rng)
 
         p.rolled["me_rgba"], p.rolled["me_coff"] = roll_rgba(
             f, rng, em.config, disable="disableAllColorRange")
         p.rolled["me_rate"] = jitter(f.get("colorRate", 1.0), f.get("colorRateJitter"),
-                                     rng, mode)
+                                     rng)
         if self._has_tracks:
             p.rolled["me_off"]["colorRate"] = p.rolled["me_rate"] - f.get("colorRate", 1.0)
 
@@ -111,7 +110,7 @@ class Mesh(Behavior):
                 f, rng, em.config, "emissiveColor", "emissiveColorRange",
                 gate="useEmissiveColorRange", disable="disableAllColorRange")
             rate = jitter(f.get("emissiveColorRate", 1.0),
-                          f.get("emissiveColorRateJitter"), rng, mode)
+                          f.get("emissiveColorRateJitter"), rng)
             p.rolled["me_emissive"] = (er * rate, eg * rate, eb * rate, ea)
             p.rolled["me_ecoff"] = eoff
         else:
