@@ -310,7 +310,7 @@
                     "unknFlag7_1": 0,
                     "rotationOrder": 4,
                     "tracking_flags": 0,
-                    "unknBitmask40": 2,
+                    "baseAxis": 2,
                     "affectedByLight": 1,
                     "shadowCastBitflag": 1,
                     "epv_color_slot1": 3,

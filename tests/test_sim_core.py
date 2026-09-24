@@ -26,7 +26,7 @@ from efx_format.hashes import (ALPHACORRECTION, BILLBOARD2D, BILLBOARD3D, DUMMY,
                                LIFE, MESH, NOISE, BLINK, PLANE, RIBBON, RIBBONBLADE,
                                PARENTOPTIONS, PTBEHAVIOR, PTCOLLISION, PTLIFE, REFRACTION,
                                RGBFIRE,
-                               RGBWATER, ROTATEANIM, SCALEANIM,
+                               RGBWATER, ROTATEANIM, SCALEANIM, SHADERSETTINGS,
                                SPAWN, TRANSFORM3D, TURBULENCE, UVSEQUENCE, VELOCITY3D)
 from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
                             Behavior, SimConfig, SimResources, SimScene,
@@ -2702,14 +2702,20 @@ class TestBillboard3D(unittest.TestCase):
 
     def test_brightness_multiplies_rgb(self):
         it, _ = self._item(billboard=billboard_fields(color=[100, 100, 100, 255],
-                                                      brightness=2.0))
+                                                      brightness=2.0, blendMode=1))
         self.assertAlmostEqual(it.color[0], 200 / 255.0, places=6)
+
+    def test_brightness_needs_emissive(self):
+        """「启用自发光」关着时亮度不生效。"""
+        it, _ = self._item(billboard=billboard_fields(color=[100, 100, 100, 255],
+                                                      brightness=2.0, blendMode=0))
+        self.assertAlmostEqual(it.color[0], 100 / 255.0, places=6)
 
     def test_base_tint_is_own_color_times_brightness(self):
         """`base_tint` 是渲染体自己的颜色（供 glue 当两层染色的逐通道滤镜用），
         跟 item.color 分开存，见 sim_preview.py 的 `_layers_of`。"""
         it, _ = self._item(billboard=billboard_fields(color=[128, 0, 255, 255],
-                                                      brightness=2.0))
+                                                      brightness=2.0, blendMode=1))
         r, g, b = it.extra["base_tint"]
         self.assertAlmostEqual(r, 128 / 255.0 * 2.0, places=6)
         self.assertAlmostEqual(g, 0.0, places=6)
@@ -2747,11 +2753,29 @@ class TestBillboard3D(unittest.TestCase):
         sim.step()
         self.assertEqual({i.color[0] for i in sim.build_render()}, {0.0})
 
-    def test_blend_mode_maps(self):
-        it, _ = self._item(billboard=billboard_fields(blendMode=0))
-        self.assertEqual(it.blend, "ALPHA")
-        it, _ = self._item(billboard=billboard_fields(blendMode=1))
-        self.assertEqual(it.blend, "ADDITIVE")
+    def test_emissive_toggle_does_not_pick_the_blend(self):
+        """「启用自发光」（blendMode）只管亮度；没有 SHADERSETTINGS 时一律 Alpha。"""
+        for flag in (0, 1):
+            it, _ = self._item(billboard=billboard_fields(blendMode=flag))
+            self.assertEqual(it.blend, "ALPHA")
+
+    def test_blend_state_picks_the_blend(self):
+        """SHADERSETTINGS.blendStateType 覆盖渲染体（实机四象限贴图对拍的映射）。"""
+        expect = {0: "OPAQUE", 1: "ALPHA", 2: "ADDITIVE", 3: "INV_MULTIPLY",
+                  4: "OPAQUE", 5: "ALPHA", 7: "ADDITIVE", 8: "MUL2X", 9: "ALPHA",
+                  10: "OPAQUE"}
+        for state, mode in expect.items():
+            it, _ = self._item(billboard=billboard_fields(blendMode=1),
+                               extra=[(SHADERSETTINGS, {"blendStateType": state})])
+            self.assertEqual(it.blend, mode, state)
+
+    def test_blend_state_6_draws_nothing(self):
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       billboard=billboard_fields(),
+                       extra=[(SHADERSETTINGS, {"blendStateType": 6})])
+        sim.step()
+        self.assertEqual(sim.build_render(), [])
 
     def test_alpha_comes_from_life(self):
         it, _ = self._item(frames=3, billboard=billboard_fields(),
@@ -2819,7 +2843,7 @@ class TestT2EndToEnd(unittest.TestCase):
         blocks, timl = _load_archetype("floating_particle_fire.json")
         sim = from_attr_blocks(blocks, timl)
         sim.step()
-        self.assertEqual(sim.build_render()[0].blend, "ALPHA")   # blendMode=0
+        self.assertEqual(sim.build_render()[0].blend, "ADDITIVE")   # blendStateType=2
 
     def test_more_attributes_are_simulated_now(self):
         """T2 之后，fire 原型的未模拟属性应该比 T1 时少。"""
@@ -4169,7 +4193,7 @@ class TestPlane(unittest.TestCase):
 
     def test_blend_and_color(self):
         it, _ = self._item(plane=plane_fields(blendMode=1, color=[0, 128, 255, 255]))
-        self.assertEqual(it.blend, "ADDITIVE")
+        self.assertEqual(it.blend, "ALPHA")
         self.assertAlmostEqual(it.color[2], 1.0, places=6)
         self.assertAlmostEqual(it.color[0], 0.0, places=6)
 
@@ -4840,6 +4864,20 @@ class TestMesh(unittest.TestCase):
     def test_viscon_index_is_passed_through(self):
         it, _ = self._item(mesh=mesh_fields(visconIndex=3))
         self.assertEqual(it.extra["viscon"], 3)
+
+    def test_draw_model_bit_off_hides_the_mesh(self):
+        """shadowCastBitflag 位 0 关闭（只画阴影 / 全关）时不绘制网格。"""
+        for flag in (0, 2, 14):
+            sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
+                           life=life_fields(indefiniteLifespan=1),
+                           extra=[(MESH, mesh_fields(shadowCastBitflag=flag))])
+            sim.step()
+            self.assertEqual(sim.build_render(), [], flag)
+
+    def test_draw_model_bit_on_draws_the_mesh(self):
+        for flag in (1, 3, 9):
+            it, _ = self._item(mesh=mesh_fields(shadowCastBitflag=flag))
+            self.assertEqual(it.kind, "MESH", flag)
 
     def test_emissive_off_by_default(self):
         it, _ = self._item()

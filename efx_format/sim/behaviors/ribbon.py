@@ -81,7 +81,7 @@ from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, RibbonStrip, Vec3
 from ..vecmath import rotate_euler
-from ._common import (axis_normal, blend_name, emitter_rotate, epv_note,
+from ._common import (axis_normal, emissive_on, emitter_rotate, epv_note,
                       pick_color, pick_trail, roll_rgba)
 from .parentoptions import ParentOptions
 
@@ -253,7 +253,7 @@ class Ribbon(Behavior):
         p.rolled["rb_rgba"], p.rolled["rb_coff"] = roll_rgba(f, rng, cfg)
         p.rolled["rb_uvlen"] = jitter(f.get("uvScaleLength", 1.0),
                                       f.get("uvScaleLengthJitter"), rng, mode)
-        p.rolled["rb_blend"] = blend_name(f)
+        p.rolled["rb_emissive"] = emissive_on(f)
 
         # 条带的基准伸展方向，即定长面片与柔体链的平直形态
         rolled_rot = (jitter(f.get("rotationX"), f.get("rotationXJitter"), rng, mode),
@@ -595,6 +595,8 @@ class Ribbon(Behavior):
         else:
             r0, g0, b0, a0 = rolled["rb_rgba"]
             bright = rolled["rb_bright"]
+        if not rolled.get("rb_emissive"):
+            bright = 1.0
 
         item = RenderItem(kind="RIBBON", pos=tip)
         item.points = points
@@ -603,7 +605,6 @@ class Ribbon(Behavior):
                       g0 * bright * p.color[1],
                       b0 * bright * p.color[2],
                       a0 * p.alpha]
-        item.blend = rolled["rb_blend"]
         item.extra["mode"] = st["mode"]
         item.extra["age"] = p.age
         uv = self._uv_scale(p, f, points, width)

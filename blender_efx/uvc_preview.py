@@ -85,9 +85,12 @@ _GAME_FPS = 60.0
 
 
 def _compute_uv(params, t):
-    """叠加启用通道在第 ``t`` 秒的偏移和缩放，公式见 ``sim.behaviors.uvcontrol``。"""
-    from ..efx_format.sim.behaviors.uvcontrol import uv_xform
-    su, sv, ou, ov = uv_xform(params["channels"], t * _GAME_FPS, _GAME_FPS)
+    """叠加启用通道在第 ``t`` 秒的偏移和缩放，公式见 ``sim.behaviors.uvcontrol``。
+
+    结果换算到网格 UV 空间：导入网格的 UV 已做 V 翻转。
+    """
+    from ..efx_format.sim.behaviors.uvcontrol import flip_v_xform, uv_xform
+    su, sv, ou, ov = flip_v_xform(uv_xform(params["channels"], t * _GAME_FPS, _GAME_FPS))
     return (ou, ov), (su, sv)
 
 

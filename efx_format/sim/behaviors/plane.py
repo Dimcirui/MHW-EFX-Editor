@@ -26,7 +26,7 @@ from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
 from . import _flowmap
-from ._common import (axis_normal, blend_name, epv_note, oriented_basis,
+from ._common import (axis_normal, emissive_on, epv_note, oriented_basis,
                       pick_color, quad_size, roll_rgba)
 
 
@@ -68,7 +68,7 @@ class Plane(Behavior):
         p.user[Plane] = {"normal": normal}
 
         p.rolled["pl_rgba"], p.rolled["pl_coff"] = roll_rgba(f, rng, em.config)
-        p.rolled["pl_blend"] = blend_name(f)
+        p.rolled["pl_emissive"] = emissive_on(f)
 
         _flowmap.roll(p, f, rng, mode)
 
@@ -92,6 +92,8 @@ class Plane(Behavior):
             w, h = rolled["pl_width"], rolled["pl_height"]
             r0, g0, b0, a0 = rolled["pl_rgba"]
             bright = rolled["pl_bright"]
+        if not rolled.get("pl_emissive"):
+            bright = 1.0
 
         item.size = quad_size(p, em.config, s, w, h)
         # 自旋 = 自身的 rotation2 与 ROTATEANIM 在 p.rot.z 上累积的平面旋转之和
@@ -103,7 +105,6 @@ class Plane(Behavior):
                       b0 * bright * p.color[2],
                       a0 * p.alpha]
         item.extra["base_tint"] = (r0 * bright, g0 * bright, b0 * bright)
-        item.blend = rolled["pl_blend"]
         item.extra["vel"] = p.vel
         item.extra["age"] = p.age
         return _flowmap.apply(p, em, item)

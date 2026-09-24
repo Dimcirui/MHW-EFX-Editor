@@ -20,7 +20,8 @@ uv1 与 uv2 两套通道共用同一批贴图，布局相同，启用开关分�
 时间基准由 `SimConfig.uvc_clock` 决定，默认取粒子自身的年龄。
 
 输出 `item.extra["uv_xform"] = (su, sv, ou, ov)`，由 glue 变换顶点 UV：
-`uv' = uv × (su, sv) + (ou, ov)`。没有贴图的渲染路径不含 UV，本属性在这些路径上不生效。
+`uv' = uv × (su, sv) + (ou, ov)`。这组值在游戏 UV 空间（v 向下）；V 翻转过的 UV 要先经
+`flip_v_xform` 换算。没有贴图的渲染路径不含 UV，本属性在这些路径上不生效。
 
 flowmap 字段组与渲染体上的同名字段同义，相位与强度沿用 `_flowmap` 的算法，开关是
 `enableFlowmap`，没有「播放一次后停止」位。流动贴图本身不在本属性里，由 glue 从同一 Entry 的
@@ -104,6 +105,16 @@ def uv_xform(chans, frames, fps):
         su *= s_u
         sv *= s_v
     return su, sv, ou, ov
+
+
+def flip_v_xform(xf):
+    """把游戏 UV 空间的 `(su, sv, ou, ov)` 换到 V 翻转（v' = 1 − v）的 UV 空间。
+
+    翻转空间里 V 的偏移、速度方向和缩放锚点都随之反向：
+    `1 − ((1 − v)·sv + ov) = v·sv + (1 − sv − ov)`。
+    """
+    su, sv, ou, ov = xf
+    return su, sv, ou, 1.0 - sv - ov
 
 
 @register(UVCONTROL)

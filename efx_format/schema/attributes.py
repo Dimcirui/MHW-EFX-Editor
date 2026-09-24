@@ -14,7 +14,7 @@ from .enums import (
     ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_IMPACT_PLAY_TRIGGER_MODE, ENUM_PTLIFE_STATUS,
     ENUM_EXTERNREF_TRIGGER,
     ENUM_RAYCAST_DIR, ENUM_RAYCAST_ID, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
-    ENUM_RENDER_LAYER, ENUM_SHADER_CONTROL, ENUM_ROTATION_MODE,
+    ENUM_RENDER_LAYER, ENUM_BLEND_STATE, ENUM_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE, ENUM_REFRACTION_OFFSET,
     ENUM_UNITBOUNDARY_TYPE,
     BITS_ENABLE_VELOCITY, BITS_ROTATEANIM_SPIN_FLAGS, BITS_RANDOMFIX_TABLE,
@@ -136,13 +136,12 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Int("typeFlag"),
     Int("unknEnum1"),  # 不满足 section_length 的自描述长度公式，故不按段长度命名
     Int("spacer"),
-    Bool("unknFlag2"),
+    Bool("versionRelated", label_en="Version Related", label_zh="版本相关"),
     Float("depthBias", label_en="Depth Bias", label_zh="深度偏移"),
     Float("softParticleDistance", label_en="Soft Particle Distance", label_zh="软粒子距离"),
     Int("unknBitmask3_0"),
-    # controlBitflag 是可混合位掩码而非枚举，保留原始整数编辑
     Int("unknEnum3_1", label_zh="渲染层 / Billboard 模式"),
-    Int("controlBitflag", label_zh="控制位标志"),
+    Enum("blendStateType", ENUM_BLEND_STATE, label_en="Blend State Type", label_zh="混合方式"),
     Float("unkn4_0"),
     Float("unkn4_1"),
     Float("unkn4_2"),
@@ -152,7 +151,7 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Float("unkn4_6"),
     Float("unkn4_7"),
 # presetId 是外部资源表的引用而非固定枚举，故保留原始 int，不建 Enum。
-    Int("presetId", label_zh="预设 ID"),
+    Int("presetId", label_en="Preset Id?", label_zh="预设 ID?"),
     Float("unkn4_9"),
     Float("unkn4_10"),
     Float("unkn4_11"),

@@ -65,6 +65,7 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
     import_meshes: BoolProperty(
         name="Import referenced meshes (mod3)",
         description="同时把每个 MESH 属性引用的 mod3（含 mrl3 与材质）经 MHW Model Editor 导入并绑定到预览。"
+                    "网格挂在对应 MESH 属性下，所在集合默认隐藏，需要时在大纲里点开。"
                     "需安装 Model Editor。提取根目录默认从 efx 位置向上自动找 nativePC，找不到时再用下方 Chunk Root",
         default=False,
         options={"SKIP_SAVE"},
@@ -196,6 +197,7 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
                     tot_uvs += n_uvs
                     tot_tex += n_tex
                     all_problems.extend(problems)
+                    uvs_link.hide_link_collection(context, root_obj)
                 except Exception:
                     pass
             uvs_link.report_problems(self, all_problems, tot_uvs, tot_tex)

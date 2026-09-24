@@ -419,6 +419,8 @@ def _enum_proxy_items(self, context):
     items = []
     values = set()
     for o in ed.options:
+        if o.hidden and o.value != cur:
+            continue
         lbl = (o.zh if zh else o.en) or o.en
         items.append((str(o.value), "%d — %s" % (o.value, lbl), lbl, o.value))
         values.add(o.value)
@@ -547,6 +549,8 @@ def _enumvec_items(item, comp):
     items = []
     values = set()
     for o in ed.options:
+        if o.hidden and o.value != cur:
+            continue
         lbl = (o.zh if zh else o.en) or o.en
         items.append((str(o.value), "%d — %s" % (o.value, lbl), lbl, o.value))
         values.add(o.value)

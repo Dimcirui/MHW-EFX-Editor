@@ -314,7 +314,9 @@ class RenderItem(object):
         #: 序列帧的翻转与 90° 旋转塞不进一个矩形，故由 UVSEQUENCE 写这里。
         #: None 表示没有序列帧信息，照 uv_rect 用整张图。
         self.uv_corners = None
-        self.blend = "ALPHA"                 # 'ALPHA' | 'ADDITIVE' | 'MULTIPLY'
+        #: 'ALPHA' | 'ADDITIVE' | 'OPAQUE' | 'INV_MULTIPLY' | 'MUL2X'（SHADERSETTINGS）
+        #: 或 'MULTIPLY'（REFRACTION）
+        self.blend = "ALPHA"
         self.tex_key = None                  # 贴图标识，由 glue 层解释
 
         #: 条带顶点串 `[(pos, half_width, alpha_mul), ...]`，从尾到头。

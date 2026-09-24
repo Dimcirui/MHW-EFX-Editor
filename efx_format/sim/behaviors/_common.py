@@ -2,7 +2,7 @@
 """渲染主体之间共用的函数。
 
 BILLBOARD3D / PLANE / RIBBON / MESH 具有同一组语义相同的颜色字段（color / colorRange /
-useColorRange / brightness / blendMode），统一在此实现，避免四处重复及由此产生的不一致。
+useColorRange / brightness / blendMode（启用自发光）），统一在此实现，避免四处重复及由此产生的不一致。
 
 染色模型：`color` 与 `colorRange` 构成 RGBA 四元组的固定值与随机范围，各通道**独立**在两者
 之间取值，**alpha（第 4 字节）同样参与**：
@@ -40,10 +40,6 @@ import math
 from ..rng import jitter, jitter_int
 from ..state import Vec3
 from ..vecmath import ROT_ORDER_TRANSFORM, rot_order_name, rotate_euler
-
-BLEND_ALPHA = 0
-BLEND_ADDITIVE = 1
-
 
 def rgba(seq, missing=1.0):
     """将 XYZ type 2 的四个字节（`<4B`）转换为 0-1 浮点四元组。
@@ -121,9 +117,12 @@ def quad_size(p, cfg, scale, width, height):
     return Vec3(max(0.0, width + ax[0]) * s, max(0.0, height + ax[1]) * s, 1.0)
 
 
-def blend_name(f, field="blendMode"):
-    """ENUM_BLEND_MODE：0=Alpha 混合，1=加法混合。"""
-    return "ADDITIVE" if f.i(field) == BLEND_ADDITIVE else "ALPHA"
+def emissive_on(f):
+    """「启用自发光」（ori_name 为 blendMode）：开启时 brightness 生效，关闭时亮度按 1 计。
+
+    它不决定混合方式，混合方式由 SHADERSETTINGS.blendStateType 决定。
+    """
+    return bool(f.i("blendMode"))
 
 
 def epv_note(f, em, block, *slots):

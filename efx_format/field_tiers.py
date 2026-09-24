@@ -279,7 +279,6 @@ ADVANCED_FIELDS = {
         'BeginMod3',
         'CD1',
         'typeFlag',
-        'unknBitmask40',
         'unknBool0',
         'unknBool1',
         'unknBool2',
@@ -560,7 +559,7 @@ ADVANCED_FIELDS = {
         'unknEnum3_1',
         'unknEnum5_0',
         'unknFixed4_12',
-        'unknFlag2',
+        'versionRelated',
     }),
     'SHOVEL': frozenset({
         'section_length',

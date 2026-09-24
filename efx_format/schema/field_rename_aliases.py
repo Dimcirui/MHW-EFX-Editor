@@ -8,6 +8,11 @@
 """
 
 FIELD_RENAME_ALIASES = {
+    # SHADERSETTINGS
+    ("SHADERSETTINGS", "controlBitflag"): "blendStateType",
+    ("SHADERSETTINGS", "blendState"): "blendStateType",
+    ("SHADERSETTINGS", "unknFlag2"): "versionRelated",
+
     # HOMING
     ("HOMING", "restoringForce"): "turnRate",
     ("HOMING", "speed"): "initialSpeed",
@@ -492,6 +497,8 @@ FIELD_RENAME_ALIASES = {
 
     # MESH
     ("MESH", "starting_model_viscon"): "visconIndex",
+    ("MESH", "unknBitmask40"): "baseAxis",
+    ("EXTERNMESH", "unknBitmask40"): "baseAxis",
     ("MESH", "end_model_viscon"): "visconIndexJitter",
 
     # PTLIFE

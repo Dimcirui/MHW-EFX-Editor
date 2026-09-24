@@ -5,6 +5,8 @@
 - 相对路径依次从手设根、EFX 所在 nativePC、EFX 目录解析；无法解析项返回 unresolved。
 - 同一 mod3 只导入一次；每个 MESH 属性按自己的 viscon 范围绑定多个网格，同时保留首个
   命中对象以兼容单目标消费者。
+- 导入的网格保持世界变换挂到 MESH 属性下作子对象，同时留在 `_mesh` 集合；mat_name_hash
+  对得上的 mrl3 材质对象挂到同 Entry 的 MATERIAL 属性下。`_mesh` 与 mrl3 集合默认隐藏。
 - 仅解析 EFX 原始路径，不重序列化 EFX 数据。
 """
 
@@ -16,8 +18,8 @@ import bpy
 from bpy.props import CollectionProperty, IntProperty, PointerProperty
 from bpy.types import PropertyGroup
 
-from ..efx_format.hashes import MESH
-from ..efx_format.structs import extract_paths
+from ..efx_format.hashes import MATERIAL, MESH
+from ..efx_format.structs import extract_paths, unpack_material
 from . import root_collection as _rc
 
 
@@ -174,8 +176,13 @@ def _ensure_mesh_collection(context, root_col, cache):
     return col
 
 
+#: Model Editor 给 mrl3 材质 Empty 和所在集合打的 ~TYPE 标记。
+_MRL3_MATERIAL_MARKER = "MHW_MRL3_MATERIAL"
+_MRL3_COLLECTION_MARKER = "MHW_MRL3_COLLECTION"
+
+
 def _import_one_mod3(filepath, context, root_obj, col_cache):
-    """调 Model Editor 导入一个 .mod3（含 mrl3+材质），返回本次新建的网格对象列表。
+    """调 Model Editor 导入一个 .mod3（含 mrl3+材质），返回本次新建的 (网格, mrl3 材质对象)。
 
     经 bpy.ops 默认 EXEC_DEFAULT → 只走 execute()，operator 的 invoke()/setMod3ImportDefaults
     不触发，故这里传的 kwargs 即最终值（不会被偏好默认覆盖）。
@@ -214,11 +221,10 @@ def _import_one_mod3(filepath, context, root_obj, col_cache):
         except Exception:
             pass   # 归拢失败只是摆放不整齐，导入本身照常
 
-    new_meshes = [
-        o for o in bpy.data.objects
-        if o.name not in before and o.type == "MESH"
-    ]
-    return new_meshes
+    new_all = [o for o in bpy.data.objects if o.name not in before]
+    new_meshes = [o for o in new_all if o.type == "MESH"]
+    new_mats = [o for o in new_all if o.get("~TYPE") == _MRL3_MATERIAL_MARKER]
+    return new_meshes, new_mats
 
 
 def _bind_viscon_range(blk, meshes):
@@ -230,7 +236,7 @@ def _bind_viscon_range(blk, meshes):
     uvc_preview 等尚未走多网格路径的消费方继续用。解析不出任何 Group_ 编号的网格
     （自定义命名 / 非 Model Editor 导出）时不过滤——全部当命中，保底不丢绑定。
 
-    返回是否至少绑定成功一个网格。
+    返回绑定上的网格列表。
     """
     lo, hi = _attribute_viscon_range(blk)
     tagged = [(m, _parse_group_id(m.name)) for m in meshes]
@@ -253,7 +259,97 @@ def _bind_viscon_range(blk, meshes):
             blk.efx_mesh_target = picked[0][0]
         except Exception:
             pass
-    return bool(picked)
+    return [m for m, _g in picked]
+
+
+def _parent_under_attribute(blk, meshes, done):
+    """把网格挂到 MESH 属性下，保持世界变换；集合归属不变。
+
+    一个对象只能有一个父级，多个属性共用同一 mod3 时先到先得（done 记已挂的对象名）。
+    原父级（mod3 骨架）被替换，蒙皮修改器照常生效。
+    """
+    try:
+        inv = blk.matrix_world.inverted_safe()
+    except Exception:
+        return
+    for m in meshes:
+        if m.name in done:
+            continue
+        try:
+            mw = m.matrix_world.copy()
+            m.parent = blk
+            m.parent_type = "OBJECT"
+            m.matrix_parent_inverse = inv
+            m.matrix_basis = mw
+        except Exception:
+            continue
+        done.add(m.name)
+
+
+def hide_collection(context, col):
+    """在各视图层关掉集合的视口显示（大纲里的眼睛图标）。"""
+    if col is None:
+        return
+    from .io_tree import _find_layer_collection
+    for vl in context.scene.view_layers:
+        try:
+            lc = _find_layer_collection(vl.layer_collection, col)
+            if lc is not None:
+                lc.hide_viewport = True
+        except Exception:
+            pass
+
+
+def _material_name_hashes(blk):
+    """MATERIAL 属性各材质槽的 mat_name_hash（无符号）；读不到返回空集。"""
+    out = set()
+    try:
+        for item in blk.efx_block.field_items:
+            if item.ori_name.startswith("matnamehash_"):
+                out.add(int(item.uint_str) & 0xFFFFFFFF)
+    except Exception:
+        pass
+    if out:
+        return out
+    try:
+        d, _ = unpack_material(base64.b64decode(str(blk.get("data_bytes", ""))))
+        out = {b["mat_name_hash"] & 0xFFFFFFFF for b in d["blocks"]}
+    except Exception:
+        pass
+    return out
+
+
+def _entry_material_attributes(entry_obj):
+    """Entry 下的 MATERIAL 属性对象。"""
+    out = []
+    for o in getattr(entry_obj, "children", ()):
+        if o.get("~TYPE") != "EFX_ATTRIBUTE":
+            continue
+        try:
+            if int(o.get("type_hash", "0")) == MATERIAL:
+                out.append(o)
+        except Exception:
+            pass
+    return out
+
+
+def _mrl3_material_hash(mat_obj):
+    try:
+        return int(mat_obj.mhw_mrl3_material.materialNameHash) & 0xFFFFFFFF
+    except Exception:
+        return None
+
+
+def _parent_matched_materials(mesh_blk, mats, done):
+    """把 mesh_blk 同 Entry 的 MATERIAL 属性按 mat_name_hash 对上的 mrl3 材质对象挂过去。"""
+    if not mats:
+        return
+    for mat_blk in _entry_material_attributes(mesh_blk.parent):
+        hashes = _material_name_hashes(mat_blk)
+        if not hashes:
+            continue
+        matched = [m for m in mats if _mrl3_material_hash(m) in hashes]
+        _parent_under_attribute(mat_blk, matched, done)
 
 
 def import_and_bind(root_obj, context, chunk_root, efx_dir=None):
@@ -267,10 +363,17 @@ def import_and_bind(root_obj, context, chunk_root, efx_dir=None):
     不再像旧版那样所有引用者共绑「第一个」。
     导入出来的一排 mod3/mrl3 集合统一收进这个 .efx 顶层集合下的 `{efx 文件名}_mesh`
     子集合（红色），免得几个 MESH 属性就在大纲里铺一长条。
+    网格随后挂到对应 MESH 属性下；不在任何属性 viscon 范围内的网格挂到第一个引用该
+    mod3 的属性下。同 Entry 有 MATERIAL 属性时，mat_name_hash 对得上的 mrl3 材质对象
+    挂到该 MATERIAL 属性下，对不上的不挂。`_mesh` 集合和其中的 mrl3 集合最后隐藏，
+    免得挡住特效。
     """
     n_bound = 0
     unresolved = []
-    imported_cache = {}  # 绝对路径 → 这个 mod3 导入出的全部网格对象（去重，只导一次）
+    imported_cache = {}  # 绝对路径 → 这个 mod3 导入出的 (网格, mrl3 材质对象)（去重，只导一次）
+    first_owner = {}     # 绝对路径 → 第一个引用它的 MESH 属性
+    owners = []          # (MESH 属性, 绝对路径)
+    bindings = []        # (MESH 属性, 绑定上的网格)
     col_cache = {}       # 本次导入共用的 {efx}_mesh 总集合（懒建）
 
     for blk, rel in iter_mesh_attributes(root_obj):
@@ -278,23 +381,49 @@ def import_and_bind(root_obj, context, chunk_root, efx_dir=None):
         if abspath is None:
             unresolved.append((blk.name, rel))
             continue
-        meshes = imported_cache.get(abspath)
-        if meshes is None:
+        got = imported_cache.get(abspath)
+        if got is None:
             try:
-                meshes = _import_one_mod3(abspath, context, root_obj, col_cache)
+                got = _import_one_mod3(abspath, context, root_obj, col_cache)
             except Exception:
                 unresolved.append((blk.name, rel))
                 continue
-            if not meshes:
+            if not got[0]:
                 unresolved.append((blk.name, rel))
                 continue
-            imported_cache[abspath] = meshes
+            imported_cache[abspath] = got
+        first_owner.setdefault(abspath, blk)
+        owners.append((blk, abspath))
 
-        if _bind_viscon_range(blk, meshes):
+        picked = _bind_viscon_range(blk, got[0])
+        if picked:
             n_bound += 1
+            bindings.append((blk, picked))
         else:
             unresolved.append((blk.name, rel))
 
+    # 属性的世界矩阵要最新，挂父级才能保持对象原位。
+    try:
+        context.view_layer.update()
+    except Exception:
+        pass
+    parented = set()
+    for blk, picked in bindings:
+        _parent_under_attribute(blk, picked, parented)
+    for abspath, (meshes, _mats) in imported_cache.items():
+        _parent_under_attribute(first_owner[abspath], meshes, parented)
+    for blk, abspath in owners:
+        _parent_matched_materials(blk, imported_cache[abspath][1], parented)
+
+    hide_collection(context, col_cache.get("col"))
+    mrl3_cols = {}
+    for _meshes, mats in imported_cache.values():
+        for m in mats:
+            for c in m.users_collection:
+                if c.get("~TYPE") == _MRL3_COLLECTION_MARKER:
+                    mrl3_cols[c.name] = c
+    for c in mrl3_cols.values():
+        hide_collection(context, c)
     return n_bound, unresolved
 
 

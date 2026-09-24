@@ -26,8 +26,9 @@ glue 完成：
     colorRate(+Jitter) /        两者各自的倍率
     emissiveColorRate(+Jitter)
 
-affectedByLight / shadowCastBitflag / tracking_flags / enableIntensity* 均为渲染管线开关，
-预览中没有对应实现，不参与计算；`epv_color_slot1/2` 仅记录 note。
+`shadowCastBitflag` 的位 0（绘制模型）关闭时不绘制网格；位 1（绘制阴影）等其余位预览不实现。
+affectedByLight / tracking_flags / enableIntensity* 均为渲染管线开关，预览中没有对应实现，不参与
+计算；`epv_color_slot1/2` 仅记录 note。
 
 维护约束：
 - 带 TIML 的属性必须在 `build_render` 中逐帧重新求值 rotation / scale / color。常见的淡入淡出
@@ -73,6 +74,7 @@ class Mesh(Behavior):
         if f is None:
             return
         mode = em.config.jitter_mode
+        p.rolled["me_draw"] = bool(f.i("shadowCastBitflag", 1) & 0x01)
 
         rb, ra = f.xyz_lo("rotation"), f.xyz_hi("rotation")
         p.rolled["me_rot"] = Vec3(jitter(rb.x, ra.x, rng, mode),
@@ -110,6 +112,8 @@ class Mesh(Behavior):
         rolled = p.rolled
         if "me_rgba" not in rolled:
             return item
+        if not rolled.get("me_draw", True):
+            return RenderItem(kind="NONE")     # 只画阴影或全部关闭，预览不画网格
 
         if self._has_tracks:
             f = em.f(MESH, p)

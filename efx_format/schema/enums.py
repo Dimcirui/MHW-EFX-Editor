@@ -112,12 +112,21 @@ ENUM_RENDER_LAYER = EnumDef("RenderLayerMode", [
     (8, "3D Billboard v8", "3D Billboard 变体8"), 
     (9, "3D Billboard v9", "3D Billboard 变体9"),
 ])
-ENUM_SHADER_CONTROL = EnumDef("ShaderControlFlag", [
-    (0, "No Alpha", "无 alpha"), 
-    (1, "Alpha Enabled", "启用 alpha"),
-    (2, "Emissive", "自发光"), 
-    (3, "Inverted Color + Alpha", "反色 + alpha"), 
-    (6, "Greyscale", "灰度"),
+# SHADERSETTINGS.blendStateType：渲染项与背景的混合方式，覆盖渲染体自身的设置。
+# 4/5/7/9/10 与对应基础模式的画面相同。4/10 语料未出现，9 看不出独立特征，不列入下拉；
+# 5 只出现在贴花 PtBehavior 上，6 多用于不显示的承载 Entry。
+ENUM_BLEND_STATE = EnumDef("BlendState", [
+    (0, "Opaque", "不透明"),
+    (1, "Alpha", "Alpha 混合"),
+    (2, "Additive", "加法"),
+    (3, "Inverse Multiply", "反相乘法"),
+    (4, "Opaque (4)", "不透明 (4)", True),
+    (5, "PtBehavior (decal)", "PtBehavior (decal)"),
+    (6, "NoDraw", "不绘制(dummy)"),
+    (7, "Additive (7)", "加法 (7)"),
+    (8, "Multiply x2", "乘法 x2"),
+    (9, "Alpha (9)", "Alpha 混合 (9)", True),
+    (10, "Opaque (10)", "不透明 (10)", True),
 ])
 ENUM_ROTATION_MODE = EnumDef("RotationMode", [
     (0, "Plane Rotation", "平面旋转系"), 
@@ -137,16 +146,16 @@ ENUM_TRACKING_POS = EnumDef("TrackingModePos",
 ENUM_TRACKING_ANGLE = EnumDef("TrackingModeAngle",
     _TRACKING_BASE + [(3, "Snap to Angle And Track", "对齐到角度并追踪")])  # angle
 
-# MESH.tracking_flags 是不可组合的枚举，未知值保留原整数
+# MESH.tracking_flags 是不可组合的枚举，未知值保留原整数；3/5/7 不列入下拉
 ENUM_MESH_TRACKING_FLAGS = EnumDef("MeshTrackingFlags", [
-    (0, "Guide Source", "引导源"),
-    (1, "Away from Source", "远离源"),
+    (0, "Face Source", "面向源"),
+    (1, "Face Away From Source", "背对源"),
     (2, "Look Away From Camera", "背对摄像机"),
-    (3, "WTF Occupies Entire Map", "WTF 占满整张地图"),
-    (4, "Guide Camera", "引导摄像机"),
-    (5, "Disappears", "消失"),
+    (3, "WTF Occupies Entire Map", "WTF 占满整张地图", True),
+    (4, "Face Camera", "面向摄像机"),
+    (5, "Disappears", "消失", True),
     (6, "Don't Track Rotation At All", "完全不追踪旋转"),
-    (7, "Disappears", "消失"),
+    (7, "Disappears", "消失", True),
     (8, "Perpendicular to Ground, Don't Track", "垂直于地面且不追踪"),
     (10, "Unknown (10)", "未知 (10)"),
 ])
@@ -229,6 +238,18 @@ BITS_LOOPING_MODE = [
 ]
 
 # 渲染主体共用的 LightGroup 位序；0xFF 是独立的全选哨兵
+# MESH.shadowCastBitflag：全部关闭时模型和阴影都不绘制
+BITS_MESH_DRAW = [
+    (0x01, "Draw Model", "绘制模型"),
+    (0x02, "Draw Shadow", "绘制阴影"),
+    (0x04, "Unknown (bit 2)", "未知（位 2）"),
+    (0x08, "Unknown (bit 3)", "未知（位 3）"),
+    (0x10, "Unknown (bit 4)", "未知（位 4）"),
+    (0x20, "Unknown (bit 5)", "未知（位 5）"),
+    (0x40, "Unknown (bit 6)", "未知（位 6）"),
+    (0x80, "Unknown (bit 7)", "未知（位 7）"),
+]
+
 BITS_LIGHT_GROUP = [
     (0x01, "VFX", "VFX"),
     (0x02, "Player/Otomo", "玩家/艾露猫"),

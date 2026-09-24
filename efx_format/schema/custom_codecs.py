@@ -18,7 +18,7 @@ from .codec import (
 )
 from .fields_model import Attribute, Int, Float, Enum, Bool, Bitmask, Byte, attr_from_legacy
 from .enums import (
-    BITS_APPLICATION_RULE, BITS_LOOPING_MODE, BITS_LIGHT_GROUP,
+    BITS_APPLICATION_RULE, BITS_LOOPING_MODE, BITS_LIGHT_GROUP, BITS_MESH_DRAW,
     BITS_PLANE_UNKN5_1,
     ENUM_LOOPING_ORIENTATION, ENUM_MESH_TRACKING_FLAGS, ENUM_RIBBON_MODE,
     ENUM_RIBBON_UV_SCALE_MODE,
@@ -295,7 +295,7 @@ _MOD3_PROPERTIES_SCHEMA = [
     ('unknFlag7_1', 'i'),
     ('rotationOrder', 'i'),
     ('tracking_flags',          'i'),
-    ('unknBitmask40',                  'i'),
+    ('baseAxis',                'i'),
     ('affectedByLight',         'i'),
     ('shadowCastBitflag',       'i'),
     ('epv_color_slot1',         'i'),
@@ -335,6 +335,10 @@ _mesh_ovr['tracking_flags'] = Enum('tracking_flags', ENUM_MESH_TRACKING_FLAGS, l
 _mesh_ovr['affectedByLight'] = Bitmask(
     'affectedByLight', BITS_LIGHT_GROUP, all_value=255, strict=True,
     label_zh="受光照影响",
+)
+_mesh_ovr['baseAxis'] = Enum('baseAxis', _AXIS_DIRECTION6, label_zh="基准轴")
+_mesh_ovr['shadowCastBitflag'] = Bitmask(
+    'shadowCastBitflag', BITS_MESH_DRAW, strict=True, label_zh="绘制位标志",
 )
 _mesh_ovr['visconIndex'] = Int('visconIndex', label_zh="可见条件索引")
 MESH_ATTR = attr_from_legacy(
@@ -528,7 +532,7 @@ RIBBON_ATTR = attr_from_legacy(
                                label_zh="长度方向贴图缩放"),
         'uvScaleWidth':  Float('uvScaleWidth', label_en="UV Scale Width",
                                label_zh="宽度方向贴图缩放"),
-        # 只有 Alpha Blend(0) / Additive(1) 两值，Additive 即自发光叠加，故用勾选框
+        # 只有 0/1 两值：开启后亮度生效；混合方式由 SHADERSETTINGS.blendStateType 决定
         'blendMode':     Bool('blendMode', backing='B', label_en="Enable Emissive", label_zh="启用自发光"),
         'useTrailTimeScale': Bool('useTrailTimeScale', label_zh="启用条带时间缩放"),
         'trailTimeScale':    Float('trailTimeScale', label_zh="条带时间缩放"),

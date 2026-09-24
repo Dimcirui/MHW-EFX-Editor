@@ -356,6 +356,7 @@ class PtBehavior(Behavior):
         item.color = [r0 * p.color[0], g0 * p.color[1], b0 * p.color[2], alpha]
         item.extra["base_tint"] = (r0, g0, b0)
         item.blend = st["blend"]
+        item.extra["own_blend"] = True     # 贴花按自己的 mBlendMode，不受 SHADERSETTINGS 覆盖
         item.extra["vel"] = p.vel
         item.extra["age"] = p.age
         item.extra["decal_ground"] = self._ground

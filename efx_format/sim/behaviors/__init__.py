@@ -37,6 +37,7 @@ from . import ribbon           # noqa: F401
 from . import ribbonblade      # noqa: F401
 from . import rotateanim       # noqa: F401
 from . import scaleanim        # noqa: F401
+from . import shadersettings   # noqa: F401
 from . import spawn            # noqa: F401
 from . import transform3d      # noqa: F401
 from . import uvcontrol        # noqa: F401

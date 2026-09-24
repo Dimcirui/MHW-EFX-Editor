@@ -15,13 +15,14 @@ from typing import Any, Callable, List, Optional, Tuple
 # 枚举与位定义
 
 class EnumOption(object):
-    """一个枚举取值。"""
-    __slots__ = ("value", "en", "zh")
+    """一个枚举取值。`hidden` 的取值不列入下拉，仅在当前值恰为它时显示。"""
+    __slots__ = ("value", "en", "zh", "hidden")
 
-    def __init__(self, value, en, zh=""):
+    def __init__(self, value, en, zh="", hidden=False):
         self.value = int(value)
         self.en = en
         self.zh = zh or en
+        self.hidden = bool(hidden)
 
 
 class EnumDef(object):

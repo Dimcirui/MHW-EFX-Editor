@@ -1083,6 +1083,15 @@ def _cross(a, b):
             a[0] * b[1] - a[1] * b[0])
 
 
+def _mesh_uv_xform(item):
+    """UVCONTROL 变换换到网格 UV 空间；导入网格的 UV 已做 V 翻转。"""
+    xf = item.extra.get("uv_xform")
+    if not xf:
+        return None
+    from ..efx_format.sim.behaviors.uvcontrol import flip_v_xform
+    return flip_v_xform(xf)
+
+
 def _uv_corners(item, flip_v, tex):
     """返回贴图四角 UV；v 方向由可配置的 ``flip_v`` 统一处理。"""
     if not tex:
@@ -1675,7 +1684,7 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
                 c2[:] = (core if core is not None else col)
                 c2[:, 3] = col[3]
                 base = uvarr = numpy.array(muv, dtype="f4")
-                xf = item.extra.get("uv_xform")
+                xf = _mesh_uv_xform(item)
                 if xf:      # UVCONTROL：uv' = uv × 缩放 + 偏移
                     uvarr = uvarr * numpy.array((xf[0], xf[1]), dtype="f4")
                     uvarr += numpy.array((xf[2], xf[3]), dtype="f4")
@@ -1697,7 +1706,7 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
                       a2[0] * vx + a2[1] * vy + a2[2] * vz + t2))
     colors.extend([col] * len(tris))
     if uvs is not None and muv is not None:
-        xf = item.extra.get("uv_xform")
+        xf = _mesh_uv_xform(item)
         if xf:
             uvs.extend([(u * xf[0] + xf[2], v * xf[1] + xf[3]) for (u, v) in muv])
         else:
@@ -1707,6 +1716,31 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
         if luvs is not None:
             luvs.extend(muv)
             flowoffs.extend([(flow_amt, flow_amt)] * len(tris))
+
+
+#: 渲染项可用的混合方式；其余值按 'ALPHA' 画。
+_BLEND_MODES = ("ALPHA", "ADDITIVE", "MULTIPLY", "OPAQUE", "INV_MULTIPLY", "MUL2X")
+#: 以乘法混合实现、颜色不经过 HDR 映射的模式
+_MULTIPLY_MODES = ("MULTIPLY", "INV_MULTIPLY", "MUL2X")
+#: 渲染项混合方式 → ``gpu.state.blend_set`` 预设
+_GPU_BLEND = {"OPAQUE": "NONE", "INV_MULTIPLY": "MULTIPLY", "MUL2X": "MULTIPLY"}
+#: 贴图 shader 的 ``blendOut`` 取值
+_BLEND_OUT = {"INV_MULTIPLY": 1.0, "MUL2X": 2.0}
+
+
+def _flat_blend_colors(colors, mode):
+    """纯色路径的乘法乘数，与贴图 shader 的 ``blendOut`` 分支一致。"""
+    out = []
+    for c in colors:
+        r, g, b = float(c[0]), float(c[1]), float(c[2])
+        a = max(0.0, min(1.0, float(c[3])))
+        if mode == "MUL2X":
+            out.append(((0.5 + (r - 0.5) * a) * 2.0, (0.5 + (g - 0.5) * a) * 2.0,
+                        (0.5 + (b - 0.5) * a) * 2.0, 1.0))
+        else:
+            out.append((max(0.0, 1.0 - r * a), max(0.0, 1.0 - g * a),
+                        max(0.0, 1.0 - b * a), 1.0))
+    return out
 
 
 #: 贴图 shader；``False`` 表示创建失败并回退纯色绘制。
@@ -1727,6 +1761,8 @@ void main()
 """
 
 #: ``alphaFix`` 逐纹素修正不透明度；luma 模式用于没有有效 alpha 的贴图。
+#: ``blendOut`` 为 1 / 2 时输出乘法混合的乘数：反相乘法 ``1 − 颜色×alpha``、
+#: 乘法×2 ``lerp(0.5, 颜色, alpha)×2``。
 #: RGBFIRE 与 RGBWATER 使用互斥的双层通道遮罩；其他项逐通道染色。
 _FRAG_SRC = """
 void main()
@@ -1750,7 +1786,14 @@ void main()
   }
   float a = mix(t.a, lum, alphaFix.z);
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
-  fragColor = vec4(rgb, a * v_col.a);
+  a *= v_col.a;
+  if (blendOut > 1.5) {
+    fragColor = vec4(mix(vec3(0.5), rgb, clamp(a, 0.0, 1.0)) * 2.0, 1.0);
+  } else if (blendOut > 0.5) {
+    fragColor = vec4(max(vec3(0.0), 1.0 - rgb * a), 1.0);
+  } else {
+    fragColor = vec4(rgb, a);
+  }
 }
 """
 
@@ -1852,7 +1895,14 @@ void main()
   }
   float a = mix(t.a, lum, alphaFix.z);
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
-  fragColor = vec4(rgb, a * v_col.a);
+  a *= v_col.a;
+  if (blendOut > 1.5) {
+    fragColor = vec4(mix(vec3(0.5), rgb, clamp(a, 0.0, 1.0)) * 2.0, 1.0);
+  } else if (blendOut > 0.5) {
+    fragColor = vec4(max(vec3(0.0), 1.0 - rgb * a), 1.0);
+  } else {
+    fragColor = vec4(rgb, a);
+  }
 }
 """
 
@@ -1875,6 +1925,7 @@ def _flow_shader():
         info.push_constant("VEC3", "alphaFix")
         info.push_constant("FLOAT", "fireLerp")
         info.push_constant("FLOAT", "waterLerp")
+        info.push_constant("FLOAT", "blendOut")
         info.sampler(0, "FLOAT_2D", "image")
         info.sampler(1, "FLOAT_2D", "flowTex")
         info.vertex_in(0, "VEC3", "pos")
@@ -1913,6 +1964,7 @@ def _tex_shader():
         info.push_constant("VEC3", "alphaFix")
         info.push_constant("FLOAT", "fireLerp")
         info.push_constant("FLOAT", "waterLerp")
+        info.push_constant("FLOAT", "blendOut")
         info.sampler(0, "FLOAT_2D", "image")
         info.vertex_in(0, "VEC3", "pos")
         info.vertex_in(1, "VEC2", "uv")
@@ -2046,7 +2098,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             pass
         elif blend != "AUTO":
             mode = blend
-        if mode not in ("ALPHA", "ADDITIVE", "MULTIPLY"):
+        if mode not in _BLEND_MODES:
             mode = "ALPHA"
         low, gamma = it.extra.get("alpha_fix") or (0.0, 1.0)
         if luma_mode == "auto":
@@ -2117,6 +2169,9 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         xf = it.extra.get("uv_xform")
         if not xf or not c:
             return c
+        if flip_v:
+            from ..efx_format.sim.behaviors.uvcontrol import flip_v_xform
+            xf = flip_v_xform(xf)
         su, sv, ou, ov = xf
         return tuple((u * su + ou, v * sv + ov) for (u, v) in c)
 
@@ -2176,7 +2231,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             # 向下投射的贴花贴在地面（世界 Z=0）上，不跟随发射器高度。
             center = (center[0], center[1], 0.0)
         tex_name = _tex_of(it)
-        if it.blend == "MULTIPLY":
+        if it.blend in _MULTIPLY_MODES:
             # 乘法路径不能经过 HDR 映射，否则会丢失 brightness 语义。
             col = tuple(it.color)
         else:
@@ -2355,6 +2410,8 @@ def _build_payload(scene, rv3d, trs):
                                           {"pos": bv, "uv": bu, "color": bc,
                                            "col2": b2})))
         else:
+            if mode in _BLEND_OUT:
+                bc = _flat_blend_colors(bc, mode)
             tris.append((mode, flat, None, None, None,
                          batch_for_shader(flat, "TRIS",
                                           {"pos": bv, "color": bc})))
@@ -2419,7 +2476,7 @@ def _draw():
     gpu.state.depth_mask_set(False)      # 粒子间不写深度，仍受场景深度测试约束。
     try:
         for mode, shader, tex, fix, lerp, batch in tris:
-            gpu.state.blend_set(mode)
+            gpu.state.blend_set(_GPU_BLEND.get(mode, mode))
             if tex is not None:
                 shader.bind()
                 if isinstance(tex, tuple):
@@ -2439,6 +2496,7 @@ def _draw():
                         # 每次绑定均设置两个值，避免前一桶的 shader 状态泄漏。
                         shader.uniform_float("fireLerp", lerp[0])
                         shader.uniform_float("waterLerp", lerp[1])
+                    shader.uniform_float("blendOut", _BLEND_OUT.get(mode, 0.0))
             batch.draw(shader)
 
         overlay = "ADDITIVE" if blend == "ADDITIVE" else "ALPHA"

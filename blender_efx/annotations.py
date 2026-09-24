@@ -51,6 +51,13 @@ FIELD_OFFICIAL_NAMES = {
     # 双语 tooltip 字典
 # ─────────────────────────────────────────────────────────────────────────────
 
+#: 各渲染体「启用自发光」（ori_name 仍为 blendMode）共用的提示
+_EMISSIVE_TIP_EN = ("Makes Brightness take effect: the colour is multiplied by Brightness and "
+                    "high values bloom. How the particle combines with the background is set by "
+                    "Shader Settings' Blend State.")
+_EMISSIVE_TIP_ZH = ("开启后亮度生效：颜色乘以亮度，亮度高时会溢光。与背景的混合方式由 Shader "
+                    "Settings 的混合方式决定。")
+
 FIELD_ANNOTATIONS = {
 
     # ─── TRANSFORM3D ──────────────────────────────────────────────────────────
@@ -213,11 +220,17 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── SHADERSETTINGS ───────────────────────────────────────────────────────
-    ("SHADERSETTINGS", "controlBitflag"): {
-        "EN": "0=No alpha, 1=Alpha enabled, 2=Emissive behavior, "
-              "3=Inverted color + alpha, 6=Greyscale",
-        "ZH": "0=无 alpha, 1=启用 alpha, 2=自发光行为, "
-              "3=反色 + alpha, 6=灰度",
+    ("SHADERSETTINGS", "blendStateType"): {
+        "EN": "How the particle is combined with the background; overrides the renderer's "
+              "own setting. Opaque: alpha is ignored. Alpha: normal transparency. Additive: "
+              "brightens the background and black disappears. Inverse Multiply: background "
+              "× (1 − colour), so white turns it black. Multiply x2: background × colour × 2, "
+              "so mid-grey leaves it unchanged. PtBehavior (decal): used by decals. NoDraw: the "
+              "particle itself is not drawn.",
+        "ZH": "粒子与背景的混合方式，覆盖渲染体自身的设置。不透明：忽略 alpha。Alpha 混合："
+              "普通半透明。加法：提亮背景，黑色部分不可见。反相乘法：背景 × (1 − 颜色)，白色会"
+              "把背景压黑。乘法 x2：背景 × 颜色 × 2，中灰不改变背景。PtBehavior (decal)：贴花使用。"
+              "不绘制(dummy)：粒子本身不绘制。",
     },
     ("SHADERSETTINGS", "objectInteractionFlag0"): {
         "EN": "Player Weapons and Interactables",
@@ -1208,8 +1221,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "作用未知。",
     },
     ("MESH", "shadowCastBitflag"): {
-        "EN": "Shadow casting bitflag",
-        "ZH": "投影位标志",
+        "EN": "Bit 0 draws the model and bit 1 draws its shadow. With both off, nothing is drawn.",
+        "ZH": "位 0 绘制模型，位 1 绘制阴影；两者都关闭时什么都不绘制。",
     },
     ("MESH", "affectedByLight"): {
         "EN": "Which lights affect the mesh. Per-bit meaning unknown.",
@@ -1403,11 +1416,8 @@ FIELD_ANNOTATIONS = {
               "color 与 colorRange 之间随机变化）。（RE Engine 里对应字段叫 'EdgeBlendRange'。）",
     },
     ("PLANE", "blendMode"): {
-        "EN": "Additive (glow) blending instead of normal alpha blending. Off = alpha blend "
-              "(can show black at normal brightness); on = additive. (RE Engine's own name "
-              "for the equivalent field is 'AlphaRate'.)",
-        "ZH": "用叠加（发光）混合代替普通的 alpha 混合。不勾=alpha 混合（正常亮度下可显示黑色）；"
-              "勾选=add 叠加混合。（RE Engine 里对应字段叫 'AlphaRate'。）",
+        "EN": _EMISSIVE_TIP_EN,
+        "ZH": _EMISSIVE_TIP_ZH,
     },
     ("PLANE", "scale"): {
         "EN": "Scale",
@@ -1850,10 +1860,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "与亮度配对的抖动量。",
     },
     ("BILLBOARD3D", "blendMode"): {
-        "EN": "Additive (glow) blending instead of normal alpha blending. Off = alpha blend "
-              "(can show black at normal brightness); on = additive.",
-        "ZH": "用叠加（发光）混合代替普通的 alpha 混合。不勾=alpha 混合（正常亮度下可显示黑色）；"
-              "勾选=add 叠加混合。",
+        "EN": _EMISSIVE_TIP_EN,
+        "ZH": _EMISSIVE_TIP_ZH,
     },
     # SCALEANIM
     ("SCALEANIM", "initialScaleAccel"): {
@@ -2452,10 +2460,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 0/1。",
     },
     ("BILLBOARD2D", "blendMode"): {
-        "EN": "Additive (glow) blending instead of normal alpha blending. Off = alpha blend "
-              "(can show black at normal brightness); on = additive.",
-        "ZH": "用叠加（发光）混合代替普通的 alpha 混合。不勾=alpha 混合（正常亮度下可显示黑色）；"
-              "勾选=add 叠加混合。",
+        "EN": _EMISSIVE_TIP_EN,
+        "ZH": _EMISSIVE_TIP_ZH,
     },
     ("BILLBOARD2D", "correctColorNo"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
@@ -2977,9 +2983,11 @@ FIELD_ANNOTATIONS = {
               "marker rather than a tunable parameter.",
         "ZH": "恒为 167——很可能是固定的格式/版本标记，而非可调参数。",
     },
-    ("MESH", "unknBitmask40"): {
-        "EN": "Common values: [0, 1, 2, 3, 4, 5]; overwhelmingly 2 (~92%).",
-        "ZH": "常见取值为 [0, 1, 2, 3, 4, 5]；绝大多数为 2（约 92%）。",
+    ("MESH", "baseAxis"): {
+        "EN": "Direction the mesh faces. Same AxisDirection6 enum as PLANE/VELOCITY3D "
+              "(0=left,1=up,2=front,3=right,4=down,5=back); usually 2.",
+        "ZH": "网格的朝向。与 PLANE/VELOCITY3D 同一套 AxisDirection6 枚举"
+              "（0=左,1=上,2=前,3=右,4=下,5=后），通常为 2。",
     },
     ("MESH", "unknEnum5"): {
         "EN": "Common values: [0, 2, 6, 7].",
@@ -3772,9 +3780,10 @@ FIELD_ANNOTATIONS = {
         "EN": "Fixed at 104. Purpose unknown.",
         "ZH": "固定为 104。具体作用未知。",
     },
-    ("SHADERSETTINGS", "unknFlag2"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+    ("SHADERSETTINGS", "versionRelated"): {
+        "EN": "Separates effects made before and after the game's release: files for "
+              "effects added later have 1 throughout.",
+        "ZH": "区分本体发售前后，后来新增的特效整文件此值全取1。",
     },
     ("SHADERSETTINGS", "unknBitmask3_0"): {
         "EN": "Common values: [0, 1, 2, 3]; most commonly 0 or 1.",
@@ -3813,8 +3822,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200]。",
     },
     ("SHADERSETTINGS", "presetId"): {
-        "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. Type a preset name (or pick one from the dropdown) to use it; leave empty for none.',
-        "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。填入预设名字（或从下拉里选一个）即可使用，留空表示不选任何预设。',
+        "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. Type a preset name (or pick one from the dropdown) to use it; leave empty for none. May also be DrawTarget.',
+        "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。填入预设名字（或从下拉里选一个）即可使用，留空表示不选任何预设。也可能是 DrawTarget。',
     },
     ("SHADERSETTINGS", "unkn4_9"): {
         "EN": "Usually 0; other common values: [-1000, -500, -200, -100, -50, 20, 50, 100, 200].",

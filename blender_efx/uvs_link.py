@@ -1,7 +1,7 @@
 """载入 UVSEQUENCE 引用的 .uvs 与可选的 .tex 参考图。
 
 维护约束：
-- 宿主 Empty 仅保存 UVS 编辑数据；游戏路径和 sequenceNo 始终由源属性持有。
+- 宿主 Empty 挂在源属性下、放在 `_uvs` 集合，仅保存 UVS 编辑数据；游戏路径和 sequenceNo 始终由源属性持有。
 - 路径按配置根、nativePC、Model Editor 配置与 EFX 目录的优先级解析。
 - Model Editor 仅为可选转换器；不可用时尝试已转换图像，仍失败则保留已载入的 .uvs。
 """
@@ -62,6 +62,8 @@ def ensure_host_for_attribute(blk_obj, context=None):
     if existing is not None:
         if getattr(existing, "efx_uvs_source", None) is None:
             existing.efx_uvs_source = blk_obj  # 兼容缺少反向指针的已有宿主。
+        if existing.parent is None:
+            existing.parent = blk_obj
         return existing
 
     host = bpy.data.objects.new("%s [uvs]" % blk_obj.name, None)
@@ -69,6 +71,8 @@ def ensure_host_for_attribute(blk_obj, context=None):
     host.empty_display_size = 0.1
     host["~TYPE"] = _UVS_LINK_ITEM_MARKER
     host.efx_uvs_source = blk_obj
+    # 挂在源属性下便于在大纲里找到；集合归属仍是 `_uvs`。
+    host.parent = blk_obj
 
     root_col = _rc.find_root_collection(blk_obj)
     if root_col is not None:
@@ -81,6 +85,13 @@ def ensure_host_for_attribute(blk_obj, context=None):
 
     blk_obj.efx_uvs_target = host
     return host
+
+
+def hide_link_collection(context, root_col):
+    """隐藏 EFX 根下的 `_uvs` 集合。"""
+    for c in getattr(root_col, "children", ()):
+        if c.get("~TYPE") == _UVS_LINK_MARKER:
+            _mod3.hide_collection(context, c)
 
 
 def source_attribute_of(obj):

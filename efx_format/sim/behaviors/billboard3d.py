@@ -8,8 +8,8 @@
 颜色：`color` / `colorRange` 为 XYZ type 2（`<4B`）的 0-255 无符号字节，构成 RGBA 四元组的
 固定值与随机范围；`useColorRange=1` 时逐通道（含 alpha）在两者之间取值，染色模型见 `_common`。
 第四字节在 codec 中名为 pad，此处用作 alpha，乘入 `item.color[3]`，再乘以 LIFE 计算的
-`p.alpha`。`brightness`（通道名 ColorRate）作为**乘数**，1.0 为中性值。`blendMode` 的
-0=Alpha 混合、1=加法混合，直接写入 `RenderItem.blend`，由 glue 转换为 `gpu.state.blend_set`。
+`p.alpha`。`brightness`（通道名 ColorRate）作为**乘数**，1.0 为中性值，只在「启用自发光」
+（ori_name 为 `blendMode`）开启时生效。混合方式不由本属性决定，见 SHADERSETTINGS。
 
 `correctColorNo` / `colorRangeCorrectColorNo` 非 0 时，游戏内颜色取自调用方 .epv 的槽位，本地
 `color` 不生效。预览无法读取 .epv，仍使用本地值并记录 note：修改颜色无效是游戏内的实际行为，
@@ -38,11 +38,7 @@ from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
 from . import _flowmap
-from ._common import pick_color, quad_size, roll_rgba
-
-BLEND_ALPHA = 0
-BLEND_ADDITIVE = 1
-
+from ._common import emissive_on, pick_color, quad_size, roll_rgba
 
 def _rgba(seq):
     """将 XYZ type 2 的四个字节转换为 0-1 浮点四元组。"""
@@ -87,8 +83,7 @@ class Billboard3D(Behavior):
         # 初始平面角，ROTATEANIM 的平面旋转在其上累积
         p.rot.z += jitter(f.get("rotation"), f.get("rotationJitter"), rng, mode)
 
-        p.rolled["bb_blend"] = ("ADDITIVE" if f.i("blendMode") == BLEND_ADDITIVE
-                                else "ALPHA")
+        p.rolled["bb_emissive"] = emissive_on(f)
 
         _flowmap.roll(p, f, rng, mode)
 
@@ -130,13 +125,14 @@ class Billboard3D(Behavior):
             item.size = self._size(p, em, s, rolled["bb_width"], rolled["bb_height"])
             r0, g0, b0, a0 = rolled["bb_rgba"]
             bright = rolled["bb_bright"]
+        if not rolled.get("bb_emissive"):
+            bright = 1.0
 
         item.color = [r0 * bright * p.color[0],
                       g0 * bright * p.color[1],
                       b0 * bright * p.color[2],
                       a0 * p.alpha]
         item.extra["base_tint"] = (r0 * bright, g0 * bright, b0 * bright)
-        item.blend = rolled.get("bb_blend", "ALPHA")
         item.extra["vel"] = p.vel
         item.extra["age"] = p.age
         return _flowmap.apply(p, em, item)
