@@ -777,8 +777,10 @@ _STRAINRIBBON_FIXED_SCHEMA = [
     ('flowmapStrengthJitter',            'f'),
     ('flowmapStrengthCoef',      'f'),
     ('flowmapStrengthCoefJitter','f'),
-    ('unknEnum06_08_00',           'h'),
-    ('unknEnum06_08_01',           'h'),
+    ('unknBool06_08_0',            'B'),
+    ('unknBool06_08_1',            'B'),
+    ('unknBool06_08_2',            'B'),
+    ('unknBool06_08_3',            'B'),
     # 物理相关参数
     ('lengthBreakpoint',       'f'),
     ('lengthBreakpointJitter', 'f'),
@@ -827,6 +829,10 @@ _STRAINRIBBON_OVR = {
     'enableFlowmap': Bool('enableFlowmap', backing='B', label_zh="启用流动贴图"),
     'useColorRange': Bool('useColorRange', backing='B', label_zh="启用颜色范围"),
     'useEmission':   Bool('useEmission',   backing='B', label_zh="启用自发光"),
+    'unknBool06_08_0': Bool('unknBool06_08_0', backing='B'),
+    'unknBool06_08_1': Bool('unknBool06_08_1', backing='B'),
+    'unknBool06_08_2': Bool('unknBool06_08_2', backing='B'),
+    'unknBool06_08_3': Bool('unknBool06_08_3', backing='B'),
 }
 STRAINRIBBON_ATTR = attr_from_legacy(
     _schema_size(_STRAINRIBBON_FIXED_SCHEMA), _STRAINRIBBON_FIXED_SCHEMA,

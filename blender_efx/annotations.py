@@ -3942,13 +3942,21 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~100.",
         "ZH": "常见取值在 0~100 之间。",
     },
-    ("STRAINRIBBON", "unknEnum06_08_00"): {
-        "EN": "Common values: [0, 256].",
-        "ZH": "常见取值为 [0, 256]。",
+    ("STRAINRIBBON", "unknBool06_08_0"): {
+        "EN": "Unknown. Usually 0.",
+        "ZH": "作用未知。通常为 0。",
     },
-    ("STRAINRIBBON", "unknEnum06_08_01"): {
-        "EN": "Common values: [0, 1, 257].",
-        "ZH": "常见取值为 [0, 1, 257]。",
+    ("STRAINRIBBON", "unknBool06_08_1"): {
+        "EN": "Unknown. Almost always 0.",
+        "ZH": "作用未知。几乎恒为 0。",
+    },
+    ("STRAINRIBBON", "unknBool06_08_2"): {
+        "EN": "Unknown. About 64% use 1.",
+        "ZH": "作用未知。约 64% 取 1。",
+    },
+    ("STRAINRIBBON", "unknBool06_08_3"): {
+        "EN": "Unknown. About 10% use 1.",
+        "ZH": "作用未知。约 10% 取 1。",
     },
     ("STRAINRIBBON", "flowmapSpeedJitter"): {
         "EN": "Common range: 0~1.",
