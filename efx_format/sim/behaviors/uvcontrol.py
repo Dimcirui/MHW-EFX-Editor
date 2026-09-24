@@ -15,8 +15,10 @@
 
 Coef 不大于 0 时按 1 计。缩放以 U=0 / V=0 为锚点，不绕贴图中心。
 
-uv1 与 uv2 两套通道共用同一批贴图，布局相同。uv1 恒生效，uv2 由 `uv2_enable` 开启；两套同时
-生效时叠加：**偏移相加，缩放相乘**。
+uv1 与 uv2 两套通道布局相同。uv1 恒生效，uv2 由 `uv2_enable` 开启。带第二套 UV 的网格上两者
+分管两套 UV：uv1 → 第一套（底色、自发光），uv2 → 第二套（mrl3 的 AlphaMap 不用第一套 UV 时
+的遮罩），分通道结果写 `item.extra["uv_xform_ch"]`。其余情况两套作用在同一套 UV 上叠加：
+**偏移相加，缩放相乘**，结果写 `uv_xform`。
 时间基准由 `SimConfig.uvc_clock` 决定，默认取粒子自身的年龄。
 
 输出 `item.extra["uv_xform"] = (su, sv, ou, ov)`，由 glue 变换顶点 UV：
@@ -152,7 +154,10 @@ class UVControl(Behavior):
         cfg = em.config
         frames = (em.frame if getattr(cfg, "uvc_clock", "particle_age") == "emitter_frame"
                   else p.age)
-        xf = uv_xform(chans, frames, getattr(cfg, "fps", 60))
+        fps = getattr(cfg, "fps", 60)
+        # 分通道的变换：带第二套 UV 的网格上 uv1 与 uv2 各管一套，glue 按需取用
+        item.extra["uv_xform_ch"] = tuple(uv_xform([c], frames, fps) for c in chans)
+        xf = uv_xform(chans, frames, fps)
         if xf == (1.0, 1.0, 0.0, 0.0):
             return item                 # 中性值不写入，glue 无需逐顶点计算
         item.extra["uv_xform"] = xf
