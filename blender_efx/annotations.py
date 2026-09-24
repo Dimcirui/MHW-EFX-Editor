@@ -1,16 +1,15 @@
-"""属性字段的双语 tooltip 与可选 RE 字段名交叉参考。
+"""属性字段的双语 tooltip 与 RE 字段名对照表。
 
 FIELD_ANNOTATIONS 的键为 (大写类型名, schema ori_name)，值为 EN/ZH 文本。数组字段按其
 单个 schema 字段名查找；get_annotation() 按当前 UI 语言选取文本，缺失时回退英文。
 
-RE 字段名仅作交叉参考，不改变 schema 标签、字段索引或文件布局解释。
+FIELD_OFFICIAL_NAMES 只供开发对照，不进入 tooltip，也不改变 schema 标签、字段索引或文件布局解释。
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RE Engine 字段名交叉参考。
 # 键：(TYPE_NAME 大写, schema ori_name)；值：(字段名, 哈希字符串, 置信度)。
-# 非“确认”的映射在 tooltip 中以可能性标注。内存字段名与 .efx 文件布局不必一一对应，
-# 因此该表只能补充 tooltip，不能替代 schema 定义。
+# 内存字段名与 .efx 文件布局不必一一对应，因此该表不能替代 schema 定义。
 # ─────────────────────────────────────────────────────────────────────────────
 
 FIELD_OFFICIAL_NAMES = {
@@ -648,8 +647,8 @@ FIELD_ANNOTATIONS = {
               "的具体含义未知，可能用于程序侧识别。",
     },
     ("RAYCAST", "rayCastFlags"): {
-        "EN": "Bit0 = SyncSpawnFrame, bit8 = RayCastOnce (matches the two independent checkboxes in the official panel).",
-        "ZH": "bit0 = SyncSpawnFrame，bit8 = RayCastOnce（对应官方面板上两个独立的勾选框）。",
+        "EN": "Two independent switches: bit0 = SyncSpawnFrame, bit8 = RayCastOnce.",
+        "ZH": "两个独立开关：bit0 = SyncSpawnFrame，bit8 = RayCastOnce。",
     },
 
     # ─── HOMING ───────────────────────────────────────────────────────────────
@@ -975,11 +974,8 @@ FIELD_ANNOTATIONS = {
     },
     ("MATERIAL", "typeFlag"): {
         "EN": "Header field present in most attribute types, a type/category "
-              "marker rather than a tunable value. Unusually stored as a 64-bit value "
-              "(most other typeFlag fields are 32-bit) but still shows the same "
-              "small-cardinality distribution.",
-        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。此字段较特殊，"
-              "以 64 位存储（其余大多数 typeFlag 字段为 32 位），但取值分布形态相同（小基数离散）。",
+              "marker rather than a tunable value.",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。",
     },
     # PTBEHAVIOR 参数按 hint_name 查 tooltip，不按序号占位的 ori_name。
     ("PTBEHAVIOR", "mBrightThreshold"): {
@@ -1410,10 +1406,9 @@ FIELD_ANNOTATIONS = {
     },
     ("PLANE", "useColorRange"): {
         "EN": "Color random-range switch. 0 = off (always shows color). 1 = on "
-              "(displayed color randomly varies between color and colorRange). "
-              "(RE Engine's own name for the equivalent field is 'EdgeBlendRange'.)",
+              "(displayed color randomly varies between color and colorRange).",
         "ZH": "颜色随机范围开关。0=禁用（始终显示 color）；1=启用（最终显示的颜色会在 "
-              "color 与 colorRange 之间随机变化）。（RE Engine 里对应字段叫 'EdgeBlendRange'。）",
+              "color 与 colorRange 之间随机变化）。",
     },
     ("PLANE", "blendMode"): {
         "EN": _EMISSIVE_TIP_EN,
@@ -1989,8 +1984,8 @@ FIELD_ANNOTATIONS = {
               "常用调试：归0 拉开主支线便于单独观察。正负相近。",
     },
     ("LIGHTNING", "unkn05_07"): {
-        "EN": "Reserved field. Values 0/3/300/3000/-3000 have no visible effect.",
-        "ZH": "保留字段。测 0/3/300/3000/-3000 均无变化。",
+        "EN": "No visible effect.",
+        "ZH": "修改后无可见效果。",
     },
     ("LIGHTNING", "outwardsExpansionSpeed"): {
         "EN": "Outward expansion speed/radius (NOT path flow speed). 1=default; 100=expands "
@@ -2024,20 +2019,20 @@ FIELD_ANNOTATIONS = {
               "非0非1=流光无变化+淡出取消（生命周期结束直接硬切消失）。仅整数。",
     },
     ("LIGHTNING", "unknEnum05_13"): {
-        "EN": "Reserved. No visible change at 0/1/10/negative.",
-        "ZH": "保留字段。测 0/1/10/负数均无明显变化。",
+        "EN": "No visible effect.",
+        "ZH": "修改后无可见效果。",
     },
     ("LIGHTNING", "targetBoneID"): {
         "EN": "Target bone ID (default 200). Lightning extends from origin to this bone.",
         "ZH": "靶骨 ID（默认 200）。闪电从起点延伸到此骨骼位置。",
     },
     ("LIGHTNING", "unknEnum05_16"): {
-        "EN": "Reserved. No visible change across many values.",
-        "ZH": "保留字段。测多个数值均无明显变化。",
+        "EN": "No visible effect.",
+        "ZH": "修改后无可见效果。",
     },
     ("LIGHTNING", "unknFlag05_17"): {
-        "EN": "Reserved. No visible change at 1/2/3/5/10/100/1000/negative.",
-        "ZH": "保留字段。测 1/2/3/5/10/100/1000/负数均无明显变化。",
+        "EN": "No visible effect.",
+        "ZH": "修改后无可见效果。",
     },
     ("LIGHTNING", "EPVColorSlot1"): {
         "EN": 'EPV colour slot id. The .epv (Effect Provider) that calls this .efx carries 7 slots; each slot stores colour / brightness style attributes under a self-assigned id. Non-zero here means: take the attribute from that slot instead of the value on this attribute. 0 = use the local value, so editing the local colour has no effect while a slot id is set.',
@@ -2182,9 +2177,8 @@ FIELD_ANNOTATIONS = {
               "的绳结感）。不影响几何形态。正负相近。",
     },
     ("LIGHTNING", "unknFixed05_45"): {
-        "EN": "⚠ Caution: do NOT set to 0 (possible crash). No visible change at 95/97/100/50. "
-              "Default 96.",
-        "ZH": "⚠ 谨慎：不要归0（可能崩溃）。测 95/97/100/50 无明显变化。默认 96。",
+        "EN": "⚠ Do not set to 0; it may crash. Other values have no visible effect. Default 96.",
+        "ZH": "⚠ 不要设为 0，可能崩溃。其他取值无可见效果。默认 96。",
     },
     ("LIGHTNING", "unkn05_46"): {
         "EN": "⚠ DO NOT MODIFY. 0xCCCCCC00 = uninitialized-memory fill / engine internal "
@@ -2258,12 +2252,12 @@ FIELD_ANNOTATIONS = {
         "ZH": "unkn07_05 的随机抖动（默认 0.2）。需 unkn07_04≥1 才生效。",
     },
     ("LIGHTNING", "unkn07_07"): {
-        "EN": "Reserved. No visible change at positive/negative values.",
-        "ZH": "保留字段。测正负数值均无明显变化。",
+        "EN": "No visible effect.",
+        "ZH": "修改后无可见效果。",
     },
     ("LIGHTNING", "unknFixed07_08"): {
-        "EN": "Reserved. No visible change across many values.",
-        "ZH": "保留字段。测多个数值均无明显变化。",
+        "EN": "No visible effect.",
+        "ZH": "修改后无可见效果。",
     },
     ("LIGHTNING", "unkn07_09"): {
         "EN": "Branch glow (branchGlow, default 1). Larger=brighter branches; negative=branch "
@@ -2342,16 +2336,16 @@ FIELD_ANNOTATIONS = {
         "ZH": "⚠ 请勿修改。此值为极端浮点（约 4.2e-45），修改可能破坏特效。",
     },
     ("LIGHTNING", "unkn07_25"): {
-        "EN": "Reserved. No visible change across many values (default 20).",
-        "ZH": "保留字段。测多个数值均无明显变化（默认 20）。",
+        "EN": "No visible effect. Default 20.",
+        "ZH": "修改后无可见效果。默认 20。",
     },
     ("LIGHTNING", "unkn07_26"): {
         "EN": "⚠ DO NOT MODIFY. Crashes when set non-0 (same region as 21/22/23).",
         "ZH": "⚠ 禁止修改。改非0崩溃（与 21/22/23 同区）。",
     },
     ("LIGHTNING", "unkn07_27"): {
-        "EN": "Reserved. No visible change across many values (default 0.5).",
-        "ZH": "保留字段。测多个数值均无明显变化（默认 0.5）。",
+        "EN": "No visible effect. Default 0.5.",
+        "ZH": "修改后无可见效果。默认 0.5。",
     },
     ("LIGHTNING", "unknFixed08_0"): {
         "EN": "Fixed at 0. Lightning does not read it — changing it "
@@ -2422,8 +2416,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "中恒为 38。lightning 未读取——改动无效果。",
     },
     ("LIGHTNING", "unknEnum16"): {
-        "EN": "Reserved. No change at 1/100/-1.",
-        "ZH": "保留字段。测 1/100/-1 无变化。",
+        "EN": "No visible effect.",
+        "ZH": "修改后无可见效果。",
     },
 
     # ─── 常见取值提示 ──────────────────────────────────────────────────────────
@@ -2994,8 +2988,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 2, 6, 7]。",
     },
     ("MESH", "unknFixed6_1"): {
-        "EN": "Always 0 usually. Likely reserved/unused.",
-        "ZH": "恒为 0。可能是保留/未使用字段。",
+        "EN": "Unknown. Usually 0.",
+        "ZH": "作用未知。通常为 0。",
     },
     ("MESH", "unknEnum7_0"): {
         "EN": "Common values: [0, 1, 2, 3, 180, 4112].",
@@ -3284,17 +3278,12 @@ FIELD_ANNOTATIONS = {
               "里没用到的高 16 位，而非独立取值。",
     },
     ("PTLIFE", "unknFrame0"): {
-        "EN": "Common values: [0, 10, 30, 60, 70, 90, 240, 490] — all multiples of 10, consistent with a frame count. No clean match found against the sibling LIFE block's fadeInDuration/duration/fadeOutDuration/timeToDeath in the same entry, so it isn't simply a copy of one of those. Paired with unknFrame0Jitter below, same static/random convention as LIFE.unknFrame/unknFrameJitter; the jitter side is 0 in all 8961 known blocks so its effect is unknown.",
-        "ZH": '常见取值为 [0, 10, 30, 60, 70, 90, 240, 490]——全是 10 的倍数，符合帧数特征。跟同一 entry 内 LIFE 块的 fadeInDuration/duration/fadeOutDuration/timeToDeath 都对不上，不是这几个字段的简单复制。与下方 unknFrame0Jitter 配对，同 LIFE.unknFrame/unknFrameJitter 一样是 static/random 惯例；随机一侧在全部 8961 个已知块里恒为 0，实际效果未知。',
+        "EN": "Unknown; likely a frame count. Common values: 0, 10, 30, 60, 90. Paired with unknFrame0Jitter as a static/random pair.",
+        "ZH": "作用未知，可能是帧数。常见取值 0、10、30、60、90。与 unknFrame0Jitter 组成 static/random 一对。",
     },
     ("PTLIFE", "unknFrame1"): {
-        "EN": "Only 1 non-zero occurrence in the entries (value 20, alongside "
-              "unknFrame0=30 in the same block) — a multiple of 10 like unknFrame0, but too "
-              "rare to establish a reliable correlation. Paired with unknFrame1Jitter below, "
-              "same static/random convention; the jitter side is 0 in all 8961 known blocks.",
-        "ZH": "里非零仅 1 例（取值 20，同一块里 unknFrame0=30）——跟 unknFrame0 一样是 "
-              "10 的倍数，但情况太少建立不了可靠关联。与下方 unknFrame1Jitter 配对，同一套 "
-              "static/random 惯例；随机一侧在全部 8961 个已知块里恒为 0。",
+        "EN": "Unknown. Almost always 0. Paired with unknFrame1Jitter as a static/random pair.",
+        "ZH": "作用未知。几乎恒为 0。与 unknFrame1Jitter 组成 static/random 一对。",
     },
     ("PTTRIGGER", "unknEnum2"): {
         "EN": "Common values: [1, 2, 4, 8].",
@@ -3891,8 +3880,8 @@ FIELD_ANNOTATIONS = {
         "ZH": '打包标志，用弹窗编辑：UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos（均默认关闭）。InitializeFull / InterporatePos 的具体作用未知。',
     },
     ("SPAWN", "spawnFrame"): {
-        "EN": 'Untested. Correlates strongly with the UseSpawnFrame bit in spawnFlags (93% of blocks with that bit set have this field non-zero), so it is likely the parameter that flag gates. Values look like clean frame counts.',
-        "ZH": '未测试。与 spawnFlags 里的 UseSpawnFrame 位强相关（该位置位的块里 93% 本字段非零），大概率是那个开关对应的参数。取值像干净的帧数刻度。',
+        "EN": "The emitter only spawns particles during its first N frames. Only applies when UseSpawnFrame is on in spawnFlags.",
+        "ZH": "发射器只在开始后的前 N 帧内生成粒子。仅在 spawnFlags 的 UseSpawnFrame 开启时生效。",
     },
     ("SPAWNBYANGLE", "unknEnum3"): {
         "EN": "Common values: [1, 4].",
@@ -4296,9 +4285,6 @@ def get_annotation(type_name: str, field_name: str) -> str:
     type_name 大写（如 "EMITTERSHAPE3D"）；field_name 为 schema ori_name。
     值为 {"EN":.., "ZH":..} 字典，按 i18n.get_lang() 选取，缺语种回退英文。
 
-    若 (type_name, field_name) 有对应的 RE Engine 字段名（FIELD_OFFICIAL_NAMES，
-    来自 DTI type dump），在注释末尾追加一行权威交叉参考；label / ori_name / 索引均不变。
-    无 BT 注释但有名时，仅返回名行（使 ⓘ 仍可显示）。
     """
     base = ""
     entry = FIELD_ANNOTATIONS.get((type_name.upper(), field_name))
@@ -4309,26 +4295,5 @@ def get_annotation(type_name: str, field_name: str) -> str:
             base = entry.get(lang) or entry.get("EN") or ""
         else:
             base = entry  # backward safety
-
-    official = FIELD_OFFICIAL_NAMES.get((type_name.upper(), field_name))
-    if official:
-        name, crc = official[0], official[1]
-        conf = official[2] if len(official) > 2 else None   # "确认"/"高"/"中"/"低"/None
-        from . import i18n
-        lang = i18n.get_lang()
-        if lang == "ZH":
-            tag = "RE 字段名"
-            if conf and conf != "确认":
-                line = f"[{tag}] {conf}可能为 {name}"
-            else:
-                line = f"[{tag}] {name}"
-        else:
-            tag = "RE field"
-            conf_en = {"高": "high", "中": "medium", "低": "low"}.get(conf or "")
-            if conf_en:
-                line = f"[{tag}] likely({conf_en}): {name}"
-            else:
-                line = f"[{tag}] {name}"
-        return f"{base}\n{line}" if base else line
 
     return base
