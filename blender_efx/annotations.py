@@ -3034,10 +3034,6 @@ FIELD_ANNOTATIONS = {
         "EN": "Common range: 0~1.",
         "ZH": "常见取值在 0~1 之间。",
     },
-    ("PATHCHAIN", "unkn5_2"): {
-        "EN": "Common range: 0~100.",
-        "ZH": "常见取值在 0~100 之间。",
-    },
     ("PATHCHAIN", "unknEnum5_7"): {
         "EN": "Common values: [2, 4].",
         "ZH": "常见取值为 [2, 4]。",
