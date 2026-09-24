@@ -3194,9 +3194,10 @@ FIELD_ANNOTATIONS = {
               "方向模糊沿流向拖影。需开启渲染体的流动贴图。",
     },
     ("REFRACTION", "alphaBlend"): {
-        "EN": "Above 0, the original and the distorted background show in alternating "
-              "vertical stripes. No effect on Directional Blur. Common values 0~0.5.",
-        "ZH": "大于 0 时，原背景与畸变后的背景按竖条交替显示；对方向模糊无效。常见取值 0～0.5。",
+        "EN": "Blends the undistorted background back into the distorted one; at 1 both show "
+              "about equally. No effect on Directional Blur. Common values 0~0.5.",
+        "ZH": "把未畸变的背景按比例混回畸变结果，取 1 时两者大致各占一半。对方向模糊无效。"
+              "常见取值 0～0.5。",
     },
     ("REPEATAREA", "typeFlag"): {
         "EN": "Header field present in most attribute types, a type/category "

@@ -421,7 +421,7 @@ REFRACTION_ATTR = Attribute(size=12, fields=[
     Int("typeFlag"),
     Enum("distortionType", ENUM_DISTORTION_TYPE, label_en="Distortion Type",
          label_zh="畸变方式"),
-    Float("alphaBlend", label_en="Alpha Blend", label_zh="交替混合"),
+    Float("alphaBlend", label_en="Alpha Blend", label_zh="Alpha 混合"),
 ])
 REFRACTION_SCHEMA = REFRACTION_ATTR.schema
 assert _schema_size(REFRACTION_SCHEMA) == 12, \

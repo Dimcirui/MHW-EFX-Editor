@@ -10,8 +10,8 @@
 
 开启流动贴图时，背后画面的采样点沿流动方向位移，`distortionType` 决定方式：0 = 轻度折射
 （小幅位移）、1 = 折射（约为 0 的 6 倍）、2 = 方向模糊（沿流向多次采样）。位移需要读回
-帧缓冲，预览未实现，只按不位移的采样画，并记录 note。`alphaBlend` 使原背景与畸变背景按竖条
-交替显示，同样未实现。
+帧缓冲，预览未实现，只按不位移的采样画，并记录 note。`alphaBlend` 把未畸变的背景按比例混回，
+同样未实现。
 
 维护约束：
 - 必须排在 SHADERSETTINGS 之后：折射的输出取决于其混合方式。
@@ -47,7 +47,7 @@ class Refraction(Behavior):
                         "预览按不位移的背景画")
                 break
         if f.get("alphaBlend", 0.0):
-            em.note("REFRACTION.alphaBlend（原背景与畸变背景交替）未模拟")
+            em.note("REFRACTION.alphaBlend（按比例混回原背景）未模拟")
 
     def build_render(self, p, em, view, item):
         if item is None or item.kind == "NONE":
