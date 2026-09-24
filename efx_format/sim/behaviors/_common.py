@@ -95,6 +95,19 @@ def roll_rgba(f, rng, cfg, color_field="color", range_field="colorRange",
     return _mix(base, rgba(f.raw(range_field)), roll), roll
 
 
+def jitter_offsets(f, rolled):
+    """出生时记下各字段抽到的值与当时静态值之差，`rolled` 为 {字段名: 抽到的值}。
+
+    带 TIML 时字段每帧按曲线重新求值，再加回这份偏移（见 `with_offset`），否则随机部分会丢失。
+    """
+    return {k: v - f.get(k, 1.0) for k, v in rolled.items()}
+
+
+def with_offset(f, field, offs, default=1.0):
+    """返回字段的当前曲线值加上出生时的随机偏移。"""
+    return f.get(field, default) + (offs.get(field, 0.0) if offs else 0.0)
+
+
 def pick_color(f, roll=NO_ROLL, color_field="color", range_field="colorRange"):
     """以当前静态色与出生时抽取的系数计算颜色，供 TIML 逐帧重新求值使用。"""
     if roll is None:
@@ -257,25 +270,13 @@ def color_param_weight(st, age):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def oscillator_omega(cfg, freq):
-    """将 LowFrequency / HighFrequency 换算为每帧弧度，单位由 `SimConfig.oscillator_freq_unit` 决定。"""
-    unit = getattr(cfg, "oscillator_freq_unit", "hz")
-    if unit == "rad_per_frame":
-        return float(freq)
+    """将 LowFrequency / HighFrequency（每秒周期数）换算为每帧弧度。"""
     fps = float(getattr(cfg, "fps", 60) or 60)
-    if unit == "rad_per_second":
-        return float(freq) / fps
     return 2.0 * math.pi * float(freq) / fps
 
 
 def blend_two_colors(cfg, c0, w0, c1, w1):
-    """按权重将两种颜色合成为一个 tint，合成方式由 `SimConfig.rgb_tint_mode` 决定。"""
-    mode = getattr(cfg, "rgb_tint_mode", "weighted")
-    if mode == "first":
-        return list(c0)
-    if mode == "second":
-        return list(c1)
-    if mode == "mix":
-        w0 = w1 = 1.0
+    """按两层各自的权重将两种颜色加权平均为一个 tint。"""
     t = w0 + w1
     if t <= 1e-9:
         return [0.5 * (c0[i] + c1[i]) for i in range(3)]

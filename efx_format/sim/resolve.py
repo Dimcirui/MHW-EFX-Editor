@@ -275,16 +275,12 @@ class FieldResolver(object):
         tv = self._timl_value(field, 0, a0_frame, age)
         if not isinstance(tv, tuple):
             return base
-        if self.config is not None and self.config.timl_mode == "multiply":
-            tv = tuple(b * v / 255.0 for b, v in zip(base, tv))
         return [int(round(max(0.0, min(255.0, v)))) for v in tv]
 
     def _apply(self, base, timl_v):
         if timl_v is None:
             return base
-        if self.config is not None and self.config.timl_mode == "multiply":
-            return base * timl_v
-        return timl_v      # 'replace'（默认，见 config.UNKNOWNS['timl_mode']）
+        return timl_v      # 关键帧值直接替换静态字段
 
     # ── 对外 ─────────────────────────────────────────────────────────────────
     def scalar(self, field, a0_frame, age, comp=0, default=0.0):

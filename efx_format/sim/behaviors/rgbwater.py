@@ -10,16 +10,16 @@
     colorSheet / intensitySheet               水膜层的颜色与强度
     colorRate                                 整体亮度倍率
     intensityAlpha                            透明度强度，乘入 p.alpha 并限定不超过 1
-    waterLerpGtoB                             水膜遮罩中 Alpha 与 Blue 的插值系数。
-                                              名称为 GtoB，实际混合的是 Alpha 与 Blue
+    waterLerpGtoB                             水膜遮罩中 Green 到 Blue 的插值系数
     specularColorParam_* /                    两层各自的生命期时序块
     sheetColorParam_*
 
 有贴图时两层遮罩为：
 
-    水膜(Sheet)遮罩     = mix(Alpha, Blue, waterLerpGtoB)   取 0 时为 Alpha 形状，取 1 时为 Blue
-    高光(Specular)遮罩  = R × G × Alpha                     三通道之交。R/G 同时用于法线重建，
-                                                            Alpha 为两层共用的整体范围
+    水膜(Sheet)遮罩     = Alpha × mix(Green, Blue, waterLerpGtoB)
+    高光(Specular)遮罩  = R × Alpha
+
+两层遮罩都已含 Alpha，贴图 shader 的不透明度取两层遮罩的较大者，不再单独使用 Alpha。
 
 `intensityCubeMap`（水面反射，依赖环境贴图）、`waterLerpParam_*`（插值系数自身的生命期块，
 作用未知）、`normalSharpness`（法线锐度，依赖真实法线贴图）三项不参与计算。

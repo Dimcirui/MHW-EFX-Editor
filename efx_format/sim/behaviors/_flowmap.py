@@ -21,9 +21,14 @@ BILLBOARD3D / PLANE / BILLBOARD2D 各自带有同一组八个字段，flowmap �
            step·(c^t − 1)/(c − 1) （等比数列求和）
     强度   strength · c^t
 
-输出 `item.extra["flowmap"]` 为标量位移量 = 相位映射 × 当前强度。逐纹素位移由 glue 的 shader
-完成：按流动贴图的 RG 通道（切线空间法线，`rg×2−1` 即二维方向）偏移 UV，位移量再乘以当前
-序列帧单格的尺寸。
+按字段值直接换算的位移比实机强一倍，换算时乘 `_STRENGTH_SCALE` = 0.5。
+
+输出分两种。速度非 0、`cycle` 相位且未设「播放一次后停止」时为交叠播放：`item.extra["flowmap"]` 为当前
+强度，`item.extra["flowmap_phase"]` 为累计相位，glue 的 shader 取相位的小数部分与错开半轮的
+另一组相位各采样一次，按三角权重混合，前一轮与后一轮交叠、没有跳变；两组各回绕一次，
+起伏频率因此是单次播放的 2 倍。其余情况为单次播放（速度为 0 时即固定扭曲）：
+`item.extra["flowmap"]` 为标量位移量 = 相位映射 × 当前强度。逐纹素位移按流动贴图的 RG 通道
+（切线空间法线，`rg×2−1` 即二维方向）偏移 UV，位移量再乘以当前序列帧单格的尺寸。
 
 两项未确定的读法以 `SimConfig.UNKNOWNS` 开关保留：`flowmap_speed_unit`（speed 的单位为每秒
 或每帧，默认每秒）与 `flowmap_phase`（相位到位移的映射：`cycle` 取小数部分映射到 −1..1，
@@ -44,6 +49,11 @@ BIT_FREEZE = 0x08
 
 #: 存进 p.rolled 的键
 KEY = "flowmap"
+#: 交叠播放时写入 item.extra 的累计相位键
+PHASE_KEY = "flowmap_phase"
+
+#: 强度换算倍率：按字段值直接换算的位移比实机强一倍
+_STRENGTH_SCALE = 0.5
 
 
 def roll(p, f, rng, mode):
@@ -90,6 +100,7 @@ def apply(p, em, item, key=KEY):
     step = (speed / fps
             if getattr(cfg, "flowmap_speed_unit", "per_second") == "per_second"
             else speed)
+    strength *= _STRENGTH_SCALE
     phase = _geometric(step, s_coef, t)
     if freeze and phase > 1.0:
         phase = 1.0             # 播放一次后停止：相位保持在一轮末尾
@@ -99,7 +110,15 @@ def apply(p, em, item, key=KEY):
         except (OverflowError, ValueError):
             pass
 
-    if getattr(cfg, "flowmap_phase", "cycle") == "cycle":
+    cycle = getattr(cfg, "flowmap_phase", "cycle") == "cycle"
+    if cycle and not freeze and step:
+        # 交叠播放：相位交给 shader 处理。速度为 0 时两组相位静止，混合权重会全部落在
+        # 位移为 0 的那一组上、强度失效，因此改走下方的单次路径
+        if strength:
+            item.extra[KEY] = strength
+            item.extra[PHASE_KEY] = phase
+        return item
+    if cycle:
         # 取小数部分映射到 −1..1，位移有界，不随寿命无限增长
         phase = (phase - math.floor(phase) - 0.5) * 2.0
     amount = phase * strength

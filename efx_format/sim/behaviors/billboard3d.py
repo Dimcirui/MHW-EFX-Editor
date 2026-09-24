@@ -38,7 +38,8 @@ from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
 from . import _flowmap
-from ._common import emissive_on, pick_color, quad_size, roll_rgba
+from ._common import (emissive_on, jitter_offsets, pick_color, quad_size, roll_rgba,
+                      with_offset)
 
 def _rgba(seq):
     """将 XYZ type 2 的四个字节转换为 0-1 浮点四元组。"""
@@ -79,6 +80,10 @@ class Billboard3D(Behavior):
         p.rolled["bb_bright"] = jitter(f.get("brightness", 1.0), f.get("brightnessJitter"),
                                        rng, mode)
         p.rolled["bb_rgba"], p.rolled["bb_coff"] = roll_rgba(f, rng, em.config)
+        if self._has_tracks:
+            p.rolled["bb_off"] = jitter_offsets(f, {
+                "scale": p.rolled["bb_scale"], "width": p.rolled["bb_width"],
+                "height": p.rolled["bb_height"], "brightness": p.rolled["bb_bright"]})
 
         # 初始平面角，ROTATEANIM 的平面旋转在其上累积
         p.rot.z += jitter(f.get("rotation"), f.get("rotationJitter"), rng, mode)
@@ -116,10 +121,11 @@ class Billboard3D(Behavior):
 
         if self._has_tracks:
             f = em.f(BILLBOARD3D, p)
-            s = f.get("scale", 1.0)
-            item.size = self._size(p, em, s, f.get("width", 1.0), f.get("height", 1.0))
+            off = rolled.get("bb_off")
+            item.size = self._size(p, em, with_offset(f, "scale", off),
+                                   with_offset(f, "width", off), with_offset(f, "height", off))
             r0, g0, b0, a0 = pick_color(f, rolled.get("bb_coff"))
-            bright = f.get("brightness", 1.0)
+            bright = with_offset(f, "brightness", off)
         else:
             s = rolled["bb_scale"]
             item.size = self._size(p, em, s, rolled["bb_width"], rolled["bb_height"])

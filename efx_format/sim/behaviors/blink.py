@@ -9,8 +9,8 @@ alpha，并钳制在 MinRate ~ MaxRate 之间：
     rate(t) = clamp(raw(t), minRate, maxRate)
     alpha  *= rate(t)
 
-ω 由 `_common.oscillator_omega` 按 `SimConfig.oscillator_freq_unit` 换算，t 为粒子年龄（帧）。
-初相位 φ0、φ1 由 `SimConfig.blink_phase` 决定。
+ω 由 `_common.oscillator_omega` 将频率（每秒周期数）换算后再乘 `_FREQ_SCALE`，
+t 为粒子年龄（帧）。初相位 φ0、φ1 由 `SimConfig.blink_phase` 决定。
 
 字段职能：
 
@@ -35,6 +35,10 @@ from ..stages import SHADE
 from ._common import oscillator_omega
 
 
+#: 实机闪烁速度是按频率单位换算结果的 2 倍：频率填 1 与换算后填 2 的效果相当。
+_FREQ_SCALE = 2.0
+
+
 @register(BLINK)
 class Blink(Behavior):
     """SHADE 阶段将振荡器输出钳制后乘入 p.alpha。"""
@@ -57,7 +61,7 @@ class Blink(Behavior):
                            f.get(prefix + "FrequencyWidthJitter"), rng, mode)
             # 相位无论是否启用都抽取，使两种模式消耗的随机数数量一致
             phase = rng.uniform(0.0, 2.0 * math.pi)
-            groups.append((oscillator_omega(cfg, freq), width,
+            groups.append((oscillator_omega(cfg, freq) * _FREQ_SCALE, width,
                            phase if random_phase else 0.0))
         lo = float(f.get("minRate", 0.0))
         hi = float(f.get("maxRate", 1.0))

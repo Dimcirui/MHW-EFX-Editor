@@ -48,7 +48,7 @@ from ..rng import jitter, jitter_int
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
 from ..vecmath import ROT_ORDER_TRANSFORM, rot_order_name
-from ._common import epv_note, pick_color, roll_rgba
+from ._common import epv_note, pick_color, roll_rgba, with_offset
 
 
 @register(MESH)
@@ -84,9 +84,17 @@ class Mesh(Behavior):
 
         sb, sa = f.xyz_lo("scale"), f.xyz_hi("scale")
         g = jitter(f.get("global_scale", 1.0), f.get("global_scale_jitter"), rng, mode)
-        p.rolled["me_scale"] = Vec3(jitter(sb.x, sa.x, rng, mode) * g,
-                                    jitter(sb.y, sa.y, rng, mode) * g,
-                                    jitter(sb.z, sa.z, rng, mode) * g)
+        sx, sy, sz = (jitter(sb.x, sa.x, rng, mode), jitter(sb.y, sa.y, rng, mode),
+                      jitter(sb.z, sa.z, rng, mode))
+        p.rolled["me_scale"] = Vec3(sx * g, sy * g, sz * g)
+        if self._has_tracks:
+            # 三轴 scale / rotation 是 XYZ 字段，不能按字段名取，偏移单独存
+            rot = p.rolled["me_rot"]
+            p.rolled["me_off"] = {
+                "scale": Vec3(sx - sb.x, sy - sb.y, sz - sb.z),
+                "rotation": Vec3(rot.x - rb.x, rot.y - rb.y, rot.z - rb.z),
+                "global_scale": g - f.get("global_scale", 1.0),
+            }
 
         p.rolled["me_viscon"] = jitter_int(f.get("visconIndex"),
                                            f.get("visconIndexJitter"), rng, mode)
@@ -95,6 +103,8 @@ class Mesh(Behavior):
             f, rng, em.config, disable="disableAllColorRange")
         p.rolled["me_rate"] = jitter(f.get("colorRate", 1.0), f.get("colorRateJitter"),
                                      rng, mode)
+        if self._has_tracks:
+            p.rolled["me_off"]["colorRate"] = p.rolled["me_rate"] - f.get("colorRate", 1.0)
 
         if f.i("useEmissiveColor"):
             (er, eg, eb, ea), eoff = roll_rgba(
@@ -117,12 +127,13 @@ class Mesh(Behavior):
 
         if self._has_tracks:
             f = em.f(MESH, p)
-            rot = f.xyz_lo("rotation")
-            sb = f.xyz_lo("scale")
-            g = f.get("global_scale", 1.0)
+            off = rolled.get("me_off") or {}
+            rot = f.xyz_lo("rotation") + off.get("rotation", Vec3())
+            sb = f.xyz_lo("scale") + off.get("scale", Vec3())
+            g = with_offset(f, "global_scale", off)
             s = Vec3(sb.x * g, sb.y * g, sb.z * g)
             r0, g0, b0, a0 = pick_color(f, rolled.get("me_coff"))
-            rate = f.get("colorRate", 1.0)
+            rate = with_offset(f, "colorRate", off)
             if f.i("useEmissiveColor"):
                 er, eg, eb, ea = pick_color(f, rolled.get("me_ecoff"),
                                             "emissiveColor", "emissiveColorRange")

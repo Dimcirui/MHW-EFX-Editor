@@ -33,8 +33,7 @@
 轨迹跟随的长度按**帧**计算：条带取粒子最近 subdivisionCount 个逐帧位置，即 subdiv − 1 帧的
 轨迹，与 length 无关；运动越快条带越长。开启 useTrailTimeScale 后改取最近
 (subdiv − 1) × trailTimeScale × `SimConfig.ribbon_trail_time_frames` 帧，不足一帧的部分在最旧
-一段上插值；trailTimeScale 不大于 0 时条带为生成点到当前位置的直线。`SimConfig.ribbon_length_mode` 另保留 'per_segment'
-（总长 = length × (subdiv − 1)）与 'total'（length 即总长）作对照。
+一段上插值；trailTimeScale 不大于 0 时条带为生成点到当前位置的直线。
 
 两端渐隐：`base_/tip_opacity` 为**端点值**，而非整条带的不透明度——两端均取 0 时中间仍不透明，
 仅两端渐隐。每一端在 base_/tip_fade_length 的跨度内由端点值过渡到 1；两端取 `min` 而非相乘，
@@ -43,8 +42,7 @@
 
 朝向（定长面片与柔体链）：出生时由 baseAxis 与 rotationX/Y/Z 确定静止形状，此后随发射器一起
 转动——PARENTOPTIONS 跟随旋转时，施加到粒子位置上的旋转同样施加到条带朝向上。粒子位于旋转
-半径上时，反转自转方向会使领先的一端互换。`SimConfig.ribbon_rigid_dir` 另保留 'velocity'
-（静止时朝上的一侧指向运动方向）与 'static'（始终不变）作对照。
+半径上时，反转自转方向会使领先的一端互换。
 
 贴图方向：各模式一律以粒子所在一端为 base（贴图底边）。轨迹跟随的头部即粒子当前位置，
 因此贴图底边在条带头部。
@@ -82,7 +80,7 @@ from ..stages import RENDER_BODY
 from ..state import RenderItem, RibbonStrip, Vec3
 from ..vecmath import rotate_euler
 from ._common import (axis_normal, emissive_on, emitter_rotate, epv_note,
-                      pick_color, pick_trail, roll_rgba)
+                      jitter_offsets, pick_color, pick_trail, roll_rgba, with_offset)
 from .parentoptions import ParentOptions
 
 MODE_TRAIL = 0
@@ -119,10 +117,6 @@ def _fade_alpha(u, base_a, tip_a, base_span, tip_span):
     return min(base_a + (1.0 - base_a) * rb, tip_a + (1.0 - tip_a) * rt)
 
 
-def _length_mode(em):
-    return getattr(em.config, "ribbon_length_mode", "frames")
-
-
 def _trail_time_frames(f, cfg):
     """开启 useTrailTimeScale 时轨迹覆盖的帧数；未开启返回 None，不大于 0 返回 0。"""
     if not f.i("useTrailTimeScale"):
@@ -149,19 +143,16 @@ def _last_frames(trail, frames):
 def _trail_span(p, em, st, length):
     """返回轨迹跟随要用的 `(轨迹, 最大弧长)`；按帧计算时只截取最近若干帧、不限弧长。"""
     trail = pick_trail(p, em)
-    mode = _length_mode(em)
-    if mode == "frames":
-        tf = st.get("time_frames")
-        if tf is None:
-            return trail[-st["frames"]:], float("inf")
-        if tf <= 0.0:
-            # 设计外取值：生成点直连当前位置
-            if not trail:
-                return [], float("inf")
-            start = st["spawn_p"] if trail is p.trail else st["spawn_em"]
-            return [start, trail[-1]], float("inf")
-        return _last_frames(trail, tf), float("inf")
-    return trail, (length * (st["frames"] - 1) if mode == "per_segment" else length)
+    tf = st.get("time_frames")
+    if tf is None:
+        return trail[-st["frames"]:], float("inf")
+    if tf <= 0.0:
+        # 设计外取值：生成点直连当前位置
+        if not trail:
+            return [], float("inf")
+        start = st["spawn_p"] if trail is p.trail else st["spawn_em"]
+        return [start, trail[-1]], float("inf")
+    return _last_frames(trail, tf), float("inf")
 
 
 def _arc_length(points):
@@ -177,15 +168,6 @@ def _arc_length(points):
             total += (q - prev).length()
         prev = q
     return total
-
-
-def _align_up(rest, fwd):
-    """把静止朝向 `rest` 施加「+Y 转到 `fwd`」的最小旋转；`fwd` 须为单位向量。"""
-    c = fwd.y
-    if c < -1.0 + 1e-9:
-        return Vec3(rest.x, -rest.y, -rest.z)     # 正好朝下：绕 X 转 180°
-    k = Vec3(fwd.z, 0.0, -fwd.x)                  # +Y × fwd，长度为 sinθ
-    return rest * c + k.cross(rest) + k * (k.dot(rest) / (1.0 + c))
 
 
 def _sync_parent_rot(p, em, st):
@@ -224,7 +206,7 @@ class Ribbon(Behavior):
         elif mode == MODE_TRAIL and f.get("spawnAnchorOffset"):
             em.note("RIBBON 轨迹跟随模式下 spawnAnchorOffset 不生效（本地值仍保留，"
                     "只是预览不套用）：条带的头恒贴着发射器当前位置")
-        if mode == MODE_TRAIL and _length_mode(em) == "frames":
+        if mode == MODE_TRAIL:
             # 按帧取轨迹时，位置历史须覆盖所取的帧数
             need = f.i("subdivisionCount") or 2
             tf = _trail_time_frames(f, em.config)
@@ -249,6 +231,10 @@ class Ribbon(Behavior):
                                        rng, mode)
         p.rolled["rb_bright"] = jitter(f.get("brightness", 1.0), f.get("brightnessJitter"),
                                        rng, mode)
+        if self._has_tracks:
+            p.rolled["rb_off"] = jitter_offsets(f, {
+                "scale": scale, "width": p.rolled["rb_width"],
+                "length": p.rolled["rb_length"], "brightness": p.rolled["rb_bright"]})
 
         p.rolled["rb_rgba"], p.rolled["rb_coff"] = roll_rgba(f, rng, cfg)
         p.rolled["rb_uvlen"] = jitter(f.get("uvScaleLength", 1.0),
@@ -270,7 +256,7 @@ class Ribbon(Behavior):
         if cap and n > cap:
             n = max(2, cap)             # 降低预览负载：只减点数，不改长度
         st = {"mode": ribbon_mode, "n": n, "frames": frames,
-              "dir": direction, "rest": direction.copy(),
+              "dir": direction,
               "restore": jitter(f.get("restoreStrength"), f.get("restoreStrengthJitter"),
                                 rng, mode),
               "inertia": jitter(f.get("inertia"), f.get("inertiaJitter"), rng, mode),
@@ -309,17 +295,7 @@ class Ribbon(Behavior):
         if st["mode"] == MODE_TRAIL:
             return
 
-        dir_mode = getattr(em.config, "ribbon_rigid_dir", "parent")
-        if dir_mode == "parent":
-            _sync_parent_rot(p, em, st)
-        elif dir_mode == "velocity":
-            # 优先取粒子相对上一帧的位移（PARENTOPTIONS 带着粒子绕圈时只改位置，速度仍为零），
-            # 粒子静止时取发射器位移；两者均为零时保留上一个有效方向
-            v = p.pos - p.trail[-1] if p.trail else p.vel
-            if v.length() <= 1e-6:
-                v = em.velocity
-            if v.length() > 1e-6:
-                st["dir"] = _align_up(st["rest"], v.normalized())
+        _sync_parent_rot(p, em, st)
 
         if st["mode"] != MODE_CHAIN:
             return
@@ -355,9 +331,10 @@ class Ribbon(Behavior):
     def _dims(self, p, em, st, f):
         """返回 `(属性字段 f, 长度, 宽度, 采样点数)`；带 TIML 时逐帧重新求值尺寸。"""
         if self._has_tracks and f is not None:
-            scale = f.get("scale", 1.0)
-            length = f.get("length", 1.0) * scale * p.scale.y
-            width = f.get("width", 1.0) * scale
+            off = p.rolled.get("rb_off")
+            scale = with_offset(f, "scale", off)
+            length = with_offset(f, "length", off) * scale * p.scale.y
+            width = with_offset(f, "width", off) * scale
         else:
             rolled = p.rolled
             scale = rolled["rb_scale"]
@@ -374,7 +351,6 @@ class Ribbon(Behavior):
         这一转换的开销超过计算本身。
         """
         numpy = _trail.numpy_backend()
-        sync_rot = getattr(em.config, "ribbon_rigid_dir", "parent") == "parent"
         pend = []
         body = []
         trails = []
@@ -393,7 +369,7 @@ class Ribbon(Behavior):
                 if numpy is None or n < _BODY_BATCH_MIN_N or st["flap"]:
                     st["_pre"] = (f, length, width, n, None, None)
                     continue
-                if st["mode"] != MODE_CHAIN and sync_rot:
+                if st["mode"] != MODE_CHAIN:
                     # 逐帧 step 可能先于 PARENTOPTIONS 执行，渲染前再同步一次，否则朝向落后一帧
                     _sync_parent_rot(p, em, st)
                 body.append((p, st, f, length, width, n))
@@ -591,7 +567,7 @@ class Ribbon(Behavior):
 
         if self._has_tracks and f is not None:
             r0, g0, b0, a0 = pick_color(f, rolled.get("rb_coff"))
-            bright = f.get("brightness", 1.0)
+            bright = with_offset(f, "brightness", rolled.get("rb_off"))
         else:
             r0, g0, b0, a0 = rolled["rb_rgba"]
             bright = rolled["rb_bright"]
@@ -688,8 +664,7 @@ class Ribbon(Behavior):
 
         # MODE_RIGID：刚性矩形，沿基准方向延伸。逐帧 step 可能先于 PARENTOPTIONS 执行，
         # 渲染前再同步一次，否则朝向落后一帧
-        if getattr(em.config, "ribbon_rigid_dir", "parent") == "parent":
-            _sync_parent_rot(p, em, st)
+        _sync_parent_rot(p, em, st)
         return _trail.straight(p.pos, st["dir"], length, n)
 
     @staticmethod

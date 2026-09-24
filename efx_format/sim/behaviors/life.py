@@ -8,9 +8,7 @@
     indefiniteLifespan                           置位时不按寿命判定死亡
     unknFrame                                    名称中的 Frame 仅为占位，不使用
 
-总寿命的计算方式由 `SimConfig.life_model` 选择：`'sum'`（默认）为 fadeIn + duration +
-fadeOut；`'duration'` 视 duration 为总长，淡入淡出包含在内。现有样本无法区分两种读法，
-故两者均保留。
+总寿命为 fadeIn + duration + fadeOut。
 
 维护约束：
 - `indefiniteLifespan` 以 `p.life = 0` 实现，其含义是不按寿命判定死亡，而非寿命为零。
@@ -43,12 +41,7 @@ class Life(Behavior):
         fade_out = max(0, jitter_int(f.get("fadeOutDuration"), f.get("fadeOutDurationJitter"),
                                      rng, mode))
 
-        if cfg.life_model == "duration":
-            total = duration
-            # 淡出段位于总长的末尾
-            fade_out = min(fade_out, max(0, total - fade_in))
-        else:                                    # 'sum'（默认）
-            total = fade_in + duration + fade_out
+        total = fade_in + duration + fade_out
 
         p.rolled["life_fade_in"] = fade_in
         p.rolled["life_fade_out"] = fade_out

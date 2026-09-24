@@ -17,7 +17,7 @@ RGBFIRE 只提供颜色，其作用是从一张多通道贴图中分别取出两
 贴图通道分工为 R=烟雾密度、G=火焰强度、B=辅助弥散层（无独立调色参数）、A=轮廓遮罩。
 两层颜色以两种形式同时提供给下游：
 
-  - `p.color` 为合成后的代表色（合成方式由 `SimConfig.rgb_tint_mode` 决定），供纯色片、
+  - `p.color` 为两层按权重加权平均的代表色，供纯色片、
     POINT、MESH 等无法取得逐纹素通道的路径使用。
   - `p.rolled["layers"]` 为 (火焰色, 烟雾色)，各自已乘权重与 colorRate；
     `p.rolled["rgbfire_lerp"]` 为 lerpAlphaToBlue。有贴图时由 fragment shader 分别计算两层

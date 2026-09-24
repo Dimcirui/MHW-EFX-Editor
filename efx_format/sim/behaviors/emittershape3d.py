@@ -26,7 +26,7 @@
 采用同一解释。
 
 ⚠ RE DTI dump 中的官方名为 `RangeMinX` / `RangeMaxX`，与实机行为不符，不得据此恢复 Min/Max
-解释（`SimConfig.es3d_range_mode='minmax'` 保留该解释仅供对照）。
+解释。
 
 等分采用确定性分配：方位角或高度按粒子出生序号轮流分配到 n 份之一，而非随机落入。立方体没有
 半径概念，径向长度由拒绝采样取得，仅方位角按序号分配。
@@ -122,12 +122,7 @@ class EmitterShape3D(Behavior):
         """逐轴返回 (中心, 内边界, 外边界)。"""
         lo = f.xyz_lo("rangeXYZ")
         hi = f.xyz_hi("rangeXYZ")
-        if cfg.es3d_range_mode == "minmax":
-            # 按官方通道名 RangeMin*/RangeMax* 的旧解释，仅供对照
-            center = Vec3((lo.x + hi.x) * 0.5, (lo.y + hi.y) * 0.5, (lo.z + hi.z) * 0.5)
-            half = Vec3((hi.x - lo.x) * 0.5, (hi.y - lo.y) * 0.5, (hi.z - lo.z) * 0.5)
-            return center, Vec3(), half
-        # 'shell'（默认）：偏移为内边界，尺寸为向外延伸的厚度
+        # 偏移为内边界，尺寸为向外延伸的厚度
         inner = lo
         outer = Vec3(lo.x + hi.x, lo.y + hi.y, lo.z + hi.z)
         return Vec3(), inner, outer

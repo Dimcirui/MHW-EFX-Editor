@@ -201,19 +201,12 @@ def _config_from_scene(scene):
         seed=int(getattr(scene, "efx_sim_seed", 0)),
         jitter_mode=getattr(scene, "efx_sim_jitter_mode", "onesided"),
         a0_sample=getattr(scene, "efx_sim_a0_sample", "spawn"),
-        timl_mode=getattr(scene, "efx_sim_timl_mode", "replace"),
         timl_interp=getattr(scene, "efx_sim_timl_interp", "native"),
-        life_model=getattr(scene, "efx_sim_life_model", "sum"),
         age_during_delay=bool(getattr(scene, "efx_sim_age_during_delay", False)),
-        es3d_range_mode=getattr(scene, "efx_sim_es3d_range", "shell"),
         rot_order_applied=getattr(scene, "efx_sim_rot_order", "forward"),
-        ribbon_length_mode=getattr(scene, "efx_sim_ribbon_length", "frames"),
         parent_release_clock=getattr(scene, "efx_sim_parent_clock", "particle_age"),
         color_range_mode=getattr(scene, "efx_sim_color_range", "channel"),
-        t3d_velocity_unit=getattr(scene, "efx_sim_t3d_vel_unit", "per_second"),
         spawn_interval_jitter=getattr(scene, "efx_sim_spawn_jitter", "per_burst"),
-        t3d_rotation_sign=getattr(scene, "efx_sim_t3d_rot_sign", "raw"),
-        rgb_tint_mode=getattr(scene, "efx_sim_rgb_tint", "weighted"),
         uvs_speed_unit=getattr(scene, "efx_sim_uvs_speed_unit", "per_frame"),
         uvs_once_span=getattr(scene, "efx_sim_uvs_once_span", "to_end"),
         uvs_start_wrap=getattr(scene, "efx_sim_uvs_start_wrap", "wrap"),
@@ -221,31 +214,17 @@ def _config_from_scene(scene):
         uvs_grid_v=int(getattr(scene, "efx_sim_uvs_grid", (8, 8))[1]),
         flowmap_speed_unit=getattr(scene, "efx_sim_flowmap_speed_unit", "per_second"),
         flowmap_phase=getattr(scene, "efx_sim_flowmap_phase", "cycle"),
-        oscillator_freq_unit=getattr(scene, "efx_sim_oscillator_freq_unit", "hz"),
         blink_phase=getattr(scene, "efx_sim_blink_phase", "zero"),
         fade_depth_metric=getattr(scene, "efx_sim_fade_depth_metric", "view_depth"),
         fade_cone_mode=getattr(scene, "efx_sim_fade_cone_mode", "outer"),
         ribbon_subdiv_max=int(getattr(scene, "efx_sim_ribbon_subdiv_max", 0)),
-        ribbon_rigid_dir=getattr(scene, "efx_sim_ribbon_rigid_dir", "parent"),
         ribbon_gravity_scale=float(getattr(scene, "efx_sim_ribbon_gravity_scale", 1.0)),
         ribbon_trail_time_frames=float(
             getattr(scene, "efx_sim_ribbon_trail_time_frames", 0.42)),
-        homing_compose=getattr(scene, "efx_sim_homing_compose", "pursuit"),
-        homing_orbit_axial_falloff=float(
-            getattr(scene, "efx_sim_homing_axial_falloff", 0.0)),
-        homing_orbit_retarget=getattr(scene, "efx_sim_homing_retarget",
-                                      "once"),
         homing_orbit_lateral_tilt=float(
             getattr(scene, "efx_sim_homing_lateral_tilt", 0.0)),
-        homing_orbit_axis_update=getattr(scene, "efx_sim_homing_axis_update",
-                                         "frozen"),
-        homing_ff_scale_mode=getattr(scene, "efx_sim_homing_ff_scale",
-                                     "balanced"),
         homing_ff_recover_frames=float(
             getattr(scene, "efx_sim_homing_ff_recover", 48.0)),
-        homing_speed_converge=getattr(scene, "efx_sim_homing_converge", "linear"),
-        homing_speed_ramp_turns=float(
-            getattr(scene, "efx_sim_homing_ramp_turns", 4.0)),
         **_budget_kw(scene))
 
 
@@ -295,38 +274,6 @@ def _uvs_image_name(entry_obj):
 
 #: MATERIAL 游戏路径到已载入图像名的缓存。
 _MAT_TEX_CACHE = {}
-
-
-#: 图像名到 alpha 通道是否可用的缓存。
-_TEX_ALPHA_USABLE = {}
-
-
-def _texture_alpha_is_usable(name):
-    """判断图像 alpha 是否含可用遮罩内容，并缓存读取结果。"""
-    if not name:
-        return True
-    got = _TEX_ALPHA_USABLE.get(name)
-    if got is not None:
-        return got
-    img = bpy.data.images.get(name)
-    if img is None:
-        return True
-    usable = True
-    try:
-        import numpy
-        w, h = img.size
-        n = w * h * 4
-        if n > 0 and int(getattr(img, "depth", 32)) >= 32:
-            buf = numpy.empty(n, dtype="f4")
-            img.pixels.foreach_get(buf)
-            a = buf[3::4]
-            usable = float((a < 0.5).mean()) > 0.001
-        else:
-            usable = False
-    except Exception:
-        usable = int(getattr(img, "depth", 32)) >= 32
-    _TEX_ALPHA_USABLE[name] = usable
-    return usable
 
 
 def _clear_flow_cache():
@@ -1660,7 +1607,7 @@ def _join_chunks(verts, colors, uvs, col2s, chunks, luvs=None, flowoffs=None):
 
 
 def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
-               uvs=None, col2s=None, core=None, luvs=None, flowoffs=None, flow_amt=0.0):
+               uvs=None, col2s=None, core=None, luvs=None, flowoffs=None, flow_amt=None):
     """将网格按粒子变换输出三角形；numpy 不可用时回退逐顶点路径。
 
     ``luvs`` 不为 None 时另输出 flowmap 数据：流动贴图按网格自身 UV 采样，位移量为整张
@@ -1689,7 +1636,9 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
                     uvarr = uvarr * numpy.array((xf[0], xf[1]), dtype="f4")
                     uvarr += numpy.array((xf[2], xf[3]), dtype="f4")
                 if luvs is not None:
-                    fo = numpy.full((len(tris), 2), flow_amt, dtype="f4")
+                    amt, ph, lap = flow_amt
+                    fo = numpy.empty((len(tris), 4), dtype="f4")
+                    fo[:] = (amt, amt, ph, lap)
                     extra = (uvarr, c2, base, fo)
                 else:
                     extra = (uvarr, c2)
@@ -1715,7 +1664,8 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
         col2s.extend([(c[0], c[1], c[2], col[3])] * len(tris))
         if luvs is not None:
             luvs.extend(muv)
-            flowoffs.extend([(flow_amt, flow_amt)] * len(tris))
+            amt, ph, lap = flow_amt
+            flowoffs.extend([(amt, amt, ph, lap)] * len(tris))
 
 
 #: 渲染项可用的混合方式；其余值按 'ALPHA' 画。
@@ -1760,7 +1710,7 @@ void main()
 }
 """
 
-#: ``alphaFix`` 逐纹素修正不透明度；luma 模式用于没有有效 alpha 的贴图。
+#: ``alphaFix`` 逐纹素修正不透明度（低阈值、对比度伽马）；不透明度取贴图 alpha。
 #: ``blendOut`` 为 1 / 2 时输出乘法混合的乘数：反相乘法 ``1 − 颜色×alpha``、
 #: 乘法×2 ``lerp(0.5, 颜色, alpha)×2``。
 #: RGBFIRE 与 RGBWATER 使用互斥的双层通道遮罩；其他项逐通道染色。
@@ -1769,22 +1719,20 @@ void main()
 {
   vec4 t = texture(image, v_uv);
   vec3 rgb;
-  float lum;
+  float a = t.a;
   if (fireLerp >= 0.0) {
     float fireMask = t.g;
     float smokeMask = t.r * mix(t.a, t.b, fireLerp);
-    lum = max(fireMask, smokeMask);
     rgb = v_col.rgb * fireMask + v_col2.rgb * smokeMask;
   } else if (waterLerp >= 0.0) {
-    float sheetMask = mix(t.a, t.b, waterLerp);
-    float specMask = t.r * t.g * t.a;
-    lum = max(sheetMask, specMask);
+    // 两层遮罩都已含 alpha，不透明度取两者较大者
+    float sheetMask = t.a * mix(t.g, t.b, waterLerp);
+    float specMask = t.r * t.a;
+    a = max(sheetMask, specMask);
     rgb = v_col.rgb * sheetMask + v_col2.rgb * specMask;
   } else {
-    lum = max(t.r, max(t.g, t.b));
     rgb = t.rgb * v_col.rgb;
   }
-  float a = mix(t.a, lum, alphaFix.z);
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
   a *= v_col.a;
   if (blendOut > 1.5) {
@@ -1816,8 +1764,7 @@ _REFR_FRAG_SRC = """
 void main()
 {
   vec4 t = texture(image, v_uv);
-  float lum = max(t.r, max(t.g, t.b));
-  float a = mix(t.a, lum, alphaFix.z);
+  float a = t.a;
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
   a *= clamp(v_col.a, 0.0, 1.0) * refrParam.y;
   vec3 src = mix(vec3(1.0), t.rgb, refrParam.x) * v_col.rgb;
@@ -1872,28 +1819,37 @@ void main()
 """
 
 #: flowmap 按局部 UV 采样；其偏移量已在 CPU 侧换算到当前贴图格。
+#: ``v_flowoff`` = (x 量, y 量, 相位, 交叠标记)。交叠时两组相位错开半轮各采样一次，按三角
+#: 权重混合：一组即将回绕时权重降到 0，另一组正处中段，因此没有跳变。
 _FLOW_FRAG_SRC = """
 void main()
 {
   vec2 f = texture(flowTex, v_luv).rg * 2.0 - 1.0;
-  vec4 t = texture(image, v_uv + f * v_flowoff);
+  vec4 t;
+  if (v_flowoff.w > 0.5) {
+    float p0 = fract(v_flowoff.z);
+    float p1 = fract(v_flowoff.z + 0.5);
+    vec4 t0 = texture(image, v_uv + f * v_flowoff.xy * ((p0 - 0.5) * 2.0));
+    vec4 t1 = texture(image, v_uv + f * v_flowoff.xy * ((p1 - 0.5) * 2.0));
+    t = mix(t0, t1, abs((p0 - 0.5) * 2.0));
+  } else {
+    t = texture(image, v_uv + f * v_flowoff.xy);
+  }
   vec3 rgb;
-  float lum;
+  float a = t.a;
   if (fireLerp >= 0.0) {
     float fireMask = t.g;
     float smokeMask = t.r * mix(t.a, t.b, fireLerp);
-    lum = max(fireMask, smokeMask);
     rgb = v_col.rgb * fireMask + v_col2.rgb * smokeMask;
   } else if (waterLerp >= 0.0) {
-    float sheetMask = mix(t.a, t.b, waterLerp);
-    float specMask = t.r * t.g * t.a;
-    lum = max(sheetMask, specMask);
+    // 两层遮罩都已含 alpha，不透明度取两者较大者
+    float sheetMask = t.a * mix(t.g, t.b, waterLerp);
+    float specMask = t.r * t.a;
+    a = max(sheetMask, specMask);
     rgb = v_col.rgb * sheetMask + v_col2.rgb * specMask;
   } else {
-    lum = max(t.r, max(t.g, t.b));
     rgb = t.rgb * v_col.rgb;
   }
-  float a = mix(t.a, lum, alphaFix.z);
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
   a *= v_col.a;
   if (blendOut > 1.5) {
@@ -1919,7 +1875,7 @@ def _flow_shader():
         iface.smooth("VEC4", "v_col")
         iface.smooth("VEC4", "v_col2")
         iface.smooth("VEC2", "v_luv")
-        iface.smooth("VEC2", "v_flowoff")
+        iface.smooth("VEC4", "v_flowoff")
         info = gpu.types.GPUShaderCreateInfo()
         info.push_constant("MAT4", "ModelViewProjectionMatrix")
         info.push_constant("VEC3", "alphaFix")
@@ -1933,7 +1889,7 @@ def _flow_shader():
         info.vertex_in(2, "VEC4", "color")
         info.vertex_in(3, "VEC4", "col2")
         info.vertex_in(4, "VEC2", "luv")
-        info.vertex_in(5, "VEC2", "flowoff")
+        info.vertex_in(5, "VEC4", "flowoff")
         info.vertex_out(iface)
         info.fragment_out(0, "VEC4", "fragColor")
         info.vertex_source(_FLOW_VERT_SRC)
@@ -2010,7 +1966,6 @@ def _clear_refraction_shader():
 
 def _clear_tex_cache():
     _GPU_TEX.clear()
-    _TEX_ALPHA_USABLE.clear()
 
 
 def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
@@ -2024,7 +1979,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     if rows is None or entry is None:
         return
     r0, r1, r2 = rows
-    show_shape = bool(getattr(scene, "efx_sim_show_shape", False))
+    show_shape = bool(getattr(scene, "efx_sim_show_shape", True))
     if not items and not show_shape:
         return          # 没粒子也没要画形状 → 后面那一堆准备工作全省了
 
@@ -2065,19 +2020,23 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         return got
 
     def _flow_of(it, tex):
-        """这一项的 (flowmap 贴图名, 位移量)；不该走 flowmap 就 ("", 0.0)。
+        """这一项的 (flowmap 贴图名, (量, 相位, 交叠标记))；不该走 flowmap 就 ("", None)。
 
+        交叠播放时「量」为强度、相位为累计相位；单次播放时「量」为位移量、相位不用。
         没有序列帧贴图就没有可推的 UV，直接不走——`use_tex` 关掉时同理。
         """
         if not tex or not flow_images:
-            return "", 0.0
+            return "", None
         amt = it.extra.get("flowmap")
         if not amt:
-            return "", 0.0
+            return "", None
         name = flow_images.get(it.extra.get("entry_key"), root_flow)
         if not name or _gpu_texture(name) is None:
-            return "", 0.0
-        return name, float(amt) * flow_gain
+            return "", None
+        phase = it.extra.get("flowmap_phase")
+        return name, (float(amt) * flow_gain,
+                      0.0 if phase is None else float(phase),
+                      0.0 if phase is None else 1.0)
 
     def _bucket_for(it, tex, flow_tex=""):
         """返回 `(桶 key, 桶)`。key = (绘制次序, 混合模式, 贴图, alpha 修正, 流动贴图,
@@ -2101,17 +2060,13 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         if mode not in _BLEND_MODES:
             mode = "ALPHA"
         low, gamma = it.extra.get("alpha_fix") or (0.0, 1.0)
-        if luma_mode == "auto":
-            luma = 0.0 if _texture_alpha_is_usable(tex) else 1.0
-        else:
-            luma = 1.0 if luma_mode == "on" else 0.0
         # 两种双层通道模式互斥，关闭时使用通用贴图路径。
         fire_lerp = it.extra.get("rgbfire_lerp")
         fire_lerp = -1.0 if fire_lerp is None else fire_lerp
         water_lerp = it.extra.get("rgbwater_lerp")
         water_lerp = -1.0 if water_lerp is None else water_lerp
         lerp = (fire_lerp, water_lerp)
-        key = (_order_of(it), mode, tex, (low, gamma, luma), flow_tex, lerp)
+        key = (_order_of(it), mode, tex, (low, gamma, 0.0), flow_tex, lerp)
         b = buckets.get(key)
         if b is None:
             # 贴图桶额外保存核心色、UV、numpy 网格分块及可选 flowmap 数据。
@@ -2135,7 +2090,6 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         return name if (name and _gpu_texture(name) is not None) else ""
     root_flow = flow_images.get(tr["entry_name"], "")
     flow_gain = float(getattr(scene, "efx_sim_flowmap_gain", 1.0))
-    luma_mode = getattr(scene, "efx_sim_alpha_source", "auto")
     #: 折射预览增益；无贴图和贴图路径都应用它。
     refr_gain = float(getattr(scene, "efx_sim_refraction_gain", 1.0))
 
@@ -2261,7 +2215,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             geom, tex_name = _geom_of(it)
             # 网格没有 UV 时无从采样流动贴图
             flow_tex, flow_amt = (_flow_of(it, tex_name) if geom[2] is not None
-                                  else ("", 0.0))
+                                  else ("", None))
             _key, (bv, bc, bu, b2, bnp, blu, bfo) = _bucket_for(it, tex_name, flow_tex)
             edge, core = _layers_of(it, col, tex_name)
             _emit_mesh(bv, bc, bnp, it, edge, size_mul, rows, geom,
@@ -2290,8 +2244,8 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                 # flowmap 位移按当前序列格尺寸缩放。
                 us = [c[0] for c in corners]
                 vs = [c[1] for c in corners]
-                off = (flow_amt * (max(us) - min(us)),
-                       flow_amt * (max(vs) - min(vs)))
+                amt, ph, lap = flow_amt
+                off = (amt * (max(us) - min(us)), amt * (max(vs) - min(vs)), ph, lap)
                 blu.extend(_QUAD_LUV)
                 bfo.extend([off] * 6)
             emis = it.extra.get("decal_emissive")
@@ -2334,7 +2288,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
 _DRAW_KNOBS = ("efx_sim_particle_size", "efx_sim_draw_mode", "efx_sim_blend",
                "efx_sim_hdr_mode", "efx_sim_mesh_rot_space",
                "efx_sim_show_velocity", "efx_sim_uv_flip_v", "efx_sim_textured",
-               "efx_sim_alpha_source", "efx_sim_draw_order", "efx_sim_point_px",
+               "efx_sim_draw_order", "efx_sim_point_px",
                "efx_sim_ribbon_subdiv_max",
                "efx_sim_refraction_tex", "efx_sim_refraction_gain",
                "efx_sim_flowmap_gain", "efx_sim_show_shape")
@@ -2490,7 +2444,7 @@ def _draw():
                     shader.uniform_float("alphaFix", fix[0])
                     shader.uniform_float("refrParam", fix[1])
                 elif fix is not None:
-                    # (lowPass, contrast_gamma, lumaAsAlpha)。
+                    # (lowPass, contrast_gamma, 未使用)。
                     shader.uniform_float("alphaFix", fix)
                     if lerp is not None:
                         # 每次绑定均设置两个值，避免前一桶的 shader 状态泄漏。
@@ -2578,7 +2532,7 @@ def _rebuild_if_dirty(scene):
 
 def _resolve_duration(scene, sim=None):
     """解析单次播放时长；自动模式下多 track 取最长建议值。"""
-    d = int(getattr(scene, "efx_sim_duration", 0))
+    d = int(getattr(scene, "efx_sim_duration", 240))
     if d > 0:
         return d
     sims = [sim] if sim is not None else [t["sim"] for t in _P["tracks"]]
@@ -3167,32 +3121,23 @@ class EFX_PT_sim_unknowns(Panel):
         col.prop(scene, "efx_sim_jitter_mode")
         # 已有稳定默认值的开关不在校准面板重复显示。
         col.prop(scene, "efx_sim_spawn_jitter")
-        col.prop(scene, "efx_sim_t3d_rot_sign")
         col.prop(scene, "efx_sim_material_slot")
-        col.prop(scene, "efx_sim_alpha_source")
         col.prop(scene, "efx_sim_refraction_tex")
         col.prop(scene, "efx_sim_refraction_gain")
         col.prop(scene, "efx_sim_flowmap_speed_unit")
         col.prop(scene, "efx_sim_flowmap_phase")
         col.prop(scene, "efx_sim_flowmap_gain")
-        col.prop(scene, "efx_sim_oscillator_freq_unit")
         col.prop(scene, "efx_sim_blink_phase")
         col.prop(scene, "efx_sim_fade_depth_metric")
         col.prop(scene, "efx_sim_fade_cone_mode")
         col.prop(scene, "efx_sim_draw_order")
         col.prop(scene, "efx_sim_mesh_rot_space")
-        col.prop(scene, "efx_sim_rgb_tint")
         col.prop(scene, "efx_sim_hdr_mode")
-        col.prop(scene, "efx_sim_life_model")
         col.prop(scene, "efx_sim_a0_sample")
-        col.prop(scene, "efx_sim_timl_mode")
         col.prop(scene, "efx_sim_timl_interp")
         col.prop(scene, "efx_sim_rot_order")
         col.prop(scene, "efx_sim_age_during_delay")
-        col.prop(scene, "efx_sim_ribbon_length")
-        col.prop(scene, "efx_sim_ribbon_rigid_dir")
         # 仅保留仍需校准的 HOMING 选项。
-        col.prop(scene, "efx_sim_homing_compose")
         col.prop(scene, "efx_sim_homing_lateral_tilt")
         col.prop(scene, "efx_sim_parent_clock")
         col.prop(scene, "efx_sim_color_range")
@@ -3245,7 +3190,7 @@ def register():
         name="Speed", default=1.0, min=0.05, max=4.0, soft_min=0.1, soft_max=2.0,
         description="Playback speed multiplier (whole EFX frames are preserved at any speed)")
     S.efx_sim_duration = IntProperty(
-        name="Duration", default=0, min=0, soft_max=600,
+        name="Duration", default=240, min=0, soft_max=600,
         description="Frames per cycle; 0 = auto (start delay + one burst cycle + one particle life). "
                     "EFX emitters have no documented stop condition, so this is the player's call")
     S.efx_sim_seed = IntProperty(
@@ -3288,8 +3233,8 @@ def register():
         default="QUADS")
     S.efx_sim_blend = EnumProperty(
         name="Blend",
-        items=[("AUTO", "From file", "Use each renderer's own blendMode "
-                                     "(BILLBOARD3D: 0=Alpha, 1=Additive)"),
+        items=[("AUTO", "From file", "Use each entry's own blend mode "
+                                     "(Shader Settings)"),
                ("ADDITIVE", "Force additive", "Override everything to additive"),
                ("ALPHA", "Force alpha", "Override everything to plain alpha")],
         default="AUTO")
@@ -3321,7 +3266,7 @@ def register():
                     "The simulation still advances every frame, so timing stays "
                     "exact; only the picture updates less often")
     S.efx_sim_show_shape = BoolProperty(
-        name="Emitter shape", default=False,
+        name="Emitter shape", default=True,
         description="Outline the region new particles are placed in "
                     "(EMITTERSHAPE3D). Drawn from the same reading the simulation "
                     "samples, so the outline and where particles actually appear "
@@ -3360,15 +3305,6 @@ def register():
                 "in game, but without its tone mapping a high brightness turns "
                 "the whole sprite white")],
         default="preserve_hue")
-    S.efx_sim_alpha_source = EnumProperty(
-        name="Opacity from",
-        items=[("auto", "Auto",
-                "Per texture: use its alpha channel where that channel carries "
-                "something, and how bright the texture is where it does not - "
-                "flow and _BM textures have a flat alpha channel"),
-               ("on", "Brightness", "Always use how bright the texture is"),
-               ("off", "Alpha channel", "Always use the texture's alpha channel")],
-        default="auto")
     S.efx_sim_flowmap_speed_unit = EnumProperty(
         name="Flowmap speed", update=_on_knob_changed,
         items=[("per_second", "Per second",
@@ -3376,15 +3312,6 @@ def register():
                ("per_frame", "Per frame",
                 "The stored speed is how many flow cycles pass in a single frame")],
         default="per_second")
-    S.efx_sim_oscillator_freq_unit = EnumProperty(
-        name="Noise/Blink frequency", update=_on_knob_changed,
-        items=[("hz", "Cycles per second",
-                "The stored frequency is how many full swings happen in a second"),
-               ("rad_per_second", "Radians per second",
-                "The stored frequency is an angle in radians covered each second"),
-               ("rad_per_frame", "Radians per frame",
-                "The stored frequency is an angle in radians covered each frame")],
-        default="hz")
     S.efx_sim_blink_phase = EnumProperty(
         name="Blink start", update=_on_knob_changed,
         items=[("zero", "From birth",
@@ -3437,65 +3364,11 @@ def register():
         description="Magnifier on how far the flowmap pushes the sprite's pixels "
                     "around. 1.0 = the strength stored in the file; 0 = off, the "
                     "sprite stays still. Preview only")
-    S.efx_sim_homing_converge = EnumProperty(
-        name="Homing spiral",
-        items=[("linear", "Even spacing",
-                "Speed climbs by a fixed step, so the orbit widens by the same "
-                "amount every lap and starts off very tight"),
-               ("per_revolution", "Tightening",
-                "Speed closes a fixed fraction of what is left each lap, so the "
-                "spiral starts wide and the gaps shrink"),
-               ("instant", "No spiral",
-                "Jump straight to the target speed, so the orbit is its final "
-                "size from the first frame")],
-        default="linear")
-    S.efx_sim_homing_ramp_turns = FloatProperty(
-        name="Homing spiral laps", default=4.0, min=0.5, max=16.0,
-        description="How many laps the orbit takes to grow from the starting "
-                    "speed to the target speed. Only used by the even-spacing "
-                    "spiral. Preview only")
-    S.efx_sim_homing_ff_scale = EnumProperty(
-        name="Homing force field",
-        items=[("balanced", "Damped",
-                "The field slows the particle down every frame while a steady pull "
-                "brings its speed back up, so the orbit settles at a size that "
-                "climbs steeply as the scale approaches 1"),
-               ("per_frame", "Compounding",
-                "The force field's speed scale is applied again every frame, so "
-                "the particle keeps slowing down and its orbit tightens"),
-               ("output", "Flat",
-                "The speed scale is a constant slow-motion factor; the particle "
-                "keeps a steady speed while it is in the field")],
-        default="balanced")
     S.efx_sim_homing_ff_recover = FloatProperty(
         name="Homing field recovery", default=48.0, min=4.0, max=600.0,
         description="How many frames it takes a homing particle to pull its speed "
                     "back up to the target speed after a force field has slowed it. "
                     "Only used by the damped force field. Preview only")
-    S.efx_sim_homing_compose = EnumProperty(
-        name="Homing steering",
-        items=[("pursuit", "Steers the velocity",
-                "Homing turns whichever way the particle is already moving towards "
-                "its target, at the turn rate, and sets the speed. A Velocity 3D "
-                "starting speed throws the particles outwards first and homing "
-                "swings them back around"),
-               ("add", "Adds its own speed",
-                "Homing pulls straight at the target and that pull is added on top "
-                "of whatever else is driving the particle"),
-               ("override", "Replaces other speed",
-                "Homing alone decides the velocity every frame, so a Velocity 3D "
-                "starting speed has no visible effect")],
-        default="pursuit")
-    S.efx_sim_homing_axis_update = EnumProperty(
-        name="Homing orbit axis",
-        items=[("frozen", "Locked at arrival",
-                "The orbit keeps the plane it picked when the particle reached its "
-                "target, so every lap retraces the same circle"),
-               ("live", "Follows velocity",
-                "The sideways force is re-aimed from the current velocity every "
-                "frame, so an orbit that is not level slowly tips over the first "
-                "lap and then holds. Level orbits are identical either way")],
-        default="frozen")
     S.efx_sim_homing_lateral_tilt = FloatProperty(
         name="Homing lateral tilt", default=0.0, min=0.0, max=2.0,
         description="How far the sideways force that bends a homing particle into "
@@ -3504,29 +3377,6 @@ def register():
                     "squashes the swarm into a flat disc at full spread; higher "
                     "values keep more height. The swarm stays centred on its "
                     "target at any setting. Preview only")
-    S.efx_sim_homing_retarget = EnumProperty(
-        name="Homing orbit re-aim",
-        items=[("once_more", "Re-aim once",
-                "Turn again after the first full lap, then keep that orbit "
-                "forever. Matches footage: the particle swaps to a second orbit "
-                "of the same size and stays there"),
-               ("once", "Lock at arrival",
-                "Pick the orbit when the particle first reaches its target and "
-                "never change it"),
-               ("every_pass", "Re-aim every lap",
-                "Turn again after every lap. Ends up alternating between two "
-                "orbits forever")],
-        default="once")
-    S.efx_sim_homing_axial_falloff = FloatProperty(
-        name="Homing vertical squash", default=0.0, min=0.0, max=1.0,
-        description="How much of the speed along the vertical axis is dropped when "
-                    "a homing particle turns at its target. 0 = off, every particle "
-                    "orbits at the same radius and the swarm stays a sphere the "
-                    "whole cycle; above 0 shrinks the orbit of particles arriving "
-                    "along the vertical axis, flattening the swarm as it expands. "
-                    "Leave at 0 unless comparing: particles arriving straight down "
-                    "the vertical axis do keep circling in game, and this knob "
-                    "stops them dead at 1. Preview only")
     S.efx_sim_material_slot = EnumProperty(
         name="Mesh texture from",
         items=[("tAlbedoMap", "Material albedo",
@@ -3552,21 +3402,6 @@ def register():
                ("local", "Mesh local",
                 "Swap axes first, then turn it about its own Blender axes")],
         default="game")
-    S.efx_sim_rgb_tint = EnumProperty(
-        name="RGB tint", update=_on_knob_changed,
-        items=[("weighted", "Weighted",
-                "Blend the two layers by their own intensity and life weight"),
-               ("mix", "Even mix", "Blend the two layers equally"),
-               ("first", "Fire / Specular", "Use only the first layer's colour"),
-               ("second", "Smoke / Sheet", "Use only the second layer's colour")],
-        default="weighted")
-    S.efx_sim_t3d_rot_sign = EnumProperty(
-        name="Emitter spin direction", update=_on_knob_changed,
-        items=[("raw", "Raw", "Take the authored sign as-is (matches the game)"),
-               ("flip", "Flip",
-                "TRANSFORM3D's rotation velocity turns the emitter the opposite way "
-                "from the raw sign")],
-        default="raw")
     S.efx_sim_spawn_jitter = EnumProperty(
         name="Burst interval jitter", update=_on_knob_changed,
         items=[("per_burst", "Per burst",
@@ -3575,39 +3410,11 @@ def register():
                ("per_cycle", "Per cycle",
                 "Roll it once per cycle, so a whole cycle is evenly spaced")],
         default="per_burst")
-    S.efx_sim_t3d_vel_unit = EnumProperty(
-        name="Emitter velocity", update=_on_knob_changed,
-        items=[("per_second", "Per second",
-                "TRANSFORM3D's translation / rotation / scale velocities are amounts "
-                "per second; each frame advances by value / fps"),
-               ("per_frame", "Per frame",
-                "Amounts per frame (the behaviour before this was calibrated) - makes "
-                "the authored values come out about 60x too fast")],
-        default="per_second")
-    S.efx_sim_es3d_range = EnumProperty(
-        name="Spawn range", update=_on_knob_changed,
-        items=[("shell", "Offset / Size",
-                "Offset is the inner boundary, size is the thickness extending outwards, "
-                "so the outer boundary is offset + size. Same for every shape"),
-               ("minmax", "Min / Max",
-                "The reading the RE DTI names (RangeMinX/RangeMaxX) suggest. Kept for "
-                "comparison - it does not match how the game behaves")],
-        default="shell")
-    S.efx_sim_life_model = EnumProperty(
-        name="Lifetime", update=_on_knob_changed,
-        items=[("sum", "fadeIn + duration + fadeOut", "Total life is the sum of all three"),
-               ("duration", "duration is the total", "Fades are carved out of duration")],
-        default="sum")
     S.efx_sim_a0_sample = EnumProperty(
         name="TIML A0", update=_on_knob_changed,
         items=[("spawn", "Frozen at spawn", "Particle-level fields read A0 at their birth frame"),
                ("current", "Follows emitter time", "Particle-level fields re-read A0 every frame")],
         default="spawn")
-    S.efx_sim_timl_mode = EnumProperty(
-        name="TIML value", update=_on_knob_changed,
-        items=[("replace", "Replaces static", "Keyframe value replaces the static field"),
-               ("multiply", "Multiplies static", "Keyframe value scales the static field")],
-        default="replace")
     S.efx_sim_timl_interp = EnumProperty(
         name="Interpolation", update=_on_knob_changed,
         items=[("native", "Per keyframe", "Use each keyframe's transition (QUAD/CUBIC fall back to linear)"),
@@ -3622,33 +3429,6 @@ def register():
     S.efx_sim_age_during_delay = BoolProperty(
         name="Age during spawn delay", default=False, update=_on_knob_changed,
         description="Whether spawnWaitFrame still advances the particle's age")
-    S.efx_sim_ribbon_length = EnumProperty(
-        name="Ribbon length", update=_on_knob_changed,
-        items=[("frames", "One frame per subdivision",
-                "Trail-follow ribbons cover the last (subdiv-1) frames of movement, "
-                "so they get longer the faster they move; 'length' has no effect "
-                "(matches the game)"),
-               ("per_segment", "length x (subdiv-1)",
-                "Trail-follow ribbons get one 'length' per subdivision, so the strip "
-                "gets longer as you raise the subdivision count"),
-               ("total", "length is the whole strip",
-                "Trail-follow ribbons are 'length' long no matter the subdivision count")],
-        default="frames")
-    S.efx_sim_ribbon_rigid_dir = EnumProperty(
-        name="Ribbon Length direction", update=_on_knob_changed,
-        items=[("parent", "Turns with emitter",
-                "Shape set at spawn from baseAxis/rotationX-Y-Z, then turned along "
-                "with the emitter whenever PARENTOPTIONS follows its rotation "
-                "(matches the game)"),
-               ("velocity", "Current movement",
-                "The ribbon turns so the side that faces up at rest points along the "
-                "current movement - the particle's own first, falling back to the "
-                "emitter's movement if the particle itself isn't moving, holding the "
-                "last valid direction if both are still"),
-               ("static", "baseAxis + rotation",
-                "Fixed direction set once at spawn from baseAxis/rotationX-Y-Z; "
-                "never changes for the rest of the particle's life")],
-        default="parent")
     S.efx_sim_color_range = EnumProperty(
         name="Colour range", update=_on_knob_changed,
         items=[("channel", "Per channel", "Every channel (alpha included) draws its own "

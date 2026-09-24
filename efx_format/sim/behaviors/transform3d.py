@@ -10,7 +10,7 @@
     scale_velocity(+_modifier)          缩放速度 / 逐帧倍率
     enableVelocityBitflag               bit0=启用速度，bit1=启用加速度
 
-三组速度的单位为**每秒**（`SimConfig.t3d_velocity_unit`），每帧推进 v/fps；三个 `_modifier`
+三组速度的单位为**每秒**，每帧推进 v/fps；三个 `_modifier`
 为**每帧**作用一次的衰减率。
 
 `rotation_velocity` / `scale_velocity` 累积到 `em.rot_dynamic` / `em.scale_dynamic`，由
@@ -32,8 +32,7 @@ TIML：translate / rotate / resize 的 A0 轨道逐帧按发射器当前帧求�
   摆放时，才启用该开关。
 - `em.scale_dynamic` 必须限定为非负：`scale_velocity` 为负时持续累减会使倍率变为负数，生成
   形状被镜像，粒子由收缩变为向外运动。
-- 旋转速度按字面符号施加（`cfg.t3d_rotation_sign='raw'`）：Z 取正时，自 -Y 方向看为逆时针，
-  与实机一致。'flip' 仅保留作对照。TIML 的 rotate 是静态旋转的替换值，不受该开关影响。
+- 旋转速度按字面符号施加：Z 取正时，自 -Y 方向看为逆时针。
 - 宿主摆位时粒子坐标会经过 entry 的旋转与缩放，TIML 平移增量须先逆变换静态旋转与缩放，
   否则 entry 带旋转时平移方向被一起转掉。基础变换由模拟层施加时（`t3d_apply_base`）不需要。
 - 基础变换取**不含 TIML** 的静态值加抖动；TIML 的影响全部由逐帧增量负责，避免初始化那一帧
@@ -126,7 +125,7 @@ class Transform3D(Behavior):
         if st is None:
             return
 
-        dt = self._per_frame(em.config)
+        dt = 1.0 / float(em.config.fps or 60)
 
         v = st["vel"]
         if v.x or v.y or v.z:
@@ -139,7 +138,7 @@ class Transform3D(Behavior):
 
         rv = st["rot_vel"]
         if rv.x or rv.y or rv.z:
-            step = rv * (dt * self._rot_sign(em.config))
+            step = rv * dt
             em.rotation += step
             em.rot_dynamic += step      # 发射器旋转时，其发射内容随之旋转
             if st["accel_on"]:
@@ -196,18 +195,6 @@ class Transform3D(Behavior):
         st["tl_move"] = move
         if step.x or step.y or step.z:
             em.drift += step
-
-    @staticmethod
-    def _rot_sign(cfg):
-        """返回旋转速度的符号；默认照字面符号。"""
-        return -1.0 if getattr(cfg, "t3d_rotation_sign", "raw") == "flip" else 1.0
-
-    @staticmethod
-    def _per_frame(cfg):
-        """返回速度的每帧系数；`per_frame` 档返回 1。"""
-        if getattr(cfg, "t3d_velocity_unit", "per_second") == "per_frame":
-            return 1.0
-        return 1.0 / float(getattr(cfg, "fps", 60) or 60)
 
 
 def emitter_size(em):

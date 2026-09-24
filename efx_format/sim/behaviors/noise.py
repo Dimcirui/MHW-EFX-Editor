@@ -9,7 +9,7 @@ NOISE 与 BLINK 共用同一组字段与同一个振荡器：Low / High 两重�
     offset_k(t) = Width_k · (cos(ω_k·t)·e1 + sin(ω_k·t)·e2)
 
 做匀速圆周运动，两重相加即为总偏移。两重的角速度与半径通常不同，叠加后为准周期轨迹。
-ω 由 `_common.oscillator_omega` 按 `SimConfig.oscillator_freq_unit` 换算，t 为粒子年龄（帧）。
+ω 由 `_common.oscillator_omega` 将频率（每秒周期数）换算，t 为粒子年龄（帧）。
 
 偏移以**增量**叠加到位置上：每帧只施加本帧与上一帧偏移之差。因此摇曳附加在 VELOCITY3D、
 PARENTOPTIONS 等其它运动之上，而非取代它们；条带类渲染体的轴向随之向摇曳方向倾斜。出生时
@@ -17,7 +17,7 @@ PARENTOPTIONS 等其它运动之上，而非取代它们；条带类渲染体的
 
 字段职能：
 
-    lowFrequency / highFrequency            两重各自的频率，单位见 `oscillator_freq_unit`
+    lowFrequency / highFrequency            两重各自的频率，每秒周期数
     lowFrequencyWidth / highFrequencyWidth  两重各自的振幅（圆周半径），游戏单位
     各字段的 Jitter                         仅在粒子出生时抽取一次
     typeFlag                                35 种取值均未观察到影响，不读取

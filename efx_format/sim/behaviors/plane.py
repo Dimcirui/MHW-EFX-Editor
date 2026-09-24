@@ -26,8 +26,8 @@ from ..rng import jitter
 from ..stages import RENDER_BODY
 from ..state import RenderItem, Vec3
 from . import _flowmap
-from ._common import (axis_normal, emissive_on, epv_note, oriented_basis,
-                      pick_color, quad_size, roll_rgba)
+from ._common import (axis_normal, emissive_on, epv_note, jitter_offsets,
+                      oriented_basis, pick_color, quad_size, roll_rgba, with_offset)
 
 
 @register(PLANE)
@@ -68,6 +68,10 @@ class Plane(Behavior):
         p.user[Plane] = {"normal": normal}
 
         p.rolled["pl_rgba"], p.rolled["pl_coff"] = roll_rgba(f, rng, em.config)
+        if self._has_tracks:
+            p.rolled["pl_off"] = jitter_offsets(f, {
+                "scale": p.rolled["pl_scale"], "width": p.rolled["pl_width"],
+                "height": p.rolled["pl_height"], "brightness": p.rolled["pl_bright"]})
         p.rolled["pl_emissive"] = emissive_on(f)
 
         _flowmap.roll(p, f, rng, mode)
@@ -83,10 +87,11 @@ class Plane(Behavior):
 
         if self._has_tracks:
             f = em.f(PLANE, p)
-            s = f.get("scale", 1.0)
-            w, h = f.get("width", 1.0), f.get("height", 1.0)
+            off = rolled.get("pl_off")
+            s = with_offset(f, "scale", off)
+            w, h = with_offset(f, "width", off), with_offset(f, "height", off)
             r0, g0, b0, a0 = pick_color(f, rolled.get("pl_coff"))
-            bright = f.get("brightness", 1.0)
+            bright = with_offset(f, "brightness", off)
         else:
             s = rolled["pl_scale"]
             w, h = rolled["pl_width"], rolled["pl_height"]

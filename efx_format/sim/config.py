@@ -6,7 +6,7 @@ Blender 里对拍，不是改代码重装插件。
 
 维护约束：
 - `UNKNOWNS` 是未确认语义的登记表，每条对应一处必须实测才能定的行为。
-- 标定完一条就改掉默认值，并把该条从 `UNKNOWNS` 移走；开关本身保留作对照。
+- 实机标定完的开关直接退役：删掉开关与其余候选值的分支，行为写死在 behavior 里。
   标定依据与推翻过的读法写进 `docs/notes/sim_notes.md`，不留在本文件。
 - 一个开关的默认值出现在三处：`UNKNOWNS`、`SimConfig.__init__`、以及
   `blender_efx/sim_preview.py` 读 Scene 属性时的兜底值。改默认值必须三处同改。
@@ -28,21 +28,10 @@ UNKNOWNS = {
         "'current' 每帧跟着发射器时间走。",
         ("spawn", "current"), "spawn",
     ),
-    "timl_mode": (
-        "TIML 关键帧值是替换静态字段还是乘上去。"
-        "timl_tracks.py 新增轨道时用静态字段值做首帧 seed，"
-        "只有 replace 语义下「加一条轨道不改变外观」才成立。",
-        ("replace", "multiply"), "replace",
-    ),
     "timl_interp": (
         "关键帧插值。'native' 按 keyframe.transition（0=STUCK 1=CONSTANT 2=LINEAR "
         "3=QUAD 4=CUBIC），其中 QUAD/CUBIC 未验证、退化成线性；'linear'/'constant' 强制。",
         ("native", "linear", "constant"), "native",
-    ),
-    "life_model": (
-        "LIFE 的总寿命怎么算。'sum' 为 fadeIn+duration+fadeOut；"
-        "'duration' 为 duration 即总长、淡入淡出包含在内。",
-        ("sum", "duration"), "sum",
     ),
     "age_during_delay": (
         "SPAWN.spawnWaitFrame 期间粒子的 age 是否推进（影响 TIML A1 与 LIFE）。",
@@ -65,19 +54,6 @@ UNKNOWNS = {
         "照旧吃完整的三轴自旋。",
         ("view", "z"), "view",
     ),
-    "scaleanim_add_target": (
-        "SCALEANIM 的速度加在哪。'size' 加在同名的尺寸字段上——SizeScalarAdd 加"
-        "scale，SizeXAdd/YAdd 加 width/height；'multiplier' 加进一个从 1 "
-        "起的归一化倍率。⚠ 只有 BILLBOARD3D / PLANE 走 'size'，MESH / RIBBON 仍读归一化倍率。",
-        ("size", "multiplier"), "size",
-    ),
-    "rgb_tint_mode": (
-        "RGBFIRE / RGBWATER 的两层颜色怎么压成粒子的单一颜色。'weighted' 各按自己的"
-        "强度与生命期权重加权平均；'mix' 等权平均；'first' 只取 fireColor/colorSpecular；"
-        "'second' 只取 smokeColor/colorSheet。"
-        "⚠ 压成一个颜色是当前渲染链的限制，两个颜色本身都留在 p.rolled 里。",
-        ("weighted", "mix", "first", "second"), "weighted",
-    ),
     "flowmap_speed_unit": (
         "flowmapSpeed 的单位。'per_second' 每秒推进这么多相位、逐帧走 speed/fps；"
         "'per_frame' 每帧这么多。"
@@ -88,14 +64,6 @@ UNKNOWNS = {
         "flowmap 的相位怎么映射成 UV 位移。'cycle' 取相位的小数部分映到 −1..1，"
         "位移有界；'linear' 一路累积，相位即位移倍数。",
         ("cycle", "linear"), "cycle",
-    ),
-    "oscillator_freq_unit": (
-        "NOISE 与 BLINK 共用的双重正弦振荡器中，LowFrequency / HighFrequency 的单位。"
-        "'hz' 为每秒周期数；'rad_per_second' 为每秒弧度；'rad_per_frame' 为每帧弧度。"
-        "可用 BLINK（lowFrequency=1、lowFrequencyWidth=1、minRate=0、maxRate=1）实机计数"
-        "10 秒内的闪烁次数判定：约 10 次为 'hz'，约 1.6 次为 'rad_per_second'，"
-        "逐帧频闪为 'rad_per_frame'。",
-        ("hz", "rad_per_second", "rad_per_frame"), "hz",
     ),
     "blink_phase": (
         "BLINK 两重正弦的初相位。'zero' 以粒子出生为相位 0，同一时刻出生的粒子同步闪烁；"
@@ -155,37 +123,12 @@ UNKNOWNS = {
         "两者的取值→顺序映射表不同，但「先写的先作用」这个约定应当一致。",
         ("forward", "reverse"), "forward",
     ),
-    "homing_compose": (
-        "HOMING 怎么驱动粒子，也决定它与 VELOCITY3D 等其它速度来源怎么共存。"
-        "'pursuit' 是纯追踪：速度方向每帧朝「指向目标」转 turnRate/fps、"
-        "大小由自己的 initialSpeed→targetSpeed 决定。"
-        "'add' 把 HOMING 的指令速度加在自由速度之上；'override' 直接覆盖总速度。"
-        "⚠ 切到 'add'/'override' 会退回两段状态机，"
-        "homing_orbit_axis_update 与 homing_orbit_lateral_tilt 只对它们有意义——"
-        "纯追踪每帧按当前几何重算转向，不存在「冻结的轴」这回事。",
-        ("pursuit", "add", "override"), "pursuit",
-    ),
-    "homing_orbit_axis": (
-        "orbit 段（仅 'add'/'override' 下存在）的转轴怎么构造。"
-        "'lateral_tilt' 逐粒子按来向定侧向方向，使整团无净漂移；"
-        "'offset_up' / 'world_up' / 'world_front' 保留作对照，均带已知缺陷"
-        "（固定轴只能触及两维，per-粒子偶函数轴会让整团往一侧漂）。"
-        "真正的轴是什么仍未确认。",
-        ("lateral_tilt", "offset_up", "world_up", "world_front"), "lateral_tilt",
-    ),
-    "homing_orbit_axis_update": (
-        "orbit 段的转轴是冻结还是每帧重算。'frozen' 绕到达那一刻定下的轴转到底；"
-        "'live' 每帧按当前速度方向重算，即把侧向力当成一个场而不是一根冻结的轴。"
-        "两者在纯水平运动下完全一致；速度一旦有 Y 分量，'live' 会让轨道平面进动。"
-        "⚠ 进动幅度是 homing_orbit_lateral_tilt 的陡峭函数。",
-        ("frozen", "live"), "frozen",
-    ),
     "homing_orbit_lateral_tilt": (
         "侧向方向 n 随纬度倾斜多少：n = cos(φ)·e + sin(φ)·b，φ = tilt·(d·世界Y)。"
         "φ 取 d·Y 这个奇标量，使 n 对 d→-d 为奇，整团因此没有净漂移。"
         "tilt 只控制竖直压扁程度：0 时半周期压成纯平面，越大越立体。"
         "⚠ 具体倾斜量未实测。",
-        (0.0, 2.0), 1.0,
+        (0.0, 2.0), 0.0,
     ),
     "fade_depth_metric": (
         "FADEBYDEPTH 的距离怎么量。'view_depth' 为视线方向上的深度；"
@@ -206,24 +149,17 @@ class SimConfig(object):
 
     __slots__ = (
         "fps", "seed",
-        "jitter_mode", "a0_sample", "timl_mode", "timl_interp",
-        "life_model", "age_during_delay", "es3d_range_mode",
-        "ribbon_length_mode", "parent_release_clock", "color_range_mode",
-        "t3d_velocity_unit", "spawn_interval_jitter", "spawn_after_cycle",
-        "rotateanim_billboard_axis", "scaleanim_add_target",
-        "t3d_rotation_sign", "rgb_tint_mode", "uvc_clock",
+        "jitter_mode", "a0_sample", "timl_interp",
+        "age_during_delay", "parent_release_clock", "color_range_mode",
+        "spawn_interval_jitter", "spawn_after_cycle",
+        "rotateanim_billboard_axis", "uvc_clock",
         "uvs_speed_unit", "uvs_once_span", "uvs_start_wrap",
         "uvs_grid_h", "uvs_grid_v", "uvs_grid_scan",
         "flowmap_speed_unit", "flowmap_phase",
-        "oscillator_freq_unit", "blink_phase",
+        "blink_phase",
         "rot_order_applied", "ribbon_trail_source", "t3d_apply_base",
-        "homing_speed_converge", "homing_speed_ramp_turns", "homing_ff_scale_mode",
         "homing_ff_recover_frames",
-        "homing_compose", "homing_orbit_axis",
-        "homing_orbit_axial_falloff", "homing_orbit_handed",
-        "homing_orbit_lateral_tilt", "homing_orbit_axis_update",
-        "homing_orbit_retarget", "ribbon_rigid_dir",
-        "fade_depth_metric", "fade_cone_mode",
+        "homing_orbit_lateral_tilt", "fade_depth_metric", "fade_cone_mode",
         "stage_order", "render_stage_order", "order_override", "disabled",
         "max_particles_hard", "max_frames", "max_spawn_depth", "trail_max",
         "max_instances", "max_particles_total", "child_cull_grace",
@@ -240,41 +176,22 @@ class SimConfig(object):
         # ── 未确认语义的开关（见 UNKNOWNS）──────────────────────────────────
         self.jitter_mode = JITTER_ONESIDED
         self.a0_sample = "spawn"
-        self.timl_mode = "replace"
         self.timl_interp = "native"
-        self.life_model = "sum"
         self.age_during_delay = False
-        self.es3d_range_mode = "shell"
         self.rot_order_applied = "forward"
-        self.homing_speed_converge = "linear"
-        self.homing_speed_ramp_turns = 4.0
-        self.homing_ff_scale_mode = "balanced"
         self.homing_ff_recover_frames = 48.0
-        self.homing_compose = "pursuit"
-        self.homing_orbit_axis = "lateral_tilt"
         self.homing_orbit_lateral_tilt = 0.0
-        self.homing_orbit_axis_update = "frozen"
-        self.homing_orbit_axial_falloff = 0.0
-        self.homing_orbit_handed = "fixed"
-        self.homing_orbit_retarget = "once"
         self.ribbon_trail_source = "auto"
-        self.ribbon_length_mode = "frames"
-        self.ribbon_rigid_dir = "parent"
         self.ribbon_gravity_scale = 1.0
         self.ribbon_trail_time_frames = 0.42
         self.parent_release_clock = "particle_age"
         self.color_range_mode = "channel"
-        self.t3d_velocity_unit = "per_second"
         self.spawn_interval_jitter = "per_burst"
         self.spawn_after_cycle = "stop"
         self.rotateanim_billboard_axis = "view"
-        self.scaleanim_add_target = "size"
-        self.t3d_rotation_sign = "raw"
-        self.rgb_tint_mode = "weighted"
         self.uvc_clock = "particle_age"
         self.flowmap_speed_unit = "per_second"
         self.flowmap_phase = "cycle"
-        self.oscillator_freq_unit = "hz"
         self.blink_phase = "zero"
         self.uvs_speed_unit = "per_frame"
         self.uvs_once_span = "to_end"
@@ -346,6 +263,5 @@ class SimConfig(object):
         return out
 
     def __repr__(self):
-        return ("<SimConfig fps=%d seed=%d jitter=%s a0=%s timl=%s strict=%s>"
-                % (self.fps, self.seed, self.jitter_mode, self.a0_sample,
-                   self.timl_mode, self.strict))
+        return ("<SimConfig fps=%d seed=%d jitter=%s a0=%s strict=%s>"
+                % (self.fps, self.seed, self.jitter_mode, self.a0_sample, self.strict))

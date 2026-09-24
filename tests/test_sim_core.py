@@ -34,7 +34,7 @@ from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
                             register)
 from efx_format.sim import uvs_table as simuvs  # noqa: E402
 from efx_format.sim.behaviors.homing import (Homing,  # noqa: E402
-                                             _orbit_axis, _rotate_axis)
+                                             _rotate_axis)
 from efx_format.sim.behaviors.ptcollision import PtCollision  # noqa: E402
 from efx_format.sim.behaviors.uvsequence import frame_info  # noqa: E402
 from efx_format.sim import rng as simrng  # noqa: E402
@@ -714,17 +714,12 @@ class TestLife(unittest.TestCase):
                 alphas.append(round(sim.particles[0].alpha, 3))
         self.assertEqual(alphas[-4:], [1.0, 0.75, 0.5, 0.25])
 
-    def test_life_model_switch_changes_total(self):
-        """SimConfig.life_model 是待标定开关，两种算法给出不同总长。"""
+    def test_total_life_is_sum_of_three_segments(self):
+        """总寿命 = 淡入 + 持续 + 淡出。"""
         f = life_fields(fadeInDuration=5, duration=10, fadeOutDuration=5)
-        a = make_sim(spawn=spawn_fields(intervalFrame=1000), life=f,
-                     config=SimConfig(life_model="sum"))
-        b = make_sim(spawn=spawn_fields(intervalFrame=1000), life=f,
-                     config=SimConfig(life_model="duration"))
+        a = make_sim(spawn=spawn_fields(intervalFrame=1000), life=f)
         a.step()
-        b.step()
         self.assertEqual(a.particles[0].life, 20)
-        self.assertEqual(b.particles[0].life, 10)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -775,13 +770,6 @@ class TestEmitterShape3D(unittest.TestCase):
             shapeType=1, rangeXYZ=[10.0, 0.0, 10.0, 0.0, 10.0, 0.0]))
         for p in pts:
             self.assertAlmostEqual(p.length(), 10.0, places=5)
-
-    def test_minmax_mode_is_still_available(self):
-        """'minmax' 是留作对照的旧读法（RE DTI 官方名那一套）。"""
-        fields = es3d_fields(shapeType=0, rangeXYZ=[4.0, 10.0, 0.0, 0.0, 0.0, 0.0])
-        mm = self._spawn_many(fields, config=SimConfig(es3d_range_mode="minmax"))
-        self.assertGreaterEqual(min(p.x for p in mm), 4.0 - 1e-9)
-        self.assertLessEqual(max(p.x for p in mm), 10.0 + 1e-9)
 
     # ── 扫描角度 ─────────────────────────────────────────────────────────────
     def test_horizontal_scan_angle_restricts_the_sweep(self):
@@ -1124,16 +1112,13 @@ class TestHoming(unittest.TestCase):
             self.assertAlmostEqual(sim2.particles[0].user[Homing]["speed"], tgt,
                                    places=9)
 
-    def _swarm_flatness(self, falloff, frames, n=300):
+    def _swarm_flatness(self, frames, n=300):
         """球壳生成一批粒子，跑 `frames` 帧后返回 extY/max(extX,extZ)。
         1.0=各向同性的球，<1=竖直方向被压扁。"""
-        cfg = SimConfig()
-        cfg.homing_orbit_axial_falloff = falloff
         es3d = es3d_fields(shapeType=1, rangeXYZ=[30.0, 0.0, 30.0, 0.0, 30.0, 0.0])
         sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0, targetSpeed=1.0),
                         es3d=es3d,
-                        velocity=velocity_fields(speed=0.0, velocityType=1),
-                        config=cfg)
+                        velocity=velocity_fields(speed=0.0, velocityType=1))
         sim.em.request_spawn(n)
         sim.step()
         particles = list(sim.particles)
@@ -1146,16 +1131,6 @@ class TestHoming(unittest.TestCase):
         ext_xz = max(max(xs) - min(xs), max(zs) - min(zs))
         return ext_y / ext_xz if ext_xz else 0.0
 
-    def test_axial_falloff_flattens_swarm_vertically_at_full_expansion(self):
-        """2026-09-12 用户实拍差分序列：出生是球壳，但扩张到最大那一格整团明显被压成
-        横条。轨道相有闭式解 p(θ)=r(1-cosθ)s+r·sinθ·t，|p|=2r|sin(θ/2)| 与转轴无关
-        且逐粒子恒等 —— 只要轨道半径全体相同，整团任何时刻都严格落在同一个球面上，
-        换任何转轴规则都压不出各向异性；且 θ=180° 时 p=2r·s，半周期形状恒等于出生
-        形状的等比放大。所以「球壳出生 + 半周期压扁」只剩一个出口：r 逐粒子不同。
-        turnRate=90 → 一圈 4 秒 = 240 帧，半周期在第 120 帧附近。"""
-        flat = self._swarm_flatness(1.0, frames=120)
-        self.assertLess(flat, 0.75)
-
     def test_lateral_force_alone_flattens_swarm_at_full_expansion(self):
         """竖直压扁**不需要任何额外机制**，它是「侧向力」这条正确读法的自然结果。
 
@@ -1166,35 +1141,27 @@ class TestHoming(unittest.TestCase):
             p(θ) = r·sinθ·d + r·(1-cosθ)·n      ⇒  θ=180° 时 p = 2r·n
 
         半周期的形状因此是 **`{n_i}` 的分布**，而不是出生方向 `{s_i}` 的分布——后者
-        是球壳、恒各向同性（这正是旧的「就地转 90°」读法怎么调都压不扁的原因，
-        见 _orbit_speed_scale 的闭式解推导）。`{n_i}` 则可以各向异性。
+        是球壳、恒各向同性（这正是旧的「就地转 90°」读法怎么调都压不扁的原因）。
+        `{n_i}` 则可以各向异性。
 
-        实测：`axial_falloff` 全程关闭，最大扩张处 flat≈0.47，往收缩两端回到≈0.95，
-        与用户实拍差分序列的签名一致（中间几格压成横条、两端是圆环）。"""
+        实测最大扩张处 flat≈0.47，往收缩两端回到≈0.95，与用户实拍差分序列的签名一致
+        （中间几格压成横条、两端是圆环）。"""
         # 帧数含 approach 段（球壳半径 30 / 速度 1 ⇒ 约 30 帧才到达），所以半周期
         # 落在第 150 帧附近而不是 120。
-        at_peak = self._swarm_flatness(0.0, frames=150)       # ≈ θ=180°，最大扩张
-        near_contract = self._swarm_flatness(0.0, frames=45)  # ≈ 接近收缩点
+        at_peak = self._swarm_flatness(frames=150)       # ≈ θ=180°，最大扩张
+        near_contract = self._swarm_flatness(frames=45)  # ≈ 接近收缩点
         self.assertLess(at_peak, 0.6)
         self.assertGreater(near_contract, 0.85)
         self.assertGreater(near_contract, at_peak)
 
     def test_linear_converge_makes_an_equidistant_spiral(self):
-        """2026-09-12 用户拿 initialSpeed=0.1 的游戏实拍标定收敛曲线：实机是
-        **等距螺旋**（每圈径向增量恒定）、起手半径很小；而 'per_revolution' 那条
-        指数逼近给出的是「间距逐圈变小、起手半径很大」，形状正好相反。两者的总圈数
-        都是 ~4 圈，所以错的是曲线形状不是时长。
-
-        判据：取连续几圈的轨道半径，看**逐圈增量**。线性爬升下增量近似恒定；
-        指数逼近下增量会逐圈显著衰减。"""
-        def lap_radii(mode):
-            cfg = SimConfig()
-            cfg.homing_speed_converge = mode
-            cfg.homing_speed_ramp_turns = 4.0
+        """initialSpeed=0.1 的实机轨迹是**等距螺旋**：每圈径向增量恒定、起手半径很小。
+        判据：取连续几圈的轨道半径，逐圈增量近似恒定。"""
+        def lap_radii():
             es3d = es3d_fields(shapeType=0, rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=0.1,
                                           targetSpeed=1.0),
-                            es3d=es3d, config=cfg)
+                            es3d=es3d)
             sim.step()
             p = sim.particles[0]
             lap = 240                      # turnRate=90 @60fps ⇒ 一圈 240 帧
@@ -1212,17 +1179,12 @@ class TestHoming(unittest.TestCase):
                 radii.append(far)
             return radii
 
-        radii = lap_radii("linear")
+        radii = lap_radii()
         gaps = [b - a for a, b in zip(radii, radii[1:])]
         self.assertTrue(all(g > 0 for g in gaps), "半径应当逐圈增大: %r" % (radii,))
         # 等距：最大增量不超过最小增量的 2 倍
         self.assertLess(max(gaps), 2.0 * min(gaps),
                         "线性收敛应给出近似等距的螺旋，实际逐圈增量 %r" % (gaps,))
-
-        # 对照：指数逼近的增量必然明显衰减（这正是被实拍否掉的形状）
-        exp_gaps = [b - a for a, b in
-                    zip(lap_radii("per_revolution"), lap_radii("per_revolution")[1:])]
-        self.assertGreater(max(exp_gaps), 3.0 * min(exp_gaps))
 
     def test_speed_ramp_takes_a_fixed_number_of_laps(self):
         """2026-09-12 用户实拍：0.1→1.0 与 0.5→1.0 **都是 4 圈**——差值减半而圈数
@@ -1230,12 +1192,10 @@ class TestHoming(unittest.TestCase):
         降那个方向不在这里测：initialSpeed > targetSpeed 时被钳掉、根本没有爬升，
         见 test_initial_speed_above_target_is_clamped_away。"""
         def laps_to_settle(initial, target, limit=3000):
-            cfg = SimConfig()
-            cfg.homing_speed_converge = "linear"
             es3d = es3d_fields(shapeType=0, rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=initial,
                                           targetSpeed=target),
-                            es3d=es3d, config=cfg)
+                            es3d=es3d)
             sim.step()
             p = sim.particles[0]
             frames = 0
@@ -1250,68 +1210,6 @@ class TestHoming(unittest.TestCase):
 
         self.assertAlmostEqual(laps_to_settle(0.1, 1.0), 4.0, delta=0.15)
         self.assertAlmostEqual(laps_to_settle(0.5, 1.0), 4.0, delta=0.15)
-
-    def test_live_axis_precesses_only_when_velocity_has_a_vertical_part(self):
-        """2026-09-12 用户实机给出的进动四条签名，`homing_orbit_axis_update='live'`
-        （侧向力按当前速度逐帧重算，而不是到达时冻结一根轴）全部命中：
-
-        ① 速度**纯水平**时零进动 —— v·Y≡0 ⇒ φ≡0 ⇒ 转轴恒为世界 Y ⇒ 严格闭合的水平圆。
-           这一条同时保证 'live' 与 'frozen' 在水平轨道上**完全一致**。
-        ② 有 Y 分量就进动，且**随 |v·Y| 单调增大**。
-        ③ 完全可复现（纯确定性，无随机量）。
-        ④ 第 2 圈之后角度不再变（一次性偏转，不是持续累积）。
-
-        'frozen' 一条都给不出——它恒为零进动。
-        ⚠ 进动幅度是 lateral_tilt 的陡峭函数（v·Y≈0.71：tilt=0→56.7°、0.5→1.9°、
-        1.0→0.10°），所以量进动角是标定 lateral_tilt 的手段。
-        ⚠ 签名 ④ 本身也是对 tilt 的约束：tilt=0 时进动**不会**稳定下来（逐圈还在
-        变，实测 53.8°→38.7°），只有 tilt 够大才一次偏转到位。这里用默认 tilt=1.0。
-        """
-        def plane_angles(incoming, update, tilt=1.0, laps=4):
-            u = incoming.normalized(fallback=Vec3(0.0, 0.0, 1.0))
-            axis0 = _orbit_axis(u, "lateral_tilt", 1.0, tilt)
-            step = math.radians(180.0) / 60.0
-            per_lap = int(round(2.0 * math.pi / step))
-            normals = []
-            for _ in range(laps):
-                for _ in range(per_lap):
-                    ax = (_orbit_axis(u, "lateral_tilt", 1.0, tilt)
-                          if update == "live" else axis0)
-                    u = _rotate_axis(u, ax, math.degrees(step)).normalized(
-                        fallback=u)
-                normals.append(_orbit_axis(u, "lateral_tilt", 1.0, tilt)
-                               if update == "live" else axis0)
-            return [math.degrees(math.acos(max(-1.0, min(1.0, normals[0].dot(n)))))
-                    for n in normals[1:]]
-
-        horizontal = Vec3(-1.0, 0.0, 0.0)
-        small_y = Vec3(-1.0, -0.1, 0.0)
-        big_y = Vec3(-1.0, -1.0, 0.0)
-
-        # ① 纯水平：两种模式都零进动
-        for update in ("frozen", "live"):
-            for a in plane_angles(horizontal, update):
-                self.assertAlmostEqual(a, 0.0, places=6)
-
-        # 'frozen' 恒零进动（这正是它对不上实机的地方）
-        for inc in (small_y, big_y):
-            for a in plane_angles(inc, "frozen"):
-                self.assertAlmostEqual(a, 0.0, places=6)
-
-        # ② 有 Y 分量就进动，且随 |v·Y| 增大
-        a_small = plane_angles(small_y, "live")
-        a_big = plane_angles(big_y, "live")
-        self.assertGreater(a_small[0], 1e-4)
-        self.assertGreater(a_big[0], a_small[0])
-
-        # ③ 确定性：同样输入两次跑出完全一样的结果
-        self.assertEqual(plane_angles(big_y, "live"), a_big)
-
-        # ④ 第 2 圈之后不再变（一次性偏转，非持续累积）。用相对容差：默认 tilt 下
-        # 逐圈只差 0.1% 左右，但 tilt→0 时会一路振荡（实测 38.7→53.8→56.7→54.9），
-        # 所以这条断言本身也在约束 tilt 不能太小。
-        for a in a_big[1:]:
-            self.assertAlmostEqual(a, a_big[0], delta=0.05 * a_big[0])
 
     def test_arrival_is_a_lateral_force_not_a_ninety_degree_corner(self):
         """回归（2026-09-12 用户看 Blender 预览当场指出）：到达目标处的轨迹必须是
@@ -1352,48 +1250,21 @@ class TestHoming(unittest.TestCase):
         cosang = max(-1.0, min(1.0, d_in.dot(center.normalized(fallback=Vec3(0.0, 1.0, 0.0)))))
         self.assertAlmostEqual(math.degrees(math.acos(cosang)), 90.0, delta=5.0)
 
-    # ── 与 VELOCITY3D 的合成（SimConfig.homing_compose）────────────────────
-    # ⚠ 下面几条 _compose_sim 测试钉的是 **'add'** 这个已被排除的对照分支
-    # （见 test_outward_initial_velocity_expands_the_swarm_before_homing_wins）。
-    # 留着是因为它们仍然锁住「V3D 的速度不许被吞掉」这条底线。
-    def _compose_sim(self, compose, velocity, frames=0):
-        cfg = SimConfig()
-        cfg.homing_compose = compose
-        sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0,
-                                      targetSpeed=1.0),
-                        es3d=es3d_fields(shapeType=0,
-                                         rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-                        velocity=velocity, config=cfg)
-        sim.step()
-        p = sim.particles[0]
-        track = []
-        for _ in range(frames):
-            sim.step()
-            track.append((p.pos.copy(), p.vel.copy()))
-        return sim, p, track
-
     def test_outward_initial_velocity_expands_the_swarm_before_homing_wins(self):
         """2026-09-12 定案判据（用户实机，用他场景里的真实参数复现）：
         V3D 向外 1（Radial，speedCoef 0.95）+ HOMING init=target=1、turnRate 90。
 
         实机：整团**先向外扩张**并旋转，之后回归周期运动，最大直径不缩水。
 
-        这一组同时**定量**排除了另外两种读法：
-          · 'override' 直奔目标，从第一帧就在收缩；
-          · 'add' 里向外 1 与向内 1 **恰好抵消**，预言原地不动——这正是它被推翻的
-            地方，不是"差一点"而是差一个定性行为。
-        只有 'pursuit' 给得出扩张：初速度方向朝外，HOMING 只能按 turnRate 把方向
-        慢慢扭回来，扭到对准目标为止。"""
-        def radii(compose):
-            cfg = SimConfig()
-            cfg.homing_compose = compose
+        纯追踪给得出扩张：初速度方向朝外，HOMING 只能按 turnRate 把方向慢慢扭回来，
+        扭到对准目标为止。"""
+        def radii():
             sim = make_sim(
                 spawn=spawn_fields(spawnNum=60, intervalFrame=1000),
                 life=life_fields(indefiniteLifespan=1),
                 es3d=es3d_fields(shapeType=1,
                                  rangeXYZ=[30.0, 0.0, 30.0, 0.0, 30.0, 0.0]),
                 velocity=velocity_fields(speed=1.0, velocityType=2, speedCoef=0.95),
-                config=cfg,
                 extra=[(HOMING, homing_fields(turnRate=90.0, initialSpeed=1.0,
                                               targetSpeed=1.0))])
             sim.step()
@@ -1404,7 +1275,7 @@ class TestHoming(unittest.TestCase):
                 out.append(sum(q.pos.length() for q in act) / len(act))
             return out
 
-        pur = radii("pursuit")
+        pur = radii()
         self.assertGreater(pur[0], 30.0)                 # 第一帧就在向外
         for a, b in zip(pur[:60], pur[1:61]):
             self.assertGreater(b, a)                     # 头一秒持续扩张
@@ -1414,27 +1285,15 @@ class TestHoming(unittest.TestCase):
         self.assertGreater(max(pur[300:450]), 40.0)
         self.assertAlmostEqual(max(pur[450:600]), max(pur[300:450]), delta=2.0)
 
-        # 'add' 在这组参数下两股速度恰好抵消 ⇒ 第一帧几乎不动，随后一路收缩
-        add = radii("add")
-        self.assertAlmostEqual(add[0], 30.0, delta=0.2)
-        self.assertLess(add[20], add[0])
-        # 'override' 完全无视 V3D ⇒ 一直以 HOMING 速度收缩（radii 的第一个采样点
-        # 已经是第 2 帧，所以是 30 - 2×speed）
-        ovr = radii("override")
-        self.assertAlmostEqual(ovr[0], 30.0 - 2.0, delta=0.2)
-
     def test_pursuit_reproduces_the_tangent_circle_without_a_state_machine(self):
         """纯追踪把「到达处的侧向力」从硬编码变成推论：圆过目标点、与来向相切、
         半径 r=v/ω、方向处处连续——这些**都没有**在 _pursue 里写出来，是「每帧朝
         目标转 turnRate」自己长出来的。（弦切角定理：圆过目标点时「指向目标」的
         方向以 ω/2 旋转，粒子以 ω 追它，每整圈正好回到目标点一次 ⇒ 切圆是不变集。）"""
-        cfg = SimConfig()
-        cfg.homing_compose = "pursuit"
         sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0,
                                       targetSpeed=1.0),
                         es3d=es3d_fields(shapeType=0,
-                                         rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-                        config=cfg)
+                                         rangeXYZ=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         sim.step()
         p = sim.particles[0]
         dirs, poss = [], []
@@ -1458,132 +1317,6 @@ class TestHoming(unittest.TestCase):
         self.assertAlmostEqual(center.length(), expected_r,
                                delta=0.15 * expected_r)  # 目标在圆上 ⇒ 原点是切点
 
-    def test_v3d_initial_velocity_is_added_not_overridden(self):
-        """2026-09-12 用户实机：开着 HOMING 给 V3D 一个向外的初速度，整团粒子
-        **先向外扩张**——V3D 那份没有被吞掉，两者是**相加**。
-
-        改动前 HOMING 做的是 `p.vel = vel`（覆盖），V3D 的初速度零帧存活，粒子会
-        直奔目标。'override' 留作对照，本测试同时钉住两条分支。
-        径向初速 2 + HOMING 速度 1 ⇒ 相加后净向外 1/帧；覆盖则净向内 1/帧。"""
-        v = velocity_fields(speed=2.0, velocityType=2)      # Radial：沿出生方向向外
-
-        _sim, p, track = self._compose_sim("add", v, frames=30)
-        radial = p.pos.normalized(fallback=Vec3(1.0, 0.0, 0.0))
-        self.assertAlmostEqual(track[-1][1].dot(radial), 1.0, places=5)
-        dists = [q.length() for q, _ in track]
-        for a, b in zip(dists, dists[1:]):
-            self.assertGreater(b, a)                        # 一路向外扩张
-
-        _sim, p, track = self._compose_sim("override", v, frames=15)
-        dists = [q.length() for q, _ in track]
-        for a, b in zip(dists, dists[1:]):
-            self.assertLess(b, a)                           # 覆盖：直奔目标
-
-    def test_composed_turn_angle_converges_to_a_finite_value(self):
-        """用户实机第二条读数：整团在扩张的同时**旋转**，旋转速度逐渐减小并
-        **停在一个固定角度**。
-
-        这正是「HOMING 贡献的是**速度分量**」的签名：速度相加时运动方向朝自由速度
-        那一侧转过去、在 v_total ∥ 径向处停住，累计转角有限。若 HOMING 贡献的是
-        **加速度**，速度会无界增长、转角不收敛——本测试就是这两种读法的判别式。
-        构造：自由速度恒为 +Y（大小 2），出生在 +X 上、HOMING 朝 -X 拉（大小 1）。"""
-        v = velocity_fields(speed=2.0, velocityType=0, baseAxis=1)
-        _sim, _p, track = self._compose_sim("add", v, frames=600)
-        dirs = [vel.normalized(fallback=Vec3(0.0, 0.0, 1.0)) for _q, vel in track]
-
-        def turn(i):
-            c = max(-1.0, min(1.0, dirs[i].dot(dirs[i + 1])))
-            return math.degrees(math.acos(c))
-
-        # ① 每帧转角单调趋零（末段比首段小三个数量级以上）
-        self.assertGreater(turn(0), 0.5)
-        self.assertLess(turn(len(dirs) - 2), 1e-3)
-        # ② 累计转角收敛到有限值——加速度读法下这个和会一直涨
-        total = sum(turn(i) for i in range(len(dirs) - 1))
-        self.assertLess(total, 90.0)
-        # ③ 停住的方向就是自由速度的方向（不动点 v_total ∥ 径向）
-        self.assertAlmostEqual(dirs[-1].y, 1.0, places=3)
-
-    def test_compose_is_a_no_op_when_velocity3d_speed_is_zero(self):
-        """今天之前的全部 HOMING 标定都是在 V3D 速度为 0 下做的——'add' 与
-        'override' 在那个特例里必须**逐帧完全一致**，否则那些标定就被这次改动
-        推翻了。"""
-        v = velocity_fields(speed=0.0)
-        _s1, _p1, t1 = self._compose_sim("add", v, frames=300)
-        _s2, _p2, t2 = self._compose_sim("override", v, frames=300)
-        for (q1, v1), (q2, v2) in zip(t1, t2):
-            self.assertAlmostEqual(q1.x, q2.x, places=9)
-            self.assertAlmostEqual(q1.y, q2.y, places=9)
-            self.assertAlmostEqual(q1.z, q2.z, places=9)
-            self.assertAlmostEqual(v1.x, v2.x, places=9)
-
-    def test_damped_free_velocity_hands_the_particle_back_to_homing(self):
-        """用户实机第三条读数：扩张转完之后**回归 HOMING 的周期运动**，且最大
-        直径不再缩小。自由速度被 speedCoef 啃掉之后 HOMING 重新接管，但粒子已经
-        被带离目标，于是轨道不再过目标点——`|p|` 在一个**非零**下界与上界之间
-        周期振荡，而不是纯 HOMING 那个每周期缩回原点的呼吸。"""
-        v = velocity_fields(speed=2.0, velocityType=0, baseAxis=1, speedCoef=0.97)
-        _sim, _p, track = self._compose_sim("add", v, frames=600)
-        late = [q.length() for q, _v in track[300:]]
-        self.assertGreater(min(late), 1.0)        # 不再缩回目标点
-        self.assertGreater(max(late) - min(late), 5.0)   # 仍在周期性张缩
-
-    def test_axial_falloff_leaves_approach_phase_untouched(self):
-        """缩放只能在「到达转弯」那一刻施加，approach 段必须按原速直飞——否则各粒子
-        的接近速度被按方向缩放，就不再同时到达中心，那个干净的收缩点会散架。
-        断言：球壳等距生成 + 同初速 → 不管开不开这一项，全体在同一帧转入 orbit。"""
-        def arrival_frames(falloff):
-            cfg = SimConfig()
-            cfg.homing_orbit_axial_falloff = falloff
-            es3d = es3d_fields(shapeType=1, rangeXYZ=[30.0, 0.0, 30.0, 0.0, 30.0, 0.0])
-            sim = self._sim(homing_fields(turnRate=90.0, initialSpeed=1.0,
-                                          targetSpeed=1.0),
-                            es3d=es3d,
-                            velocity=velocity_fields(speed=0.0, velocityType=1),
-                            config=cfg)
-            sim.em.request_spawn(200)
-            sim.step()
-            particles = list(sim.particles)
-            seen = {}
-            for i in range(120):
-                sim.step()
-                for p in particles:
-                    if p not in seen and \
-                            p.user.get(Homing, {}).get("phase") == "orbit":
-                        seen[p] = i
-            return set(seen.values()), len(seen)
-
-        off_frames, off_n = arrival_frames(0.0)
-        on_frames, on_n = arrival_frames(1.0)
-        self.assertEqual(on_n, off_n)
-        self.assertEqual(on_frames, off_frames)   # ← 真正的不变量：开关不动接近段
-        # 到达时刻本来就会散在一两帧里（离散帧下 `dist <= speed` 的判据跨帧），只要
-        # 别散开成一片就行；散架的话这里会是几十帧。
-        self.assertLessEqual(max(on_frames) - min(on_frames), 2)
-
-    def test_axial_falloff_shrinks_orbit_for_vertically_incoming_particles(self):
-        """沿竖直轴飞来的粒子系数→0（到达后基本停住），横向飞来的保持 1.0。"""
-        cfg = SimConfig()
-        cfg.homing_orbit_axial_falloff = 1.0
-        homing = homing_fields(turnRate=90.0, initialSpeed=1.0, targetSpeed=1.0)
-
-        def scale_for(range_xyz):
-            sim = self._sim(homing, es3d=es3d_fields(shapeType=0, rangeXYZ=range_xyz),
-                            config=cfg)
-            sim.step()
-            p = sim.particles[0]
-            for _ in range(40):
-                sim.step()
-                if p.user[Homing]["phase"] == "orbit":
-                    break
-            self.assertEqual(p.user[Homing]["phase"], "orbit")
-            return p.user[Homing]["orbit_scale"]
-
-        vertical = scale_for([0.0, 0.0, 20.0, 0.0, 0.0, 0.0])    # 生在 +Y
-        horizontal = scale_for([20.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # 生在 +X
-        self.assertLess(vertical, 0.05)
-        self.assertAlmostEqual(horizontal, 1.0, places=6)
-
     def test_force_field_mode_1_culls_particles_spawned_inside(self):
         es3d = es3d_fields(shapeType=0, rangeXYZ=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         sim = self._sim(homing_fields(forceFieldMode=1, forceFieldRadius=50.0), es3d=es3d)
@@ -1598,45 +1331,31 @@ class TestHoming(unittest.TestCase):
         self.assertEqual(len(sim.particles), 1)
 
     def test_force_field_mode_2_slows_particles_inside(self):
-        """forceFieldSpeedScale 的两种读法（`SimConfig.homing_ff_scale_mode`），
-        两者的可观测差别就是**累不累积**：
-
-        · 'output'   只缩放当帧输出，内部速度不变 ⇒ 速度恒为 speed×scale。
-        · 'per_frame'（默认）逐帧乘进内部速度状态 ⇒ **几何累积**，scale<1 时
-          速度按 scale^n 指数衰减，轨道半径 r=v/ω 跟着缩。同格式里 VELOCITY3D.
-          speedCoef 就是这种逐帧阻尼，见 memory velocity3d-speedcoef-is-global-damping。
-        """
-        def run(mode, frames):
-            cfg = SimConfig()
-            cfg.homing_ff_scale_mode = mode
+        """球内每帧阻尼因子先乘 k、再加 1/48 回升，速度 = speed × 阻尼因子。"""
+        def run(frames):
             es3d = es3d_fields(shapeType=0, rangeXYZ=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             sim = self._sim(homing_fields(forceFieldMode=2, forceFieldRadius=50.0,
                                           forceFieldSpeedScale=0.1,
                                           initialSpeed=2.0, targetSpeed=2.0),
-                            es3d=es3d, config=cfg)
+                            es3d=es3d)
             sim.step()
             p = sim.particles[0]
             for _ in range(frames):
                 sim.step()
             return p.vel.length()
 
-        # 不累积：跑几帧都是同一个值
-        self.assertAlmostEqual(run("output", 1), 0.2, places=6)
-        self.assertAlmostEqual(run("output", 4), 0.2, places=6)
-
-        # 累积：出生那一帧已经乘过一次，所以 run(mode, n) = 2.0 × 0.1^(n+1)
-        self.assertAlmostEqual(run("per_frame", 0), 2.0 * 0.1, places=9)
-        self.assertAlmostEqual(run("per_frame", 1), 2.0 * 0.1 ** 2, places=9)
-        self.assertAlmostEqual(run("per_frame", 2), 2.0 * 0.1 ** 3, places=9)
+        c = 1.0 / 48.0
+        damp = 1.0
+        for n in range(3):
+            damp = min(1.0, damp * 0.1 + c)       # 出生那一帧已经算过一次
+            self.assertAlmostEqual(run(n), 2.0 * damp, places=9)
 
     def test_balanced_force_field_settles_at_c_over_one_minus_k(self):
         """力场减速的定量标定（2026-09-12 用户扫 k 量轨道直径）。
 
-        实拍 k=0.99/0.95/0.9/0.8/0.5 的直径比 **24:8:4:2:1**。这条曲线否掉了另外
-        两档读法：'output'（只缩放当帧输出）给出直径**正比于 k**，即 1.98:1.9:1.8:
-        1.6:1，差一个数量级；'per_frame'（纯累积、无回拉）让粒子**冻死**。
+        实拍 k=0.99/0.95/0.9/0.8/0.5 的直径比 **24:8:4:2:1**。
 
-        'balanced'：每帧先乘 k、再加固定绝对增量 c=1/recover_frames，阻尼因子平衡在
+        每帧先乘 k、再加固定绝对增量 c=1/recover_frames，阻尼因子平衡在
             f* = min(1, c/(1-k))
         给出 24:10:5:2.5:1 —— **两个端点精确命中**，且 k=0.99 的 24 正是撞到上限
         （纯 1/(1-k) 外推会给 50）。中段高约 25%，在目测比例的误差内。
@@ -1646,7 +1365,6 @@ class TestHoming(unittest.TestCase):
         （48 帧）碰到就会被整个接管。"""
         def settled_damp(k, recover=48.0, frames=3000):
             cfg = SimConfig()
-            cfg.homing_ff_scale_mode = "balanced"
             cfg.homing_ff_recover_frames = recover
             es3d = es3d_fields(shapeType=0, rangeXYZ=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0])
             sim = self._sim(homing_fields(forceFieldMode=2, forceFieldRadius=1e9,
@@ -1667,13 +1385,11 @@ class TestHoming(unittest.TestCase):
         self.assertAlmostEqual(settled_damp(0.999), 1.0, places=6)
 
         # 爬升状态不受影响：speed 仍停在 targetSpeed
-        cfg = SimConfig(); cfg.homing_ff_scale_mode = "balanced"
         sim = self._sim(homing_fields(forceFieldMode=2, forceFieldRadius=1e9,
                                       forceFieldSpeedScale=0.5,
                                       initialSpeed=1.0, targetSpeed=1.0),
                         es3d=es3d_fields(shapeType=0,
-                                         rangeXYZ=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-                        config=cfg)
+                                         rangeXYZ=[5.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
         sim.step()
         for _ in range(300):
             sim.step()
@@ -1777,11 +1493,9 @@ class TestNoise(unittest.TestCase):
         sim.step()
         self.assertGreater((sim.particles[0].pos - start).length(), 0.1)
 
-    def test_rad_per_frame_unit(self):
-        """rad_per_frame 下 frequency=π/2 即每 4 帧一圈。"""
-        cfg = SimConfig(oscillator_freq_unit="rad_per_frame")
-        sim = self._sim(noise_fields(lowFrequency=math.pi / 2, lowFrequencyWidth=10.0),
-                        config=cfg)
+    def test_frequency_is_cycles_per_second(self):
+        """frequency=15 即每秒 15 圈，60fps 下每 4 帧一圈。"""
+        sim = self._sim(noise_fields(lowFrequency=15.0, lowFrequencyWidth=10.0))
         sim.step()
         start = sim.particles[0].pos.copy()
         for _ in range(4):
@@ -1838,12 +1552,12 @@ class TestBlink(unittest.TestCase):
         self.assertNotIn(BLINK, sim.em.unsupported)
 
     def test_alpha_follows_clamped_sine(self):
-        """默认 0 ~ 1 钳制：alpha = clamp(sin(2π·age/60))，age 为 hook 执行时的年龄。"""
+        """默认 0 ~ 1 钳制：alpha = clamp(sin(2·2π·age/60))，实机速度为 Hz 换算的 2 倍。"""
         sim = self._sim(blink_fields(lowFrequency=1.0, lowFrequencyWidth=1.0))
         for k in range(1, 70):
             sim.step()
             age = k - 1
-            want = min(1.0, max(0.0, math.sin(2.0 * math.pi * age / 60.0)))
+            want = min(1.0, max(0.0, math.sin(2.0 * 2.0 * math.pi * age / 60.0)))
             self.assertAlmostEqual(sim.particles[0].alpha, want, places=6)
 
     def test_min_rate_is_a_floor(self):
@@ -1860,15 +1574,14 @@ class TestBlink(unittest.TestCase):
         self.assertAlmostEqual(sim.particles[0].alpha, 0.5, places=9)
 
     def test_high_group_adds_to_low_group(self):
-        cfg = SimConfig(oscillator_freq_unit="rad_per_frame")
         sim = self._sim(blink_fields(minRate=-10.0, maxRate=10.0,
-                                     lowFrequency=0.1, lowFrequencyWidth=0.3,
-                                     highFrequency=0.7, highFrequencyWidth=0.2),
-                        config=cfg)
+                                     lowFrequency=1.0, lowFrequencyWidth=0.3,
+                                     highFrequency=7.0, highFrequencyWidth=0.2))
+        w = 2.0 * 2.0 * math.pi / 60.0        # BLINK 频率按 Hz 换算后再乘 2
         for k in range(1, 30):
             sim.step()
             age = k - 1
-            want = 0.3 * math.sin(0.1 * age) + 0.2 * math.sin(0.7 * age)
+            want = 0.3 * math.sin(w * age) + 0.2 * math.sin(7.0 * w * age)
             self.assertAlmostEqual(sim.particles[0].alpha, want, places=6)
 
 
@@ -2158,14 +1871,11 @@ class TestFieldResolution(unittest.TestCase):
         self.assertAlmostEqual(FieldView(r, 0, 0).speed, 1.0)
         self.assertAlmostEqual(FieldView(r, 50, 0).speed, 51.0)
 
-    def test_timl_mode_replace_vs_multiply(self):
+    def test_timl_value_replaces_static_field(self):
         from efx_format.sim.resolve import FieldView
         tracks = self._tracks_with("VELOCITY3D", "speed", 1, [(0.0, 3.0, 2)])
-        raw = velocity_fields(speed=2.0)
-        rep = self._resolver(raw=raw, tracks=tracks, config=SimConfig(timl_mode="replace"))
-        mul = self._resolver(raw=raw, tracks=tracks, config=SimConfig(timl_mode="multiply"))
+        rep = self._resolver(raw=velocity_fields(speed=2.0), tracks=tracks)
         self.assertAlmostEqual(FieldView(rep, 0, 0).speed, 3.0)
-        self.assertAlmostEqual(FieldView(mul, 0, 0).speed, 6.0)
 
     def test_float6_six_channel_field_maps_per_half(self):
         """rangeXYZ 有 6 条通道（RangeMinX/RangeMaxX/…），逐轴交错对应字节布局。"""
@@ -2370,14 +2080,6 @@ class TestRgbColoring(unittest.TestCase):
     def test_alpha_factor_scales_alpha(self):
         p = self._color(RGBFIRE, rgbfire_fields(alphaFactor=0.25))
         self.assertAlmostEqual(p.alpha, 0.25, places=5)
-
-    def test_tint_mode_can_force_one_layer(self):
-        for mode, want in (("first", (1.0, 0.0)), ("second", (0.0, 1.0))):
-            with self.subTest(mode=mode):
-                p = self._color(RGBFIRE, rgbfire_fields(),
-                                config=SimConfig(rgb_tint_mode=mode))
-                self.assertAlmostEqual(p.color[0], want[0], places=5)
-                self.assertAlmostEqual(p.color[2], want[1], places=5)
 
     def test_color_param_life_fades_a_layer_out(self):
         """fire 段 useLife=1、持续 10 帧后 10 帧淡出 → 火焰权重 1 → 0.5 → 0。"""
@@ -2600,19 +2302,8 @@ class TestTransform3D(unittest.TestCase):
         sim.run(3)
         self.assertEqual(sim.particles[0].vel, Vec3())
 
-    def test_rotation_sign_can_be_flipped(self):
-        """'flip' = 与字面符号相反，仅作对照。"""
-        t = transform3d_fields(enableVelocityBitflag=1,
-                               rotation_velocity=[0.0, 0.0, 600.0, 0.0, 0.0, 0.0])
-        sim = make_sim(transform=t, spawn=spawn_fields(intervalFrame=1000),
-                       life=life_fields(indefiniteLifespan=1),
-                       config=SimConfig(t3d_rotation_sign="flip"))
-        sim.run(10)
-        self.assertAlmostEqual(sim.em.rot_dynamic.y, -100.0, places=4)
-
     def test_velocities_are_per_second(self):
-        """三组速度都是每秒（语料证据见 behaviors/transform3d.py）：
-        每秒 60 → 每帧 1；`per_frame` 开关下退回改动前的读法。"""
+        """三组速度都是每秒：每秒 60 → 每帧 1。"""
         t = transform3d_fields(enableVelocityBitflag=1,
                                translation_velocity=[60.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                rotation_velocity=[0.0, 0.0, 600.0, 0.0, 0.0, 0.0],
@@ -2622,14 +2313,9 @@ class TestTransform3D(unittest.TestCase):
         sec = make_sim(transform=t, **kw)
         sec.run(10)
         self.assertAlmostEqual(sec.em.origin.x, 10.0, places=5)       # 1/帧 × 10
-        # 10°/帧 × 10；照字面符号（见 t3d_rotation_sign，默认 'raw'）
+        # 10°/帧 × 10，照字面符号
         self.assertAlmostEqual(sec.em.rot_dynamic.y, 100.0, places=4)
         self.assertAlmostEqual(sec.em.scale_dynamic.x, 11.0, places=4)  # 1 + 1/帧 × 10
-
-        frm = make_sim(transform=t, config=SimConfig(t3d_velocity_unit="per_frame"),
-                       **kw)
-        frm.run(10)
-        self.assertAlmostEqual(frm.em.origin.x, 600.0, places=3)      # 旧读法快 60 倍
 
     def test_negative_scale_velocity_stops_at_zero(self):
         """缩放倍率不能穿过 0 变负——负倍率等于把生成形状镜像翻过去，
@@ -3232,14 +2918,11 @@ class TestPtLifeActionScene(unittest.TestCase):
         self.assertGreaterEqual(pz0, oz0 - eps)
         self.assertLessEqual(pz1, oz1 + eps)
 
-    def test_flowmap_amount_is_bounded_and_follows_speed(self):
-        """flowmap：位移量 = 相位映射 × 当前强度，`cycle` 档恒在 ±strength 内。
-
-        众数配置（speed 1.0 / strength 0.2 / 两个 Coef 1.0）下，按每秒读一秒正好
-        扫完一轮；按每帧读则每帧走一整轮，`cycle` 会锯齿成常数——这也是默认取
-        per_second 的理由。
+    def test_flowmap_speed_and_strength_are_doubled(self):
+        """强度按字段值的 0.5 倍换算。`cycle` 档交叠播放：输出当前强度与累计相位
+        （speed 1.0 按每秒 → 每帧推进 1/60）；`linear` 档单次播放：位移量 = 相位 × 强度。
         """
-        def amounts(unit, phase, frames):
+        def items(unit, phase, frames):
             blocks = [
                 (SPAWN, {"maxParticles": 1, "spawnNum": 1,
                          "intervalFrame": 0, "loopNum": 1,
@@ -3257,19 +2940,34 @@ class TestPtLifeActionScene(unittest.TestCase):
             for t in frames:
                 while sim.frame < t:
                     sim.step()
-                it = sim.build_render()[0]
-                out.append(it.extra.get("flowmap", 0.0))
+                out.append(sim.build_render()[0].extra)
             return out
 
-        got = amounts("per_second", "cycle", (1, 15, 30, 45, 59))
-        for v in got:
-            self.assertLessEqual(abs(v), 0.2 + 1e-6)    # 有界
-        self.assertLess(got[0], got[1])                 # 一秒内单调扫过去
-        self.assertLess(got[1], got[2])
-        # 每帧读：相位每帧整好走一轮 → 小数部分恒定，扫不动（默认不取它）
-        flat = amounts("per_frame", "cycle", (1, 5, 9))
-        self.assertAlmostEqual(flat[0], flat[1], places=6)
-        self.assertAlmostEqual(flat[1], flat[2], places=6)
+        a, b = items("per_second", "cycle", (10, 25))
+        self.assertAlmostEqual(a["flowmap"], 0.1, places=6)
+        self.assertAlmostEqual(b["flowmap_phase"] - a["flowmap_phase"], 15 / 60.0,
+                               places=6)
+        lin, = items("per_second", "linear", (10,))
+        self.assertNotIn("flowmap_phase", lin)
+        self.assertAlmostEqual(lin["flowmap"], 0.1 * a["flowmap_phase"], places=6)
+
+    def test_flowmap_zero_speed_is_a_static_distortion(self):
+        """速度为 0 时不走交叠，固定扭曲的幅度由强度决定。"""
+        blocks = [
+            (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
+                     "loopNum": 1, "emitterRepeatCount": 1}),
+            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
+                           "blendMode": 0, "width": 100, "height": 100,
+                           "scale": 1, "applicationRule": 0x04,
+                           "flowmapSpeed": 0.0, "flowmapStrength": 1.0,
+                           "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0}),
+        ]
+        sim = Simulator(blocks, b"", SimConfig())
+        sim.run(10)
+        extra = sim.build_render()[0].extra
+        self.assertNotIn("flowmap_phase", extra)
+        self.assertAlmostEqual(abs(extra["flowmap"]), 0.5, places=6)
 
     def test_flowmap_off_leaves_nothing_on_the_item(self):
         """没开 bit 0x04 就完全不挂——glue 据此决定要不要分流动桶。"""
@@ -3683,6 +3381,27 @@ class TestTransform3DTiml(unittest.TestCase):
         sim.run(10)
         self.assertAlmostEqual(sim.em.scale_dynamic.x, 2.0)      # 4 / 静态 2
         self.assertAlmostEqual(sim.em.scale_dynamic.y, 1.0)
+
+
+class TestRendererTimlKeepsJitter(unittest.TestCase):
+    """渲染体带 TIML 时，尺寸 = 曲线值 + 出生时抽到的随机偏移，随机部分不丢。"""
+
+    def test_billboard_scale_jitter_survives_timl(self):
+        from efx_format.sim.resolve import Curve, TimlTracks
+        from efx_format.timl.names import BLOCK_TO_TLP, FIELD_TO_DT
+        tracks = TimlTracks()
+        dt = FIELD_TO_DT[("BILLBOARD3D", "scale")][0][0]
+        tracks._curves[(1, BLOCK_TO_TLP["BILLBOARD3D"], dt)] = Curve([(0.0, 1.0, 2), (10.0, 1.0, 2)])
+        tracks.ok = True
+        blocks = [(SPAWN, spawn_fields(intervalFrame=1000)),
+                  (LIFE, life_fields(indefiniteLifespan=1)),
+                  (BILLBOARD3D, billboard_fields(scale=1.0, scaleJitter=2.0, width=10.0, height=10.0))]
+        sim = Simulator(blocks, b"", SimConfig(), tracks=tracks)
+        sim.run(2)
+        p = sim.particles[0]
+        offset = p.rolled["bb_scale"] - 1.0
+        self.assertGreater(offset, 0.0)
+        self.assertAlmostEqual(sim.build_render()[0].size.x, 10.0 * (1.0 + offset), places=5)
 
 
 class TestA1TrackWithDecay(unittest.TestCase):
@@ -4279,14 +3998,6 @@ class TestRibbon(unittest.TestCase):
         pts = [q for q, _w, _a in sim.build_render()[0].points]
         self.assertAlmostEqual((pts[-1] - pts[0]).length(), 139.0, delta=1.0)
 
-    def test_trail_length_mode_per_segment(self):
-        """'per_segment' 对照档：总长 = length × (细分数-1)。"""
-        sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=10.0, subdivisionCount=5),
-                        velocity=velocity_fields(speed=10.0), frames=40,
-                        config=SimConfig(ribbon_length_mode="per_segment"))
-        pts = [q for q, _w, _a in sim.build_render()[0].points]
-        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 40.0, delta=0.5)
-
     def test_trail_mode_ignores_spawn_anchor_offset(self):
         """轨迹跟随模式下 spawnAnchorOffset 不生效：头部（base）恒等于粒子当前位置。
 
@@ -4320,14 +4031,6 @@ class TestRibbon(unittest.TestCase):
         span = (pts[-1] - pts[0]).length()
         self.assertAlmostEqual(span, 40.0, delta=1.0)
 
-    def test_trail_length_mode_total_caps_at_length(self):
-        """`ribbon_length_mode='total'` = 改动前的读法：length 就是总长。"""
-        sim = self._sim(ribbon=ribbon_fields(ribbonMode=0, length=50.0),
-                        velocity=velocity_fields(speed=10.0),
-                        config=SimConfig(ribbon_length_mode="total"))
-        pts = [q for q, _w, _a in sim.build_render()[0].points]
-        self.assertAlmostEqual((pts[-1] - pts[0]).length(), 50.0, delta=1.0)
-
     def test_trail_falls_back_to_emitter_when_particle_is_static(self):
         """blade_trail 那种粒子不动的情形，轨迹得取发射器的。"""
         sim = self._sim(
@@ -4351,49 +4054,6 @@ class TestRibbon(unittest.TestCase):
         sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=4))
         pts = [q for q, _w, _a in sim.build_render()[0].points]
         self.assertAlmostEqual(pts[-1].y - pts[0].y, -60.0, places=4)
-
-    def test_rigid_mode_static_ignores_motion(self):
-        """static 档：即便粒子在动，方向仍然只看 baseAxis，不看速度。"""
-        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=1),
-                        velocity=velocity_fields(speed=10.0, baseAxis=2),
-                        config=SimConfig(ribbon_rigid_dir="static"))
-        pts = [q for q, _w, _a in sim.build_render()[0].points]
-        for q in pts:                                  # baseAxis=1 → 仍沿 +Y
-            self.assertAlmostEqual(q.x, 0.0, places=4)
-
-    def test_rigid_mode_velocity_calibration_tracks_particle_motion(self):
-        """calibration=velocity：方向跟粒子当前速度走，不再是出生时的 baseAxis。"""
-        sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=1),
-                        velocity=velocity_fields(speed=10.0, baseAxis=2),
-                        config=SimConfig(ribbon_rigid_dir="velocity"))
-        pts = [q for q, _w, _a in sim.build_render()[0].points]
-        span = (pts[-1] - pts[0]).normalized()
-        vel_dir = sim.particles[0].vel.normalized()
-        self.assertAlmostEqual(abs(span.dot(vel_dir)), 1.0, places=3)
-
-    def test_rigid_mode_velocity_calibration_falls_back_to_emitter_motion(self):
-        """粒子自己不动（无 VELOCITY3D）时，跟发射器的位移方向走，同轨迹跟随模式。"""
-        sim = self._sim(
-            ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=1),
-            transform=transform3d_fields(enableVelocityBitflag=1,
-                                         translation_velocity=[300.0, 0.0, 0.0,
-                                                               0.0, 0.0, 0.0]),
-            config=SimConfig(ribbon_rigid_dir="velocity"))
-        pts = [q for q, _w, _a in sim.build_render()[0].points]
-        span = (pts[-1] - pts[0]).normalized()
-        em_dir = sim.em.velocity.normalized()
-        self.assertAlmostEqual(abs(span.dot(em_dir)), 1.0, places=3)
-
-    def test_rigid_mode_velocity_option_rest_up_side_points_along_motion(self):
-        """velocity 档：静止朝上的一侧指向运动方向。"""
-        t = transform3d_fields(enableVelocityBitflag=1,
-                               translation_velocity=[300.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        for axis, sign in ((1, 1.0), (4, -1.0)):
-            sim = self._sim(ribbon=ribbon_fields(ribbonMode=1, length=60.0, baseAxis=axis),
-                            transform=t, config=SimConfig(ribbon_rigid_dir="velocity"))
-            pts = [q for q, _w, _a in sim.build_render()[0].points]
-            span = (pts[-1] - pts[0]).normalized()
-            self.assertAlmostEqual(span.x, sign, places=3)
 
     def test_rigid_mode_turns_with_emitter_spin(self):
         """默认 parent 档：条带随发射器一起转。粒子在 +X 半径上、静止朝 +Y，转动后仍与
@@ -4422,25 +4082,6 @@ class TestRibbon(unittest.TestCase):
                 pts = [q for q, _w, _a in sim.build_render()[0].points]
                 d = (pts[-1] - pts[0]).normalized()
                 self.assertGreater(d.dot(ccw) * sign, 0.99, (spin, axis))
-
-    def test_rigid_mode_velocity_calibration_holds_last_direction_when_still(self):
-        """粒子和发射器都静止的那些帧，方向保留上一个有效值，不弹回 baseAxis。"""
-        sim = make_sim(extra=[(RIBBON, ribbon_fields(ribbonMode=1, length=60.0,
-                                                     baseAxis=1))],
-                       velocity=velocity_fields(speed=10.0, baseAxis=2,
-                                                movementDelay=5),
-                       spawn=spawn_fields(intervalFrame=1000),
-                       life=life_fields(indefiniteLifespan=1),
-                       config=SimConfig(ribbon_rigid_dir="velocity"))
-        for _ in range(3):                  # 还没到 movementDelay，粒子仍静止
-            sim.step()
-        from efx_format.sim.behaviors.ribbon import Ribbon as _R
-        held_dir = sim.particles[0].user[_R]["dir"].copy()
-        self.assertAlmostEqual(held_dir.x, 0.0, places=4)   # 尚未被速度覆盖，仍是 baseAxis
-        for _ in range(10):                 # 越过延迟，粒子开始动
-            sim.step()
-        moving_dir = sim.particles[0].user[_R]["dir"].copy()
-        self.assertGreater(abs(moving_dir.x) + abs(moving_dir.z), 0.5)
 
     def test_fade_length_switch_off_counts_both_spans_as_one(self):
         """enableFadeLength=0：两个渐隐长度按 1 计，本地填的值不起作用。"""
@@ -5368,9 +5009,9 @@ class TestUVControl(unittest.TestCase):
         on = self._sim({"enableFlowmap": 1, "flowmapSpeed": 1.0, "flowmapStrength": 0.2,
                         "flowmapSpeedCoef": 1.0, "flowmapStrengthCoef": 1.0})
         on.run(15)
-        amt = on.build_render()[0].extra.get("flowmap")
-        self.assertIsNotNone(amt)
-        self.assertLessEqual(abs(amt), 0.2 + 1e-6)
+        extra = on.build_render()[0].extra
+        self.assertAlmostEqual(extra.get("flowmap"), 0.1, places=6)
+        self.assertIn("flowmap_phase", extra)
         off = self._sim({"enableFlowmap": 0, "flowmapSpeed": 1.0, "flowmapStrength": 0.2})
         off.run(15)
         self.assertNotIn("flowmap", off.build_render()[0].extra)
