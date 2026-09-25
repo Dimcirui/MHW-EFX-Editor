@@ -51,14 +51,17 @@ def _mix64(x):
     return x ^ (x >> 31)
 
 
-def emitter_seed(base_seed, randomfix_seeds=()):
-    """发射器级种子；randomfix_seeds 来自 RANDOMFIX 的 randomSeedTable0~7。
+def emitter_seed(base_seed, randomfix_seeds=(), salt=0):
+    """发射器级种子；randomfix_seeds 来自 RANDOMFIX 的 randomSeedTable0~7，salt 区分同一
+    entry 的不同实例，为 0 时结果与不加盐相同。
 
     ⚠ 只是把这些值混进种子，使「改种子表 → 形态变化」可观察，不复现游戏的取用规则。
     """
     h = _mix64(int(base_seed) & _MASK64)
     for s in randomfix_seeds:
         h = _mix64(h ^ (int(s) & 0xFFFFFFFF))
+    if salt:
+        h = _mix64(h ^ ((int(salt) * 0x9E3779B97F4A7C15) & _MASK64))
     return h
 
 

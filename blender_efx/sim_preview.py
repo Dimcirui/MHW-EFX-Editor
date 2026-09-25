@@ -485,6 +485,8 @@ def _decal_assets(entry_obj, blocks, chunk_root, use_tex=True):
             if paths and use_tex:
                 out["image"] = _game_tex_image(entry_obj, paths[0], chunk_root,
                                                _MAT_TEX_CACHE)
+                # 序列帧模式的自发光层沿用同一张序列帧贴图
+                out["emissive"] = out["image"]
     elif use_tex:
         out["image"] = _game_tex_image(entry_obj, d.get("mpAlbedoMap", ""), chunk_root,
                                        _MAT_TEX_CACHE)

@@ -282,8 +282,9 @@ class SimScene(object):
         # 是「宿主已经摆好了 entry 的位置」，而那只对根 entry 成立——子实例锚在父粒子上，
         # 没有宿主替它摆位，静态 translate/rotate/resize 会被整个丢掉。
         cfg = self.config if depth == 0 else self._child_config()
+        # 子实例按实例号加盐：否则同一 entry 的所有实例抽到同一组抖动，朝向、大小完全一致
         sim = Simulator(tmpl.blocks, tmpl.timl_bytes, cfg, res,
-                        tracks=tmpl.tracks())
+                        tracks=tmpl.tracks(), seed_salt=self._next_iid if depth else 0)
         offset = target.position.copy() if target is not None else Vec3()
         scale = target.size.copy() if target is not None else None
         inst = Instance(self._next_iid, key, sim, depth, parent_particle, offset,

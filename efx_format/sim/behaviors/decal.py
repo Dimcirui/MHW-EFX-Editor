@@ -13,19 +13,27 @@ TIML 轨道按 `nEffect::nTimelineParam::<短类名>` 与去掉 m 前缀的参�
 
 贴花是渲染主体：一张按 `mAxis` 方向投射的面片，面片法线与投射方向相反，`mUpVector` 为贴图
 上方。`mAxis` 与 `mUpVector` 使用 AxisDirection6 枚举，官方样本以 4（−Y，向下投射）为主，
-glue 据 `extra["decal_ground"]` 把向下投射的贴花贴到地面。`mRange` 的 X/Y 为贴花宽高
+glue 据 `extra["decal_ground"]` 把向下投射的贴花贴到地面。这组基在出生时按发射器的总旋转
+（TRANSFORM3D 的旋转与自转、PTLIFE 父实例的旋转）转到粒子上，PARENTOPTIONS 跟随旋转时随之
+转动；转动后不再向下投射的贴花不贴地。`mRange` 的 X/Y 为贴花宽高
 （游戏单位），Z 为投射深度，预览不使用深度。`mRangeScaleMode` 的 bit0/bit1 决定宽/高是否随
 SCALEANIM 缩放，缺省视为全部缩放。
 
 贴图有两种来源，由 `mMappingMode` 选择：
 
-    1  序列帧：mpUVSequence 的 .uvs，mSequenceNo 选 group，其余播放字段与 UVSEQUENCE 同义
+    1  序列帧：mpUVSequence 的 .uvs，mSequenceNo 选 group，其余播放字段与 UVSEQUENCE 同义；
+       写了 mEmissiveMapFactor 时，以序列帧贴图 × mEmissiveMapFactor ×
+       mEmissiveMapFactorIntensity 叠加自发光
     0  贴图组：mpAlbedoMap（BaseMap）× mBlendFactor，叠加 mpEmissiveMap ×
        mEmissiveMapFactor × mEmissiveMapFactorIntensity 的自发光
 
+`mBlendMode` 为 1 时底色层按乘法混合（背景 × lerp(1, 底色, 不透明度)），否则按 Alpha 混合；
+自发光层总是加法叠加。它与渲染主体上同名的「启用自发光」不是同一个开关。
+
 序列帧模式下 `mShadingMode` 选择着色：1 为火焰/烟雾两层（字段与 RGBFIRE 同构），2 为水膜/
 高光两层（字段与 RGBWATER 同构），0 直接用贴图乘 mBlendFactor。两层模式与 RGBFIRE /
-RGBWATER 共用 glue 的通道遮罩 shader。`mpFlowMap` 在 `mFlowEnable=1` 时接入共用 flowmap。
+RGBWATER 共用 glue 的通道遮罩 shader。火焰模式下没写颜色的那一层按黑色计，两层都没写时
+按 mShadingMode=0 处理。`mpFlowMap` 在 `mFlowEnable=1` 时接入共用 flowmap。
 
 `mPlayType` 取 0=停在起始帧、1=循环、2=播放一次后停在末帧；`mPlayOrder` 取 0=正放、
 1=倒放、2=随机。`mNormalMap`、`mpAlphaTestMap`、`mAlphaCorrectionMin/Max`、金属度/粗糙度、
@@ -45,8 +53,10 @@ from ..resolve import FieldResolver
 from ..rng import jitter, jitter_int
 from ..stages import RENDER_BODY
 from ..state import BASE_AXES, RenderItem, Vec3
+from ..vecmath import rotate_euler
 from . import _flowmap
-from ._common import color_param_weight, quad_size, rgba
+from ._common import color_param_weight, emitter_rotate, quad_size, rgba
+from .parentoptions import ParentOptions
 from .uvsequence import (DIR_RANDOM, DIR_REVERSE, PB_LOOP, PB_ONCE_HOLD, PB_START_ONLY,
                          UVSequence, _roll_flip)
 
@@ -206,6 +216,28 @@ def _axis(idx, fallback):
     return BASE_AXES[idx] if 0 <= idx < len(BASE_AXES) else BASE_AXES[fallback]
 
 
+def _is_down(n):
+    """法线朝上即向下投射。"""
+    return n.y > 0.999
+
+
+def _sync_parent_rot(p, em, st):
+    """把 PARENTOPTIONS 新施加到粒子上的旋转同步到贴花的基；按累计量求差，可重复调用。"""
+    po = p.user.get(ParentOptions)
+    if po is None:
+        return
+    acc = po["rot_applied"]
+    last = st["po_rot"]
+    dx, dy, dz = acc.x - last.x, acc.y - last.y, acc.z - last.z
+    if not (dx or dy or dz):
+        return
+    order, applied = em.rot_order, em.config.rot_order_applied
+    st["u"] = rotate_euler(st["u"], dx, dy, dz, order=order, applied=applied)
+    st["v"] = rotate_euler(st["v"], dx, dy, dz, order=order, applied=applied)
+    st["normal"] = rotate_euler(st["normal"], dx, dy, dz, order=order, applied=applied)
+    st["po_rot"] = acc.copy()
+
+
 @register(PTBEHAVIOR)
 class PtBehavior(Behavior):
     """RENDER_BODY 阶段产出贴花面片；非贴花的 b_type 记为未模拟。"""
@@ -219,7 +251,6 @@ class PtBehavior(Behavior):
     _shading = SHADE_FIRE
     _table = None
     _group = 0
-    _ground = True
     _scale_mask = 0x07
     _emissive = False
     _normal = None
@@ -245,11 +276,15 @@ class PtBehavior(Behavior):
         self._mapping = f.i("mMappingMode", MAP_TEXTURES)
         self._shading = f.i("mShadingMode", SHADE_FIRE)
         self._scale_mask = f.i("mRangeScaleMode", 0x07)
-        self._emissive = (self._mapping == MAP_TEXTURES
-                          and bool(f.raw("mpEmissiveMap", "")))
+        if self._mapping == MAP_TEXTURES:
+            self._emissive = bool(f.raw("mpEmissiveMap", ""))
+        else:
+            self._emissive = f.has("mEmissiveMapFactor")
+        if (self._mapping == MAP_UVSEQUENCE and self._shading == SHADE_FIRE
+                and not (f.has("mFireColorX") or f.has("mSmokeColorX"))):
+            self._shading = SHADE_PLAIN
 
         axis = f.i("mAxis", AXIS_DOWN)
-        self._ground = axis == AXIS_DOWN
         n = _axis(axis, AXIS_DOWN) * -1.0
         up = _axis(f.i("mUpVector", 2), 2)
         v = up - n * up.dot(n)
@@ -275,7 +310,9 @@ class PtBehavior(Behavior):
         f = em.f(PTBEHAVIOR, p)
         st = {"flip_u": _roll_flip(f.i("mHorizontalFlip"), rng),
               "flip_v": _roll_flip(f.i("mVerticalFlip"), rng),
-              "blend": "ADDITIVE" if f.i("mBlendMode") == 1 else "ALPHA"}
+              "blend": "MULTIPLY" if f.i("mBlendMode") == 1 else "ALPHA",
+              "u": emitter_rotate(em, self._u), "v": emitter_rotate(em, self._v),
+              "normal": emitter_rotate(em, self._normal), "po_rot": Vec3()}
 
         if self._table is not None and len(self._table) > 0:
             self._spawn_sequence(st, f, rng, em.config)
@@ -313,10 +350,13 @@ class PtBehavior(Behavior):
             "playback": _PLAY_TYPE.get(f.i("mPlayType"), PB_START_ONLY),
         })
 
-    # ── 逐帧：推进序列帧（build_render 只读）─────────────────────────────────
+    # ── 逐帧：同步跟随旋转、推进序列帧 ───────────────────────────────────────
     def on_particle_step(self, p, em):
         st = p.user.get(PtBehavior)
-        if st is None or "phase" not in st or st["playback"] == PB_START_ONLY:
+        if st is None:
+            return
+        _sync_parent_rot(p, em, st)
+        if "phase" not in st or st["playback"] == PB_START_ONLY:
             return
         step = st["speed"] * st["sign"]
         if em.config.uvs_speed_unit == "per_second":
@@ -342,7 +382,9 @@ class PtBehavior(Behavior):
             size.y = max(0.0, h)
         item.size = size
 
-        u, v = self._u, self._v
+        # 逐帧 step 可能先于 PARENTOPTIONS 执行，渲染前再同步一次，否则朝向落后一帧
+        _sync_parent_rot(p, em, st)
+        u, v = st["u"], st["v"]
         if p.rot.z:                                # ROTATEANIM 绕法线的自旋
             a = math.radians(p.rot.z)
             c, s = math.cos(a), math.sin(a)
@@ -358,7 +400,7 @@ class PtBehavior(Behavior):
         item.extra["own_blend"] = True     # 贴花按自己的 mBlendMode，不受 SHADERSETTINGS 覆盖
         item.extra["vel"] = p.vel
         item.extra["age"] = p.age
-        item.extra["decal_ground"] = self._ground
+        item.extra["decal_ground"] = _is_down(st["normal"])
 
         if "phase" in st:
             idx = st["frame"]
@@ -379,7 +421,7 @@ class PtBehavior(Behavior):
                 self._fire_layers(p, f, st["fire"], item)
             elif self._shading == SHADE_WATER:
                 self._water_layers(p, f, item)
-        elif self._emissive:
+        if self._emissive:
             er, eg, eb, _ea = rgba(f.raw("mEmissiveMapFactor"))
             k = float(f.get("mEmissiveMapFactorIntensity", 1.0))
             item.extra["decal_emissive"] = (er * k * p.color[0], eg * k * p.color[1],
@@ -392,8 +434,8 @@ class PtBehavior(Behavior):
         rate = float(f.get("mFireColorRate", 1.0))
         wf = max(0.0, float(f.get("mFireFactor", 1.0))) * color_param_weight(st["fp"], p.age)
         ws = max(0.0, float(f.get("mSmokeFactor", 1.0))) * color_param_weight(st["sp"], p.age)
-        fire = _rgb3(f, "mFireColor")
-        smoke = _rgb3(f, "mSmokeColor")
+        fire = _rgb3(f, "mFireColor", 0.0)
+        smoke = _rgb3(f, "mSmokeColor", 0.0)
         item.extra["layers"] = ([c * wf * rate * p.color[i] for i, c in enumerate(fire)],
                                 [c * ws * rate * p.color[i] for i, c in enumerate(smoke)])
         item.extra["rgbfire_lerp"] = max(0.0, min(1.0, float(f.get("mSmokeLerpAlphaToB", 0.0))))

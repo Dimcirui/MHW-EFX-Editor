@@ -196,8 +196,10 @@ class Simulator(object):
     """
 
     def __init__(self, blocks, timl_bytes=b"", config=None, resources=None,
-                 tracks=None):
+                 tracks=None, seed_salt=0):
         self.blocks = list(blocks or [])
+        #: 混进发射器种子的实例盐：同一 entry 被 PTLIFE 实例化多次时，各实例的抖动各自抽取
+        self.seed_salt = int(seed_salt or 0)
         self._has_body = _has_renderer_body(self.blocks)
         self.timl_bytes = bytes(timl_bytes or b"")
         self.config = config or SimConfig()
@@ -224,7 +226,7 @@ class Simulator(object):
         cfg = self.config
         self.bound, unsupported = _reg.build_behaviors(self.blocks, cfg)
 
-        em_seed = _rng.emitter_seed(cfg.seed, self._randomfix_seeds())
+        em_seed = _rng.emitter_seed(cfg.seed, self._randomfix_seeds(), self.seed_salt)
         em = EmitterState(cfg, em_seed, self.resources)
         em.unsupported = list(unsupported)
 

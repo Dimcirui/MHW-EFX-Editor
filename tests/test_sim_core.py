@@ -2796,6 +2796,25 @@ class TestPtLifeActionScene(unittest.TestCase):
         self.assertGreater(abs(first_vel.x - second_vel.x) + abs(first_vel.z - second_vel.z),
                            1e-3)
 
+    def test_child_instances_roll_their_own_jitter(self):
+        """同一 entry 的多个子实例各自抽取 TRANSFORM3D 的随机量，而不是全部相同。"""
+        parent_blocks = [
+            (SPAWN, spawn_fields(spawnNum=4, intervalFrame=1000)),
+            (LIFE, life_fields(indefiniteLifespan=1)),
+            (PTLIFE, ptlife_fields(status=0)),
+        ]
+        child_blocks = [
+            (TRANSFORM3D, transform3d_fields(rotate=[0.0, 0.0, 0.0, 360.0, 0.0, 0.0])),
+            (SPAWN, spawn_fields(intervalFrame=1000)),
+            (LIFE, life_fields(indefiniteLifespan=1)),
+        ]
+        templates = {0: EntryTemplate(0, parent_blocks), 1: EntryTemplate(1, child_blocks)}
+        sc = SimScene(templates, {0: [ActionTarget(1)]}, root_key=0,
+                      config=SimConfig(seed=1))
+        sc.run(3)
+        rots = {round(i.em.rot_dynamic.y, 6) for i in sc.instances if i.key == 1}
+        self.assertGreaterEqual(len(rots), 3)
+
     # ── Action 的 Size / Position ────────────────────────────────────────────
     def test_action_position_offsets_the_child(self):
         sc = self._scene(ptlife=ptlife_fields(status=0),
@@ -5003,6 +5022,36 @@ class TestDecal(unittest.TestCase):
         self.assertAlmostEqual(item.axis_v.y, 0.0)
         self.assertTrue(item.extra["decal_ground"])
 
+    def _rotated(self, transform, extra=(), frames=1):
+        blocks = [(TRANSFORM3D, transform), (SPAWN, spawn_fields(intervalFrame=1000)),
+                  (LIFE, life_fields(indefiniteLifespan=1))] + list(extra)
+        blocks.append((PTBEHAVIOR, decal_fields()))
+        sim = Simulator(blocks, b"", SimConfig(strict=True, t3d_apply_base=True))
+        for _ in range(frames):
+            sim.step()
+        return sim.build_render()[0]
+
+    def test_emitter_rotation_turns_the_decal(self):
+        flat = decal_sim().build_render()[0]
+        item = self._rotated(transform3d_fields(rotate=[0.0, 0.0, 90.0, 0.0, 0.0, 0.0]))
+        # 绕 Y 转 90°：仍贴地，但横轴换了方向
+        self.assertAlmostEqual(item.axis_u.y, 0.0)
+        self.assertAlmostEqual(abs(item.axis_u.dot(flat.axis_u)), 0.0, places=5)
+        self.assertTrue(item.extra["decal_ground"])
+
+    def test_tilted_emitter_is_not_grounded(self):
+        item = self._rotated(transform3d_fields(rotate=[90.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+        self.assertFalse(item.extra["decal_ground"])
+
+    def test_follows_spinning_emitter_with_parentoptions(self):
+        po = (PARENTOPTIONS, parentoptions_fields(particleUseLocal=1,
+                                                  relationRot=[1, 1, 1]))
+        fixed = self._rotated(spinning_emitter(3.0), frames=10)
+        follow = self._rotated(spinning_emitter(3.0), extra=[po], frames=10)
+        # 不跟随时停在出生朝向，跟随时多转了 9 帧 × 3°
+        self.assertAlmostEqual(fixed.axis_u.dot(follow.axis_u),
+                               math.cos(math.radians(27.0)), places=4)
+
     def test_uvsequence_mapping_uses_sequence_frames(self):
         sim = decal_sim(resources=self._res(4), frames=3,
                         mMappingMode=(0x06, {"decal_epv_color_slot": 1}),
@@ -5032,6 +5081,33 @@ class TestDecal(unittest.TestCase):
         fire, _smoke = item.extra["layers"]
         self.assertEqual([round(c, 6) for c in fire], [2.0, 1.0, 0.0])
         self.assertAlmostEqual(item.extra["rgbfire_lerp"], 0.25)
+
+    def test_blend_mode_one_multiplies(self):
+        on = decal_sim(mBlendMode=(0x06, {"decal_epv_color_slot": 1})).build_render()[0]
+        off = decal_sim(mBlendMode=(0x06, {"decal_epv_color_slot": 0})).build_render()[0]
+        self.assertEqual(on.blend, "MULTIPLY")
+        self.assertEqual(off.blend, "ALPHA")
+
+    def test_uvsequence_mapping_adds_emissive(self):
+        sim = decal_sim(resources=self._res(4),
+                        mMappingMode=(0x06, {"decal_epv_color_slot": 1}),
+                        mShadingMode=(0x06, {"decal_epv_color_slot": 1}),
+                        mEmissiveMapFactor=(0x0F, {"color": [0, 0, 255, 255]}),
+                        mEmissiveMapFactorIntensity=(0x0C, {"unkn0": 100.0}))
+        item = sim.build_render()[0]
+        r, _g, b, _a = item.extra["decal_emissive"]
+        self.assertAlmostEqual(r, 0.0)
+        self.assertAlmostEqual(b, 100.0)
+        # 火焰模式但没写火焰/烟雾颜色：不画两层
+        self.assertNotIn("layers", item.extra)
+
+    def test_fire_layer_without_color_is_black(self):
+        sim = decal_sim(resources=self._res(4),
+                        mMappingMode=(0x06, {"decal_epv_color_slot": 1}),
+                        mShadingMode=(0x06, {"decal_epv_color_slot": 1}),
+                        mFireColor=(0x14, {"unkn1": [1.0, 0.5, 0.0]}))
+        _fire, smoke = sim.build_render()[0].extra["layers"]
+        self.assertEqual(list(smoke), [0.0, 0.0, 0.0])
 
     def test_texture_mapping_adds_emissive(self):
         sim = decal_sim(mMappingMode=(0x06, {"decal_epv_color_slot": 0}),
