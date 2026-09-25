@@ -86,15 +86,16 @@ FLOWMAP = FieldGroup(
 
 GROUPS = (FLOWMAP,)
 
-#: 单一类型内的分段标题：类型名 → [(组首字段, (中文, 英文)), ...]。只画标题，不改标签和
-#: 顺序；顺序由 efx_format/field_order.py 的锚点表决定。组首字段被隐藏时标题照画。
+#: 单一类型内的分段：类型名 → [((中文, 英文), [成员字段, ...]), ...]。只画组标题，不改标签；
+#: 顺序由 efx_format/field_order.py 的锚点表决定。标题画在本段第一个实际画出的成员之前，
+#: 整段都被隐藏或都落在高级区时不画。成员只需列 value 字段，配对的 Jitter 随 value 同行。
 TYPE_SECTIONS = {
     "SPAWN": [
-        ("maxParticles",      ("数量", "Count")),
-        ("loopNum",           ("每轮", "Per Round")),
-        ("revivalLoop",       ("复活", "Revival")),
-        ("emitterDelayFrame", ("延迟", "Delay")),
-        ("spawnFlags",        ("标志", "Flags")),
+        (("数量", "Count"), ["maxParticles", "spawnNum"]),
+        (("每轮", "Per Round"), ["loopNum", "intervalFrame", "spawnFrame"]),
+        (("复活", "Revival"), ["revivalLoop", "revivalInterval"]),
+        (("延迟", "Delay"), ["emitterDelayFrame", "particleDelayFrame"]),
+        (("标志", "Flags"), ["spawnFlags"]),
     ],
 }
 
@@ -115,17 +116,17 @@ def move_groups_to_end(type_name, items):
     return items
 
 
-def section_header(type_name, field_name):
-    """以该字段为组首的分段标题 (中文, 英文)；没有返回 None。"""
-    for lead, header in TYPE_SECTIONS.get(type_name, ()):
-        if lead == field_name:
-            return header
+def section_of(type_name, field_name):
+    """字段所在分段的序号；不属于任何分段返回 None。"""
+    for k, (_header, members) in enumerate(TYPE_SECTIONS.get(type_name, ())):
+        if field_name in members:
+            return k
     return None
 
 
-def is_first_section(type_name, field_name):
-    sections = TYPE_SECTIONS.get(type_name)
-    return bool(sections) and sections[0][0] == field_name
+def section_header(type_name, index):
+    """分段标题 (中文, 英文)。"""
+    return TYPE_SECTIONS[type_name][index][0]
 
 
 def row_label(type_name, field_name, zh):

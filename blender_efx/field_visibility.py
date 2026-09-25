@@ -252,14 +252,18 @@ FIELD_VISIBILITY = {
 }
 
 
+#: 置灰规则：格式同 FIELD_VISIBILITY，条件不满足时字段仍显示、可编辑，只是画成灰色。
+#: 用于「当前不生效但用户需要看到」的字段；隐藏与置灰同时命中时以隐藏为准。
+FIELD_DIM = {}
+
+
 def rule_conditions(rule):
     """把单条规则统一成 [(mode_field, pred), ...]。"""
     return list(rule) if isinstance(rule, list) else [rule]
 
 
-def field_hidden(type_name, ori_name, get_value) -> bool:
-    """该字段当前是否应隐藏（据其模式字段的当前值）。get_value(field_name)->int|None。"""
-    rules = FIELD_VISIBILITY.get(type_name)
+def _rule_fails(table, type_name, ori_name, get_value) -> bool:
+    rules = table.get(type_name)
     if not rules:
         return False
     r = rules.get(ori_name)
@@ -275,3 +279,13 @@ def field_hidden(type_name, ori_name, get_value) -> bool:
         except Exception:
             continue
     return False
+
+
+def field_hidden(type_name, ori_name, get_value) -> bool:
+    """该字段当前是否应隐藏（据其模式字段的当前值）。get_value(field_name)->int|None。"""
+    return _rule_fails(FIELD_VISIBILITY, type_name, ori_name, get_value)
+
+
+def field_dimmed(type_name, ori_name, get_value) -> bool:
+    """该字段当前是否应置灰。读不到模式值时不置灰。"""
+    return _rule_fails(FIELD_DIM, type_name, ori_name, get_value)

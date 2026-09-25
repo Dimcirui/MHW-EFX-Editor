@@ -364,20 +364,18 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
         return
 
-    # EnumVec3 以三个轴向下拉控件显示。
+    # EnumVec3 在同一行画 X/Y/Z 三个下拉。
     if (dtype == "INT3" and not item.read_only
             and _field_is_enum_vec3(type_name, item.ori_name)):
-        title = layout.row(align=True)
-        title.scale_y = 1.1
-        title.use_property_split = False
-        title.label(text=fname)
-        _draw_field_row_buttons(title, type_name, item.ori_name, item=item, anno_name=_anno)
-        for axis, prop in (("X", "enum_vec3_x"), ("Y", "enum_vec3_y"), ("Z", "enum_vec3_z")):
-            r = layout.row(align=True)
-            r.scale_y = 1.1
-            r.use_property_split = False
-            r.label(text=axis, icon="BLANK1")
-            r.prop(item, prop, text="")
+        row = layout.row(align=True)
+        row.scale_y = 1.1
+        row.use_property_split = False
+        split = row.split(factor=0.45)
+        split.label(text=fname)
+        axes = split.row(align=True)
+        for prop in ("enum_vec3_x", "enum_vec3_y", "enum_vec3_z"):
+            axes.prop(item, prop, text="")
+        _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=_anno)
         return
 
     # FLOAT6 分量按 X/Y/Z 的固定值与随机值配对。
@@ -1260,6 +1258,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
             from .field_labels import is_reserved_fill as _irf
             _show_all_fields = getattr(context.scene, "efx_show_all_fields", False)
             _has_vis_rules = type_name in _fv.FIELD_VISIBILITY
+            _has_dim_rules = type_name in _fv.FIELD_DIM
 
             def _mode_getter(fname, _ibn=_item_by_name, _rd=_fld._enum_backing_read):
                 _it = _ibn.get(fname)
@@ -1300,6 +1299,8 @@ def _draw_attribute_fields_content(layout, context, obj=None):
             from . import field_groups as _fg
             from .i18n import get_lang as _get_lang_grp
             _zh_grp = _get_lang_grp() == "ZH"
+            _sections_drawn = set()
+            _common_rows_seen = False
 
             i = 0
             while i < n:
@@ -1321,11 +1322,6 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     _draw_section_header(_common_col, _zh_grp, *_grp.header)
                     _draw_group_bit_rows(_common_col, _item_by_name, type_name,
                                          _fg.lead_bit_rows(_grp, type_name), _zh_grp)
-                _sec = None if _color_only else _fg.section_header(type_name, item.ori_name)
-                if _sec is not None:
-                    if not _fg.is_first_section(type_name, item.ori_name):
-                        _common_col.separator(factor=1.0)
-                    _draw_section_header(_common_col, _zh_grp, *_sec)
                 # TRANSFORM3D / SPAWN：从位掩码里拆出来、挪到别的字段前面当门控开关的
                 # 勾选框，必须画在"模式过滤隐藏判定"**之前**——它们门控的字段（velocity/
                 # modifier 组、spawnFrame）关着的时候会被下面那条隐藏判定跳过，如果勾选
@@ -1389,6 +1385,22 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                         i += 1
                         continue
                     _tcol = _adv_body_col
+                # 类型内分段（field_groups.TYPE_SECTIONS）：本段第一个画进常用区的字段之前
+                # 画组标题；前面已有常用行时先画分隔线。
+                if _tcol is _common_col and not _color_only:
+                    _sk = _fg.section_of(type_name, item.ori_name)
+                    if _sk is not None and _sk not in _sections_drawn:
+                        if _common_rows_seen:
+                            _common_col.separator(factor=1.0)
+                        _draw_section_header(_common_col, _zh_grp,
+                                             *_fg.section_header(type_name, _sk))
+                        _sections_drawn.add(_sk)
+                    _common_rows_seen = True
+                # 置灰：字段照常显示、可编辑，但当前不生效（field_visibility.FIELD_DIM）
+                if (_has_dim_rules and not _color_only
+                        and _fv.field_dimmed(type_name, item.ori_name, _mode_getter)):
+                    _tcol = _tcol.column(align=True)
+                    _tcol.active = False
                 # 虚拟轴向组合控件（AXIS_GROUPS）：分组首字段触发整组绘制，其余成员跳过
                 if item.ori_name in _axis_group_at:
                     _draw_axis_group(_tcol, type_name, _axis_group_at[item.ori_name], _item_by_name)
