@@ -469,7 +469,7 @@ class Simulator(object):
         EFX 的 SPAWN 三态里**没有一态会停**（见 behaviors/spawn.py 的说明），所以
         循环长度必须由播放器自己定。这里按静态字段（不含抖动）估一个合理值：
 
-            启动延迟 + 一整轮批次 + 一个粒子的完整寿命
+            启动延迟 + 全部轮次（含复活间隔） + 一个粒子的完整寿命
 
         glue 层拿它当「播放一次」的默认长度和循环点，用户可以在 UI 上改。
         """
@@ -490,17 +490,19 @@ class Simulator(object):
 
         start = g(sp, "emitterDelayFrame") + g(sp, "emitterDelayFrameJitter")
         per_cycle = g(sp, "loopNum") + g(sp, "loopNumJitter")
-        repeat = g(sp, "revivalLoop")
-        interval = (g(sp, "revivalInterval") if per_cycle == 1
-                    else g(sp, "intervalFrame"))
-        bursts = max(1, per_cycle + repeat - 1) if (per_cycle and repeat) else 1
+        interval = g(sp, "intervalFrame") + g(sp, "intervalFrameJitter")
+        # 无限的情形（loopNum=0 或 revivalLoop=0）只估一轮
+        rounds = g(sp, "revivalLoop") if per_cycle > 0 else 1
+        rounds = max(1, rounds)
+        revive = g(sp, "revivalInterval") + g(sp, "revivalIntervalJitter")
+        round_len = (per_cycle - 1) * interval + 1 if per_cycle > 0 else max(interval, 1)
 
         life = g(lf, "fadeInDuration") + g(lf, "duration") + g(lf, "fadeOutDuration")
         life += g(lf, "durationJitter") + g(lf, "fadeOutDurationJitter")
         if g(lf, "indefiniteLifespan"):
             life = max(life, default)
 
-        total = start + bursts * max(interval, 1) + max(life, 1)
+        total = start + rounds * round_len + (rounds - 1) * revive + max(life, 1)
         return max(1, min(int(total), self.config.max_frames))
 
     # ── 只读视图 ─────────────────────────────────────────────────────────────

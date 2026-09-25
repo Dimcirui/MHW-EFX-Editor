@@ -601,47 +601,50 @@ class TestSpawn(unittest.TestCase):
         self.assertEqual(max(counts), 3)
         self.assertGreater(sim.em.spawned_total, 3)   # 确实一直在补
 
-    def test_bursts_per_cycle_one_uses_alt_interval(self):
-        """三态之二：loopNum 抽到 1 时改用 revivalInterval 作节奏。"""
+    def test_revival_starts_next_round_after_interval(self):
+        """每轮 loopNum 批，最后一批发出后等 revivalInterval 帧开始下一轮，共 revivalLoop 轮。"""
         sim = make_sim(
-            spawn=spawn_fields(loopNum=1, revivalLoop=3,
-                               intervalFrame=100, revivalInterval=5),
-            life=life_fields(indefiniteLifespan=1))
-        frames = self._birth_frames(sim, 12)
-        self.assertEqual(frames[:3], [0, 5, 10])
+            spawn=spawn_fields(loopNum=3, intervalFrame=10, revivalLoop=2,
+                               revivalInterval=60),
+            life=life_fields(duration=20))
+        self.assertEqual(self._birth_frames(sim, 300), [0, 10, 20, 80, 90, 100])
+        self.assertEqual(sim.em.cycle, 1)
 
-    def test_repeat_count_zero_never_stops(self):
-        """revivalLoop=0 → 永不换位置、无限生成（三态之一）。"""
+    def test_revival_interval_ignores_particle_life(self):
+        """复活间隔从最后一批发出时算起，不等粒子消失。"""
+        for duration in (5, 40):
+            sim = make_sim(
+                spawn=spawn_fields(loopNum=1, intervalFrame=0, revivalLoop=3,
+                                   revivalInterval=60),
+                life=life_fields(duration=duration))
+            self.assertEqual(self._birth_frames(sim, 300), [0, 60, 120])
+
+    def test_revival_interval_zero_revives_next_frame(self):
         sim = make_sim(
-            spawn=spawn_fields(loopNum=2, revivalLoop=0, intervalFrame=3),
-            life=life_fields(indefiniteLifespan=1))
-        frames = self._birth_frames(sim, 30)
-        self.assertGreaterEqual(len(frames), 9)
+            spawn=spawn_fields(loopNum=1, intervalFrame=0, revivalLoop=30,
+                               revivalInterval=0),
+            life=life_fields(duration=20))
+        self.assertEqual(self._birth_frames(sim, 100), list(range(30)))
 
-    def test_finite_cycle_stops_emitting(self):
-        """批次数 = loopNum + revivalLoop - 1，发完就**不再发**。
-
-        3 + 1 - 1 = 3 批、间隔 2 帧 → 只有 0/2/4 三个出生帧，后面一直空着。
-        """
+    def test_revival_loop_one_does_not_revive(self):
+        """revivalLoop=1 只跑一轮：3 批、间隔 2 帧 → 0/2/4，之后不再发。"""
         sim = make_sim(
-            spawn=spawn_fields(loopNum=3, revivalLoop=1, intervalFrame=2),
+            spawn=spawn_fields(loopNum=3, revivalLoop=1, intervalFrame=2,
+                               revivalInterval=5),
             life=life_fields(duration=10, indefiniteLifespan=1))
         self.assertEqual(self._birth_frames(sim, 200), [0, 2, 4])
 
-    def test_recycle_mode_keeps_going(self):
-        """'recycle'（改动前的行为）：最后一批之后按粒子寿命等一段，换位置再开一轮。"""
+    def test_revival_loop_zero_revives_forever(self):
         sim = make_sim(
-            spawn=spawn_fields(loopNum=3, revivalLoop=1, intervalFrame=2),
-            life=life_fields(duration=10, indefiniteLifespan=1),
-            config=SimConfig(spawn_after_cycle="recycle"))
-        frames = self._birth_frames(sim, 30)
-        self.assertEqual(frames[:6], [0, 2, 4, 14, 16, 18])
-        self.assertGreaterEqual(sim.em.cycle, 2)
+            spawn=spawn_fields(loopNum=1, intervalFrame=0, revivalLoop=0,
+                               revivalInterval=60),
+            life=life_fields(duration=20))
+        self.assertEqual(self._birth_frames(sim, 400), [0, 60, 120, 180, 240, 300, 360])
 
-    def test_zero_repeat_count_never_stops(self):
-        """revivalLoop=0 是「无限」那一态，不受收工逻辑影响。"""
+    def test_loop_num_zero_never_ends_round(self):
+        """loopNum=0 时这一轮不结束，按 intervalFrame 一直发。"""
         sim = make_sim(
-            spawn=spawn_fields(loopNum=2, revivalLoop=0, intervalFrame=3),
+            spawn=spawn_fields(loopNum=0, revivalLoop=1, intervalFrame=3),
             life=life_fields(duration=5))
         sim.run(500)
         self.assertGreater(sim.em.spawned_total, 50)

@@ -36,12 +36,6 @@ UNKNOWNS = {
         "一串粒子的间距参差不齐；'per_cycle' 一轮只抽一次，整轮等距。",
         ("per_burst", "per_cycle"), "per_burst",
     ),
-    "spawn_after_cycle": (
-        "有限轮次（loopNum 与 revivalLoop 都非 0）的批次发完之后。"
-        "'stop' 不再发；'recycle' 等一个粒子寿命后换位置、重抽、再开一轮。"
-        "两个无限态（任一为 0）不受此开关影响。",
-        ("stop", "recycle"), "stop",
-    ),
     "rotateanim_billboard_axis": (
         "ROTATEANIM 的自旋速度怎么作用在 BILLBOARD3D 上。'view' 只取朝向相机那根轴的"
         "分量当屏幕自转；'z' 只认 Z 轴。PLANE/MESH 等真 3D 渲染体不受影响，"
@@ -128,7 +122,7 @@ class SimConfig(object):
         "fps", "seed",
         "a0_sample", "timl_interp",
         "age_during_delay", "parent_release_clock",
-        "spawn_interval_jitter", "spawn_after_cycle",
+        "spawn_interval_jitter",
         "rotateanim_billboard_axis", "uvc_clock",
         "uvs_speed_unit", "uvs_once_span", "uvs_start_wrap",
         "uvs_grid_h", "uvs_grid_v", "uvs_grid_scan",
@@ -161,7 +155,6 @@ class SimConfig(object):
         self.ribbon_trail_time_frames = 0.42
         self.parent_release_clock = "particle_age"
         self.spawn_interval_jitter = "per_burst"
-        self.spawn_after_cycle = "stop"
         self.rotateanim_billboard_axis = "view"
         self.uvc_clock = "particle_age"
         self.blink_phase = "zero"
