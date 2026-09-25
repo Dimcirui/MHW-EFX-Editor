@@ -110,7 +110,7 @@ _LABELS_BY_TYPE = {
     ('MESH', 'playSpeedJitter'): '播放速度抖动',
     ('MESH', 'rotation2'): '附加旋转',
     ('MESH', 'rotation2Jitter'): '附加旋转抖动',
-    ('MESH', 'scale'): '缩放',
+    ('MESH', 'scale'): '逐轴缩放',
     ('MESH', 'global_scale'): '整体缩放',
     ('MESH', 'global_scale_jitter'): '整体缩放抖动',
     ('MESH', 'visconIndexJitter'): '可见条件索引抖动',
@@ -167,7 +167,22 @@ _LABELS_BY_TYPE = {
     ('LIGHTNING', 'EPVColorSlot1'): 'EPV 颜色修正槽位',
     ('LIGHTNING', 'EPVColorSlot2'): 'EPV 颜色修正槽位',
     ('LIGHTNING', 'unknAngle13_0'): '未知角度',
+    # ── 渲染体尺寸组：scale 为整体缩放 ──
+    ('BILLBOARD3D', 'scale'): '整体缩放',
+    ('BILLBOARD2D', 'scale'): '整体缩放',
+    ('PLANE', 'scale'): '整体缩放',
+    ('RIBBON', 'scale'): '整体缩放',
+
+    # ── STRAINRIBBON：两个修正槽位分别对应颜色与颜色范围（后者为结构类推）──
+    ('STRAINRIBBON', 'epv_color_slot1'): '颜色修正槽位',
+    ('STRAINRIBBON', 'epv_color_slot2'): '颜色范围修正槽位?',
+
     # ── RIBBONBLADE ──
+    ('RIBBONBLADE', 'maxLengthLimit'): '最大长度',
+    ('RIBBONBLADE', 'contractionSpeed'): '收缩速度',
+    ('RIBBONBLADE', 'colourTransitionPoint'): '颜色过渡点',
+    ('RIBBONBLADE', 'emissiveStrength'): '自发光强度',
+    ('RIBBONBLADE', 'uvRepetition'): 'UV 重复次数',
     ('RIBBONBLADE', 'widthDirection'): '宽度延伸方向',
     ('RIBBONBLADE', 'length'): '拖尾长度',
     ('RIBBONBLADE', 'flowSpeed'): '流光贴图速度',

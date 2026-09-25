@@ -183,10 +183,10 @@ BILLBOARD3D_ATTR = attr_from_legacy(
         'enableGPUParticle': Bool('enableGPUParticle', label_zh="启用 GPU 粒子"),
         'lightGroup': Bitmask('lightGroup', BITS_LIGHT_GROUP, all_value=255, strict=True,
                                label_zh="光照组"),
-        'correctColorNo': Int('correctColorNo', label_zh="EPV 颜色修正槽位"),
+        'correctColorNo': Int('correctColorNo', label_zh="颜色修正槽位"),
         # colorRange 的专属槽位为位置推断，保留 ``?`` 标记
         'colorRangeCorrectColorNo': Int('colorRangeCorrectColorNo', label_en="Correct Color Range No?",
-                                         label_zh="EPV 颜色修正槽位?"),
+                                         label_zh="颜色范围修正槽位?"),
     },
 )
 
@@ -236,9 +236,9 @@ BILLBOARD2D_ATTR = attr_from_legacy(
         # 底层为 0/1，作为自发光开关显示
         'blendMode':     Bool('blendMode', label_en="Enable Emissive", label_zh="启用自发光"),
         # colorRange 的专属槽位为结构类推，保留 ``?`` 标记
-        'correctColorNo': Int('correctColorNo', label_zh="EPV 颜色修正槽位"),
+        'correctColorNo': Int('correctColorNo', label_zh="颜色修正槽位"),
         'colorRangeCorrectColorNo': Int('colorRangeCorrectColorNo', label_en="Correct Color Range No?",
-                                         label_zh="EPV 颜色修正槽位?"),
+                                         label_zh="颜色范围修正槽位?"),
     },
 )
 
@@ -552,8 +552,8 @@ RIBBON_ATTR = attr_from_legacy(
         'flowOnce': Bool('flowOnce', backing='B', label_zh="流动只播放一次"),
         'flowReverse':  Bool('flowReverse', backing='B', label_zh="流动逆向播放"),
         # epvcolor_0 覆盖 color，epvcolor_1 覆盖 colorRange
-        'epvcolor_0': Int('epvcolor_0', label_zh="EPV 颜色修正槽位"),
-        'epvcolor_1': Int('epvcolor_1', label_zh="EPV 颜色修正槽位"),
+        'epvcolor_0': Int('epvcolor_0', label_zh="颜色修正槽位"),
+        'epvcolor_1': Int('epvcolor_1', label_zh="颜色范围修正槽位"),
     },
 )
 
@@ -659,9 +659,9 @@ PLANE_ATTR = attr_from_legacy(
         # 没有全选哨兵的证据，不能设置 all_value
         'lightGroup':      Bitmask('lightGroup', BITS_LIGHT_GROUP, strict=True, label_zh="光照组"),
         # colorRange 的专属槽位为结构类推，保留 ``?`` 标记
-        'correctColorNo':           Int('correctColorNo', label_zh="EPV 颜色修正槽位"),
+        'correctColorNo':           Int('correctColorNo', label_zh="颜色修正槽位"),
         'colorRangeCorrectColorNo': Int('colorRangeCorrectColorNo', label_en="Correct Color Range No?",
-                                         label_zh="EPV 颜色修正槽位?"),
+                                         label_zh="颜色范围修正槽位?"),
     },
 )
 
