@@ -42,7 +42,7 @@ FIELD_OFFICIAL_NAMES = {
     ("SCALEANIM", "sizeYAdd"):       ("SizeYAdd", "0x2822A722", "确认"),
     ("SCALEANIM", "sizeZAdd"):       ("SizeZAdd", "0x3A9708CC", "确认"),
     ("ROTATEANIM", "spin_velocity"):    ("RotationAdd", "0xE81961E4", "确认"),
-    ("LIFE", "duration"):               ("KeepFrame", "0xBD8D5203", "确认"),
+    ("LIFE", "keepFrame"):               ("KeepFrame", "0xBD8D5203", "确认"),
 }
 
 
@@ -582,11 +582,10 @@ FIELD_ANNOTATIONS = {
     # ─── PTLIFE ───────────────────────────────────────────────────────────────
     ("PTLIFE", "status"): {
         "EN": "Determines when the specified Action is triggered, matching the particle's "
-              "fade-in / sustain / fade-out lifecycle stages (LIFE.fadeInDuration/duration/"
-              "fadeOutDuration). 0=On spawn, 1=Fade in, 2=Sustain, 3=Fade out, 4=On death, "
+              "Appear / Keep / Vanish lifecycle stages set in LIFE. 0=On spawn, 1=Fade in, 2=Sustain, 3=Fade out, 4=On death, "
               "-1=Unknown",
-        "ZH": "决定何时触发指定的 Action，对应粒子淡入/持续/淡出三段生命周期"
-              "（LIFE.fadeInDuration/duration/fadeOutDuration）。0=生成时，1=淡入时，"
+        "ZH": "决定何时触发指定的 Action，对应 LIFE 里淡入 / 持续 / 淡出三段生命周期。"
+              "0=生成时，1=淡入时，"
               "2=持续时，3=淡出时，4=死亡时，-1=未知",
     },
     ("PTLIFE", "relationIndex"): {
@@ -687,9 +686,9 @@ FIELD_ANNOTATIONS = {
               "Outside. 0 stops the particle, 1 leaves the speed untouched, and values "
               "above 1 have no extra effect. Which side of the sphere is affected is set "
               "by the mode.",
-        "ZH": "力场作用区域内粒子速度的缩放比例，仅在力场模式为「内部减速」或「外部减速」"
+        "ZH": "作用场作用区域内粒子速度的缩放比例，仅在作用场模式为「内部减速」或「外部减速」"
               "时生效。0 = 速度归零，1 = 不缩放，大于 1 没有额外效果。作用在球内还是球外"
-              "由力场模式决定。",
+              "由作用场模式决定。",
     },
     ("HOMING", "vanishRadius"): {
         "EN": "Radius of the vanish-check sphere, centred on the homing target. A "
@@ -704,7 +703,7 @@ FIELD_ANNOTATIONS = {
     ("HOMING", "forceFieldRadius"): {
         "EN": "Radius of the force field sphere, centred on the homing target. What the "
               "sphere does is chosen by the force field mode.",
-        "ZH": "力场球体的半径，球心在归航目标上。这个球做什么由力场模式决定。",
+        "ZH": "作用场球体的半径，球心在归航目标上。这个球做什么由作用场模式决定。",
     },
     ("HOMING", "homingTarget"): {
         "EN": "Homing target = (homingTarget mod 4): 0=spawn point (emitter pos), "
@@ -739,10 +738,10 @@ FIELD_ANNOTATIONS = {
               "are kept. Slow Inside and Slow Outside scale particle speed by "
               "the force field speed scale, acting inside and outside the sphere "
               "respectively.",
-        "ZH": "挂在力场球体（球心=归航目标，半径见力场半径）上的规则。「内部出生剔除」= 在"
+        "ZH": "挂在作用场球体（球心=归航目标，半径见作用场半径）上的规则。「内部出生剔除」= 在"
               "球内出生的粒子直接消失，从球外飞进来的不受影响。「内部不转向」= 球内不受"
               "转向力、粒子直线滑行，一出球立刻被拉回；球内出生的粒子保留。「内部减速」和"
-              "「外部减速」= 用力场速度倍率缩放粒子"
+              "「外部减速」= 用作用场速度倍率缩放粒子"
               "速度，前者作用于球内，后者作用于球外。",
     },
     ("HOMING", "unknownEnum1"): {
@@ -1683,7 +1682,7 @@ FIELD_ANNOTATIONS = {
     ("LIFE", "indefiniteLifespan"): {
         "EN": "1 → particle ignores fade-in/out and lives forever; only disappears when the "
               "weapon's major state switches or an action force-clears all FX (disappearance "
-              "still obeys fadeOutDuration). ⚠ Combine with high SPAWN counts = accumulation.",
+              "still obeys the Vanish time). ⚠ Combine with high SPAWN counts = accumulation.",
         "ZH": "1 → 无视渐入渐出、粒子永久存在；除非切换武器大状态或动作强制关闭所有特效才消失"
               "（消失仍遵循淡出时间）。⚠ 与高 SPAWN 数量组合会累积。",
     },
@@ -2469,13 +2468,13 @@ FIELD_ANNOTATIONS = {
         "ZH": "结构性剩余长度标记（=块总字节数-8），由引擎计算，非可调参数。常见取值为 "
               "[5, 30, 44]。",
     },
-    ("BLINK", "minRate"): {
-        "EN": "Lower bound of the flicker range — the blink always spans the full minRate~maxRate range, not just the edges of it.",
-        "ZH": "闪烁摆动范围的下限——闪烁始终会撑满 minRate~maxRate 之间的整个区间，不只是碰到边缘。",
+    ("BLINK", "minAlphaRate"): {
+        "EN": "Lowest alpha multiplier the blink reaches. The blink always sweeps the whole range between the min and max, not just its ends.",
+        "ZH": "闪烁时透明度倍率的下限。闪烁会扫过最小到最大之间的整个区间，不只停在两端。",
     },
-    ("BLINK", "maxRate"): {
-        "EN": "Upper bound of the flicker range (pairs with minRate).",
-        "ZH": "闪烁摆动范围的上限（与 minRate 配对使用）。",
+    ("BLINK", "maxAlphaRate"): {
+        "EN": "Highest alpha multiplier the blink reaches.",
+        "ZH": "闪烁时透明度倍率的上限。",
     },
     ("BLINK", "lowFrequency"): {
         "EN": "Blink speed of the low-frequency channel; adds together with the high-frequency channel. At 0 this channel stops oscillating. To turn the channel off, set lowFrequencyWidth to 0.",
@@ -3678,7 +3677,7 @@ FIELD_ANNOTATIONS = {
         "ZH": "叠加到粒子延迟上的随机量，每个粒子独立抽取。",
     },
     ("SPAWN", "maxParticles"): {
-        "EN": 'Soft cap on particles allowed alive at once for this spawner (concurrent count = burst rate × particle lifespan, i.e. duration+fadeOutDuration). Not a lifetime total — bursts are throttled once this cap would be exceeded, and resume in full once earlier particles die off.',
+        "EN": 'Soft cap on particles allowed alive at once for this spawner (concurrent count = burst rate × particle lifespan, i.e. Keep + Vanish). Not a lifetime total — bursts are throttled once this cap would be exceeded, and resume in full once earlier particles die off.',
         "ZH": '该发射器同时存活粒子数的软上限。不是终身生成总量——超出上限时本批会被削减，等早前粒子死亡腾出空间后又能满额生成。',
     },
     ("SPAWN", "spawnFlags"): {

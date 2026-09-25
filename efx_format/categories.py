@@ -90,7 +90,6 @@ ATTRIBUTE_CATEGORY_OF = {
     RGBWATER:          "renderer_modifier",   # 与 RGBFIRE 互斥
     ALPHACORRECTION:   "renderer_modifier",   # 与 MESH/UVCONTROL 完全不共存
     REFRACTION:        "renderer_modifier",
-    BLINK:             "renderer_modifier",
     LUMINANCEBLEED:    "renderer_modifier",
     MATERIAL:          "renderer_modifier",   # 99.6% 与 MESH 共存；覆盖 mrl3 材质属性
     UVCONTROL:         "renderer_modifier",   # 100% 与 MESH 共存
@@ -123,6 +122,7 @@ ATTRIBUTE_CATEGORY_OF = {
     VELOCITY2D:        "motion_visibility",   # 2D version of VELOCITY3D
     REPEATAREA:        "motion_visibility",   # 跟 VELOCITY3D 共现 91.9%
     FADEBYDEPTH:       "motion_visibility",
+    BLINK:             "motion_visibility",   # 宿主不限 UVS 类：光源、MESH、DUMMY 都在用
     FADEBYANGLE:       "motion_visibility",
     FADEBYEMITTERANGLE:"motion_visibility",
     FADEBYOCCLUSION:   "motion_visibility",
@@ -169,7 +169,6 @@ ATTRIBUTE_SUBGROUP_OF = {
     RGBWATER:        "uvs",
     ALPHACORRECTION: "uvs",
     REFRACTION:      "uvs",
-    BLINK:           "uvs",
     LUMINANCEBLEED:  "uvs",
     MATERIAL:        "mesh",
     UVCONTROL:       "mesh",
@@ -195,6 +194,7 @@ ATTRIBUTE_SUBGROUP_OF = {
     REPEATAREA:            "motion",
     SCREENSPACECOLLISION:  "motion",
     FADEBYDEPTH:           "visibility",
+    BLINK:                 "visibility",
     FADEBYANGLE:           "visibility",
     FADEBYEMITTERANGLE:    "visibility",
     FADEBYOCCLUSION:       "visibility",

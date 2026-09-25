@@ -3,7 +3,7 @@
 
 字段职能：
 
-    fadeInDuration / duration / fadeOutDuration  三段时长，各带一个 Jitter
+    appearFrame / duration / vanishFrame  三段时长，各带一个 Jitter
     timeToDeath                                  语义未确认，不参与寿命计算
     indefiniteLifespan                           置位时不按寿命判定死亡
     unknFrame                                    名称中的 Frame 仅为占位，不使用
@@ -33,11 +33,11 @@ class Life(Behavior):
             return
         cfg = em.config
 
-        fade_in = max(0, jitter_int(f.get("fadeInDuration"), f.get("fadeInDurationJitter"),
+        fade_in = max(0, jitter_int(f.get("appearFrame"), f.get("appearFrameJitter"),
                                     rng))
-        duration = max(0, jitter_int(f.get("duration"), f.get("durationJitter"),
+        duration = max(0, jitter_int(f.get("keepFrame"), f.get("keepFrameJitter"),
                                      rng))
-        fade_out = max(0, jitter_int(f.get("fadeOutDuration"), f.get("fadeOutDurationJitter"),
+        fade_out = max(0, jitter_int(f.get("vanishFrame"), f.get("vanishFrameJitter"),
                                      rng))
 
         total = fade_in + duration + fade_out

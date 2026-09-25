@@ -497,8 +497,8 @@ class Simulator(object):
         revive = g(sp, "revivalInterval") + g(sp, "revivalIntervalJitter")
         round_len = (per_cycle - 1) * interval + 1 if per_cycle > 0 else max(interval, 1)
 
-        life = g(lf, "fadeInDuration") + g(lf, "duration") + g(lf, "fadeOutDuration")
-        life += g(lf, "durationJitter") + g(lf, "fadeOutDurationJitter")
+        life = g(lf, "appearFrame") + g(lf, "keepFrame") + g(lf, "vanishFrame")
+        life += g(lf, "keepFrameJitter") + g(lf, "vanishFrameJitter")
         if g(lf, "indefiniteLifespan"):
             life = max(life, default)
 

@@ -64,9 +64,9 @@ def spawn_fields(**kw):
 
 def life_fields(**kw):
     f = {
-        "fadeInDuration": 0, "fadeInDurationJitter": 0,
-        "duration": 10, "durationJitter": 0,
-        "fadeOutDuration": 0, "fadeOutDurationJitter": 0,
+        "appearFrame": 0, "appearFrameJitter": 0,
+        "keepFrame": 10, "keepFrameJitter": 0,
+        "vanishFrame": 0, "vanishFrameJitter": 0,
         "timeToDeath": 0, "timeToDeathJitter": 0,
         "indefiniteLifespan": 0,
     }
@@ -360,7 +360,7 @@ def noise_fields(**kw):
 def blink_fields(**kw):
     f = {
         "typeFlag": 0, "section_length": 44, "unkn1_0": 0.0,
-        "minRate": 0.0, "maxRate": 1.0,
+        "minAlphaRate": 0.0, "maxAlphaRate": 1.0,
         "lowFrequency": 0.0, "lowFrequencyJitter": 0.0,
         "lowFrequencyWidth": 0.0, "lowFrequencyWidthJitter": 0.0,
         "highFrequency": 0.0, "highFrequencyJitter": 0.0,
@@ -592,7 +592,7 @@ class TestSpawn(unittest.TestCase):
         """
         sim = make_sim(
             spawn=spawn_fields(spawnNum=5, intervalFrame=0, maxParticles=3),
-            life=life_fields(duration=4))
+            life=life_fields(keepFrame=4))
         counts = []
         for _ in range(40):
             sim.step()
@@ -606,7 +606,7 @@ class TestSpawn(unittest.TestCase):
         sim = make_sim(
             spawn=spawn_fields(loopNum=3, intervalFrame=10, revivalLoop=2,
                                revivalInterval=60),
-            life=life_fields(duration=20))
+            life=life_fields(keepFrame=20))
         self.assertEqual(self._birth_frames(sim, 300), [0, 10, 20, 80, 90, 100])
         self.assertEqual(sim.em.cycle, 1)
 
@@ -616,14 +616,14 @@ class TestSpawn(unittest.TestCase):
             sim = make_sim(
                 spawn=spawn_fields(loopNum=1, intervalFrame=0, revivalLoop=3,
                                    revivalInterval=60),
-                life=life_fields(duration=duration))
+                life=life_fields(keepFrame=duration))
             self.assertEqual(self._birth_frames(sim, 300), [0, 60, 120])
 
     def test_revival_interval_zero_revives_next_frame(self):
         sim = make_sim(
             spawn=spawn_fields(loopNum=1, intervalFrame=0, revivalLoop=30,
                                revivalInterval=0),
-            life=life_fields(duration=20))
+            life=life_fields(keepFrame=20))
         self.assertEqual(self._birth_frames(sim, 100), list(range(30)))
 
     def test_revival_loop_one_does_not_revive(self):
@@ -631,21 +631,21 @@ class TestSpawn(unittest.TestCase):
         sim = make_sim(
             spawn=spawn_fields(loopNum=3, revivalLoop=1, intervalFrame=2,
                                revivalInterval=5),
-            life=life_fields(duration=10, indefiniteLifespan=1))
+            life=life_fields(keepFrame=10, indefiniteLifespan=1))
         self.assertEqual(self._birth_frames(sim, 200), [0, 2, 4])
 
     def test_revival_loop_zero_revives_forever(self):
         sim = make_sim(
             spawn=spawn_fields(loopNum=1, intervalFrame=0, revivalLoop=0,
                                revivalInterval=60),
-            life=life_fields(duration=20))
+            life=life_fields(keepFrame=20))
         self.assertEqual(self._birth_frames(sim, 400), [0, 60, 120, 180, 240, 300, 360])
 
     def test_loop_num_zero_never_ends_round(self):
         """loopNum=0 时这一轮不结束，按 intervalFrame 一直发。"""
         sim = make_sim(
             spawn=spawn_fields(loopNum=0, revivalLoop=1, intervalFrame=3),
-            life=life_fields(duration=5))
+            life=life_fields(keepFrame=5))
         sim.run(500)
         self.assertGreater(sim.em.spawned_total, 50)
         self.assertGreater(sim.suggested_duration(), 0)
@@ -671,13 +671,13 @@ class TestSpawn(unittest.TestCase):
 class TestLife(unittest.TestCase):
 
     def test_duration_is_exact_frame_count(self):
-        """duration=10 → 恰好被渲染 10 帧。
+        """keepFrame=10 → 恰好被渲染 10 帧。
 
         没有渲染体的 entry 现在不产出任何渲染项（同 DUMMY，见 TestDummy），
         这里挂一个未实现的 LIGHTNING 当渲染体，只借它的退化点探测粒子存在，
         与本测试要验的 duration 逻辑无关。
         """
-        sim = make_sim(spawn=spawn_fields(intervalFrame=1000), life=life_fields(duration=10),
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000), life=life_fields(keepFrame=10),
                        extra=[(LIGHTNING, {})])
         rendered = 0
         for _ in range(30):
@@ -687,14 +687,14 @@ class TestLife(unittest.TestCase):
 
     def test_indefinite_never_dies(self):
         sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
-                       life=life_fields(duration=3, indefiniteLifespan=1))
+                       life=life_fields(keepFrame=3, indefiniteLifespan=1))
         for _ in range(200):
             sim.step()
         self.assertEqual(len(sim.particles), 1)
 
     def test_fade_in_ramps_alpha(self):
         sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
-                       life=life_fields(fadeInDuration=4, duration=10))
+                       life=life_fields(appearFrame=4, keepFrame=10))
         alphas = []
         for _ in range(6):
             sim.step()
@@ -704,7 +704,7 @@ class TestLife(unittest.TestCase):
 
     def test_fade_out_ramps_down(self):
         sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
-                       life=life_fields(duration=4, fadeOutDuration=4))
+                       life=life_fields(keepFrame=4, vanishFrame=4))
         alphas = []
         for _ in range(9):
             sim.step()
@@ -714,7 +714,7 @@ class TestLife(unittest.TestCase):
 
     def test_total_life_is_sum_of_three_segments(self):
         """总寿命 = 淡入 + 持续 + 淡出。"""
-        f = life_fields(fadeInDuration=5, duration=10, fadeOutDuration=5)
+        f = life_fields(appearFrame=5, keepFrame=10, vanishFrame=5)
         a = make_sim(spawn=spawn_fields(intervalFrame=1000), life=f)
         a.step()
         self.assertEqual(a.particles[0].life, 20)
@@ -1401,7 +1401,7 @@ class TestHoming(unittest.TestCase):
     def test_vanish_mode_cancels_infinite_life_without_resetting_age(self):
         """memory：寿命计时器从出生就在跑、没有被重置——只是把 indefinite 摘掉。"""
         es3d = es3d_fields(shapeType=0, rangeXYZ=[30.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        life = life_fields(indefiniteLifespan=1, duration=3)
+        life = life_fields(indefiniteLifespan=1, keepFrame=3)
         sim = self._sim(homing_fields(maxSpeed=2.0,
                                      vanishMode=1, vanishRadius=5.0),
                         es3d=es3d, life=life)
@@ -1413,7 +1413,7 @@ class TestHoming(unittest.TestCase):
             if not p.alive:
                 break
         self.assertFalse(p.rolled.get("life_indefinite"))
-        self.assertFalse(p.alive)      # age 早就过了 duration=3，摘掉 indefinite 即刀落
+        self.assertFalse(p.alive)      # age 早就过了 keepFrame=3，摘掉 indefinite 即刀落
 
     def test_homing_target_wraps_every_4(self):
         sim0 = self._sim(homing_fields(homingTarget=0))
@@ -1549,20 +1549,20 @@ class TestBlink(unittest.TestCase):
             self.assertAlmostEqual(sim.particles[0].alpha, want, places=6)
 
     def test_min_rate_is_a_floor(self):
-        sim = self._sim(blink_fields(minRate=0.5, lowFrequency=1.0, lowFrequencyWidth=1.0))
+        sim = self._sim(blink_fields(minAlphaRate=0.5, lowFrequency=1.0, lowFrequencyWidth=1.0))
         for _ in range(90):
             sim.step()
             self.assertGreaterEqual(sim.particles[0].alpha, 0.5 - 1e-9)
 
     def test_does_not_compound_without_life(self):
         """没有 LIFE 重写 alpha 时，恒定系数 0.5 不能逐帧累乘成 0.5^n。"""
-        sim = self._sim(blink_fields(minRate=0.5, maxRate=0.5), with_life=False)
+        sim = self._sim(blink_fields(minAlphaRate=0.5, maxAlphaRate=0.5), with_life=False)
         for _ in range(20):
             sim.step()
         self.assertAlmostEqual(sim.particles[0].alpha, 0.5, places=9)
 
     def test_high_group_adds_to_low_group(self):
-        sim = self._sim(blink_fields(minRate=-10.0, maxRate=10.0,
+        sim = self._sim(blink_fields(minAlphaRate=-10.0, maxAlphaRate=10.0,
                                      lowFrequency=1.0, lowFrequencyWidth=0.3,
                                      highFrequency=7.0, highFrequencyWidth=0.2))
         w = 2.0 * 2.0 * math.pi / 60.0        # BLINK 频率按 Hz 换算后再乘 2
@@ -1647,7 +1647,7 @@ class TestDeterminismAndRender(unittest.TestCase):
         sim = make_sim(
             spawn=spawn_fields(spawnNum=3, intervalFrame=2,
                                spawnNumJitter=2),
-            life=life_fields(duration=8, durationJitter=4),
+            life=life_fields(keepFrame=8, keepFrameJitter=4),
             es3d=es3d_fields(shapeType=1, rangeXYZ=[0, 5, 0, 5, 0, 5]),
             velocity=velocity_fields(speed=1.0, speedJitter=2.0, speedCoef=0.9),
             config=SimConfig(seed=seed))
@@ -1666,7 +1666,7 @@ class TestDeterminismAndRender(unittest.TestCase):
     def test_reset_replays_identically(self):
         sim = make_sim(
             spawn=spawn_fields(spawnNum=2, intervalFrame=3),
-            life=life_fields(duration=6),
+            life=life_fields(keepFrame=6),
             es3d=es3d_fields(shapeType=1, rangeXYZ=[0, 5, 0, 5, 0, 5]),
             velocity=velocity_fields(speed=1.0, speedJitter=1.0))
         first = [p.pos.as_tuple() for p in sim.run(20).particles]
@@ -1686,7 +1686,7 @@ class TestDeterminismAndRender(unittest.TestCase):
 
     def test_build_render_is_side_effect_free(self):
         sim = make_sim(spawn=spawn_fields(spawnNum=5, intervalFrame=1000),
-                       life=life_fields(duration=20),
+                       life=life_fields(keepFrame=20),
                        velocity=velocity_fields(speed=1.0))
         sim.run(3)
         before = [p.pos.as_tuple() for p in sim.particles]
@@ -1700,7 +1700,7 @@ class TestDeterminismAndRender(unittest.TestCase):
     def test_render_carries_alpha_from_life(self):
         # 借 LIGHTNING（未实现的渲染体）撑出退化点，见 test_duration_is_exact_frame_count。
         sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
-                       life=life_fields(fadeInDuration=4, duration=10),
+                       life=life_fields(appearFrame=4, keepFrame=10),
                        velocity=velocity_fields(speed=0.0),
                        extra=[(LIGHTNING, {})])
         sim.run(3)
@@ -1728,7 +1728,7 @@ class TestArchetypeEndToEnd(unittest.TestCase):
             raise unittest.SkipTest("没有 presets/__archetypes__")
 
     def test_floating_particle_fire(self):
-        """SPAWN: maxParticles=2 / perBurst=1 / interval=50，LIFE: duration=60。
+        """SPAWN: maxParticles=2 / perBurst=1 / interval=50，LIFE: keepFrame=60。
 
         存活上限 2、每 50 帧生 1 个、活 60 帧 —— 稳态同时存活应该在 1~2 之间
         （Little's Law：生成速率 1/50 × 寿命 60 = 1.2）。
@@ -1912,7 +1912,7 @@ class TestSuggestedDuration(unittest.TestCase):
 
     def test_covers_start_delay_and_life(self):
         sim = make_sim(spawn=spawn_fields(emitterDelayFrame=30, intervalFrame=10),
-                       life=life_fields(duration=45))
+                       life=life_fields(keepFrame=45))
         self.assertGreaterEqual(sim.suggested_duration(), 75)
 
     def test_fire_archetype(self):
@@ -2438,7 +2438,7 @@ class TestBillboard3D(unittest.TestCase):
 
     def test_alpha_comes_from_life(self):
         it, _ = self._item(frames=3, billboard=billboard_fields(),
-                           life=life_fields(fadeInDuration=4, duration=20))
+                           life=life_fields(appearFrame=4, keepFrame=20))
         self.assertAlmostEqual(it.color[3], 0.5, places=6)
 
     def test_initial_rotation_seeds_rot_z(self):
@@ -2580,7 +2580,7 @@ class TestColorAndAlpha(unittest.TestCase):
 
     def test_life_fade_multiplies_the_colour_alpha(self):
         """LIFE 的淡入 × 颜色自带的 alpha —— 两者相乘，不是二选一。"""
-        life = life_fields(fadeInDuration=10, duration=50, fadeOutDuration=0)
+        life = life_fields(appearFrame=10, keepFrame=50, vanishFrame=0)
         sim = make_sim(spawn=spawn_fields(intervalFrame=1000), life=life,
                        billboard=billboard_fields(color=[255, 255, 255, 128],
                                                   useColorRange=0))
@@ -2658,7 +2658,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         """两个 entry：0 = 父（带 PTLIFE），1 = 子（一个静止的 billboard）。"""
         parent_blocks = [
             (SPAWN, spawn_fields(intervalFrame=1000)),
-            (LIFE, parent_life or life_fields(duration=10)),
+            (LIFE, parent_life or life_fields(keepFrame=10)),
             (PTLIFE, ptlife or ptlife_fields()),
             (BILLBOARD3D, billboard_fields()),
         ]
@@ -2704,7 +2704,7 @@ class TestPtLifeActionScene(unittest.TestCase):
 
     def test_on_death_fires_at_the_end_of_life(self):
         sc = self._scene(ptlife=ptlife_fields(status=4),
-                         parent_life=life_fields(duration=5))
+                         parent_life=life_fields(keepFrame=5))
         sc.run(4)
         self.assertEqual(sc.instance_count, 1)        # 还活着，没触发
         sc.run(4)
@@ -2712,7 +2712,7 @@ class TestPtLifeActionScene(unittest.TestCase):
 
     def test_sustain_fires_after_fade_in(self):
         sc = self._scene(ptlife=ptlife_fields(status=2),
-                         parent_life=life_fields(fadeInDuration=6, duration=40))
+                         parent_life=life_fields(appearFrame=6, keepFrame=40))
         sc.run(4)
         self.assertEqual(sc.instance_count, 1)
         sc.run(6)
@@ -2733,7 +2733,7 @@ class TestPtLifeActionScene(unittest.TestCase):
     def test_child_detaches_when_the_parent_dies(self):
         """父粒子消亡 → 子实例继续存在，但不再跟随，就地留下。"""
         sc = self._scene(ptlife=ptlife_fields(status=0),
-                         parent_life=life_fields(duration=8),
+                         parent_life=life_fields(keepFrame=8),
                          parent_velocity=velocity_fields(baseAxis=1, speed=4.0),
                          child_life=life_fields(indefiniteLifespan=1))
         sc.run(6)
@@ -2842,7 +2842,7 @@ class TestPtLifeActionScene(unittest.TestCase):
             (SPAWN, {"maxParticles": 200, "spawnNum": 40,
                      "intervalFrame": 1, "loopNum": 0,
                      "revivalLoop": 1}),
-            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (LIFE, {"keepFrame": 600, "indefiniteLifespan": 1}),
             (EMITTERSHAPE3D, {"shapeType": 1,          # 球
                               "rangeXYZ": [15.0, 200.0, 15.0, 200.0, 15.0, 200.0],
                               "scanAngleHorizontal": 90.0,
@@ -2888,7 +2888,7 @@ class TestPtLifeActionScene(unittest.TestCase):
                 (SPAWN, {"maxParticles": 1, "spawnNum": 1,
                          "intervalFrame": 0, "loopNum": 1,
                          "revivalLoop": 1}),
-                (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+                (LIFE, {"keepFrame": 600, "indefiniteLifespan": 1}),
                 (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                                "blendMode": 0, "width": 100, "height": 100,
                                "scale": 1, "applicationRule": 0x04,
@@ -2913,7 +2913,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
                      "loopNum": 1, "revivalLoop": 1}),
-            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (LIFE, {"keepFrame": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100,
                            "scale": 1, "applicationRule": 0x04,
@@ -2932,7 +2932,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
                      "loopNum": 1, "revivalLoop": 1}),
-            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (LIFE, {"keepFrame": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100,
                            "scale": 1, "applicationRule": 0x04 | 0x08,
@@ -2963,7 +2963,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
                      "loopNum": 1, "revivalLoop": 1}),
-            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (LIFE, {"keepFrame": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100, "scale": 1,
                            "applicationRule": 0,           # 位没开
@@ -2978,7 +2978,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
                      "loopNum": 1, "revivalLoop": 1}),
-            (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
+            (LIFE, {"keepFrame": 60, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 0, 0, 255], "brightness": 10,
                            "blendMode": 1, "width": 100, "height": 100, "scale": 1}),
             (REFRACTION, {"typeFlag": 2, "distortionType": 0,
@@ -2998,7 +2998,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
                      "loopNum": 1, "revivalLoop": 1}),
-            (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
+            (LIFE, {"keepFrame": 60, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100, "scale": 1}),
             (SHADERSETTINGS, {"blendStateType": 2}),
@@ -3015,7 +3015,7 @@ class TestPtLifeActionScene(unittest.TestCase):
                 (SPAWN, {"maxParticles": 1, "spawnNum": 1,
                          "intervalFrame": 0, "loopNum": 1,
                          "revivalLoop": 1}),
-                (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
+                (LIFE, {"keepFrame": 60, "indefiniteLifespan": 1}),
                 (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                                "blendMode": 1, "width": 100, "height": 100,
                                "scale": 1, "applicationRule": 0x04 if flow else 0,
@@ -3133,7 +3133,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         """子实例的粒子演完 → 空转一段时间后回收，别无限堆着。"""
         sc = self._scene(ptlife=ptlife_fields(status=0),
                          parent_life=life_fields(indefiniteLifespan=1),
-                         child_life=life_fields(duration=3),
+                         child_life=life_fields(keepFrame=3),
                          config=SimConfig(seed=1, child_cull_grace=5))
         sc.run(6)
         self.assertEqual(sc.instance_count, 2)
@@ -3520,7 +3520,7 @@ class TestPtCollisionPhysics(unittest.TestCase):
 
     def test_fade_runs_life_fade_out_on_ground(self):
         sc, p = self._drop(frames=7, physicsEnum=2, bounceCount=0, ieIndex=-1,
-                           life=life_fields(indefiniteLifespan=1, fadeOutDuration=10))
+                           life=life_fields(indefiniteLifespan=1, vanishFrame=10))
         self.assertTrue(p.alive)
         self.assertEqual(p.pos.y, 0.0)
         self.assertLess(p.alpha, 1.0)
@@ -5064,7 +5064,7 @@ class TestUVControl(unittest.TestCase):
         blocks = [
             (SPAWN, {"maxParticles": n, "spawnNum": n, "intervalFrame": 0,
                      "loopNum": 1, "revivalLoop": 1}),
-            (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
+            (LIFE, {"keepFrame": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100, "scale": 1}),
             (UVCONTROL, dict(uvc)),

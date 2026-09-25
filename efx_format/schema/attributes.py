@@ -106,19 +106,19 @@ SPAWN_SCHEMA = EXTERN_SPAWN_SCHEMA
 # ─────────────────────────────────────────────────────────────────────────────
 # Life
 # ─────────────────────────────────────────────────────────────────────────────
-# unknFrame/unknFrameJitter 的名字只是按邻近 duration/durationJitter 的配对惯例取的，
+# unknFrame/unknFrameJitter 的名字只是按邻近 keepFrame/keepFrameJitter 的配对惯例取的，
 # 未确认是帧数，不要按名字推断语义。
 
 LIFE_ATTR = Attribute(size=48, fields=[
     Int("typeFlag"),
-    Int("fadeInDuration", label_zh="淡入时长"),
-    Int("fadeInDurationJitter", label_zh="淡入时长抖动"),
-    Int("duration", label_zh="持续时间"),
-    Int("durationJitter", label_zh="持续时间抖动"),
+    Int("appearFrame", label_zh="淡入时长"),
+    Int("appearFrameJitter", label_zh="淡入时长抖动"),
+    Int("keepFrame", label_zh="持续时间"),
+    Int("keepFrameJitter", label_zh="持续时间抖动"),
     Int("unknFrame"),
     Int("unknFrameJitter"),
-    Int("fadeOutDuration", label_zh="淡出时长"),
-    Int("fadeOutDurationJitter", label_zh="淡出时长抖动"),
+    Int("vanishFrame", label_zh="淡出时长"),
+    Int("vanishFrameJitter", label_zh="淡出时长抖动"),
     Int("timeToDeath", label_zh="死亡时间"),
     Int("timeToDeathJitter", label_zh="死亡时间抖动"),
     Bool("indefiniteLifespan", label_zh="无限寿命"),
@@ -759,8 +759,8 @@ BLINK_ATTR = Attribute(size=52, fields=[
     Int("typeFlag"),
     Int("section_length", label_zh="段长度"),
     Float("unkn1_0"),  # 低字节是 bool，其余三字节是保留填充
-    Float("minRate", label_zh="最小速率"),
-    Float("maxRate", label_zh="最大速率"),
+    Float("minAlphaRate", label_zh="最小透明度强度"),
+    Float("maxAlphaRate", label_zh="最大透明度强度"),
     Float("lowFrequency", label_zh="低频"),
     Float("lowFrequencyJitter", label_zh="低频抖动"),
     Float("lowFrequencyWidth", label_zh="低频振幅"),
@@ -835,12 +835,12 @@ HOMING_ATTR = Attribute(size=52, fields=[
     Float("turnRate", label_zh="转向速率"),  # 单位为度/秒
     Float("acceleration", label_zh="加速度"),  # 每秒增加的速度
     Float("maxSpeed", label_zh="最大速度"),
-    Float("forceFieldSpeedScale", label_zh="力场速度倍率"),
+    Float("forceFieldSpeedScale", label_zh="作用场速度倍率"),
     Float("vanishRadius", label_zh="消失半径"),
-    Float("forceFieldRadius", label_zh="力场半径"),
+    Float("forceFieldRadius", label_zh="作用场半径"),
     Enum("homingTarget", ENUM_HOMING_TARGET, label_zh="归航目标"),
     Enum("vanishMode", ENUM_HOMING_VANISH, label_zh="消失模式"),
-    Enum("forceFieldMode", ENUM_HOMING_FORCEFIELD, label_zh="力场模式"),
+    Enum("forceFieldMode", ENUM_HOMING_FORCEFIELD, label_zh="作用场模式"),
     Int("unknownEnum1"),
 ])
 HOMING_SCHEMA = HOMING_ATTR.schema

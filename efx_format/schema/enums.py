@@ -90,7 +90,7 @@ ENUM_HOMING_TARGET = EnumDef("HomingTarget", [
     (2, "World Origin", "世界原点"),
     (3, "World Origin", "世界原点"),
 ])
-# HOMING：以目标为中心的力场区域规则
+# HOMING：以目标为中心的作用场区域规则
 ENUM_HOMING_FORCEFIELD = EnumDef("HomingForceFieldMode", [
     (0, "None", "无"),
     (1, "Cull Spawn Inside", "内部出生剔除"),

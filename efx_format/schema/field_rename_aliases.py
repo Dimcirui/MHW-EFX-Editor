@@ -8,6 +8,18 @@
 """
 
 FIELD_RENAME_ALIASES = {
+    # LIFE
+    ("LIFE", "fadeInDuration"): "appearFrame",
+    ("LIFE", "fadeInDurationJitter"): "appearFrameJitter",
+    ("LIFE", "duration"): "keepFrame",
+    ("LIFE", "durationJitter"): "keepFrameJitter",
+    ("LIFE", "fadeOutDuration"): "vanishFrame",
+    ("LIFE", "fadeOutDurationJitter"): "vanishFrameJitter",
+
+    # BLINK
+    ("BLINK", "minRate"): "minAlphaRate",
+    ("BLINK", "maxRate"): "maxAlphaRate",
+
     # SHADERSETTINGS
     ("SHADERSETTINGS", "controlBitflag"): "blendStateType",
     ("SHADERSETTINGS", "blendState"): "blendStateType",
@@ -234,8 +246,8 @@ FIELD_RENAME_ALIASES = {
     ("BILLBOARD3D", "unkn0"): "typeFlag",
     ("BLINK", "unkn0_0"): "typeFlag",
     ("BLINK", "unkn0_1"): "section_length",
-    ("BLINK", "minAlpha"): "minRate",
-    ("BLINK", "maxAlpha"): "maxRate",
+    ("BLINK", "minAlpha"): "minAlphaRate",
+    ("BLINK", "maxAlpha"): "maxAlphaRate",
     ("BLINK", "lowFreq"): "lowFrequency",
     ("BLINK", "lowFreqJitter"): "lowFrequencyJitter",
     ("BLINK", "lowFreqAmplitude"): "lowFrequencyWidth",

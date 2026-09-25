@@ -6,7 +6,7 @@ alpha，并钳制在 MinRate ~ MaxRate 之间：
 
     raw(t)  = lowFrequencyWidth  · sin(ω_low  · t + φ0)
             + highFrequencyWidth · sin(ω_high · t + φ1)
-    rate(t) = clamp(raw(t), minRate, maxRate)
+    rate(t) = clamp(raw(t), minAlphaRate, maxAlphaRate)
     alpha  *= rate(t)
 
 ω 由 `_common.oscillator_omega` 将频率（每秒周期数）换算后再乘 `_FREQ_SCALE`，
@@ -14,7 +14,7 @@ t 为粒子年龄（帧）。初相位 φ0、φ1 由 `SimConfig.blink_phase` 决
 
 字段职能：
 
-    minRate / maxRate                       alpha 系数的下限与上限，默认 0 ~ 1
+    minAlphaRate / maxAlphaRate                       alpha 系数的下限与上限，默认 0 ~ 1
     lowFrequency / highFrequency            两重各自的频率
     lowFrequencyWidth / highFrequencyWidth  两重各自的振幅，alpha 量级
     各字段的 Jitter                         仅在粒子出生时抽取一次
@@ -62,8 +62,8 @@ class Blink(Behavior):
             phase = rng.uniform(0.0, 2.0 * math.pi)
             groups.append((oscillator_omega(cfg, freq) * _FREQ_SCALE, width,
                            phase if random_phase else 0.0))
-        lo = float(f.get("minRate", 0.0))
-        hi = float(f.get("maxRate", 1.0))
+        lo = float(f.get("minAlphaRate", 0.0))
+        hi = float(f.get("maxAlphaRate", 1.0))
         if lo > hi:
             lo, hi = hi, lo
         p.user[Blink] = {"groups": groups, "lo": lo, "hi": hi,
