@@ -1505,7 +1505,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                         "epvColorSlot": ("颜色修正槽位" if _zh_rb else "Correct Color No"),
                         "color1":       ("颜色" if _zh_rb else "Color"),
                         "color2":       ("颜色范围" if _zh_rb else "Color Range"),
-                        "size":         ("尺寸" if _zh_rb else "Size"),
+                        "size":         ("宽度倍率" if _zh_rb else "Width Scale"),
                     }
                     _sub_lbl_rb = _sub_overrides_rb.get(_sub_key) or _friendly_name(_sub_key, type_name)
                     _draw_field_item(_tcol, item, type_name=type_name, label_override=_sub_lbl_rb, obj=obj)

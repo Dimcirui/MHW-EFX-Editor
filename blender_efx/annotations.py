@@ -1408,16 +1408,51 @@ FIELD_ANNOTATIONS = {
 
     # ─── RIBBONBLADE (fixed part fields) ──────────────────────────────────────
     ("RIBBONBLADE", "width"): {
-        "EN": "Blade streak's lengthwise edge width.",
-        "ZH": "刀光的纵边宽度。",
+        "EN": "Length of the blade sticking out from the trail along the width direction. "
+              "Negative values extend the opposite way.",
+        "ZH": "刀身从轨迹沿宽度延伸方向伸出的长度，负值向反方向伸出。",
     },
     ("RIBBONBLADE", "contractionSpeed"): {
-        "EN": "0=Lingers,  1=Retracts,  ∞=Retracts instantly",
-        "ZH": "0=驻留,  1=回缩,  ∞=瞬间回缩",
+        "EN": "How much the trail shrinks per second, all the time. Only used when "
+              "Distance-Based Length is on. 0 keeps the trail after the blade stops; a value "
+              "larger than the distance moved per second keeps the trail invisible.",
+        "ZH": "刀光每秒持续缩短的长度，仅在开启「按距离计算长度」时生效。0 表示停下后刀光一直保留；"
+              "大于每秒移动距离时刀光始终不可见。",
     },
     ("RIBBONBLADE", "colourTransitionPoint"): {
-        "EN": "0=Instantly start transition,  1=Start at the end",
-        "ZH": "0=立即开始过渡,  1=在末端开始",
+        "EN": "Portion of the trail, measured from the head, that keeps the head color; the "
+              "rest blends into the tail color. 0 blends along the whole trail, 1 uses the "
+              "head color throughout.",
+        "ZH": "从头部起保持头部颜色的长度比例，其余部分逐渐过渡到尾部颜色。0 表示整条渐变，1 "
+              "表示整条为头部颜色。",
+    },
+    ("RIBBONBLADE", "emissiveStrength"): {
+        "EN": "Brightness of the trail. At 1 pure white shows as mid grey, around 5 it is close "
+              "to the set color, and from 10 up it saturates to white with a glow.",
+        "ZH": "刀光亮度。1 时纯白只显示为中灰，5 左右接近设定颜色，10 以上饱和为白色并带光晕。",
+    },
+    ("RIBBONBLADE", "useEmissiveRange"): {
+        "EN": "When on, each trail's brightness is picked at random between Emissive Strength "
+              "and Emissive Strength Range. Usually off.",
+        "ZH": "开启后，刀光亮度在自发光强度与自发光强度范围之间随机取值。通常关闭。",
+    },
+    ("RIBBONBLADE", "emissiveStrengthRange"): {
+        "EN": "Other end of the random brightness range; only used when Use Emissive Range is "
+              "on. Common value is 1.",
+        "ZH": "随机亮度范围的另一端，仅在开启「启用自发光强度范围」时生效。常见取值为 1。",
+    },
+    ("RIBBONBLADE", "maxLengthLimit"): {
+        "EN": "Maximum trail length. Only used when Distance-Based Length is on.",
+        "ZH": "刀光的最大长度，仅在开启「按距离计算长度」时生效。",
+    },
+    ("RIBBONBLADE", "head.size"): {
+        "EN": "Width multiplier at the head; the blade width blends linearly toward the tail.",
+        "ZH": "头部处的宽度倍率，刀身宽度向尾部线性过渡。",
+    },
+    ("RIBBONBLADE", "tailEnd.size"): {
+        "EN": "Width multiplier at the tail. Common values are 0.1–1.0; lower values taper the "
+              "tail.",
+        "ZH": "尾部处的宽度倍率。常见取值为 0.1～1.0，越小尾部越尖。",
     },
     ("RIBBONBLADE", "head.epvColorSlot"): {
         "EN": "EPV color slot for the blade streak's head (the leading edge).",
@@ -1428,25 +1463,20 @@ FIELD_ANNOTATIONS = {
         "ZH": "刀光尾部（后端）对应的 EPV 颜色槽。",
     },
     ("RIBBONBLADE", "head.color1"): {
-        "EN": "Head color. Mostly pure white; occasionally tinted (e.g. blue).",
-        "ZH": "头部颜色。大多为纯白，偶见染色（如蓝色）。",
+        "EN": "Head color; blends into the tail color along the trail.",
+        "ZH": "头部颜色，沿刀光过渡到尾部颜色。",
     },
     ("RIBBONBLADE", "head.color2"): {
         "EN": "Head color range. Almost always white (rarely touched).",
         "ZH": "头部颜色范围。几乎恒为白色（很少被使用）。",
     },
     ("RIBBONBLADE", "tailEnd.color1"): {
-        "EN": "Tail color. Usually white with varying alpha — commonly used for a fade-out "
-              "on the trailing edge rather than a color tint.",
-        "ZH": "尾部颜色。通常为白色但 alpha 不同——多用于尾部渐隐效果，而非染色。",
+        "EN": "Tail color. White with a low alpha is commonly used to fade out the tail.",
+        "ZH": "尾部颜色。常用白色配较低 alpha 做尾部渐隐。",
     },
     ("RIBBONBLADE", "tailEnd.color2"): {
         "EN": "Tail color range. Almost always white (rarely touched).",
         "ZH": "尾部颜色范围。几乎恒为白色（很少被使用）。",
-    },
-    ("RIBBONBLADE", "tailEnd.unkn18_1"): {
-        "EN": "Boolean-like value (0/1). Purpose unknown.",
-        "ZH": "布尔型取值（0/1）。具体作用未知。",
     },
     ("RIBBONBLADE", "head.unkn18_1"): {
         "EN": "Head-side fixed value (0xCD). This field is not intended for adjustment.",
@@ -3428,46 +3458,36 @@ FIELD_ANNOTATIONS = {
         "ZH": "每段覆盖的轨迹时长的缩放：值越大条带越长，越小越短。0 及负值时条带退化为从生成点直线"
               "连到粒子当前位置。",
     },
-    ("RIBBONBLADE", "NULL9"): {
-        "EN": "Common values: [0, 1, 256].",
-        "ZH": "常见取值为 [0, 1, 256]。",
-    },
     ("RIBBONBLADE", "widthDirection"): {
-        "EN": "Direction the streak's width extends toward. AxisDirection6: 0=Left, 1=Up, "
-              "2=Forward, 3=Right, 4=Down, 5=Backwards. Same enum as RIBBON.baseAxis "
-              "and VELOCITY3D.baseAxis (equivalent to the Cartesian "
-              "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z mapping — in the game's default coordinate system "
-              "+X=left, +Y=up, +Z=front).",
-        "ZH": "刀光宽度延伸的朝向。AxisDirection6：0=左, 1=上, 2=前, 3=右, 4=下, 5=后。与 RIBBON."
-              "baseAxis、VELOCITY3D.baseAxis 是同一套枚举（等价于笛卡尔 "
-              "0=+X,1=+Y,2=+Z,3=-X,4=-Y,5=-Z 映射——游戏默认坐标系下 +X=左,+Y=上,+Z=前）。"
-              "",
+        "EN": "Direction the blade extends from the trail; fixed and does not turn with the "
+              "motion. 0=Left, 1=Up, 2=Front, 3=Right, 4=Down, 5=Back.",
+        "ZH": "刀身从轨迹伸出的方向，固定不随运动方向转动。0=左、1=上、2=前、3=右、4=下、"
+              "5=后。",
     },
     ("RIBBONBLADE", "length"): {
-        "EN": "Tail length, only effective when lengthMode=0 (contraction speed is then "
-              "fixed internally). Roughly proportional: higher = longer tail.",
-        "ZH": "拖尾长度，仅当 lengthMode=0 时生效（此时收缩速度固定内置）。近似成正比："
-              "值越高拖尾越长。",
+        "EN": "The trail covers the last (this value + 1) frames of movement. Only used when "
+              "Distance-Based Length is off. Right after spawning, the part before the spawn "
+              "point is not shown.",
+        "ZH": "刀光覆盖最近（此值 + 1）帧的移动轨迹，仅在关闭「按距离计算长度」时生效。刚生成时，"
+              "生成点之前的部分不显示。",
     },
-    ("RIBBONBLADE", "unknEnum05_1"): {
-        "EN": "Common values: [0, 2, 3, 4, 6, 20].",
-        "ZH": "常见取值为 [0, 2, 3, 4, 6, 20]。",
+    ("RIBBONBLADE", "interpolationCount"): {
+        "EN": "Extra points inserted along a smooth curve between every two frames of the "
+              "trail. 0 draws straight segments, so fast swings look polygonal; higher values "
+              "round them off. Common values are 2–4, 20 for very smooth trails.",
+        "ZH": "在拖尾每两帧之间沿平滑曲线补的点数。0 时为逐帧直线段，快速挥动会呈多边形；数值越大越圆滑。"
+              "常见取值为 2～4，要求极平滑时用 20。",
     },
     ("RIBBONBLADE", "unknFlag07_0"): {
         "EN": "Common values: 0/1.",
         "ZH": "常见取值为 0/1。",
     },
     ("RIBBONBLADE", "lengthMode"): {
-        "EN": "Off: tail length is driven by the length field (fixed internal contraction "
-              "speed). On: driven by maxLengthLimit + contractionSpeed together "
-              "(contractionSpeed=0 means no active contraction unless maxLengthLimit is hit).",
-        "ZH": "关：拖尾长度由 length 字段决定（收缩速度固定内置）。开：由 "
-              "maxLengthLimit + contractionSpeed 共同决定（contractionSpeed=0 时不主动收缩，"
-              "除非到达 maxLengthLimit 上限）。",
-    },
-    ("RIBBONBLADE", "unknFlag08"): {
-        "EN": "Common values: 0/1.",
-        "ZH": "常见取值为 0/1。",
+        "EN": "On: the trail grows with the distance moved, limited by Max Length Limit and shrunk "
+              "by Contraction Speed; Trail Frames is ignored. Off: the trail keeps the last "
+              "Trail Frames of movement.",
+        "ZH": "开启：刀光随移动距离变长，受最大长度限制并按回缩速度缩短，拖尾帧数不生效。"
+              "关闭：刀光保留最近拖尾帧数的轨迹。",
     },
     ("RIBBONBLADE", "typeFlag"): {
         "EN": "Header field present in most attribute types, a type/category "
@@ -4025,8 +4045,8 @@ FIELD_ANNOTATIONS.update({
     (_t, _f): _v
     for _t in ('RIBBON', 'STRAINRIBBON', 'LIGHTNING', 'RIBBONBLADE', 'UVCONTROL')
     for _f, _v in _FLOWMAP_ANNOTATIONS.items()
-    if (_f not in ("flowOnce", "flowReverse") or _t == "RIBBON")
-    and (_t, _f) not in (("RIBBONBLADE", "enableFlowmap"), ("UVCONTROL", "flowmapPath"))
+    if (_f not in ("flowOnce", "flowReverse") or _t in ("RIBBON", "RIBBONBLADE"))
+    and (_t, _f) != ("UVCONTROL", "flowmapPath")
 })
 FIELD_ANNOTATIONS.update({
     (_t, "applicationRule." + _f): _FLOWMAP_ANNOTATIONS[_f]

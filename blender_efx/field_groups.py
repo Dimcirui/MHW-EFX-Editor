@@ -82,7 +82,7 @@ FLOWMAP = FieldGroup(
         "STRAINRIBBON": "enableFlowmap",
         "LIGHTNING": "enableFlowmap",
         "UVCONTROL": "enableFlowmap",
-        "RIBBONBLADE": "flowmapPath",
+        "RIBBONBLADE": "enableFlowmap",
     },
     bit_rows={
         t: {"lead": [_AR_ENABLE],
@@ -161,9 +161,10 @@ _VEL_DIR = ("方向", "Direction")
 _VEL_DELAY = ("运动延迟", "Movement Delay")
 _VEL_GRAVITY = ("重力", "Gravity")
 
-#: RIBBONBLADE 头部/尾部 EPVColorSlot 的子字段，按显示顺序
+#: RIBBONBLADE 头部/尾部 EPVColorSlot 的子字段，按显示顺序；尾部结构没有末 4 字节
 _EPV_SLOT_KEYS = ("epvColorSlot", "color1", "null2", "color2", "spacer4", "unkn15", "size",
                   "unkn17", "unkn18_0", "unkn18_1", "spacer5")
+_EPV_TAIL_KEYS = _EPV_SLOT_KEYS[:8]
 
 TYPE_SECTIONS = {
     "SPAWN": [
@@ -252,11 +253,12 @@ TYPE_SECTIONS = {
         (("远处淡出", "Far Fade-out"), ["farFadeOutStart", "farFadeOutEnd"]),
     ],
     "RIBBONBLADE": [
-        (("形状", "Shape"), ["widthDirection", "width", "length", "lengthMode", "maxLengthLimit",
-                             "contractionSpeed", "uvRepetition"]),
-        (("颜色", "Color"), ["colourTransitionPoint", "emissiveStrength"]),
+        (("形状", "Shape"), ["widthDirection", "width", "length", "interpolationCount",
+                             "lengthMode", "maxLengthLimit", "contractionSpeed", "uvRepetition"]),
+        (("颜色", "Color"), ["colourTransitionPoint", "emissiveStrength", "useEmissiveRange",
+                             "emissiveStrengthRange"]),
         (("头部", "Head"), ["head." + _k for _k in _EPV_SLOT_KEYS]),
-        (("尾部", "Tail"), ["tailEnd." + _k for _k in _EPV_SLOT_KEYS]),
+        (("尾部", "Tail"), ["tailEnd." + _k for _k in _EPV_TAIL_KEYS] + ["tailUnkn18_0"]),
     ],
     "RANDOMFIX": [
         (("种子表", "Seed Tables"), ["tableSelectionGroup"]
