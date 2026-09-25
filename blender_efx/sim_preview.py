@@ -310,6 +310,40 @@ def _material_tex_paths(attr_objs):
     return out
 
 
+def _material_params(attr_objs):
+    """MATERIAL 覆盖的着色器参数：参数名 → 值，按所属 shader 的参数表解码；同名取首个。"""
+    from ..efx_format.hashes import MATERIAL
+    from ..efx_format.material.params import param_name_type
+    from ..efx_format.material.edit import get_param_value
+
+    out = {}
+    for blk in attr_objs:
+        pair = _block_fields(blk)
+        if pair is None or pair[0] != MATERIAL:
+            continue
+        for block in (pair[1].get("blocks") or ()):
+            shader = int(block.get("mat_shader", 0) or 0)
+            for st in (block.get("sets") or ()):
+                try:
+                    if int(st.get("type", 0)) == 128:
+                        continue
+                    nt = param_name_type(shader, int(st.get("t", 0)))
+                    if not nt or nt[0] in out:
+                        continue
+                    value = get_param_value(st, nt[1])
+                except Exception:
+                    continue
+                if value is not None:
+                    out[nt[0]] = value
+    return out
+
+
+#: MATERIAL 参数中会覆盖网格绘制的几项
+_MESH_PARAM_KEYS = ("fVertexAlpha", "fDotOpacity", "fDotOpacityFactor", "bDotInverse",
+                    "bUseUVPrimaryAM", "fFlowStrength", "fSecondaryFlowStrength",
+                    "fFlowSpeed", "fFlowSpeedSecondary")
+
+
 def _material_image_name(entry_obj, attr_objs, slot, chunk_root):
     """解析并载入 MATERIAL 槽贴图；调用方应仅在构建 track 时调用。"""
     paths = _material_tex_paths(attr_objs)
@@ -317,12 +351,15 @@ def _material_image_name(entry_obj, attr_objs, slot, chunk_root):
 
 
 def _game_tex_image(entry_obj, rel, chunk_root, cache):
-    """游戏相对路径的 .tex → 已载入的图名；取不到返回 ""。失败也缓存，避免重复解析路径。"""
+    """游戏相对路径的 .tex → 已载入的图名；取不到返回 ""。
+
+    只缓存成功的结果：贴图可能在导入后才补进目录，图像也可能被删除（如重新导入）。
+    """
     if not rel:
         return ""
     cached = cache.get(rel)
-    if cached is not None:
-        return cached if cached in bpy.data.images else ""
+    if cached and cached in bpy.data.images:
+        return cached
     try:
         from . import uvs_link as _ul
     except Exception:
@@ -340,7 +377,8 @@ def _game_tex_image(entry_obj, rel, chunk_root, cache):
                 name = img.name
     except Exception:
         name = ""
-    cache[rel] = name
+    if name:
+        cache[rel] = name
     return name
 
 
@@ -391,7 +429,7 @@ def _flowmap_image_name(entry_obj, attr_objs, chunk_root):
     return _game_tex_image(entry_obj, rel, chunk_root, _FLOW_TEX_CACHE)
 
 
-#: 贴花 .uvs 游戏路径到文件字节的缓存；取不到存 b""。
+#: 贴花 .uvs 游戏路径到文件字节的缓存；只缓存读到的结果。
 _DECAL_UVS_CACHE = {}
 
 
@@ -400,7 +438,7 @@ def _decal_uvs_bytes(entry_obj, rel, chunk_root):
     if not rel:
         return b""
     got = _DECAL_UVS_CACHE.get(rel)
-    if got is not None:
+    if got:
         return got
     data = b""
     try:
@@ -411,7 +449,8 @@ def _decal_uvs_bytes(entry_obj, rel, chunk_root):
                 data = f.read()
     except Exception:
         data = b""
-    _DECAL_UVS_CACHE[rel] = data
+    if data:
+        _DECAL_UVS_CACHE[rel] = data
     return data
 
 
@@ -555,6 +594,12 @@ def build_track(entry_obj, scene):
     resources = {}
     images = {}
     mesh_images = {}
+    #: Entry 名到 MATERIAL 覆盖的 Alpha 遮罩图名
+    mesh_masks = {}
+    #: Entry 名到 MATERIAL 覆盖的网格绘制参数
+    mesh_params = {}
+    #: Entry 名到 MATERIAL 覆盖的材质流动贴图图名
+    mesh_flows = {}
     flow_images = {}
     emissive_images = {}
     mat_slot = getattr(scene, "efx_sim_material_slot", "tAlbedoMap")
@@ -589,6 +634,15 @@ def build_track(entry_obj, scene):
             got = _material_image_name(obj, attrs, mat_slot, chunk_root)
             if got:
                 mesh_images[name] = got
+            got = _material_image_name(obj, attrs, "tAlphaMap", chunk_root)
+            if got:
+                mesh_masks[name] = got
+            got = _material_image_name(obj, attrs, "tFlowMap", chunk_root)
+            if got:
+                mesh_flows[name] = got
+        got = {k: v for k, v in _material_params(attrs).items() if k in _MESH_PARAM_KEYS}
+        if got:
+            mesh_params[name] = got
         got = _flowmap_image_name(obj, attrs, chunk_root)
         if got and name not in flow_images:
             flow_images[name] = got
@@ -625,6 +679,9 @@ def build_track(entry_obj, scene):
         #: Entry 名到序列帧图像名的映射，子实例按自己的 Entry 查找。
         "images": images,
         "mesh_images": mesh_images,
+        "mesh_masks": mesh_masks,
+        "mesh_params": mesh_params,
+        "mesh_flows": mesh_flows,
         #: Entry 名到已启用 flowmap 图像名的映射。
         "flow_images": flow_images,
         #: Entry 名到贴花自发光贴图名的映射。
@@ -1639,8 +1696,11 @@ def _prepare_mesh_materials(entry_obj, chunk_root, mrl3_map):
                              if pg is not None else True),
             # mrl3 绘制优先级：alphaCoef[1] 每差 16 为一级，越大越后画
             "priority": int(pg.alphaCoef[1]) if pg is not None else 0,
-            # mrl3 flowmap：主贴图 / 遮罩的静态扭曲强度
+            # mrl3 flowmap：主贴图 / 遮罩的扭曲强度与每秒推进轮数
             "flow": flow,
+            "flow_speed": ((float(getattr(_mrl3_prop(pg, "FlowSpeed"), "float_value", 0.0)),
+                            float(getattr(_mrl3_prop(pg, "FlowSpeedSecondary"), "float_value", 0.0)))
+                           if pg is not None else (0.0, 0.0)),
             "flow_k": ((float(getattr(_mrl3_prop(pg, "FlowStrength"), "float_value", 0.0)),
                         float(getattr(_mrl3_prop(pg, "SecondaryFlowStrength"), "float_value", 0.0)))
                        if pg is not None else (0.0, 0.0)),
@@ -1648,6 +1708,8 @@ def _prepare_mesh_materials(entry_obj, chunk_root, mrl3_map):
                              if pg is not None else False),
             "dot_opacity": (float(getattr(_mrl3_prop(pg, "DotOpacity"), "float_value", 0.0))
                             if pg is not None else 0.0),
+            "dot_factor": (float(getattr(_mrl3_prop(pg, "DotOpacityFactor"), "float_value", 1.0))
+                           if pg is not None else 1.0),
             "dot_inverse": (bool(getattr(_mrl3_prop(pg, "DotInverse"), "bool_value", False))
                             if pg is not None else False),
         }
@@ -1660,7 +1722,7 @@ def _mesh_mat_info(mesh_obj):
         return info
     return {"base": _NO_FACTOR, "emissive": _NO_FACTOR,
             "albedo": _mesh_image_name(mesh_obj), "emissive_img": "", "mask": "",
-            "mask_uv2": False, "flow": "", "flow_k": (0.0, 0.0), "priority": 0, "vertex_alpha": False, "dot_opacity": 0.0, "dot_inverse": False}
+            "mask_uv2": False, "flow": "", "flow_k": (0.0, 0.0), "flow_speed": (0.0, 0.0), "priority": 0, "vertex_alpha": False, "dot_opacity": 0.0, "dot_factor": 1.0, "dot_inverse": False}
 
 
 def _mat3_mul(a, b):
@@ -1791,8 +1853,10 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
 
     ``luvs`` 不为 None 时另输出 flowmap 数据：流动贴图按网格自身 UV 采样，位移量为整张
     贴图的比例。``flow_amt`` 为 `_flow_of` 返回的 (强度, 相位, 循环标记)。
-    ``dot_opacity`` = (相机世界坐标, 是否反向, 视图方向)：不透明度乘以 |法线·视线|，斜看变透明；
-    反向时斜看变不透明。相机坐标为 None（正交视图）时视线取视图方向。只在 numpy 路径生效。
+    ``dot_opacity`` = (相机世界坐标, 是否反向, 视图方向, DotOpacity, DotOpacityFactor)：
+    不透明度乘以 mix(1, d^DotOpacity, DotOpacityFactor)，d = |法线·视线|，反向时 d 取 1 − |法线·视线|。
+    (1, 1) 即斜看变透明的线性形式；其余取值的曲线为推测。相机坐标为 None（正交视图）时视线取
+    视图方向。只在 numpy 路径生效。
     ``mask_uv``（遮罩是否用第二套 UV）给出时走分通道路径：底色只用 uv1 的变换，另输出遮罩 UV
     （所选那套 UV 经对应通道变换），只在 numpy 路径生效。
     """
@@ -1814,7 +1878,7 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
                 cc[:, 3] *= numpy.asarray(va, dtype="f4")
             narr = geom[4] if len(geom) > 4 else None
             if dot_opacity is not None and narr is not None:
-                cam, inverse, vdir = dot_opacity
+                cam, inverse, vdir, expo, fac = dot_opacity
                 try:
                     # 法线按线性部分的逆转置变换；行向量写法即 n · L⁻¹
                     nw = narr.dot(numpy.linalg.inv(numpy.array(lin, dtype="f4")))
@@ -1825,7 +1889,8 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
                         vw = numpy.array(cam, dtype="f4") - out
                         vw /= numpy.maximum(numpy.linalg.norm(vw, axis=1), 1e-9)[:, None]
                     d = numpy.abs((nw * vw).sum(axis=1))
-                    cc[:, 3] *= (1.0 - d) if inverse else d
+                    d = (1.0 - d) if inverse else d
+                    cc[:, 3] *= 1.0 + (numpy.power(d, max(expo, 1e-6)) - 1.0) * fac
                 except Exception:
                     pass
             extra = None
@@ -2349,11 +2414,13 @@ void main()
 
 
 def _mask_frag_src():
-    """在贴图 shader 的基础上加 mrl3 flowmap 扭曲与遮罩。
+    """在贴图 shader 的基础上加材质流动贴图与遮罩。
 
-    flowmap 分别按主贴图 UV、遮罩 UV 采样，偏移 = 强度 × (RG × 2 − 1)，y 取反后从 UV 中减去，
-    沿用渲染体 flowmap 的约定（mrl3 这组的换算未实测）。遮罩 R 通道乘进不透明度。
-    ``meshFlow`` = (主贴图扭曲强度, 遮罩扭曲强度)；没有遮罩或 flowmap 时绑定白图、强度为 0。
+    流动贴图分别按主贴图 UV、遮罩 UV 采样，沿用渲染体 flowmap 的模型（材质这组的单位为推测）：
+    一层采样 = UV − 强度 × p × f，f = RG × 2 − 1、y 取反；两层相位错开半轮、按三角波权重交叠，
+    p 每秒推进 speed 轮，速度为 0 时只剩 p = 0.5 那层。遮罩 R 通道乘进不透明度。
+    ``meshFlow`` = (主贴图扭曲强度, 遮罩扭曲强度)，``meshPhase`` = (主贴图相位, 遮罩相位)；
+    没有遮罩或流动贴图时绑定白图、强度为 0。
     """
     helper = """
 vec4 mask_wrap(vec2 uv)
@@ -2366,19 +2433,41 @@ vec4 flow_wrap(vec2 uv)
   return textureGrad(flowTex, uv - floor(uv), dFdx(uv), dFdy(uv));
 }
 
-vec2 flow_ofs(vec2 uv, float k)
+vec2 flow_dir(vec2 uv)
 {
   vec2 f = flow_wrap(uv).rg * 2.0 - 1.0;
   f.y = -f.y;
-  return f * k;
+  return f;
+}
+
+vec4 flow_main(vec2 uv)
+{
+  if (meshFlow.x == 0.0) {
+    return sample_wrap(uv);
+  }
+  vec2 f = flow_dir(uv) * meshFlow.x;
+  float p0 = fract(meshPhase.x);
+  float p1 = fract(meshPhase.x + 0.5);
+  return mix(sample_wrap(uv - f * p1), sample_wrap(uv - f * p0), 1.0 - abs(p0 * 2.0 - 1.0));
+}
+
+vec4 flow_mask(vec2 uv)
+{
+  if (meshFlow.y == 0.0) {
+    return mask_wrap(uv);
+  }
+  vec2 f = flow_dir(uv) * meshFlow.y;
+  float p0 = fract(meshPhase.y);
+  float p1 = fract(meshPhase.y + 0.5);
+  return mix(mask_wrap(uv - f * p1), mask_wrap(uv - f * p0), 1.0 - abs(p0 * 2.0 - 1.0));
 }
 """
     src = _FRAG_SRC.replace("void main()", helper + "\nvoid main()", 1)
     src = src.replace("  vec4 t = sample_wrap(v_uv);",
-                      "  vec4 t = sample_wrap(v_uv - flow_ofs(v_uv, meshFlow.x));", 1)
+                      "  vec4 t = flow_main(v_uv);", 1)
     return src.replace(
         "  a = (a < alphaFix.x)",
-        "  a *= mask_wrap(v_muv - flow_ofs(v_muv, meshFlow.y)).r;\n"
+        "  a *= flow_mask(v_muv).r;\n"
         "  a = (a < alphaFix.x)", 1)
 
 
@@ -2401,6 +2490,7 @@ def _mask_shader():
         info.push_constant("FLOAT", "waterLerp")
         info.push_constant("FLOAT", "blendOut")
         info.push_constant("VEC2", "meshFlow")
+        info.push_constant("VEC2", "meshPhase")
         info.sampler(0, "FLOAT_2D", "image")
         info.sampler(1, "FLOAT_2D", "maskTex")
         info.sampler(2, "FLOAT_2D", "flowTex")
@@ -2617,6 +2707,11 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
     order_memo = {}
     track_order = tr.get("order") or ("", 0)
     mat_images = tr.get("mesh_images") or {}
+    mat_masks = tr.get("mesh_masks") or {}
+    mat_params = tr.get("mesh_params") or {}
+    mat_flows = tr.get("mesh_flows") or {}
+    #: 材质流动的时间轴取本 track 的模拟时间（秒）
+    sim_seconds = max(0, tr["sim"].frame) / (float(getattr(tr["sim"].config, "fps", 60)) or 60.0)
     flow_images = (tr.get("flow_images") or {}) if use_tex else {}
     emissive_images = (tr.get("emissive_images") or {}) if use_tex else {}
 
@@ -2655,20 +2750,35 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             if ename and _gpu_texture(ename) is None:
                 ename = ""
             factor = _NO_FACTOR if override else info["base"]
-            dot = (bool(info["dot_opacity"]), info["dot_inverse"])
+            # MATERIAL 覆盖的参数优先于 mrl3
+            mp = mat_params.get(key) or {}
+            dop = float(mp.get("fDotOpacity", info["dot_opacity"]))
+            dot = (bool(dop), bool(mp.get("bDotInverse", info["dot_inverse"])), dop,
+                   float(mp.get("fDotOpacityFactor", info.get("dot_factor", 1.0))))
+            vtx_alpha = bool(mp.get("fVertexAlpha", info["vertex_alpha"]))
+            mask_uv2 = (not mp["bUseUVPrimaryAM"]) if "bUseUVPrimaryAM" in mp else info["mask_uv2"]
             geom = _mesh_tris_game_multi(meshes)
-            mask = "" if override else info["mask"]
+            # MATERIAL 覆盖的 Alpha 遮罩优先；只覆盖底色时 mrl3 的遮罩不再适用
+            mask = mat_masks.get(key) or ("" if override else info["mask"])
             if mask and (not use_tex or _gpu_texture(mask) is None):
                 mask = ""
-            flow = "" if override else info["flow"]
+            # MATERIAL 覆盖的流动贴图优先；只覆盖底色时 mrl3 的流动贴图不再适用
+            flow = mat_flows.get(key) or ("" if override else info["flow"])
             if flow and (not use_tex or _gpu_texture(flow) is None):
                 flow = ""
-            # 分通道路径（mesh shader）：有遮罩，或网格带第二套 UV 时 uv1 / uv2 各管一套
-            dual = bool(name) and geom[2] is not None and (bool(mask) or geom[5] is not None)
-            mkey = ((mask, flow, info["flow_k"] if flow else (0.0, 0.0))
+            flow_k = (float(mp.get("fFlowStrength", info["flow_k"][0])),
+                      float(mp.get("fSecondaryFlowStrength", info["flow_k"][1])))
+            speed = info.get("flow_speed") or (0.0, 0.0)
+            speed = (float(mp.get("fFlowSpeed", speed[0])),
+                     float(mp.get("fFlowSpeedSecondary", speed[1])))
+            # 分通道路径（mesh shader）：有遮罩或材质流动贴图，或网格带第二套 UV 时 uv1 / uv2 各管一套
+            dual = (bool(name) and geom[2] is not None
+                    and (bool(mask) or bool(flow) or geom[5] is not None))
+            mkey = ((mask, flow, flow_k if flow else (0.0, 0.0),
+                     (round(sim_seconds * speed[0], 4), round(sim_seconds * speed[1], 4)))
                     if dual else None)
             got = (geom, name, factor, ename, info["emissive"],
-                   info["vertex_alpha"], dot, mkey, info["mask_uv2"], info["priority"])
+                   vtx_alpha, dot, mkey, mask_uv2, info["priority"])
             mesh_memo[memo_key] = got
         return got
 
@@ -2774,7 +2884,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             # 网格之间先按 mrl3 优先级，同级再按实例轴心（发射位置）沿视线的深度排序，与网格
             # 几何本身在哪无关；不做深度遮挡。都相同时游戏里先后不稳定，预览退回 Entry 顺序
             dist = sum((cam_pos[i] - center[i]) * view_dir[i] for i in range(3))
-            dot_op = ((cam_pos if persp else None), dot[1], view_dir) if dot[0] else None
+            dot_op = ((cam_pos if persp else None), dot[1], view_dir, dot[2], dot[3]) if dot[0] else None
             if factor != _NO_FACTOR:
                 # mrl3 的 BaseMapFactor 与底色贴图相乘，第 4 位是不透明度系数
                 c = it.color
@@ -2782,9 +2892,15 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                      c[3] * factor[3])
                 col = c if it.blend in _MULTIPLY_MODES else _display_color(c, hdr_mode)
             # 网格没有 UV 时无从采样流动贴图
-            # 分通道路径不处理渲染体 flowmap（UVCONTROL 的 flowmap 组）
             flow_tex, flow_amt = (_flow_of(it, tex_name) if (geom[2] is not None and mkey is None)
                                   else ("", None))
+            uvc_amt = it.extra.get("flowmap")
+            if mkey is not None and mkey[1] and uvc_amt:
+                # 分通道路径：UVCONTROL 的 flowmap 组驱动材质流动贴图，同时扭曲底色与遮罩，
+                # 取代材质自身的强度与速度（作用层为推测）
+                amt = float(uvc_amt) * flow_gain
+                ph = round(float(it.extra.get("flowmap_phase", 0.0)), 4)
+                mkey = (mkey[0], mkey[1], (amt, amt), (ph, ph))
             _key, (bv, bc, bu, b2, bnp, blu, bfo) = _bucket_for(it, tex_name, flow_tex,
                                                                 dist=dist, mask=mkey or "",
                                                                 prio=prio)
@@ -2950,10 +3066,10 @@ def _build_payload(scene, rv3d, trs):
         white = _white_texture() if mkey else None
         if (mkey and bmu is not None and tex is not None and white is not None
                 and mask_shader is not None):
-            mask_name, mflow, fk = mkey
+            mask_name, mflow, fk, fphase = mkey
             mtex = _gpu_texture(mask_name) or white
             ftex = _gpu_texture(mflow) or white
-            tris.append((mode, mask_shader, (tex, mtex, ftex, fk), fix, lerp,
+            tris.append((mode, mask_shader, (tex, mtex, ftex, fk, fphase), fix, lerp,
                          batch_for_shader(mask_shader, "TRIS",
                                           {"pos": bv, "uv": bu, "color": bc,
                                            "col2": b2, "muv": bmu})))
@@ -3087,12 +3203,13 @@ def _draw():
             gpu.state.blend_set(_GPU_BLEND.get(mode, mode))
             if tex is not None:
                 shader.bind()
-                if isinstance(tex, tuple) and len(tex) == 4:
-                    # 网格分通道：(主图, 遮罩, mrl3 flowmap, 两个扭曲强度)
+                if isinstance(tex, tuple) and len(tex) == 5:
+                    # 网格分通道：(主图, 遮罩, 材质流动贴图, 两个扭曲强度, 两个相位)
                     shader.uniform_sampler("image", tex[0])
                     shader.uniform_sampler("maskTex", tex[1])
                     shader.uniform_sampler("flowTex", tex[2])
                     shader.uniform_float("meshFlow", tex[3])
+                    shader.uniform_float("meshPhase", tex[4])
                 elif isinstance(tex, tuple):
                     # flowmap 使用主图与流动图两个采样器。
                     shader.uniform_sampler("image", tex[0])
