@@ -469,6 +469,15 @@ class SimScene(object):
             return default
         return self.root.sim.suggested_duration(default)
 
+    def has_indefinite_life(self):
+        """任一 entry 模板的 LIFE 开了无限寿命。"""
+        from ..hashes import LIFE
+        for t in self.templates.values():
+            for h, f in t.blocks:
+                if int(h) == LIFE and f and int(f.get("indefiniteLifespan", 0) or 0):
+                    return True
+        return False
+
     @property
     def instance_count(self):
         return len(self.instances)

@@ -388,15 +388,18 @@ _FLOW_TEX_CACHE = {}
 
 def _flowmap_path(attr_objs):
     """返回启用的渲染体 flowmap 路径；未设置启用位时忽略路径。"""
-    from ..efx_format.hashes import BILLBOARD3D, BILLBOARD2D, PLANE
+    from ..efx_format.hashes import BILLBOARD3D, BILLBOARD2D, PLANE, RIBBONBLADE
     from ..efx_format.sim.behaviors._flowmap import BIT_ENABLE
 
     for blk in attr_objs:
         pair = _block_fields(blk)
-        if pair is None or pair[0] not in (BILLBOARD3D, BILLBOARD2D, PLANE):
+        if pair is None or pair[0] not in (BILLBOARD3D, BILLBOARD2D, PLANE, RIBBONBLADE):
             continue
         d = pair[1]
-        if not (int(d.get("applicationRule", 0) or 0) & BIT_ENABLE):
+        if pair[0] == RIBBONBLADE:
+            if not d.get("enableFlowmap"):
+                continue
+        elif not (int(d.get("applicationRule", 0) or 0) & BIT_ENABLE):
             continue
         raw = d.get("path") or b""
         if isinstance(raw, bytes):
@@ -703,10 +706,17 @@ def rebuild_track(tr, scene, keep_frame=True):
         return False
     if 0 <= frame <= _REBUILD_CATCHUP_MAX:
         try:
-            new["sim"].run_to(frame)
+            if getattr(scene, "efx_sim_swing_enable", False):
+                # 追帧时逐帧回放挥砍，否则历史里没有挥砍运动，下一帧宿主会一步跳到当前角度
+                while new["sim"].frame < frame:
+                    _apply_swing_preview(new, scene)
+                    new["sim"].step()
+            else:
+                new["sim"].run_to(frame)
         except Exception as exc:
             _P["error"] = str(exc)
     tr.update(new)
+    tr.pop("swing_yaw0", None)
     return True
 
 
@@ -924,79 +934,63 @@ def _sync_track_origin(tr):
 
 def _sync_host_origin(scene=None):
     for tr in _P["tracks"]:
-        _apply_swing_preview(tr, scene)
-        _sync_track_origin(tr)
+        if not _apply_swing_preview(tr, scene):
+            _sync_track_origin(tr)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 挥砍预览为宿主轨迹提供独立的往复运动。
+# 挥砍预览：宿主绕世界 Z 轴（游戏 Y 轴）旋转，直接写入模拟，不移动 Blender 中的 Entry。
 
-def _mute_bone_follow(entry):
-    """挥砍预览启用时静音骨骼跟随，避免叠加两份宿主位移。"""
-    from . import transform_sync as _tsync
-    con = entry.constraints.get(_tsync._BONE_FOLLOW_CONSTRAINT_NAME)
-    if con is not None:
-        con.mute = True
+#: 挥砍半径（米）：宿主绕初始位置转动的半径，刀身从这个圆向外伸出。
+_SWING_RADIUS = 1.5
 
 
-def _restore_bone_follow(entry_name):
-    entry = bpy.data.objects.get(entry_name)
-    if entry is None:
-        return
-    from . import transform_sync as _tsync
-    con = entry.constraints.get(_tsync._BONE_FOLLOW_CONSTRAINT_NAME)
-    if con is not None:
-        con.mute = False
-
-
-def _restore_all_bone_follow():
-    """停止或卸载时恢复所有被静音的骨骼跟随约束。"""
-    for tr in _P["tracks"]:
-        _restore_bone_follow(tr["entry_name"])
+def _swing_yaw0(tr):
+    """让刀身水平指向正右所需的起始偏航角（度，游戏 Y 轴）；刀身竖直或没有刀光时为 0。"""
+    got = tr.get("swing_yaw0")
+    if got is not None:
+        return got
+    from ..efx_format.hashes import RIBBONBLADE
+    from ..efx_format.sim.state import BASE_AXES
+    yaw = 0.0
+    try:
+        f = tr["sim"].em.f(RIBBONBLADE)
+    except Exception:
+        f = None
+    if f is not None:
+        idx = f.i("widthDirection")
+        ax = BASE_AXES[idx] if 0 <= idx < len(BASE_AXES) else BASE_AXES[1]
+        if abs(ax.x) + abs(ax.z) > 1e-6:
+            # 绕 +Y 转 atan2(z, x) 把 (x, 0, z) 转到 +X
+            yaw = math.degrees(math.atan2(ax.z, ax.x))
+    tr["swing_yaw0"] = yaw
+    return yaw
 
 
 def _apply_swing_preview(tr, scene):
-    """按模拟帧在参考位置周围应用往复圆弧，并与骨骼跟随互斥。"""
-    entry_name = tr["entry_name"]
+    """挥砍：播放时长内宿主绕初始位置逆时针转 180°（正右→正左），刀身随之沿半径方向扫过，
+    画出扇形；已接管宿主时返回 True。"""
+    em = tr["sim"].em
+    hr = em.host_rotation
     if scene is None or not getattr(scene, "efx_sim_swing_enable", False):
-        _restore_bone_follow(entry_name)
-        return
+        hr.x = hr.y = hr.z = 0.0
+        return False
 
-    entry = bpy.data.objects.get(entry_name)
-    if entry is None:
-        return
-    _mute_bone_follow(entry)
-
-    fps = float(getattr(tr["sim"].config, "fps", 60)) or 60.0
-    t = tr["sim"].frame / fps
-
-    duration = max(0.05, float(getattr(scene, "efx_sim_swing_duration", 0.35)))
-    half_angle = math.radians(float(getattr(scene, "efx_sim_swing_angle", 180.0))) * 0.5
-    axis = getattr(scene, "efx_sim_swing_axis", "Z")
-    radius = max(0.0, float(getattr(scene, "efx_sim_swing_radius", 1.0)))
-
-    cycle = 2.0 * duration
-    phase = (t % cycle) / duration
-    u = phase if phase <= 1.0 else 2.0 - phase
-    u = u * u * (3.0 - 2.0 * u)
-    theta = half_angle * (2.0 * u - 1.0)
-
-    rows = tr["ref_rows"]
-    rx, ry, rz = rows[0][3], rows[1][3], rows[2][3]
+    duration = _P["duration"] or _resolve_duration(scene)
+    theta = math.pi * min(1.0, tr["sim"].frame / float(max(1, duration)))
     s, c = math.sin(theta), math.cos(theta)
 
-    if axis == "X":
-        pos = (rx, ry + radius * (c - 1.0), rz + radius * s)
-    elif axis == "Y":
-        pos = (rx + radius * s, ry, rz + radius * (c - 1.0))
-    else:
-        pos = (rx + radius * (c - 1.0), ry + radius * s, rz)
+    # 宿主位于以播放起点为圆心的水平圆上，折算为相对播放起点的局部位移
+    rows = tr["ref_rows"]
+    px, py, pz = rows[0][3], rows[1][3], rows[2][3]
+    bx, by, bz = _ref_local(rows, (px + _SWING_RADIUS * c, py + _SWING_RADIUS * s, pz))
+    gx, gy, gz = _to_game(bx, by, bz)
+    ho = em.host_origin
+    ho.x, ho.y, ho.z = gx, gy, gz
 
-    # 保留现有 Matrix 的旋转和缩放，仅替换平移。
-    cur = entry.matrix_world
-    cur.translation = pos
-    entry.matrix_world = cur
-
+    # 朝向：先转到刀身指向正右，再随挥砍转过 θ；rows[2][2] 为世界 Z 在 Entry 局部的游戏 Y 分量
+    hr.x, hr.y, hr.z = 0.0, _swing_yaw0(tr) + math.degrees(theta) * rows[2][2], 0.0
+    return True
 
 
 def _entry_matrix_rows(entry_obj):
@@ -1315,20 +1309,31 @@ def _emit_ribbons_np(chunks, group, size_mul, ctx):
 
 
 def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
-                 corners=None, col2s=None, core=None):
-    """以 Python 兜底路径展开条带三角形；numpy 可用时使用批量路径。"""
+                 corners=None, col2s=None, core=None, fixed_side=None, row_colors=None,
+                 row_t=None, luvs=None, flowoffs=None, flow_amt=None):
+    """以 Python 兜底路径展开条带三角形；numpy 可用时使用批量路径。
+
+    `fixed_side` 为世界空间单位向量（或逐点列表）时，横向取它，不再面向镜头。
+    `row_colors` 为逐点 RGBA 时取代整条的 `col`，alpha 仍乘逐点 alpha。
+    `row_t` 为逐点贴图纵向位置（0 = 尾边，1 = 头边）时取代按点序均分。
+    `luvs` / `flowoffs` 为 flowmap 桶的局部 UV 与位移参数列表，`flow_amt` 为 `_flow_of` 的
+    (强度, 相位, 循环标记)；位移按当前序列格尺寸缩放，同方片。
+    """
     pts = item.points
     if not pts or len(pts) < 2:
         return
     n = len(pts)
 
     world = [world_fn(q) for q, _hw, _a in pts]
-    sides = []
-    for i in range(n):
-        a = world[i - 1] if i else world[0]
-        b = world[i + 1] if i < n - 1 else world[n - 1]
-        s = _norm(_cross((b[0] - a[0], b[1] - a[1], b[2] - a[2]), view_dir))
-        sides.append(s)
+    if fixed_side is not None:
+        sides = list(fixed_side) if isinstance(fixed_side, list) else [fixed_side] * n
+    else:
+        sides = []
+        for i in range(n):
+            a = world[i - 1] if i else world[0]
+            b = world[i + 1] if i < n - 1 else world[n - 1]
+            s = _norm(_cross((b[0] - a[0], b[1] - a[1], b[2] - a[2]), view_dir))
+            sides.append(s)
 
     k = size_mul * _UNIT
     ca, cb, cc, cd = col[0], col[1], col[2], col[3]
@@ -1349,7 +1354,11 @@ def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
             h = max(1e-5, abs(hw) * k)
             lo.append((w[0] - s[0] * h, w[1] - s[1] * h, w[2] - s[2] * h))
             hi.append((w[0] + s[0] * h, w[1] + s[1] * h, w[2] + s[2] * h))
-        rowc.append((ca, cb, cc, cd * am))
+        if row_colors is not None:
+            rc = row_colors[i]
+            rowc.append((rc[0], rc[1], rc[2], rc[3] * am))
+        else:
+            rowc.append((ca, cb, cc, cd * am))
 
     if uvs is not None and corners:
         bl, br, tr_, tl = corners
@@ -1357,11 +1366,20 @@ def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
         uvl = []
         uvr = []
         for i in range(n):
-            t = i / span
+            t = row_t[i] if row_t is not None else i / span
             uvl.append((bl[0] + (tl[0] - bl[0]) * t, bl[1] + (tl[1] - bl[1]) * t))
             uvr.append((br[0] + (tr_[0] - br[0]) * t, br[1] + (tr_[1] - br[1]) * t))
     else:
         uvl = uvr = None
+
+    flow_off = None
+    if uvl is not None and luvs is not None and flow_amt is not None:
+        span = float(n - 1)
+        lts = [row_t[i] if row_t is not None else i / span for i in range(n)]
+        us = [c[0] for c in corners]
+        vs = [c[1] for c in corners]
+        amt, ph, lap = flow_amt
+        flow_off = (amt * (max(us) - min(us)), amt * (max(vs) - min(vs)), ph, lap)
 
     for i in range(n - 1):
         l0 = lo[i]
@@ -1375,8 +1393,12 @@ def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
         verts.extend((l0, r0, r1, l0, r1, l1))
         colors.extend((a0, a0, a1, a0, a1, a1))
         if col2s is not None:
-            b0 = (core_rgb[0], core_rgb[1], core_rgb[2], a0[3])
-            b1 = (core_rgb[0], core_rgb[1], core_rgb[2], a1[3])
+            if core is None and row_colors is not None:
+                # 没给核心色时核心层与逐点颜色一致
+                b0, b1 = a0, a1
+            else:
+                b0 = (core_rgb[0], core_rgb[1], core_rgb[2], a0[3])
+                b1 = (core_rgb[0], core_rgb[1], core_rgb[2], a1[3])
             col2s.extend((b0, b0, b1, b0, b1, b1))
         if uvl is not None:
             u_l0 = uvl[i]
@@ -1384,6 +1406,11 @@ def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
             u_l1 = uvl[i + 1]
             u_r1 = uvr[i + 1]
             uvs.extend((u_l0, u_r0, u_r1, u_l0, u_r1, u_l1))
+            if flow_off is not None:
+                # 局部 UV 与方片同约定：左边 u=0、右边 u=1，纵向同主贴图的 t
+                t0, t1 = lts[i], lts[i + 1]
+                luvs.extend(((0.0, t0), (1.0, t0), (1.0, t1), (0.0, t0), (1.0, t1), (0.0, t1)))
+                flowoffs.extend([flow_off] * 6)
 
 
 def _emit_ribbon_uv(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
@@ -1955,14 +1982,18 @@ def _emit_mesh(verts, colors, chunks, item, col, size_mul, rows, geom,
 
 #: 渲染项可用的混合方式；其余值按 'ALPHA' 画。
 _BLEND_MODES = ("ALPHA", "ADDITIVE", "MULTIPLY", "OPAQUE", "INV_MULTIPLY",
-                "REFRACT", "REFRACT_ADD")
+                "REFRACT", "REFRACT_ADD", "REFRACT_GLOW")
 #: 折射通道（REFRACTION）：源色为背后画面，贴图 RGB 不参与
 _REFRACT_MODES = ("REFRACT", "REFRACT_ADD")
+#: 折射超出部分补画时假定的背景亮度（视口拿不到真实背景）
+_REFRACT_BG = 0.5
 #: 以乘法混合实现、颜色不经过 HDR 映射的模式
 _MULTIPLY_MODES = ("MULTIPLY", "INV_MULTIPLY") + _REFRACT_MODES
 #: 渲染项混合方式 → ``gpu.state.blend_set`` 预设
 _GPU_BLEND = {"OPAQUE": "NONE", "INV_MULTIPLY": "MULTIPLY",
-              "REFRACT": "MULTIPLY", "REFRACT_ADD": "MULTIPLY"}
+              "REFRACT": "MULTIPLY", "REFRACT_ADD": "MULTIPLY",
+              # 折射倍数超过 1 的补光层：覆盖度同折射，按加法叠加
+              "REFRACT_GLOW": "ADDITIVE"}
 #: 贴图 shader 的 ``blendOut`` 取值
 _BLEND_OUT = {"INV_MULTIPLY": 1.0, "MULTIPLY": 2.0}
 
@@ -2071,6 +2102,11 @@ void main()
   float a = t.a;
   a = (a < alphaFix.x) ? 0.0 : pow(a, alphaFix.y);
   a *= clamp(v_col.a, 0.0, 1.0) * refrParam.y;
+  if (refrParam.x > 1.5) {
+    // 补光层：颜色为超出部分，覆盖度经加法混合的源 alpha 生效
+    fragColor = vec4(v_col.rgb, a);
+    return;
+  }
   vec3 m = (refrParam.x > 0.5) ? vec3(1.0) + v_col.rgb * a
                                : mix(vec3(1.0), v_col.rgb, a);
   fragColor = vec4(m, 1.0);
@@ -2672,7 +2708,7 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         都是**逐 entry**的，一个场景里就那么几种取值，分桶开销可忽略。
         """
         mode = it.blend
-        if mode in _REFRACT_MODES:
+        if mode in _REFRACT_MODES or mode == "REFRACT_GLOW":
             # 折射是整条通道的性质，不该被「强制混合模式」那个调试开关顶掉
             pass
         elif blend != "AUTO":
@@ -2812,6 +2848,34 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                             col[3]), hdr_mode)
         return a, b
 
+    def _emit_refract_excess(it, prgb, tex, corners, side):
+        """折射倍数超过 1 的部分补一层加法。
+
+        视口叠加层是 8 位缓冲，乘法混合的源色大于 1 会被截断，高亮折射（颜色 × 自发光
+        远大于 1）就会完全看不见。背景未知，按 _REFRACT_BG 估计：背景 × c ≈ 背景 × min(c, 1)
+        + _REFRACT_BG × (c − 1)。加法档（背景 × (1 + c)）的超出部分为 c。
+        """
+        add = it.blend == "REFRACT_ADD"
+        a = it.color[3]
+        # 折射不走双层通道，逐点颜色（刀光渐变 × 代表色）直接可用
+        src = prgb if prgb else [it.color[:3]] * len(it.points)
+        rows = []
+        for c in src:
+            ex = [(v if add else v - 1.0) * _REFRACT_BG for v in c[:3]]
+            rows.append((max(0.0, ex[0]), max(0.0, ex[1]), max(0.0, ex[2]), a))
+        if not any(r[0] or r[1] or r[2] for r in rows):
+            return
+        e_it = _RenderItem(kind="RIBBON")
+        e_it.blend = "REFRACT_GLOW"
+        e_it.points = it.points
+        e_it.extra["entry_key"] = it.extra.get("entry_key")
+        _key, eb = _bucket_for(e_it, tex)
+        _emit_ribbon(eb[0], eb[1], eb[2], e_it, (0.0, 0.0, 0.0, a), size_mul, _world, view_dir,
+                     corners, col2s=eb[3], core=None,
+                     fixed_side=([_world_dir(d) for d in side] if isinstance(side, list)
+                                 else _world_dir(side)),
+                     row_colors=rows, row_t=it.extra.get("point_t"))
+
     def _world(v):
         """游戏坐标 → 世界坐标（过该 track 的参考矩阵）。"""
         bx, by, bz = _to_blender(v)
@@ -2861,11 +2925,36 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         kind = it.kind
 
         if kind == "RIBBON" and it.points:
-            key, b = _bucket_for(it, tex_name)
+            side = it.extra.get("side")
+            # 只有横向固定的条带（RIBBONBLADE 刀身）接 flowmap
+            flow_tex, flow_amt = _flow_of(it, tex_name) if side is not None else ("", None)
+            key, b = _bucket_for(it, tex_name, flow_tex)
             edge, core = _layers_of(it, col, tex_name)
             corners = _corners_of(it, tex_name)
             uv_scale = it.extra.get("uv_scale")
-            if uv_scale is not None and corners and b[2] is not None:
+            if side is not None:
+                # 横向固定的条带不进面向镜头的批量路径。
+                prgb = it.extra.get("point_rgb")
+                rows_c = None
+                if prgb and (not it.extra.get("layers") or it.blend in _REFRACT_MODES):
+                    # 逐点颜色与整条颜色同一套换算：乘法 / 折射不过 HDR 映射，折射再乘增益
+                    a = it.color[3]
+                    rows_c = [_layers_of(it, ((c[0], c[1], c[2], a) if it.blend in _MULTIPLY_MODES
+                                              else _display_color((c[0], c[1], c[2], a), hdr_mode)),
+                                         tex_name)[0]
+                              for c in prgb]
+                _emit_ribbon(b[0], b[1], b[2], it, edge, size_mul, _world, view_dir,
+                             corners, col2s=b[3], core=core,
+                             fixed_side=([_world_dir(d) for d in side] if isinstance(side, list)
+                                         else _world_dir(side)),
+                             row_colors=rows_c, row_t=it.extra.get("point_t"),
+                             luvs=b[5], flowoffs=b[6],
+                             flow_amt=flow_amt if flow_tex else None)
+                if it.blend in _REFRACT_MODES and not (flow_tex and tex_name):
+                    # 带流动贴图的折射读回背后画面、在 shader 里乘颜色，不受 8 位截断；
+                    # 只有乘法路径需要补光
+                    _emit_refract_excess(it, prgb, tex_name, corners, side)
+            elif uv_scale is not None and corners and b[2] is not None:
                 # 贴图缩放需要按重复边界切片，不进批量路径
                 _emit_ribbon_uv(b[0], b[1], b[2], it, edge, size_mul, _world,
                                 view_dir, corners, uv_scale, col2s=b[3], core=core)
@@ -3099,6 +3188,16 @@ def _build_payload(scene, rv3d, trs):
                                            "col2": b2, "luv": blu,
                                            "flowoff": bfo})))
             continue
+        if mode == "REFRACT_GLOW":
+            # 折射补光：只取贴图 alpha 作覆盖度，贴图 RGB 不参与
+            if tex is not None and refr_shader is not None:
+                tris.append((mode, refr_shader, tex, (fix, (2.0, refr_gain)), None,
+                             batch_for_shader(refr_shader, "TRIS",
+                                              {"pos": bv, "uv": bu, "color": bc})))
+            else:
+                tris.append((mode, flat, None, None, None,
+                             batch_for_shader(flat, "TRIS", {"pos": bv, "color": bc})))
+            continue
         if mode in _REFRACT_MODES:
             # 折射不使用双层通道混合；贴图 shader 不可用时回退整片乘法。
             if tex is not None and refr_shader is not None:
@@ -3309,12 +3408,26 @@ def _rebuild_if_dirty(scene):
     _P["acc"] = 0.0
 
 
+#: Duration=0 时的固定时长：开启挥砍 / 含无限寿命粒子
+_SWING_AUTO_FRAMES = 30
+_INDEFINITE_AUTO_FRAMES = 300
+
+
 def _resolve_duration(scene, sim=None):
-    """解析单次播放时长；自动模式下多 track 取最长建议值。"""
-    d = int(getattr(scene, "efx_sim_duration", 240))
+    """解析单次播放时长。Duration=0 时：开启挥砍取 30 帧；含无限寿命粒子取 300 帧；
+    否则多 track 取最长建议值。"""
+    d = int(getattr(scene, "efx_sim_duration", 0))
     if d > 0:
         return d
+    if getattr(scene, "efx_sim_swing_enable", False):
+        return _SWING_AUTO_FRAMES
     sims = [sim] if sim is not None else [t["sim"] for t in _P["tracks"]]
+    for s in sims:
+        try:
+            if s is not None and s.has_indefinite_life():
+                return _INDEFINITE_AUTO_FRAMES
+        except Exception:
+            pass
     best = 0
     for s in sims:
         if s is None:
@@ -3408,9 +3521,13 @@ def _tick(scene):
     speed = float(getattr(scene, "efx_sim_speed", 1.0))
     _P["acc"] += dt * fps * speed
 
+    swing = bool(getattr(scene, "efx_sim_swing_enable", False))
     steps = 0
     while _P["acc"] >= 1.0 and steps < 240:   # 单 tick 步数上限。
         for tr in _P["tracks"]:
+            if swing:
+                # 挥砍逐帧写入宿主：一个 tick 推进多帧时也是连续运动
+                _apply_swing_preview(tr, scene)
             tr["sim"].step()
         _P["acc"] -= 1.0
         steps += 1
@@ -3523,7 +3640,6 @@ class EFX_OT_sim_play(Operator):
             _P["timer"] = None
         _remove_handlers()
         _P["playing"] = False
-        _restore_all_bone_follow()
         _P["tracks"] = []
         _P["mesh_cache"] = {}
         _clear_tex_cache()
@@ -3550,7 +3666,6 @@ class EFX_OT_sim_stop(Operator):
         # modal 会在下一个 tick 完成剩余清理。
         _remove_handlers()
         _P["playing"] = False
-        _restore_all_bone_follow()
         _P["tracks"] = []
         _P["mesh_cache"] = {}
         _clear_tex_cache()
@@ -3807,11 +3922,6 @@ class EFX_PT_sim_playback(_SimSubPanel):
         box.label(text=T("sim.swing"), icon="CON_ROTLIKE")
         col = box.column(align=True)
         col.prop(scene, "efx_sim_swing_enable")
-        if getattr(scene, "efx_sim_swing_enable", False):
-            col.prop(scene, "efx_sim_swing_axis", text="Axis")
-            col.prop(scene, "efx_sim_swing_angle")
-            col.prop(scene, "efx_sim_swing_radius")
-            col.prop(scene, "efx_sim_swing_duration")
 
 
 class EFX_PT_sim_display(_SimSubPanel):
@@ -3964,39 +4074,20 @@ def register():
         name="Speed", default=1.0, min=0.05, max=4.0, soft_min=0.1, soft_max=2.0,
         description="Playback speed multiplier (whole EFX frames are preserved at any speed)")
     S.efx_sim_duration = IntProperty(
-        name="Duration", default=240, min=0, soft_max=600,
-        description="Frames per cycle; 0 = auto (start delay + one burst cycle + one particle life). "
-                    "EFX emitters have no documented stop condition, so this is the player's call")
+        name="Duration", default=0, min=0, soft_max=600, update=_on_knob_changed,
+        description="Frames per cycle. 0 = auto: 30 frames while Simulate Swing is on, "
+                    "300 frames if any particle has an indefinite lifespan, otherwise start "
+                    "delay + all spawn rounds + one particle life")
     S.efx_sim_seed = IntProperty(
         name="Seed", default=0, update=_on_knob_changed,
         description="Base random seed; same seed replays identically")
 
     # ── 挥砍预览 ────────────────────────────────────────────────────────────
     S.efx_sim_swing_enable = BoolProperty(
-        name="Simulate Swing", default=False,
-        description="Sweep the entry back and forth on a synthetic arc while playing "
-                    "(this does not read any real bone animation). RIBBON/RIBBONBLADE "
-                    "trails are drawn from how far the host itself moved, not from "
-                    "particle velocity, so a still host never shows a trail - this is "
-                    "a stand-in for that motion when there is no rig to play. Preview "
-                    "only; mutes the entry's bone-follow constraint (if any) while active")
-    S.efx_sim_swing_axis = EnumProperty(
-        name="Swing axis",
-        items=[("X", "X", "Arc lies in the Y/Z plane"),
-               ("Y", "Y", "Arc lies in the Z/X plane"),
-               ("Z", "Z", "Arc lies in the X/Y plane")],
-        default="Z")
-    S.efx_sim_swing_angle = FloatProperty(
-        name="Swing angle", default=180.0, min=1.0, max=360.0, soft_max=270.0,
-        description="Total angle swept between the two extremes of the arc, in degrees")
-    S.efx_sim_swing_radius = FloatProperty(
-        name="Swing radius", default=1.0, min=0.0, soft_max=5.0,
-        description="Distance from the entry's rest position to the pivot it swings "
-                    "around, in meters")
-    S.efx_sim_swing_duration = FloatProperty(
-        name="Swing duration", default=0.35, min=0.05, soft_max=2.0,
-        description="Seconds for one sweep from one extreme to the other; the entry "
-                    "keeps swinging back and forth at this pace while enabled")
+        name="Simulate Swing", default=False, update=_on_knob_changed,
+        description="Swing the host 180 degrees counter-clockwise around its starting "
+                    "position, from right to left over the playback duration. A horizontal "
+                    "blade sweeps out a fan")
 
     # ── 显示 ─────────────────────────────────────────────────────────────────
     S.efx_sim_draw_mode = EnumProperty(
@@ -4207,7 +4298,6 @@ def register():
 def unregister():
     _remove_handlers()
     _P["playing"] = False
-    _restore_all_bone_follow()
     _P["tracks"] = []
     _P["mesh_cache"] = {}
     _clear_tex_cache()
@@ -4217,8 +4307,7 @@ def unregister():
     for attr in (
         "efx_sim_scope",
         "efx_sim_mode", "efx_sim_speed", "efx_sim_duration", "efx_sim_seed",
-        "efx_sim_swing_enable", "efx_sim_swing_axis", "efx_sim_swing_angle",
-        "efx_sim_swing_radius", "efx_sim_swing_duration",
+        "efx_sim_swing_enable",
         "efx_sim_draw_mode", "efx_sim_blend", "efx_sim_particle_size",
         "efx_sim_point_px", "efx_sim_show_velocity", "efx_sim_show_shape",
         "efx_sim_jitter_mode", "efx_sim_es3d_range", "efx_sim_es3d_range_mode",

@@ -48,6 +48,27 @@ BIT_REVERSE = 0x10
 KEY = "flowmap"
 
 
+class FlagFields(object):
+    """把独立的 enableFlowmap / flowOnce / flowReverse 开关映射成 applicationRule 位，
+    供 RIBBONBLADE 等不用位域的类型调用 `roll`。"""
+
+    __slots__ = ("_f",)
+
+    def __init__(self, f):
+        self._f = f
+
+    def get(self, field, default=0.0):
+        return self._f.get(field, default)
+
+    def i(self, field, default=0):
+        if field == "applicationRule":
+            f = self._f
+            return ((BIT_ENABLE if f.i("enableFlowmap") else 0)
+                    | (BIT_FREEZE if f.i("flowOnce") else 0)
+                    | (BIT_REVERSE if f.i("flowReverse") else 0))
+        return self._f.i(field, default)
+
+
 def roll(p, f, rng):
     """出生时抽取四个 Jitter 并写入 p.rolled；未启用或未配置时不写入。"""
     if f is None:

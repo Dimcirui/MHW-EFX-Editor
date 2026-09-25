@@ -251,8 +251,8 @@ def ribbon_fields(**kw):
 def blade_fields(**kw):
     white = {"epvColorSlot": 0, "color1": [255, 255, 255, 255]}
     f = {"typeFlag": 1, "widthDirection": 1, "width": 100.0,
-         "length": 500.0, "lengthMode": 0,
-         "maxLengthLimit": 1500.0, "contractionSpeed": 600.0,
+         "length": 10, "lengthMode": 0,
+         "maxLengthLimit": 1500.0, "contractionSpeed": 0.0,
          "colourTransitionPoint": 0.0, "emissiveStrength": 1.0,
          "uvRepetition": 1.0, "head": dict(white), "tailEnd": dict(white)}
     f.update(kw)
@@ -2676,6 +2676,11 @@ class TestPtLifeActionScene(unittest.TestCase):
         return SimScene(templates, actions, root_key=0,
                         config=config or SimConfig(seed=1))
 
+    def test_has_indefinite_life_checks_every_template(self):
+        """子 entry 的无限寿命也算：播放器据此把自动时长改为固定值。"""
+        self.assertTrue(self._scene().has_indefinite_life())
+        self.assertFalse(self._scene(child_life=life_fields(keepFrame=10)).has_indefinite_life())
+
     # ── 基本联动 ─────────────────────────────────────────────────────────────
     def test_ptlife_is_simulated(self):
         sc = self._scene()
@@ -4503,21 +4508,157 @@ class TestRibbonBlade(unittest.TestCase):
             sim.step()
         return sim
 
+    @staticmethod
+    def _moving(vx=20.0):
+        """发射器沿 +X 匀速平移（每秒 vx）。"""
+        return transform3d_fields(enableVelocityBitflag=1,
+                                  translation_velocity=[vx, 0.0, 0.0, 0.0, 0.0, 0.0])
+
     def test_static_emitter_draws_nothing_but_says_why(self):
-        """刀光靠发射器挥动画轨迹；发射器不动就没有拖尾——要说清楚原因。"""
+        """刀光只由实际位移画出；静止时不画，并说明原因。"""
         sim = self._sim()
         self.assertEqual(sim.build_render(), [])
-        self.assertTrue(any("发射器" in n for n in sim.notes))
+        self.assertTrue(any("静止" in n for n in sim.notes))
 
-    def test_moving_emitter_grows_the_trail(self):
-        sim = self._sim(
-            transform=transform3d_fields(
-                enableVelocityBitflag=1,
-                translation_velocity=[20.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
-        items = sim.build_render()
+    def test_moving_emitter_draws_the_trail(self):
+        items = self._sim(transform=self._moving()).build_render()
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].kind, "RIBBON")
         self.assertGreater(items[0].size.y, 0.0)
+
+    def test_length_is_frames_of_history(self):
+        """length=帧数：弧长 = (length + 1) × 每帧位移，与挥动总时长无关。"""
+        per_frame = 60.0 / 60.0
+        for n in (5, 10):
+            sim = self._sim(blade=blade_fields(length=n), transform=self._moving(60.0),
+                            frames=40)
+            self.assertAlmostEqual(sim.build_render()[0].size.y, (n + 1) * per_frame, places=4)
+
+    def test_young_blade_shows_only_the_head_part(self):
+        """形状按满长度计算，出生点之前的部分截掉：出生不久只露出高的头端。"""
+        white = {"epvColorSlot": 0, "color1": [255, 255, 255, 255]}
+        blade = blade_fields(length=10, width=40.0, head=dict(white, size=1.0),
+                             tailEnd=dict(white, size=0.0))
+        it = self._sim(blade=blade, transform=self._moving(60.0), frames=4).build_render()[0]
+        arc = it.size.y
+        self.assertLess(arc, 11.0 - 1e-6)                    # 只有出生后的真实轨迹
+        tail_half = it.points[0][1]
+        self.assertAlmostEqual(tail_half, 20.0 * (1.0 - arc / 11.0), places=4)
+        self.assertAlmostEqual(it.points[-1][1], 20.0, places=4)
+        # 贴图纵向按满长度铺：可见段只占头端那一截
+        t = it.extra["point_t"]
+        self.assertAlmostEqual(t[-1], 1.0, places=4)
+        self.assertAlmostEqual(t[0], 1.0 - arc / 11.0, places=4)
+
+    def test_length_mode_caps_the_arc(self):
+        sim = self._sim(blade=blade_fields(length=30, lengthMode=1, maxLengthLimit=20.0),
+                        transform=self._moving(60.0 * 1.5), frames=40)
+        self.assertAlmostEqual(sim.build_render()[0].size.y, 20.0, places=4)
+        # lengthMode=0 时上限不参与
+        sim = self._sim(blade=blade_fields(length=30, maxLengthLimit=20.0),
+                        transform=self._moving(60.0 * 1.5), frames=40)
+        self.assertAlmostEqual(sim.build_render()[0].size.y, 31 * 1.5, places=4)
+
+    def test_length_mode_1_is_distance_and_ignores_frames(self):
+        """lengthMode=1：长度按移动距离从 0 长到上限，length 帧数不参与。"""
+        sim = self._sim(blade=blade_fields(length=5, lengthMode=1, maxLengthLimit=20.0),
+                        transform=self._moving(60.0 * 0.9), frames=40)
+        self.assertAlmostEqual(sim.build_render()[0].size.y, 20.0, places=3)
+
+    def test_contraction_is_continuous(self):
+        """回缩持续生效：回缩快于移动时刀光始终不可见；为 0 时停下后整条保留。"""
+        fast = self._sim(blade=blade_fields(lengthMode=1, maxLengthLimit=10000.0,
+                                            contractionSpeed=1000.0),
+                         transform=self._moving(60.0 * 2.5), frames=30)
+        self.assertEqual(fast.build_render(), [])
+
+        from efx_format.sim.behaviors.transform3d import Transform3D
+        hold = self._sim(blade=blade_fields(lengthMode=1, maxLengthLimit=10000.0),
+                         transform=self._moving(60.0), frames=20)
+        grown = hold.build_render()[0].size.y
+        hold.em.user[Transform3D]["vel"] = Vec3()
+        hold.run(60)
+        self.assertAlmostEqual(hold.build_render()[0].size.y, grown, places=3)
+
+    def test_colour_transition_point_keeps_head_colour(self):
+        """colourTransitionPoint=0.5：头端一半保持头端颜色，其余过渡到尾端颜色。"""
+        sim = self._sim(
+            blade=blade_fields(colourTransitionPoint=0.5, length=10,
+                               head={"epvColorSlot": 0, "color1": [255, 255, 255, 255]},
+                               tailEnd={"epvColorSlot": 0, "color1": [255, 255, 255, 0]}),
+            transform=self._moving(60.0), frames=20)
+        alphas = [a for _q, _w, a in sim.build_render()[0].points]
+        self.assertAlmostEqual(alphas[-1], 1.0, places=4)
+        self.assertAlmostEqual(alphas[len(alphas) // 2 + 1], 1.0, places=4)
+        self.assertAlmostEqual(alphas[0], 0.0, places=4)
+
+    def test_flowmap_follows_its_own_switches(self):
+        """流动贴图由 enableFlowmap 开关；flowOnce 让相位停在一轮末尾。"""
+        flow = dict(flowSpeed=6.0, flowStrength=0.5, flowSpeedCoef=1.0, flowStrengthCoef=1.0)
+        on = self._sim(blade=blade_fields(enableFlowmap=1, **flow),
+                       transform=self._moving(), frames=30).build_render()[0]
+        self.assertAlmostEqual(on.extra["flowmap"], 0.5, places=4)
+        self.assertTrue(on.extra["flowmap_loop"])
+        off = self._sim(blade=blade_fields(enableFlowmap=0, **flow),
+                        transform=self._moving(), frames=30).build_render()[0]
+        self.assertNotIn("flowmap", off.extra)
+        once = self._sim(blade=blade_fields(enableFlowmap=1, flowOnce=1, **flow),
+                         transform=self._moving(), frames=30).build_render()[0]
+        self.assertFalse(once.extra["flowmap_loop"])
+        self.assertAlmostEqual(once.extra["flowmap_phase"], 1.0, places=4)
+
+    def test_subdivision_follows_the_curve(self):
+        """unknEnum05_1 为相邻两帧之间按过点曲线补的点数：稀疏的圆周采样细分后贴近圆。"""
+        import math
+        from efx_format.sim.behaviors.ribbonblade import _densify
+        up = Vec3(0.0, 1.0, 0.0)
+        hist = [(Vec3(math.cos(math.radians(a)), math.sin(math.radians(a)), 0.0), up)
+                for a in range(0, 301, 60)]
+        self.assertIs(_densify(hist, 0), hist)
+        dense = _densify(hist, 4)
+        self.assertEqual(len(dense), (len(hist) - 1) * 5 + 1)
+        chord_mid = math.cos(math.radians(30))                # 折线中点离圆心的距离
+        worst = min(q.length() for q, _d in dense[5:-5])      # 首尾端点切线退化，不计
+        self.assertGreater(worst, chord_mid + 0.05)
+
+    def test_point_colours_blend_head_to_tail(self):
+        """逐点 RGB 沿刀光从尾端颜色过渡到头端颜色，而不是整条取中间色。"""
+        sim = self._sim(
+            blade=blade_fields(length=10,
+                               head={"epvColorSlot": 0, "color1": [255, 0, 0, 255]},
+                               tailEnd={"epvColorSlot": 0, "color1": [0, 0, 255, 255]}),
+            transform=self._moving(60.0), frames=20)
+        from efx_format.sim.behaviors.ribbonblade import emissive_gain
+        k = emissive_gain(1.0)
+        rgb = sim.build_render()[0].extra["point_rgb"]
+        self.assertAlmostEqual(rgb[0][0], 0.0, places=4)
+        self.assertAlmostEqual(rgb[0][2], k, places=4)
+        self.assertAlmostEqual(rgb[-1][0], k, places=4)
+        self.assertAlmostEqual(rgb[-1][2], 0.0, places=4)
+
+    def test_emissive_strength_saturates(self):
+        """强度 1 约为中灰、5 接近原色、10 以上饱和；折射保持线性。"""
+        from efx_format.sim.behaviors.ribbonblade import emissive_gain
+        self.assertAlmostEqual(emissive_gain(1.0), 0.36, delta=0.01)
+        self.assertAlmostEqual(emissive_gain(5.0), 0.89, delta=0.01)
+        self.assertGreater(emissive_gain(10.0), 1.0)
+        self.assertEqual(emissive_gain(80.0, refraction=True), 80.0)
+
+    def test_blade_extends_one_side_with_end_sizes(self):
+        """刀身从轨迹沿 widthDirection 单侧伸出，头尾长度 = width × 端点 size。"""
+        white = {"epvColorSlot": 0, "color1": [255, 255, 255, 255]}
+        sim = self._sim(blade=blade_fields(widthDirection=1, width=40.0,
+                                           head=dict(white, size=1.0),
+                                           tailEnd=dict(white, size=0.1)),
+                        transform=self._moving())
+        it = sim.build_render()[0]
+        (tail_q, tail_h, _a0), (head_q, head_h, _a1) = it.points[0], it.points[-1]
+        self.assertAlmostEqual(head_h, 20.0, places=4)
+        self.assertAlmostEqual(tail_h, 2.0, places=4)
+        # 中线在轨迹上方半个刀身处，即下沿贴着轨迹（y=0）
+        self.assertAlmostEqual(head_q.y - head_h, 0.0, places=4)
+        self.assertAlmostEqual(tail_q.y - tail_h, 0.0, places=4)
+        self.assertEqual((it.extra["side"][-1].x, it.extra["side"][-1].y), (0.0, 1.0))
 
     def test_rgbfire_keeps_the_blade_color(self):
         """挂 RGBFIRE 时两层颜色交给 shader，刀光自身颜色记在 base_tint 里。"""
@@ -4532,41 +4673,6 @@ class TestRibbonBlade(unittest.TestCase):
         it = sim.build_render()[0]
         self.assertIn("layers", it.extra)
         self.assertIn("base_tint", it.extra)
-
-    def test_length_is_capped_by_the_limit(self):
-        sim = self._sim(
-            blade=blade_fields(lengthMode=1, maxLengthLimit=100.0),
-            transform=transform3d_fields(
-                enableVelocityBitflag=1,
-                translation_velocity=[50.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-            frames=40)
-        self.assertLessEqual(sim.build_render()[0].size.y, 100.0 + 1e-6)
-
-    def test_contraction_only_kicks_in_after_motion_stops(self):
-        """0=驻留、值越大停下后收得越快——回缩是「停下之后」的行为。"""
-        from efx_format.sim.behaviors.ribbonblade import RibbonBlade as _B
-
-        def run(shrink):
-            sim = make_sim(
-                spawn=spawn_fields(intervalFrame=1000),
-                life=life_fields(indefiniteLifespan=1),
-                transform=transform3d_fields(
-                    enableVelocityBitflag=1,
-                    translation_velocity=[30.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-                extra=[(RIBBONBLADE, blade_fields(lengthMode=1, maxLengthLimit=900.0,
-                                                  contractionSpeed=shrink))])
-            sim.run(20)
-            grown = sim.particles[0].user[_B]["length"]
-            # 让发射器停下来：清掉速度，再跑一段
-            sim.em.user[list(sim.em.user)[0]]["vel"] = Vec3()
-            sim.run(30)
-            return grown, sim.particles[0].user[_B]["length"]
-
-        grown_hold, after_hold = run(0.0)          # 0 = 驻留
-        grown_fast, after_fast = run(1200.0)       # 大 = 停下就收
-        self.assertGreater(grown_hold, 0.0)
-        self.assertAlmostEqual(after_hold, grown_hold, delta=1e-6)
-        self.assertLess(after_fast, grown_fast)
 
     def test_colour_transition_point(self):
         """0=立即开始过渡 → 尾端与头端 alpha 明显不同。"""
