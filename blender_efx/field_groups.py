@@ -86,6 +86,18 @@ FLOWMAP = FieldGroup(
 
 GROUPS = (FLOWMAP,)
 
+#: 单一类型内的分段标题：类型名 → [(组首字段, (中文, 英文)), ...]。只画标题，不改标签和
+#: 顺序；顺序由 efx_format/field_order.py 的锚点表决定。组首字段被隐藏时标题照画。
+TYPE_SECTIONS = {
+    "SPAWN": [
+        ("maxParticles",      ("数量", "Count")),
+        ("loopNum",           ("每轮", "Per Round")),
+        ("revivalLoop",       ("复活", "Revival")),
+        ("emitterDelayFrame", ("延迟", "Delay")),
+        ("spawnFlags",        ("标志", "Flags")),
+    ],
+}
+
 
 def groups_for(type_name):
     """该类型适用的分组。"""
@@ -101,6 +113,19 @@ def move_groups_to_end(type_name, items):
             grp.sort(key=lambda it: rank[it.ori_name])
             items = [it for it in items if it.ori_name not in rank] + grp
     return items
+
+
+def section_header(type_name, field_name):
+    """以该字段为组首的分段标题 (中文, 英文)；没有返回 None。"""
+    for lead, header in TYPE_SECTIONS.get(type_name, ()):
+        if lead == field_name:
+            return header
+    return None
+
+
+def is_first_section(type_name, field_name):
+    sections = TYPE_SECTIONS.get(type_name)
+    return bool(sections) and sections[0][0] == field_name
 
 
 def row_label(type_name, field_name, zh):

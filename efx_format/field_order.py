@@ -49,6 +49,12 @@ FIELD_ORDER_ANCHORS = {
 
     # 成组字段保持相邻显示。
     "ROTATEANIM": {"spin_velocity": "billboardRotationCoef"},
+    # SPAWN 按 数量 / 每轮 / 复活 / 延迟 / 标志 分段，组标题见 blender_efx/field_groups.py。
+    "SPAWN": {
+        "loopNum":         "spawnNum",
+        "revivalLoop":     "spawnFrame",
+        "revivalInterval": "revivalLoop",
+    },
     "RAYCAST": {"speed": "maxDistance"},
     # VELOCITY3D 按控制项、运动参数和类型专属字段分组显示。
     "VELOCITY3D": {

@@ -1321,6 +1321,11 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     _draw_section_header(_common_col, _zh_grp, *_grp.header)
                     _draw_group_bit_rows(_common_col, _item_by_name, type_name,
                                          _fg.lead_bit_rows(_grp, type_name), _zh_grp)
+                _sec = None if _color_only else _fg.section_header(type_name, item.ori_name)
+                if _sec is not None:
+                    if not _fg.is_first_section(type_name, item.ori_name):
+                        _common_col.separator(factor=1.0)
+                    _draw_section_header(_common_col, _zh_grp, *_sec)
                 # TRANSFORM3D / SPAWN：从位掩码里拆出来、挪到别的字段前面当门控开关的
                 # 勾选框，必须画在"模式过滤隐藏判定"**之前**——它们门控的字段（velocity/
                 # modifier 组、spawnFrame）关着的时候会被下面那条隐藏判定跳过，如果勾选
