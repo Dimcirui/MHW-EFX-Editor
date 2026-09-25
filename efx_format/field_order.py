@@ -47,27 +47,65 @@ FIELD_ORDER_ANCHORS = {
         "rotationOrder":         "rotation",
     },
 
-    # 成组字段保持相邻显示。
-    "ROTATEANIM": {"spin_velocity": "billboardRotationCoef"},
-    # SPAWN 按 数量 / 每轮 / 复活 / 延迟 / 标志 分段，组标题见 blender_efx/field_groups.py。
+    # 以下类型按 blender_efx/field_groups.py 的 TYPE_SECTIONS 分段排列。
+    "LIFE": {"indefiniteLifespan": "vanishFrame"},
+    "BLINK": {"unkn1_0": "highFrequencyWidth"},
+    "UVSEQUENCE": {"uvsPath": "typeFlag"},
+    "EMITTERSHAPE2D": {
+        "shapeType":       "typeFlag",
+        "rangeDivideAxis": "rangeY",
+    },
+    "RAYCAST": {
+        "spacer1":       "spacer0",
+        "spacer2":       "spacer1",
+        "spacer3":       "spacer2",
+        "direction":     "spacer3",
+        "startOffset":   "direction",
+        "startDistance": "startOffset",
+        "maxDistance":   "startDistance",
+        "speed":         "maxDistance",
+        "prop2":         "rayCastFlags",
+    },
+    "HOMING": {
+        "homingTarget":         "spacer",
+        "vanishMode":           "maxSpeed",
+        "vanishRadius":         "vanishMode",
+        "forceFieldMode":       "vanishRadius",
+        "forceFieldRadius":     "forceFieldMode",
+        "forceFieldSpeedScale": "forceFieldRadius",
+    },
+    "ROTATEANIM": {
+        "spinAxisMask":  "billboardRotationCoef",
+        "spin_velocity": "spinAxisMask",
+    },
+    "VELOCITY3D": {
+        "speed":                "typeFlag",
+        "speedCoef":            "speed",
+        "minMovementThreshold": "speedCoef",
+        "velocityType":         "minMovementThreshold",
+        "movementDelay":        "sizeZ",
+        "gravity":              "movementDelay",
+    },
+    "VELOCITY2D": {
+        "speed":         "typeFlag",
+        "speedCoef":     "speed",
+        "velocityType":  "speedCoef",
+        "rotation":      "velocityType",
+        "movementDelay": "divergenceY",
+        "gravity":       "movementDelay",
+    },
+    "FADEBYANGLE": {"rotation": "rotOrder"},
+    "RANDOMFIX": {"tableSelectionGroup": "useRandomSeedTableCount"},
     "SPAWN": {
         "loopNum":         "spawnNum",
         "revivalLoop":     "spawnFrame",
         "revivalInterval": "revivalLoop",
     },
-    "RAYCAST": {"speed": "maxDistance"},
-    # VELOCITY3D 按控制项、运动参数和类型专属字段分组显示。
-    "VELOCITY3D": {
-        "speed":                 "typeFlag",
-        "speedCoef":             "speed",
-        "movementDelay":         "speedCoef",
-        "velocityType":          "movementDelay",
-        "minMovementThreshold":  "sizeZ",
-    },
-    # EMITTERSHAPE3D 的分段和射线依赖控制贴近所属字段。
     "EMITTERSHAPE3D": {
-        "rangeDivideAxis": "scanAngleVertical",
+        "shapeType":         "typeFlag",
+        "rangeDivideAxis":   "scanAngleVertical",
         "rayCastDependency": "rangeXYZ",
+        "radiusOrigin":      "rangeDivideVerticalNum",
     },
     # RGBFIRE 按全局、火焰、烟雾与插值字段分组显示。
     "RGBFIRE": {

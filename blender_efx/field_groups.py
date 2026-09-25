@@ -89,6 +89,16 @@ GROUPS = (FLOWMAP,)
 #: 单一类型内的分段：类型名 → [((中文, 英文), [成员字段, ...]), ...]。只画组标题，不改标签；
 #: 顺序由 efx_format/field_order.py 的锚点表决定。标题画在本段第一个实际画出的成员之前，
 #: 整段都被隐藏或都落在高级区时不画。成员只需列 value 字段，配对的 Jitter 随 value 同行。
+_OSC_SECTIONS = [
+    (("低频", "Low Frequency"), ["lowFrequency", "lowFrequencyWidth"]),
+    (("高频", "High Frequency"), ["highFrequency", "highFrequencyWidth"]),
+]
+#: VELOCITY3D / VELOCITY2D 共用段名；运动延迟不作用于重力，重力段放在它后面
+_VEL_SPEED = ("速度", "Speed")
+_VEL_DIR = ("方向", "Direction")
+_VEL_DELAY = ("运动延迟", "Movement Delay")
+_VEL_GRAVITY = ("重力", "Gravity")
+
 TYPE_SECTIONS = {
     "SPAWN": [
         (("数量", "Count"), ["maxParticles", "spawnNum"]),
@@ -96,6 +106,88 @@ TYPE_SECTIONS = {
         (("复活", "Revival"), ["revivalLoop", "revivalInterval"]),
         (("延迟", "Delay"), ["emitterDelayFrame", "particleDelayFrame"]),
         (("标志", "Flags"), ["spawnFlags"]),
+    ],
+    "LIFE": [
+        (("淡入", "Appear"), ["appearFrame"]),
+        (("持续", "Keep"), ["keepFrame", "unknFrame"]),
+        (("淡出", "Vanish"), ["vanishFrame"]),
+        (("永生", "Indefinite"), ["indefiniteLifespan", "timeToDeath"]),
+    ],
+    "BLINK": [(("透明度范围", "Alpha Rate"), ["minAlphaRate", "maxAlphaRate"])] + _OSC_SECTIONS,
+    "NOISE": list(_OSC_SECTIONS),
+    "UVSEQUENCE": [
+        (("UVS", "UVS"), ["uvsPath", "sequenceNo"]),
+        (("动画", "Animation"), ["patternNo", "playSpeed", "playSpeedCoef",
+                                 "loopingMode", "loopingOrientation"]),
+    ],
+    "UVCONTROL": [
+        (("UV1", "UV1"), ["uv1_offset", "uv1_offsetAdd", "uv1_offsetCoef",
+                          "uv1_scale", "uv1_scaleAdd", "uv1_scaleCoef"]),
+        (("UV2", "UV2"), ["uv2_enable", "uv2_offset", "uv2_offsetAdd", "uv2_offsetCoef",
+                          "uv2_scale", "uv2_scaleAdd", "uv2_scaleCoef"]),
+    ],
+    "EMITTERSHAPE3D": [
+        (("形状", "Shape"), ["shapeType", "rangeXYZ"]),
+        (("变换", "Transform"), ["rayCastDependency", "rotationCorrect", "localRotationX",
+                                 "localRotationY", "localRotationZ", "rotationOrder"]),
+        (("扫描范围", "Scan Range"), ["scanAngleHorizontal", "scanAngleVertical"]),
+        (("细分", "Subdivision"), ["rangeDivideAxis", "rangeDivideHorizontalNum",
+                                   "rangeDivideVerticalNum"]),
+        (("半径渐变", "Radius Taper"), ["radiusOrigin", "radiusEnd"]),
+    ],
+    "EMITTERSHAPE2D": [
+        (("形状", "Shape"), ["shapeType", "rangeX", "rangeY"]),
+        (("细分", "Subdivision"), ["rangeDivideAxis", "rangeDivideHorizontalNum"]),
+    ],
+    "RAYCAST": [
+        (("起点与方向", "Origin and Direction"), ["direction", "startOffset", "startDistance"]),
+        (("射程", "Range"), ["maxDistance", "speed"]),
+        (("检测", "Detection"), ["rayCastAttr", "rayCastID", "rayCastFlags", "prop2"]),
+    ],
+    "HOMING": [
+        (("归航运动", "Homing"), ["homingTarget", "turnRate", "acceleration", "maxSpeed"]),
+        (("消失场", "Vanish Field"), ["vanishMode", "vanishRadius"]),
+        (("作用场", "Effect Field"), ["forceFieldMode", "forceFieldRadius",
+                                      "forceFieldSpeedScale"]),
+    ],
+    "ROTATEANIM": [
+        (("平面旋转", "Billboard Rotation"), ["billboardRotation", "billboardRotationCoef"]),
+        (("三轴自旋", "Spin"), ["spinAxisMask", "spin_velocity", "spinSpeedCoefX",
+                                "spinSpeedCoefY", "spinSpeedCoefZ"]),
+        (("旋转延迟", "Rotation Delay"), ["rotateDelayStart"]),
+    ],
+    "SCALEANIM": [
+        (("整体缩放", "Uniform Scale"), ["sizeScalarAdd", "sizeScalarAddCoef"]),
+        (("单轴缩放", "Per-axis Scale"), ["sizeXAdd", "sizeXAddCoef", "sizeYAdd", "sizeYAddCoef",
+                                         "sizeZAdd", "sizeZAddCoef"]),
+        (("缩放延迟", "Scale Delay"), ["animUpdateStart"]),
+    ],
+    "VELOCITY3D": [
+        (_VEL_SPEED, ["speed", "speedCoef", "minMovementThreshold"]),
+        (_VEL_DIR, ["velocityType", "baseAxis", "rotOrder", "rotationX", "rotationY", "rotationZ",
+                    "offsetX", "offsetY", "offsetZ", "sizeX", "sizeY", "sizeZ"]),
+        (_VEL_DELAY, ["movementDelay"]),
+        (_VEL_GRAVITY, ["gravity", "gravityDelay"]),
+    ],
+    "VELOCITY2D": [
+        (_VEL_SPEED, ["speed", "speedCoef"]),
+        (_VEL_DIR, ["velocityType", "rotation", "velocityX", "velocityY",
+                    "divergenceX", "divergenceY"]),
+        (_VEL_DELAY, ["movementDelay"]),
+        (_VEL_GRAVITY, ["gravity", "gravityDelay"]),
+    ],
+    "FADEBYANGLE": [
+        (("锥角", "Cone Angle"), ["coneVisibilityFlags", "cutoffConeAngle", "fadeConeAngle",
+                                  "minAlpha"]),
+        (("锥体朝向", "Cone Direction"), ["baseAxis", "rotOrder", "rotation"]),
+    ],
+    "FADEBYDEPTH": [
+        (("近处淡入", "Near Fade-in"), ["nearFadeInStart", "nearFadeInEnd"]),
+        (("远处淡出", "Far Fade-out"), ["farFadeOutStart", "farFadeOutEnd"]),
+    ],
+    "RANDOMFIX": [
+        (("种子表", "Seed Tables"), ["tableSelectionGroup"]
+         + ["randomSeedTable%d" % k for k in range(8)]),
     ],
 }
 

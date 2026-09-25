@@ -254,7 +254,13 @@ FIELD_VISIBILITY = {
 
 #: 置灰规则：格式同 FIELD_VISIBILITY，条件不满足时字段仍显示、可编辑，只是画成灰色。
 #: 用于「当前不生效但用户需要看到」的字段；隐藏与置灰同时命中时以隐藏为准。
-FIELD_DIM = {}
+FIELD_DIM = {
+    # 选择组里没勾的种子表不参与抽取
+    "RANDOMFIX": {
+        "randomSeedTable%d" % _k: ("tableSelectionGroup", (lambda v, _b=1 << _k: bool(v & _b)))
+        for _k in range(8)
+    },
+}
 
 
 def rule_conditions(rule):
