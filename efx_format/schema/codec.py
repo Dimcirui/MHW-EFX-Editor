@@ -60,6 +60,16 @@ _EPVCSLOT_FIELDS = [
 ]
 _EPVCSLOT_SIZE = 36
 
+# 'EPVColorSlotTail'：去掉末 4 字节的 EPVColorSlot。RIBBONBLADE 尾端之后的 4 字节是独立字段
+_EPVCSLOT_TAIL_FIELDS = _EPVCSLOT_FIELDS[:8]
+_EPVCSLOT_TAIL_SIZE = 32
+
+#: 定长嵌套结构 spec → (子字段表, 字节数)
+STRUCT_SPECS = {
+    'EPVColorSlot': (_EPVCSLOT_FIELDS, _EPVCSLOT_SIZE),
+    'EPVColorSlotTail': (_EPVCSLOT_TAIL_FIELDS, _EPVCSLOT_TAIL_SIZE),
+}
+
 
 def _unpack_epvcolorslot(data: bytes, off: int) -> Tuple[dict, int]:
     """解码一个 EPVColorSlot。"""
@@ -87,8 +97,8 @@ def unpack(schema: list, data: bytes, off: int = 0) -> Tuple[Dict[str, Any], int
                 vals = list(struct.unpack_from('<4B', data, off))
                 values[name] = vals
                 off += 4
-            elif spec == 'EPVColorSlot':
-                d, off = _unpack_epvcolorslot(data, off)
+            elif spec in STRUCT_SPECS:
+                d, off = unpack(STRUCT_SPECS[spec][0], data, off)
                 values[name] = d
             else:
                 raise ValueError(f'Unknown scalar spec {spec!r} for field {name!r}')
@@ -148,8 +158,8 @@ def pack(schema: list, values: Dict[str, Any]) -> bytes:
                 parts.append(struct.pack('<' + spec, val))
             elif spec == 'colour':
                 parts.append(struct.pack('<4B', *val))
-            elif spec == 'EPVColorSlot':
-                parts.append(_pack_epvcolorslot(val))
+            elif spec in STRUCT_SPECS:
+                parts.append(pack(STRUCT_SPECS[spec][0], val))
             else:
                 raise ValueError(f'Unknown scalar spec {spec!r} for field {name!r}')
         elif isinstance(spec, tuple):
@@ -189,8 +199,8 @@ def _schema_size(schema: list) -> int:
                 total += _SCALAR_SIZE[spec]
             elif spec == 'colour':
                 total += 4
-            elif spec == 'EPVColorSlot':
-                total += _EPVCSLOT_SIZE
+            elif spec in STRUCT_SPECS:
+                total += STRUCT_SPECS[spec][1]
             else:
                 raise ValueError(f'Cannot compute size for dynamic spec {spec!r}')
         elif isinstance(spec, tuple):

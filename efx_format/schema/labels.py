@@ -179,12 +179,11 @@ _LABELS_BY_TYPE = {
 
     # ── RIBBONBLADE ──
     ('RIBBONBLADE', 'maxLengthLimit'): '最大长度',
-    ('RIBBONBLADE', 'contractionSpeed'): '收缩速度',
+    ('RIBBONBLADE', 'contractionSpeed'): '回缩速度',
     ('RIBBONBLADE', 'colourTransitionPoint'): '颜色过渡点',
     ('RIBBONBLADE', 'emissiveStrength'): '自发光强度',
     ('RIBBONBLADE', 'uvRepetition'): 'UV 重复次数',
     ('RIBBONBLADE', 'widthDirection'): '宽度延伸方向',
-    ('RIBBONBLADE', 'length'): '拖尾长度',
     ('RIBBONBLADE', 'flowSpeed'): '流光贴图速度',
     ('RIBBONBLADE', 'flowSpeedJitter'): '流光贴图速度抖动',
     ('RIBBONBLADE', 'flowSpeedCoef'): '流光贴图加速度',

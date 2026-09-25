@@ -675,7 +675,7 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     ('widthDirection', 'i'),
     ('width',       'f'),
     ('length', 'i'),
-    ('unknEnum05_1', 'i'),
+    ('interpolationCount', 'i'),
     ('spacer1',     'i'),
     ('unknFlag07_0', 'i'),
     ('lengthMode', 'i'),
@@ -683,8 +683,10 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     ('contractionSpeed',        'f'),
     ('colourTransitionPoint',   'f'),
     ('emissiveStrength',        'f'),
-    ('unknFlag08',                  'f'),
-    ('spacer2',     'i'),
+    ('emissiveStrengthRange',   'f'),
+    # 低字节为自发光强度范围开关，剩余字节为保留填充
+    ('useEmissiveRange',        'B'),
+    ('spacer2b',                ('B', 3)),
     ('unknEnum10',      'i'),
     ('uvRepetition','f'),
     ('unknFlag12_0', 'f'),
@@ -692,7 +694,10 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     ('unknFixed12_2', 'i'),
     ('spacer3',     'i'),
     ('head',        'EPVColorSlot'),
-    ('tailEnd',     'EPVColorSlot'),
+    ('tailEnd',     'EPVColorSlotTail'),
+    ('tailUnkn18_0',            'B'),
+    ('enableFlowmap',           'B'),
+    ('spacer5',                 ('B', 2)),
     # Flowmap 的四组 value/jitter 参数
     ('flowSpeed',                    'f'),
     ('flowSpeedJitter',              'f'),
@@ -702,17 +707,28 @@ _RIBBONBLADE_FIXED_SCHEMA = [
     ('flowStrengthJitter',           'f'),
     ('flowStrengthCoef',     'f'),
     ('flowStrengthCoefJitter', 'f'),
-    ('NULL9',       'h'),
+    ('flowOnce',                'B'),
+    ('flowReverse',             'B'),
 ]
 assert _schema_size(_RIBBONBLADE_FIXED_SCHEMA) == 194, \
     f"_RIBBONBLADE_FIXED_SCHEMA size mismatch: {_schema_size(_RIBBONBLADE_FIXED_SCHEMA)}"
-# widthDirection 复用 6 向枚举；length 是连续幅值而非枚举
+# widthDirection 复用 6 向枚举；length 是帧数
 RIBBONBLADE_ATTR = attr_from_legacy(
     _schema_size(_RIBBONBLADE_FIXED_SCHEMA), _RIBBONBLADE_FIXED_SCHEMA,
     overrides={
         'widthDirection': Enum('widthDirection', _AXIS_DIRECTION6, label_zh="宽度延伸方向"),
-        # 开关决定 length 或 maxLengthLimit/contractionSpeed 的编辑路径；可见性规则在 field_visibility
-        'lengthMode': Bool('lengthMode', label_zh="启用自定义长度", label_en="Enable Custom Length"),
+        # lengthMode 决定 length 或 maxLengthLimit/contractionSpeed 生效；可见性规则在 field_visibility
+        'lengthMode': Bool('lengthMode', label_zh="按距离计算长度", label_en="Distance-Based Length"),
+        'length': Int('length', label_zh="拖尾帧数", label_en="Trail Frames"),
+        'interpolationCount': Int('interpolationCount', label_zh="插值细分数",
+                                  label_en="Interpolation Subdivisions"),
+        'useEmissiveRange': Bool('useEmissiveRange', backing='B', label_zh="启用自发光强度范围?",
+                                 label_en="Use Emissive Range?"),
+        'emissiveStrengthRange': Float('emissiveStrengthRange', label_zh="自发光强度范围?",
+                                       label_en="Emissive Strength Range?"),
+        'enableFlowmap': Bool('enableFlowmap', backing='B', label_zh="启用流动贴图"),
+        'flowOnce':      Bool('flowOnce', backing='B', label_zh="流动只播放一次"),
+        'flowReverse':   Bool('flowReverse', backing='B', label_zh="流动逆向播放"),
     },
 )
 

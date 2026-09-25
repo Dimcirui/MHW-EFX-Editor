@@ -21,6 +21,7 @@ from .. import hashes as H
 from ..efxfile import EFXFile, EntryData, AttrBlock, RootBody
 from ..structs import EXTERN_HASH_ALIASES
 from ..schema.field_rename_aliases import (FIELD_RENAME_ALIASES, FIELD_BYTE_SPLITS,
+                                           FIELD_NESTED_HOISTS,
                                            split_int_bytes)
 from .attribute import type_key, type_from_key, attribute_to_json, attribute_from_json
 from .extern import EXTERN_VARLEN_MAIN, extern_to_json, extern_from_json
@@ -101,6 +102,23 @@ def _derived_top(category: str, type_hash: int) -> set:
 
 # ── 字段规整 ────────────────────────────────────────────────────────────────
 
+def _hoist_nested(alias_name, fields):
+    """把旧版嵌套结构里已移到顶层的子字段提出来；显式给出的顶层值优先。"""
+    out = None
+    for (t, key), moves in FIELD_NESTED_HOISTS.items():
+        sub = fields.get(key)
+        if t != alias_name or not isinstance(sub, dict) or not any(m in sub for m in moves):
+            continue
+        if out is None:
+            out = dict(fields)
+        rest = {k: v for k, v in sub.items() if k not in moves}
+        for k, top in moves.items():
+            if k in sub and top is not None and top not in fields:
+                out[top] = sub[k]
+        out[key] = rest
+    return fields if out is None else out
+
+
 def normalize_fields(category: str, type_hash: int, fields: dict, aliases=None):
     """规整一个字段块的顶层字段；返回 ``(fields, filled)``，filled 为补默认值的字段名。"""
     name = type_key(type_hash)
@@ -116,6 +134,7 @@ def normalize_fields(category: str, type_hash: int, fields: dict, aliases=None):
 
     given = {}
     unknown = []
+    fields = _hoist_nested(alias_name, fields)
     for k, v in fields.items():
         parts = FIELD_BYTE_SPLITS.get((alias_name, k)) if alias_name else None
         if parts is not None and k not in canonical_set:

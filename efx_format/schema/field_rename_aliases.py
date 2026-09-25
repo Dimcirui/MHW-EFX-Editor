@@ -8,6 +8,10 @@
 """
 
 FIELD_RENAME_ALIASES = {
+    # RIBBONBLADE
+    ("RIBBONBLADE", "unknFlag08"): "emissiveStrengthRange",
+    ("RIBBONBLADE", "unknEnum05_1"): "interpolationCount",
+
     # LIFE
     ("LIFE", "fadeInDuration"): "appearFrame",
     ("LIFE", "fadeInDurationJitter"): "appearFrameJitter",
@@ -693,6 +697,15 @@ FIELD_RENAME_ALIASES = {
 FIELD_BYTE_SPLITS = {
     ("LAYOUT", "unknEnum1_0"): ("unknFixed1_0_0", "useColumn0", "useColumn1", "unknFlag1_0_3"),
     ("LAYOUT", "unknEnum1_1"): ("useColumn2", "useColumn4", "useColumn6", "useColumn7"),
+    # None = 保留填充字节，取默认值
+    ("RIBBONBLADE", "spacer2"): ("useEmissiveRange", None, None, None),
+    ("RIBBONBLADE", "NULL9"): ("flowOnce", "flowReverse", None, None),
+}
+
+#: 嵌套结构中移到顶层的子字段：{(类型, 结构字段): {子字段: 顶层字段或 None(丢弃的填充)}}
+FIELD_NESTED_HOISTS = {
+    ("RIBBONBLADE", "tailEnd"): {"unkn18_0": "tailUnkn18_0", "unkn18_1": "enableFlowmap",
+                                 "spacer5": None},
 }
 
 

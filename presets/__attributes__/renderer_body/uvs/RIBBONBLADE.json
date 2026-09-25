@@ -13,7 +13,7 @@
             "widthDirection": 5,
             "width": 200.0,
             "length": 6,
-            "unknEnum05_1": 4,
+            "interpolationCount": 4,
             "spacer1": -842150656,
             "unknFlag07_0": 0,
             "lengthMode": 1,
@@ -21,8 +21,13 @@
             "contractionSpeed": 0.0,
             "colourTransitionPoint": 0.0,
             "emissiveStrength": 1.0,
-            "unknFlag08": 1.0,
-            "spacer2": -842150656,
+            "emissiveStrengthRange": 1.0,
+            "useEmissiveRange": 0,
+            "spacer2b": [
+                205,
+                205,
+                205
+            ],
             "unknEnum10": 0,
             "uvRepetition": 1.0,
             "unknFlag12_0": 0.0,
@@ -70,11 +75,14 @@
                 "spacer4": -842150656,
                 "unkn15": 0,
                 "size": 0.1,
-                "unkn17": 38,
-                "unkn18_0": 0,
-                "unkn18_1": 1,
-                "spacer5": -12851
+                "unkn17": 38
             },
+            "tailUnkn18_0": 0,
+            "enableFlowmap": 1,
+            "spacer5": [
+                205,
+                205
+            ],
             "flowSpeed": 0.0,
             "flowSpeedJitter": 0.0,
             "flowSpeedCoef": 1.0,
@@ -83,7 +91,8 @@
             "flowStrengthJitter": 0.0,
             "flowStrengthCoef": 1.0,
             "flowStrengthCoefJitter": 0.0,
-            "NULL9": 0,
+            "flowOnce": 0,
+            "flowReverse": 0,
             "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_009_F_NM\u0000"
         }
     }

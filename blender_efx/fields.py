@@ -1660,7 +1660,7 @@ def _decompose_custom_schema(schema):
 
     build（值→item）与 rebuild（item→值）共用此分解，保证一致。
     """
-    from ..efx_format.structs import _EPVCSLOT_FIELDS
+    from ..efx_format.schema.codec import STRUCT_SPECS
 
     entries = []
     for name, spec in schema:
@@ -1677,9 +1677,9 @@ def _decompose_custom_schema(schema):
                     'get': (lambda v, n=name, idx=i: v[n][idx]),
                     'set': (lambda v, x, n=name, idx=i: v[n].__setitem__(idx, x)),
                 })
-        # EPVColorSlot 嵌套 dict → 子字段 item
-        elif spec == 'EPVColorSlot':
-            for sub, subspec in _EPVCSLOT_FIELDS:
+        # EPVColorSlot 等定长嵌套结构 → 子字段 item
+        elif isinstance(spec, str) and spec in STRUCT_SPECS:
+            for sub, subspec in STRUCT_SPECS[spec][0]:
                 dtype = _spec_to_dtype(subspec)
                 if dtype is None:
                     return None
