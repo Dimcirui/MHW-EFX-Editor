@@ -296,15 +296,10 @@ FIELD_ANNOTATIONS = {
     },
 
     # ─── ROTATEANIM ───────────────────────────────────────────────────────────
-    ("ROTATEANIM", "spinAxisMask"): {
-        "EN": "Packed flags whose per-bit meaning is unknown. It is not the spin-axis "
-              "selector: which axes spin is decided by the Spin Velocity fields (an axis "
-              "with 0 speed does not spin). Bits 0-6 are all used and freely mixed; "
-              "36 distinct values occur, bit0 in 64% of blocks, bit6 in 0.01%, and the "
-              "value 0 never appears.",
-        "ZH": "打包的标志位，各位含义未知。它**不是**自旋轴的选择器——哪些轴自旋由"
-              "「自旋速度」那几个字段决定（某轴速度为 0 就不转）。bit0~bit6 都在用且可"
-              "自由混合，共出现 36 种取值：bit0 占 64%、bit6 占 0.01%，而取值 0 从未出现。",
+    ("ROTATEANIM", "typeFlag"): {
+        "EN": "Header field present in most attribute types, a type/category marker rather "
+              "than a tunable value. Never 0.",
+        "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。不会取 0。",
     },
     ("ROTATEANIM", "rotationModeMask"): {
         "EN": ': 0=billboard plane rotation system only (billboardRotation + billboardRotationAccel); 1=same + randomized forward/reverse direction; 2=spin velocity system only (spin_velocity + spinAcceleration); 3=same + randomized forward/reverse direction (each axis independently randomized).',

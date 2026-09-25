@@ -74,10 +74,7 @@ FIELD_ORDER_ANCHORS = {
         "forceFieldRadius":     "forceFieldMode",
         "forceFieldSpeedScale": "forceFieldRadius",
     },
-    "ROTATEANIM": {
-        "spinAxisMask":  "billboardRotationCoef",
-        "spin_velocity": "spinAxisMask",
-    },
+    "ROTATEANIM": {"spin_velocity": "billboardRotationCoef"},
     "VELOCITY3D": {
         "speed":                "typeFlag",
         "speedCoef":            "speed",

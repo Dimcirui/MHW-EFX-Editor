@@ -14,8 +14,7 @@
 billboard 的 rotation），自旋写入三个轴。
 
 维护约束：
-- 参与自旋的轴只由 `spin_velocity` 的逐轴取值决定，**不读取 `spinAxisMask`**。后者的取值超出
-  三位，与 spin_velocity 的非零轴也没有对应关系，实际作用未知；按轴掩码过滤会屏蔽有角速度的轴。
+- 参与自旋的轴只由 `spin_velocity` 的逐轴取值决定。
 - 写入 `p.rot` 的自旋角必须取负：游戏给出的角速度方向，与 `oriented_basis` 绕法线的右手旋转在
   游戏到 Blender 的坐标映射下相反。目前只校准了「绕 Z 自旋 + PLANE」一种组合，另两轴按相同
   符号处理。
@@ -89,7 +88,7 @@ class RotateAnim(Behavior):
             offs = []
             for i, ax in enumerate(("X", "Y", "Z")):
                 if not base[i] and not amount[i] and not self._has_tracks:
-                    # 该轴没有角速度即不旋转，不读取 spinAxisMask
+                    # 该轴没有角速度即不旋转
                     vel.append(0.0)
                     acc.append(1.0)
                     continue

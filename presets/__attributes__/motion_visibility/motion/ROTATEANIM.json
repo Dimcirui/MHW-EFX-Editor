@@ -7,7 +7,7 @@
     "attribute": {
         "type": "ROTATEANIM",
         "fields": {
-            "spinAxisMask": 1,
+            "typeFlag": 1,
             "rotationModeMask": 1,
             "billboardRotation": 0.0,
             "billboardRotationJitter": 0.0,

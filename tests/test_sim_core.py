@@ -166,7 +166,7 @@ def alphacorrection_fields(**kw):
 
 
 def rotateanim_fields(**kw):
-    f = {"spinAxisMask": 0x7, "rotationModeMask": 0,
+    f = {"typeFlag": 0x7, "rotationModeMask": 0,
          "billboardRotation": 0.0, "billboardRotationJitter": 0.0,
          "billboardRotationCoef": 1.0, "billboardRotationCoefJitter": 0.0,
          "spin_velocity": [0.0] * 6,
@@ -2164,7 +2164,7 @@ class TestRotateAnim(unittest.TestCase):
         self.assertAlmostEqual(p.rot.z, self.SIGN * 9.0, places=6)
 
     def test_axes_without_speed_do_not_spin(self):
-        """转不转只看 spin_velocity 的逐轴取值——**不看 spinAxisMask**
+        """转不转只看 spin_velocity 的逐轴取值——**不看 typeFlag**
         （那个字段的位布局与全语料对不上，作用未知，见 behaviors/rotateanim.py）。"""
         p, _ = one_particle(frames=3, rotateanim=rotateanim_fields(
             rotationModeMask=2, spin_velocity=[0.0, 0.0, 2.0, 0.0, 0.0, 0.0]))
@@ -2175,7 +2175,7 @@ class TestRotateAnim(unittest.TestCase):
     def test_spin_ignores_the_axis_mask(self):
         """菱形那条的实况：mask=16（旧读法一位都不命中）但 Z 轴确实在转。"""
         p, _ = one_particle(frames=4, rotateanim=rotateanim_fields(
-            rotationModeMask=2, spinAxisMask=16,
+            rotationModeMask=2, typeFlag=16,
             spin_velocity=[0.0, 0.0, 0.0, 0.0, 5.0, 0.0]))
         self.assertAlmostEqual(p.rot.z, self.SIGN * 20.0, places=6)
 
@@ -2210,7 +2210,7 @@ class TestRotateAnim(unittest.TestCase):
         sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
                        rotateanim=rotateanim_fields(
-                           rotationModeMask=2, spinAxisMask=16,
+                           rotationModeMask=2, typeFlag=16,
                            spin_velocity=[0.0, 0.0, 0.0, 0.0, 5.0, 0.0]),
                        extra=[(PLANE, plane_fields(baseAxis=2))])
         sim.step()

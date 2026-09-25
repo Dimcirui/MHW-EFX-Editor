@@ -152,7 +152,7 @@ TYPE_SECTIONS = {
     ],
     "ROTATEANIM": [
         (("平面旋转", "Billboard Rotation"), ["billboardRotation", "billboardRotationCoef"]),
-        (("三轴自旋", "Spin"), ["spinAxisMask", "spin_velocity", "spinSpeedCoefX",
+        (("三轴自旋", "Spin"), ["spin_velocity", "spinSpeedCoefX",
                                 "spinSpeedCoefY", "spinSpeedCoefZ"]),
         (("旋转延迟", "Rotation Delay"), ["rotateDelayStart"]),
     ],

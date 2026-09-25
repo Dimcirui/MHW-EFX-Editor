@@ -2878,7 +2878,7 @@
    "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_009_F_NM\u0000"
   },
   "ROTATEANIM": {
-   "spinAxisMask": 1,
+   "typeFlag": 1,
    "rotationModeMask": 1,
    "billboardRotation": 0.0,
    "billboardRotationJitter": 0.0,
@@ -3958,7 +3958,7 @@
    "path": "\u0000"
   },
   "EXTERNROTATEANIM": {
-   "spinAxisMask": 0,
+   "typeFlag": 0,
    "rotationModeMask": 0,
    "billboardRotation": 0.0,
    "billboardRotationJitter": 0.0,

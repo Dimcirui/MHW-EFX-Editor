@@ -503,6 +503,9 @@ ADVANCED_FIELDS = {
         'unknFlag12_0',
         'unknFlag12_1',
     }),
+    'ROTATEANIM': frozenset({
+        'typeFlag',
+    }),
     'SCALEANIM': frozenset({
         'typeFlag',
     }),

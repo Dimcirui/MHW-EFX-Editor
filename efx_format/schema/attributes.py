@@ -17,7 +17,7 @@ from .enums import (
     ENUM_RENDER_LAYER, ENUM_BLEND_STATE, ENUM_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE, ENUM_DISTORTION_TYPE,
     ENUM_UNITBOUNDARY_TYPE,
-    BITS_ENABLE_VELOCITY, BITS_ROTATEANIM_SPIN_FLAGS, BITS_RANDOMFIX_TABLE,
+    BITS_ENABLE_VELOCITY, BITS_RANDOMFIX_TABLE,
     BITS_FADEBYANGLE_FLAGS,
     BITS_SPAWN_FLAGS,
     BITS_RAYCAST_ATTR, BITS_RAYCAST_FLAGS,
@@ -362,9 +362,7 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 # ─────────────────────────────────────────────────────────────────────────────
 
 ROTATEANIM_ATTR = Attribute(size=80, fields=[
-    # 各位含义未知，按中性位掩码渲染；不要读作 XYZ 自旋轴掩码，与 spin_velocity 无对应。
-    Bitmask("spinAxisMask", BITS_ROTATEANIM_SPIN_FLAGS,
-            label_en="Spin Flags", label_zh="自旋标志位"),
+    Int("typeFlag"),
     # rotationModeMask 决定生效的是平面旋转组还是自旋速度组，以及是否随机正反向。
     Enum("rotationModeMask", ENUM_ROTATION_MODE, label_zh="旋转模式"),
     Float("billboardRotation", label_zh="平面旋转"),
