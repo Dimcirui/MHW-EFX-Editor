@@ -16,9 +16,11 @@ class FieldGroup(object):
 
     header       (中文, 英文) 组标题
     types        适用的属性类型名
-    order        组内字段的显示顺序；整组挪到面板末尾
+    order        组内字段的显示顺序；各类型字段不同时写成 类型名 → 顺序
     labels       字段名 → (中文, 英文) 组内标签
-    lead         类型名 → 组首行字段名；组标题画在它之前（该字段被隐藏时也画）
+    lead         类型名 → 组首行字段名；组标题画在它之前（该字段被隐藏时也画）。
+                 省略时取各类型组内顺序的第一个字段
+    at_end       True：整组挪到面板末尾；False：留在原位，组员集中到第一个组员的位置
     bit_rows     类型名 → {"lead": [...], "after": {字段名: [...]}, "own": [...]}
                  lead  画在组标题之后、组首行之前的位行
                  after 画在某字段（或 value/jitter 行）之后的位行，同一列表内的位画在同一行
@@ -26,16 +28,23 @@ class FieldGroup(object):
     paired       (前一字段, 后一字段)：两个 Bool 画在同一行，后者在前者关闭时置灰
     """
 
-    __slots__ = ("header", "types", "order", "labels", "lead", "bit_rows", "paired")
+    __slots__ = ("header", "types", "order", "labels", "lead", "bit_rows", "paired", "at_end")
 
-    def __init__(self, header, types, order, labels, lead, bit_rows=None, paired=None):
+    def __init__(self, header, types, order, labels=None, lead=None, bit_rows=None,
+                 paired=None, at_end=True):
         self.header = header
         self.types = frozenset(types)
-        self.order = tuple(order)
-        self.labels = labels
-        self.lead = lead
+        self.order = (dict((t, tuple(o)) for t, o in order.items()) if isinstance(order, dict)
+                      else tuple(order))
+        self.labels = labels or {}
+        self.lead = lead if lead is not None else dict(
+            (t, self.order_for(t)[0]) for t in self.types)
         self.bit_rows = bit_rows or {}
         self.paired = paired
+        self.at_end = at_end
+
+    def order_for(self, type_name):
+        return self.order.get(type_name, ()) if isinstance(self.order, dict) else self.order
 
 
 _FLOW_BIT_TYPES = ("BILLBOARD3D", "PLANE", "BILLBOARD2D")
@@ -84,7 +93,60 @@ FLOWMAP = FieldGroup(
     paired=("flowOnce", "flowReverse"),
 )
 
-GROUPS = (FLOWMAP,)
+_BILLBOARD_COLOR = ("correctColorNo", "color", "useColorRange", "colorRangeCorrectColorNo",
+                    "colorRange", "blendMode", "brightness", "brightnessJitter")
+
+#: 颜色：修正槽位 → 颜色 → 颜色范围 → 自发光 → 亮度。MESH 的颜色另有一套未知显示量，暂不接入。
+COLOR = FieldGroup(
+    header=("颜色", "Color"),
+    types=("BILLBOARD3D", "BILLBOARD2D", "PLANE", "RIBBON", "STRAINRIBBON", "LIGHTNING"),
+    order={
+        "BILLBOARD3D": _BILLBOARD_COLOR,
+        "BILLBOARD2D": _BILLBOARD_COLOR,
+        "PLANE": _BILLBOARD_COLOR,
+        "RIBBON": ("epvcolor_0", "color", "useColorRange", "epvcolor_1", "colorRange",
+                   "blendMode", "brightness", "brightnessJitter"),
+        "STRAINRIBBON": ("epv_color_slot1", "color", "useColorRange", "epv_color_slot2",
+                         "colorRange", "useEmission", "emissionStrength",
+                         "emissionStrengthJitter"),
+        "LIGHTNING": ("color1", "color2", "emissive", "EPVColorSlot1", "EPVColorSlot2",
+                      "glow", "glowJitter"),
+    },
+    at_end=False,
+)
+
+_BILLBOARD_SIZE = ("scale", "scaleJitter", "width", "widthJitter", "height", "heightJitter")
+
+#: 尺寸：整体缩放 → 逐轴尺寸
+SIZE = FieldGroup(
+    header=("尺寸", "Size"),
+    types=("BILLBOARD3D", "BILLBOARD2D", "PLANE", "RIBBON", "STRAINRIBBON", "LIGHTNING", "MESH"),
+    order={
+        "BILLBOARD3D": _BILLBOARD_SIZE,
+        "BILLBOARD2D": _BILLBOARD_SIZE,
+        "PLANE": _BILLBOARD_SIZE,
+        "RIBBON": ("scale", "scale_jitter", "width", "width_jitter", "length", "length_jitter"),
+        "STRAINRIBBON": ("width", "widthJitter", "length", "lengthJitter"),
+        "LIGHTNING": ("width", "widthJitter", "length", "lengthJitter"),
+        "MESH": ("global_scale", "global_scale_jitter", "scale"),
+    },
+    at_end=False,
+)
+
+#: 朝向：基准轴经欧拉旋转定出渲染体朝向。法线自旋（PLANE.rotation2）、MESH 追踪标志不在组内。
+ORIENTATION = FieldGroup(
+    header=("朝向", "Orientation"),
+    types=("RIBBON", "PLANE", "MESH"),
+    order={
+        "RIBBON": ("baseAxis", "rotationOrder", "rotationX", "rotationXJitter",
+                   "rotationY", "rotationYJitter", "rotationZ", "rotationZJitter"),
+        "PLANE": ("baseAxis", "rotationOrder", "rotation"),
+        "MESH": ("baseAxis", "rotationOrder", "rotation"),
+    },
+    at_end=False,
+)
+
+GROUPS = (COLOR, SIZE, ORIENTATION, FLOWMAP)
 
 #: 单一类型内的分段：类型名 → [((中文, 英文), [成员字段, ...]), ...]。只画组标题，不改标签；
 #: 顺序由 efx_format/field_order.py 的锚点表决定。标题画在本段第一个实际画出的成员之前，
@@ -98,6 +160,10 @@ _VEL_SPEED = ("速度", "Speed")
 _VEL_DIR = ("方向", "Direction")
 _VEL_DELAY = ("运动延迟", "Movement Delay")
 _VEL_GRAVITY = ("重力", "Gravity")
+
+#: RIBBONBLADE 头部/尾部 EPVColorSlot 的子字段，按显示顺序
+_EPV_SLOT_KEYS = ("epvColorSlot", "color1", "null2", "color2", "spacer4", "unkn15", "size",
+                  "unkn17", "unkn18_0", "unkn18_1", "spacer5")
 
 TYPE_SECTIONS = {
     "SPAWN": [
@@ -185,6 +251,13 @@ TYPE_SECTIONS = {
         (("近处淡入", "Near Fade-in"), ["nearFadeInStart", "nearFadeInEnd"]),
         (("远处淡出", "Far Fade-out"), ["farFadeOutStart", "farFadeOutEnd"]),
     ],
+    "RIBBONBLADE": [
+        (("形状", "Shape"), ["widthDirection", "width", "length", "lengthMode", "maxLengthLimit",
+                             "contractionSpeed", "uvRepetition"]),
+        (("颜色", "Color"), ["colourTransitionPoint", "emissiveStrength"]),
+        (("头部", "Head"), ["head." + _k for _k in _EPV_SLOT_KEYS]),
+        (("尾部", "Tail"), ["tailEnd." + _k for _k in _EPV_SLOT_KEYS]),
+    ],
     "RANDOMFIX": [
         (("种子表", "Seed Tables"), ["tableSelectionGroup"]
          + ["randomSeedTable%d" % k for k in range(8)]),
@@ -197,15 +270,30 @@ def groups_for(type_name):
     return [g for g in GROUPS if type_name in g.types]
 
 
-def move_groups_to_end(type_name, items):
-    """把各分组的字段按组内顺序挪到列表末尾；items 为带 ori_name 的对象列表。"""
+def arrange_groups(type_name, items):
+    """按分组重排 items（带 ori_name 的对象列表）：组内按组内顺序排列；at_end 的组整组挪到
+    末尾，其余留在第一个组员原来的位置。"""
     for g in groups_for(type_name):
-        rank = dict((name, k) for k, name in enumerate(g.order))
+        rank = dict((name, k) for k, name in enumerate(g.order_for(type_name)))
         grp = [it for it in items if it.ori_name in rank]
-        if grp:
-            grp.sort(key=lambda it: rank[it.ori_name])
-            items = [it for it in items if it.ori_name not in rank] + grp
+        if not grp:
+            continue
+        grp.sort(key=lambda it: rank[it.ori_name])
+        rest = [it for it in items if it.ori_name not in rank]
+        if g.at_end:
+            items = rest + grp
+        else:
+            first = next(k for k, it in enumerate(items) if it.ori_name in rank)
+            pos = sum(1 for it in items[:first] if it.ori_name not in rank)
+            items = rest[:pos] + grp + rest[pos:]
     return items
+
+
+def is_grouped(type_name, field_name):
+    """字段是否属于某个跨类型分组或类型内分段。"""
+    if section_of(type_name, field_name) is not None:
+        return True
+    return any(field_name in g.order_for(type_name) for g in groups_for(type_name))
 
 
 def section_of(type_name, field_name):

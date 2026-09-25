@@ -112,8 +112,8 @@ def reorder_items_for_display(type_name: str, items):
         from ..efx_format.field_order import display_anchors
     except ImportError:
         return list(items)
-    from .field_groups import move_groups_to_end
-    return move_groups_to_end(type_name, _lm.reorder_units(items, display_anchors(type_name)))
+    from .field_groups import arrange_groups
+    return arrange_groups(type_name, _lm.reorder_units(items, display_anchors(type_name)))
 
 
 def addon_prefs():
@@ -1301,6 +1301,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
             _zh_grp = _get_lang_grp() == "ZH"
             _sections_drawn = set()
             _common_rows_seen = False
+            _prev_row_grouped = False
 
             i = 0
             while i < n:
@@ -1387,6 +1388,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     _tcol = _adv_body_col
                 # 类型内分段（field_groups.TYPE_SECTIONS）：本段第一个画进常用区的字段之前
                 # 画组标题；前面已有常用行时先画分隔线。
+                # 组后面紧跟不属于任何组的字段时，先画分隔线，免得它看起来像组的最后一行。
                 if _tcol is _common_col and not _color_only:
                     _sk = _fg.section_of(type_name, item.ori_name)
                     if _sk is not None and _sk not in _sections_drawn:
@@ -1395,6 +1397,10 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                         _draw_section_header(_common_col, _zh_grp,
                                              *_fg.section_header(type_name, _sk))
                         _sections_drawn.add(_sk)
+                    _grouped_now = _fg.is_grouped(type_name, item.ori_name)
+                    if _prev_row_grouped and not _grouped_now:
+                        _common_col.separator(factor=1.0)
+                    _prev_row_grouped = _grouped_now
                     _common_rows_seen = True
                 # 置灰：字段照常显示、可编辑，但当前不生效（field_visibility.FIELD_DIM）
                 if (_has_dim_rules and not _color_only
@@ -1489,20 +1495,20 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     _op.field = item.ori_name
                     i += 1
                     continue
-                # RIBBONBLADE：head.*/tailEnd.*（EPVColorSlot 嵌套字段）统一加
-                # [Head]/[Tail] 前缀标签，避免内层 "head" 字段跟外层槽位名撞车看不清。
+                # RIBBONBLADE：head.*/tailEnd.*（EPVColorSlot 嵌套字段）按子字段名显示；
+                # 头部/尾部由分段标题区分。
                 if _is_ribbonblade and "." in item.ori_name and item.ori_name.split(".", 1)[0] in ("head", "tailEnd"):
-                    _slot_key, _sub_key = item.ori_name.split(".", 1)
+                    _sub_key = item.ori_name.split(".", 1)[1]
                     from .i18n import get_lang as _get_lang_rb
                     _zh_rb = _get_lang_rb() == "ZH"
-                    _prefix_rb = ("[头部]" if _zh_rb else "[Head]") if _slot_key == "head" else ("[尾部]" if _zh_rb else "[Tail]")
                     _sub_overrides_rb = {
-                        "epvColorSlot": ("EPV 颜色槽" if _zh_rb else "EPV Color Slot"),
+                        "epvColorSlot": ("颜色修正槽位" if _zh_rb else "Correct Color No"),
                         "color1":       ("颜色" if _zh_rb else "Color"),
                         "color2":       ("颜色范围" if _zh_rb else "Color Range"),
+                        "size":         ("尺寸" if _zh_rb else "Size"),
                     }
                     _sub_lbl_rb = _sub_overrides_rb.get(_sub_key) or _friendly_name(_sub_key, type_name)
-                    _draw_field_item(_tcol, item, type_name=type_name, label_override=f"{_prefix_rb} {_sub_lbl_rb}", obj=obj)
+                    _draw_field_item(_tcol, item, type_name=type_name, label_override=_sub_lbl_rb, obj=obj)
                     i += 1
                     continue
                 # RGBFIRE：分组小标题/分隔线 + 组内简化标签（见上方函数/表注释；

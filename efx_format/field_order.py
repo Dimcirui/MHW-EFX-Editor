@@ -93,6 +93,21 @@ FIELD_ORDER_ANCHORS = {
     },
     "FADEBYANGLE": {"rotation": "rotOrder"},
     "RANDOMFIX": {"tableSelectionGroup": "useRandomSeedTableCount"},
+    # RIBBONBLADE：形状段夹着的未知字段挪到尾部段之后
+    "RIBBONBLADE": {
+        "uvRepetition":  "contractionSpeed",
+        "unknFixed0_1":  "tailEnd.spacer5",
+        "unknEnum05_1":  "unknFixed0_1",
+        "spacer1":       "unknEnum05_1",
+        "unknFlag07_0":  "spacer1",
+        "unknFlag08":    "unknFlag07_0",
+        "spacer2":       "unknFlag08",
+        "unknEnum10":    "spacer2",
+        "unknFlag12_0":  "unknEnum10",
+        "unknFlag12_1":  "unknFlag12_0",
+        "unknFixed12_2": "unknFlag12_1",
+        "spacer3":       "unknFixed12_2",
+    },
     "SPAWN": {
         "loopNum":         "spawnNum",
         "revivalLoop":     "spawnFrame",
