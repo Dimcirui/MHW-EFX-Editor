@@ -174,7 +174,7 @@ BITS_SPAWN_FLAGS = [
     (0x02, "RayCastHitOnly?", "RayCastHitOnly?"),
     (0x04, "RayCastDependency?", "RayCastDependency?"),
     (0x08, "InitializeFull?", "InitializeFull?"),
-    (0x10, "InterporatePos?", "InterporatePos?"),
+    (0x10, "Interpolate?", "Interpolate?"),
     (0x20, "UseSpawnFrame", "UseSpawnFrame"),
 ]
 

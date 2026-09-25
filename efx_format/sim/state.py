@@ -225,7 +225,7 @@ class Particle(object):
 
         self.age = 0
         self.life = 0           # 由 LIFE behavior 在 spawn 时写；0 = 尚未设定
-        self.delay_left = 0     # SPAWN.spawnWaitFrame
+        self.delay_left = 0     # SPAWN.particleDelayFrame
         self.alive = True
 
         self.pos = Vec3()
@@ -250,7 +250,7 @@ class Particle(object):
 
     @property
     def active(self):
-        """已出生且过了 spawnWaitFrame；只有 active 的粒子参与 step 与渲染。"""
+        """已出生且过了 particleDelayFrame；只有 active 的粒子参与 step 与渲染。"""
         return self.alive and self.delay_left <= 0
 
     def __repr__(self):

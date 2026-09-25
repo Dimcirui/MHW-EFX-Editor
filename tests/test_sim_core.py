@@ -54,9 +54,9 @@ def spawn_fields(**kw):
         "intervalFrame": 10, "intervalFrameJitter": 0,
         "loopNum": 0, "loopNumJitter": 0,
         "emitterDelayFrame": 0, "emitterDelayFrameJitter": 0,
-        "spawnWaitFrame": 0, "spawnWaitFrameJitter": 0,
-        "emitterRepeatCount": 0,
-        "altBurstInterval": 0, "altBurstIntervalJitter": 0,
+        "particleDelayFrame": 0, "particleDelayFrameJitter": 0,
+        "revivalLoop": 0,
+        "revivalInterval": 0, "revivalIntervalJitter": 0,
     }
     f.update(kw)
     return f
@@ -602,36 +602,36 @@ class TestSpawn(unittest.TestCase):
         self.assertGreater(sim.em.spawned_total, 3)   # 确实一直在补
 
     def test_bursts_per_cycle_one_uses_alt_interval(self):
-        """三态之二：loopNum 抽到 1 时改用 altBurstInterval 作节奏。"""
+        """三态之二：loopNum 抽到 1 时改用 revivalInterval 作节奏。"""
         sim = make_sim(
-            spawn=spawn_fields(loopNum=1, emitterRepeatCount=3,
-                               intervalFrame=100, altBurstInterval=5),
+            spawn=spawn_fields(loopNum=1, revivalLoop=3,
+                               intervalFrame=100, revivalInterval=5),
             life=life_fields(indefiniteLifespan=1))
         frames = self._birth_frames(sim, 12)
         self.assertEqual(frames[:3], [0, 5, 10])
 
     def test_repeat_count_zero_never_stops(self):
-        """emitterRepeatCount=0 → 永不换位置、无限生成（三态之一）。"""
+        """revivalLoop=0 → 永不换位置、无限生成（三态之一）。"""
         sim = make_sim(
-            spawn=spawn_fields(loopNum=2, emitterRepeatCount=0, intervalFrame=3),
+            spawn=spawn_fields(loopNum=2, revivalLoop=0, intervalFrame=3),
             life=life_fields(indefiniteLifespan=1))
         frames = self._birth_frames(sim, 30)
         self.assertGreaterEqual(len(frames), 9)
 
     def test_finite_cycle_stops_emitting(self):
-        """批次数 = loopNum + emitterRepeatCount - 1，发完就**不再发**。
+        """批次数 = loopNum + revivalLoop - 1，发完就**不再发**。
 
         3 + 1 - 1 = 3 批、间隔 2 帧 → 只有 0/2/4 三个出生帧，后面一直空着。
         """
         sim = make_sim(
-            spawn=spawn_fields(loopNum=3, emitterRepeatCount=1, intervalFrame=2),
+            spawn=spawn_fields(loopNum=3, revivalLoop=1, intervalFrame=2),
             life=life_fields(duration=10, indefiniteLifespan=1))
         self.assertEqual(self._birth_frames(sim, 200), [0, 2, 4])
 
     def test_recycle_mode_keeps_going(self):
         """'recycle'（改动前的行为）：最后一批之后按粒子寿命等一段，换位置再开一轮。"""
         sim = make_sim(
-            spawn=spawn_fields(loopNum=3, emitterRepeatCount=1, intervalFrame=2),
+            spawn=spawn_fields(loopNum=3, revivalLoop=1, intervalFrame=2),
             life=life_fields(duration=10, indefiniteLifespan=1),
             config=SimConfig(spawn_after_cycle="recycle"))
         frames = self._birth_frames(sim, 30)
@@ -639,9 +639,9 @@ class TestSpawn(unittest.TestCase):
         self.assertGreaterEqual(sim.em.cycle, 2)
 
     def test_zero_repeat_count_never_stops(self):
-        """emitterRepeatCount=0 是「无限」那一态，不受收工逻辑影响。"""
+        """revivalLoop=0 是「无限」那一态，不受收工逻辑影响。"""
         sim = make_sim(
-            spawn=spawn_fields(loopNum=2, emitterRepeatCount=0, intervalFrame=3),
+            spawn=spawn_fields(loopNum=2, revivalLoop=0, intervalFrame=3),
             life=life_fields(duration=5))
         sim.run(500)
         self.assertGreater(sim.em.spawned_total, 50)
@@ -649,7 +649,7 @@ class TestSpawn(unittest.TestCase):
 
     def test_particle_spawn_delay_holds_the_particle(self):
         sim = make_sim(
-            spawn=spawn_fields(spawnWaitFrame=5, intervalFrame=100),
+            spawn=spawn_fields(particleDelayFrame=5, intervalFrame=100),
             life=life_fields(indefiniteLifespan=1),
             velocity=velocity_fields(speed=10.0))
         sim.step()
@@ -2838,7 +2838,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         blocks = [
             (SPAWN, {"maxParticles": 200, "spawnNum": 40,
                      "intervalFrame": 1, "loopNum": 0,
-                     "emitterRepeatCount": 1}),
+                     "revivalLoop": 1}),
             (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
             (EMITTERSHAPE3D, {"shapeType": 1,          # 球
                               "rangeXYZ": [15.0, 200.0, 15.0, 200.0, 15.0, 200.0],
@@ -2884,7 +2884,7 @@ class TestPtLifeActionScene(unittest.TestCase):
             blocks = [
                 (SPAWN, {"maxParticles": 1, "spawnNum": 1,
                          "intervalFrame": 0, "loopNum": 1,
-                         "emitterRepeatCount": 1}),
+                         "revivalLoop": 1}),
                 (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
                 (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                                "blendMode": 0, "width": 100, "height": 100,
@@ -2909,7 +2909,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         """速度为 0 时相位停在 0，循环两层中只剩 p = 0.5 的一层，扭曲幅度由强度决定。"""
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
-                     "loopNum": 1, "emitterRepeatCount": 1}),
+                     "loopNum": 1, "revivalLoop": 1}),
             (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100,
@@ -2928,7 +2928,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         """播放一次后停止：单层，相位 0 → 1 后停住，不跳回起点；逆向模式 1 → 0。"""
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
-                     "loopNum": 1, "emitterRepeatCount": 1}),
+                     "loopNum": 1, "revivalLoop": 1}),
             (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100,
@@ -2959,7 +2959,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         """没开 bit 0x04 就完全不挂——glue 据此决定要不要分流动桶。"""
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
-                     "loopNum": 1, "emitterRepeatCount": 1}),
+                     "loopNum": 1, "revivalLoop": 1}),
             (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100, "scale": 1,
@@ -2974,7 +2974,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         """REFRACTION：源色换成背后画面 × 颜色 × brightness；Alpha 混合下即背景 × 颜色。"""
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
-                     "loopNum": 1, "emitterRepeatCount": 1}),
+                     "loopNum": 1, "revivalLoop": 1}),
             (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 0, 0, 255], "brightness": 10,
                            "blendMode": 1, "width": 100, "height": 100, "scale": 1}),
@@ -2994,7 +2994,7 @@ class TestPtLifeActionScene(unittest.TestCase):
         """加法混合下折射为 背景 × (1 + 颜色)。"""
         blocks = [
             (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
-                     "loopNum": 1, "emitterRepeatCount": 1}),
+                     "loopNum": 1, "revivalLoop": 1}),
             (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100, "scale": 1}),
@@ -3011,7 +3011,7 @@ class TestPtLifeActionScene(unittest.TestCase):
             blocks = [
                 (SPAWN, {"maxParticles": 1, "spawnNum": 1,
                          "intervalFrame": 0, "loopNum": 1,
-                         "emitterRepeatCount": 1}),
+                         "revivalLoop": 1}),
                 (LIFE, {"duration": 60, "indefiniteLifespan": 1}),
                 (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                                "blendMode": 1, "width": 100, "height": 100,
@@ -5060,7 +5060,7 @@ class TestUVControl(unittest.TestCase):
         from efx_format.hashes import UVCONTROL
         blocks = [
             (SPAWN, {"maxParticles": n, "spawnNum": n, "intervalFrame": 0,
-                     "loopNum": 1, "emitterRepeatCount": 1}),
+                     "loopNum": 1, "revivalLoop": 1}),
             (LIFE, {"duration": 600, "indefiniteLifespan": 1}),
             (BILLBOARD3D, {"color": [255, 255, 255, 255], "brightness": 1,
                            "blendMode": 0, "width": 100, "height": 100, "scale": 1}),

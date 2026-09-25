@@ -490,8 +490,8 @@ class Simulator(object):
 
         start = g(sp, "emitterDelayFrame") + g(sp, "emitterDelayFrameJitter")
         per_cycle = g(sp, "loopNum") + g(sp, "loopNumJitter")
-        repeat = g(sp, "emitterRepeatCount")
-        interval = (g(sp, "altBurstInterval") if per_cycle == 1
+        repeat = g(sp, "revivalLoop")
+        interval = (g(sp, "revivalInterval") if per_cycle == 1
                     else g(sp, "intervalFrame"))
         bursts = max(1, per_cycle + repeat - 1) if (per_cycle and repeat) else 1
 

@@ -28,7 +28,7 @@ UNKNOWNS = {
         ("native", "linear", "constant"), "native",
     ),
     "age_during_delay": (
-        "SPAWN.spawnWaitFrame 期间粒子的 age 是否推进（影响 TIML A1 与 LIFE）。",
+        "SPAWN.particleDelayFrame 期间粒子的 age 是否推进（影响 TIML A1 与 LIFE）。",
         (False, True), False,
     ),
     "spawn_interval_jitter": (
@@ -37,7 +37,7 @@ UNKNOWNS = {
         ("per_burst", "per_cycle"), "per_burst",
     ),
     "spawn_after_cycle": (
-        "有限轮次（loopNum 与 emitterRepeatCount 都非 0）的批次发完之后。"
+        "有限轮次（loopNum 与 revivalLoop 都非 0）的批次发完之后。"
         "'stop' 不再发；'recycle' 等一个粒子寿命后换位置、重抽、再开一轮。"
         "两个无限态（任一为 0）不受此开关影响。",
         ("stop", "recycle"), "stop",

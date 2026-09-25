@@ -4169,7 +4169,7 @@ def register():
         default="forward")
     S.efx_sim_age_during_delay = BoolProperty(
         name="Age during spawn delay", default=False, update=_on_knob_changed,
-        description="Whether spawnWaitFrame still advances the particle's age")
+        description="Whether particleDelayFrame still advances the particle's age")
     S.efx_sim_parent_clock = EnumProperty(
         name="Stop tracking after", update=_on_knob_changed,
         items=[("particle_age", "Each particle's own age",

@@ -8,25 +8,25 @@
     maxParticles                **同时存活**数量的软上限，而非总生成数
     spawnNum(+Jitter)           每批的粒子数，每批重新抽取
     intervalFrame(+Jitter)      批间隔
-    altBurstInterval(+Jitter)   loopNum 取 1 时使用的批间隔
+    revivalInterval(+Jitter)   loopNum 取 1 时使用的批间隔
     loopNum(+Jitter)            每轮（每次换位置）重新抽取，取值分三种情形：
                                   0  不换位置，按 intervalFrame 节奏持续生成
-                                  1  改用 altBurstInterval 节奏
+                                  1  改用 revivalInterval 节奏
                                   ≥2 仍用 intervalFrame 节奏
-                                非 0 时总批次数 = 该值 + emitterRepeatCount − 1；最后一批之后
+                                非 0 时总批次数 = 该值 + revivalLoop − 1；最后一批之后
                                 按粒子寿命（LIFE.duration + fadeOutDuration）等待，随后换位置
-    emitterRepeatCount          取 0 时无论 loopNum 如何都不换位置。无对应的 Jitter 字段
+    revivalLoop          取 0 时无论 loopNum 如何都不换位置。无对应的 Jitter 字段
     emitterDelayFrame(+Jitter)  发射器自身的起始延迟
-    spawnWaitFrame(+Jitter)     唯一的 particle 层字段，逐粒子独立延迟
+    particleDelayFrame(+Jitter)     唯一的 particle 层字段，逐粒子独立延迟
 
 `spawnFrame`(+Jitter) 与 `spawnFlags` 的六个位（UseSpawnFrame / RingBufferMode /
 RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos）的实际效果均未测试，
 模拟层不读取。
 
 维护约束：
-- `emitterRepeatCount` 与 `loopNum` 均非 0 时，发完 `loopNum + repeat − 1` 批后停止发射
+- `revivalLoop` 与 `loopNum` 均非 0 时，发完 `loopNum + repeat − 1` 批后停止发射
   （`SimConfig.spawn_after_cycle`，默认 `stop`），这是实机行为。`loopNum == 0` 或
-  `emitterRepeatCount == 0` 两种情形持续发射，不会停止。
+  `revivalLoop == 0` 两种情形持续发射，不会停止。
 - `intervalFrame` 的抖动默认每批重新抽取（`SimConfig.spawn_interval_jitter='per_burst'`），
   与 `spawnNum` 的抽取方式一致；`per_cycle` 档则整轮等距。
 - 发射器级的随机数（每批的数量与间隔）必须使用 `em` 自身的随机流，不得占用逐粒子的随机流。
@@ -73,9 +73,9 @@ class Spawn(Behavior):
 
         per_cycle = jitter_int(f.get("loopNum"), f.get("loopNumJitter"),
                                rng)
-        repeat = f.i("emitterRepeatCount")
+        repeat = f.i("revivalLoop")
 
-        st["interval_field"] = ("altBurstInterval", "altBurstIntervalJitter")             if per_cycle == 1 else ("intervalFrame", "intervalFrameJitter")
+        st["interval_field"] = ("revivalInterval", "revivalIntervalJitter")             if per_cycle == 1 else ("intervalFrame", "intervalFrameJitter")
         interval = self._roll_interval(em, st)
 
         if per_cycle == 0 or repeat == 0:
@@ -163,6 +163,6 @@ class Spawn(Behavior):
         f = em.f(SPAWN, p)
         if f is None:
             return
-        p.delay_left = max(0, jitter_int(f.get("spawnWaitFrame"),
-                                         f.get("spawnWaitFrameJitter"),
+        p.delay_left = max(0, jitter_int(f.get("particleDelayFrame"),
+                                         f.get("particleDelayFrameJitter"),
                                          rng))

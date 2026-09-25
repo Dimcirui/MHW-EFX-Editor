@@ -137,11 +137,11 @@
                     "spawnFrameJitter": 0,
                     "emitterDelayFrame": 0,
                     "emitterDelayFrameJitter": 0,
-                    "spawnWaitFrame": 0,
-                    "spawnWaitFrameJitter": 0,
-                    "emitterRepeatCount": 1,
-                    "altBurstInterval": 5,
-                    "altBurstIntervalJitter": 5,
+                    "particleDelayFrame": 0,
+                    "particleDelayFrameJitter": 0,
+                    "revivalLoop": 1,
+                    "revivalInterval": 5,
+                    "revivalIntervalJitter": 5,
                     "spawnFlags": 0
                 }
             },

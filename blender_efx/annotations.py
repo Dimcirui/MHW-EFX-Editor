@@ -137,23 +137,20 @@ FIELD_ANNOTATIONS = {
 
     # ─── SPAWN ────────────────────────────────────────────────────────────────
     ("SPAWN", "emitterDelayFrame"): {
-        "EN": "Frames to wait before the spawner's very first burst ever fires. "
-              "One-time delay applied once at activation — unrelated to intervalFrame "
-              "or altBurstInterval.",
-        "ZH": "发射器有史以来第一次生成前的等待帧数。只在激活时生效一次，跟 intervalFrame "
-              "/ altBurstInterval 无关。",
+        "EN": "Frames to wait before the first burst. Applied once when the effect starts; "
+              "revivals do not wait for it again.",
+        "ZH": "第一批生成前的等待帧数。只在特效开始时生效一次，复活时不会再等。",
     },
     ("SPAWN", "emitterDelayFrameJitter"): {
         "EN": "Random jitter added to emitterDelayFrame.",
         "ZH": "叠加到 emitterDelayFrame 上的随机抖动。",
     },
-    ("SPAWN", "emitterRepeatCount"): {
-        "EN": "0 = spawner never relocates, bursts continue forever regardless of "
-              "loopNum. Non-zero = added to loopNum to set total bursts "
-              "per cycle before relocating (see loopNum). Has no jitter of its own.",
-        "ZH": "0=发射器永不换位置，无论 loopNum 是什么都持续生成；非0时与 "
-              "loopNum 相加，决定每轮换位置前的总批次数（见 loopNum）。"
-              "没有自己的随机抖动。",
+    ("SPAWN", "revivalLoop"): {
+        "EN": "Total number of rounds. After a round's last burst, the emitter waits Revival "
+              "Interval frames and starts a new round at a new position. 1 = one round, no "
+              "revival; 0 = revive forever.",
+        "ZH": "一共跑几轮。一轮的最后一批发出后，等「复活间隔」帧，在新位置开始下一轮。"
+              "1 = 只跑一轮、不复活；0 = 无限复活。",
     },
 
     # ─── LIFE ─────────────────────────────────────────────────────────────────
@@ -1654,46 +1651,33 @@ FIELD_ANNOTATIONS = {
     # ─── 行为补充 ─────────────────────────────────────────────────────────────
     # SPAWN
     ("SPAWN", "loopNum"): {
-        "EN": "Re-rolled each time the spawner starts a new cycle (new position). "
-              "0 = never relocates, bursts continue forever at intervalFrame pacing. "
-              "1 = bursts use altBurstInterval pacing instead; total bursts this cycle "
-              "= emitterRepeatCount. ≥2 = normal intervalFrame pacing; total bursts this "
-              "cycle = this value + emitterRepeatCount − 1. All bursts in a finite cycle "
-              "(including the last) fire at the same pacing selected above — the last "
-              "burst's own trigger timing is not special. What IS special is what "
-              "happens after the last burst fires: instead of another burst, the "
-              "spawner waits for that burst's particles to die (LIFE duration+"
-              "fadeOutDuration) and then immediately relocates.",
-        "ZH": "发射器每次开始新一轮（换新位置）时重新抽取。0=永不换位置，按 intervalFrame "
-              "节奏无限生成；1=改用 altBurstInterval 节奏，本轮总批次数=emitterRepeatCount；"
-              "≥2=仍用 intervalFrame 节奏，本轮总批次数=该值+emitterRepeatCount−1。有限轮次里"
-              "包括最后一批在内，全部批次都按上面选中的同一套节奏触发——最后一批本身的触发时机"
-              "并无特殊；特殊的是最后一批触发之后：不是再等一次间隔去触发下一批，而是等这批粒子"
-              "死亡(按LIFE的duration+fadeOutDuration)后立即换位置。",
+        "EN": "Bursts per round, re-rolled at the start of every round. 0 = the round never "
+              "ends and bursts continue forever, so revival never happens.",
+        "ZH": "每轮发几批，每轮开始时重新抽取。0 = 这一轮不会结束、一直发下去，"
+              "也就不会复活。",
     },
     ("SPAWN", "loopNumJitter"): {
-        "EN": "Random jitter added to loopNum, re-rolled together with it each cycle.",
-        "ZH": "叠加到 loopNum 上的随机抖动，随每轮一起重新抽取。",
+        "EN": "Random range added to Loop Num, re-rolled every round.",
+        "ZH": "叠加到每轮批次数上的随机量，每轮重新抽取。",
     },
     ("SPAWN", "intervalFrame"): {
-        "EN": "Frames between consecutive bursts within one spawner cycle. Only applies "
-              "when loopNum rolls to 0 or ≥2 — when it rolls to 1, altBurstInterval "
-              "is used instead.",
-        "ZH": "同一轮发射周期内，连续两次生成批次之间的帧数间隔。仅在 loopNum 抽到 "
-              "0 或 ≥2 时生效；抽到1时改用 altBurstInterval。",
+        "EN": "Frames between bursts within one round.",
+        "ZH": "同一轮里相邻两批之间的帧数。",
     },
     ("SPAWN", "intervalFrameJitter"): {
         "EN": "Random jitter added to intervalFrame.",
         "ZH": "叠加到 intervalFrame 上的随机抖动。",
     },
-    ("SPAWN", "altBurstInterval"): {
-        "EN": "Frames between bursts, used instead of intervalFrame specifically when "
-              "loopNum rolls to 1.",
-        "ZH": "当 loopNum 抽到1时，用来代替 intervalFrame 的批次间隔帧数。",
+    ("SPAWN", "revivalInterval"): {
+        "EN": "Frames from a round's last burst to the start of the next round. Particle "
+              "lifetime does not delay it; 0 = the next round starts on the next frame. "
+              "Only applies when Revival Loop is not 1.",
+        "ZH": "一轮的最后一批发出后，到下一轮开始的帧数，不等粒子消失；0 = 下一帧就开始。"
+              "复活轮数为 1 时不生效。",
     },
-    ("SPAWN", "altBurstIntervalJitter"): {
-        "EN": "Random jitter added to altBurstInterval.",
-        "ZH": "叠加到 altBurstInterval 上的随机抖动。",
+    ("SPAWN", "revivalIntervalJitter"): {
+        "EN": "Random range added to Revival Interval.",
+        "ZH": "叠加到复活间隔上的随机量。",
     },
     # LIFE
     ("LIFE", "indefiniteLifespan"): {
@@ -3683,26 +3667,23 @@ FIELD_ANNOTATIONS = {
         "ZH": "大部分 attribute 都有的头部字段，是类型/分类标记，非可调参数。常见取值为 "
               "[2, 3, 4, 5, 6, 7, 8, 9, 10]；绝大多数为 2。",
     },
-    ("SPAWN", "spawnWaitFrame"): {
-        "EN": "Extra delay applied independently to each individual particle after its "
-              "burst fires, staggering when particles from the same burst actually "
-              "become visible. Independent of all emitter-level timing (intervalFrame, "
-              "loopNum, altBurstInterval, emitterDelayFrame).",
-        "ZH": "每个粒子个体独立叠加的额外生成延迟，让同一批次里的粒子实际出现的时间彼此"
-              "错开。跟所有 emitter 层面的节奏（intervalFrame、loopNum、"
-              "altBurstInterval、emitterDelayFrame）无关。",
+    ("SPAWN", "particleDelayFrame"): {
+        "EN": "Delay before each particle appears after its burst fires, rolled per particle. "
+              "Use with its random range to stagger particles from the same burst.",
+        "ZH": "每个粒子在所属批次发出后，再等多少帧才出现，逐粒子独立抽取。配合随机量"
+              "可以让同一批的粒子错开出现。",
     },
-    ("SPAWN", "spawnWaitFrameJitter"): {
-        "EN": "Random jitter added to spawnWaitFrame, rolled independently per particle.",
-        "ZH": "叠加到 spawnWaitFrame 上的随机抖动，每个粒子独立抽取。",
+    ("SPAWN", "particleDelayFrameJitter"): {
+        "EN": "Random range added to Particle Delay Frame, rolled per particle.",
+        "ZH": "叠加到粒子延迟上的随机量，每个粒子独立抽取。",
     },
     ("SPAWN", "maxParticles"): {
         "EN": 'Soft cap on particles allowed alive at once for this spawner (concurrent count = burst rate × particle lifespan, i.e. duration+fadeOutDuration). Not a lifetime total — bursts are throttled once this cap would be exceeded, and resume in full once earlier particles die off.',
         "ZH": '该发射器同时存活粒子数的软上限。不是终身生成总量——超出上限时本批会被削减，等早前粒子死亡腾出空间后又能满额生成。',
     },
     ("SPAWN", "spawnFlags"): {
-        "EN": 'Packed flags edited via the popup: UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos (all default off). The exact effect of InitializeFull / InterporatePos is unknown.',
-        "ZH": '打包标志，用弹窗编辑：UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / InterporatePos（均默认关闭）。InitializeFull / InterporatePos 的具体作用未知。',
+        "EN": 'Packed flags edited via the popup: UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / Interpolate (all default off). The exact effect of InitializeFull / Interpolate is unknown.',
+        "ZH": '打包标志，用弹窗编辑：UseSpawnFrame / RingBufferMode / RayCastHitOnly / RayCastDependency / InitializeFull / Interpolate（均默认关闭）。InitializeFull / Interpolate 的具体作用未知。',
     },
     ("SPAWN", "spawnFrame"): {
         "EN": "The emitter only spawns particles during its first N frames. Only applies when UseSpawnFrame is on in spawnFlags.",

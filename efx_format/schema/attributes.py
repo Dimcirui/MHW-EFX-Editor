@@ -85,15 +85,15 @@ EXTERN_SPAWN_ATTR = Attribute(size=72, fields=[
     Int("intervalFrameJitter", label_zh="批次间隔抖动（帧）"),
     Int("loopNum", label_zh="每轮批次数"),
     Int("loopNumJitter", label_zh="每轮批次数抖动"),
-    Int("spawnFrame", label_zh="生成总帧数"),  # 身份是假设：spawnFlags 的 UseSpawnFrame 位对应的参数
-    Int("spawnFrameJitter", label_zh="生成总帧数抖动"),
+    Int("spawnFrame", label_zh="生成时限（帧）"),  # 只在前 N 帧生成，由 spawnFlags 的 UseSpawnFrame 位开启
+    Int("spawnFrameJitter", label_zh="生成时限抖动（帧）"),
     Int("emitterDelayFrame", label_zh="发射器启动延迟（帧）"),  # 发射器首次生成前的一次性延迟
     Int("emitterDelayFrameJitter", label_zh="发射器启动延迟抖动（帧）"),
-    Int("spawnWaitFrame", label_zh="粒子生成延迟（帧）"),  # 粒子个体各自的生成延迟
-    Int("spawnWaitFrameJitter", label_zh="粒子生成延迟抖动（帧）"),
-    Int("emitterRepeatCount", label_zh="重复次数"),  # 取 0 时永不换生成位置
-    Int("altBurstInterval", label_zh="替代批次间隔（帧）"),  # 仅当 loopNum 取 1 时取代 intervalFrame
-    Int("altBurstIntervalJitter", label_zh="替代批次间隔抖动（帧）"),
+    Int("particleDelayFrame", label_zh="粒子延迟（帧）"),  # 粒子个体各自的出现延迟
+    Int("particleDelayFrameJitter", label_zh="粒子延迟抖动（帧）"),
+    Int("revivalLoop", label_zh="复活轮数"),  # 总轮数，0 = 无限
+    Int("revivalInterval", label_zh="复活间隔（帧）"),  # 一轮最后一批发出后到下一轮开始
+    Int("revivalIntervalJitter", label_zh="复活间隔抖动（帧）"),
     Bitmask("spawnFlags", BITS_SPAWN_FLAGS, strict=True, label_zh="生成标志位"),
 ])
 EXTERN_SPAWN_SCHEMA = EXTERN_SPAWN_ATTR.schema
