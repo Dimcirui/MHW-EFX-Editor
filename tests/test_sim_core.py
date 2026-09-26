@@ -1953,6 +1953,13 @@ class TestScaleAnim(unittest.TestCase):
         self.assertAlmostEqual(p.scale.x, expect, places=6)
         self.assertAlmostEqual(p.scale.x, 1.91, places=2)
 
+    def test_zero_coef_counts_as_one(self):
+        """Coef 为 0 时按 1 计：匀速，不在第一帧后停住。"""
+        p, _ = one_particle(frames=3, scaleanim=scaleanim_fields(
+            sizeScalarAdd=0.1, sizeScalarAddCoef=0.0, sizeXAdd=0.5, sizeXAddCoef=0.0))
+        self.assertAlmostEqual(p.scale.y, 1.0 + 0.3, places=6)
+        self.assertAlmostEqual(p.scale.x, 1.0 + 0.3 + 1.5, places=6)
+
     def test_per_axis_is_independent(self):
         p, _ = one_particle(frames=4, scaleanim=scaleanim_fields(
             sizeXAdd=0.5, sizeYAdd=0.25, sizeZAdd=0.0))
@@ -2092,6 +2099,15 @@ class TestRgbColoring(unittest.TestCase):
         self.assertAlmostEqual(p.alpha, 1.0, places=5)
         q = self._color(RGBWATER, rgbwater_fields(intensityAlpha=0.25))
         self.assertAlmostEqual(q.alpha, 0.25, places=5)
+
+    def test_alpha_factor_does_not_compound_without_life(self):
+        """没有 LIFE 每帧重写 alpha 时，两种倍率仍只乘一次，不逐帧累乘。"""
+        for block_hash, fields in ((RGBWATER, rgbwater_fields(intensityAlpha=0.5)),
+                                   (RGBFIRE, rgbfire_fields(alphaFactor=0.5))):
+            sim = make_sim(spawn=spawn_fields(spawnNum=1, intervalFrame=10000),
+                           billboard=billboard_fields(), extra=[(block_hash, fields)])
+            sim.run(10)
+            self.assertAlmostEqual(sim.particles[0].alpha, 0.5, places=5)
 
     def test_water_lerp_gtob_rides_on_the_render_item(self):
         """贴图通道遮罩混合系数挂在渲染项上，供 glue 的 fragment shader 使用。"""

@@ -197,8 +197,8 @@ FIELD_ANNOTATIONS = {
               "0=XYZ,1=XZY,2=YXZ,3=YZX,4=ZXY,5=ZYX。跟 TRANSFORM3D 的旋转顺序惯例不是同一套数值映射。",
     },
     ("VELOCITY3D", "speedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
+        "EN": "The speed is multiplied by this every frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "速度每帧乘一次此值。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("VELOCITY3D", "velocityType"): {
         "EN": "Decides how the particle's movement DIRECTION is determined (speed always comes "
@@ -607,12 +607,12 @@ FIELD_ANNOTATIONS = {
 
     # ─── UVCONTROL ────────────────────────────────────────────────────────────
     ("UVCONTROL", "uv1_offsetCoef"): {
-        "EN": "Per-frame speed multiplier (UV1): the scroll speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates.",
-        "ZH": "逐帧速度倍率（UV1）：滚动速度每帧乘一次这个值，1 = 匀速，>1 越来越快，<1 越来越慢。",
+        "EN": "The UV1 scroll speed is multiplied by this every frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "UV1 滚动速度每帧乘一次此值。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("UVCONTROL", "uv2_offsetCoef"): {
-        "EN": "Per-frame speed multiplier (UV2): the scroll speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates.",
-        "ZH": "逐帧速度倍率（UV2）：滚动速度每帧乘一次这个值，1 = 匀速，>1 越来越快，<1 越来越慢。",
+        "EN": "The UV2 scroll speed is multiplied by this every frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "UV2 滚动速度每帧乘一次此值。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
 
     # ─── EMITTERSHAPE2D ───────────────────────────────────────────────────────
@@ -1856,32 +1856,32 @@ FIELD_ANNOTATIONS = {
     },
     # SCALEANIM
     ("SCALEANIM", "sizeScalarAddCoef"): {
-        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down.",
-        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢。",
+        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down; 0 counts as 1.",
+        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("SCALEANIM", "sizeXAdd"): {
         "EN": "Added to the X size ratio every frame; the ratio starts at 1. -0.0167 shrinks to 0 in about 1 second.",
         "ZH": "每帧加到 X 方向尺寸倍率上的量，倍率从 1 开始。-0.0167 约 1 秒缩到 0。",
     },
     ("SCALEANIM", "sizeXAddCoef"): {
-        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down.",
-        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢。",
+        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down; 0 counts as 1.",
+        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("SCALEANIM", "sizeYAdd"): {
         "EN": "Added to the Y size ratio every frame; the ratio starts at 1.",
         "ZH": "每帧加到 Y 方向尺寸倍率上的量，倍率从 1 开始。",
     },
     ("SCALEANIM", "sizeYAddCoef"): {
-        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down.",
-        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢。",
+        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down; 0 counts as 1.",
+        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("SCALEANIM", "sizeZAdd"): {
         "EN": "Added to the Z size ratio every frame; the ratio starts at 1. Only affects meshes.",
         "ZH": "每帧加到 Z 方向尺寸倍率上的量，倍率从 1 开始。仅对模型有效。",
     },
     ("SCALEANIM", "sizeZAddCoef"): {
-        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down.",
-        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢。",
+        "EN": "The speed above is multiplied by this every frame. 1 = constant speed, below 1 slows down; 0 counts as 1.",
+        "ZH": "上面的速度每帧乘一次此值。1 为匀速，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("SCALEANIM", "animUpdateStart"): {
         "EN": "Frames to wait before any scaling starts.",
@@ -3508,32 +3508,32 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值在 0~100 之间。",
     },
     ("ROTATEANIM", "billboardRotationCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
+        "EN": "The speed is multiplied by this every frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "速度每帧乘一次此值。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("ROTATEANIM", "billboardRotationCoefJitter"): {
         "EN": "Random component of billboardRotationAccel.",
         "ZH": "billboardRotationAccel 的随机分量。",
     },
     ("ROTATEANIM", "spinSpeedCoefX"): {
-        "EN": "X-axis spin acceleration, fixed value. Usually 0.9~1.0.",
-        "ZH": "X 轴自旋加速度的固定值，通常为 0.9~1.0。",
+        "EN": "The speed is multiplied by this every frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "速度每帧乘一次此值。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("ROTATEANIM", "spinSpeedCoefXJitter"): {
         "EN": "Random component of spinAccelerationX. Mostly 0; occasionally a clean small decimal.",
         "ZH": "spinAccelerationX 的随机分量。多为 0；偶尔是干净的小数。",
     },
     ("ROTATEANIM", "spinSpeedCoefY"): {
-        "EN": "Y-axis counterpart of spinAccelerationX (static value).",
-        "ZH": "spinAccelerationX 的 Y 轴对应（static 值）。",
+        "EN": "The speed is multiplied by this every frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "速度每帧乘一次此值。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("ROTATEANIM", "spinSpeedCoefYJitter"): {
         "EN": "Random component of spinAccelerationY.",
         "ZH": "spinAccelerationY 的随机分量。",
     },
     ("ROTATEANIM", "spinSpeedCoefZ"): {
-        "EN": "Z-axis counterpart of spinAccelerationX (static value).",
-        "ZH": "spinAccelerationX 的 Z 轴对应（static 值）。",
+        "EN": "The speed is multiplied by this every frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "速度每帧乘一次此值。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("ROTATEANIM", "spinSpeedCoefZJitter"): {
         "EN": "Random component of spinAccelerationZ.",
@@ -3808,8 +3808,8 @@ FIELD_ANNOTATIONS = {
         "ZH": '启用第二套 UV。mod3 网格允许同时存在两套 UV，打开后下面的 uv2 组（偏移/缩放/速度）才生效。（与顶点动画无关。）',
     },
     ("UVSEQUENCE", "playSpeedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
+        "EN": "The speed is multiplied by this every frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "速度每帧乘一次此值。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("UVSEQUENCE", "playSpeedCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -3879,8 +3879,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 1, 3, 4, 5, 10, 20]。",
     },
     ("VELOCITY2D", "speedCoef"): {
-        "EN": 'Per-frame speed multiplier: the corresponding speed is multiplied by this every frame, so 1 = constant speed, >1 accelerates, <1 decelerates. The usual value is 1.0.',
-        "ZH": '逐帧速度倍率：对应的速度每帧乘一次这个值，所以 1 = 匀速，>1 越来越快，<1 越来越慢。常用值为 1.0。',
+        "EN": "The speed is multiplied by this every frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "速度每帧乘一次此值。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
     ("VELOCITY2D", "speedCoefJitter"): {
         "EN": "Common range: 0~1.",
@@ -4017,9 +4017,8 @@ _FLOWMAP_ANNOTATIONS = {
         "ZH": "每秒播放的轮数。循环时两层错开半轮交替淡入淡出；为 0 时保持固定扭曲。",
     },
     "flowSpeedCoef": {
-        "EN": "Multiplies the speed once per frame. 1 = constant speed, above 1 speeds up, "
-              "below 1 slows down.",
-        "ZH": "速度每帧乘一次的倍率。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢。",
+        "EN": "Multiplies the speed once per frame. 1 = constant speed, above 1 speeds up, below 1 slows down; 0 counts as 1.",
+        "ZH": "速度每帧乘一次的倍率。1 为匀速，大于 1 逐渐加快，小于 1 逐渐减慢；0 按 1 计。",
     },
     "flowStrength": {
         "EN": "How far pixels are pushed. At 1 a full-length flow direction moves them one "
@@ -4027,9 +4026,8 @@ _FLOWMAP_ANNOTATIONS = {
         "ZH": "扭曲幅度。强度 1 时，满幅的流动方向在一轮末尾推开一整格贴图；负值反向。",
     },
     "flowStrengthCoef": {
-        "EN": "Multiplies the strength once per frame. 1 = unchanged, below 1 fades the "
-              "distortion out.",
-        "ZH": "强度每帧乘一次的倍率。1 为不变，小于 1 逐渐减弱。",
+        "EN": "Multiplies the strength once per frame. 1 = unchanged, below 1 fades the distortion out; 0 counts as 1.",
+        "ZH": "强度每帧乘一次的倍率。1 为不变，小于 1 逐渐减弱；0 按 1 计。",
     },
     "flowOnce": {
         "EN": "Plays a single cycle and holds the final distortion. Off = loop.",

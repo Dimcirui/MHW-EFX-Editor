@@ -4,7 +4,7 @@
 两组相互独立的缩放，均为**加法累积 + 逐帧乘法衰减**：
 
     整体（三轴同步）  sizeScalarAdd(+Jitter)        每帧加到三个轴上的增量
-                      sizeScalarAddCoef(+Jitter)    该增量每帧乘以此值；1 为匀速，小于 1 逐渐减慢
+                      sizeScalarAddCoef(+Jitter)    该增量每帧乘以此值；1 为匀速，小于 1 逐渐减慢，0 按 1 计
     逐轴              size{X,Y,Z}Add(+Jitter) / size{X,Y,Z}AddCoef(+Jitter)
     两组共用        animUpdateStart(+Jitter)      起始延迟帧数，延迟结束前两组都不生效
 
@@ -24,6 +24,7 @@ from ...hashes import SCALEANIM
 from ..registry import Behavior, register
 from ..rng import jitter, jitter_int
 from ..stages import XFORM
+from ._common import roll_coef
 
 
 @register(SCALEANIM)
@@ -47,16 +48,14 @@ class ScaleAnim(Behavior):
 
         uniform_v = jitter(f.get("sizeScalarAdd"), f.get("sizeScalarAddJitter"),
                            rng)
-        uniform_a = jitter(f.get("sizeScalarAddCoef", 1.0),
-                           f.get("sizeScalarAddCoefJitter"), rng)
+        uniform_a = roll_coef(f, "sizeScalarAddCoef", rng)
 
         axis_v = []
         axis_a = []
         for ax in ("X", "Y", "Z"):
             axis_v.append(jitter(f.get("size" + ax + "Add"),
                                  f.get("size" + ax + "AddJitter"), rng))
-            axis_a.append(jitter(f.get("size" + ax + "AddCoef", 1.0),
-                                 f.get("size" + ax + "AddCoefJitter"), rng))
+            axis_a.append(roll_coef(f, "size" + ax + "AddCoef", rng))
 
         delay = max(0, jitter_int(f.get("animUpdateStart"),
                                   f.get("animUpdateStartJitter"), rng))

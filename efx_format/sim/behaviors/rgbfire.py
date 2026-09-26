@@ -38,7 +38,7 @@ RGBFIRE 只提供颜色，其作用是从一张多通道贴图中分别取出两
 from ...hashes import RGBFIRE
 from ..registry import Behavior, register
 from ..stages import SHADE
-from ._common import blend_two_colors, color_param_weight, roll_color_param
+from ._common import blend_two_colors, color_param_weight, roll_color_param, scale_alpha
 
 
 def _rgb(v):
@@ -105,7 +105,7 @@ class RgbFire(Behavior):
         ws = smoke_i * color_param_weight(st["sp"], p.age)
         tint = blend_two_colors(em.config, fire, wf, smoke, ws)
         p.color = [tint[0] * rate, tint[1] * rate, tint[2] * rate]
-        p.alpha = min(1.0, p.alpha * max(0.0, alpha))
+        scale_alpha(p, "rgbfire_alpha", max(0.0, alpha))
         # (火焰色, 烟雾色)，由贴图 shader 按两个遮罩分别使用
         p.rolled["layers"] = ([c * wf * rate for c in fire],
                               [c * ws * rate for c in smoke])

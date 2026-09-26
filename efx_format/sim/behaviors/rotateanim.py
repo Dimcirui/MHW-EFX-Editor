@@ -31,6 +31,7 @@ from ...hashes import ROTATEANIM
 from ..registry import Behavior, register
 from ..rng import jitter, jitter_int
 from ..stages import XFORM
+from ._common import roll_coef
 
 MODE_PLANE = 0
 MODE_PLANE_RANDOM_DIR = 1
@@ -76,8 +77,7 @@ class RotateAnim(Behavior):
             st["plane_v"] = speed * sign
             if self._has_tracks:
                 st["tl"] = {"sign": sign, "off": speed - static, "decay": 1.0}
-            st["plane_a"] = jitter(f.get("billboardRotationCoef", 1.0),
-                                   f.get("billboardRotationCoefJitter"), rng)
+            st["plane_a"] = roll_coef(f, "billboardRotationCoef", rng)
         else:
             # spin_velocity 为 XYZ type 0：各轴由固定值与随机幅度成对组成
             base = f.xyz_lo("spin_velocity")
@@ -99,8 +99,7 @@ class RotateAnim(Behavior):
                 vel.append(raw * sign)
                 signs.append(sign)
                 offs.append(raw - base[i])
-                acc.append(jitter(f.get("spinSpeedCoef" + ax, 1.0),
-                                  f.get("spinSpeedCoef" + ax + "Jitter"), rng))
+                acc.append(roll_coef(f, "spinSpeedCoef" + ax, rng))
             st["spin_v"] = vel
             st["spin_a"] = acc
             if self._has_tracks:

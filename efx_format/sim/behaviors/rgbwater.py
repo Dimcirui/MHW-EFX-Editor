@@ -32,7 +32,7 @@
 from ...hashes import RGBWATER
 from ..registry import Behavior, register
 from ..stages import SHADE
-from ._common import blend_two_colors, color_param_weight, roll_color_param
+from ._common import blend_two_colors, color_param_weight, roll_color_param, scale_alpha
 from .rgbfire import _rgb
 
 
@@ -96,4 +96,4 @@ class RgbWater(Behavior):
         p.rolled["layers"] = ([c * w1 * rate for c in sheet],
                               [c * w0 * rate for c in spec])
         p.rolled["rgbwater_lerp"] = lerp
-        p.alpha = min(1.0, p.alpha * alpha)
+        scale_alpha(p, "rgbwater_alpha", alpha)

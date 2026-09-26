@@ -266,3 +266,21 @@ def blend_two_colors(cfg, c0, w0, c1, w1):
     if t <= 1e-9:
         return [0.5 * (c0[i] + c1[i]) for i in range(3)]
     return [(c0[i] * w0 + c1[i] * w1) / t for i in range(3)]
+
+
+def roll_coef(f, field, rng):
+    """抽取逐帧倍率 `field`（含 `field + "Jitter"`）；结果为 0 时按 1 计，即不衰减。"""
+    return jitter(f.get(field, 1.0), f.get(field + "Jitter"), rng) or 1.0
+
+
+def scale_alpha(p, key, k):
+    """把 alpha 乘以 `k`（截断到 1），基准取本帧未被乘过的值。
+
+    其它属性（通常是 LIFE）本帧重写了 alpha 时以新值为基准；否则沿用上一帧的基准，避免没有
+    LIFE 时逐帧累乘。`key` 为基准在 p.rolled 里的键，每个调用方各用一个。
+    """
+    got = p.rolled.get(key)
+    base = got[0] if got is not None and p.alpha == got[1] else p.alpha
+    out = min(1.0, base * k)
+    p.rolled[key] = (base, out)
+    p.alpha = out

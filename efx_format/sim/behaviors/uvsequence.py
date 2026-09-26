@@ -43,6 +43,7 @@ from ...hashes import UVSEQUENCE
 from ..registry import Behavior, register
 from ..rng import jitter, jitter_int
 from ..stages import RENDER_MOD
+from ._common import roll_coef
 
 # playbackMode（loopingMode bit0-1）
 PB_START_ONLY = 0
@@ -140,8 +141,7 @@ class UVSequence(Behavior):
 
         static_speed = f.get("playSpeed", 0.0)
         speed = jitter(static_speed, f.get("playSpeedJitter"), rng)
-        coef = jitter(f.get("playSpeedCoef", 1.0), f.get("playSpeedCoefJitter"),
-                      rng)
+        coef = roll_coef(f, "playSpeedCoef", rng)
 
         start = jitter_int(f.get("patternNo", 0), f.get("patternNoJitter"), rng)
         wrap = cfg.uvs_start_wrap == "wrap"
@@ -188,7 +188,7 @@ class UVSequence(Behavior):
             f = em.f(UVSEQUENCE, p)
             if f is not None:
                 speed = f.get("playSpeed", 0.0) + st["speed_offset"]
-                st["coef"] = f.get("playSpeedCoef", st["coef"])
+                st["coef"] = f.get("playSpeedCoef", st["coef"]) or 1.0
 
         step = speed * st["sign"]
         if em.config.uvs_speed_unit == "per_second":

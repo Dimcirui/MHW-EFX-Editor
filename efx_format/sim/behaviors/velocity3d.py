@@ -8,7 +8,7 @@
                             仅在 velocityType=Directional 时有效
     rotOrder                取值到旋转顺序的映射为 `_ROT_ORDER6`，与 TRANSFORM3D 不同
     speed(+Jitter)          初速度大小
-    speedCoef(+Jitter)      逐帧速度倍率，速度每帧乘以此值。1 为匀速，大于 1 加速，小于 1 减速
+    speedCoef(+Jitter)      逐帧速度倍率，速度每帧乘以此值。1 为匀速，大于 1 加速，小于 1 减速，0 按 1 计
     velocityType            0=Directional：由 baseAxis 与 rotation 确定方向
                             1=DirectionalSpread：Vi=(size-1)·生成坐标+2·offset，再归一化
                             2=Radial：始终向外，rotation / velocity / divergence 均无效
@@ -36,7 +36,7 @@ import math
 
 from ...hashes import VELOCITY3D
 from ..registry import Behavior, register
-from ._common import emitter_rotate
+from ._common import emitter_rotate, roll_coef
 from ..rng import jitter, jitter_int
 from ..stages import INTEGRATE
 from ..state import BASE_AXES, Vec3
@@ -71,8 +71,7 @@ class Velocity3D(Behavior):
         cfg = em.config
 
         p.rolled["v_speed"] = jitter(f.get("speed"), f.get("speedJitter"), rng)
-        p.rolled["v_coef"] = jitter(f.get("speedCoef", 1.0), f.get("speedCoefJitter"),
-                                    rng)
+        p.rolled["v_coef"] = roll_coef(f, "speedCoef", rng)
         p.rolled["v_gravity"] = jitter(f.get("gravity"), f.get("gravity_jitter"),
                                        rng)
         if self._has_tracks:
