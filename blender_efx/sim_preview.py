@@ -943,7 +943,7 @@ def _sync_host_origin(scene=None):
 # ─────────────────────────────────────────────────────────────────────────────
 # 挥砍预览：宿主绕世界 Z 轴（游戏 Y 轴）旋转，直接写入模拟，不移动 Blender 中的 Entry。
 
-#: 挥砍半径（米）：宿主绕初始位置转动的半径，刀身从这个圆向外伸出。
+#: 挥砍半径（米）：宿主（刀尖）绕初始位置转动的半径，刀身从这个圆向圆心伸。
 _SWING_RADIUS = 1.5
 
 
@@ -971,7 +971,10 @@ def _swing_yaw0(tr):
 
 def _apply_swing_preview(tr, scene):
     """挥砍：播放时长内宿主绕初始位置逆时针转 180°（正右→正左），刀身随之沿半径方向扫过，
-    画出扇形；已接管宿主时返回 True。"""
+    画出扇形；已接管宿主时返回 True。
+
+    游戏里刀光的轨迹点在刀尖、刀身向刀根伸，所以宿主当作刀尖放在圆上，刀身指向圆心。
+    """
     em = tr["sim"].em
     hr = em.host_rotation
     if scene is None or not getattr(scene, "efx_sim_swing_enable", False):
@@ -990,8 +993,9 @@ def _apply_swing_preview(tr, scene):
     ho = em.host_origin
     ho.x, ho.y, ho.z = gx, gy, gz
 
-    # 朝向：先转到刀身指向正右，再随挥砍转过 θ；rows[2][2] 为世界 Z 在 Entry 局部的游戏 Y 分量
-    hr.x, hr.y, hr.z = 0.0, _swing_yaw0(tr) + math.degrees(theta) * rows[2][2], 0.0
+    # 朝向：先转到刀身指向正右，再掉头 180° 指向圆心，随挥砍转过 θ；
+    # rows[2][2] 为世界 Z 在 Entry 局部的游戏 Y 分量
+    hr.x, hr.y, hr.z = 0.0, _swing_yaw0(tr) + 180.0 + math.degrees(theta) * rows[2][2], 0.0
     return True
 
 

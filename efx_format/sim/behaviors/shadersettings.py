@@ -14,6 +14,9 @@
 
 没有 SHADERSETTINGS 的 entry 保持渲染体产出的 'ALPHA'。其余字段不参与计算。
 
+渲染体标了 `extra["subtractive"]`（负自发光）时，加法实为从背景减色，预览改用 INV_MULTIPLY
+近似。
+
 维护约束：
 - 必须排在 REFRACTION 之前：折射的输出取决于这里定下的混合方式。
 - 贴花有自己的 mBlendMode（`extra["own_blend"]`），不受本属性覆盖。
@@ -66,5 +69,7 @@ class ShaderSettings(Behavior):
         if mode is None:
             # kind='NONE' 表示明确不绘制；返回 None 会被当成没有渲染体而补绘退化点
             return RenderItem(kind="NONE")
+        if mode == "ADDITIVE" and item.extra.get("subtractive"):
+            mode = "INV_MULTIPLY"
         item.blend = mode
         return item

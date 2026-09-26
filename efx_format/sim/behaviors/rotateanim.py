@@ -18,9 +18,10 @@ billboard 的 rotation），自旋写入三个轴。
 - 写入 `p.rot` 的自旋角必须取负：游戏给出的角速度方向，与 `oriented_basis` 绕法线的右手旋转在
   游戏到 Blender 的坐标映射下相反。目前只校准了「绕 Z 自旋 + PLANE」一种组合，另两轴按相同
   符号处理。
-- 自旋角除写入 `p.rot`（供 PLANE / MESH 等三维渲染体使用）外，必须另存于
-  `p.rolled["spin_ang"]`：billboard 每帧都朝向相机，只有绕法线（即视线方向）的自旋在屏幕上
-  可见，由 BILLBOARD3D 在 `build_render` 中按相机朝向取分量（`SimConfig.rotateanim_billboard_axis`）。
+- 自旋角除写入 `p.rot`（供 MESH 等三维渲染体使用）外，必须另存于 `p.rolled["spin_ang"]`：
+  billboard 每帧都朝向相机，只有绕法线（即视线方向）的自旋在屏幕上可见，由 BILLBOARD3D 在
+  `build_render` 中按相机朝向取分量（`SimConfig.rotateanim_billboard_axis`）；PLANE 用它绕
+  面片局部轴自旋，并从 `p.rot.z` 里扣掉 Z 分量。
 - 「随机方向」按 50% 概率取负、自旋三轴独立衰减、平面旋转的方向，三项均无实机样本验证。
 - TIML（A1）：billboardRotation / spin_velocity 每帧取「曲线值 + 出生时抽取的抖动偏移」为基准，
   乘以出生时定下的方向符号与 Coef 自延迟结束起的累积衰减；没有轨道时与逐帧递推完全一致。

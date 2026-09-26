@@ -19,7 +19,9 @@
     head / tailEnd          EPVColorSlot 结构：color1 为端点颜色，size 为端点处的刀身长度倍率
     colourTransitionPoint   从头端起保持头端颜色的长度比例，其余部分线性过渡到尾端颜色
     emissiveStrength        自发光强度。挂 REFRACTION 时为线性乘数；否则按饱和曲线
-                            `emissive_gain` 换算：1 时白色只显示为中灰，5 接近原色，10 以上饱和为白
+                            `emissive_gain` 换算：1 时白色只显示为中灰，5 接近原色，10 以上饱和为白。
+                            负值在加法混合下是从背景里减色（压暗），预览以反相乘近似：
+                            背景 × (1 − 颜色 × alpha)，颜色取绝对值换算
     enableFlowmap / flow*   流动贴图组，与 BILLBOARD3D 同义，见 `_flowmap`
     uvRepetition            UV 沿长度方向的重复次数，未接入
 
@@ -70,13 +72,13 @@ def _trail_frames(f):
 
 
 def emissive_gain(e, refraction=False):
-    """emissiveStrength 换算为颜色倍率：折射为线性，其余按饱和曲线。"""
+    """emissiveStrength 换算为颜色倍率：折射为线性，其余按饱和曲线，负值保留符号（减色）。"""
     e = float(e)
     if refraction:
         return e
-    if e <= 0.0:
-        return 0.0
-    return _EMISSIVE_A * e / (e + _EMISSIVE_C)
+    m = abs(e)
+    g = _EMISSIVE_A * m / (m + _EMISSIVE_C)
+    return -g if e < 0.0 else g
 
 
 def _slot_color(v):
@@ -290,6 +292,10 @@ class RibbonBlade(Behavior):
         width = f.get("width", 1.0) * p.scale.x
         emissive = emissive_gain(f.get("emissiveStrength", 1.0) or 1.0,
                                  em.f(REFRACTION, p) is not None)
+        # 非折射的负自发光 = 减色：颜色取绝对值，混合方式换成反相乘
+        subtractive = emissive < 0.0 and em.f(REFRACTION, p) is None
+        if subtractive:
+            emissive = -emissive
 
         cut = max(0.0, min(1.0, f.get("colourTransitionPoint", 0.0)))
         tr, tg, tb, ta = st["tail"]
@@ -325,7 +331,10 @@ class RibbonBlade(Behavior):
                       (tg + (hg - tg) * mid) * emissive * p.color[1],
                       (tb + (hb - tb) * mid) * emissive * p.color[2],
                       p.alpha]
-        item.blend = _BLEND
+        item.blend = "INV_MULTIPLY" if subtractive else _BLEND
+        if subtractive:
+            # SHADERSETTINGS 按 blendStateType 覆盖混合方式时据此把加法改回反相乘
+            item.extra["subtractive"] = True
         # 渲染主体自身的颜色；RGBFIRE / RGBWATER 的两层颜色在 glue 侧再乘上它
         item.extra["base_tint"] = ((tr + (hr - tr) * mid) * emissive,
                                    (tg + (hg - tg) * mid) * emissive,

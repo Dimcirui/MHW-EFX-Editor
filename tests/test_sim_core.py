@@ -2237,6 +2237,51 @@ class TestRotateAnim(unittest.TestCase):
         self.assertGreater((u1 - u0).length(), 0.1)      # 转过去了
         self.assertAlmostEqual(u1.length(), 1.0, places=5)
 
+    def _plane_spin_axes(self, spin_velocity, rotation, frames=10):
+        sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
+                       life=life_fields(indefiniteLifespan=1),
+                       rotateanim=rotateanim_fields(rotationModeMask=2,
+                                                    spin_velocity=spin_velocity),
+                       extra=[(PLANE, plane_fields(baseAxis=1, rotation=rotation))])
+        sim.step()
+        it = sim.build_render()[0]
+        u0, v0 = it.axis_u.copy(), it.axis_v.copy()
+        for _ in range(frames - 1):
+            sim.step()
+        it = sim.build_render()[0]
+        return u0, v0, it.axis_u, it.axis_v
+
+    def test_plane_spins_about_its_own_y_axis(self):
+        """基准法线 Y + 自旋 Y = 面内旋转：横轴转动，法线不变。"""
+        u0, v0, u1, v1 = self._plane_spin_axes([0.0, 0.0, 10.0, 0.0, 0.0, 0.0], [0.0] * 6)
+        self.assertGreater((u1 - u0).length(), 0.1)
+        n0, n1 = u0.cross(v0), u1.cross(v1)
+        self.assertAlmostEqual((n1 - n0).length(), 0.0, places=5)
+
+    def test_rotation_about_the_normal_turns_the_plane(self):
+        """基准法线 Y + rotation Y：法线不变，但横纵轴要跟着转，不能被重建时丢掉。"""
+        def axes(ry):
+            sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
+                           life=life_fields(indefiniteLifespan=1),
+                           extra=[(PLANE, plane_fields(
+                               baseAxis=1, rotation=[0.0, 0.0, ry, 0.0, 0.0, 0.0]))])
+            sim.step()
+            it = sim.build_render()[0]
+            return it.axis_u, it.axis_v
+        u0, v0 = axes(0.0)
+        u1, v1 = axes(90.0)
+        self.assertAlmostEqual((u0.cross(v0) - u1.cross(v1)).length(), 0.0, places=5)
+        self.assertAlmostEqual(u0.dot(u1), 0.0, places=5)     # 横轴转了 90°
+
+    def test_tilted_plane_spins_within_its_own_plane(self):
+        """rotation Z 把面片倾斜后，自旋 Y 仍绕面片自身的法线转，而不是绕世界 Y 进动。"""
+        u0, v0, u1, v1 = self._plane_spin_axes([0.0, 0.0, 10.0, 0.0, 0.0, 0.0],
+                                               [0.0, 0.0, 0.0, 0.0, 75.0, 0.0])
+        self.assertGreater((u1 - u0).length(), 0.1)
+        n0, n1 = u0.cross(v0), u1.cross(v1)
+        self.assertAlmostEqual((n1 - n0).length(), 0.0, places=5)
+        self.assertAlmostEqual(u1.length(), 1.0, places=5)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TRANSFORM3D
@@ -4707,6 +4752,20 @@ class TestRibbonBlade(unittest.TestCase):
         self.assertAlmostEqual(emissive_gain(5.0), 0.89, delta=0.01)
         self.assertGreater(emissive_gain(10.0), 1.0)
         self.assertEqual(emissive_gain(80.0, refraction=True), 80.0)
+
+    def test_negative_emissive_darkens(self):
+        """负自发光 = 减色：颜色取绝对值，加法（含 SHADERSETTINGS 指定的加法）改为反相乘。"""
+        from efx_format.sim.behaviors.ribbonblade import emissive_gain
+        self.assertAlmostEqual(emissive_gain(-10.0), -emissive_gain(10.0), places=6)
+        blade = blade_fields(emissiveStrength=-10.0)
+        it = self._sim(blade=blade, transform=self._moving()).build_render()[0]
+        self.assertEqual(it.blend, "INV_MULTIPLY")
+        self.assertGreater(min(it.extra["point_rgb"][-1]), 0.0)
+        sim = make_sim(extra=[(RIBBONBLADE, blade), (SHADERSETTINGS, {"blendStateType": 2})],
+                       spawn=spawn_fields(intervalFrame=1000),
+                       life=life_fields(indefiniteLifespan=1), transform=self._moving())
+        sim.run(20)
+        self.assertEqual(sim.build_render()[0].blend, "INV_MULTIPLY")
 
     def test_blade_extends_one_side_with_end_sizes(self):
         """刀身从轨迹沿 widthDirection 单侧伸出，头尾长度 = width × 端点 size。"""
