@@ -3210,8 +3210,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [1, 2, 5, 7]。",
     },
     ("RGBFIRE", "lerpAlphaToBlue"): {
-        "EN": "Blends the texture's Alpha channel into the Blue channel (the auxiliary diffuse layer that has no colour picker of its own). 0 = keep Blue as-is; 1 = fully replace it with Alpha.",
-        "ZH": "把贴图 Alpha 通道按此比例混入 Blue 通道（B 通道是没有独立调色入口的辅助弥散层）。0 = 保留原 B 通道；1 = 完全用 Alpha 顶替。",
+        "EN": "Switches which texture channels drive the smoke layer. 0 = smoke shape from Red, coverage from Alpha; 1 = both from Blue, Red and Alpha no longer matter. The fire layer (Green) always stays opaque.",
+        "ZH": "切换烟雾层取自贴图的哪个通道。0 = 烟雾形状取 R、覆盖范围取 Alpha；1 = 两者都改取 B，R 与 Alpha 不再起作用。火焰层（G）所在处始终不透明。",
     },
     ("RGBWATER", "specularColorParam_keepFrameJitter"): {
         "EN": "Common values: [0, 5, 10, 14, 30, 40, 62].",
