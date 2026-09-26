@@ -3,12 +3,12 @@
 
 字段职能：
 
-    appearFrame / duration / vanishFrame  三段时长，各带一个 Jitter
-    timeToDeath                                  语义未确认，不参与寿命计算
-    indefiniteLifespan                           置位时不按寿命判定死亡
-    unknFrame                                    名称中的 Frame 仅为占位，不使用
+    appearFrame / keepFrame / vanishFrame  淡入、保持、淡出三段时长，各带一个 Jitter
+    timeToDeath                            语义未确认，不参与寿命计算
+    indefiniteLifespan                     置位时不按寿命判定死亡
+    unknFrame                              名称中的 Frame 仅为占位，不使用
 
-总寿命为 fadeIn + duration + fadeOut。
+总寿命为 appearFrame + keepFrame + vanishFrame。
 
 维护约束：
 - `indefiniteLifespan` 以 `p.life = 0` 实现，其含义是不按寿命判定死亡，而非寿命为零。
