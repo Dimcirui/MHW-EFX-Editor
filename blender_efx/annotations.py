@@ -3677,9 +3677,21 @@ FIELD_ANNOTATIONS = {
         "ZH": "与其他粒子重叠时的前后顺序。两者相差超过 4096 时数值大的在上面，否则按 Entry "
               "顺序，靠后的在上面。通常为 0。",
     },
-    ("SHADERSETTINGS", "unknEnum5_0"): {
-        "EN": "Common values: [0, 1, 65536, 16777216].",
-        "ZH": "常见取值为 [0, 1, 65536, 16777216]。",
+    ("SHADERSETTINGS", "unknFlag5_0_0"): {
+        "EN": "Purpose unknown. Usually off.",
+        "ZH": "作用未知。通常关闭。",
+    },
+    ("SHADERSETTINGS", "unknFixed5_0_1"): {
+        "EN": "Fixed at 0. Purpose unknown.",
+        "ZH": "固定为 0。具体作用未知。",
+    },
+    ("SHADERSETTINGS", "unknFlag5_0_2"): {
+        "EN": "Purpose unknown. Usually off.",
+        "ZH": "作用未知。通常关闭。",
+    },
+    ("SHADERSETTINGS", "unknFlag5_0_3"): {
+        "EN": "Purpose unknown. Usually off.",
+        "ZH": "作用未知。通常关闭。",
     },
     ("SHADERSETTINGS", "unknBitmask5_1"): {
         "EN": "Common values: [0, 1, 2, 3, 4, 5, 7, 8, 9]; most commonly 0 or 1.",

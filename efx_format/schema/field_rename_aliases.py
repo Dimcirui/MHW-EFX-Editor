@@ -704,6 +704,8 @@ FIELD_BYTE_SPLITS = {
     # None = 保留填充字节，取默认值
     ("RIBBONBLADE", "spacer2"): ("useEmissiveRange", None, None, None),
     ("RIBBONBLADE", "NULL9"): ("flowOnce", "flowReverse", None, None),
+    ("SHADERSETTINGS", "unknEnum5_0"): ("unknFlag5_0_0", "unknFixed5_0_1", "unknFlag5_0_2",
+                                        "unknFlag5_0_3"),
 }
 
 #: 嵌套结构中移到顶层的子字段：{(类型, 结构字段): {子字段: 顶层字段或 None(丢弃的填充)}}

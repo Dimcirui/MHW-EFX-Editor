@@ -230,7 +230,10 @@ _PRESETS = {
                                           'unknBool1': 1,
                                           'unknBool2': 0,
                                           'unknBool3': 0,
-                                          'unknEnum5_0': 0,
+                                          'unknFlag5_0_0': 0,
+                                          'unknFixed5_0_1': 0,
+                                          'unknFlag5_0_2': 0,
+                                          'unknFlag5_0_3': 0,
                                           'unknBitmask5_1': 0}}]}},
     BUILTIN_ROOT:
     {'efx_preset_kind': 'entry',

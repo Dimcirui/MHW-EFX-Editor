@@ -167,7 +167,10 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Bool("unknBool1", backing='B'),
     Bool("unknBool2", backing='B'),
     Bool("unknBool3", backing='B'),
-    Int("unknEnum5_0"),
+    Bool("unknFlag5_0_0", backing='B'),
+    Byte("unknFixed5_0_1"),
+    Bool("unknFlag5_0_2", backing='B'),
+    Bool("unknFlag5_0_3", backing='B'),
     Int("unknBitmask5_1"),
 ])
 SHADERSETTINGS_SCHEMA = SHADERSETTINGS_ATTR.schema
