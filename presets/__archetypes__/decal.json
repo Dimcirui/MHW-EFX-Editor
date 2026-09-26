@@ -1,0 +1,336 @@
+{
+ "efx_preset_kind": "entry",
+ "format_version": 2,
+ "display_name": "贴花",
+ "source_label": "decal",
+ "source_counts": {
+  "extern": 0,
+  "entry": 0,
+  "action": 0
+ },
+ "in_eof": false,
+ "entry": {
+  "kind": "standard",
+  "bodyType": 736418994,
+  "unkn0": 0,
+  "null": 0,
+  "timl": null,
+  "attributes": [
+   {
+    "type": "TRANSFORM3D",
+    "fields": {
+     "typeFlag": 1,
+     "translate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotate": [
+      0.0,
+      0.0,
+      -180.0,
+      360.0,
+      0.0,
+      0.0
+     ],
+     "resize": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotationOrder": 4,
+     "translation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "translation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "scale_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "scale_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "enableVelocityBitflag": 0
+    }
+   },
+   {
+    "type": "PARENTOPTIONS",
+    "fields": {
+     "typeFlag": 3,
+     "relationPos": [
+      1,
+      1,
+      1
+     ],
+     "relationRot": [
+      1,
+      1,
+      1
+     ],
+     "relationScl": [
+      1,
+      1,
+      1
+     ],
+     "particleUseLocal": 0,
+     "invalidParticleScale": 0,
+     "constRelease": 0,
+     "constReleaseJitter": 0,
+     "jointNo": -1
+    }
+   },
+   {
+    "type": "SPAWN",
+    "fields": {
+     "typeFlag": 2,
+     "maxParticles": 1,
+     "spawnNum": 1,
+     "spawnNumJitter": 0,
+     "intervalFrame": 0,
+     "intervalFrameJitter": 0,
+     "loopNum": 1,
+     "loopNumJitter": 0,
+     "spawnFrame": 0,
+     "spawnFrameJitter": 0,
+     "emitterDelayFrame": 0,
+     "emitterDelayFrameJitter": 0,
+     "particleDelayFrame": 0,
+     "particleDelayFrameJitter": 0,
+     "revivalLoop": 1,
+     "revivalInterval": 0,
+     "revivalIntervalJitter": 0,
+     "spawnFlags": 0
+    }
+   },
+   {
+    "type": "LIFE",
+    "fields": {
+     "typeFlag": 6,
+     "appearFrame": 0,
+     "appearFrameJitter": 0,
+     "keepFrame": 50,
+     "keepFrameJitter": 0,
+     "unknFrame": 0,
+     "unknFrameJitter": 0,
+     "vanishFrame": 90,
+     "vanishFrameJitter": 0,
+     "timeToDeath": 0,
+     "timeToDeathJitter": 0,
+     "indefiniteLifespan": 0
+    }
+   },
+   {
+    "type": "PTBEHAVIOR",
+    "fields": {
+     "typeFlag": 5,
+     "b_type": "nEffect::MhEffectDecalBehavior\u0000",
+     "params": [
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 2,
+       "t": 6,
+       "unkn": 1321438359
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 103,
+       "t": 6,
+       "unkn": 1244196026
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 1,
+       "t": 6,
+       "unkn": 1554237021
+      },
+      {
+       "const0": 1128324015,
+       "file_type": 915818428,
+       "path": "vfx\\uvs\\cm_decal\\cm_decal_000\u0000",
+       "t": 128,
+       "unkn": 1548884321
+      },
+      {
+       "const0": 1128324015,
+       "t": 54,
+       "unkn": 1057364655,
+       "unkn1": [
+        0,
+        0
+       ]
+      },
+      {
+       "const0": 1128324015,
+       "t": 54,
+       "unkn": -1078908233,
+       "unkn1": [
+        0,
+        0
+       ]
+      },
+      {
+       "const0": 1128324015,
+       "t": 55,
+       "unkn": -1001139844,
+       "unkn1": [
+        1.0,
+        0.0
+       ]
+      },
+      {
+       "const0": 1128324015,
+       "t": 55,
+       "unkn": -699635620,
+       "unkn1": [
+        1.0,
+        0.0
+       ]
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 0,
+       "t": 6,
+       "unkn": -1758977601
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 0,
+       "t": 6,
+       "unkn": 1046264850
+      },
+      {
+       "color": [
+        255,
+        255,
+        255,
+        200
+       ],
+       "const0": 1128324015,
+       "t": 15,
+       "unkn": -2146285913
+      },
+      {
+       "const0": 1128324015,
+       "t": 12,
+       "unkn": -2036475263,
+       "unkn0": 0.5
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 4,
+       "t": 6,
+       "unkn": 1543916998
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 2,
+       "t": 6,
+       "unkn": -395031323
+      },
+      {
+       "const0": 1128324015,
+       "t": 20,
+       "unkn": 1848885384,
+       "unkn1": [
+        120.0,
+        120.0,
+        120.0
+       ]
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 7,
+       "t": 6,
+       "unkn": 209496490
+      },
+      {
+       "const0": 1128324015,
+       "t": 12,
+       "unkn": -1183896730,
+       "unkn0": 45.0
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 2,
+       "t": 6,
+       "unkn": -444973413
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 2,
+       "t": 6,
+       "unkn": 360863196
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 1,
+       "t": 6,
+       "unkn": -567120560
+      },
+      {
+       "const0": 1128324015,
+       "t": 12,
+       "unkn": 1176643335,
+       "unkn0": 0.8
+      },
+      {
+       "const0": 1128324015,
+       "decal_epv_color_slot": 1,
+       "t": 6,
+       "unkn": 528247737
+      },
+      {
+       "const0": 1128324015,
+       "t": 12,
+       "unkn": 15820814,
+       "unkn0": 0.0
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

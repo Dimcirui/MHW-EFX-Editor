@@ -1,0 +1,206 @@
+{
+ "efx_preset_kind": "entry",
+ "format_version": 2,
+ "display_name": "玩家自发光",
+ "source_label": "plemissive",
+ "source_counts": {
+  "extern": 0,
+  "entry": 0,
+  "action": 0
+ },
+ "in_eof": false,
+ "entry": {
+  "kind": "standard",
+  "bodyType": 3384382380,
+  "unkn0": 0,
+  "null": 0,
+  "timl": null,
+  "attributes": [
+   {
+    "type": "TRANSFORM3D",
+    "fields": {
+     "typeFlag": 1,
+     "translate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "resize": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotationOrder": 4,
+     "translation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "translation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "scale_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "scale_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "enableVelocityBitflag": 0
+    }
+   },
+   {
+    "type": "PARENTOPTIONS",
+    "fields": {
+     "typeFlag": 3,
+     "relationPos": [
+      1,
+      1,
+      1
+     ],
+     "relationRot": [
+      1,
+      1,
+      1
+     ],
+     "relationScl": [
+      1,
+      1,
+      1
+     ],
+     "particleUseLocal": 0,
+     "invalidParticleScale": 0,
+     "constRelease": 0,
+     "constReleaseJitter": 0,
+     "jointNo": -1
+    }
+   },
+   {
+    "type": "SPAWN",
+    "fields": {
+     "typeFlag": 2,
+     "maxParticles": 1,
+     "spawnNum": 1,
+     "spawnNumJitter": 0,
+     "intervalFrame": 0,
+     "intervalFrameJitter": 0,
+     "loopNum": 1,
+     "loopNumJitter": 0,
+     "spawnFrame": 0,
+     "spawnFrameJitter": 0,
+     "emitterDelayFrame": 0,
+     "emitterDelayFrameJitter": 0,
+     "particleDelayFrame": 0,
+     "particleDelayFrameJitter": 0,
+     "revivalLoop": 1,
+     "revivalInterval": 0,
+     "revivalIntervalJitter": 0,
+     "spawnFlags": 0
+    }
+   },
+   {
+    "type": "LIFE",
+    "fields": {
+     "typeFlag": 10,
+     "appearFrame": 0,
+     "appearFrameJitter": 0,
+     "keepFrame": 0,
+     "keepFrameJitter": 0,
+     "unknFrame": 0,
+     "unknFrameJitter": 0,
+     "vanishFrame": 25,
+     "vanishFrameJitter": 0,
+     "timeToDeath": 0,
+     "timeToDeathJitter": 0,
+     "indefiniteLifespan": 0
+    }
+   },
+   {
+    "type": "DUMMY",
+    "fields": {
+     "typeFlag": 1,
+     "section_length": 1,
+     "unknFixed1": 0
+    }
+   },
+   {
+    "type": "PLEMISSIVE",
+    "fields": {
+     "typeFlag": 6,
+     "priority": 17,
+     "blend": 1.0,
+     "body_p": 4,
+     "wp_p": 32,
+     "NULL": 0,
+     "correctColorNo": 0,
+     "emissive": [
+      255,
+      76,
+      76,
+      255
+     ],
+     "intensity": 1.0,
+     "rimWidth": 0.1,
+     "rimPower": 0.1,
+     "rimAlpha": 1.0,
+     "emitMaskFlags": 0,
+     "mask0": 15.0,
+     "mask1": 250.0,
+     "enableUseEmitMask": 0,
+     "unknFixed5_0": 0.0,
+     "addMask0": 0.0,
+     "addMask1": 0.0,
+     "unknFixed5_3": 0.0,
+     "unknFixed5_4": 0.0
+    }
+   }
+  ]
+ }
+}

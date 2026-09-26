@@ -1,0 +1,230 @@
+{
+ "efx_preset_kind": "entry",
+ "format_version": 2,
+ "display_name": "触发节点",
+ "source_label": "trigger",
+ "source_counts": {
+  "extern": 0,
+  "entry": 0,
+  "action": 0
+ },
+ "in_eof": false,
+ "entry": {
+  "kind": "standard",
+  "bodyType": 3851743394,
+  "unkn0": 0,
+  "null": 0,
+  "timl": null,
+  "attributes": [
+   {
+    "type": "TRANSFORM3D",
+    "fields": {
+     "typeFlag": 1,
+     "translate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "resize": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotationOrder": 4,
+     "translation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "translation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "scale_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "scale_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "enableVelocityBitflag": 0
+    }
+   },
+   {
+    "type": "PARENTOPTIONS",
+    "fields": {
+     "typeFlag": 3,
+     "relationPos": [
+      1,
+      1,
+      1
+     ],
+     "relationRot": [
+      1,
+      1,
+      1
+     ],
+     "relationScl": [
+      1,
+      1,
+      1
+     ],
+     "particleUseLocal": 0,
+     "invalidParticleScale": 0,
+     "constRelease": 0,
+     "constReleaseJitter": 0,
+     "jointNo": -1
+    }
+   },
+   {
+    "type": "SPAWN",
+    "fields": {
+     "typeFlag": 2,
+     "maxParticles": 1,
+     "spawnNum": 1,
+     "spawnNumJitter": 0,
+     "intervalFrame": 0,
+     "intervalFrameJitter": 0,
+     "loopNum": 1,
+     "loopNumJitter": 0,
+     "spawnFrame": 0,
+     "spawnFrameJitter": 0,
+     "emitterDelayFrame": 0,
+     "emitterDelayFrameJitter": 0,
+     "particleDelayFrame": 0,
+     "particleDelayFrameJitter": 0,
+     "revivalLoop": 1,
+     "revivalInterval": 0,
+     "revivalIntervalJitter": 0,
+     "spawnFlags": 0
+    }
+   },
+   {
+    "type": "LIFE",
+    "fields": {
+     "typeFlag": 7,
+     "appearFrame": 0,
+     "appearFrameJitter": 0,
+     "keepFrame": 20,
+     "keepFrameJitter": 0,
+     "unknFrame": 0,
+     "unknFrameJitter": 0,
+     "vanishFrame": 0,
+     "vanishFrameJitter": 0,
+     "timeToDeath": 0,
+     "timeToDeathJitter": 0,
+     "indefiniteLifespan": 0
+    }
+   },
+   {
+    "type": "DUMMY",
+    "fields": {
+     "typeFlag": 6,
+     "section_length": 1,
+     "unknFixed1": 0
+    }
+   },
+   {
+    "type": "SHADERSETTINGS",
+    "fields": {
+     "typeFlag": 4,
+     "unknEnum1": 104,
+     "spacer": -842150656,
+     "versionRelated": 1,
+     "depthBias": 0.0,
+     "softParticleDistance": 0.1,
+     "unknBitmask3_0": 0,
+     "unknEnum3_1": 0,
+     "blendStateType": 1,
+     "unkn4_0": 1.0,
+     "unkn4_1": 0.1,
+     "unkn4_2": 0.9,
+     "unkn4_3": 1.0,
+     "unkn4_4": 1.0,
+     "unkn4_5": 1.0,
+     "unkn4_6": 1.0,
+     "unkn4_7": 100.0,
+     "presetId": -1,
+     "unkn4_9": 0.0,
+     "unkn4_10": 0.0,
+     "unkn4_11": 0.0,
+     "unknFixed4_12": 0.0,
+     "unkn4_13": 0.0,
+     "unknBitmask4_14": 0,
+     "unkn4_15": 0,
+     "objectInteractionFlag0": 255,
+     "objectInteractionFlag1": 255,
+     "objectInteractionFlag2": 255,
+     "objectInteractionFlag3": 255,
+     "unknBool0": 0,
+     "unknBool1": 1,
+     "unknBool2": 0,
+     "unknBool3": 0,
+     "unknEnum5_0": 0,
+     "unknBitmask5_1": 0
+    }
+   },
+   {
+    "type": "PTLIFE",
+    "fields": {
+     "typeFlag": 8,
+     "unknFixed1": 0,
+     "status": 0,
+     "unknEnum3": 5,
+     "relationIndex": -1,
+     "unknEnum5": 0,
+     "unknFrame0": 0,
+     "unknFrame0Jitter": 0,
+     "unknFrame1": 0,
+     "unknFrame1Jitter": 0
+    }
+   }
+  ]
+ }
+}

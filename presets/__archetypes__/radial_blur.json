@@ -1,0 +1,215 @@
+{
+ "efx_preset_kind": "entry",
+ "format_version": 2,
+ "display_name": "径向模糊",
+ "source_label": "radial_blur",
+ "source_counts": {
+  "extern": 0,
+  "entry": 0,
+  "action": 0
+ },
+ "in_eof": false,
+ "entry": {
+  "kind": "standard",
+  "bodyType": 372105554,
+  "unkn0": 0,
+  "null": 0,
+  "timl": null,
+  "attributes": [
+   {
+    "type": "TRANSFORM3D",
+    "fields": {
+     "typeFlag": 1,
+     "translate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "resize": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotationOrder": 4,
+     "translation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "translation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "scale_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "scale_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "enableVelocityBitflag": 0
+    }
+   },
+   {
+    "type": "PARENTOPTIONS",
+    "fields": {
+     "typeFlag": 3,
+     "relationPos": [
+      1,
+      1,
+      1
+     ],
+     "relationRot": [
+      1,
+      1,
+      1
+     ],
+     "relationScl": [
+      1,
+      1,
+      1
+     ],
+     "particleUseLocal": 0,
+     "invalidParticleScale": 0,
+     "constRelease": 0,
+     "constReleaseJitter": 0,
+     "jointNo": -1
+    }
+   },
+   {
+    "type": "SPAWN",
+    "fields": {
+     "typeFlag": 2,
+     "maxParticles": 1,
+     "spawnNum": 1,
+     "spawnNumJitter": 0,
+     "intervalFrame": 0,
+     "intervalFrameJitter": 0,
+     "loopNum": 1,
+     "loopNumJitter": 0,
+     "spawnFrame": 0,
+     "spawnFrameJitter": 0,
+     "emitterDelayFrame": 0,
+     "emitterDelayFrameJitter": 0,
+     "particleDelayFrame": 0,
+     "particleDelayFrameJitter": 0,
+     "revivalLoop": 1,
+     "revivalInterval": 0,
+     "revivalIntervalJitter": 0,
+     "spawnFlags": 0
+    }
+   },
+   {
+    "type": "LIFE",
+    "fields": {
+     "typeFlag": 6,
+     "appearFrame": 0,
+     "appearFrameJitter": 0,
+     "keepFrame": 5,
+     "keepFrameJitter": 0,
+     "unknFrame": 0,
+     "unknFrameJitter": 0,
+     "vanishFrame": 30,
+     "vanishFrameJitter": 0,
+     "timeToDeath": 0,
+     "timeToDeathJitter": 0,
+     "indefiniteLifespan": 0
+    }
+   },
+   {
+    "type": "PTBEHAVIOR",
+    "fields": {
+     "typeFlag": 5,
+     "b_type": "nEffect::RadialBlurFilterBehavior\u0000",
+     "params": [
+      {
+       "const0": -985708832,
+       "decal_epv_color_slot": 1,
+       "t": 6,
+       "unkn": 1242606667
+      },
+      {
+       "const0": -985708832,
+       "decal_epv_color_slot": 1,
+       "t": 6,
+       "unkn": 1321438359
+      },
+      {
+       "const0": -985708832,
+       "t": 12,
+       "unkn": 1007634508,
+       "unkn0": -0.07
+      },
+      {
+       "const0": -985708832,
+       "t": 21,
+       "unkn": -1679633880,
+       "unkn0": 0.1,
+       "unkn1": 0.1,
+       "unkn2": 0.1,
+       "unkn3": 1.0
+      },
+      {
+       "const0": -985708832,
+       "t": 12,
+       "unkn": 448272818,
+       "unkn0": 0.0
+      },
+      {
+       "const0": -985708832,
+       "t": 12,
+       "unkn": 1020519282,
+       "unkn0": 10000.0
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

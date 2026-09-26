@@ -1,0 +1,297 @@
+{
+ "efx_preset_kind": "entry",
+ "format_version": 2,
+ "display_name": "辉光",
+ "source_label": "glow",
+ "source_counts": {
+  "extern": 0,
+  "entry": 0,
+  "action": 0
+ },
+ "in_eof": false,
+ "entry": {
+  "kind": "standard",
+  "bodyType": 360926954,
+  "unkn0": 0,
+  "null": 0,
+  "timl": null,
+  "attributes": [
+   {
+    "type": "TRANSFORM3D",
+    "fields": {
+     "typeFlag": 1,
+     "translate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "resize": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotationOrder": 4,
+     "translation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "translation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "scale_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "scale_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "enableVelocityBitflag": 0
+    }
+   },
+   {
+    "type": "PARENTOPTIONS",
+    "fields": {
+     "typeFlag": 3,
+     "relationPos": [
+      1,
+      1,
+      1
+     ],
+     "relationRot": [
+      1,
+      1,
+      1
+     ],
+     "relationScl": [
+      1,
+      1,
+      1
+     ],
+     "particleUseLocal": 1,
+     "invalidParticleScale": 0,
+     "constRelease": 0,
+     "constReleaseJitter": 0,
+     "jointNo": -1
+    }
+   },
+   {
+    "type": "SPAWN",
+    "fields": {
+     "typeFlag": 2,
+     "maxParticles": 1,
+     "spawnNum": 1,
+     "spawnNumJitter": 0,
+     "intervalFrame": 0,
+     "intervalFrameJitter": 0,
+     "loopNum": 1,
+     "loopNumJitter": 0,
+     "spawnFrame": 0,
+     "spawnFrameJitter": 0,
+     "emitterDelayFrame": 0,
+     "emitterDelayFrameJitter": 0,
+     "particleDelayFrame": 0,
+     "particleDelayFrameJitter": 0,
+     "revivalLoop": 1,
+     "revivalInterval": 0,
+     "revivalIntervalJitter": 0,
+     "spawnFlags": 0
+    }
+   },
+   {
+    "type": "LIFE",
+    "fields": {
+     "typeFlag": 7,
+     "appearFrame": 0,
+     "appearFrameJitter": 0,
+     "keepFrame": 4,
+     "keepFrameJitter": 0,
+     "unknFrame": 0,
+     "unknFrameJitter": 0,
+     "vanishFrame": 12,
+     "vanishFrameJitter": 0,
+     "timeToDeath": 0,
+     "timeToDeathJitter": 0,
+     "indefiniteLifespan": 0
+    }
+   },
+   {
+    "type": "BILLBOARD3D",
+    "fields": {
+     "typeFlag": 4,
+     "applicationRule": 0,
+     "color": [
+      255,
+      179,
+      153,
+      255
+     ],
+     "colorRange": [
+      255,
+      255,
+      255,
+      255
+     ],
+     "brightness": 5.0,
+     "brightnessJitter": 0.0,
+     "useColorRange": 0,
+     "blendMode": 1,
+     "correctColorNo": 0,
+     "colorRangeCorrectColorNo": 0,
+     "rotation": -180.0,
+     "rotationJitter": 360.0,
+     "scale": 0.6,
+     "scaleJitter": 0.0,
+     "width": 100.0,
+     "widthJitter": 0.0,
+     "height": 100.0,
+     "heightJitter": 0.0,
+     "flowSpeed": 1.0,
+     "flowSpeedJitter": 0.0,
+     "flowSpeedCoef": 1.0,
+     "flowSpeedCoefJitter": 0.0,
+     "flowStrength": 1.0,
+     "flowStrengthJitter": 0.0,
+     "flowStrengthCoef": 1.0,
+     "flowStrengthCoefJitter": 0.0,
+     "divideNum": 0,
+     "enableGPUParticle": 0,
+     "fieldInfluenceRate": 0.0,
+     "fieldInfluenceRateMultiplier": 1.0,
+     "lightGroup": 1,
+     "unknFlag9": 0,
+     "path": "\u0000"
+    }
+   },
+   {
+    "type": "SCALEANIM",
+    "fields": {
+     "typeFlag": 6,
+     "sizeScalarAdd": 0.05,
+     "sizeScalarAddJitter": 0.0,
+     "sizeScalarAddCoef": 0.95,
+     "sizeScalarAddCoefJitter": 0.0,
+     "sizeXAdd": 0.0,
+     "sizeXAddJitter": 0.0,
+     "sizeXAddCoef": 1.0,
+     "sizeXAddCoefJitter": 0.0,
+     "sizeYAdd": 0.0,
+     "sizeYAddJitter": 0.0,
+     "sizeYAddCoef": 1.0,
+     "sizeYAddCoefJitter": 0.0,
+     "sizeZAdd": 0.0,
+     "sizeZAddJitter": 0.0,
+     "sizeZAddCoef": 1.0,
+     "sizeZAddCoefJitter": 0.0,
+     "animUpdateStart": 0,
+     "animUpdateStartJitter": 0
+    }
+   },
+   {
+    "type": "UVSEQUENCE",
+    "fields": {
+     "typeFlag": 5,
+     "sequenceNo": 0,
+     "sequenceNoJitter": 0,
+     "patternNo": 0,
+     "patternNoJitter": 0,
+     "playSpeed": 0.0,
+     "playSpeedJitter": 0.0,
+     "playSpeedCoef": 1.0,
+     "playSpeedCoefJitter": 0.0,
+     "loopingMode": 1,
+     "loopingOrientation": 0,
+     "loopingPad": 0,
+     "path": "vfx\\uvs\\cm\\cm_light_000\u0000"
+    }
+   },
+   {
+    "type": "SHADERSETTINGS",
+    "fields": {
+     "typeFlag": 4,
+     "unknEnum1": 104,
+     "spacer": -842150656,
+     "versionRelated": 1,
+     "depthBias": 0.0,
+     "softParticleDistance": 10.0,
+     "unknBitmask3_0": 1,
+     "unknEnum3_1": 0,
+     "blendStateType": 1,
+     "unkn4_0": 0.5,
+     "unkn4_1": 0.1,
+     "unkn4_2": 0.9,
+     "unkn4_3": 1.0,
+     "unkn4_4": 1.0,
+     "unkn4_5": 1.0,
+     "unkn4_6": 1.0,
+     "unkn4_7": 100.0,
+     "presetId": -1296088773,
+     "unkn4_9": 0.0,
+     "unkn4_10": 0.0,
+     "unkn4_11": 0.0,
+     "unknFixed4_12": 0.0,
+     "unkn4_13": 0.0,
+     "unknBitmask4_14": 0,
+     "unkn4_15": 0,
+     "objectInteractionFlag0": 255,
+     "objectInteractionFlag1": 255,
+     "objectInteractionFlag2": 255,
+     "objectInteractionFlag3": 255,
+     "unknBool0": 0,
+     "unknBool1": 1,
+     "unknBool2": 1,
+     "unknBool3": 0,
+     "unknEnum5_0": 0,
+     "unknBitmask5_1": 1
+    }
+   }
+  ]
+ }
+}

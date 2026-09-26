@@ -1,0 +1,475 @@
+{
+ "efx_preset_kind": "entry",
+ "format_version": 2,
+ "display_name": "拖尾",
+ "source_label": "trail",
+ "source_counts": {
+  "extern": 0,
+  "entry": 0,
+  "action": 0
+ },
+ "in_eof": false,
+ "entry": {
+  "kind": "standard",
+  "bodyType": 1301772912,
+  "unkn0": 0,
+  "null": 0,
+  "timl": null,
+  "attributes": [
+   {
+    "type": "TRANSFORM3D",
+    "fields": {
+     "typeFlag": 1,
+     "translate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "resize": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotationOrder": 4,
+     "translation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "translation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "scale_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "scale_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "enableVelocityBitflag": 0
+    }
+   },
+   {
+    "type": "PARENTOPTIONS",
+    "fields": {
+     "typeFlag": 3,
+     "relationPos": [
+      1,
+      1,
+      1
+     ],
+     "relationRot": [
+      1,
+      1,
+      1
+     ],
+     "relationScl": [
+      1,
+      1,
+      1
+     ],
+     "particleUseLocal": 0,
+     "invalidParticleScale": 0,
+     "constRelease": 0,
+     "constReleaseJitter": 0,
+     "jointNo": -1
+    }
+   },
+   {
+    "type": "SPAWN",
+    "fields": {
+     "typeFlag": 2,
+     "maxParticles": 8,
+     "spawnNum": 8,
+     "spawnNumJitter": 0,
+     "intervalFrame": 0,
+     "intervalFrameJitter": 0,
+     "loopNum": 1,
+     "loopNumJitter": 0,
+     "spawnFrame": 0,
+     "spawnFrameJitter": 0,
+     "emitterDelayFrame": 0,
+     "emitterDelayFrameJitter": 0,
+     "particleDelayFrame": 0,
+     "particleDelayFrameJitter": 0,
+     "revivalLoop": 1,
+     "revivalInterval": 0,
+     "revivalIntervalJitter": 0,
+     "spawnFlags": 0
+    }
+   },
+   {
+    "type": "LIFE",
+    "fields": {
+     "typeFlag": 10,
+     "appearFrame": 0,
+     "appearFrameJitter": 0,
+     "keepFrame": 20,
+     "keepFrameJitter": 5,
+     "unknFrame": 0,
+     "unknFrameJitter": 0,
+     "vanishFrame": 20,
+     "vanishFrameJitter": 5,
+     "timeToDeath": 0,
+     "timeToDeathJitter": 0,
+     "indefiniteLifespan": 0
+    }
+   },
+   {
+    "type": "EMITTERSHAPE3D",
+    "fields": {
+     "typeFlag": 8,
+     "rangeXYZ": [
+      10.0,
+      0.0,
+      0.0,
+      0.0,
+      10.0,
+      0.0
+     ],
+     "shapeType": 2,
+     "rangeDivideAxis": 0,
+     "rotationCorrect": 0,
+     "localRotationX": 0.0,
+     "localRotationY": 0.0,
+     "localRotationZ": 0.0,
+     "rotationOrder": 4,
+     "scanAngleHorizontal": 360.0,
+     "scanAngleVertical": 0.0,
+     "rangeDivideHorizontalNum": 0,
+     "rangeDivideVerticalNum": 0,
+     "radiusEnd": 1.0,
+     "radiusOrigin": 1.0,
+     "rayCastDependency": 0,
+     "unknFlag4": 1
+    }
+   },
+   {
+    "type": "VELOCITY3D",
+    "fields": {
+     "typeFlag": 9,
+     "baseAxis": 1,
+     "rotOrder": 4,
+     "rotationX": 0.0,
+     "rotationXJitter": 0.0,
+     "rotationY": 0.0,
+     "rotationYJitter": 0.0,
+     "rotationZ": 0.0,
+     "rotationZJitter": 0.0,
+     "speed": 5.5,
+     "speedJitter": 1.5,
+     "speedCoef": 0.97,
+     "speedCoefJitter": 0.0,
+     "offsetX": 0.0,
+     "offsetY": 8.0,
+     "offsetZ": 0.0,
+     "sizeX": 2.0,
+     "sizeY": 1.0,
+     "sizeZ": 2.0,
+     "velocityType": 1,
+     "gravity": 0.2,
+     "gravity_jitter": 0.04,
+     "movementDelay": 0,
+     "movementDelayJitter": 0,
+     "gravityDelay": 0,
+     "gravityDelayJitter": 0,
+     "minMovementThreshold": 0.0
+    }
+   },
+   {
+    "type": "RIBBON",
+    "fields": {
+     "typeFlag": 1,
+     "section_length": 352,
+     "spacer0": -842150656,
+     "color": [
+      255,
+      214,
+      160,
+      255
+     ],
+     "useColorRange": 0,
+     "spacer1": [
+      205,
+      205,
+      205
+     ],
+     "colorRange": [
+      255,
+      255,
+      255,
+      255
+     ],
+     "blendMode": 1,
+     "spacer2": [
+      205,
+      205,
+      205
+     ],
+     "brightness": 4.0,
+     "brightnessJitter": 0.0,
+     "ribbonMode": 0,
+     "scale": 1.0,
+     "scale_jitter": 0.0,
+     "width": 8.0,
+     "width_jitter": 2.0,
+     "length": 100.0,
+     "length_jitter": 0.0,
+     "uvScaleMode": 0,
+     "uvScaleLength": 1.0,
+     "uvScaleLengthJitter": 0.0,
+     "uvScaleWidth": 1.0,
+     "subdivisionCount": 10,
+     "useTrailTimeScale": 0,
+     "trailTimeScale": 0.1,
+     "baseAxis": 1,
+     "rotationOrder": 4,
+     "rotationX": 0.0,
+     "rotationXJitter": 0.0,
+     "rotationYJitter": 0.0,
+     "rotationY": 0.0,
+     "rotationZJitter": 0.0,
+     "rotationZ": 0.0,
+     "unknFlag16_0_1": 0,
+     "unknFixed16_1_lo": 1,
+     "unknBool16_1": 1,
+     "unknBool16_2_0": 1,
+     "faceVelocity": 0,
+     "fixedDirection": 0,
+     "lockInitialVelocity": 0,
+     "spacer3": [
+      205,
+      205
+     ],
+     "unknFixed17": 1.0,
+     "spacer4": -842150451,
+     "lengthwise_offset_relative_to_camera": 0.5,
+     "spawnAnchorOffset": 1.0,
+     "restoreStrength": 1.0,
+     "restoreStrengthJitter": 0.0,
+     "inertia": 0.9,
+     "inertiaJitter": 0.0,
+     "springiness": 0.1,
+     "springiness_jitter": 0.0,
+     "stretchFromSpawn": 0,
+     "spacer5": [
+      205,
+      205,
+      205
+     ],
+     "stretchMaxLength": 0.0,
+     "stretchMaxLengthJitter": 0.0,
+     "stretchResetDistance": 0.0,
+     "stretchResetDistanceJitter": 0.0,
+     "unkn21": 0.1,
+     "unkn22_0": 0.0,
+     "lightGroup": 1,
+     "unknFlag22_2": 0,
+     "enableFlowmap": 0,
+     "spacer6": [
+      205,
+      205,
+      205
+     ],
+     "flowSpeed": 1.0,
+     "flowSpeedJitter": 0.0,
+     "flowSpeedCoef": 1.0,
+     "flowSpeedCoefJitter": 0.0,
+     "flowStrength": 1.0,
+     "flowStrengthJitter": 0.0,
+     "flowStrengthCoef": 1.0,
+     "flowStrengthCoefJitter": 0.0,
+     "flowOnce": 0,
+     "flowReverse": 0,
+     "unkn24": [
+      205,
+      205
+     ],
+     "epvcolor_0": 0,
+     "epvcolor_1": 0,
+     "unknBool7": 0,
+     "spacer7": [
+      205,
+      205,
+      205
+     ],
+     "base_width_multiplier": 1.0,
+     "base_opacity": 1.0,
+     "tip_width_multiplier": 0.0,
+     "tip_opacity": 0.0,
+     "enableFadeLength": 1,
+     "spacer8": [
+      205,
+      205,
+      205
+     ],
+     "base_fade_length": 0.3,
+     "tip_fade_length": 0.4,
+     "visiblePreview": 0,
+     "enableFlap": 0,
+     "spacer9": -12851,
+     "flap1Frequency": 0.0,
+     "flap1FrequencyJitter": 0.0,
+     "flap1Amount": 0.0,
+     "flap1AmountJitter": 0.0,
+     "flap2Frequency": 0.0,
+     "flap2FrequencyJitter": 0.0,
+     "flap2Amount": 0.0,
+     "flap2AmountJitter": 0.0,
+     "unknFixed28_0": 0,
+     "enableGravity": 0,
+     "gravityLocalSpace": 0,
+     "spacer28": [
+      205,
+      205,
+      205,
+      205,
+      205,
+      205,
+      205,
+      205,
+      205,
+      205,
+      205,
+      205,
+      205
+     ],
+     "gravityX": 0.0,
+     "gravityY": 0.0,
+     "gravityZ": 0.0,
+     "unknFixed28_param3": 0.0,
+     "path1": ""
+    }
+   },
+   {
+    "type": "SCALEANIM",
+    "fields": {
+     "typeFlag": 3,
+     "sizeScalarAdd": -0.012,
+     "sizeScalarAddJitter": 0.0,
+     "sizeScalarAddCoef": 1.0,
+     "sizeScalarAddCoefJitter": 0.0,
+     "sizeXAdd": 0.0,
+     "sizeXAddJitter": 0.0,
+     "sizeXAddCoef": 1.0,
+     "sizeXAddCoefJitter": 0.0,
+     "sizeYAdd": 0.0,
+     "sizeYAddJitter": 0.0,
+     "sizeYAddCoef": 1.0,
+     "sizeYAddCoefJitter": 0.0,
+     "sizeZAdd": 0.0,
+     "sizeZAddJitter": 0.0,
+     "sizeZAddCoef": 1.0,
+     "sizeZAddCoefJitter": 0.0,
+     "animUpdateStart": 0,
+     "animUpdateStartJitter": 0
+    }
+   },
+   {
+    "type": "UVSEQUENCE",
+    "fields": {
+     "typeFlag": 6,
+     "sequenceNo": 1,
+     "sequenceNoJitter": 0,
+     "patternNo": 0,
+     "patternNoJitter": 0,
+     "playSpeed": 1.0,
+     "playSpeedJitter": 0.0,
+     "playSpeedCoef": 1.0,
+     "playSpeedCoefJitter": 0.0,
+     "loopingMode": 1,
+     "loopingOrientation": 0,
+     "loopingPad": 0,
+     "path": "vfx\\uvs\\cm\\cm_light_000\u0000"
+    }
+   },
+   {
+    "type": "SHADERSETTINGS",
+    "fields": {
+     "typeFlag": 4,
+     "unknEnum1": 104,
+     "spacer": -842150656,
+     "versionRelated": 1,
+     "depthBias": 0.0,
+     "softParticleDistance": 10.0,
+     "unknBitmask3_0": 0,
+     "unknEnum3_1": 0,
+     "blendStateType": 1,
+     "unkn4_0": 1.0,
+     "unkn4_1": 0.1,
+     "unkn4_2": 0.9,
+     "unkn4_3": 1.0,
+     "unkn4_4": 1.0,
+     "unkn4_5": 1.0,
+     "unkn4_6": 1.0,
+     "unkn4_7": 100.0,
+     "presetId": -1,
+     "unkn4_9": 0.0,
+     "unkn4_10": 0.0,
+     "unkn4_11": 0.0,
+     "unknFixed4_12": 0.0,
+     "unkn4_13": 0.0,
+     "unknBitmask4_14": 0,
+     "unkn4_15": 0,
+     "objectInteractionFlag0": 255,
+     "objectInteractionFlag1": 255,
+     "objectInteractionFlag2": 255,
+     "objectInteractionFlag3": 255,
+     "unknBool0": 0,
+     "unknBool1": 1,
+     "unknBool2": 0,
+     "unknBool3": 0,
+     "unknEnum5_0": 0,
+     "unknBitmask5_1": 0
+    }
+   }
+  ]
+ }
+}

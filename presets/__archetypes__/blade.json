@@ -1,0 +1,335 @@
+{
+ "efx_preset_kind": "entry",
+ "format_version": 2,
+ "display_name": "刀光",
+ "source_label": "blade",
+ "source_counts": {
+  "extern": 0,
+  "entry": 0,
+  "action": 0
+ },
+ "in_eof": false,
+ "entry": {
+  "kind": "standard",
+  "bodyType": 3733192215,
+  "unkn0": 0,
+  "null": 0,
+  "timl": null,
+  "attributes": [
+   {
+    "type": "TRANSFORM3D",
+    "fields": {
+     "typeFlag": 1,
+     "translate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotate": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "resize": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotationOrder": 4,
+     "translation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "translation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "rotation_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "scale_velocity": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ],
+     "scale_velocity_modifier": [
+      1.0,
+      0.0,
+      1.0,
+      0.0,
+      1.0,
+      0.0
+     ],
+     "enableVelocityBitflag": 0
+    }
+   },
+   {
+    "type": "PARENTOPTIONS",
+    "fields": {
+     "typeFlag": 3,
+     "relationPos": [
+      1,
+      1,
+      1
+     ],
+     "relationRot": [
+      1,
+      1,
+      1
+     ],
+     "relationScl": [
+      1,
+      1,
+      1
+     ],
+     "particleUseLocal": 1,
+     "invalidParticleScale": 0,
+     "constRelease": 0,
+     "constReleaseJitter": 0,
+     "jointNo": -1
+    }
+   },
+   {
+    "type": "SPAWN",
+    "fields": {
+     "typeFlag": 2,
+     "maxParticles": 1,
+     "spawnNum": 1,
+     "spawnNumJitter": 0,
+     "intervalFrame": 0,
+     "intervalFrameJitter": 0,
+     "loopNum": 1,
+     "loopNumJitter": 0,
+     "spawnFrame": 0,
+     "spawnFrameJitter": 0,
+     "emitterDelayFrame": 0,
+     "emitterDelayFrameJitter": 0,
+     "particleDelayFrame": 0,
+     "particleDelayFrameJitter": 0,
+     "revivalLoop": 1,
+     "revivalInterval": 0,
+     "revivalIntervalJitter": 0,
+     "spawnFlags": 0
+    }
+   },
+   {
+    "type": "LIFE",
+    "fields": {
+     "typeFlag": 10,
+     "appearFrame": 0,
+     "appearFrameJitter": 0,
+     "keepFrame": 1,
+     "keepFrameJitter": 0,
+     "unknFrame": 0,
+     "unknFrameJitter": 0,
+     "vanishFrame": 30,
+     "vanishFrameJitter": 0,
+     "timeToDeath": 0,
+     "timeToDeathJitter": 0,
+     "indefiniteLifespan": 1
+    }
+   },
+   {
+    "type": "RIBBONBLADE",
+    "fields": {
+     "typeFlag": 1,
+     "unknFixed0_1": 72,
+     "spacer0": -842150656,
+     "widthDirection": 5,
+     "width": 100.0,
+     "length": 6,
+     "interpolationCount": 4,
+     "spacer1": -842150656,
+     "unknFlag07_0": 0,
+     "lengthMode": 1,
+     "maxLengthLimit": 500.0,
+     "contractionSpeed": 0.0,
+     "colourTransitionPoint": 0.0,
+     "emissiveStrength": 1.0,
+     "emissiveStrengthRange": 1.0,
+     "useEmissiveRange": 0,
+     "spacer2b": [
+      205,
+      205,
+      205
+     ],
+     "unknEnum10": 0,
+     "uvRepetition": 1.0,
+     "unknFlag12_0": 0.0,
+     "unknFlag12_1": 0,
+     "unknFixed12_2": 32,
+     "spacer3": -842150656,
+     "head": {
+      "epvColorSlot": 0,
+      "color1": [
+       255,
+       255,
+       255,
+       255
+      ],
+      "null2": 0,
+      "color2": [
+       255,
+       255,
+       255,
+       255
+      ],
+      "spacer4": -842150656,
+      "unkn15": 0,
+      "size": 1.0,
+      "unkn17": 32,
+      "unkn18_0": 0,
+      "unkn18_1": 205,
+      "spacer5": -12851
+     },
+     "tailEnd": {
+      "epvColorSlot": 0,
+      "color1": [
+       255,
+       255,
+       255,
+       0
+      ],
+      "null2": 0,
+      "color2": [
+       255,
+       255,
+       255,
+       255
+      ],
+      "spacer4": -842150656,
+      "unkn15": 0,
+      "size": 0.1,
+      "unkn17": 38
+     },
+     "tailUnkn18_0": 0,
+     "enableFlowmap": 1,
+     "spacer5": [
+      205,
+      205
+     ],
+     "flowSpeed": 0.0,
+     "flowSpeedJitter": 0.0,
+     "flowSpeedCoef": 1.0,
+     "flowSpeedCoefJitter": 0.0,
+     "flowStrength": 5.0,
+     "flowStrengthJitter": 0.0,
+     "flowStrengthCoef": 1.0,
+     "flowStrengthCoefJitter": 0.0,
+     "flowOnce": 0,
+     "flowReverse": 0,
+     "path": "vfx\\dds\\cm\\cm_flowmap\\cm_flow_009_F_NM\u0000"
+    }
+   },
+   {
+    "type": "UVSEQUENCE",
+    "fields": {
+     "typeFlag": 6,
+     "sequenceNo": 9,
+     "sequenceNoJitter": 0,
+     "patternNo": 0,
+     "patternNoJitter": 0,
+     "playSpeed": 0.0,
+     "playSpeedJitter": 0.0,
+     "playSpeedCoef": 1.0,
+     "playSpeedCoefJitter": 0.0,
+     "loopingMode": 0,
+     "loopingOrientation": 2,
+     "loopingPad": 0,
+     "path": "vfx\\uvs\\cm\\cm_smoke_900\u0000"
+    }
+   },
+   {
+    "type": "ALPHACORRECTION",
+    "fields": {
+     "unkn0": 1,
+     "lowPass": 0.0,
+     "contrast_gamma": 0.25,
+     "unkn3": 0.0,
+     "unknFlag2": 1
+    }
+   },
+   {
+    "type": "SHADERSETTINGS",
+    "fields": {
+     "typeFlag": 4,
+     "unknEnum1": 104,
+     "spacer": -842150656,
+     "versionRelated": 1,
+     "depthBias": 0.0,
+     "softParticleDistance": 0.0,
+     "unknBitmask3_0": 0,
+     "unknEnum3_1": 0,
+     "blendStateType": 1,
+     "unkn4_0": 1.0,
+     "unkn4_1": 1.0,
+     "unkn4_2": 0.0,
+     "unkn4_3": 1.0,
+     "unkn4_4": 1.0,
+     "unkn4_5": 1.0,
+     "unkn4_6": 0.8,
+     "unkn4_7": 0.0,
+     "presetId": -1,
+     "unkn4_9": 0.0,
+     "unkn4_10": 0.0,
+     "unkn4_11": 0.0,
+     "unknFixed4_12": 0.0,
+     "unkn4_13": 0.0,
+     "unknBitmask4_14": 0,
+     "unkn4_15": 0,
+     "objectInteractionFlag0": 0,
+     "objectInteractionFlag1": 0,
+     "objectInteractionFlag2": 0,
+     "objectInteractionFlag3": 254,
+     "unknBool0": 0,
+     "unknBool1": 1,
+     "unknBool2": 1,
+     "unknBool3": 0,
+     "unknEnum5_0": 0,
+     "unknBitmask5_1": 0
+    }
+   },
+   {
+    "type": "REFRACTION",
+    "fields": {
+     "typeFlag": 3,
+     "distortionType": 1,
+     "alphaBlend": 0.0
+    }
+   }
+  ]
+ }
+}
