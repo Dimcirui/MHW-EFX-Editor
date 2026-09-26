@@ -5,7 +5,7 @@
 
     physicsEnum                     0=穿透坠落 1=反弹后强制消亡 2=反弹后渐隐消亡
                                     3=反弹后停留地面 4=反弹后穿透坠落
-    projectionOffset                地面高度偏移，游戏单位（cm）；地面为 Y=projectionOffset
+    projectionOffset                碰撞面相对世界地面的偏移，游戏单位（cm），正值向下
     bounceCount(+Jitter)            允许的反弹次数；第 bounceCount+1 次触地进入结束方式
     bounceElasticity(+Jitter) /     两者之和为触地后垂直地面方向的反向速度乘数
     bounceElasticityMultiplier
@@ -23,6 +23,8 @@
 - 触地判据必须是「越过地面」而非「当前 Y <= 地面」：仅当上一帧在地面以上、本帧在地面或以下
   时判定触地。在地面或地面以下出生的粒子不会触地。
 - 反弹须同时改写 `p.vel` 与 `p.vel_free`，否则 VELOCITY3D 下一帧用自由速度覆盖反弹结果。
+- 碰撞面为 `SimConfig.ground_y − projectionOffset` 处的水平面。ground_y 是世界地面在模拟坐标系
+  中的高度，由宿主按 Entry 的世界位置换算；子实例与根共用同一坐标系，沿用同一值。
 - 必须位于 CONSTRAIN 阶段：须在 INTEGRATE 计算本帧位置之后、XFORM 之前覆写 `p.pos` /
   `p.vel`；渐隐改写的 LIFE 边界由同帧稍后的 SHADE 阶段读取。
 """
@@ -70,7 +72,7 @@ class PtCollision(Behavior):
         if not PHYS_FALL_THROUGH <= self._phys <= PHYS_BOUNCE_FALL_THROUGH:
             em.note("PTCOLLISION.physicsEnum=%d 含义未知，按反弹后停留处理" % self._phys)
             self._phys = PHYS_STAY
-        self._ground = float(f.get("projectionOffset", 0.0))
+        self._ground = float(em.config.ground_y) - float(f.get("projectionOffset", 0.0))
         self._mode = f.i("impactPlayTriggerMode")
 
     def on_particle_spawn(self, p, em, rng):

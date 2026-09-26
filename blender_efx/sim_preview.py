@@ -246,9 +246,10 @@ def build_simulator(entry_obj, scene, out=None):
     resources, uvs_info = _uvs_state(entry_obj)
     if out is not None:
         out["uvs"] = uvs_info
+    cfg = _config_from_scene(scene)
+    cfg.ground_y = _ground_y(_entry_matrix_rows(entry_obj))
     try:
-        sim = Simulator(blocks, _entry_timl_bytes(entry_obj),
-                        _config_from_scene(scene), resources)
+        sim = Simulator(blocks, _entry_timl_bytes(entry_obj), cfg, resources)
     except Exception as exc:
         _P["error"] = str(exc)
         return None
@@ -592,6 +593,7 @@ def build_track(entry_obj, scene):
         action_table, has_playefx = _action_table(root_col)
 
     cfg = _config_from_scene(scene)
+    cfg.ground_y = _ground_y(_entry_matrix_rows(entry_obj))
     entries = _reachable_entries(entry_obj, action_table, attrs_by_entry,
                                  max(1, int(cfg.max_spawn_depth)))
 
@@ -991,6 +993,16 @@ def _apply_swing_preview(tr, scene):
     # 朝向：先转到刀身指向正右，再随挥砍转过 θ；rows[2][2] 为世界 Z 在 Entry 局部的游戏 Y 分量
     hr.x, hr.y, hr.z = 0.0, _swing_yaw0(tr) + math.degrees(theta) * rows[2][2], 0.0
     return True
+
+
+def _ground_y(rows):
+    """世界地面（Blender Z=0）在该 Entry 局部游戏坐标中的 Y；Entry 带旋转时仍按水平面处理。"""
+    if rows is None:
+        return 0.0
+    k = rows[2][2] * _UNIT
+    if abs(k) < 1e-12:
+        return 0.0
+    return -rows[2][3] / k
 
 
 def _entry_matrix_rows(entry_obj):
@@ -2048,8 +2060,10 @@ void main()
   vec3 rgb;
   float a = t.a;
   if (fireLerp >= 0.0) {
+    // 烟雾取 R→B、覆盖取 A→B，按 lerpAlphaToBlue 切换；火焰所在处始终不透明
     float fireMask = t.g;
-    float smokeMask = t.r * mix(t.a, t.b, fireLerp);
+    float smokeMask = mix(t.r, t.b, fireLerp);
+    a = max(fireMask, mix(t.a, t.b, fireLerp));
     rgb = v_col.rgb * fireMask + v_col2.rgb * smokeMask;
   } else if (waterLerp >= 0.0) {
     // 两层遮罩都已含 alpha，不透明度取两者较大者
@@ -2336,8 +2350,10 @@ void main()
   vec3 rgb;
   float a = t.a;
   if (fireLerp >= 0.0) {
+    // 烟雾取 R→B、覆盖取 A→B，按 lerpAlphaToBlue 切换；火焰所在处始终不透明
     float fireMask = t.g;
-    float smokeMask = t.r * mix(t.a, t.b, fireLerp);
+    float smokeMask = mix(t.r, t.b, fireLerp);
+    a = max(fireMask, mix(t.a, t.b, fireLerp));
     rgb = v_col.rgb * fireMask + v_col2.rgb * smokeMask;
   } else if (waterLerp >= 0.0) {
     // 两层遮罩都已含 alpha，不透明度取两者较大者
@@ -2848,21 +2864,23 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                             col[3]), hdr_mode)
         return a, b
 
-    def _emit_refract_excess(it, prgb, tex, corners, side):
-        """折射倍数超过 1 的部分补一层加法。
+    def _refract_excess(it, c):
+        """折射倍数超过 1 的部分（RGBA）。
 
         视口叠加层是 8 位缓冲，乘法混合的源色大于 1 会被截断，高亮折射（颜色 × 自发光
         远大于 1）就会完全看不见。背景未知，按 _REFRACT_BG 估计：背景 × c ≈ 背景 × min(c, 1)
         + _REFRACT_BG × (c − 1)。加法档（背景 × (1 + c)）的超出部分为 c。
         """
         add = it.blend == "REFRACT_ADD"
-        a = it.color[3]
+        ex = [(v if add else v - 1.0) * _REFRACT_BG for v in c[:3]]
+        return (max(0.0, ex[0]), max(0.0, ex[1]), max(0.0, ex[2]), it.color[3])
+
+    def _emit_refract_excess(it, prgb, tex, corners, side):
+        """条带的折射补光，见 `_refract_excess`；`side` 为 None 时面向镜头。"""
         # 折射不走双层通道，逐点颜色（刀光渐变 × 代表色）直接可用
         src = prgb if prgb else [it.color[:3]] * len(it.points)
-        rows = []
-        for c in src:
-            ex = [(v if add else v - 1.0) * _REFRACT_BG for v in c[:3]]
-            rows.append((max(0.0, ex[0]), max(0.0, ex[1]), max(0.0, ex[2]), a))
+        rows = [_refract_excess(it, c) for c in src]
+        a = it.color[3]
         if not any(r[0] or r[1] or r[2] for r in rows):
             return
         e_it = _RenderItem(kind="RIBBON")
@@ -2872,7 +2890,8 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
         _key, eb = _bucket_for(e_it, tex)
         _emit_ribbon(eb[0], eb[1], eb[2], e_it, (0.0, 0.0, 0.0, a), size_mul, _world, view_dir,
                      corners, col2s=eb[3], core=None,
-                     fixed_side=([_world_dir(d) for d in side] if isinstance(side, list)
+                     fixed_side=(None if side is None
+                                 else [_world_dir(d) for d in side] if isinstance(side, list)
                                  else _world_dir(side)),
                      row_colors=rows, row_t=it.extra.get("point_t"))
 
@@ -2967,6 +2986,8 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             else:
                 _emit_ribbon(b[0], b[1], b[2], it, edge, size_mul, _world,
                              view_dir, corners, col2s=b[3], core=core)
+            if side is None and it.blend in _REFRACT_MODES:
+                _emit_refract_excess(it, it.extra.get("point_rgb"), tex_name, corners, None)
         elif kind == "MESH":
             # 子实例按其所属 Entry 查询绑定网格。
             (geom, tex_name, factor, etex, efactor, vtx_a, dot, mkey, mask_uv2,
@@ -2976,11 +2997,20 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
             # 几何本身在哪无关；不做深度遮挡。都相同时游戏里先后不稳定，预览退回 Entry 顺序
             dist = sum((cam_pos[i] - center[i]) * view_dir[i] for i in range(3))
             dot_op = ((cam_pos if persp else None), dot[1], view_dir, dot[2], dot[3]) if dot[0] else None
-            if factor != _NO_FACTOR:
+            em = it.extra.get("emissive")
+            flat_emis = (not etex and em and max(em[0], em[1], em[2]) > 0.0
+                         and it.blend not in _MULTIPLY_MODES)
+            if factor != _NO_FACTOR or flat_emis:
                 # mrl3 的 BaseMapFactor 与底色贴图相乘，第 4 位是不透明度系数
                 c = it.color
                 c = (c[0] * factor[0], c[1] * factor[1], c[2] * factor[2],
                      c[3] * factor[3])
+                if flat_emis:
+                    # 没有 EmissiveMap 时自发光按纯色整体叠加。底色是受光的反照率，不超过 1；
+                    # 预览没有光照，两者相加后再做 HDR 映射，否则高亮底色会盖掉自发光的色相
+                    c = (min(1.0, c[0]) + em[0] * efactor[0],
+                         min(1.0, c[1]) + em[1] * efactor[1],
+                         min(1.0, c[2]) + em[2] * efactor[2], c[3])
                 col = c if it.blend in _MULTIPLY_MODES else _display_color(c, hdr_mode)
             # 网格没有 UV 时无从采样流动贴图
             flow_tex, flow_amt = (_flow_of(it, tex_name) if (geom[2] is not None and mkey is None)
@@ -3000,7 +3030,6 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                        uvs=bu, col2s=b2, core=core, luvs=blu, flowoffs=bfo,
                        flow_amt=flow_amt, vertex_alpha=vtx_a, dot_opacity=dot_op,
                        mask_uv=mask_uv)
-            em = it.extra.get("emissive")
             if etex and em and geom[2] is not None and max(em[0], em[1], em[2]) > 0.0:
                 # 自发光层：EmissiveMap × EmissiveMapFactor × 自发光色，叠加在底色层之上；
                 # 不透明度沿用底色层（含生命期渐隐与遮罩）
@@ -3046,6 +3075,19 @@ def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                     off = (amt * (max(us) - min(us)), amt * (max(vs) - min(vs)), ph, lap)
                 blu.extend(_QUAD_LUV)
                 bfo.extend([off] * 6)
+            if it.blend in _REFRACT_MODES and not (flow_tex and tex_name):
+                ex = _refract_excess(it, it.color)
+                if ex[0] or ex[1] or ex[2]:
+                    g_it = _RenderItem(kind="PLANE")
+                    g_it.blend = "REFRACT_GLOW"
+                    g_it.extra["entry_key"] = it.extra.get("entry_key")
+                    _key, (gv, gc, gu, g2, _np, _lu, _fo) = _bucket_for(g_it, tex_name)
+                    gv.extend(_quad_verts(center, qr, qu, hw, hh))
+                    gc.extend([ex] * 6)
+                    if g2 is not None:
+                        g2.extend([ex] * 6)
+                    if gu is not None:
+                        gu.extend(_quad_uvs(corners))
             emis = it.extra.get("decal_emissive")
             etex = _emissive_of(it) if emis is not None else ""
             if etex:

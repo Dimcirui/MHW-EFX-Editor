@@ -23,19 +23,22 @@ RGBFIRE 只提供颜色，其作用是从一张多通道贴图中分别取出两
     `p.rolled["rgbfire_lerp"]` 为 lerpAlphaToBlue。有贴图时由 fragment shader 分别计算两层
     遮罩并着色：
 
-        fire_mask  = G                                      火焰层不受 B / Alpha 影响
-        smoke_mask = R × mix(Alpha, Blue, lerpAlphaToBlue)
+        fire_mask  = G
+        smoke_mask = mix(R, Blue, lerpAlphaToBlue)
+        不透明度   = max(G, mix(Alpha, Blue, lerpAlphaToBlue))
 
-    lerpAlphaToBlue 取 0 时烟雾以 Alpha 为范围，R 决定其中的显示部分；取 1 时 Alpha 项完全由
-    Blue 替代。
+    lerpAlphaToBlue 取 0 时烟雾取 R、覆盖取 Alpha；取 1 时两者都改取 Blue，R 与 Alpha 不再起作用。
+    火焰所在处始终不透明，与贴图 Alpha 无关。
 
 维护约束：
 - 必须同时提供代表色与分层色。只提供代表色时，有贴图的路径失去通道语义；只提供分层色时，
   无贴图的路径没有颜色。
 - `lighting`、`lifeType`、`correctColorNo` 三项作用未知或未接入，不参与计算。
+- 同一 Entry 挂 REFRACTION 时染色不生效，只保留 alphaFactor：折射不取贴图 RGB，颜色只由渲染体
+  自身的颜色 × 亮度决定。
 """
 
-from ...hashes import RGBFIRE
+from ...hashes import REFRACTION, RGBFIRE
 from ..registry import Behavior, register
 from ..stages import SHADE
 from ._common import blend_two_colors, color_param_weight, roll_color_param, scale_alpha
@@ -57,12 +60,15 @@ class RgbFire(Behavior):
     #: fireColor / smokeColor / colorRate / alphaFactor 可由 TIML 驱动，存在轨道时逐帧重新求值；
     #: 仅在出生时采样会使颜色停留在 age=0 的取值。
     _has_tracks = False
+    #: 同 Entry 挂 REFRACTION 时只保留透明度
+    _alpha_only = False
 
     def on_emitter_init(self, em, rng):
         f = em.f(RGBFIRE)
         if f is None:
             return
         self._has_tracks = f.has_tracks
+        self._alpha_only = em.has(REFRACTION)
 
     def on_particle_spawn(self, p, em, rng):
         f = em.f(RGBFIRE, p)
@@ -101,6 +107,9 @@ class RgbFire(Behavior):
                 alpha = float(f.get("alphaFactor", 1.0) or 0.0)
                 lerp = max(0.0, min(1.0, float(f.get("lerpAlphaToBlue", 0.0) or 0.0)))
 
+        if self._alpha_only:
+            scale_alpha(p, "rgbfire_alpha", max(0.0, alpha))
+            return
         wf = fire_i * color_param_weight(st["fp"], p.age)
         ws = smoke_i * color_param_weight(st["sp"], p.age)
         tint = blend_two_colors(em.config, fire, wf, smoke, ws)

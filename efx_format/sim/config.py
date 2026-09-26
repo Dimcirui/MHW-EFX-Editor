@@ -127,7 +127,7 @@ class SimConfig(object):
         "uvs_speed_unit", "uvs_once_span", "uvs_start_wrap",
         "uvs_grid_h", "uvs_grid_v", "uvs_grid_scan",
         "blink_phase",
-        "rot_order_applied", "ribbon_trail_source", "t3d_apply_base",
+        "rot_order_applied", "ribbon_trail_source", "t3d_apply_base", "ground_y",
         "homing_ff_recover_frames",
         "homing_orbit_lateral_tilt", "fade_depth_metric", "fade_cone_mode",
         "stage_order", "render_stage_order", "order_override", "disabled",
@@ -175,6 +175,9 @@ class SimConfig(object):
         #         模拟层只贡献漂移（translation_velocity 那组）。
         # True  = 脱离宿主单独跑时，让模拟层自己套上静态变换。
         self.t3d_apply_base = False
+        #: 世界地面在模拟坐标系（根 Entry 局部、游戏单位）中的 Y。PTCOLLISION 的碰撞面在此基础上
+        #: 按 projectionOffset 偏移；宿主按 Entry 的世界位置换算后填入，单独运行时即发射器所在高度。
+        self.ground_y = 0.0
 
         # ── 阶段顺序（数据不是代码；UI 可拖动重排）──────────────────────────
         self.stage_order = list(_stages.DEFAULT_STAGE_ORDER)

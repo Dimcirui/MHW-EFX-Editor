@@ -27,9 +27,10 @@
 维护约束：
 - `p.rolled["layers"]` 的顺序为 (水膜色, 高光色)，glue 侧两条遮罩公式按位置对应，调换顺序会使
   两层遮罩互换。该顺序与 RGBFIRE 的 (火焰色, 烟雾色) 不是同一种排列。
+- 同一 Entry 挂 REFRACTION 时染色不生效，只保留 intensityAlpha，同 RGBFIRE。
 """
 
-from ...hashes import RGBWATER
+from ...hashes import REFRACTION, RGBWATER
 from ..registry import Behavior, register
 from ..stages import SHADE
 from ._common import blend_two_colors, color_param_weight, roll_color_param, scale_alpha
@@ -46,12 +47,15 @@ class RgbWater(Behavior):
     #: 颜色、强度与 colorRate 可由 TIML 驱动，存在轨道时逐帧重新求值；
     #: 仅在出生时采样会使颜色停留在 age=0 的取值。
     _has_tracks = False
+    #: 同 Entry 挂 REFRACTION 时只保留透明度
+    _alpha_only = False
 
     def on_emitter_init(self, em, rng):
         f = em.f(RGBWATER)
         if f is None:
             return
         self._has_tracks = f.has_tracks
+        self._alpha_only = em.has(REFRACTION)
 
     def on_particle_spawn(self, p, em, rng):
         f = em.f(RGBWATER, p)
@@ -88,7 +92,10 @@ class RgbWater(Behavior):
                 alpha = float(f.get("intensityAlpha", 1.0) or 0.0)
                 lerp = max(0.0, min(1.0, float(f.get("waterLerpGtoB", 0.0) or 0.0)))
 
-        w0 = spec_i * color_param_weight(st["sp"], p.age)
+        if self._alpha_only:
+            scale_alpha(p, "rgbwater_alpha", alpha)
+            return
+        w0 =spec_i * color_param_weight(st["sp"], p.age)
         w1 = sheet_i * color_param_weight(st["hp"], p.age)
         tint = blend_two_colors(em.config, spec, w0, sheet, w1)
         p.color = [tint[0] * rate, tint[1] * rate, tint[2] * rate]

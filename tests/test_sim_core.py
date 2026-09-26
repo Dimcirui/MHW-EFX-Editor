@@ -3048,6 +3048,39 @@ class TestPtLifeActionScene(unittest.TestCase):
         sim.run(3)
         self.assertEqual(sim.build_render()[0].blend, "REFRACT_ADD")
 
+    def test_refraction_ignores_rgbfire_tint(self):
+        """挂 REFRACTION 时 RGBFIRE 染色不生效：黄 × −5 + 蓝色 RGBFIRE 仍是 (−5, −4.27, 0)，
+        alphaFactor 照常作用。"""
+        blocks = [
+            (SPAWN, {"maxParticles": 1, "spawnNum": 1, "intervalFrame": 0,
+                     "loopNum": 1, "revivalLoop": 1}),
+            (LIFE, {"keepFrame": 60, "indefiniteLifespan": 1}),
+            (BILLBOARD3D, {"color": [255, 218, 0, 255], "brightness": -5,
+                           "blendMode": 1, "width": 100, "height": 100, "scale": 1}),
+            (SHADERSETTINGS, {"blendStateType": 2}),
+            (REFRACTION, {"typeFlag": 2, "distortionType": 0, "alphaBlend": 0.0}),
+            (RGBFIRE, rgbfire_fields(fireColor=[0, 0, 255, 255], smokeColor=[0, 0, 255, 255],
+                                     alphaFactor=0.5)),
+        ]
+        sim = Simulator(blocks, b"", SimConfig())
+        sim.run(3)
+        it = sim.build_render()[0]
+        self.assertEqual(it.blend, "REFRACT_ADD")
+        self.assertAlmostEqual(it.color[0], -5.0, places=5)
+        self.assertAlmostEqual(it.color[1], -5.0 * 218 / 255, places=5)
+        self.assertAlmostEqual(it.color[2], 0.0, places=5)
+        self.assertAlmostEqual(it.color[3], 0.5, places=5)
+
+        # RGBWATER 同样只保留 intensityAlpha
+        blocks[-1] = (RGBWATER, rgbwater_fields(colorSpecular=[0, 0, 255, 255],
+                                                colorSheet=[0, 0, 255, 255],
+                                                intensityAlpha=0.5))
+        sim = Simulator(blocks, b"", SimConfig())
+        sim.run(3)
+        it = sim.build_render()[0]
+        self.assertAlmostEqual(it.color[0], -5.0, places=5)
+        self.assertAlmostEqual(it.color[3], 0.5, places=5)
+
     def test_refraction_hands_flowmap_and_params_to_the_preview(self):
         """面片上的畸变位移与 alphaBlend 已由预览画出：不报 note，流动贴图参数照常带出。"""
         def run(flow, blend):
@@ -3508,7 +3541,7 @@ class TestPlaneScaleAnim(unittest.TestCase):
 class TestPtCollisionPhysics(unittest.TestCase):
     """PTCOLLISION 的物理类型、反弹、地面偏移与触地触发模式。"""
 
-    def _drop(self, frames=40, height=5.0, gravity=0.3, **kw):
+    def _drop(self, frames=40, height=5.0, gravity=0.3, ground_y=0.0, **kw):
         """让一颗粒子从 height 高处以每帧 1 的初速下落（带重力），返回 (scene, 粒子)。"""
         parent_blocks = [
             (SPAWN, spawn_fields(intervalFrame=1000)),
@@ -3525,7 +3558,7 @@ class TestPtCollisionPhysics(unittest.TestCase):
         templates = {0: EntryTemplate(0, parent_blocks),
                      1: EntryTemplate(1, child_blocks)}
         sc = SimScene(templates, {0: [ActionTarget(1)]}, root_key=0,
-                      config=SimConfig(seed=1))
+                      config=SimConfig(seed=1, ground_y=ground_y))
         sc.run(1)
         p = sc.root.sim.em.particles[0]
         p.pos.y = height
@@ -3573,10 +3606,25 @@ class TestPtCollisionPhysics(unittest.TestCase):
         self.assertEqual(p.user[PtCollision]["impacts"], 2)
         self.assertLess(p.pos.y, -10.0)
 
-    def test_projection_offset_raises_ground(self):
-        sc, p = self._drop(frames=10, height=20.0, physicsEnum=3, projectionOffset=12.0,
+    def test_projection_offset_positive_lowers_ground(self):
+        """projectionOffset 正值向下：地面在 ground_y − projectionOffset。"""
+        sc, p = self._drop(frames=10, height=20.0, physicsEnum=3, projectionOffset=-12.0,
                            ieIndex=-1)
         self.assertEqual(p.pos.y, 12.0)
+        sc, p = self._drop(frames=20, height=5.0, physicsEnum=3, projectionOffset=4.0,
+                           ieIndex=-1)
+        self.assertEqual(p.pos.y, -4.0)
+
+    def test_ground_follows_world_ground(self):
+        """碰撞面取宿主给的世界地面高度：出生在发射器平面、地面在其下方时照样触地停住。"""
+        sc, p = self._drop(frames=40, height=0.0, ground_y=-30.0, physicsEnum=3,
+                           ieIndex=0)
+        self.assertEqual(p.pos.y, -30.0)
+        self.assertEqual(p.user[PtCollision]["impacts"], 1)
+        # 触地触发的子实例沿用同一地面
+        self.assertEqual(sc.instance_count, 2)
+        self.assertIsNot(sc.instances[-1], sc.root)
+        self.assertEqual(sc.instances[-1].sim.config.ground_y, -30.0)
 
     def test_trigger_modes(self):
         common = dict(frames=80, physicsEnum=3, bounceCount=2, bounceElasticity=0.7)
