@@ -189,6 +189,19 @@ STRINGS = {
                                  "ZH": "MHW VFX 工作区已存在，已切换过去"},
     "entry.workspace_missing": {"EN": "MHW VFX workspace template not found",
                                 "ZH": "找不到 MHW VFX 工作区模板文件"},
+    "entry.reload_all":       {"EN": "Reload All Effects", "ZH": "重新载入所有特效"},
+    "entry.reload_all_tip":   {"EN": "Re-read the .uvs, textures and models used by every EFX in the "
+                                     "scene from disk and refresh the preview. Models are imported only "
+                                     "for MESH attributes that have no bound mesh. Unsaved .uvs edits "
+                                     "are overwritten",
+                               "ZH": "从磁盘重新读取场景里所有 EFX 用到的 .uvs、贴图和模型，并刷新预览。"
+                                     "模型只为还没有绑定网格的 MESH 属性导入。未保存的 .uvs 修改会被覆盖"},
+    "entry.reload_all_done":  {"EN": "Reloaded {0} .uvs file(s) and {1} texture(s); imported {2} model(s)",
+                               "ZH": "已重新载入 {0} 个 .uvs、{1} 张贴图，新导入 {2} 个模型"},
+    "entry.reload_all_mesh_missing": {"EN": "{0} model(s) not found (check the Chunk Root): {1}",
+                                      "ZH": "{0} 个模型未找到（检查 Chunk Root）：{1}"},
+    "entry.reload_all_no_editor": {"EN": "MHW Model Editor not found; models were not imported",
+                                   "ZH": "未检测到 MHW Model Editor，没有导入模型"},
     # ── Color Editor 全局改色工具（仅仅导入颜色模式）──────────────────────────
     "colortool.target":       {"EN": "Target Color",        "ZH": "目标颜色"},
     "colortool.shift":        {"EN": "Shift Palette",       "ZH": "色系偏移"},

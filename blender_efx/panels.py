@@ -1721,8 +1721,11 @@ class EFX_PT_entry(bpy.types.Panel):
                      text=T("entry.sync_transform"), icon="ORIENTATION_GLOBAL")
         row.operator("efx.validate", text=T("validate.run_btn"), icon="CHECKMARK")
 
-        layout.operator("efx.add_mhw_vfx_workspace",
-                         text=T("entry.add_workspace"), icon="WORKSPACE")
+        row = layout.row(align=True)
+        row.operator("efx.add_mhw_vfx_workspace",
+                     text=T("entry.add_workspace"), icon="WORKSPACE")
+        row.operator("efx.reload_all_effects",
+                     text=T("entry.reload_all"), icon="FILE_REFRESH")
 
 
 

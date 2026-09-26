@@ -352,7 +352,19 @@ def _parent_matched_materials(mesh_blk, mats, done):
         _parent_under_attribute(mat_blk, matched, done)
 
 
-def import_and_bind(root_obj, context, chunk_root, efx_dir=None):
+def has_bound_mesh(blk):
+    """MESH 属性是否还绑着场景里存在的网格。"""
+    try:
+        for item in blk.efx_mesh_targets:
+            if item.obj is not None and item.obj.name in bpy.data.objects:
+                return True
+    except Exception:
+        pass
+    target = getattr(blk, "efx_mesh_target", None)
+    return target is not None and target.name in bpy.data.objects
+
+
+def import_and_bind(root_obj, context, chunk_root, efx_dir=None, only_unbound=False):
     """对 EFX_ROOT 下每个带 mod3 路径的 MESH 属性：解析→导入→按 viscon 范围绑定。
 
     返回 (n_bound, unresolved)：
@@ -361,6 +373,7 @@ def import_and_bind(root_obj, context, chunk_root, efx_dir=None):
     同一 mod3 路径只导入一次（去重）；多个 MESH 属性引用同一 mod3 时，各自按自己的
     visconIndex/Jitter 范围从这同一批导入网格里挑自己的子集（见 `_bind_viscon_range`），
     不再像旧版那样所有引用者共绑「第一个」。
+    only_unbound=True 时跳过已绑定网格的属性，避免重复导入同一模型。
     导入出来的一排 mod3/mrl3 集合统一收进这个 .efx 顶层集合下的 `{efx 文件名}_mesh`
     子集合（红色），免得几个 MESH 属性就在大纲里铺一长条。
     网格随后挂到对应 MESH 属性下；不在任何属性 viscon 范围内的网格挂到第一个引用该
@@ -377,6 +390,8 @@ def import_and_bind(root_obj, context, chunk_root, efx_dir=None):
     col_cache = {}       # 本次导入共用的 {efx}_mesh 总集合（懒建）
 
     for blk, rel in iter_mesh_attributes(root_obj):
+        if only_unbound and has_bound_mesh(blk):
+            continue
         abspath = resolve_mod3_path(rel, chunk_root, efx_dir)
         if abspath is None:
             unresolved.append((blk.name, rel))

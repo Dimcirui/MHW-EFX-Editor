@@ -2637,6 +2637,22 @@ def _clear_tex_cache():
     _MESH_MAT_INFO.clear()
 
 
+def reset_resources():
+    """清空贴图、.uvs 与网格缓存，下个 tick 按磁盘重建；返回缓存中引用过的图像名。"""
+    names = set(_MAT_TEX_CACHE.values()) | set(_FLOW_TEX_CACHE.values())
+    for info in _MESH_MAT_INFO.values():
+        names.update(info.get(k) or "" for k in ("albedo", "emissive_img", "mask", "flow"))
+    names.discard("")
+    _clear_tex_cache()
+    _clear_material_cache()
+    _clear_flow_cache()
+    _UVS_HOST_CACHE.clear()
+    _P["mesh_cache"] = {}
+    _P["dirty"] = True
+    _P["needs_items"] = True
+    return names
+
+
 def _collect_track(tr, scene, rv3d, buckets, points, point_colors, lines,
                    line_colors):
     """将一个 track 的渲染项装配到按绘制状态分组的顶点桶。"""
