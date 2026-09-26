@@ -47,8 +47,8 @@
                                             "subs": [
                                                 {
                                                     "value": 60.0,
-                                                    "back": 0.0,
-                                                    "period": 0.0
+                                                    "startTangent": 0.0,
+                                                    "endTangent": 0.0
                                                 }
                                             ]
                                         },
@@ -59,8 +59,8 @@
                                             "subs": [
                                                 {
                                                     "value": 130.0,
-                                                    "back": 0.0,
-                                                    "period": 0.0
+                                                    "startTangent": 0.0,
+                                                    "endTangent": 0.0
                                                 }
                                             ]
                                         }
@@ -77,8 +77,8 @@
                                             "subs": [
                                                 {
                                                     "value": 4.0,
-                                                    "back": 0.0,
-                                                    "period": 0.0
+                                                    "startTangent": 0.0,
+                                                    "endTangent": 0.0
                                                 }
                                             ]
                                         },
@@ -89,8 +89,8 @@
                                             "subs": [
                                                 {
                                                     "value": 4.0,
-                                                    "back": 0.0,
-                                                    "period": 0.0
+                                                    "startTangent": 0.0,
+                                                    "endTangent": 0.0
                                                 }
                                             ]
                                         },
@@ -101,8 +101,8 @@
                                             "subs": [
                                                 {
                                                     "value": 2.0,
-                                                    "back": 0.0,
-                                                    "period": 0.0
+                                                    "startTangent": 0.0,
+                                                    "endTangent": 0.0
                                                 }
                                             ]
                                         },
@@ -113,8 +113,8 @@
                                             "subs": [
                                                 {
                                                     "value": 0.0,
-                                                    "back": 0.0,
-                                                    "period": 0.0
+                                                    "startTangent": 0.0,
+                                                    "endTangent": 0.0
                                                 }
                                             ]
                                         }
@@ -452,8 +452,8 @@
                     "versionRelated": 0,
                     "depthBias": 0.0,
                     "softParticleDistance": 10.0,
-                    "unknBitmask3_0": 1,
-                    "unknEnum3_1": 0,
+                    "particleLighting": 1,
+                    "drawMode": 0,
                     "blendStateType": 1,
                     "unkn4_0": 1.0,
                     "unkn4_1": 1.0,
@@ -469,8 +469,8 @@
                     "unkn4_11": 0.0,
                     "unknFixed4_12": 0.0,
                     "unkn4_13": 0.0,
-                    "unknBitmask4_14": 0,
-                    "unkn4_15": 0,
+                    "drawTarget": 0,
+                    "drawPriority": 0,
                     "objectInteractionFlag0": 255,
                     "objectInteractionFlag1": 255,
                     "objectInteractionFlag2": 255,

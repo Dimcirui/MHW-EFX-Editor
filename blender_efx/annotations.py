@@ -260,15 +260,15 @@ FIELD_ANNOTATIONS = {
         "EN": "Purpose unknown.",
         "ZH": "作用未知。",
     },
-    ("SHADERSETTINGS", "unknEnum3_1"): {
-        "EN": "Render layer / billboard mode. "
-              "0=3D billboard (default); 2=Plane; "
-              "3=certain render subjects (e.g. BILLBOARD2D) bypass TONEMAPFILTER color grading; "
-              "6/7/8/9=3D billboard variants.",
-        "ZH": "渲染层 / billboard 模式。"
-              "0=3D billboard（默认）；2=Plane；"
-              "3=部分渲染主体（如 BILLBOARD2D）可无视 TONEMAPFILTER 色调滤镜；"
-              "6/7/8/9=3D billboard 变体。",
+    ("SHADERSETTINGS", "drawMode"): {
+        "EN": "How the particle is drawn. Water Ripple: draws nothing itself; its texture "
+              "ripples any water surface behind it on screen. Overlay: drawn on top of other "
+              "effects and unaffected by tone mapping and colour filters. Lighting Transition "
+              "6–9: look the same as Default; may change how light and shadow ease in. "
+              "Other values behave as Default.",
+        "ZH": "粒子的绘制方式。水面波纹：自身不显示，贴图作为波纹作用于屏幕上其后方的水面。"
+              "覆盖层：画在其他特效之上，不受色调处理和色彩滤镜影响。光暗过渡 6～9：画面与默认"
+              "相同，可能改变光暗过渡的曲线。其余取值按默认处理。",
     },
 
     # ─── FADEBYDEPTH ──────────────────────────────────────────────────────────
@@ -3597,9 +3597,15 @@ FIELD_ANNOTATIONS = {
               "effects added later have 1 throughout.",
         "ZH": "区分本体发售前后，后来新增的特效整文件此值全取1。",
     },
-    ("SHADERSETTINGS", "unknBitmask3_0"): {
-        "EN": "Common values: [0, 1, 2, 3]; most commonly 0 or 1.",
-        "ZH": "常见取值为 [0, 1, 2, 3]；最常见为 0 或 1。",
+    ("SHADERSETTINGS", "particleLighting"): {
+        "EN": "How scene light and shadow affect the particle. Unlit: ignores lighting. "
+              "Per Particle: the whole particle brightens or darkens together, starting about "
+              "0.2 s after the change and easing over about 1 s. Per Pixel: updates instantly, "
+              "and a shadow edge can cross the particle. Fire, glow and sparks usually use "
+              "Unlit; smoke and water usually use Per Particle.",
+        "ZH": "场景光照与阴影如何作用于粒子。不受光：忽略光照。逐粒子：整个粒子一起明暗变化，"
+              "变化后约 0.2 秒开始、约 1 秒过渡完。逐像素：即时生效，阴影边缘可以落在粒子中间。"
+              "火、光、火花通常不受光，烟和水通常逐粒子。",
     },
     ("SHADERSETTINGS", "unkn4_0"): {
         "EN": "Common range: 0~1.",
@@ -3634,8 +3640,8 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200]。",
     },
     ("SHADERSETTINGS", "presetId"): {
-        "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. Type a preset name (or pick one from the dropdown) to use it; leave empty for none. May also be DrawTarget.',
-        "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。填入预设名字（或从下拉里选一个）即可使用，留空表示不选任何预设。也可能是 DrawTarget。',
+        "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. Type a preset name (or pick one from the dropdown) to use it; leave empty for none.',
+        "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。填入预设名字（或从下拉里选一个）即可使用，留空表示不选任何预设。',
     },
     ("SHADERSETTINGS", "unkn4_9"): {
         "EN": "Usually 0; other common values: [-1000, -500, -200, -100, -50, 20, 50, 100, 200].",
@@ -3657,14 +3663,19 @@ FIELD_ANNOTATIONS = {
         "EN": "Usually 0; other common values: [15, 17, 20, 25, 50, 100, 150, 200, 300].",
         "ZH": "通常为 0；其余常见取值为 [15, 17, 20, 25, 50, 100, 150, 200, 300]。",
     },
-    ("SHADERSETTINGS", "unknBitmask4_14"): {
-        "EN": "Common values: [0, 1, 2, 3]; almost always 0.",
-        "ZH": "常见取值为 [0, 1, 2, 3]；绝大多数为 0。",
+    ("SHADERSETTINGS", "drawTarget"): {
+        "EN": "Where a 2D screen overlay layer is drawn. Screen: shown directly. Overlay "
+              "buffers: not shown by themselves; used by other screen effects, such as "
+              "raindrops distorting the view. Usually Screen.",
+        "ZH": "2D 屏幕叠加层绘制到哪里。屏幕：直接显示。叠加层缓冲：本身不显示，供其他屏幕效果"
+              "使用，例如雨滴扭曲画面。通常为屏幕。",
     },
-    ("SHADERSETTINGS", "unkn4_15"): {
-        "EN": "Usually 0; other common values are large round numbers: "
-              "[1, 100, 500, 1000, 2500, 5000, 8000, 10000, -10000].",
-        "ZH": "通常为 0；其余常见取值为较大的整数：[1, 100, 500, 1000, 2500, 5000, 8000, 10000, -10000]。",
+    ("SHADERSETTINGS", "drawPriority"): {
+        "EN": "Front-to-back order against other particles where they overlap. The higher "
+              "value is drawn on top only when the two differ by more than 4096; otherwise "
+              "the later Entry is on top. Usually 0.",
+        "ZH": "与其他粒子重叠时的前后顺序。两者相差超过 4096 时数值大的在上面，否则按 Entry "
+              "顺序，靠后的在上面。通常为 0。",
     },
     ("SHADERSETTINGS", "unknEnum5_0"): {
         "EN": "Common values: [0, 1, 65536, 16777216].",

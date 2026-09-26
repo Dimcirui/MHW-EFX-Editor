@@ -103,14 +103,30 @@ ENUM_HOMING_VANISH = EnumDef("HomingVanishMode", [
     (1, "Cancel Infinite Life", "取消无限寿命"),
     (2, "Vanish Immediately", "立即消失"),
 ])
-ENUM_RENDER_LAYER = EnumDef("RenderLayerMode", [
-    (0, "3D Billboard", "3D Billboard"), 
-    (2, "Plane", "Plane"),
-    (3, "Bypass Tonemap", "无视色调滤镜"),
-    (6, "3D Billboard v6", "3D Billboard 变体6"), 
-    (7, "3D Billboard v7", "3D Billboard 变体7"),
-    (8, "3D Billboard v8", "3D Billboard 变体8"), 
-    (9, "3D Billboard v9", "3D Billboard 变体9"),
+# SHADERSETTINGS.particleLighting：粒子受场景光照与阴影的方式。2 语料极少且未测，不列入下拉。
+ENUM_PARTICLE_LIGHTING = EnumDef("ParticleLighting", [
+    (0, "Unlit", "不受光"),
+    (1, "Per Particle", "逐粒子"),
+    (2, "Unknown (2)", "未知 (2)", True),
+    (3, "Per Pixel", "逐像素"),
+])
+# SHADERSETTINGS.drawMode：单一枚举，不按位拆分；未列出的取值按默认处理。
+# 6～9 与 0 在实机上无可辨差异，暂按光暗过渡的插值方式不同处理。
+ENUM_DRAW_MODE = EnumDef("DrawMode", [
+    (0, "Default", "默认"),
+    (2, "Water Ripple", "水面波纹"),
+    (3, "Overlay (No Tone Mapping)", "覆盖层（不受色调处理）"),
+    (6, "Lighting Transition 6?", "光暗过渡 6?"),
+    (7, "Lighting Transition 7?", "光暗过渡 7?"),
+    (8, "Lighting Transition 8?", "光暗过渡 8?"),
+    (9, "Lighting Transition 9?", "光暗过渡 9?"),
+])
+# SHADERSETTINGS.drawTarget：只在 2D 屏幕叠加层上非 0。1～3 的含义按官方层名推断。
+ENUM_DRAW_TARGET = EnumDef("DrawTarget", [
+    (0, "Screen", "屏幕"),
+    (1, "Overlay Color?", "叠加层颜色?"),
+    (2, "Overlay Normal?", "叠加层法线?"),
+    (3, "Overlay Mask?", "叠加层遮罩?"),
 ])
 # SHADERSETTINGS.blendStateType：渲染项与背景的混合方式，覆盖渲染体自身的设置。
 # 4/5/7/9/10 与对应基础模式的画面相同。4/10 语料未出现，9 看不出独立特征，不列入下拉；

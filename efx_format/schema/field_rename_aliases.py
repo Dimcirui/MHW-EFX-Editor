@@ -28,6 +28,10 @@ FIELD_RENAME_ALIASES = {
     ("SHADERSETTINGS", "controlBitflag"): "blendStateType",
     ("SHADERSETTINGS", "blendState"): "blendStateType",
     ("SHADERSETTINGS", "unknFlag2"): "versionRelated",
+    ("SHADERSETTINGS", "unknBitmask3_0"): "particleLighting",
+    ("SHADERSETTINGS", "unknEnum3_1"): "drawMode",
+    ("SHADERSETTINGS", "unknBitmask4_14"): "drawTarget",
+    ("SHADERSETTINGS", "unkn4_15"): "drawPriority",
 
     # HOMING
     ("HOMING", "restoringForce"): "turnRate",
