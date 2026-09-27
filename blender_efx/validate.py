@@ -665,7 +665,7 @@ def validate_efx_tree(root_obj) -> list:
                     "obj": _dim_2d_entries[0],
                 })
 
-    # TIML 仅支持固定插值；BEZIER 有明确近似，其余不支持插值阻止导出。
+    # TIML：游戏没有的缓动、无法精确还原的贝塞尔手柄只提醒，导出近似结果。
     try:
         from . import timl_edit as _te
         from . import io_tree as _iot
@@ -678,27 +678,12 @@ def validate_efx_tree(root_obj) -> list:
                 if h is None:
                     continue
                 for iss in _te.check_timl_interpolations(h):
-                    if iss["severity"] == "ERROR":
-                        problems.append({
-                            "level": "ERROR",
-                            "category": "timl_interp",
-                            "msg": (
-                                f"Entry '{body.name}' TIML keyframe uses unsupported "
-                                f"interpolation '{iss['interp']}' — only "
-                                f"{_te._SUPPORTED_INTERP_DESC} are supported by the game"
-                            ),
-                            "obj": body.name,
-                        })
-                    else:  # BEZIER → WARN（近似为 Cubic）
-                        problems.append({
-                            "level": "WARN",
-                            "category": "timl_interp",
-                            "msg": (
-                                f"Entry '{body.name}' TIML keyframe uses BEZIER — the game "
-                                "has no free bezier, so it is approximated as Cubic on export"
-                            ),
-                            "obj": body.name,
-                        })
+                    if iss["kind"] == "approx":
+                        msg = T("timlm.interp_approx").format(body.name, iss["interp"])
+                    else:
+                        msg = T("timlm.handle_approx").format(body.name)
+                    problems.append({"level": "WARN", "category": "timl_interp",
+                                     "msg": msg, "obj": body.name})
             except Exception:
                 pass  # 单个 Entry 检查失败不影响整体。
 

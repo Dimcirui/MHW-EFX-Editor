@@ -46,8 +46,8 @@
                                             "subs": [
                                                 {
                                                     "value": 10.0,
-                                                    "back": 0.0,
-                                                    "period": 0.0
+                                                    "startTangent": 0.0,
+                                                    "endTangent": 0.0
                                                 }
                                             ]
                                         },
@@ -58,8 +58,8 @@
                                             "subs": [
                                                 {
                                                     "value": 0.5,
-                                                    "back": 0.0,
-                                                    "period": 0.0
+                                                    "startTangent": 0.0,
+                                                    "endTangent": 0.0
                                                 }
                                             ]
                                         },
@@ -70,8 +70,8 @@
                                             "subs": [
                                                 {
                                                     "value": 10.0,
-                                                    "back": 0.0,
-                                                    "period": 0.0
+                                                    "startTangent": 0.0,
+                                                    "endTangent": 0.0
                                                 }
                                             ]
                                         }

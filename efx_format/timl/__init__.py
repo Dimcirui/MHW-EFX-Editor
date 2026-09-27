@@ -3,7 +3,8 @@
 维护约束：
 - TIML 由 animation、data、type、transform 与关键帧组成；偏移均相对 TIML 起点并按小端读写。
 - 未编辑的 TIML 必须直接输出 ``raw``；编辑后才按 16 字节对齐布局重建。
-- 关键帧固定为 20 字节；Color 与 BIG_FLAGS 使用多子通道编码。
+- 关键帧固定为 20 字节：值、起点切线、终点切线、帧、插值、dataType；Color 与 BIG_FLAGS 使用多子通道编码。
+- 两个切线只在插值 3（三次 Hermite）下生效，是以该关键帧为起点那一段的两端切线，单位是本段平均斜率。
 - 本模块保持纯 Python，不能导入 bpy。
 """
 
@@ -25,8 +26,9 @@ _KEYFRAME_SIZE = 20
 
 # dataType 显示名
 DATATYPE_NAMES = {0: "SInt", 1: "Int", 2: "Float", 3: "Color", 4: "Bool"}
-# 插值显示名；5/6 的语义尚未确认
-INTERP_NAMES = ["STUCK", "CONSTANT", "LINEAR", "QUAD", "CUBIC", "UNK5", "UNK6"]
+# 插值显示名：0/1 阶跃（两者相同）、2 线性、3 三次 Hermite（读两个切线）、4 smoothstep；
+# 5/6 在浮点轨道上是退化行为，7 以上不显示
+INTERP_NAMES = ["STUCK", "CONSTANT", "LINEAR", "HERMITE", "SMOOTH", "UNK5", "UNK6"]
 
 # BIG_FLAGS 的 value/controlL/controlR 分为高、低 16 位子通道。
 BIG_FLAGS = frozenset({
@@ -44,6 +46,21 @@ def channel_sublabels(data_type: int, datatype_hash: int) -> List[str]:
     return [""]
 
 
+#: 关键帧两个控制值的键名；旧 JSON 用 back / period
+TANGENT_KEYS = ("startTangent", "endTangent")
+_OLD_TANGENT_KEYS = ("back", "period")
+
+
+def make_sub(value, t0, t1) -> dict:
+    """一个子通道：值 + 起点 / 终点切线。"""
+    return {"value": value, TANGENT_KEYS[0]: t0, TANGENT_KEYS[1]: t1}
+
+
+def sub_tangents(sub: dict):
+    """读子通道的两个切线；兼容旧键名，缺省为 0。"""
+    return tuple(sub.get(k, sub.get(old, 0)) for k, old in zip(TANGENT_KEYS, _OLD_TANGENT_KEYS))
+
+
 def _val_fmt(data_type: int) -> str:
     """返回标量通道的 struct 格式。"""
     return {0: "<i", 1: "<I", 2: "<f", 4: "<I"}.get(data_type, "<i")
@@ -56,23 +73,23 @@ def decode_keyframe(raw: bytes, data_type: int, datatype_hash: int) -> dict:
     kf_dtype = struct.unpack_from("<h", raw, 18)[0]
     vraw, lraw, rraw = raw[0:4], raw[4:8], raw[8:12]
     if data_type == 3:
-        back = struct.unpack("<f", lraw)[0]
-        period = struct.unpack("<f", rraw)[0]
-        subs = [{"value": vraw[i], "back": back, "period": period} for i in range(4)]
+        t0 = struct.unpack("<f", lraw)[0]
+        t1 = struct.unpack("<f", rraw)[0]
+        subs = [make_sub(vraw[i], t0, t1) for i in range(4)]
     elif datatype_hash in BIG_FLAGS:
         v = struct.unpack("<I", vraw)[0]
         cl = struct.unpack("<I", lraw)[0]
         cr = struct.unpack("<I", rraw)[0]
         subs = [
-            {"value": v & 0xFFFF, "back": cl & 0xFFFF, "period": cr & 0xFFFF},
-            {"value": (v >> 16) & 0xFFFF, "back": (cl >> 16) & 0xFFFF, "period": (cr >> 16) & 0xFFFF},
+            make_sub(v & 0xFFFF, cl & 0xFFFF, cr & 0xFFFF),
+            make_sub((v >> 16) & 0xFFFF, (cl >> 16) & 0xFFFF, (cr >> 16) & 0xFFFF),
         ]
     else:
         fmt = _val_fmt(data_type)
         v = struct.unpack(fmt, vraw)[0]
         cl = struct.unpack(fmt, lraw)[0]
         cr = struct.unpack(fmt, rraw)[0]
-        subs = [{"value": v, "back": cl, "period": cr}]
+        subs = [make_sub(v, cl, cr)]
     return {"frame": frame, "transition": transition, "kf_dtype": kf_dtype, "subs": subs}
 
 
@@ -88,20 +105,23 @@ def encode_keyframe(data_type: int, datatype_hash: int, frame: float,
     """将子通道值编码为固定 20 字节关键帧。"""
     if data_type == 3:
         vb = bytes(int(round(subs[i]["value"])) & 0xFF for i in range(4))
-        lraw = struct.pack("<f", float(subs[0]["back"]))
-        rraw = struct.pack("<f", float(subs[0]["period"]))
+        t0, t1 = sub_tangents(subs[0])
+        lraw = struct.pack("<f", float(t0))
+        rraw = struct.pack("<f", float(t1))
         vraw = vb
     elif datatype_hash in BIG_FLAGS:
         lo, hi = subs[0], subs[1]
+        (lo0, lo1), (hi0, hi1) = sub_tangents(lo), sub_tangents(hi)
         v = (int(round(lo["value"])) & 0xFFFF) | ((int(round(hi["value"])) & 0xFFFF) << 16)
-        cl = (int(round(lo["back"])) & 0xFFFF) | ((int(round(hi["back"])) & 0xFFFF) << 16)
-        cr = (int(round(lo["period"])) & 0xFFFF) | ((int(round(hi["period"])) & 0xFFFF) << 16)
+        cl = (int(round(lo0)) & 0xFFFF) | ((int(round(hi0)) & 0xFFFF) << 16)
+        cr = (int(round(lo1)) & 0xFFFF) | ((int(round(hi1)) & 0xFFFF) << 16)
         vraw = struct.pack("<I", v); lraw = struct.pack("<I", cl); rraw = struct.pack("<I", cr)
     else:
         s = subs[0]
+        t0, t1 = sub_tangents(s)
         vraw = struct.pack("<I", _u32_bits(data_type, s["value"]))
-        lraw = struct.pack("<I", _u32_bits(data_type, s["back"]))
-        rraw = struct.pack("<I", _u32_bits(data_type, s["period"]))
+        lraw = struct.pack("<I", _u32_bits(data_type, t0))
+        rraw = struct.pack("<I", _u32_bits(data_type, t1))
     return (vraw + lraw + rraw + struct.pack("<f", float(frame))
             + struct.pack("<h", int(transition)) + struct.pack("<h", int(kf_dtype)))
 
@@ -375,7 +395,7 @@ def _make_default_keyframes(data_type: int, dt_hash: int,
                     chans.append(255)
             else:
                 chans = [255, 255, 255, 255]
-            subs = [{"value": chans[i], "back": 0.0, "period": 0.0} for i in range(4)]
+            subs = [make_sub(chans[i], 0.0, 0.0) for i in range(4)]
         else:
             if seed is not None:
                 try:
@@ -384,7 +404,7 @@ def _make_default_keyframes(data_type: int, dt_hash: int,
                     v = dt_neutral_value(dt_hash)
             else:
                 v = dt_neutral_value(dt_hash)
-            subs = [{"value": v, "back": 0.0, "period": 0.0}]
+            subs = [make_sub(v, 0.0, 0.0)]
         raw = encode_keyframe(data_type, dt_hash, fr, 2, data_type, subs)
         kfs.append(TimlKeyframe(raw=raw, frame_timing=fr, transition=2, data_type=data_type))
     return kfs

@@ -123,19 +123,13 @@ class EFX_OT_export_entry_timl(bpy.types.Operator, ExportHelper):
             from . import io_tree as _iot
             from . import timl_edit as _te
             h = _iot.find_timl_handle(obj)
-            # 插值类型校验：不支持的缓动（Sine/Expo/Back…）阻止导出，BEZIER 仅提醒。
+            # 游戏没有的缓动、无法精确还原的手柄只提醒，照常导出近似结果。
             if h is not None:
-                issues = _te.check_timl_interpolations(h)
-                errs = sorted({i["interp"] for i in issues if i["severity"] == "ERROR"})
-                if errs:
-                    self.report(
-                        {"ERROR"},
-                        f"TIML export blocked: unsupported interpolation ({', '.join(errs)}) — "
-                        f"only {_te._SUPPORTED_INTERP_DESC} are supported by the game",
-                    )
-                    return {"CANCELLED"}
-                if any(i["severity"] == "WARNING" for i in issues):
-                    self.report({"WARNING"}, "BEZIER keyframes are approximated as Cubic on export")
+                for iss in _te.check_timl_interpolations(h):
+                    if iss["kind"] == "approx":
+                        self.report({"WARNING"}, T("timlm.interp_approx").format(obj.name, iss["interp"]))
+                    else:
+                        self.report({"WARNING"}, T("timlm.handle_approx").format(obj.name))
             data = bytes(_te.sync_fcurves_to_bytes(h, obj)) if h is not None else _entry_timl_bytes(obj)
         except Exception:
             data = _entry_timl_bytes(obj)

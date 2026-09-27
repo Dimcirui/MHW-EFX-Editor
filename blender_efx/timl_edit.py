@@ -149,47 +149,110 @@ def _channel_group_name(slot, tlp_hash, dt_hash, dtype, sub_label):
 
 
 # ── 插值类型映射 ────────────────────────────────────────────────────────────
-# 游戏的 Stuck/Constant 均映射为 Blender CONSTANT，故导入和导出映射不互逆。
+# 游戏插值：0 / 1 阶跃（两者相同）、2 线性、3 三次 Hermite（段起始关键帧的两个值是本段起点 /
+# 终点切线，以本段平均斜率为 1）、4 smoothstep（= 3 不带切线）。5 以上不是正常插值。
+# 3 / 4 导入为 FREE 手柄的贝塞尔：手柄横向落在段长 1/3 处时，贝塞尔与 Hermite 完全等价，
+# 手柄高度 = 切线 × 落差 / 3。导出时由手柄斜率反算切线，一律写 3。
 _GAME_TO_BLENDER_INTERP = {
-    0: "CONSTANT",   # Stuck（步进，Blender 无独立档，并入 CONSTANT）
-    1: "CONSTANT",   # Constant（常量）
-    2: "LINEAR",     # Linear（线性）
-    3: "QUAD",       # Quadratic（二次）
-    4: "CUBIC",      # Cubic（三次）
+    0: "CONSTANT",
+    1: "CONSTANT",
+    2: "LINEAR",
+    3: "BEZIER",
+    4: "BEZIER",
 }
-# 导出常量统一写为游戏 Constant(1)。
-_BLENDER_TO_GAME_INTERP = {
-    "CONSTANT": 1,
-    "LINEAR":   2,
-    "QUAD":     3,
-    "CUBIC":    4,
-}
-# BEZIER 近似为 Cubic；其他不支持插值由校验模块阻止导出。
-_SUPPORTED_INTERP_DESC = "Constant / Linear / Quadratic / Cubic (Bezier is approximated as Cubic)"
+_EXACT_INTERP = {"CONSTANT": 1, "LINEAR": 2, "BEZIER": 3}
+_HERMITE = 3
+_EPS = 1e-6
+#: 手柄横向偏离段长 1/3 超过这个比例时，导出形状与编辑器里看到的有可见差别
+_HANDLE_X_TOL = 0.08
+#: 拟合 Blender 缓动时每段的采样点（不含两端）
+_FIT_SAMPLES = [i / 16.0 for i in range(1, 16)]
 
 
 def _interp_to_blender(transition):
-    """游戏 transition 整数 → Blender fcurve interpolation 枚举名（导入用）。
-    未知值（如 Int/Flag 才用的 5/6）安全退 LINEAR。"""
+    """游戏 transition → Blender 插值名（导入用）；5 以上按线性。"""
     return _GAME_TO_BLENDER_INTERP.get(transition, "LINEAR")
 
 
-def _blender_to_transition(interp):
-    """Blender fcurve interpolation 枚举 → 游戏 transition 整数（导出用）。
-    BEZIER 近似为 Cubic；其余未知类型安全退 Linear（这类应已被 validate 拦成 ERROR，
-    不该走到这里，退 Linear 只是兜底不崩）。"""
-    m = _BLENDER_TO_GAME_INTERP.get(interp)
-    if m is not None:
-        return m
-    if interp == "BEZIER":
-        return _BLENDER_TO_GAME_INTERP["CUBIC"]
-    return _BLENDER_TO_GAME_INTERP["LINEAR"]
+def _hermite_basis(u):
+    u2 = u * u
+    u3 = u2 * u
+    return (3.0 * u2 - 2.0 * u3, u3 - 2.0 * u2 + u, u3 - u2)
+
+
+def _fit_tangents(fc, f0, v0, f1, v1):
+    """用最小二乘把 fc 在 [f0, f1] 上的形状拟合成 Hermite 的两个切线。"""
+    dv = v1 - v0
+    a11 = a12 = a22 = b1 = b2 = 0.0
+    for u in _FIT_SAMPLES:
+        y = (fc.evaluate(f0 + (f1 - f0) * u) - v0) / dv
+        h01, h10, h11 = _hermite_basis(u)
+        r = y - h01
+        a11 += h10 * h10
+        a12 += h10 * h11
+        a22 += h11 * h11
+        b1 += h10 * r
+        b2 += h11 * r
+    det = a11 * a22 - a12 * a12
+    if abs(det) < 1e-12:
+        return 0.0, 0.0
+    return (b1 * a22 - b2 * a12) / det, (a11 * b2 - a12 * b1) / det
+
+
+def _close(a, b):
+    return abs(a - b) <= 1e-4 * (1.0 + abs(b))
+
+
+def _segment_spec(fc, kp, kp_next):
+    """一个关键帧 → (transition, 起点切线, 终点切线, 问题)。
+
+    问题：None；"approx" 用了游戏没有的缓动，按拟合近似；"handle" 贝塞尔手柄无法精确对应。
+    没被改动过的切线沿用导入时存下的原值（kp.back / kp.period），保证原样写回。
+    """
+    stored = (kp.back, kp.period)
+    it = kp.interpolation
+    if it in ("CONSTANT", "LINEAR"):
+        return (_EXACT_INTERP[it],) + stored + (None,)
+    if kp_next is None:
+        return (_HERMITE,) + stored + (None,)
+    f0, v0 = kp.co[0], kp.co[1]
+    f1, v1 = kp_next.co[0], kp_next.co[1]
+    span, dv = f1 - f0, v1 - v0
+    if span <= _EPS:
+        return (_HERMITE,) + stored + (None,)
+    if it != "BEZIER":
+        if abs(dv) <= _EPS:
+            return (_EXACT_INTERP["LINEAR"], 0.0, 0.0, "approx")
+        m0, m1 = _fit_tangents(fc, f0, v0, f1, v1)
+        return (_HERMITE, m0, m1, "approx")
+    hr, hl = kp.handle_right, kp_next.handle_left
+    if abs(dv) <= _EPS:
+        # 落差为 0 时游戏里这一段只能是平的
+        flat = abs(hr[1] - v0) <= _EPS and abs(hl[1] - v1) <= _EPS
+        return (_HERMITE,) + stored + (None if flat else "handle",)
+    avg = dv / span
+    dx0, dx1 = hr[0] - f0, f1 - hl[0]
+    issue = None
+    if abs(dx0 / span - 1.0 / 3.0) > _HANDLE_X_TOL or abs(dx1 / span - 1.0 / 3.0) > _HANDLE_X_TOL:
+        issue = "handle"
+    m0 = (hr[1] - v0) / dx0 / avg if dx0 > _EPS else 0.0
+    m1 = (v1 - hl[1]) / dx1 / avg if dx1 > _EPS else 0.0
+    if _close(m0, stored[0]):
+        m0 = stored[0]
+    if _close(m1, stored[1]):
+        m1 = stored[1]
+    return (_HERMITE, m0, m1, issue)
+
+
+def _sorted_kps(fc):
+    return sorted(fc.keyframe_points, key=lambda k: k.co[0])
 
 
 def check_timl_interpolations(handle):
-    """返回持久 Action 中不支持的插值类型，按类型去重。
+    """返回持久 Action 中导出时要近似的地方，按问题类型去重；全部是警告，不阻止导出。
 
-    BEZIER 为近似 Cubic 的警告，其他不支持类型为阻断导出的错误。
+    {"severity": "WARNING", "kind": "approx", "interp": Blender 插值名} 用了游戏没有的缓动；
+    {"severity": "WARNING", "kind": "handle"} 贝塞尔手柄无法被游戏曲线精确表示。
     """
     out = []
     act = _get_timl_action(handle)
@@ -202,27 +265,58 @@ def check_timl_interpolations(handle):
     seen = set()
     for fc in fcs:
         try:
-            kps = fc.keyframe_points
+            kps = _sorted_kps(fc)
         except Exception:
             continue
-        for kp in kps:
-            it = kp.interpolation
-            if it in seen or it in _BLENDER_TO_GAME_INTERP:
-                seen.add(it)
+        for i, kp in enumerate(kps):
+            try:
+                issue = _segment_spec(fc, kp, kps[i + 1] if i + 1 < len(kps) else None)[3]
+            except Exception:
                 continue
-            seen.add(it)
-            out.append({"severity": "WARNING" if it == "BEZIER" else "ERROR",
-                        "interp": it})
+            if issue is None:
+                continue
+            key = (issue, kp.interpolation if issue == "approx" else None)
+            if key in seen:
+                continue
+            seen.add(key)
+            item = {"severity": "WARNING", "kind": issue}
+            if issue == "approx":
+                item["interp"] = kp.interpolation
+            out.append(item)
     return out
 
 
-def _set_kp(kp, transition, back, period):
+def _set_kp(kp, transition, start_tangent, end_tangent):
+    # 两个切线原值存在 Blender 关键帧的 back / period 上：手柄没动时导出原样写回
     try:
         kp.interpolation = _interp_to_blender(transition)
-        kp.back = float(back)
-        kp.period = float(period)
+        kp.back = float(start_tangent)
+        kp.period = float(end_tangent)
     except Exception:
         pass
+
+
+def _apply_hermite_handles(fc, decoded, values):
+    """按游戏关键帧给类型 3 / 4 的段摆贝塞尔手柄（横向 1/3，高度 = 切线 × 落差 / 3）。
+
+    decoded / values 与 fc 的关键帧一一对应且按帧排序；values 是 Blender 数值空间的值。
+    """
+    kps = _sorted_kps(fc)
+    if len(kps) != len(decoded):
+        return
+    for i in range(len(kps) - 1):
+        tr = decoded[i][0]
+        if tr not in (3, 4):
+            continue
+        m0, m1 = decoded[i][1:3] if tr == 3 else (0.0, 0.0)
+        f0, f1 = kps[i].co[0], kps[i + 1].co[0]
+        v0, v1 = values[i], values[i + 1]
+        third = (f1 - f0) / 3.0
+        a, b = kps[i], kps[i + 1]
+        a.handle_right_type = "FREE"
+        b.handle_left_type = "FREE"
+        a.handle_right = (f0 + third, v0 + m0 * (v1 - v0) / 3.0)
+        b.handle_left = (f1 - third, v1 - m1 * (v1 - v0) / 3.0)
 
 
 def _ch_fcurve(act, timl_obj, ch):
@@ -329,24 +423,29 @@ def build_persistent_fcurves(handle, body):
         f = ch["tf"]
         decoded = [_timl.decode_keyframe(kf.raw, f.data_type, f.datatype_hash)
                    for kf in f.keyframes]
+        decoded.sort(key=lambda d: d["frame"])
         if ch["mode"] == "xform":
             fc = _act_fcurves(act, handle, create=True).new(
                 data_path=ch["path"], index=ch["index"])
-            for dec in decoded:
-                s = dec["subs"][0]
-                val = _tn.game_to_blender(ch["kind"], ch["bl_index"], s["value"])
-                kp = fc.keyframe_points.insert(dec["frame"], float(val))
-                _set_kp(kp, dec["transition"], s["back"], s["period"])
-            fc.update()
+            sub_of = lambda dec: dec["subs"][0]
+            to_bl = lambda v: _tn.game_to_blender(ch["kind"], ch["bl_index"], v)
         else:
             handle.efx_timl_channels.add()   # 集合索引必须对应 ``ch["ci"]``。
             fc = _act_fcurves(act, handle, create=True).new(data_path=ch["path"], index=0,
                                                action_group=ch["gname"])
-            for dec in decoded:
-                s = dec["subs"][ch["sub"]]
-                kp = fc.keyframe_points.insert(dec["frame"], float(s["value"]))
-                _set_kp(kp, dec["transition"], s["back"], s["period"])
-            fc.update()
+            sub_of = lambda dec, _i=ch["sub"]: dec["subs"][_i]
+            to_bl = float
+        segs, values = [], []
+        for dec in decoded:
+            s = sub_of(dec)
+            val = float(to_bl(s["value"]))
+            kp = fc.keyframe_points.insert(dec["frame"], val)
+            tangents = _timl.sub_tangents(s)
+            _set_kp(kp, dec["transition"], *tangents)
+            segs.append((dec["transition"],) + tuple(float(x) for x in tangents))
+            values.append(val)
+        fc.update()
+        _apply_hermite_handles(fc, segs, values)
     return len(channels)
 
 
@@ -403,11 +502,12 @@ def _rebuild_xform(act, timl_obj, ch, tf):
         return []
     kind, bl_index = ch["kind"], ch["bl_index"]
     out = []
-    for kp in sorted(fc.keyframe_points, key=lambda k: k.co[0]):
+    kps = _sorted_kps(fc)
+    for i, kp in enumerate(kps):
         fr = round(kp.co[0], 4)
         game_v = _tn.blender_to_game(kind, bl_index, kp.co[1])
-        subs = [{"value": game_v, "back": kp.back, "period": kp.period}]
-        transition = _blender_to_transition(kp.interpolation)
+        transition, t0, t1, _ = _segment_spec(fc, kp, kps[i + 1] if i + 1 < len(kps) else None)
+        subs = [_timl.make_sub(game_v, t0, t1)]
         raw = _timl.encode_keyframe(tf.data_type, tf.datatype_hash, fr,
                                     transition, tf.data_type, subs)
         out.append(_timl.TimlKeyframe(raw=raw, frame_timing=fr,
@@ -418,31 +518,41 @@ def _rebuild_xform(act, timl_obj, ch, tf):
 def _rebuild_synthetic(act, timl_obj, syn, tf):
     labels = _timl.channel_sublabels(tf.data_type, tf.datatype_hash)
     sub_fcurves = [_ch_fcurve(act, timl_obj, syn[i]) if i in syn else None for i in range(len(labels))]
-    frames = set(); kp_maps = []
+    frames = set(); kp_maps = []; kp_next = []
     for fc in sub_fcurves:
-        m = {}
+        m = {}; nx = {}
         if fc is not None:
-            for kp in fc.keyframe_points:
+            kps = _sorted_kps(fc)
+            for i, kp in enumerate(kps):
                 fr = round(kp.co[0], 4); m[fr] = kp; frames.add(fr)
-        kp_maps.append(m)
+                nx[fr] = kps[i + 1] if i + 1 < len(kps) else None
+        kp_maps.append(m); kp_next.append(nx)
     if not frames:
         return []
     out = []
     for fr in sorted(frames):
+        # 游戏里多个子通道（如 RGBA）共用一个插值和一对切线：取落差最大的那条子通道来算
+        spec, best = (2, 0.0, 0.0, None), -1.0   # 没有子通道关键帧时回退 Linear
+        for i, fc in enumerate(sub_fcurves):
+            kp = kp_maps[i].get(fr)
+            if kp is None:
+                continue
+            nxt = kp_next[i].get(fr)
+            drop = abs(nxt.co[1] - kp.co[1]) if nxt is not None else 0.0
+            if drop > best:
+                spec, best = _segment_spec(fc, kp, nxt), drop
+        transition, t0, t1 = spec[0], spec[1], spec[2]
+        shared = tf.data_type == 3      # Color 的两个控制值由 RGBA 共用；BIG_FLAGS 的高低两半各存一份
         subs = []
         for i, fc in enumerate(sub_fcurves):
             kp = kp_maps[i].get(fr)
+            fill = (t0, t1) if shared else (0.0, 0.0)
             if fc is None:
-                subs.append({"value": 0.0, "back": 0.0, "period": 0.0})
+                subs.append(_timl.make_sub(0.0, *fill))
             elif kp is not None:
-                subs.append({"value": kp.co[1], "back": kp.back, "period": kp.period})
+                subs.append(_timl.make_sub(kp.co[1], *((t0, t1) if shared else (kp.back, kp.period))))
             else:
-                subs.append({"value": fc.evaluate(fr), "back": 0.0, "period": 0.0})
-        transition = 2   # 没有子通道关键帧时回退 Linear。
-        for i, fc in enumerate(sub_fcurves):
-            kp = kp_maps[i].get(fr)
-            if kp is not None:
-                transition = _blender_to_transition(kp.interpolation); break
+                subs.append(_timl.make_sub(fc.evaluate(fr), *fill))
         raw = _timl.encode_keyframe(tf.data_type, tf.datatype_hash, fr,
                                     transition, tf.data_type, subs)
         out.append(_timl.TimlKeyframe(raw=raw, frame_timing=fr,
