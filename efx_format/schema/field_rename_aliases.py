@@ -32,6 +32,18 @@ FIELD_RENAME_ALIASES = {
     ("SHADERSETTINGS", "unknEnum3_1"): "drawMode",
     ("SHADERSETTINGS", "unknBitmask4_14"): "drawTarget",
     ("SHADERSETTINGS", "unkn4_15"): "drawPriority",
+    ("SHADERSETTINGS", "unkn4_0"): "reflectance",
+    ("SHADERSETTINGS", "unkn4_1"): "transmittance",
+    ("SHADERSETTINGS", "unkn4_2"): "transmittanceJitter",
+    ("SHADERSETTINGS", "unkn4_3"): "envLightFactor",
+    ("SHADERSETTINGS", "unkn4_4"): "envSaturation",
+    ("SHADERSETTINGS", "unkn4_5"): "lightFactor",
+    ("SHADERSETTINGS", "unkn4_6"): "shadowFactor",
+    ("SHADERSETTINGS", "unkn4_9"): "lightSamplingOffsetX",
+    ("SHADERSETTINGS", "unkn4_10"): "lightSamplingOffsetY",
+    ("SHADERSETTINGS", "unkn4_11"): "lightSamplingOffsetZ",
+    ("SHADERSETTINGS", "unkn4_13"): "lightSamplingDistance",
+    ("SHADERSETTINGS", "unknFlag5_0_0"): "lightSamplingRotateFix",
 
     # HOMING
     ("HOMING", "restoringForce"): "turnRate",
@@ -704,7 +716,7 @@ FIELD_BYTE_SPLITS = {
     # None = 保留填充字节，取默认值
     ("RIBBONBLADE", "spacer2"): ("useEmissiveRange", None, None, None),
     ("RIBBONBLADE", "NULL9"): ("flowOnce", "flowReverse", None, None),
-    ("SHADERSETTINGS", "unknEnum5_0"): ("unknFlag5_0_0", "unknFixed5_0_1", "unknFlag5_0_2",
+    ("SHADERSETTINGS", "unknEnum5_0"): ("lightSamplingRotateFix", "unknFixed5_0_1", "unknFlag5_0_2",
                                         "unknFlag5_0_3"),
 }
 

@@ -3607,33 +3607,40 @@ FIELD_ANNOTATIONS = {
               "变化后约 0.2 秒开始、约 1 秒过渡完。逐像素：即时生效，阴影边缘可以落在粒子中间。"
               "火、光、火花通常不受光，烟和水通常逐粒子。",
     },
-    ("SHADERSETTINGS", "unkn4_0"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("SHADERSETTINGS", "reflectance"): {
+        "EN": "Scales how much direct light the particle reflects. 0 leaves it almost unlit in "
+              "sunlight; ambient light is unaffected. Default 1.",
+        "ZH": "粒子反射直射光的比例。为 0 时在阳光下几乎不亮，环境光不受影响。默认 1。",
     },
-    ("SHADERSETTINGS", "unkn4_1"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("SHADERSETTINGS", "transmittance"): {
+        "EN": "How much light passes through the particle; lower values make lit particles slightly "
+              "darker. Common values: Static 1, or Static 0.1 with Random 0.9.",
+        "ZH": "光线透过粒子的程度，越小受光时越暗。常见取值：固定 1，或固定 0.1、随机 0.9。",
     },
-    ("SHADERSETTINGS", "unkn4_2"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("SHADERSETTINGS", "transmittanceJitter"): {
+        "EN": "Random amount added to Transmittance per particle. Static plus Random is usually no more "
+              "than 1.",
+        "ZH": "每个粒子在透光率上叠加的随机量。固定与随机之和通常不超过 1。",
     },
-    ("SHADERSETTINGS", "unkn4_3"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("SHADERSETTINGS", "envLightFactor"): {
+        "EN": "Strength of ambient (sky) light on the particle. 0 turns it black in shade while sunlit "
+              "areas stay normal. Default 1.",
+        "ZH": "环境光（天空光）的强度。为 0 时阴影中全黑，阳光下正常。默认 1。",
     },
-    ("SHADERSETTINGS", "unkn4_4"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("SHADERSETTINGS", "envSaturation"): {
+        "EN": "Colour saturation of the ambient light. 0 removes its tint, such as the blue of "
+              "skylight, without changing brightness. Default 1.",
+        "ZH": "环境光的色彩饱和度。为 0 时去掉环境光的色调（如天空光的蓝色），亮度不变。默认 1。",
     },
-    ("SHADERSETTINGS", "unkn4_5"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("SHADERSETTINGS", "lightFactor"): {
+        "EN": "Strength of direct light such as sunlight. 0 keeps the particle unlit even in sunlight. "
+              "Default 1.",
+        "ZH": "直射光（如阳光）的强度。为 0 时即使在阳光下也不亮。默认 1。",
     },
-    ("SHADERSETTINGS", "unkn4_6"): {
-        "EN": "Common range: 0~1.",
-        "ZH": "常见取值在 0~1 之间。",
+    ("SHADERSETTINGS", "shadowFactor"): {
+        "EN": "How much shadows darken the particle. 0 ignores shadows, so it stays fully lit in shade. "
+              "Default 1.",
+        "ZH": "阴影使粒子变暗的程度。为 0 时忽略阴影，在阴影中也保持全亮。默认 1。",
     },
     ("SHADERSETTINGS", "unkn4_7"): {
         "EN": "Common values: [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200].",
@@ -3643,25 +3650,35 @@ FIELD_ANNOTATIONS = {
         "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. Type a preset name (or pick one from the dropdown) to use it; leave empty for none.',
         "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。填入预设名字（或从下拉里选一个）即可使用，留空表示不选任何预设。',
     },
-    ("SHADERSETTINGS", "unkn4_9"): {
-        "EN": "Usually 0; other common values: [-1000, -500, -200, -100, -50, 20, 50, 100, 200].",
-        "ZH": "通常为 0；其余常见取值为 [-1000, -500, -200, -100, -50, 20, 50, 100, 200]。",
+    ("SHADERSETTINGS", "lightSamplingOffsetX"): {
+        "EN": "Moves the point where lighting is sampled, in cm; Y is up. Raising it lets low particles "
+              "such as ground smoke pick up light from above. Rotates with the emitter unless Light "
+              "Sampling Rotate Fix is on. Usually 0.",
+        "ZH": "光照取样点的偏移，单位 cm，Y 向上。抬高后贴地的烟等低处粒子能取到上方的光照。未开启「取样偏"
+              "移不随旋转」时随发射器旋转。通常为 0。",
     },
-    ("SHADERSETTINGS", "unkn4_10"): {
-        "EN": "Usually 0; other common values: [20, 25, 50, 80, 100, 150, 200, 300, 1000].",
-        "ZH": "通常为 0；其余常见取值为 [20, 25, 50, 80, 100, 150, 200, 300, 1000]。",
+    ("SHADERSETTINGS", "lightSamplingOffsetY"): {
+        "EN": "Moves the point where lighting is sampled, in cm; Y is up. Raising it lets low particles "
+              "such as ground smoke pick up light from above. Rotates with the emitter unless Light "
+              "Sampling Rotate Fix is on. Usually 0.",
+        "ZH": "光照取样点的偏移，单位 cm，Y 向上。抬高后贴地的烟等低处粒子能取到上方的光照。未开启「取样偏"
+              "移不随旋转」时随发射器旋转。通常为 0。",
     },
-    ("SHADERSETTINGS", "unkn4_11"): {
-        "EN": "Usually 0; other common values: [-200, -100, -50, -20, 50, 80, 100, 150, 200].",
-        "ZH": "通常为 0；其余常见取值为 [-200, -100, -50, -20, 50, 80, 100, 150, 200]。",
+    ("SHADERSETTINGS", "lightSamplingOffsetZ"): {
+        "EN": "Moves the point where lighting is sampled, in cm; Y is up. Raising it lets low particles "
+              "such as ground smoke pick up light from above. Rotates with the emitter unless Light "
+              "Sampling Rotate Fix is on. Usually 0.",
+        "ZH": "光照取样点的偏移，单位 cm，Y 向上。抬高后贴地的烟等低处粒子能取到上方的光照。未开启「取样偏"
+              "移不随旋转」时随发射器旋转。通常为 0。",
     },
     ("SHADERSETTINGS", "unknFixed4_12"): {
         "EN": "Fixed at 0.0. Purpose unknown.",
         "ZH": "固定为 0.0。具体作用未知。",
     },
-    ("SHADERSETTINGS", "unkn4_13"): {
-        "EN": "Usually 0; other common values: [15, 17, 20, 25, 50, 100, 150, 200, 300].",
-        "ZH": "通常为 0；其余常见取值为 [15, 17, 20, 25, 50, 100, 150, 200, 300]。",
+    ("SHADERSETTINGS", "lightSamplingDistance"): {
+        "EN": "Purpose unknown. Usually 0; often set to the same value as Light Sampling Offset Y (50, "
+              "100, 150).",
+        "ZH": "作用未知。通常为 0；常与光照取样偏移 Y 取相同的值（50、100、150）。",
     },
     ("SHADERSETTINGS", "drawTarget"): {
         "EN": "Where a 2D screen overlay layer is drawn. Screen: shown directly. Overlay "
@@ -3677,9 +3694,10 @@ FIELD_ANNOTATIONS = {
         "ZH": "与其他粒子重叠时的前后顺序。两者相差超过 4096 时数值大的在上面，否则按 Entry "
               "顺序，靠后的在上面。通常为 0。",
     },
-    ("SHADERSETTINGS", "unknFlag5_0_0"): {
-        "EN": "Purpose unknown. Usually off.",
-        "ZH": "作用未知。通常关闭。",
+    ("SHADERSETTINGS", "lightSamplingRotateFix"): {
+        "EN": "When on, the light sampling offset ignores the emitter's rotation and keeps its world "
+              "direction. When off, it rotates with the emitter.",
+        "ZH": "开启后光照取样偏移不随发射器旋转，保持世界方向；关闭时随发射器旋转。",
     },
     ("SHADERSETTINGS", "unknFixed5_0_1"): {
         "EN": "Fixed at 0. Purpose unknown.",
