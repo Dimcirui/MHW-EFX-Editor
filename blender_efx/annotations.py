@@ -3647,8 +3647,13 @@ FIELD_ANNOTATIONS = {
         "ZH": "常见取值为 [0, 15, 80, 100, 200, 250, 300, 500, 1000, 1200]。",
     },
     ("SHADERSETTINGS", "presetId"): {
-        "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. Type a preset name (or pick one from the dropdown) to use it; leave empty for none.',
-        "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。填入预设名字（或从下拉里选一个）即可使用，留空表示不选任何预设。',
+        "EN": "Lighting preset that bundles Reflectance, Light Factor, Shadow Factor, Env Light "
+              "Factor and Env Saturation. Known presets: Default, Smoke, test02 (often water), "
+              "test03 (debris), test04 (dirt), test05 (snow and ice), test06 (aura), Hit_test "
+              "(blood). Pick one from the dropdown or type its name; leave empty for none.",
+        "ZH": "打包反射率、直射光系数、阴影系数、环境光系数和环境光饱和度的光照预设。已知预设："
+              "Default、Smoke、test02（常用于水）、test03（碎片）、test04（泥土）、test05（雪和冰）、"
+              "test06（气场）、Hit_test（血）。可从下拉选择或输入名字，留空表示不使用预设。",
     },
     ("SHADERSETTINGS", "lightSamplingOffset"): {
         "EN": "Moves the point where lighting is sampled, in cm; Y is up. Raising it lets low particles "

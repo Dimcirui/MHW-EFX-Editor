@@ -7,7 +7,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Menu, Operator
 
-from .fields import SHADERSETTINGS_KNOWN_PRESETS, SHADERSETTINGS_UNCONFIRMED_PRESET_VALUES
+from .fields import SHADERSETTINGS_KNOWN_PRESETS, preset_menu_label
 
 
 def _find_field_item(bp, ori_name):
@@ -44,23 +44,18 @@ class EFX_OT_shadersettings_set_preset(Operator):
 
 
 class EFX_MT_shadersettings_preset_picker(Menu):
-    """显示已命名预设及尚未命名的原始值。"""
+    """显示全部已知预设。"""
 
     bl_idname = "EFX_MT_shadersettings_preset_picker"
     bl_label  = "Presets"
 
     def draw(self, context):
         layout = self.layout
-        for name, _v in SHADERSETTINGS_KNOWN_PRESETS:
-            op = layout.operator("efx.shadersettings_set_preset", text=name)
+        for name, _v, hint_en, hint_zh in SHADERSETTINGS_KNOWN_PRESETS:
+            op = layout.operator("efx.shadersettings_set_preset",
+                                 text=preset_menu_label(name, hint_en, hint_zh))
             op.field = "presetId"
             op.value = name
-        if SHADERSETTINGS_UNCONFIRMED_PRESET_VALUES:
-            layout.separator()
-            for v in SHADERSETTINGS_UNCONFIRMED_PRESET_VALUES:
-                op = layout.operator("efx.shadersettings_set_preset", text=str(v))
-                op.field = "presetId"
-                op.value = str(v)
         layout.separator()
         op = layout.operator("efx.shadersettings_set_preset", text="None (-1)")
         op.field = "presetId"

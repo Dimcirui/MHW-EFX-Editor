@@ -294,20 +294,25 @@ def _int_as_color_set(self, val):
 # 只有 SHADERSETTINGS 的 presetId 用到，其余属性的 item 上这个槽位始终空闲。
 # ─────────────────────────────────────────────────────────────────────────────
 
-#: (名字, int32 值)：4 个用 jamcrc(名字) 精确验证过、4 个是语料实测原值但名字对应
-#: 关系未经确认（截图显示名算出的 jamcrc 对不上）。全部按查表方式使用，不现算
-#: jamcrc——这样即便后 4 个的名字最终证明配错了，填的整数依然是语料里真实出现过的值。
+#: (键名, int32 值, 英文提示, 中文提示)。值 = jamcrc(键名)；官方编辑器列表里显示的是另一套展示名，
+#: 提示里带「?」的是按使用它的 Entry 标签推断的对应关系。按查表使用，不现算 jamcrc。
 SHADERSETTINGS_KNOWN_PRESETS = [
-    ("Default", -753088836),
-    ("Smoke", 2004367745),
-    ("test05", 752604312),
-    ("Hit_test", -1388296667),
+    ("Default", -753088836, "", ""),
+    ("Smoke", 2004367745, "", ""),
+    ("test02", -1296088773, "Water?", "水?"),
+    ("test03", -977768019, "Hahen?", "碎片?"),
+    ("test04", 1541202958, "Dirt?", "泥土?"),
+    ("test05", 752604312, "Snow/Ice?", "雪/冰?"),
+    ("test06", -1244494558, "Aura?", "气场?"),
+    ("Hit_test", -1388296667, "Blood?", "血?"),
 ]
-#: 语料实测出现过、但对应哪个 preset 名字未确认的另外 4 个值（推测是 Water/Hahen/
-#: Dirt/Aura 中的某几个，具体哪个对哪个没坐实，所以不逐一定名，只按原值收录）。
-SHADERSETTINGS_UNCONFIRMED_PRESET_VALUES = [
-    -1296088773, -1244494558, -977768019, 1541202958,
-]
+
+
+def preset_menu_label(name, hint_en, hint_zh):
+    """下拉菜单里显示的「键名 — 提示」。"""
+    from .i18n import get_lang
+    hint = hint_zh if get_lang() == "ZH" else hint_en
+    return f"{name} — {hint}" if hint else name
 
 
 def _to_signed_i32(u: int) -> int:
@@ -319,7 +324,7 @@ def _preset_name_get(self):
     v = int(self.int_value)
     if v == -1:
         return ""
-    for name, val in SHADERSETTINGS_KNOWN_PRESETS:
+    for name, val, _en, _zh in SHADERSETTINGS_KNOWN_PRESETS:
         if val == v:
             return name
     return str(v)
@@ -330,8 +335,10 @@ def _preset_name_set(self, val):
     if not text:
         self.int_value = -1
         return
-    for name, v in SHADERSETTINGS_KNOWN_PRESETS:
-        if text == name:
+    low = text.rstrip("?").lower()
+    for name, v, hint_en, hint_zh in SHADERSETTINGS_KNOWN_PRESETS:
+        hints = {h.rstrip("?").lower() for h in (hint_en, hint_zh) if h}
+        if text == name or low in hints:
             self.int_value = v
             return
     try:
