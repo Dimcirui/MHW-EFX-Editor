@@ -3650,21 +3650,7 @@ FIELD_ANNOTATIONS = {
         "EN": 'References a row in the EffectSettingPresets resource table (Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test), which bundles ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation into one preset. Type a preset name (or pick one from the dropdown) to use it; leave empty for none.',
         "ZH": '引用 EffectSettingPresets 资源表里的一行（Default/Smoke/Water/Hahen/Dirt/test05/Aura/Hit_test），把 ShadowFactor/LightFactor/Reflectance/EnvLightFactor/EnvSaturation 打包成一套预设。填入预设名字（或从下拉里选一个）即可使用，留空表示不选任何预设。',
     },
-    ("SHADERSETTINGS", "lightSamplingOffsetX"): {
-        "EN": "Moves the point where lighting is sampled, in cm; Y is up. Raising it lets low particles "
-              "such as ground smoke pick up light from above. Rotates with the emitter unless Light "
-              "Sampling Rotate Fix is on. Usually 0.",
-        "ZH": "光照取样点的偏移，单位 cm，Y 向上。抬高后贴地的烟等低处粒子能取到上方的光照。未开启「取样偏"
-              "移不随旋转」时随发射器旋转。通常为 0。",
-    },
-    ("SHADERSETTINGS", "lightSamplingOffsetY"): {
-        "EN": "Moves the point where lighting is sampled, in cm; Y is up. Raising it lets low particles "
-              "such as ground smoke pick up light from above. Rotates with the emitter unless Light "
-              "Sampling Rotate Fix is on. Usually 0.",
-        "ZH": "光照取样点的偏移，单位 cm，Y 向上。抬高后贴地的烟等低处粒子能取到上方的光照。未开启「取样偏"
-              "移不随旋转」时随发射器旋转。通常为 0。",
-    },
-    ("SHADERSETTINGS", "lightSamplingOffsetZ"): {
+    ("SHADERSETTINGS", "lightSamplingOffset"): {
         "EN": "Moves the point where lighting is sampled, in cm; Y is up. Raising it lets low particles "
               "such as ground smoke pick up light from above. Rotates with the emitter unless Light "
               "Sampling Rotate Fix is on. Usually 0.",

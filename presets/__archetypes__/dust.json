@@ -334,9 +334,11 @@
      "shadowFactor": 1.0,
      "unkn4_7": 100.0,
      "presetId": 1541202958,
-     "lightSamplingOffsetX": 0.0,
-     "lightSamplingOffsetY": 50.0,
-     "lightSamplingOffsetZ": 0.0,
+     "lightSamplingOffset": [
+      0.0,
+      50.0,
+      0.0
+     ],
      "unknFixed4_12": 0.0,
      "lightSamplingDistance": 50.0,
      "drawTarget": 0,

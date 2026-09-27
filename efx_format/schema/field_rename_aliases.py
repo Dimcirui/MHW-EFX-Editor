@@ -39,9 +39,6 @@ FIELD_RENAME_ALIASES = {
     ("SHADERSETTINGS", "unkn4_4"): "envSaturation",
     ("SHADERSETTINGS", "unkn4_5"): "lightFactor",
     ("SHADERSETTINGS", "unkn4_6"): "shadowFactor",
-    ("SHADERSETTINGS", "unkn4_9"): "lightSamplingOffsetX",
-    ("SHADERSETTINGS", "unkn4_10"): "lightSamplingOffsetY",
-    ("SHADERSETTINGS", "unkn4_11"): "lightSamplingOffsetZ",
     ("SHADERSETTINGS", "unkn4_13"): "lightSamplingDistance",
     ("SHADERSETTINGS", "unknFlag5_0_0"): "lightSamplingRotateFix",
 
@@ -718,6 +715,13 @@ FIELD_BYTE_SPLITS = {
     ("RIBBONBLADE", "NULL9"): ("flowOnce", "flowReverse", None, None),
     ("SHADERSETTINGS", "unknEnum5_0"): ("lightSamplingRotateFix", "unknFixed5_0_1", "unknFlag5_0_2",
                                         "unknFlag5_0_3"),
+}
+
+#: 合并成向量的旧标量字段：{(类型, 向量字段): (各分量的旧字段名元组, …)}；缺的分量取默认值
+FIELD_VECTOR_MERGES = {
+    ("SHADERSETTINGS", "lightSamplingOffset"): (("unkn4_9", "lightSamplingOffsetX"),
+                                                ("unkn4_10", "lightSamplingOffsetY"),
+                                                ("unkn4_11", "lightSamplingOffsetZ")),
 }
 
 #: 嵌套结构中移到顶层的子字段：{(类型, 结构字段): {子字段: 顶层字段或 None(丢弃的填充)}}

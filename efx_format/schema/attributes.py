@@ -152,9 +152,7 @@ SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Float("unkn4_7"),
 # presetId 是外部资源表的引用而非固定枚举，故保留原始 int，不建 Enum。
     Int("presetId", label_en="Preset Id?", label_zh="预设 ID?"),
-    Float("lightSamplingOffsetX", label_en="Light Sampling Offset X", label_zh="光照取样偏移 X"),
-    Float("lightSamplingOffsetY", label_en="Light Sampling Offset Y", label_zh="光照取样偏移 Y"),
-    Float("lightSamplingOffsetZ", label_en="Light Sampling Offset Z", label_zh="光照取样偏移 Z"),
+    Raw("lightSamplingOffset", ('XYZ', 3), label_en="Light Sampling Offset", label_zh="光照取样偏移"),
     Float("unknFixed4_12"),
     Float("lightSamplingDistance", label_en="Light Sampling Distance", label_zh="光照取样距离"),
     Enum("drawTarget", ENUM_DRAW_TARGET, label_en="Draw Target", label_zh="绘制目标"),

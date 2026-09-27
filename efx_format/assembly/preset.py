@@ -21,7 +21,7 @@ from .. import hashes as H
 from ..efxfile import EFXFile, EntryData, AttrBlock, RootBody
 from ..structs import EXTERN_HASH_ALIASES
 from ..schema.field_rename_aliases import (FIELD_RENAME_ALIASES, FIELD_BYTE_SPLITS,
-                                           FIELD_NESTED_HOISTS,
+                                           FIELD_NESTED_HOISTS, FIELD_VECTOR_MERGES,
                                            split_int_bytes)
 from .attribute import type_key, type_from_key, attribute_to_json, attribute_from_json
 from .extern import EXTERN_VARLEN_MAIN, extern_to_json, extern_from_json
@@ -119,6 +119,28 @@ def _hoist_nested(alias_name, fields):
     return fields if out is None else out
 
 
+def _merge_vectors(alias_name, fields, default):
+    """把旧版拆开存的标量分量合并成向量字段；显式给出的向量优先。"""
+    out = None
+    for (t, key), comps in FIELD_VECTOR_MERGES.items():
+        if t != alias_name or key in fields:
+            continue
+        olds = [next((o for o in names if o in fields), None) for names in comps]
+        if not any(olds):
+            continue
+        if out is None:
+            out = dict(fields)
+        vec = list(default.get(key, [0.0] * len(comps)))
+        for i, o in enumerate(olds):
+            if o is not None:
+                vec[i] = out.pop(o)
+        for names in comps:
+            for o in names:
+                out.pop(o, None)
+        out[key] = vec
+    return fields if out is None else out
+
+
 def normalize_fields(category: str, type_hash: int, fields: dict, aliases=None):
     """规整一个字段块的顶层字段；返回 ``(fields, filled)``，filled 为补默认值的字段名。"""
     name = type_key(type_hash)
@@ -135,6 +157,7 @@ def normalize_fields(category: str, type_hash: int, fields: dict, aliases=None):
     given = {}
     unknown = []
     fields = _hoist_nested(alias_name, fields)
+    fields = _merge_vectors(alias_name, fields, default)
     for k, v in fields.items():
         parts = FIELD_BYTE_SPLITS.get((alias_name, k)) if alias_name else None
         if parts is not None and k not in canonical_set:
