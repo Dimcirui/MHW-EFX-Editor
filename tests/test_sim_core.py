@@ -1838,6 +1838,40 @@ class TestFieldResolution(unittest.TestCase):
         self.assertAlmostEqual(c.eval(5.0, "native"), 0.0)
         self.assertAlmostEqual(c.eval(5.0, "linear"), 50.0)
 
+    def test_curve_hermite_matches_ingame_samples(self):
+        """类型 3 按起始关键帧的两个切线走三次 Hermite；期望值是实机探针读数。
+
+        后两组来自第一张截图的右图（有透视、以另一条曲线归一化），读数误差放宽到 ±0.06。
+        """
+        from efx_format.sim.resolve import Curve
+        ingame = {  # (m0, m1): ({u: 实测归一化值}, 允许误差)
+            (0.0, 0.0): ({0.5: 0.49, 0.75: 0.83, 0.9: 0.954}, 0.03),
+            (2.0, 0.0): ({0.25: 0.415, 0.5: 0.73, 0.75: 0.938}, 0.03),
+            (0.0, 2.0): ({0.25: 0.07, 0.5: 0.256, 0.75: 0.567}, 0.03),
+            (3.0, 0.0): ({0.25: 0.58, 0.5: 0.846, 0.75: 0.94}, 0.06),
+            (-1.8, -1.0): ({0.1: -0.092, 0.5: 0.346, 0.75: 0.869}, 0.06),
+        }
+        for (m0, m1), (samples, delta) in ingame.items():
+            c = Curve([(0.0, 0.0, 3, m0, m1), (60.0, 100.0, 3)])
+            for u, want in samples.items():
+                self.assertAlmostEqual(c.eval(60.0 * u) / 100.0, want, delta=delta,
+                                       msg="m=(%g,%g) u=%g" % (m0, m1, u))
+
+    def test_curve_hermite_tangents_scope_one_segment(self):
+        """中间关键帧的切线只管以它为起点的后一段；前一段仍是 smoothstep。"""
+        from efx_format.sim.resolve import Curve
+        c = Curve([(0.0, 20.0, 3), (60.0, 100.0, 3, 2.0, 0.0), (120.0, 60.0, 3)])
+        self.assertAlmostEqual(c.eval(15.0), 20.0 + 80.0 * 0.15625)
+        self.assertAlmostEqual(c.eval(90.0), 100.0 - 40.0 * 0.75)      # Hermite(0.5, 2, 0) = 0.75
+
+    def test_curve_smoothstep_ignores_tangents(self):
+        """类型 4 = smoothstep，控制值不读；类型 2 同样不读（社区工具的 1.70158 / 4.1）。"""
+        from efx_format.sim.resolve import Curve
+        c4 = Curve([(0.0, 0.0, 4, 2.0, 0.0), (10.0, 100.0, 4)])
+        self.assertAlmostEqual(c4.eval(2.5), 15.625)
+        c2 = Curve([(0.0, 0.0, 2, 1.70158, 4.1), (10.0, 100.0, 2)])
+        self.assertAlmostEqual(c2.eval(2.5), 25.0)
+
     def test_a1_curve_drives_by_particle_age(self):
         from efx_format.sim.resolve import FieldView
         tracks = self._tracks_with("VELOCITY3D", "speed", 1,

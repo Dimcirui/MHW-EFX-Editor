@@ -18,8 +18,15 @@ from .state import Vec3
 _INTERP_STUCK = 0
 _INTERP_CONSTANT = 1
 _INTERP_LINEAR = 2
-_INTERP_QUAD = 3
-_INTERP_CUBIC = 4
+_INTERP_HERMITE = 3
+_INTERP_SMOOTH = 4
+
+
+def _hermite(u, m0, m1):
+    """单位段三次 Hermite：起点 0 终点 1，m0 / m1 是两端切线（以本段平均斜率为 1）。"""
+    u2 = u * u
+    u3 = u2 * u
+    return (3.0 * u2 - 2.0 * u3) + m0 * (u3 - 2.0 * u2 + u) + m1 * (u3 - u2)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -27,13 +34,19 @@ _INTERP_CUBIC = 4
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Curve(object):
-    """按 frameTiming 排序的关键帧序列。超出两端一律夹取端点值。"""
+    """按 frameTiming 排序的关键帧序列。超出两端一律夹取端点值。
+
+    每段按起始关键帧的 transition 求值：0 / 1 阶跃（到下一个关键帧那一刻跳）、2 线性、
+    3 三次 Hermite（起始关键帧的两个控制值是本段起点 / 终点切线，以本段平均斜率为 1）、
+    4 smoothstep（不读控制值）。5 以上游戏里不是正常插值（5 / 6 退化、7 / 8 不显示），按线性预览。
+    Color 通道的两个控制值由 RGBA 共用。
+    """
 
     __slots__ = ("keys", "length")
 
     def __init__(self, keys, length=0.0):
-        # keys: [(frame, value, transition), ...]
-        self.keys = sorted(keys, key=lambda k: k[0])
+        # keys: [(frame, value, transition[, tangent_out, tangent_in]), ...]
+        self.keys = sorted(((k + (0.0, 0.0))[:5] for k in keys), key=lambda k: k[0])
         self.length = float(length)
 
     def __len__(self):
@@ -58,20 +71,22 @@ class Curve(object):
                 lo = mid
             else:
                 hi = mid
-        f0, v0, tr0 = keys[lo]
-        f1, v1, _ = keys[hi]
+        f0, v0, tr0, m0, m1 = keys[lo]
+        f1, v1 = keys[hi][0], keys[hi][1]
 
         if interp_mode == "constant":
             return v0
-        if interp_mode == "native":
-            # QUAD/CUBIC 的实际曲线形状未验证，先退化成线性——形状会偏，
-            # 但不会错到量级上；标定之后在这里补。
-            if tr0 in (_INTERP_STUCK, _INTERP_CONSTANT):
-                return v0
+        if interp_mode == "native" and tr0 in (_INTERP_STUCK, _INTERP_CONSTANT):
+            return v0
         span = f1 - f0
         if span <= 1e-9:
             return v1
         k = (t - f0) / span
+        if interp_mode == "native":
+            if tr0 == _INTERP_HERMITE:
+                k = _hermite(k, m0, m1)
+            elif tr0 == _INTERP_SMOOTH:
+                k = _hermite(k, 0.0, 0.0)
         if isinstance(v0, tuple):
             return tuple(a + (b - a) * k for a, b in zip(v0, v1))
         return v0 + (v1 - v0) * k
@@ -97,7 +112,7 @@ class TimlTracks(object):
         if not timl_bytes:
             return out
         try:
-            from ..timl import parse_timl, decode_keyframe
+            from ..timl import parse_timl, decode_keyframe, sub_tangents
         except Exception:
             return out
         try:
@@ -127,7 +142,12 @@ class TimlTracks(object):
                             value = tuple(float(sub["value"]) for sub in subs[:4])
                         else:
                             value = float(subs[0]["value"])
-                        keys.append((float(d["frame"]), value, int(d["transition"])))
+                        tr = int(d["transition"])
+                        if tr == _INTERP_HERMITE and tf.data_type in (2, 3):
+                            m0, m1 = (float(x) for x in sub_tangents(subs[0]))
+                        else:
+                            m0 = m1 = 0.0
+                        keys.append((float(d["frame"]), value, tr, m0, m1))
                     if keys:
                         key = (axis, tp.timeline_param_hash, tf.datatype_hash)
                         out._curves[key] = Curve(keys, out._lengths.get(axis, 0.0))

@@ -4313,7 +4313,7 @@ def register():
         default="spawn")
     S.efx_sim_timl_interp = EnumProperty(
         name="Interpolation", update=_on_knob_changed,
-        items=[("native", "Per keyframe", "Use each keyframe's transition (QUAD/CUBIC fall back to linear)"),
+        items=[("native", "Per keyframe", "Use each keyframe's own interpolation"),
                ("linear", "Force linear", ""),
                ("constant", "Force hold", "")],
         default="native")

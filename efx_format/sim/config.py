@@ -23,8 +23,8 @@ UNKNOWNS = {
         ("spawn", "current"), "spawn",
     ),
     "timl_interp": (
-        "关键帧插值。'native' 按 keyframe.transition（0=STUCK 1=CONSTANT 2=LINEAR "
-        "3=QUAD 4=CUBIC），其中 QUAD/CUBIC 未验证、退化成线性；'linear'/'constant' 强制。",
+        "关键帧插值。'native' 按 keyframe.transition（0/1 阶跃、2 线性、3 三次 Hermite、"
+        "4 smoothstep，见 resolve.Curve）；'linear'/'constant' 强制。",
         ("native", "linear", "constant"), "native",
     ),
     "age_during_delay": (
