@@ -31,12 +31,22 @@ FIELD_ORDER_ANCHORS = {
         # 两个 EPV 色槽分别紧邻 color 与 colorRange。
         "epvcolor_0": "spacer0",
         "epvcolor_1": "spacer1",
+        # 这两个字段在拉伸参数之后，但属于物理组
+        "unkn21":     "springiness",
+        "unkn22_0":   "unkn21",
     },
     "STRAINRIBBON": {
         # 两个 EPV 色槽分别紧邻 color 与 colorRange。
         "epv_color_slot1": "spacer00",
         "epv_color_slot2": "useColorRange",
+        "unknEnum11":      "displacementToggle",
+        "unknEnum12_00":   "unknEnum11",
     },
+    "TURBULENCE": {"unknFlag3_4": "unkn1_0"},
+    "EXTERNREFERENCE": {"unknFlag1_6": "trigger_condition"},
+    "PTCOLLISION": {"bounceCount": "horizontalBounce"},
+    # PLEMISSIVE：子类独有的部位掩码排在基类字段之后，前面几段与 PARENTEMISSIVE 相同
+    "PLEMISSIVE": {"body_p": "unknFixed5_4", "wp_p": "body_p"},
     # MESH 的颜色、发光和旋转控制按其所属字段组显示。
     "MESH": {
         "useColorRange":         "color",
@@ -48,7 +58,7 @@ FIELD_ORDER_ANCHORS = {
     },
 
     # 以下类型按 blender_efx/field_groups.py 的 TYPE_SECTIONS 分段排列。
-    "LIFE": {"indefiniteLifespan": "vanishFrame"},
+    "LIFE": {"indefiniteLifespan": "vanishFrame", "unknFrame": "timeToDeath"},
     "BLINK": {"unkn1_0": "highFrequencyWidth"},
     "UVSEQUENCE": {"uvsPath": "typeFlag"},
     "EMITTERSHAPE2D": {
@@ -113,10 +123,17 @@ FIELD_ORDER_ANCHORS = {
         "revivalInterval": "revivalLoop",
     },
     "EMITTERSHAPE3D": {
-        "shapeType":         "typeFlag",
-        "rangeDivideAxis":   "scanAngleVertical",
-        "rayCastDependency": "rangeXYZ",
-        "radiusOrigin":      "rangeDivideVerticalNum",
+        "shapeType":                "typeFlag",
+        "rangeDivideHorizontalNum": "rangeDivideAxis",
+        "rangeDivideVerticalNum":   "rangeDivideHorizontalNum",
+        "radiusOrigin":             "scanAngleVertical",
+    },
+    # 末端形状沿用 EMITTERSHAPE3D 的显示顺序。
+    "LIGHTNING": {
+        "terminal_shapeType":                "useTerminalShape",
+        "terminal_rangeDivideHorizontalNum": "terminal_rangeDivideAxis",
+        "terminal_rangeDivideVerticalNum":   "terminal_rangeDivideHorizontalNum",
+        "terminal_radiusOrigin":             "terminal_scanAngleVertical",
     },
     # RGBFIRE 按全局、火焰、烟雾与插值字段分组显示。
     "RGBFIRE": {

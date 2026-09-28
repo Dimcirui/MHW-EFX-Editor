@@ -24,7 +24,7 @@ class FieldGroup(object):
     bit_rows     类型名 → {"lead": [...], "after": {字段名: [...]}, "own": [...]}
                  lead  画在组标题之后、组首行之前的位行
                  after 画在某字段（或 value/jitter 行）之后的位行，同一列表内的位画在同一行
-                 own   位掩码字段自身位置上仍保留的位行
+                 own   位掩码字段自身位置上仍保留的位行；省略时自身位置不画
     paired       (前一字段, 后一字段)：两个 Bool 画在同一行，后者在前者关闭时置灰
     """
 
@@ -86,8 +86,7 @@ FLOWMAP = FieldGroup(
     },
     bit_rows={
         t: {"lead": [_AR_ENABLE],
-            "after": {"flowStrengthCoef": [_AR_ONCE, _AR_REVERSE]},
-            "own": [_AR_UNKNOWN]}
+            "after": {"flowStrengthCoef": [_AR_ONCE, _AR_REVERSE]}}
         for t in _FLOW_BIT_TYPES
     },
     paired=("flowOnce", "flowReverse"),
@@ -112,6 +111,7 @@ COLOR = FieldGroup(
         "LIGHTNING": ("color", "useColorRange", "colorRange", "blendMode", "brightness",
                       "brightnessJitter", "EPVColorSlot1", "EPVColorSlot2"),
     },
+    bit_rows={t: {"after": {"brightness": [_AR_UNKNOWN]}} for t in _FLOW_BIT_TYPES},
     at_end=False,
 )
 
@@ -137,8 +137,10 @@ ORIENTATION = FieldGroup(
     header=("朝向", "Orientation"),
     types=("RIBBON", "PLANE", "MESH"),
     order={
-        "RIBBON": ("baseAxis", "rotationOrder", "rotationX", "rotationXJitter",
-                   "rotationY", "rotationYJitter", "rotationZ", "rotationZJitter"),
+        "RIBBON": ("faceVelocity", "fixedDirection", "lockInitialVelocity",
+                   "baseAxis", "rotationOrder", "rotationX", "rotationXJitter",
+                   "rotationY", "rotationYJitter", "rotationZ", "rotationZJitter",
+                   "unknFlag16_0_1", "unknBool16_1", "unknBool16_2_0"),
         "PLANE": ("baseAxis", "rotationOrder", "rotation"),
         "MESH": ("baseAxis", "rotationOrder", "rotation"),
     },
@@ -165,6 +167,27 @@ _EPV_SLOT_KEYS = ("epvColorSlot", "color1", "null2", "color2", "spacer4", "unkn1
                   "unkn17", "unkn18_0", "unkn18_1", "spacer5")
 _EPV_TAIL_KEYS = _EPV_SLOT_KEYS[:8]
 
+def _emissive_sections(mask_extra, emissive_extra):
+    """PLEMISSIVE / PARENTEMISSIVE 共用基类的三段；两者只有遮罩段里的字段名不同。"""
+    return [
+        (("自发光", "Emissive"), ["blend", "correctColorNo", "emissive", "intensity"]
+         + emissive_extra),
+        (("边缘光", "Rim Light"), ["rimWidth", "rimPower", "rimAlpha"]),
+        (("发光遮罩", "Emit Mask"), ["emitMaskFlags", "mask0", "mask1", "addMask0", "addMask1"]
+         + mask_extra),
+    ]
+
+
+def _lightning_branch_members(n):
+    """LIGHTNING 第 n 代分支（0 = 主干）的 value 字段。"""
+    return ["branch%d_%s" % (n, f) for f in (
+        "size", "flags", "count", "unkn2", "unkn3",
+        "lowDetailNum", "lowDetailWidth", "lowDetailWidthCoef",
+        "highDetailNum", "highDetailWidth", "highDetailWidthCoef",
+        "intensity", "length", "thickness",
+        "headScale", "tailScale", "headAlpha", "tailAlpha")]
+
+
 TYPE_SECTIONS = {
     "SPAWN": [
         (("数量", "Count"), ["maxParticles", "spawnNum"]),
@@ -175,9 +198,10 @@ TYPE_SECTIONS = {
     ],
     "LIFE": [
         (("淡入", "Appear"), ["appearFrame"]),
-        (("持续", "Keep"), ["keepFrame", "unknFrame"]),
+        (("持续", "Keep"), ["keepFrame"]),
         (("淡出", "Vanish"), ["vanishFrame"]),
         (("永生", "Indefinite"), ["indefiniteLifespan", "timeToDeath"]),
+        (("其他", "Other"), ["unknFrame"]),
     ],
     "BLINK": [(("透明度范围", "Alpha Rate"), ["minAlphaRate", "maxAlphaRate"])] + _OSC_SECTIONS,
     "NOISE": list(_OSC_SECTIONS),
@@ -194,12 +218,30 @@ TYPE_SECTIONS = {
     ],
     "EMITTERSHAPE3D": [
         (("形状", "Shape"), ["shapeType", "rangeXYZ"]),
-        (("变换", "Transform"), ["rayCastDependency", "rotationCorrect", "localRotationX",
-                                 "localRotationY", "localRotationZ", "rotationOrder"]),
-        (("扫描范围", "Scan Range"), ["scanAngleHorizontal", "scanAngleVertical"]),
         (("细分", "Subdivision"), ["rangeDivideAxis", "rangeDivideHorizontalNum",
                                    "rangeDivideVerticalNum"]),
+        (("旋转", "Rotation"), ["rotationCorrect", "localRotationX", "localRotationY",
+                                "localRotationZ", "rotationOrder"]),
+        (("扫描范围", "Scan Range"), ["scanAngleHorizontal", "scanAngleVertical"]),
         (("半径渐变", "Radius Taper"), ["radiusOrigin", "radiusEnd"]),
+        (("射线检测", "Ray Cast"), ["rayCastDependency"]),
+    ],
+    "LIGHTNING": [
+        (("主干", "Trunk"), _lightning_branch_members(0)),
+        (("第 1 代分支", "Branch Tier 1"), _lightning_branch_members(1)),
+        (("第 2 代分支", "Branch Tier 2"), _lightning_branch_members(2)),
+        (("末端形状", "Terminal Shape"), ["useTerminalShape", "terminal_shapeType",
+                                          "terminal_rangeXYZ", "terminal_rayCastDependency",
+                                          "terminal_rotationCorrect", "terminal_localRotationX",
+                                          "terminal_localRotationY", "terminal_localRotationZ",
+                                          "terminal_rotationOrder",
+                                          "terminal_scanAngleHorizontal",
+                                          "terminal_scanAngleVertical",
+                                          "terminal_rangeDivideAxis",
+                                          "terminal_rangeDivideHorizontalNum",
+                                          "terminal_rangeDivideVerticalNum",
+                                          "terminal_radiusOrigin", "terminal_radiusEnd",
+                                          "terminal_unknFlag"]),
     ],
     "EMITTERSHAPE2D": [
         (("形状", "Shape"), ["shapeType", "rangeX", "rangeY"]),
@@ -263,6 +305,64 @@ TYPE_SECTIONS = {
         (("种子表", "Seed Tables"), ["tableSelectionGroup"]
          + ["randomSeedTable%d" % k for k in range(8)]),
     ],
+    "RIBBON": [
+        (("UV", "UV"), ["uvScaleMode", "uvScaleLength", "uvScaleWidth"]),
+        (("细分", "Subdivision"), ["subdivisionCount", "useTrailTimeScale", "trailTimeScale"]),
+        (("位置与物理", "Position and Physics"), ["lengthwise_offset_relative_to_camera",
+                                                  "spawnAnchorOffset", "restoreStrength",
+                                                  "inertia", "springiness", "unkn21",
+                                                  "unkn22_0"]),
+        (("拉伸", "Stretch"), ["stretchFromSpawn", "spacer5", "stretchMaxLength",
+                               "stretchResetDistance"]),
+        (("光照", "Lighting"), ["lightGroup", "unknFlag22_2"]),
+        (("首尾渐变", "Base and Tip Fade"), ["unknBool7", "spacer7", "base_width_multiplier", "base_opacity",
+                                            "tip_width_multiplier", "tip_opacity",
+                                            "enableFadeLength", "spacer8", "base_fade_length",
+                                            "tip_fade_length"]),
+        (("摆动", "Flap"), ["enableFlap", "spacer9", "flap1Frequency", "flap1Amount", "flap2Frequency",
+                            "flap2Amount"]),
+        (("重力", "Gravity"), ["enableGravity", "gravityLocalSpace", "spacer28", "gravityX", "gravityY",
+                               "gravityZ"]),
+    ],
+    "STRAINRIBBON": [
+        (("端点", "Endpoints"), ["startPosition", "unknFixed03_06", "endPosition",
+                                 "unknFixed03_10"]),
+        (("首尾", "Start and End"), ["startWidth", "startOpacity", "endWidth", "endOpacity"]),
+        (("细分与 UV", "Subdivision and UV"), ["subdivisionCount", "unknFixed04_01",
+                                               "uvRepetition",
+                                               "widthwiseUVScalingAlpha", "spacer04",
+                                               "widthwiseUVScalingBML"]),
+        (("端点散布与释放", "Endpoint Scatter and Release"), ["endPointScatter",
+                                                              "originReleaseFlag"]),
+        (("断裂", "Break"), ["lengthBreakpoint", "breakpointLocation", "breakDelay"]),
+        (("物理", "Physics"), ["tension", "unkn06_17", "unkn06_18", "gravityMultiplier",
+                               "inertia", "poseSnapping", "endBoneID",
+                               "positionalAberration_01", "positionalAberration_02",
+                               "positionalAberration_05"]),
+        (("位移", "Displacement"), ["displacement", "displacementToggle"]),
+    ],
+    "PTCOLLISION": [
+        (("物理模式", "Physics Mode"), ["physicsEnum", "unkn02", "unkn03", "unknEnum04"]),
+        (("投影", "Projection"), ["projectionOffset", "projectionDist"]),
+        (("反弹", "Bounce"), ["bounceElasticity", "bounceElasticityMultiplier",
+                              "horizontalBounce", "bounceCount"]),
+        (("撞击触发", "Impact Trigger"), ["impactPlayTriggerMode", "impactPlayTriggerCount",
+                                          "ieIndex", "unknEnum6_0", "unknEnum6_1"]),
+    ],
+    "MESH": [
+        (("选项", "Options"), ["unknEnum7_0", "unknFlag7_1", "tracking_flags", "affectedByLight",
+                               "shadowCastBitflag", "epv_color_slot1", "unknEnum5",
+                               "epv_color_slot2", "unknFixed6_1"]),
+        (("颜色开关", "Color Switches"), ["enableIntensity1", "enableIntensity2",
+                                          "enableEmissiveIntensity", "disableAllColorRange",
+                                          "unknFlag_cm2_3"]),
+        (("未知开关", "Unknown Switches"), ["unknBool%d" % k for k in range(6)] + ["BeginMod3"]),
+    ],
+    "PLEMISSIVE": _emissive_sections(["enableUseEmitMask", "unknFixed5_0", "unknFixed5_3",
+                                      "unknFixed5_4"], ["NULL"])
+    + [(("光圈部位", "Aura Parts"), ["body_p", "wp_p"])],
+    "PARENTEMISSIVE": _emissive_sections(["unkn7_2", "unknFixed8_0", "unknFixed8_3",
+                                          "unknFixed8_4"], []),
 }
 
 
@@ -343,12 +443,17 @@ def bit_rows_after(type_name, field_name):
 
 
 def own_bit_rows(type_name, field_name):
-    """位掩码字段自身位置上保留的位行；该字段不由分组接管时返回 None。"""
+    """位掩码字段自身位置上保留的位行（可为空列表）；该字段不由分组接管时返回 None。"""
     for g in GROUPS:
         if type_name in g.types:
             spec = g.bit_rows.get(type_name)
-            if spec and spec.get("own") and spec["own"][0][0] == field_name:
-                return spec["own"]
+            if not spec:
+                continue
+            rows = list(spec.get("lead", [])) + list(spec.get("own", []))
+            for after in spec.get("after", {}).values():
+                rows += after
+            if any(r[0] == field_name for r in rows):
+                return spec.get("own", [])
     return None
 
 
