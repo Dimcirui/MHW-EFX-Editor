@@ -111,6 +111,7 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
             box = layout.box()
             box.label(text="提取根：默认自动找 nativePC；找不到才用下方", icon="FILE_FOLDER")
             box.prop(context.scene, "efx_chunk_root", text="Chunk Root")
+            box.prop(context.scene, "efx_chunk_root_alt", text=T("chunk_root.alt"))
 
     def execute(self, context):
         import os

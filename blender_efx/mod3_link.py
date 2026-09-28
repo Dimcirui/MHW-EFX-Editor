@@ -124,15 +124,13 @@ def find_native_root(efx_dir):
 def resolve_mod3_path(relpath, chunk_root, efx_dir=None):
     """把 MESH 相对路径解析成磁盘上存在的 .mod3 绝对路径；找不到返回 None。
 
-    解析根优先级：① 手设 Chunk Root（若填了）② 从 efx 位置向上追溯到的 nativePC（自动）
-    ③ efx 文件目录兜底。relpath 反斜杠归一化、补 .mod3。
+    解析根优先级：① 手设 Chunk Root（若填了）② 备选 Chunk Root ③ 从 efx 位置向上追溯到的
+    nativePC（自动）④ efx 文件目录兜底。relpath 反斜杠归一化、补 .mod3。
     """
     rel = relpath.replace("\\", "/").lstrip("/")
     if not rel.lower().endswith(".mod3"):
         rel += ".mod3"
-    candidates = []
-    if chunk_root:
-        candidates.append(os.path.join(bpy.path.abspath(chunk_root), rel))
+    candidates = chunk_root_candidates(rel, chunk_root)
     native = find_native_root(efx_dir)
     if native:
         candidates.append(os.path.join(native, rel))
@@ -471,6 +469,37 @@ def _set_chunk_root(self, value):
     self["efx_chunk_root_raw"] = value
 
 
+def _get_chunk_root_alt(self):
+    raw = self.get("efx_chunk_root_alt_raw", "")
+    if raw:
+        return raw
+    prefs = _addon_preferences()
+    return getattr(prefs, "chunk_root_alt", "") if prefs else ""
+
+
+def _set_chunk_root_alt(self, value):
+    self["efx_chunk_root_alt_raw"] = value
+
+
+def backup_chunk_root():
+    """当前场景的备选 Chunk Root；未设置时返回空串。"""
+    try:
+        return getattr(bpy.context.scene, "efx_chunk_root_alt", "") or ""
+    except Exception:
+        return ""
+
+
+def chunk_root_candidates(rel, chunk_root):
+    """按 Chunk Root → 备选 Chunk Root 的顺序拼出候选路径。"""
+    out = []
+    for root in (chunk_root, backup_chunk_root()):
+        if root:
+            p = os.path.join(bpy.path.abspath(root), rel)
+            if p not in out:
+                out.append(p)
+    return out
+
+
 def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
@@ -481,6 +510,14 @@ def register():
         subtype="DIR_PATH",
         get=_get_chunk_root,
         set=_set_chunk_root,
+    )
+    bpy.types.Scene.efx_chunk_root_alt = bpy.props.StringProperty(
+        name="Backup Chunk Root",
+        description="Chunk Root 里找不到文件时，再到这个文件夹里找。"
+                    "留空时使用插件偏好设置里的默认值",
+        subtype="DIR_PATH",
+        get=_get_chunk_root_alt,
+        set=_set_chunk_root_alt,
     )
     # 多网格绑定：同一 MESH 属性按 viscon 范围绑的全部对象（efx_mesh_target 单体
     # 指针仍保留在 uvc_preview.py，供未走多网格路径的消费方兼容用）。
@@ -494,6 +531,8 @@ def register():
 def unregister():
     if hasattr(bpy.types.Object, "efx_mesh_targets"):
         del bpy.types.Object.efx_mesh_targets
+    if hasattr(bpy.types.Scene, "efx_chunk_root_alt"):
+        del bpy.types.Scene.efx_chunk_root_alt
     if hasattr(bpy.types.Scene, "efx_chunk_root"):
         del bpy.types.Scene.efx_chunk_root
     for cls in reversed(_CLASSES):

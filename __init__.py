@@ -32,28 +32,44 @@ from . import blender_epv
 
 
 # Chunk Root 使用独立配置文件，避免扩展重装时丢失用户路径。
-def _chunk_root_config_path() -> str:
+def _chunk_root_config_path(name: str = "efx_editor_chunk_root.txt") -> str:
     try:
         cfg = bpy.utils.user_resource("CONFIG")
     except Exception:
         cfg = os.path.expanduser("~")
-    return os.path.join(cfg, "efx_editor_chunk_root.txt")
+    return os.path.join(cfg, name)
 
 
-def _get_chunk_root_pref(self) -> str:
+def _read_config(name: str) -> str:
     try:
-        with open(_chunk_root_config_path(), "r", encoding="utf-8") as f:
+        with open(_chunk_root_config_path(name), "r", encoding="utf-8") as f:
             return f.read().strip()
     except Exception:
         return ""
 
 
-def _set_chunk_root_pref(self, value: str) -> None:
+def _write_config(name: str, value: str) -> None:
     try:
-        with open(_chunk_root_config_path(), "w", encoding="utf-8") as f:
+        with open(_chunk_root_config_path(name), "w", encoding="utf-8") as f:
             f.write(value)
     except Exception:
         pass
+
+
+def _get_chunk_root_pref(self) -> str:
+    return _read_config("efx_editor_chunk_root.txt")
+
+
+def _set_chunk_root_pref(self, value: str) -> None:
+    _write_config("efx_editor_chunk_root.txt", value)
+
+
+def _get_chunk_root_alt_pref(self) -> str:
+    return _read_config("efx_editor_chunk_root_alt.txt")
+
+
+def _set_chunk_root_alt_pref(self, value: str) -> None:
+    _write_config("efx_editor_chunk_root_alt.txt", value)
 
 
 # 插件偏好设置。
@@ -82,6 +98,13 @@ class EFX_Preferences(AddonPreferences):
         subtype="DIR_PATH",
         get=_get_chunk_root_pref,
         set=_set_chunk_root_pref,
+    )
+    chunk_root_alt: StringProperty(
+        name="Backup Chunk Root",
+        description="Chunk Root 里找不到文件时，再到这个文件夹里找",
+        subtype="DIR_PATH",
+        get=_get_chunk_root_alt_pref,
+        set=_set_chunk_root_alt_pref,
     )
 
     auto_check_update: BoolProperty(
@@ -126,6 +149,8 @@ class EFX_Preferences(AddonPreferences):
         box2.label(text="导入" if zh else "Import", icon="IMPORT")
         box2.prop(self, "chunk_root",
                   text=("默认 Chunk Root（提取根目录）" if zh else "Default Chunk Root"))
+        box2.prop(self, "chunk_root_alt",
+                  text=("默认备选 Chunk Root" if zh else "Default Backup Chunk Root"))
         sub2 = box2.row()
         sub2.enabled = False
         sub2.label(text=("跨文件永久生效；场景里另填了 Chunk Root 时以场景值为准"

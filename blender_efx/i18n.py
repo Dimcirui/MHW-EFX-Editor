@@ -492,6 +492,7 @@ STRINGS = {
                             "ZH": "当前对象不属于任何 EFX 文件集合"},
     "uvslink.import_opt":  {"EN": "Import referenced .uvs (+ sprite sheets)",
                             "ZH": "一并导入引用的 .uvs（含序列帧大图）"},
+    "chunk_root.alt":      {"EN": "Backup Chunk Root", "ZH": "备选 Chunk Root"},
     "uvslink.reason_no_path":            {"EN": "no path in the attribute", "ZH": "属性里没填路径"},
     "uvslink.reason_uvs_not_found":      {"EN": ".uvs not on disk", "ZH": "磁盘上找不到 .uvs"},
     "uvslink.reason_no_props":           {"EN": "attribute has no UVS storage", "ZH": "属性没有 UVS 存储槽"},

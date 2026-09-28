@@ -551,6 +551,7 @@ class EFX_PT_uvs_edition(Panel):
         if not _link.tex_loader_available():
             sub.label(text=T("uvslink.need_editor"), icon="INFO")
         box.prop(context.scene, "efx_chunk_root", text="Chunk Root")
+        box.prop(context.scene, "efx_chunk_root_alt", text=T("chunk_root.alt"))
 
         # ── Import / Export / Reload ──────────────────────────────────────────
         row = layout.row(align=True)

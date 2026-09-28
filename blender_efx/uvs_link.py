@@ -174,9 +174,7 @@ def resolve_game_path(relpath, ext, chunk_root, efx_dir=None):
     if not rel.lower().endswith(ext):
         rel += ext
 
-    candidates = []
-    if chunk_root:
-        candidates.append(os.path.join(bpy.path.abspath(chunk_root), rel))
+    candidates = _mod3.chunk_root_candidates(rel, chunk_root)
     native = _mod3.find_native_root(efx_dir)
     if native:
         candidates.append(os.path.join(native, rel))
