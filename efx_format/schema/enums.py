@@ -78,11 +78,14 @@ ENUM_PTLIFE_STATUS = EnumDef("PtLifeStatus", [
     (-1, "Unknown", "未知"),
 ])
 # PTCOLLISION：碰撞状态
-ENUM_EXTERNREF_TRIGGER = EnumDef("ExternRefTrigger", [
-    (0, "Default", "默认"),
-    (1, "Over Emitter Lifetime", "随发射器生命周期"),
-    (2, "Unknown", "未知"),
-    (3, "Over Particle Lifetime", "随粒子生命周期"),
+# EXTERNREFERENCE 触发条件：bit0 开启过渡，bit1 改按粒子生命周期（只和 bit0 一起出现）
+BITS_EXTERNREF_TRIGGER = [
+    (0x1, "Over Lifetime", "随生命周期过渡"),
+    (0x2, "Use Particle Lifetime", "按粒子生命周期"),
+]
+ENUM_PTLIFE_RELATION = EnumDef("PtLifeRelation", [
+    (0, "Enabled", "启用"),
+    (-1, "Disabled", "停用"),
 ])
 ENUM_HOMING_TARGET = EnumDef("HomingTarget", [
     (0, "Spawn Point", "生成点"),
@@ -144,12 +147,12 @@ ENUM_BLEND_STATE = EnumDef("BlendState", [
     (9, "Alpha (9)", "Alpha 混合 (9)", True),
     (10, "Opaque (10)", "不透明 (10)", True),
 ])
-ENUM_ROTATION_MODE = EnumDef("RotationMode", [
-    (0, "Plane Rotation", "平面旋转系"), 
-    (1, "Plane + Random Dir", "平面旋转 + 随机正反"),
-    (2, "Spin Velocity", "自旋速度系"), 
-    (3, "Spin + Random Dir", "自旋速度 + 随机正反"),
-])
+# ROTATEANIM：加载时拆成两个独立开关；bit1 在界面上按二选一显示
+BITS_ROTATION_MODE = [
+    BitEnum(0x2, [(0, "Plane Rotation", "平面旋转"), (1, "Spin Velocity", "自旋速度")],
+            "Rotation Type", "旋转方式"),
+    BitDef(0x1, "Random Direction", "随机正反"),
+]
 
 # PARENTOPTIONS：逐轴跟随模式；前三项共享，第四项按字段区分
 _TRACKING_BASE = [
@@ -216,6 +219,9 @@ BITS_FADEBYANGLE_FLAGS = [
     (0x2, "Exclude Cone", "排除锥体（反转可见性）"),
     (0x4, "Unknown", "未知"),
 ]
+
+# MESH BeginMod3：5 个独立位，作用均未知
+BITS_MESH_BEGINMOD3 = [(1 << _i, "Unknown Bit %d" % _i, "未知位 %d" % _i) for _i in range(5)]
 
 # PLANE：bit0 为总开关，bit1/bit2 为其子模式
 BITS_PLANE_UNKN5_1 = [

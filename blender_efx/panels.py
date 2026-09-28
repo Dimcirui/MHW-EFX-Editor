@@ -388,7 +388,8 @@ def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj
         _draw_field_row_buttons(title_row, type_name, item.ori_name, item=item, anno_name=_anno)
 
         # rangeXYZ 使用 offset/size，而非 static/random 语义。
-        if type_name == "EMITTERSHAPE3D" and item.ori_name == "rangeXYZ":
+        if (type_name, item.ori_name) in (("EMITTERSHAPE3D", "rangeXYZ"),
+                                          ("LIGHTNING", "terminal_rangeXYZ")):
             lbl_a, lbl_b = T("field.offset"), T("field.size")
         else:
             lbl_a, lbl_b = T("field.static"), T("field.random")
@@ -1633,7 +1634,7 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     _draw_field_item(_tcol, item, type_name=type_name, obj=obj,
                                      label_override=_glbl)
                     i += 1
-                _after_rows = _fg.bit_rows_after(type_name, item.ori_name)
+                _after_rows = None if _color_only else _fg.bit_rows_after(type_name, item.ori_name)
                 if _after_rows:
                     _draw_group_bit_rows(_tcol, _item_by_name, type_name, _after_rows, _zh_grp)
 

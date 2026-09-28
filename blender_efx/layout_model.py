@@ -71,9 +71,7 @@ AXIS_GROUPS: dict = {
         ("sizeAdd", [("X", "sizeXAdd"), ("Y", "sizeYAdd"), ("Z", "sizeZAdd")]),
         ("sizeAddCoef", [("X", "sizeXAddCoef"), ("Y", "sizeYAddCoef"), ("Z", "sizeZAddCoef")]),
     ],
-    # RIBBON 的 rotationX/Y/Z：字节布局里 Y/Z 两组的 value/jitter 顺序是反的（rotationYJitter
-    # 排在 rotationY 前面，rotationZJitter 排在 rotationZ 前面），相邻位置配对逻辑找不到，
-    # 靠这里按名字查找而非位置的分组机制正确显示，2026-07-30。
+    # RIBBON 的 rotationX/Y/Z 按名字分组显示
     "RIBBON": [
         ("rotation", [("X", "rotationX"), ("Y", "rotationY"), ("Z", "rotationZ")]),
     ],

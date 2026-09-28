@@ -447,7 +447,7 @@
                 "type": "SHADERSETTINGS",
                 "fields": {
                     "typeFlag": 4,
-                    "unknEnum1": 104,
+                    "section_length": 104,
                     "spacer": -842150656,
                     "versionRelated": 0,
                     "depthBias": 0.0,

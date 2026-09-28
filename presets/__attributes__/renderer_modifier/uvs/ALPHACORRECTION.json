@@ -7,7 +7,7 @@
     "attribute": {
         "type": "ALPHACORRECTION",
         "fields": {
-            "unkn0": 1,
+            "typeFlag": 1,
             "lowPass": 0.0,
             "contrast_gamma": 1.0,
             "unkn3": 0.0,

@@ -218,7 +218,7 @@
      "flowStrengthJitter": 0.0,
      "flowStrengthCoef": 1.0,
      "flowStrengthCoefJitter": 0.0,
-     "unknBitmask5_0": 0,
+     "divideNum": 0,
      "unknEnum5_1": 0,
      "baseAxis": 1,
      "rotationOrder": 4,
@@ -308,7 +308,7 @@
     "type": "SHADERSETTINGS",
     "fields": {
      "typeFlag": 2,
-     "unknEnum1": 104,
+     "section_length": 104,
      "spacer": -842150656,
      "versionRelated": 1,
      "depthBias": 0.0,

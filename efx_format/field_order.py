@@ -92,7 +92,6 @@ FIELD_ORDER_ANCHORS = {
         "gravity":       "movementDelay",
     },
     "FADEBYANGLE": {"rotation": "rotOrder"},
-    "RANDOMFIX": {"tableSelectionGroup": "useRandomSeedTableCount"},
     # RIBBONBLADE：形状段夹着的未知字段挪到尾部段之后
     "RIBBONBLADE": {
         "uvRepetition":  "contractionSpeed",

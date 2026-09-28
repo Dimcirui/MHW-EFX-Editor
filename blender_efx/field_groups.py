@@ -109,8 +109,8 @@ COLOR = FieldGroup(
         "STRAINRIBBON": ("epv_color_slot1", "color", "useColorRange", "epv_color_slot2",
                          "colorRange", "useEmission", "emissionStrength",
                          "emissionStrengthJitter"),
-        "LIGHTNING": ("color1", "color2", "emissive", "EPVColorSlot1", "EPVColorSlot2",
-                      "glow", "glowJitter"),
+        "LIGHTNING": ("color", "useColorRange", "colorRange", "blendMode", "brightness",
+                      "brightnessJitter", "EPVColorSlot1", "EPVColorSlot2"),
     },
     at_end=False,
 )
@@ -120,14 +120,13 @@ _BILLBOARD_SIZE = ("scale", "scaleJitter", "width", "widthJitter", "height", "he
 #: 尺寸：整体缩放 → 逐轴尺寸
 SIZE = FieldGroup(
     header=("尺寸", "Size"),
-    types=("BILLBOARD3D", "BILLBOARD2D", "PLANE", "RIBBON", "STRAINRIBBON", "LIGHTNING", "MESH"),
+    types=("BILLBOARD3D", "BILLBOARD2D", "PLANE", "RIBBON", "STRAINRIBBON", "MESH"),
     order={
         "BILLBOARD3D": _BILLBOARD_SIZE,
         "BILLBOARD2D": _BILLBOARD_SIZE,
         "PLANE": _BILLBOARD_SIZE,
         "RIBBON": ("scale", "scale_jitter", "width", "width_jitter", "length", "length_jitter"),
         "STRAINRIBBON": ("width", "widthJitter", "length", "lengthJitter"),
-        "LIGHTNING": ("width", "widthJitter", "length", "lengthJitter"),
         "MESH": ("global_scale", "global_scale_jitter", "scale"),
     },
     at_end=False,

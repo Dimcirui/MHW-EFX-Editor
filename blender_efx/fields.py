@@ -135,6 +135,7 @@ _XYZ_UNIT = {
     ("TRANSFORM3D",    "translate"):            "LENGTH",
     ("TRANSFORM3D",    "translation_velocity"): "LENGTH",
     ("EMITTERSHAPE3D", "rangeXYZ"):             "LENGTH",
+    ("LIGHTNING",      "terminal_rangeXYZ"):    "LENGTH",
     ("STRAINRIBBON",   "displacement"):         "LENGTH",
     ("STRAINRIBBON",   "endPosition"):          "LENGTH",
     ("TURBULENCE",     "offsetPos"):            "LENGTH",

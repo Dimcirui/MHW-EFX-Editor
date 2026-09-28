@@ -12,16 +12,16 @@ from .enums import (
     ENUM_SHAPE_TYPE3D, ENUM_RANGE_DIVIDE_AXIS, ENUM_RANGE_DIVIDE_AXIS_2D,
     ENUM_ROTATION_CORRECT_TYPE, ENUM_RAYCAST_DEPENDENCY,
     ENUM_SHAPE_TYPE2D, ENUM_COLLISION_PHYSICS, ENUM_IMPACT_PLAY_TRIGGER_MODE, ENUM_PTLIFE_STATUS,
-    ENUM_EXTERNREF_TRIGGER,
+    ENUM_PTLIFE_RELATION,
     ENUM_RAYCAST_DIR, ENUM_RAYCAST_ID, ENUM_HOMING_TARGET, ENUM_HOMING_FORCEFIELD, ENUM_HOMING_VANISH,
-    ENUM_PARTICLE_LIGHTING, ENUM_DRAW_MODE, ENUM_DRAW_TARGET, ENUM_BLEND_STATE, ENUM_ROTATION_MODE,
+    ENUM_PARTICLE_LIGHTING, ENUM_DRAW_MODE, ENUM_DRAW_TARGET, ENUM_BLEND_STATE, BITS_ROTATION_MODE,
     ENUM_TRACKING_POS, ENUM_TRACKING_ANGLE, ENUM_DISTORTION_TYPE,
     ENUM_UNITBOUNDARY_TYPE,
     BITS_ENABLE_VELOCITY, BITS_RANDOMFIX_TABLE,
     BITS_FADEBYANGLE_FLAGS,
     BITS_SPAWN_FLAGS,
     BITS_RAYCAST_ATTR, BITS_RAYCAST_FLAGS,
-    BITS_PLEMISSIVE_EMIT_MASK,
+    BITS_PLEMISSIVE_EMIT_MASK, BITS_EXTERNREF_TRIGGER,
     _AXIS_DIRECTION6, _ROT_ORDER6, _VELOCITY_TYPE, _TRANSFORM_ROT_ORDER,
 )
 from .codec import _schema_size
@@ -134,7 +134,7 @@ assert _schema_size(LIFE_SCHEMA) == 48, \
 
 SHADERSETTINGS_ATTR = Attribute(size=116, fields=[
     Int("typeFlag"),
-    Int("unknEnum1"),  # 不满足 section_length 的自描述长度公式，故不按段长度命名
+    Int("section_length", label_zh="段长度"),  # 不含末尾的 unknBitmask5_1，比块剩余长度少 4
     Int("spacer"),
     Bool("versionRelated", label_en="Version Related", label_zh="版本相关"),
     Float("depthBias", label_en="Depth Bias", label_zh="深度偏移"),
@@ -364,8 +364,8 @@ RGBFIRE_SCHEMA = EXTERN_RGBFIRE_SCHEMA
 
 ROTATEANIM_ATTR = Attribute(size=80, fields=[
     Int("typeFlag"),
-    # rotationModeMask 决定生效的是平面旋转组还是自旋速度组，以及是否随机正反向。
-    Enum("rotationModeMask", ENUM_ROTATION_MODE, label_zh="旋转模式"),
+    # 第 1 位选组：开 = 自旋速度组，关 = 平面旋转组；第 0 位 = 随机正反向。
+    Bitmask("rotationModeMask", BITS_ROTATION_MODE, strict=True, label_zh="旋转模式"),
     Float("billboardRotation", label_zh="平面旋转"),
     Float("billboardRotationJitter", label_zh="平面旋转抖动"),  # 是 billboardRotation 的 random 分量
     Raw("spin_velocity", ('XYZ', 0), label_zh="自旋速度"),
@@ -390,7 +390,7 @@ assert _schema_size(ROTATEANIM_SCHEMA) == 80, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 ALPHACORRECTION_ATTR = Attribute(size=20, fields=[
-    Int("unkn0"),
+    Int("typeFlag"),
     Float("lowPass", label_zh="低通阈值"),  # 硬阈值裁切：低于此值的 alpha 直接归 0，取 0 表示不裁切
     Float("contrast_gamma", label_zh="对比度/伽马修正"),  # 越大则低/中 alpha 越快变透明，高 alpha 核心保留；无上限
     Float("unkn3"),
@@ -402,7 +402,7 @@ assert _schema_size(ALPHACORRECTION_SCHEMA) == 20, \
 
 
 LUMINANCEBLEED_ATTR = Attribute(size=16, fields=[
-    Int("unkn0"),
+    Int("typeFlag"),  # 官方文件里恒为未初始化的 0xCDCDCDCD
     Float("bleed"),
     Float("colorScaler"),
     Float("texelScaler"),
@@ -454,8 +454,8 @@ assert _schema_size(NOISE_SCHEMA) == 44, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 GUIDE_ATTR = Attribute(size=112, fields=[
-    Float("initialPosition", label_zh="初始位置"),
-    Int("initialPositionJitter", label_zh="初始位置抖动"),
+    Int("typeFlag"),  # 原按 float 解读的 initialPosition，官方文件里恒为 0
+    Int("unkn1"),  # 游戏不读取，加载后恒为 1
     Float("speed", label_zh="初速度"),
     Float("speedJitter", label_zh="初速度偏差"),
     Float("accel", label_zh="加速度"),
@@ -527,7 +527,7 @@ assert _schema_size(PLEMISSIVE_SCHEMA) == 76, \
 
 PARENTEMISSIVE_ATTR = Attribute(size=72, fields=[
     Int("typeFlag"),
-    Int("unknEnum1"),
+    Int("priority", label_zh="优先级"),
     Float("blend", label_zh="混合"),
     Int("correctColorNo", label_zh="EPV 颜色修正槽位"),  # EPV 槽位覆盖
     Raw("emissive", ('XYZ', 2), label_zh="自发光颜色"),
@@ -535,13 +535,13 @@ PARENTEMISSIVE_ATTR = Attribute(size=72, fields=[
     Float("rimWidth", label_zh="边缘光宽度"),
     Float("rimPower", label_zh="边缘光强度"),
     Float("rimAlpha", label_zh="边缘光透明度"),
-    Int("unknEnum4"),
+    Bitmask("emitMaskFlags", BITS_PLEMISSIVE_EMIT_MASK, strict=True, label_zh="发光遮罩标志"),
     Float("mask0", label_zh="遮罩阈值 0"),  # 身份证据较弱
     Float("mask1", label_zh="遮罩阈值 1"),  # 身份证据较弱
     Float("unkn7_2"),
     Float("unknFixed8_0"),
-    Float("unkn8_1"),
-    Float("unkn8_2"),
+    Float("addMask0"),
+    Float("addMask1"),
     Float("unknFixed8_3"),
     Float("unknFixed8_4"),
 ])
@@ -628,7 +628,7 @@ assert _schema_size(PTCOLLISION_SCHEMA) == 112, \
 # ─────────────────────────────────────────────────────────────────────────────
 
 RANDOMFIX_ATTR = Attribute(size=40, fields=[
-    Int("useRandomSeedTableCount", label_zh="种子表使用次数"),
+    Int("typeFlag"),
     Int("randomSeedTable0", label_zh="随机种子表 0"),
     Int("randomSeedTable1", label_zh="随机种子表 1"),
     Int("randomSeedTable2", label_zh="随机种子表 2"),
@@ -665,7 +665,8 @@ assert _schema_size(DUMMY_SCHEMA) == 9, \
 EXTERNREFERENCE_ATTR = Attribute(size=36, fields=[
     Int("typeFlag"),
     Int("referenceIndex", label_zh="Extern 引用"),
-    Enum("trigger_condition", ENUM_EXTERNREF_TRIGGER, label_zh="触发条件"),
+    Bitmask("trigger_condition", BITS_EXTERNREF_TRIGGER, strict=True, gate_first=True,
+            label_zh="触发条件"),
     Int("index0", label_zh="索引 0"),
     Int("index1", label_zh="索引 1"),
     Float("lerp", label_zh="插值系数"),
@@ -688,7 +689,8 @@ PTLIFE_ATTR = Attribute(size=20, fields=[
     Enum("status", ENUM_PTLIFE_STATUS, backing='h', label_en="Trigger On", label_zh="触发条件"),
     Short("unknEnum3"),
     Short("relationIndex", label_zh="关联 Play"),
-    Short("unknEnum5"),
+    # -1 时 relationIndex 不生效
+    Enum("useRelation", ENUM_PTLIFE_RELATION, backing='h', label_en="Relation", label_zh="关联开关"),
     # unknFrame0/1 及其 Jitter 的名字按配对惯例取的，未确认是帧数，不要按名字推断语义。
     Short("unknFrame0"),
     Short("unknFrame0Jitter"),
@@ -989,12 +991,7 @@ PATHCHAIN_ATTR = Attribute(size=77, fields=[
     Int("unkn1"),
     Float("unkn2"),
     Int("unknEnum3"),
-    Float("unkn4_0"),
-    Float("unkn4_0Jitter"),
-    Float("unkn4_2"),
-    Float("unkn4_2Jitter"),
-    Float("unkn4_4"),
-    Float("unkn4_4Jitter"),
+    Raw("unkn4", ('XYZ', 0)),
     Enum("baseAxis", _AXIS_DIRECTION6, label_zh="基准轴?"),
     Float("rotationX", label_zh="X 旋转?"),
     Float("rotationXJitter", label_zh="X 旋转抖动?"),

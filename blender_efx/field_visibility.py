@@ -9,12 +9,11 @@ def _eq0(v): return v == 0
 def _eq1(v): return v == 1
 def _eq2(v): return v == 2
 def _eq3(v): return v == 3
-def _in01(v): return v in (0, 1)
-def _in23(v): return v in (2, 3)
 def _in24(v): return v in (2, 4)
 def _truthy(v): return v != 0
 def _bit0(v): return bool(v & 0x1)
 def _bit1(v): return bool(v & 0x2)
+def _nbit1(v): return not (v & 0x2)
 def _bit2(v): return bool(v & 0x4)
 def _bit5(v): return bool(v & 0x20)
 
@@ -100,17 +99,17 @@ FIELD_VISIBILITY = {
         "radiusOrigin":             ("shapeType", _shape3d(2)),
     },
     "ROTATEANIM": {
-        "billboardRotation":            ("rotationModeMask", _in01),
-        "billboardRotationJitter":      ("rotationModeMask", _in01),
-        "billboardRotationCoef":       ("rotationModeMask", _in01),
-        "billboardRotationCoefJitter": ("rotationModeMask", _in01),
-        "spinSpeedCoefX":            ("rotationModeMask", _in23),
-        "spinSpeedCoefXJitter":      ("rotationModeMask", _in23),
-        "spinSpeedCoefY":            ("rotationModeMask", _in23),
-        "spinSpeedCoefYJitter":      ("rotationModeMask", _in23),
-        "spinSpeedCoefZ":            ("rotationModeMask", _in23),
-        "spinSpeedCoefZJitter":      ("rotationModeMask", _in23),
-        "spin_velocity":             ("rotationModeMask", _in23),
+        "billboardRotation":            ("rotationModeMask", _nbit1),
+        "billboardRotationJitter":      ("rotationModeMask", _nbit1),
+        "billboardRotationCoef":       ("rotationModeMask", _nbit1),
+        "billboardRotationCoefJitter": ("rotationModeMask", _nbit1),
+        "spinSpeedCoefX":            ("rotationModeMask", _bit1),
+        "spinSpeedCoefXJitter":      ("rotationModeMask", _bit1),
+        "spinSpeedCoefY":            ("rotationModeMask", _bit1),
+        "spinSpeedCoefYJitter":      ("rotationModeMask", _bit1),
+        "spinSpeedCoefZ":            ("rotationModeMask", _bit1),
+        "spinSpeedCoefZJitter":      ("rotationModeMask", _bit1),
+        "spin_velocity":             ("rotationModeMask", _bit1),
     },
     "SPAWN": {
         "spawnFrame":       ("spawnFlags", _bit5),
@@ -181,6 +180,9 @@ FIELD_VISIBILITY = {
         "flowStrengthCoefJitter":  ("enableFlowmap", _truthy),
     },
     "LIGHTNING": {
+        "colorRange":              ("useColorRange", _truthy),
+        "brightness":              ("blendMode", _truthy),
+        "brightnessJitter":        ("blendMode", _truthy),
         "flowmapPath":             ("enableFlowmap", _truthy),
         "flowSpeed":               ("enableFlowmap", _truthy),
         "flowSpeedJitter":         ("enableFlowmap", _truthy),

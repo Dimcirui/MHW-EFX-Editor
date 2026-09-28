@@ -275,7 +275,7 @@
             {
                 "type": "ALPHACORRECTION",
                 "fields": {
-                    "unkn0": 7,
+                    "typeFlag": 7,
                     "lowPass": 0.25,
                     "contrast_gamma": 1.0,
                     "unkn3": 0.0,
@@ -286,7 +286,7 @@
                 "type": "SHADERSETTINGS",
                 "fields": {
                     "typeFlag": 4,
-                    "unknEnum1": 104,
+                    "section_length": 104,
                     "spacer": -842150656,
                     "versionRelated": 1,
                     "depthBias": -5.0,

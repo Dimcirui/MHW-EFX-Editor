@@ -41,6 +41,7 @@ FIELD_RENAME_ALIASES = {
     ("SHADERSETTINGS", "unkn4_6"): "shadowFactor",
     ("SHADERSETTINGS", "unkn4_13"): "lightSamplingDistance",
     ("SHADERSETTINGS", "unknFlag5_0_0"): "lightSamplingRotateFix",
+    ("SHADERSETTINGS", "unknEnum1"): "section_length",
 
     # HOMING
     ("HOMING", "restoringForce"): "turnRate",
@@ -193,10 +194,11 @@ FIELD_RENAME_ALIASES = {
     ("RIBBON", "unknEnum16arr_0"): "rotationOrder",
     ("RIBBON", "unkn16arr_1"): "rotationX",
     ("RIBBON", "unkn16arr_2"): "rotationXJitter",
-    ("RIBBON", "unkn16arr_3"): "rotationYJitter",
-    ("RIBBON", "startingAngle"): "rotationY",
-    ("RIBBON", "startingAngleJitter"): "rotationZJitter",
-    ("RIBBON", "unkn16_0_0"): "rotationZ",
+    # rotationY / rotationZ 与各自的 Jitter 曾经互相标反，名字互换不能由本表兼容，旧数据必须重新导入。
+    ("RIBBON", "unkn16arr_3"): "rotationY",
+    ("RIBBON", "startingAngle"): "rotationYJitter",
+    ("RIBBON", "startingAngleJitter"): "rotationZ",
+    ("RIBBON", "unkn16_0_0"): "rotationZJitter",
     ("RIBBON", "unknown19_0"): "spawnAnchorOffset",
     ("RIBBON", "restitution"): "restoreStrength",
     ("RIBBON", "restitution_jitter"): "restoreStrengthJitter",
@@ -340,9 +342,6 @@ FIELD_RENAME_ALIASES = {
     ("PARENTSNOW", "unkn0_1"): "section_length",
     ("PATHCHAIN", "unkn0_0"): "typeFlag",
     ("PATHCHAIN", "unkn0_1"): "section_length",
-    ("PATHCHAIN", "unknFixed4_1"): "unkn4_0Jitter",
-    ("PATHCHAIN", "unknFixed4_3"): "unkn4_2Jitter",
-    ("PATHCHAIN", "unknFixed4_5"): "unkn4_4Jitter",
     ("PATHCHAIN", "unknBitmask5_0"): "baseAxis",
     ("PATHCHAIN", "unkn5_1"): "rotationX",
     ("PATHCHAIN", "unkn5_2"): "rotationXJitter",
@@ -703,6 +702,18 @@ FIELD_RENAME_ALIASES = {
     # STRAINRIBBON
     ("STRAINRIBBON", "colorModeFlag"): "epv_color_slot1",
     ("STRAINRIBBON", "positionalAberration_04"): "epv_color_slot2",
+
+    # 同一基类成员 / 通用 typeFlag（运行时内存布局）
+    ("PLANE", "unknBitmask5_0"): "divideNum",
+    ("PARENTEMISSIVE", "unknEnum1"): "priority",
+    ("PARENTEMISSIVE", "unknEnum4"): "emitMaskFlags",
+    ("PARENTEMISSIVE", "unkn8_1"): "addMask0",
+    ("PARENTEMISSIVE", "unkn8_2"): "addMask1",
+    ("RANDOMFIX", "useRandomSeedTableCount"): "typeFlag",
+    ("ALPHACORRECTION", "unkn0"): "typeFlag",
+    ("LUMINANCEBLEED", "unkn0"): "typeFlag",
+    ("PTLIFE", "unknEnum5"): "useRelation",
+    ("GUIDE", "initialPositionJitter"): "unkn1",
 }
 
 
@@ -713,6 +724,8 @@ FIELD_BYTE_SPLITS = {
     # None = 保留填充字节，取默认值
     ("RIBBONBLADE", "spacer2"): ("useEmissiveRange", None, None, None),
     ("RIBBONBLADE", "NULL9"): ("flowOnce", "flowReverse", None, None),
+    ("LIGHTNING", "spacer05_00"): ("unknBool05_00", None, None, None),
+    ("LIGHTNING", "spacer05_14"): ("unknBool05_14", None, None, None),
     ("SHADERSETTINGS", "unknEnum5_0"): ("lightSamplingRotateFix", "unknFixed5_0_1", "unknFlag5_0_2",
                                         "unknFlag5_0_3"),
 }
@@ -722,6 +735,9 @@ FIELD_VECTOR_MERGES = {
     ("SHADERSETTINGS", "lightSamplingOffset"): (("unkn4_9", "lightSamplingOffsetX"),
                                                 ("unkn4_10", "lightSamplingOffsetY"),
                                                 ("unkn4_11", "lightSamplingOffsetZ")),
+    ("PATHCHAIN", "unkn4"): (("unkn4_0",), ("unkn4_0Jitter", "unknFixed4_1"),
+                             ("unkn4_2",), ("unkn4_2Jitter", "unknFixed4_3"),
+                             ("unkn4_4",), ("unkn4_4Jitter", "unknFixed4_5")),
 }
 
 #: 嵌套结构中移到顶层的子字段：{(类型, 结构字段): {子字段: 顶层字段或 None(丢弃的填充)}}

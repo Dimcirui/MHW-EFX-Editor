@@ -7,7 +7,7 @@
     "attribute": {
         "type": "RANDOMFIX",
         "fields": {
-            "useRandomSeedTableCount": 1,
+            "typeFlag": 1,
             "randomSeedTable0": 0,
             "randomSeedTable1": 0,
             "randomSeedTable2": 0,

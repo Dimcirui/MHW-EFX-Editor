@@ -43,7 +43,7 @@
             "flowStrengthJitter": 0.0,
             "flowStrengthCoef": 1.0,
             "flowStrengthCoefJitter": 0.0,
-            "unknBitmask5_0": 0,
+            "divideNum": 0,
             "unknEnum5_1": 0,
             "baseAxis": 1,
             "rotationOrder": 4,

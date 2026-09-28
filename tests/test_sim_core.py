@@ -306,7 +306,7 @@ def spinning_emitter(ry_per_frame=0.0):
 
 def ptlife_fields(**kw):
     f = {"typeFlag": 0, "unknFixed1": 0, "status": 0, "unknEnum3": 0,
-         "relationIndex": 0, "unknEnum5": 0,
+         "relationIndex": 0, "useRelation": 0,
          "unknFrame0": 0, "unknFrame0Jitter": 0,
          "unknFrame1": 0, "unknFrame1Jitter": 0}
     f.update(kw)

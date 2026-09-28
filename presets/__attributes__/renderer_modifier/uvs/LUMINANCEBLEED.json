@@ -7,7 +7,7 @@
     "attribute": {
         "type": "LUMINANCEBLEED",
         "fields": {
-            "unkn0": -842150451,
+            "typeFlag": -842150451,
             "bleed": 0.5,
             "colorScaler": 1.0,
             "texelScaler": 1.0
