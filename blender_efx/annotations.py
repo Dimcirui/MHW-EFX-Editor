@@ -67,34 +67,44 @@ _LIGHTNING_BRANCH_TIPS = {
               "作用未知，可能是这一代的条数。"),
     "unkn2": ("Purpose unknown.", "作用未知。"),
     "unkn3": ("Purpose unknown.", "作用未知。"),
-    "lowDetailNum": ("Number of coarse kinks along the bolt.", "闪电上粗折点的数量。"),
-    "lowDetailWidth": ("How far the coarse kinks stray from a straight line. Smaller is "
-                       "straighter; larger spreads wider and looks more random.",
-                       "粗折点偏离直线的幅度。越小越直，越大越散、随机感越强。"),
-    "lowDetailWidthCoef": ("Works like Low Detail Width with a stronger effect. Common values "
-                           "0.25~1.",
-                           "作用与粗折幅度相近，影响更明显。常见值为 0.25～1。"),
-    "highDetailNum": ("Number of fine kinks layered on top of the coarse ones. At 0, High "
-                      "Detail Width has no effect.",
-                      "叠加在粗折之上的细折点数量。为 0 时细折幅度不生效。"),
-    "highDetailWidth": ("How far the fine kinks stray. Only works when High Detail Num is "
-                        "not 0.",
-                        "细折点偏离的幅度。仅在细折点数不为 0 时生效。"),
-    "highDetailWidthCoef": ("Purpose unknown.", "作用未知。"),
+    "lowDetailNum": ("Subdivision levels of the coarse kinks. Each extra level adds finer "
+                     "kinks, scaled down by Low Detail Width Coef, so with a small coef the "
+                     "deeper levels barely show.",
+                     "粗折线的细分层数。每多一层折角更细碎，但幅度按粗折幅度系数逐层缩小，系数小时"
+                     "深层几乎看不出。"),
+    "lowDetailWidth": ("Offset of the first coarse level. Larger bends the bolt more.",
+                       "粗折线第一层的偏移幅度，越大弯折越明显。"),
+    "lowDetailWidthCoef": ("Offset multiplier for each deeper coarse level. Below 1 the deeper "
+                           "levels fade out; at 1 every level keeps the same offset and the "
+                           "bends become extreme.",
+                           "粗折线每深一层的幅度倍率。小于 1 时深层逐渐变弱；为 1 时每层幅度相同，弯折"
+                           "会非常夸张。"),
+    "highDetailNum": ("Subdivision levels of the fine kinks layered on the coarse ones. 0 adds "
+                      "no fine kinks.",
+                      "叠加在粗折之上的细折线细分层数；为 0 时不叠加细折。"),
+    "highDetailWidth": ("Offset of the first fine level. Larger gives sharper, more angular "
+                        "zigzags.",
+                        "细折线第一层的偏移幅度，越大尖角折线越明显。"),
+    "highDetailWidthCoef": ("Offset multiplier for each deeper fine level. At 1 nothing fades "
+                            "and the line tangles into a self-crossing mess.",
+                            "细折线每深一层的幅度倍率。为 1 时不衰减，线条会变成自我交叉的乱团。"),
     "intensity": ("Brightness. 0 = no glow, larger = stronger glow, negative turns the bolt "
                   "black. A jitter close to or above the value makes bolts flicker.",
                   "亮度。0 不发光，越大辉光越强，负值变黑。抖动接近或超过亮度时会忽明忽暗。"),
-    "length": ("Length. With jitter 0 every bolt has the same length.",
-               "长度。抖动为 0 时每道长度相同。"),
-    "thickness": ("Line thickness.", "线条粗细。"),
-    "headScale": ("Possibly the width multiplier at the head. Common value 1.",
-                  "可能是头端的宽度倍率。常见值为 1。"),
-    "tailScale": ("Possibly the width multiplier at the tail. Common value 1.",
-                  "可能是尾端的宽度倍率。常见值为 1。"),
-    "headAlpha": ("Possibly the opacity at the head. Common value 1.",
-                  "可能是头端的不透明度。常见值为 1。"),
-    "tailAlpha": ("Possibly the opacity at the tail. Common values 1 or 0.",
-                  "可能是尾端的不透明度。常见值为 1 或 0。"),
+    "length": ("Length in cm. With jitter 0 every bolt has the same length.",
+               "长度（cm）。抖动为 0 时每道长度相同。"),
+    "thickness": ("Lateral scale: widens both the line and its side-to-side swing.",
+                  "横向尺度：同时放大线宽和左右摆幅。"),
+    "headScale": ("Thickness multiplier at the head, where the bolt starts growing. At 0 that "
+                  "end narrows to a thin line.",
+                  "出生端（闪电开始生长的一端）的粗细倍率；为 0 时该端收成一根细线。"),
+    "headAlpha": ("Opacity at the head, where the bolt starts growing. At 0 that end fades "
+                  "out.",
+                  "出生端（闪电开始生长的一端）的不透明度；为 0 时该端逐渐变暗消失。"),
+    "tailScale": ("Thickness multiplier at the far end. At 0 that end narrows to a thin line.",
+                  "末端的粗细倍率；为 0 时末端收成一根细线。"),
+    "tailAlpha": ("Opacity at the far end. At 0 that end fades out.",
+                  "末端的不透明度；为 0 时末端逐渐变暗消失。"),
 }
 _LIGHTNING_BRANCH_TIPS_BY_TIER = {
     0: {
@@ -102,32 +112,26 @@ _LIGHTNING_BRANCH_TIPS_BY_TIER = {
                   "固定为 1；设为 0 会导致崩溃。"),
         "unkn2": ("Do not modify; changing it crashes the game.", "请勿修改，改动会导致崩溃。"),
         "unkn3": ("Do not modify; changing it crashes the game.", "请勿修改，改动会导致崩溃。"),
-        "lowDetailNum": ("Number of coarse kinks along the trunk. 0 makes the motion stutter, "
-                         "1 is nearly straight, very large values coil into a ball. Stacks "
-                         "with High Detail Num; either one too low makes it stutter.",
-                         "主干上粗折点的数量。0 时运动顿挫，1 接近直线，很大时缠成一团。与细折点"
-                         "数叠加，任一过低都会顿挫。"),
-        "highDetailNum": ("Number of fine kinks layered on the trunk. -1 hides the trunk.",
-                          "叠加在主干粗折之上的细折点数量。设为 -1 时主干消失。"),
-        "headScale": ("Possibly the width multiplier at the head. Setting it to 0 hides the "
-                      "trunk and leaves only the branches. Common value 1.",
-                      "可能是头端的宽度倍率。设为 0 时主干消失，只留分支。常见值为 1。"),
-        "tailScale": ("Possibly the width multiplier at the tail. Setting it to 0 hides the "
-                      "bolt. Common value 1.",
-                      "可能是尾端的宽度倍率。设为 0 时闪电消失。常见值为 1。"),
+        "highDetailNum": ("Subdivision levels of the fine kinks on the trunk. -1 hides the "
+                          "trunk.",
+                          "主干细折线的细分层数；设为 -1 时主干消失。"),
+        "length": ("Trunk length in cm. The bolt grows along the particle's velocity up to "
+                   "this length; the speed only changes how fast it grows.",
+                   "主干长度（cm）。闪电沿粒子速度方向生长到这个长度，速度只影响长得多快。"),
     },
     1: {
-        "count": ("Number of branches per trunk. 0 cuts them down sharply but not to none; "
+        "count": ("Number of branches per trunk; the spawn branch range must not be empty. "
                   "500 or more makes them invisible and makes all effects in the scene "
                   "flicker; negative values crash. Keep it within 0~100.",
-                  "每条主干上的分支数量。0 时明显减少但不会消失；500 以上分支不可见，并导致场景"
+                  "每条主干上的分支条数，需要分支生成区间不为空。500 以上分支不可见，并导致场景"
                   "内所有特效闪烁；负数会崩溃。建议 0～100。"),
         "unkn2": ("Affects the draw layer of both trunk and branches; too high makes nearby "
                   "effects flicker. Exact purpose unknown. Common values 0/1.",
                   "同时影响主干与分支的绘制层级，过大时近处特效会闪烁。具体作用未知。常见值为 "
                   "0/1。"),
-        "unkn3": ("0 = one branch per spawn point, non-0 = two.",
-                  "0 时每个生成点 1 条分支，非 0 时 2 条。"),
+        "unkn3": ("Non-0 keeps the first half of each branch close to the trunk. Exact "
+                  "purpose unknown.",
+                  "非 0 时分支前半段贴近主干；具体作用未完全明确。"),
         "lowDetailNum": ("Number of coarse kinks along each branch; also changes the branch "
                          "wave frequency. Negative values crash.",
                          "分支上粗折点的数量，同时影响分支的波动频率。负数会崩溃。"),
@@ -2087,61 +2091,55 @@ FIELD_ANNOTATIONS = {
         "EN": "Jitter paired with brightness.",
         "ZH": "与亮度配对的抖动量。",
     },
-    ("LIGHTNING", "unknEnum05_01"): {
-        "EN": "Instance mode flag (lightningInstanceModeFlag). 1=standard single instance; "
-              "2=high-complexity triple instance; any other value=high-complexity double "
-              "instance. Controls instance count AND waveform complexity together.",
-        "ZH": "闪电实例模式标志。1=标准单实例；2=高复杂度三实例；其余值=高复杂度双实例。"
-              "同时控制实例数量与波形弯曲复杂度。",
+    ("LIGHTNING", "smoothLine"): {
+        "EN": "Possibly a smoothing switch: at 1 the bends are smooth; other values (0, 2, "
+              "3, 5) make them sharper and more broken, with no difference between them. "
+              "Usually 1.",
+        "ZH": "可能是平滑开关：为 1 时弯折圆滑；其他取值（0、2、3、5）更尖更碎，彼此看不出区别。"
+              "通常为 1。",
     },
-    ("LIGHTNING", "sineWaveFreq"): {
-        "EN": "Sine wave frequency. 0=lightning disappears (also a spawn precondition); "
-              "0.15≈near-straight; 0.5=default; 10=dense zigzag. Negative = abs value. "
-              "Regular wave shape (vs inflectionPointCount's random jaggedness).",
-        "ZH": "正弦波频率。0=闪电消失（同时是生成必要条件）；0.15≈接近直线；0.5默认；"
-              "10=密集锯齿；负数取绝对值。规律正弦波形（区别于 inflectionPointCount 的随机折线）。",
+    ("LIGHTNING", "waveFrequency"): {
+        "EN": "Wave frequency of the bolt's overall shape. 0 gives a straight line; "
+              "larger values bend it more often.",
+        "ZH": "闪电大轮廓的波动频率。0 为一条直线，越大弯折越密。",
     },
-    ("LIGHTNING", "sineWaveFreqJitter"): {
-        "EN": "Random jitter on sineWaveFreq; larger = more per-bolt frequency variation.",
-        "ZH": "正弦波频率随机抖动；越大每条闪电弯折密度差异越大。",
+    ("LIGHTNING", "waveFrequencyJitter"): {
+        "EN": "Random variation of the wave frequency between bolts.",
+        "ZH": "每道闪电波动频率的随机差异。",
     },
-    ("LIGHTNING", "alphaThreshold"): {
-        "EN": "Alpha cutoff threshold (default 0.2). Higher → overall less visible (edges "
-              "clipped); lower → loses texture detail, shows raw geometry. Suggested 0.2~2.",
-        "ZH": "alpha 截断阈值（默认 0.2）。调高→整体越不可见（边缘被截断）；调低→丢失贴图纹理"
-              "细节、呈现几何形态。双向都增透明。建议 0.2~2。",
+    ("LIGHTNING", "poorLineIntensity"): {
+        "EN": "Weakens the bolt: higher values make it thinner, dimmer and less bent. "
+              "Common value 1, also 0.5~0.7.",
+        "ZH": "削弱闪电线条：越大越细、越暗，弯折幅度也越小。常见值为 1，也常用 0.5～0.7。",
     },
     ("LIGHTNING", "spawnBranchRangeMin"): {
         "EN": "Start of the stretch of trunk that grows branches, as a ratio of its "
-              "length (0~1). Usually 0.",
-        "ZH": "主干上长出分支的区间起点，按主干长度的比例计（0～1）。通常为 0。",
+              "length: 0 = the head where the bolt starts, 1 = the far end. Usually 0.",
+        "ZH": "主干上长出分支的区间起点，按主干长度的比例计：0 为出生端，1 为末端。通常为 0。",
     },
     ("LIGHTNING", "spawnBranchRangeMax"): {
         "EN": "End of the stretch of trunk that grows branches, as a ratio of its "
-              "length (0~1). Usually 1.",
-        "ZH": "主干上长出分支的区间终点，按主干长度的比例计（0～1）。通常为 1。",
+              "length: 0 = the head where the bolt starts, 1 = the far end. Usually 1.",
+        "ZH": "主干上长出分支的区间终点，按主干长度的比例计：0 为出生端，1 为末端。通常为 1。",
     },
     ("LIGHTNING", "spawnBranchCone"): {
-        "EN": "Cone angle for branch directions, in degrees. Common values 0, 45, 120; "
-              "up to 360.",
-        "ZH": "分支生成方向的锥角（度）。常见值为 0、45、120，最大 360。",
+        "EN": "How far branches open away from the trunk, in degrees. 0 keeps them along "
+              "the trunk; larger opens them wider. Common values 0, 45, 120.",
+        "ZH": "分支相对主干张开的角度（度）。0 时贴着主干，越大张得越开。常见值为 0、45、120。",
     },
-    ("LIGHTNING", "outwardsExpansionSpeed"): {
-        "EN": "Outward expansion speed/radius (NOT path flow speed). 1=default; 100=expands "
-              "outward fast/wide — straight bolts arc outward, complex bolts coil outward.",
-        "ZH": "向外扩展速度/半径（非沿路径流速）。1默认；100=整体大速度大半径外扩——"
-              "直线形态→圆弧扩展，复杂形态→缠绕扩展。",
+    ("LIGHTNING", "waveAmplitude"): {
+        "EN": "Wave amplitude of the bolt's overall shape. Larger bends it wider. "
+              "Common values 1~100.",
+        "ZH": "闪电大轮廓的波动幅度，越大弯得越开。常见值为 1～100。",
     },
-    ("LIGHTNING", "outwardsExpansionSpeedJitter"): {
-        "EN": "Random jitter on outwardsExpansionSpeed; default 1 gives large per-bolt spread.",
-        "ZH": "向外扩展速度随机抖动；默认 1，每条闪电外扩速度/半径差异较大，产生自然不规则感。",
+    ("LIGHTNING", "waveAmplitudeJitter"): {
+        "EN": "Random variation of the wave amplitude between bolts.",
+        "ZH": "每道闪电波动幅度的随机差异。",
     },
-    ("LIGHTNING", "unkn05_10"): {
-        "EN": "Lightning opacity (lightningOpacity). 0=invisible, 10=normal; effective 0~10. "
-              "⚠ Negative triggers int16 overflow (unstable, e.g. -42000 wraps to invisible) "
-              "— do not use negatives.",
-        "ZH": "闪电不透明度。0=消失，10=正常；有效区间 0~10。"
-              "⚠ 负数触发 int16 溢出（不稳定，如 -42000 回绕变消失）——勿用负数。",
+    ("LIGHTNING", "lineWidthScale"): {
+        "EN": "Multiplier for line width and glow only; the shape does not change. "
+              "Common values 0.7~1.",
+        "ZH": "只缩放线宽和辉光，形状不变。常见值为 0.7～1。",
     },
     ("LIGHTNING", "unknEnum05_11"): {
         "EN": "Transparency level B (lightningTransparencyLevel). 1=most opaque, 3=default, "
@@ -2150,20 +2148,23 @@ FIELD_ANNOTATIONS = {
         "ZH": "闪电透明度等级B。1最不透明，3默认，越大越透明；有效 1~300+。"
               "负数=完全透明（稳定无溢出）。仅整数。精度低于 unkn05_10。",
     },
-    ("LIGHTNING", "unknFlag05_12"): {
-        "EN": "Flow & fade mode (lightningFlowAndFadeMode). 0=faster flow + keep fade-out; "
-              "1=default (standard flow + fade); any other value=no flow change + fade-out "
-              "cancelled (hard cut at end of life). Integer only.",
-        "ZH": "流光与淡出模式。0=流光加速+保留淡出；1=默认（标准流光+淡出渐隐）；"
-              "非0非1=流光无变化+淡出取消（生命周期结束直接硬切消失）。仅整数。",
+    ("LIGHTNING", "vanishMode"): {
+        "EN": "Order in which the bolt breaks apart when it vanishes. 0 and 1 vanish in "
+              "opposite directions; other values may cut it off without fading.",
+        "ZH": "闪电消失时的断开顺序。0 与 1 的消失方向相反；其他取值可能直接消失、不再淡出。",
     },
-    ("LIGHTNING", "unknEnum05_13"): {
-        "EN": "No visible effect.",
-        "ZH": "修改后无可见效果。",
+    ("LIGHTNING", "lightningType"): {
+        "EN": "Possibly the lightning type. 0 and 2 look the same; 3 makes the bolt longer "
+              "with branches running along the trunk; 1 and 5 draw nothing. Usually 2.",
+        "ZH": "可能是闪电类型。0 与 2 效果相同；3 时闪电更长、分支贴着主干；1 和 5 不显示。"
+              "通常为 2。",
     },
     ("LIGHTNING", "terminalJointNo"): {
-        "EN": "Bone the end of the bolt reaches. -1 = no bone.",
-        "ZH": "闪电末端连接的骨骼编号；-1 表示不连接骨骼。",
+        "EN": "Bone the bolt grows toward. Once it reaches the bone it stops there "
+              "instead of growing on. Its length still comes from the trunk length, so a "
+              "bone that is too far away is not reached. -1 = no bone.",
+        "ZH": "闪电朝向生长的骨骼编号。到达骨骼后停在那里，不再继续延伸；长度仍由主干长度"
+              "决定，骨骼太远时够不到。-1 表示不指向骨骼。",
     },
     ("LIGHTNING", "unknEnum05_16"): {
         "EN": "No visible effect.",

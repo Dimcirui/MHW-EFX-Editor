@@ -116,15 +116,7 @@ _LABELS_BY_TYPE = {
     ('MESH', 'visconIndexJitter'): '可见条件索引抖动',
 
     # ── LIGHTNING ──
-    ('LIGHTNING', 'unkn05_01'): '实例模式标志',
-    ('LIGHTNING', 'sineWaveFreq'): '正弦波频率',
-    ('LIGHTNING', 'sineWaveFreqJitter'): '正弦波频率抖动',
-    ('LIGHTNING', 'alphaThreshold'): 'alpha 阈值',
-    ('LIGHTNING', 'outwardsExpansionSpeed'): '向外扩展速度',
-    ('LIGHTNING', 'outwardsExpansionSpeedJitter'): '向外扩展速度抖动',
-    ('LIGHTNING', 'unkn05_10'): '闪电不透明度',
     ('LIGHTNING', 'unkn05_11'): '闪电透明度等级B',
-    ('LIGHTNING', 'unkn05_12'): '流光与淡出模式',
     ('LIGHTNING', 'EPVColorSlot1'): 'EPV 颜色修正槽位',
     ('LIGHTNING', 'EPVColorSlot2'): 'EPV 颜色修正槽位',
     # ── 渲染体尺寸组：scale 为整体缩放 ──
