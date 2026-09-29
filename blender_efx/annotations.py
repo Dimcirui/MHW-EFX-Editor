@@ -2100,8 +2100,10 @@ FIELD_ANNOTATIONS = {
     },
     ("LIGHTNING", "waveFrequency"): {
         "EN": "Wave frequency of the bolt's overall shape. 0 gives a straight line; "
-              "larger values bend it more often.",
-        "ZH": "闪电大轮廓的波动频率。0 为一条直线，越大弯折越密。",
+              "larger values bend it more often. Also sets how many times the texture "
+              "repeats along the bolt: 0.5 = half the texture, 1 = the whole texture once.",
+        "ZH": "闪电大轮廓的波动频率。0 为一条直线，越大弯折越密。同时决定贴图沿闪电长度铺几次："
+              "0.5 铺半张，1 铺一整张。",
     },
     ("LIGHTNING", "waveFrequencyJitter"): {
         "EN": "Random variation of the wave frequency between bolts.",
@@ -2138,8 +2140,8 @@ FIELD_ANNOTATIONS = {
     },
     ("LIGHTNING", "lineWidthScale"): {
         "EN": "Multiplier for line width and glow only; the shape does not change. "
-              "Common values 0.7~1.",
-        "ZH": "只缩放线宽和辉光，形状不变。常见值为 0.7～1。",
+              "Values above 1 have no effect. Common values 0.7~1.",
+        "ZH": "只缩放线宽和辉光，形状不变。大于 1 时无效。常见值为 0.7～1。",
     },
     ("LIGHTNING", "unknEnum05_11"): {
         "EN": "Transparency level B (lightningTransparencyLevel). 1=most opaque, 3=default, "
