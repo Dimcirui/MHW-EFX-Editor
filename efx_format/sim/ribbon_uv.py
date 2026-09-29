@@ -56,11 +56,12 @@ def width_columns(w):
     return [(a, b, u_at(a), u_at(b)) for a, b in zip(cuts, cuts[1:]) if b - a > 1e-9]
 
 
-def length_pieces(n, repeat):
+def length_pieces(n, repeat, rows=None):
     """长度方向的分片，返回 `[(段号 i, fa, fb, va, vb), …]`。
 
     第 i 段连接第 i 与第 i+1 行（0 为 base 端），fa/fb 为片在该段内的起止比例，va/vb 为
     片两端的局部 v。重复从 base 端起算；repeat = 1 时每段一片，v 与原先按行号均分一致。
+    `rows` 给出逐行的重复坐标（整数处为重复边界）时取代按行号均分，repeat 不再参与。
     """
     m = n - 1
     if m < 1:
@@ -68,8 +69,11 @@ def length_pieces(n, repeat):
     r = max(0.0, repeat)
     out = []
     for i in range(m):
-        ra = i * r / m
-        rb = (i + 1) * r / m
+        if rows is not None:
+            ra, rb = rows[i], rows[i + 1]
+        else:
+            ra = i * r / m
+            rb = (i + 1) * r / m
         if rb - ra <= 1e-12:
             v = ra - math.floor(ra)
             out.append((i, 0.0, 1.0, v, v))

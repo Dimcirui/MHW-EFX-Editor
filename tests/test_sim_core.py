@@ -26,7 +26,8 @@ from efx_format.hashes import (ALPHACORRECTION, BILLBOARD2D, BILLBOARD3D, DUMMY,
                                PARENTOPTIONS, PTBEHAVIOR, PTCOLLISION, PTLIFE, REFRACTION,
                                RGBFIRE,
                                RGBWATER, ROTATEANIM, SCALEANIM, SHADERSETTINGS,
-                               SPAWN, TRANSFORM3D, TURBULENCE, UVSEQUENCE, VELOCITY3D)
+                               SPAWN, STRAINRIBBON, TRANSFORM3D, TURBULENCE, UVSEQUENCE,
+                               VELOCITY3D)
 from efx_format.sim import (ActionTarget, EntryTemplate, FORCE,  # noqa: E402
                             Behavior, SimConfig, SimResources, SimScene,
                             Simulator, Vec3, from_attr_blocks, grid_table,
@@ -674,11 +675,11 @@ class TestLife(unittest.TestCase):
         """keepFrame=10 → 恰好被渲染 10 帧。
 
         没有渲染体的 entry 现在不产出任何渲染项（同 DUMMY，见 TestDummy），
-        这里挂一个未实现的 LIGHTNING 当渲染体，只借它的退化点探测粒子存在，
+        这里挂一个未实现的 STRAINRIBBON 当渲染体，只借它的退化点探测粒子存在，
         与本测试要验的 duration 逻辑无关。
         """
         sim = make_sim(spawn=spawn_fields(intervalFrame=1000), life=life_fields(keepFrame=10),
-                       extra=[(LIGHTNING, {})])
+                       extra=[(STRAINRIBBON, {})])
         rendered = 0
         for _ in range(30):
             sim.step()
@@ -1424,14 +1425,14 @@ class TestHoming(unittest.TestCase):
                          sim4.particles[0].user[Homing]["target_mode"])
 
     def test_target_resolution_modes(self):
-        """0=spawn point(em.origin) 1=model origin(em.host_origin) 2/3=世界原点(0,0,0)。"""
+        """0=spawn point(em.origin) 1=model origin(原点下 100cm) 2/3=世界原点(0,0,0)。"""
         class _FakeEm(object):
             origin = Vec3(1.0, 2.0, 3.0)
             host_origin = Vec3(4.0, 5.0, 6.0)
 
         em = _FakeEm()
         self.assertEqual(Homing._target(0, em), em.origin)
-        self.assertEqual(Homing._target(1, em), em.host_origin)
+        self.assertEqual(Homing._target(1, em), Vec3(0.0, -100.0, 0.0))
         self.assertEqual(Homing._target(2, em), Vec3())
         self.assertEqual(Homing._target(3, em), Vec3())
 
@@ -1698,11 +1699,11 @@ class TestDeterminismAndRender(unittest.TestCase):
         self.assertEqual([i.pos.as_tuple() for i in a], [i.pos.as_tuple() for i in b])
 
     def test_render_carries_alpha_from_life(self):
-        # 借 LIGHTNING（未实现的渲染体）撑出退化点，见 test_duration_is_exact_frame_count。
+        # 借 STRAINRIBBON（未实现的渲染体）撑出退化点，见 test_duration_is_exact_frame_count。
         sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(appearFrame=4, keepFrame=10),
                        velocity=velocity_fields(speed=0.0),
-                       extra=[(LIGHTNING, {})])
+                       extra=[(STRAINRIBBON, {})])
         sim.run(3)
         self.assertAlmostEqual(sim.build_render()[0].color[3], 0.5, places=6)
 
@@ -4049,10 +4050,10 @@ class TestDummy(unittest.TestCase):
         self.assertNotIn("DUMMY", [n for _h, n in sim.unsupported])
 
     def test_without_dummy_the_fallback_point_appears(self):
-        """对照组：渲染体存在但没实现时（同 LIGHTNING）才该出现退化点。"""
+        """对照组：渲染体存在但没实现时（同 STRAINRIBBON）才该出现退化点。"""
         sim = make_sim(spawn=spawn_fields(intervalFrame=1000),
                        life=life_fields(indefiniteLifespan=1),
-                       extra=[(LIGHTNING, {})])
+                       extra=[(STRAINRIBBON, {})])
         sim.run(3)
         self.assertEqual([i.kind for i in sim.build_render()], ["POINT"])
 
@@ -4636,6 +4637,119 @@ class TestRibbonUV(unittest.TestCase):
         self.assertEqual(repeat_count(1, 3.0, 100.0, 10.0), 3.0)
         self.assertAlmostEqual(repeat_count(2, 1.5, 40.0, 20.0), 3.0)   # 两倍长、1.5 → 三张
 
+    def test_length_pieces_rows_override_even_split(self):
+        """给逐行坐标时按它切：0.5→1.5 跨过 1，切成两片。"""
+        from efx_format.sim.ribbon_uv import length_pieces
+        pieces = length_pieces(2, 9.0, rows=[0.5, 1.5])
+        self.assertEqual(pieces, [(0, 0.0, 0.5, 0.5, 1.0), (0, 0.5, 1.0, 0.0, 0.5)])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LIGHTNING
+# ─────────────────────────────────────────────────────────────────────────────
+
+def lightning_fields(**kw):
+    """笔直、不抖动的主干：两层折线和波幅都关掉。"""
+    f = {
+        "color": [255, 255, 255, 255], "useColorRange": 0, "blendMode": 0,
+        "smoothLine": 0, "waveFrequency": 1.0, "waveAmplitude": 0.0,
+        "lineWidthScale": 1.0, "lightningType": 2, "terminalJointNo": -1,
+        "branch0_lowDetailNum": 0, "branch0_highDetailNum": 0,
+        "branch0_intensity": 1.0, "branch0_length": 40.0, "branch0_thickness": 10.0,
+        "branch0_headScale": 1.0, "branch0_headAlpha": 1.0,
+        "branch0_tailScale": 1.0, "branch0_tailAlpha": 1.0,
+    }
+    f.update(kw)
+    return f
+
+
+class TestLightning(unittest.TestCase):
+
+    def _sim(self, speed=5.0, **kw):
+        return make_sim(spawn=spawn_fields(intervalFrame=1000),
+                        life=life_fields(indefiniteLifespan=1),
+                        velocity=velocity_fields(speed=speed),
+                        extra=[(LIGHTNING, lightning_fields(**kw))])
+
+    @staticmethod
+    def _ribbon(sim):
+        items = sim.build_render()
+        return items[0] if items else None
+
+    def test_is_supported(self):
+        sim = self._sim()
+        self.assertNotIn("LIGHTNING", [n for _h, n in sim.unsupported])
+
+    def test_grows_from_spawn_point_along_velocity_then_stops(self):
+        sim = self._sim(speed=5.0, branch0_length=40.0)
+        sim.run(4)
+        it = self._ribbon(sim)
+        self.assertEqual(it.kind, "RIBBON")
+        d = sim.particles[0].vel.normalized()
+        head = it.points[-1][0]                       # 出生端
+        tip = it.points[0][0]
+        self.assertAlmostEqual(head.length(), 0.0, places=5)
+        self.assertAlmostEqual((tip - head).dot(d), 20.0, places=4)
+        sim.run(30)                                   # 粒子已飞出 170，闪电停在 40
+        it = self._ribbon(sim)
+        self.assertAlmostEqual(it.points[-1][0].length(), 0.0, places=5)
+        self.assertAlmostEqual((it.points[0][0] - it.points[-1][0]).dot(d), 40.0, places=4)
+
+    def test_no_velocity_draws_nothing(self):
+        sim = self._sim(speed=0.0)
+        sim.run(5)
+        self.assertEqual(sim.build_render(), [])
+
+    def test_hidden_when_fine_fold_count_is_minus_one(self):
+        sim = self._sim(branch0_highDetailNum=-1)
+        sim.run(5)
+        self.assertEqual(sim.build_render(), [])
+
+    def test_width_and_alpha_interpolate_from_spawn_to_far_end(self):
+        sim = self._sim(speed=100.0, branch0_thickness=10.0, lineWidthScale=3.0,
+                        branch0_headScale=1.0, branch0_tailScale=0.0,
+                        branch0_headAlpha=1.0, branch0_tailAlpha=0.5)
+        sim.run(2)
+        it = self._ribbon(sim)
+        (_q0, hw_tip, a_tip), (_q1, hw_head, a_head) = it.points[0], it.points[-1]
+        self.assertAlmostEqual(hw_head, 5.0)          # lineWidthScale 大于 1 按 1
+        self.assertAlmostEqual(hw_tip, 0.0)
+        self.assertAlmostEqual(a_head, 1.0)
+        self.assertAlmostEqual(a_tip, 0.5)
+
+    def test_texture_v_runs_from_spawn_to_wave_frequency(self):
+        """出生端在贴图顶边（局部 v=1），满长度末端再往下 waveFrequency 张。"""
+        sim = self._sim(speed=100.0, waveFrequency=2.0)
+        sim.run(2)
+        it = self._ribbon(sim)
+        repeat, width, rows = it.extra["uv_scale"]
+        self.assertAlmostEqual(rows[-1], 1.0)
+        self.assertAlmostEqual(rows[0], -1.0)
+        self.assertAlmostEqual(repeat, 2.0)
+
+    def test_fractal_shape_keeps_endpoints_and_is_seeded(self):
+        kw = dict(speed=100.0, branch0_lowDetailNum=3, branch0_lowDetailWidth=20.0,
+                  branch0_lowDetailWidthCoef=0.5, branch0_highDetailNum=2,
+                  branch0_highDetailWidth=5.0, branch0_highDetailWidthCoef=0.5,
+                  waveAmplitude=10.0)
+        a, b = self._sim(**kw), self._sim(**kw)
+        a.run(2)
+        b.run(2)
+        pa, pb = self._ribbon(a).points, self._ribbon(b).points
+        self.assertEqual([q.as_tuple() for q, _w, _a in pa], [q.as_tuple() for q, _w, _a in pb])
+        self.assertAlmostEqual(pa[-1][0].length(), 0.0, places=5)
+        # 中间点确实偏离了主轴
+        d = a.particles[0].vel.normalized()
+        off = max((q - d * q.dot(d)).length() for q, _w, _a in pa)
+        self.assertGreater(off, 1.0)
+
+    def test_archetype_renders_a_ribbon(self):
+        blocks, timl = _load_archetype("lightning.json")
+        sim = from_attr_blocks(blocks, timl, SimConfig(seed=2))
+        sim.run(8)
+        self.assertNotIn("LIGHTNING", [n for _h, n in sim.unsupported])
+        self.assertIn("RIBBON", [i.kind for i in sim.build_render()])
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RIBBONBLADE
@@ -4985,9 +5099,8 @@ class TestT3EndToEnd(unittest.TestCase):
                 self.assertEqual(sim.build_render(), [])
 
     def test_skipped_bodies_still_fall_back_honestly(self):
-        """STRAINRIBBON / LIGHTNING 刻意不做 → 退化点 + 如实列出。"""
-        for stem, missing in (("draw_chain", "STRAINRIBBON"),
-                              ("lightning", "LIGHTNING")):
+        """STRAINRIBBON 刻意不做 → 退化点 + 如实列出。"""
+        for stem, missing in (("draw_chain", "STRAINRIBBON"),):
             with self.subTest(archetype=stem):
                 blocks, timl = _load_archetype(stem + ".json")
                 sim = from_attr_blocks(blocks, timl, SimConfig(seed=2))

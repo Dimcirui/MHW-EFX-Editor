@@ -1431,13 +1431,17 @@ def _emit_ribbon(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
 
 def _emit_ribbon_uv(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
                     corners, uv_scale, col2s=None, core=None):
-    """带贴图缩放的条带：按重复边界与宽度钳制边界切片后逐片展开，只走 Python 路径。"""
+    """带贴图缩放的条带：按重复边界与宽度钳制边界切片后逐片展开，只走 Python 路径。
+
+    `uv_scale` 为 (重复次数, 宽度缩放) 或再加逐行重复坐标，见 `ribbon_uv.length_pieces`。
+    """
     from ..efx_format.sim import ribbon_uv as _ruv
     pts = list(item.points)
     n = len(pts)
     if n < 2:
         return
-    repeat, width_scale = uv_scale
+    repeat, width_scale = uv_scale[0], uv_scale[1]
+    rows = uv_scale[2] if len(uv_scale) > 2 else None
     world = [world_fn(q) for q, _hw, _a in pts]
     k = size_mul * _UNIT
     lo = []
@@ -1463,7 +1467,7 @@ def _emit_ribbon_uv(verts, colors, uvs, item, col, size_mul, world_fn, view_dir,
         return (p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t,
                 p0[2] + (p1[2] - p0[2]) * t)
 
-    for i, fa, fb, va, vb in _ruv.length_pieces(n, repeat):
+    for i, fa, fb, va, vb in _ruv.length_pieces(n, repeat, rows):
         if lo[i] is None or lo[i + 1] is None:
             continue
         l0 = lerp3(lo[i], lo[i + 1], fa)

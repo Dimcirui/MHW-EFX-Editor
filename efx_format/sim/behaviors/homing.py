@@ -45,7 +45,7 @@ HOMING 的运动模型为纯追踪（实现见 `Homing._pursue`）：
 归航目标 `homingTarget`（取模 4）在核心层的对应量：
 
     0 生成点      em.origin，即发射器的实时位置；逐帧读取，不在 spawn 时固定
-    1 模型原点    em.host_origin，即宿主上报的发射器位置，不含本地 TRANSFORM3D 漂移
+    1 模型原点    模拟坐标系原点正下方 100cm，近似角色中心
     2/3 世界原点  本模拟坐标系原点 (0,0,0)，而非 Blender 场景的世界原点
 
 仅取值 0 为精确对应；1 与 2/3 为近似，`on_emitter_init` 会为此记录 note。
@@ -89,6 +89,8 @@ VANISH_IMMEDIATE = 2
 
 _UP = Vec3(0.0, 1.0, 0.0)
 _FRONT = Vec3(0.0, 0.0, 1.0)
+#: homingTarget=1 的近似目标：原点正下方 100cm
+_MODEL_ORIGIN = Vec3(0.0, -100.0, 0.0)
 
 
 def _rotate_axis(v, axis, deg):
@@ -153,8 +155,8 @@ class Homing(Behavior):
             return
         mode = f.i("homingTarget") % 4
         if mode == 1:
-            em.note("HOMING.homingTarget=Model Origin：预览没有角色模型根节点数据，"
-                    "近似取宿主上报的发射器位置（host_origin，不含本地漂移）")
+            em.note("HOMING.homingTarget=Model Origin：预览没有角色模型数据，"
+                    "近似取模拟坐标系原点正下方 100cm")
         elif mode in (2, 3):
             em.note("HOMING.homingTarget=World Origin：预览没有地图坐标数据，"
                     "近似取本次模拟坐标系的原点")
@@ -251,7 +253,7 @@ class Homing(Behavior):
     def _target(mode, em):
         """归航目标的**实时**位置，而非触发时固定的位置。"""
         if mode == 1:
-            return em.host_origin.copy()
+            return _MODEL_ORIGIN.copy()
         if mode in (2, 3):
             return Vec3()
         return em.origin.copy()

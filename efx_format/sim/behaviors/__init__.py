@@ -8,8 +8,8 @@ registry / simulator / stages。
 属性数量。
 
 维护约束：
-- STRAINRIBBON 与 LIGHTNING 不予实现，按未模拟属性处理。其字段语义几乎全部未知，实现结果只能
-  是猜测。
+- STRAINRIBBON 不予实现，按未模拟属性处理。其字段语义几乎全部未知，实现结果只能是猜测。
+- LIGHTNING 只模拟主干（起止点、生长、宽度与贴图 V），分支与末端骨骼不做，见 `lightning`。
 - `_flowmap.py` 是共用函数模块，不是 behavior，没有 `@register`。flowmap 字段属于
   BILLBOARD3D / PLANE / BILLBOARD2D，由各渲染体分别调用。
 """
@@ -24,6 +24,7 @@ from . import fadebyangle      # noqa: F401
 from . import fadebydepth      # noqa: F401
 from . import homing           # noqa: F401
 from . import life             # noqa: F401
+from . import lightning        # noqa: F401
 from . import mesh             # noqa: F401
 from . import noise            # noqa: F401
 from . import parentoptions    # noqa: F401
@@ -45,7 +46,7 @@ from . import uvsequence       # noqa: F401
 from . import velocity3d       # noqa: F401
 
 __all__ = ["spawn", "life", "emittershape3d", "velocity3d", "homing",
-           "transform3d", "scaleanim", "rotateanim", "billboard3d",
+           "transform3d", "scaleanim", "rotateanim", "billboard3d", "lightning",
            "dummy", "plane", "ribbon", "ribbonblade", "mesh", "uvsequence",
            "parentoptions", "ptlife", "ptcollision", "noise", "rgbfire", "rgbwater",
            "alphacorrection", "uvcontrol", "refraction", "blink",
