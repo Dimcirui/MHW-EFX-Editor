@@ -49,6 +49,7 @@ from . import mesh_drive        # 绑定网格驱动 Mesh Drive（总开关+勾�
 from . import sim_preview       # 粒子模拟播放器（modal 时钟 + gpu 绘制，零场景对象）
 from . import workspace_preset  # 一键添加内置的 MHW VFX 工作区预设（随包 assets/*.blend）
 from . import reload_assets     # 重新载入所有 EFX 的 .uvs / 贴图 / 模型并刷新预览
+from . import batch_edit        # 多 Entry 批量属性编辑（分页对比 + 写入同类属性）
 from . import file_menu      # File > Import/Export 菜单项 + .timl/.uvs 拖入（须在各算子注册后挂）
 
 # 对外公开的核心函数。
@@ -202,6 +203,9 @@ def register():
     # ── 重新载入所有特效：单个算子，依赖 uvs_link / mod3_link / sim_preview 已注册 ──
     reload_assets.register()
 
+    # ── 批量属性编辑：面板 + 算子 + Scene.efx_batch，须在 session_core 之后（登记读档复位）──
+    batch_edit.register()
+
     # ── File > Import/Export 菜单项 + .timl/.uvs 拖入 ───────────────────────────
     # 最后注册：菜单项按 bl_idname 引用上面各模块的算子，必须等它们全部注册完。
     file_menu.register()
@@ -211,6 +215,7 @@ def unregister():
     """注销扩展的全部 PropertyGroup、Operator 和 Panel 类。"""
     # ── Operator / Panel（先注销 UI 层）────────────────────────────────────
     file_menu.unregister()
+    batch_edit.unregister()
     reload_assets.unregister()
     workspace_preset.unregister()
     sim_preview.unregister()
