@@ -181,14 +181,14 @@ class EFXUVSGroupProp(PropertyGroup):
     grid_scan: bpy.props.EnumProperty(
         name="Scan",
         items=[
-            ('LR_TB', "LR↑", "Left→Right, Bottom→Top (standard UV order)"),
-            ('LR_BT', "LR↓", "Left→Right, Top→Bottom (most common)"),
-            ('RL_TB', "RL↑", "Right→Left, Bottom→Top"),
-            ('RL_BT', "RL↓", "Right→Left, Top→Bottom"),
-            ('TB_LR', "BT→", "Bottom→Top, Left→Right"),
-            ('BT_LR', "TB→", "Top→Bottom, Left→Right"),
-            ('TB_RL', "BT←", "Bottom→Top, Right→Left"),
-            ('BT_RL', "TB←", "Top→Bottom, Right→Left"),
+            ('LR_TB', "LR↓", "Left→Right, Top→Bottom (standard)"),
+            ('LR_BT', "LR↑", "Left→Right, Bottom→Top"),
+            ('RL_TB', "RL↓", "Right→Left, Top→Bottom"),
+            ('RL_BT', "RL↑", "Right→Left, Bottom→Top"),
+            ('TB_LR', "TB→", "Top→Bottom, Left→Right"),
+            ('BT_LR', "BT→", "Bottom→Top, Left→Right"),
+            ('TB_RL', "TB←", "Top→Bottom, Right→Left"),
+            ('BT_RL', "BT←", "Bottom→Top, Right→Left"),
         ],
         default='LR_TB',
     )
@@ -796,12 +796,7 @@ def _uvs_draw_handler():
     for i, frame in enumerate(frames):
         u0, v0 = frame.uv0
         u1, v1 = frame.uv1
-        # ⚠ 这个翻转是照"v 越大越靠近贴图顶部"的旧假设调的；0.4.3 实机测试已
-        # 证实那个假设是反的（真实 v 越大越靠近贴图底部，见 EFX_OT_uvs_frame_edit
-        # 的订正）。但这里翻转后配合 _gen_frames_pixel_grid（未做 1-v 翻转）已
-        # 实机截图确认选中帧正确显示在左上角——两个"错"抵消出了当前预览效果
-        # 正确的结果，暂不改动；如果之后改 _gen_frames_grid/这里任何一处，要
-        # 连带重新验证预览方向，不要只改一处。
+        # .uvs 的 v 向下，Image Editor 坐标原点在左下，画框时翻转
         v0, v1 = 1.0 - v0, 1.0 - v1
         if i == selected:
             color = (1.0, 0.85, 0.0, 1.0)   # 黄色：选中帧
@@ -827,29 +822,23 @@ def _gen_frames_grid(H: int, V: int, scan: str, count: int = None):
     from ..efx_format.uvs import UVSFrame
     w, h = 1.0 / H, 1.0 / V
 
-    # ⚠ 0.4.3：实机测试确认 EFX_OT_uvs_frame_edit 原先"v 越大越靠近贴图顶部"的
-    # 假设是反的（真实是 v 越大越靠近贴图底部），已订正该处 Top/Bottom 标签；
-    # 但这里的 ri↔"上/下"映射、以及下面 GPU 叠加层的翻转是否也要跟着改，尚未
-    # 用同样方式实机验证——LR_TB 等 scan 选项的实际游戏内播放方向可能因此和
-    # 标签描述不符，改动前先找具体数值复现，不要凭这条注释直接反转。
-    # j 是"播放顺序批次"（0 起），下面把 j 映到 ri，让实际（游戏内）播放方向和 scan 标签一致。
-    # RL_*/*_RL 四个是 LR_*/*_LR 的镜像：纵向 ri 公式原样照抄，只把横向 ci 换成 H-1-i。
-    if scan == 'LR_TB':    # 左→右 上→下：先播最上面一行（ri=V-1，v 最大），逐行往下
-        pairs = [(i, V - 1 - j) for j in range(V) for i in range(H)]
-    elif scan == 'LR_BT':  # 左→右 下→上：先播最下面一行（ri=0，v 最小），逐行往上
+    # v=0 是贴图顶边，ri=0 即最上一行。官方 .uvs 全部是 LR_TB（第 0 帧左上）。
+    if scan == 'LR_TB':    # 左→右 上→下
         pairs = [(i, j) for j in range(V) for i in range(H)]
-    elif scan == 'RL_TB':  # 右→左 上→下（LR_TB 的横向镜像）
-        pairs = [(H - 1 - i, V - 1 - j) for j in range(V) for i in range(H)]
-    elif scan == 'RL_BT':  # 右→左 下→上（LR_BT 的横向镜像）
+    elif scan == 'LR_BT':  # 左→右 下→上
+        pairs = [(i, V - 1 - j) for j in range(V) for i in range(H)]
+    elif scan == 'RL_TB':  # 右→左 上→下
         pairs = [(H - 1 - i, j) for j in range(V) for i in range(H)]
+    elif scan == 'RL_BT':  # 右→左 下→上
+        pairs = [(H - 1 - i, V - 1 - j) for j in range(V) for i in range(H)]
     elif scan == 'TB_LR':  # 上→下 左→右
-        pairs = [(i, V - 1 - j) for i in range(H) for j in range(V)]
-    elif scan == 'BT_LR':  # 下→上 左→右
         pairs = [(i, j) for i in range(H) for j in range(V)]
-    elif scan == 'TB_RL':  # 上→下 右→左（TB_LR 的横向镜像）
-        pairs = [(H - 1 - i, V - 1 - j) for i in range(H) for j in range(V)]
-    else:                  # BT_RL：下→上 右→左（BT_LR 的横向镜像）
+    elif scan == 'BT_LR':  # 下→上 左→右
+        pairs = [(i, V - 1 - j) for i in range(H) for j in range(V)]
+    elif scan == 'TB_RL':  # 上→下 右→左
         pairs = [(H - 1 - i, j) for i in range(H) for j in range(V)]
+    else:                  # BT_RL：下→上 右→左
+        pairs = [(H - 1 - i, V - 1 - j) for i in range(H) for j in range(V)]
 
     frames = []
     for ci, ri in pairs:
@@ -1681,13 +1670,7 @@ def _gen_frames_pixel_grid(n: int, cols: int, fw: int, fh: int, canvas_w: int, c
     尾部留白也不会累积错位——因为 GIF→PNG 生成的精灵表本来就不是均匀
     网格（每帧固定 fw×fh，只有画布最右/最下有一圈留白）。
 
-    v 轴方向：实机截图确认过——按"第 j 行（0 起，从顶往下数）对应 v 从
-    1-(j+1)*fh/canvas_h 到 1-j*fh/canvas_h"（沿用 _gen_frames_grid"v 越大越
-    靠近贴图顶部"的约定）算出来，UVS 编辑器预览里第 0 帧却显示在左下角，
-    和 PNG 里实际贴在左上角的内容对不上，所以这里改成反过来的直接映射
-    （j 越大 v 越大）。⚠ 这只是照编辑器预览校准的，游戏里贴图 v 轴到底是
-    以左上还是左下为原点还没有实机验证过；如果之后验证结果相反，把这里
-    的 v0/v1 换回上面那版即可。
+    v=0 是贴图顶边，第 j 行（从顶往下数）的 v 从 j*fh/canvas_h 到 (j+1)*fh/canvas_h。
     """
     from ..efx_format.uvs import UVSFrame
     frames = []
