@@ -652,7 +652,8 @@ def _bind_entry_mesh(body, handle):
         con = mesh.constraints.new("CHILD_OF")
         con.name = _CON_NAME
         con.target = handle
-        con.inverse_matrix = handle.matrix_world.inverted()
+        # 句柄世界矩阵是 TIML 绝对变换，抵消 Entry 静态摆位后网格完全跟随句柄。
+        con.inverse_matrix = body.matrix_world.inverted_safe()
         mesh[_BOUND_MARKER] = 1
         return True
     except Exception:

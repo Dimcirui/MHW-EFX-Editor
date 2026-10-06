@@ -107,6 +107,8 @@ def make_timl_handle(entry_obj: bpy.types.Object, collection: bpy.types.Collecti
     collection.objects.link(h)
     h["~TYPE"] = "EFX_TIML"
     h.parent = entry_obj
+    from . import transform_sync
+    transform_sync.sync_entry_timl_handle(entry_obj, h)
     return h
 
 

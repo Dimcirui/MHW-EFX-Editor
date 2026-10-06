@@ -1953,7 +1953,7 @@ DT_DATATYPE = {
 }
 
 # transform 九条 hash（jamcrc）。MHW Y-up → Blender Z-up：游戏 Y↔Z 轴**置换**
-# （game Y→blender Z[index2]、game Z→blender Y[index1]），位置/旋转适用、缩放不置换。
+# （game Y→blender Z[index2]、game Z→blender Y[index1]），位置、旋转、缩放都置换。
 # 这里直接存**置换后的 blender array_index** + kind（loc/rot/scl，决定单位/符号换算）。
 # 元组：(label, bl_prop, bl_index, kind)
 DT_TRANSFORM = {
@@ -1964,8 +1964,8 @@ DT_TRANSFORM = {
     0x86028B75: ("rot:Y", "rotation_euler", 2, "rot"),
     0x1F0BDACF: ("rot:Z", "rotation_euler", 1, "rot"),
     0x9486DF23: ("scl:X", "scale", 0, "scl"),
-    0xE381EFB5: ("scl:Y", "scale", 1, "scl"),
-    0x7A88BE0F: ("scl:Z", "scale", 2, "scl"),
+    0xE381EFB5: ("scl:Y", "scale", 2, "scl"),
+    0x7A88BE0F: ("scl:Z", "scale", 1, "scl"),
 }
 
 # ── DT_NEUTRAL：新增 TIML 轨道的首帧兜底值 ────────────────────────────────────────

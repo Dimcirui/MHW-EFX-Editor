@@ -3,7 +3,7 @@
 维护约束：这是单向视口代理，Object 变换不得反写或参与 EFX 导出。TRANSFORM3D
 FLOAT6 的基础值使用索引 0/2/4，按分量写入 Entry 的 location / rotation_euler / scale，
 rotation_mode 由 rotationOrder 决定。骨骼只通过 Copy Location 叠加当前位置；无效绑定
-必须移除约束。
+必须移除约束。TIML 句柄与 Entry 用同一套通道换算，摆位时一并同步。
 """
 
 from math import radians
@@ -146,7 +146,7 @@ def blender_rotation_mode(order):
     """游戏旋转顺序串 → 逐分量等价的 Blender rotation_mode。
 
     配合 ``game_rot_to_blender`` 的分量，Euler 与 ``M·R_game·M⁻¹`` 完全相同，
-    所以 Entry 可以直接用 rotation_euler 表示游戏旋转。
+    所以 Entry 和 TIML 句柄可以直接用 rotation_euler 表示游戏旋转。
     """
     return "".join(_G2B_AXIS[c] for c in order)
 
@@ -241,12 +241,64 @@ def _sync_bone_follow_constraint(entry_obj, armature_obj, jointNo) -> bool:
     return True
 
 
+# ── TIML 句柄 ────────────────────────────────────────────────────────────────
+
+def _animated_channels(handle):
+    """句柄上被 F 曲线驱动的 (data_path, index)。"""
+    out = set()
+    ad = handle.animation_data
+    act = ad.action if ad is not None else None
+    if act is None:
+        return out
+    try:
+        from .timl_edit import _act_fcurves
+        for fc in _act_fcurves(act, handle):
+            if fc.data_path in _CHANNEL_PROPS:
+                out.add((fc.data_path, fc.array_index))
+    except Exception:
+        pass
+    return out
+
+
+def _sync_timl_handle(handle, ch):
+    """让句柄世界变换 = Entry 基准 × TIML 绝对值。
+
+    TIML 的变换轨道存绝对值，句柄却是 Entry 子对象；父逆矩阵抵消 Entry 的静态部分，
+    没有轨道的通道填静态值，否则只动一个轴时其余轴会回到原点。
+    """
+    _write_channels(handle, ch, skip=_animated_channels(handle))
+    handle.matrix_parent_inverse = channels_matrix(ch).inverted_safe()
+
+
+def sync_entry_timl_handle(entry_obj, handle) -> bool:
+    """只按 Entry 的 TRANSFORM3D 同步句柄，不改 Entry 本身和骨骼约束。"""
+    t3d = _attribute_of_type(entry_obj, _t3d_hash())
+    ch = t3d_channels(t3d) if t3d is not None else None
+    if ch is None:
+        return False
+    _sync_timl_handle(handle, ch)
+    return True
+
+
+def _timl_handle_map():
+    """按父 Entry 建立 TIML 句柄映射，批量同步时只扫一次全场景。"""
+    out = {}
+    for o in bpy.data.objects:
+        if o.get("~TYPE") == "EFX_TIML" and o.parent is not None:
+            out.setdefault(o.parent, o)
+    return out
+
+
 # ── 应用到单个 entry ──────────────────────────────────────────────────────────
 
-def apply_entry_transform(entry_obj, armature_obj=None, children_map=None) -> bool:
-    """按 TRANSFORM3D 写入 Entry 的变换通道，并同步骨骼约束。
+_NO_HANDLE = object()
 
-    批量调用应传入 ``children_map``，避免逐个扫场景。
+
+def apply_entry_transform(entry_obj, armature_obj=None, children_map=None,
+                          timl_handle=_NO_HANDLE) -> bool:
+    """按 TRANSFORM3D 写入 Entry 的变换通道，并同步骨骼约束和 TIML 句柄。
+
+    批量调用应传入 ``children_map`` 和 ``timl_handle``（无句柄时传 None），避免逐个扫场景。
     """
     try:
         t3d = _attribute_of_type(entry_obj, _t3d_hash(), children_map)
@@ -258,6 +310,11 @@ def apply_entry_transform(entry_obj, armature_obj=None, children_map=None) -> bo
         _sync_bone_follow_constraint(
             entry_obj, armature_obj, _entry_joint_no(entry_obj, children_map))
         _write_channels(entry_obj, ch)
+        if timl_handle is _NO_HANDLE:
+            from .io_tree import find_timl_handle
+            timl_handle = find_timl_handle(entry_obj)
+        if timl_handle is not None:
+            _sync_timl_handle(timl_handle, ch)
         return True
     except Exception:
         return False
@@ -277,9 +334,11 @@ def place_single_entry(entry_obj, armature_obj=None) -> bool:
 def sync_all_transform3d(root_obj, armature_obj=None) -> int:
     """同步根下全部 Entry，返回成功处理数。"""
     children_map = build_entry_attr_map(root_obj)
+    handles = _timl_handle_map()
     n = 0
     for body in _iter_root_bodies(root_obj):
-        if apply_entry_transform(body, armature_obj, children_map=children_map):
+        if apply_entry_transform(body, armature_obj, children_map=children_map,
+                                 timl_handle=handles.get(body)):
             n += 1
     bpy.context.view_layer.update()
     return n
