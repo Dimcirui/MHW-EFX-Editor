@@ -1,12 +1,15 @@
 """将 TRANSFORM3D 与 PARENTOPTIONS 映射为 Entry 的视口变换。
 
-维护约束：这是单向视口代理，Object 变换不得反写或参与 EFX 导出。TRANSFORM3D
-FLOAT6 的基础值使用索引 0/2/4，按分量写入 Entry 的 location / rotation_euler / scale，
-rotation_mode 由 rotationOrder 决定。骨骼只通过 Copy Location 叠加当前位置；无效绑定
-必须移除约束。TIML 句柄与 Entry 用同一套通道换算，摆位时一并同步。
+维护约束：
+- TRANSFORM3D FLOAT6 的基础值使用索引 0/2/4，按分量写入 Entry 的 location /
+  rotation_euler / scale，rotation_mode 由 rotationOrder 决定。导出只读字段。
+- 用户确认的 Entry 变换经 ``reconcile_entry`` 反写进字段；判断哪一边变了靠 Entry 上的
+  同步基准，基准随撤销快照一起恢复，所以撤销 / 重做后对账即可恢复一致。
+- 骨骼只通过 Copy Location 叠加当前位置；无效绑定必须移除约束。TIML 句柄与 Entry 用
+  同一套通道换算，摆位时一并同步。
 """
 
-from math import radians
+from math import degrees, radians
 
 import bpy
 from bpy.app.handlers import persistent
@@ -188,8 +191,61 @@ def _write_channels(obj, ch, skip=frozenset()):
     for prop, val in zip(_CHANNEL_PROPS, (loc, rot, scl)):
         target = getattr(obj, prop)
         for i in range(3):
-            if (prop, i) not in skip:
+            # 相同的值也不重写：任何写入都会触发 depsgraph 更新，进而重新对账。
+            if (prop, i) not in skip and not _close(target[i], val[i]):
                 target[i] = val[i]
+
+
+def _close(a, b):
+    """按 float32 精度判等。"""
+    return abs(a - b) <= 1e-5 * max(1.0, abs(a), abs(b))
+
+
+def _read_channels(obj):
+    return (tuple(obj.location), obj.rotation_mode, tuple(obj.rotation_euler), tuple(obj.scale))
+
+
+def _channels_close(a, b):
+    return a[1] == b[1] and all(_close(x, y) for i in (0, 2, 3) for x, y in zip(a[i], b[i]))
+
+
+# ── 反向换算（Blender 通道 → 游戏三元组），与正向互为精确逆 ─────────────────────
+
+def blender_loc_to_game(b):
+    return (b[0] * 100.0, b[2] * 100.0, -b[1] * 100.0)
+
+
+def blender_rot_to_game(e):
+    return (degrees(e[0]), degrees(e[2]), -degrees(e[1]))
+
+
+def blender_scale_to_game(s):
+    return (s[0], s[2], s[1])
+
+
+#: 游戏分量 x/y/z 对应的 Blender 通道下标；平移、旋转、缩放相同。
+_G2B_INDEX = (0, 2, 1)
+
+# ── 同步基准 ──────────────────────────────────────────────────────────────────
+# 最近一次摆位或反写后的通道值。它是对象自定义属性，会进入撤销快照。
+
+_SYNC_KEY = "~t3d_sync"
+_SYNC_MODE_KEY = "~t3d_sync_mode"
+
+
+def _store_snapshot(obj):
+    loc, mode, rot, scl = _read_channels(obj)
+    obj[_SYNC_KEY] = [*loc, *rot, *scl]
+    obj[_SYNC_MODE_KEY] = mode
+
+
+def _snapshot(obj):
+    v = obj.get(_SYNC_KEY)
+    mode = obj.get(_SYNC_MODE_KEY)
+    if v is None or mode is None or len(v) != 9:
+        return None
+    v = list(v)
+    return (tuple(v[0:3]), str(mode), tuple(v[3:6]), tuple(v[6:9]))
 
 
 # ── 骨骼基准 ─────────────────────────────────────────────────────────────────
@@ -310,14 +366,29 @@ def apply_entry_transform(entry_obj, armature_obj=None, children_map=None,
         _sync_bone_follow_constraint(
             entry_obj, armature_obj, _entry_joint_no(entry_obj, children_map))
         _write_channels(entry_obj, ch)
+        _store_snapshot(entry_obj)
         if timl_handle is _NO_HANDLE:
             from .io_tree import find_timl_handle
             timl_handle = find_timl_handle(entry_obj)
+        animated = set()
         if timl_handle is not None:
+            animated = _animated_channels(timl_handle)
             _sync_timl_handle(timl_handle, ch)
+        _sync_locks(entry_obj, animated)
         return True
     except Exception:
         return False
+
+
+def _sync_locks(entry_obj, animated):
+    """锁住由 TIML 轨道驱动的分量：游戏里这些分量取曲线值，静态值不生效。"""
+    for prop, lock in (("location", "lock_location"), ("rotation_euler", "lock_rotation"),
+                       ("scale", "lock_scale")):
+        arr = getattr(entry_obj, lock)
+        for i in range(3):
+            want = (prop, i) in animated
+            if arr[i] != want:
+                arr[i] = want
 
 
 def _iter_root_bodies(root_obj):
@@ -325,7 +396,9 @@ def _iter_root_bodies(root_obj):
 
 
 def place_single_entry(entry_obj, armature_obj=None) -> bool:
-    """同步单个 Entry，并使结果立即可被后续读取。"""
+    """同步单个 Entry，并使结果立即可被后续读取。对账写字段期间由对账统一摆位。"""
+    if _RECONCILING:
+        return False
     ok = apply_entry_transform(entry_obj, armature_obj)
     bpy.context.view_layer.update()
     return ok
@@ -342,6 +415,198 @@ def sync_all_transform3d(root_obj, armature_obj=None) -> int:
             n += 1
     bpy.context.view_layer.update()
     return n
+
+
+# ── 反写对账 ──────────────────────────────────────────────────────────────────
+
+_RECONCILING = False
+_WRITE_DECIMALS = 4
+_EULER_MODES = frozenset(("XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX"))
+_T3D_FIELD_OF = (("translate", "location", 0, blender_loc_to_game),
+                 ("rotate", "rotation_euler", 2, blender_rot_to_game),
+                 ("resize", "scale", 3, blender_scale_to_game))
+
+
+def _write_back(t3d, cur, base, animated):
+    """把用户改动过的分量写进 TRANSFORM3D；只写与基准不同的分量，避免浮点漂移。"""
+    items = {it.ori_name: it for it in t3d.efx_block.field_items}
+    for field, prop, ci, to_game in _T3D_FIELD_OF:
+        item = items.get(field)
+        if item is None or item.data_type != "FLOAT6":
+            continue
+        game = to_game(cur[ci])
+        v = list(item.float6_value)
+        changed = False
+        for k in range(3):
+            bi = _G2B_INDEX[k]
+            if (prop, bi) in animated or _close(cur[ci][bi], base[ci][bi]):
+                continue
+            # Blender 以 float32 存米和弧度，换算回厘米和度会带出 444.99997 这类尾数。
+            v[2 * k] = round(game[k], _WRITE_DECIMALS)
+            changed = True
+        if changed:
+            item.float6_value = v
+    if cur[1] != base[1]:
+        from ..efx_format.sim.vecmath import ROT_ORDER_TRANSFORM
+        order = blender_rotation_mode(cur[1])   # 轴置换是对合，反向用同一个函数
+        item = items.get("rotationOrder")
+        if item is not None and order in ROT_ORDER_TRANSFORM:
+            item.int_value = ROT_ORDER_TRANSFORM.index(order)
+
+
+def reconcile_entry(entry_obj, armature_obj=None, writeback=True, children_map=None,
+                    timl_handle=_NO_HANDLE) -> bool:
+    """按「当前通道 / 同步基准 / 字段」三方对账，返回是否改动了字段或摆位。
+
+    通道偏离基准说明用户动过 Entry，写回字段；否则以字段为准重新摆位。没有
+    TRANSFORM3D 的 Entry 不处理。四元数等非 Euler 模式不写回，按字段恢复。
+    rotation_mode 换成另一种 Euler 顺序时写进 rotationOrder。
+    """
+    global _RECONCILING
+    t3d = _attribute_of_type(entry_obj, _t3d_hash(), children_map)
+    if t3d is None:
+        return False
+    exp = t3d_channels(t3d)
+    if exp is None:
+        return False
+    cur = _read_channels(entry_obj)
+    base = _snapshot(entry_obj)
+    wrote = False
+    # 没有基准（旧文件或刚建的对象）时无法判断哪边变了，以字段为准。
+    if (writeback and base is not None and cur[1] in _EULER_MODES
+            and not _channels_close(cur, base)):
+        if timl_handle is _NO_HANDLE:
+            from .io_tree import find_timl_handle
+            timl_handle = find_timl_handle(entry_obj)
+        animated = _animated_channels(timl_handle) if timl_handle is not None else set()
+        _RECONCILING = True
+        try:
+            _write_back(t3d, cur, base, animated)
+        finally:
+            _RECONCILING = False
+        wrote = True
+        exp = t3d_channels(t3d)
+    if not wrote and base is not None and _channels_close(cur, exp):
+        return False
+    apply_entry_transform(entry_obj, armature_obj, children_map, timl_handle)
+    if wrote:
+        try:
+            from . import mesh_align
+            mesh_align.realign_entry_if_active(entry_obj)
+        except Exception:
+            pass
+    return True
+
+
+def _writeback_enabled(scene=None):
+    scene = scene or bpy.context.scene
+    return bool(getattr(scene, "efx_t3d_writeback", True)) if scene else False
+
+
+def _reconcile_all(writeback):
+    """对账全部 EFX 根下的 Entry。"""
+    scene = bpy.context.scene
+    armature = getattr(scene, "efx_armature", None) if scene else None
+    handles = _timl_handle_map()
+    for root in _rc.all_root_collections():
+        children_map = build_entry_attr_map(root)
+        for body in _iter_root_bodies(root):
+            try:
+                reconcile_entry(body, armature, writeback, children_map, handles.get(body))
+            except Exception:
+                pass
+
+
+# ── 触发：变换确认后、N 面板输入后、撤销 / 重做后 ───────────────────────────────
+
+_pending = set()
+#: 无 ``Window.modal_operators`` 的版本里，通道连续稳定多少次轮询后视为已确认。
+_LEGACY_STABLE_POLLS = 5
+_POLL_INTERVAL = 0.1
+_legacy_seen = {}
+
+
+def _transform_running():
+    """是否有变换操作仍在进行；版本不支持判断时返回 None。"""
+    try:
+        windows = bpy.context.window_manager.windows
+    except Exception:
+        return None
+    for w in windows:
+        ops = getattr(w, "modal_operators", None)
+        if ops is None:
+            return None
+        if any(op.bl_idname.startswith("TRANSFORM_OT") for op in ops):
+            return True
+    return False
+
+
+def _flush_pending():
+    """计时器回调：变换结束后对账待处理的 Entry；仍在拖动时继续等待。"""
+    if not _pending:
+        return None
+    running = _transform_running()
+    names = list(_pending)
+    if running is None:
+        # 旧版本：通道连续数次轮询不变即视为确认；取消时由对账按基准自动还原。
+        ready = []
+        for n in names:
+            o = bpy.data.objects.get(n)
+            ch = _read_channels(o) if o is not None else None
+            prev, count = _legacy_seen.get(n, (None, 0))
+            stable = ch is not None and prev is not None and _channels_close(ch, prev)
+            count = count + 1 if stable else 0
+            _legacy_seen[n] = (ch, count)
+            if ch is None or count >= _LEGACY_STABLE_POLLS:
+                ready.append(n)
+        names = ready
+    elif running:
+        return _POLL_INTERVAL
+    scene = bpy.context.scene
+    armature = getattr(scene, "efx_armature", None) if scene else None
+    for n in names:
+        _pending.discard(n)
+        _legacy_seen.pop(n, None)
+        o = bpy.data.objects.get(n)
+        if o is not None:
+            try:
+                reconcile_entry(o, armature, _writeback_enabled(scene))
+            except Exception:
+                pass
+    return _POLL_INTERVAL if _pending else None
+
+
+def _animation_playing():
+    try:
+        return any(s.is_animation_playing for s in bpy.data.screens)
+    except Exception:
+        return False
+
+
+@persistent
+def _on_depsgraph(scene, depsgraph):
+    if _RECONCILING or not _writeback_enabled(scene) or _animation_playing():
+        return
+    added = False
+    for u in depsgraph.updates:
+        if not u.is_updated_transform or not isinstance(u.id, bpy.types.Object):
+            continue
+        o = u.id.original
+        if o.get("~TYPE") == "EFX_ENTRY" and o.name not in _pending:
+            _pending.add(o.name)
+            added = True
+    if added and not bpy.app.timers.is_registered(_flush_pending):
+        bpy.app.timers.register(_flush_pending, first_interval=_POLL_INTERVAL)
+
+
+@persistent
+def _on_undo_redo(*_args):
+    # 撤销快照里通道、基准和字段各自恢复；对账让三者重新一致。
+    _pending.clear()
+    try:
+        _reconcile_all(_writeback_enabled())
+    except Exception:
+        pass
 
 
 # ── 算子：刷新特效体位置 ──────────────────────────────────────────────────────
@@ -396,8 +661,13 @@ def shrink_legacy_helper_empties() -> int:
 
 @persistent
 def _on_load(*_args):
+    _pending.clear()
     try:
         shrink_legacy_helper_empties()
+    except Exception:
+        pass
+    try:
+        _reconcile_all(_writeback_enabled())
     except Exception:
         pass
 
@@ -408,6 +678,13 @@ def _armature_poll(self, obj):
 
 
 _CLASSES = (EFX_OT_sync_transform,)
+
+_HANDLERS = (
+    (bpy.app.handlers.load_post, _on_load),
+    (bpy.app.handlers.depsgraph_update_post, _on_depsgraph),
+    (bpy.app.handlers.undo_post, _on_undo_redo),
+    (bpy.app.handlers.redo_post, _on_undo_redo),
+)
 
 
 def register():
@@ -431,13 +708,28 @@ def register():
                     "决定只显示当前生效的字段，其余隐藏（值仍保留，纯视觉）。",
         default=False,
     )
-    if _on_load not in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(_on_load)
+    bpy.types.Scene.efx_t3d_writeback = bpy.props.BoolProperty(
+        name="Write Back Entry Transforms",
+        description="Moving, rotating or scaling an entry in the viewport writes the result "
+                    "to its TRANSFORM3D once the transform is confirmed",
+        default=True,
+    )
+    for lst, fn in _HANDLERS:
+        if fn not in lst:
+            lst.append(fn)
 
 
 def unregister():
-    if _on_load in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.remove(_on_load)
+    for lst, fn in _HANDLERS:
+        if fn in lst:
+            lst.remove(fn)
+    if bpy.app.timers.is_registered(_flush_pending):
+        bpy.app.timers.unregister(_flush_pending)
+    _pending.clear()
+    try:
+        del bpy.types.Scene.efx_t3d_writeback
+    except AttributeError:
+        pass
     try:
         del bpy.types.Scene.efx_armature
     except AttributeError:

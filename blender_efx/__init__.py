@@ -38,7 +38,7 @@ from . import timl_io       # TIML ↔ .timl 文件互导 + EFX_TIML 句柄解�
 from . import timl_meta_ui  # TIML 头部元字段编辑（Dope Sheet 侧栏 EFX TIML：长度/循环控制）
 from . import timl_edit      # TIML 通道编辑：导入即建原生 F 曲线并持久化
 from . import timl_tracks    # TIML 轨道增删复制（调色板 / 字段行的 +TIML 按钮）
-from . import transform_sync # TRANSFORM3D → Entry empty 的视口变换（单向可视化代理）
+from . import transform_sync # TRANSFORM3D ↔ Entry 视口变换（摆位 + 确认后反写）
 from . import uvs_io        # UVSEQUENCE 属性下的 .uvs 导入 / 导出 / 帧编辑 / GIF 转精灵表
 from . import uvc_preview    # UVCONTROL 视口 UV 滚动动画预览（根级单会话，全播）
 from . import mod3_link        # MESH 属性引用的 mod3 自动导入 + 绑定（联动 MHW Model Editor，可勾选）

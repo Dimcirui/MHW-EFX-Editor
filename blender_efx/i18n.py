@@ -180,6 +180,7 @@ STRINGS = {
     "entry.active_efx":       {"EN": "Active EFX",          "ZH": "当前 EFX"},
     "entry.armature":         {"EN": "Armature",            "ZH": "骨架"},
     "entry.sync_transform":   {"EN": "Refresh Entry Positions", "ZH": "刷新特效体位置"},
+    "entry.t3d_writeback":    {"EN": "Write Back Entry Transforms", "ZH": "Entry 变换写回 Transform3D"},
     "entry.blender_coords":   {"EN": "Blender coordinate display", "ZH": "按 Blender 坐标显示 XYZ"},
     "entry.add_workspace":    {"EN": "Add MHW VFX Workspace", "ZH": "添加 MHW VFX 工作区"},
     "entry.workspace_added":  {"EN": "MHW VFX workspace added and switched to",
