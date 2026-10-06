@@ -47,7 +47,7 @@ def _mark_attribute_dirty(self, context):
                 body = obj.parent
                 is_entry = body is not None and body.get("~TYPE") == "EFX_ENTRY"
                 if (blk_hash == TRANSFORM3D and is_entry
-                        and self.ori_name in ("translate", "rotate", "resize")):
+                        and self.ori_name in ("translate", "rotate", "resize", "rotationOrder")):
                     from . import transform_sync
                     scene = getattr(context, "scene", None) or bpy.context.scene
                     armature = getattr(scene, "efx_armature", None) if scene else None
@@ -55,7 +55,8 @@ def _mark_attribute_dirty(self, context):
                     transform_sync.place_single_entry(body, armature, use_anchor=use_anchor)
                     from . import mesh_align
                     mesh_align.realign_entry_if_active(body)
-                elif blk_hash == MESH and self.ori_name in ("rotation", "scale", "global_scale"):
+                elif blk_hash == MESH and self.ori_name in ("rotation", "rotationOrder", "scale",
+                                                             "global_scale"):
                     from . import mesh_align
                     mesh_align.apply_mesh_rotscale_to_object(obj)
                     if is_entry:

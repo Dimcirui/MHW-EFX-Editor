@@ -73,7 +73,8 @@ def _mesh_local_matrix(mesh_attribute):
     if gscale == 0.0:
         gscale = 1.0
 
-    rot = _ts.game_rot_matrix_blender(*rot_g) if rot_g else Matrix.Identity(4)
+    rot = (_ts.game_rot_matrix_blender(*rot_g, _ts.rot_order_of(mesh_attribute))
+           if rot_g else Matrix.Identity(4))
     if scl_g:
         sx, sy, sz = _ts.game_scale_to_blender(*scl_g)
     else:

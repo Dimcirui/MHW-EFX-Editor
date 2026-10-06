@@ -1,8 +1,9 @@
 """将 TRANSFORM3D 与 PARENTOPTIONS 映射为 Entry 的视口变换。
 
 维护约束：这是单向视口代理，Object 变换不得反写或参与 EFX 导出。TRANSFORM3D
-FLOAT6 的基础值使用索引 0/2/4。骨骼只通过 Copy Location 叠加当前位置，旋转和缩放
-始终由 TRANSFORM3D 的游戏到 Blender 基变换决定；无效绑定必须移除约束。
+FLOAT6 的基础值使用索引 0/2/4，旋转按 rotationOrder 组合。骨骼只通过 Copy Location
+叠加当前位置，旋转和缩放始终由 TRANSFORM3D 的游戏到 Blender 基变换决定；无效绑定
+必须移除约束。
 """
 
 from math import radians
@@ -43,12 +44,32 @@ def game_scale_to_blender(gx, gy, gz):
 
 # 旋转必须做完整基变换，不能像向量一样仅交换 Euler 分量。
 
-def _game_rot_matrix(gx, gy, gz):
-    """按游戏组合顺序 ``Ry @ Rx @ Rz`` 构建旋转矩阵。"""
-    Rx = Matrix.Rotation(radians(gx), 3, 'X')
-    Ry = Matrix.Rotation(radians(gy), 3, 'Y')
-    Rz = Matrix.Rotation(radians(gz), 3, 'Z')
-    return Ry @ Rx @ Rz
+#: rotationOrder 缺省值 4（ZXY）。
+DEFAULT_ROT_ORDER = "ZXY"
+
+
+def rot_order_of(attribute):
+    """读属性的 rotationOrder 并换成顺序串；缺字段时返回默认顺序。
+
+    取值表与模拟层共用，TRANSFORM3D、MESH 等同一套；VELOCITY3D 的 rotOrder 不适用。
+    """
+    from ..efx_format.sim.vecmath import ROT_ORDER_TRANSFORM, rot_order_name
+    try:
+        for it in attribute.efx_block.field_items:
+            if it.ori_name == "rotationOrder":
+                return rot_order_name(it.int_value, ROT_ORDER_TRANSFORM)
+    except Exception:
+        pass
+    return DEFAULT_ROT_ORDER
+
+
+def _game_rot_matrix(gx, gy, gz, order=DEFAULT_ROT_ORDER):
+    """按顺序串构建游戏空间旋转矩阵；先写的轴先作用，ZXY 即 ``Ry @ Rx @ Rz``。"""
+    ang = {"X": gx, "Y": gy, "Z": gz}
+    m = Matrix.Identity(3)
+    for axis in order:
+        m = Matrix.Rotation(radians(ang[axis]), 3, axis) @ m
+    return m
 
 
 def _g2b_basis():
@@ -56,10 +77,10 @@ def _g2b_basis():
     return Matrix.Rotation(radians(90), 3, 'X')
 
 
-def game_rot_matrix_blender(gx, gy, gz):
+def game_rot_matrix_blender(gx, gy, gz, order=DEFAULT_ROT_ORDER):
     """无骨骼基准时：游戏旋转换到 Blender 世界 = M · R_game · M⁻¹，返回 4x4。"""
     M = _g2b_basis()
-    R = _game_rot_matrix(gx, gy, gz)
+    R = _game_rot_matrix(gx, gy, gz, order)
     return (M @ R @ M.inverted()).to_4x4()
 
 
@@ -131,7 +152,7 @@ def _t3d_local_matrix(t3d_attribute):
     loc = Vector(game_loc_to_blender(*vals["translate"])) if "translate" in vals else Vector((0, 0, 0))
     if "rotate" in vals:
         # 基变换共轭 M·R_game·M⁻¹（非朴素分量交换）；与 loc/scl 的 M 变换一致组合。
-        rot = game_rot_matrix_blender(*vals["rotate"])
+        rot = game_rot_matrix_blender(*vals["rotate"], rot_order_of(t3d_attribute))
     else:
         rot = Matrix.Identity(4)
     if "resize" in vals:
