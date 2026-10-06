@@ -80,7 +80,6 @@ def _edit(op, obj, fn, touched_columns=None):
     if not _fields.reinit_custom_field_from_bytes(bp, layout_hash, pack_layout(prefix)):
         op.report({"ERROR"}, "Layout table could not be rebuilt")
         return {"CANCELLED"}
-    bp.efx_dirty = True
     return {"FINISHED"}
 
 

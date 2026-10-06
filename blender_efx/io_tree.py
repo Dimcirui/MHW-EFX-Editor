@@ -214,14 +214,10 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
     root_col["hdr_count_eof"]       = str(hdr.count_eof)
     root_col["hdr_double_buffer"]   = str(hdr.double_buffer)
 
-    # 未修改标签时导出原始 blob；重建时仅替换连续标签前缀。
-    root_col["label_bytes"]         = _b64enc(efx.label_bytes)
-    # 标签按 Action、Extern、Entry 的连续前缀映射；尾部不参与标签解析。
+    # 标签按 Action、Extern、Entry 的连续前缀映射；尾部不参与标签解析，导出时原样接回。
     _clean_labels, _label_tail = split_labels_tail(
         efx.label_bytes, hdr.count_play + hdr.count_extern + hdr.count_body)
     root_col["label_tail"]          = _b64enc(_label_tail)
-    # 标签或相关结构变更后必须从对象树重建标签区。
-    root_col["labels_dirty"]        = 0
     _n_labels                       = len(_clean_labels)  # 全局有标签条目数 k
     root_col["eof_ints"]            = ",".join(str(x) for x in efx.eof_ints)
     # EOF 后的不透明字节必须保留。
@@ -462,11 +458,10 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
         # 任何异常安全跳过：root_col["eof_ints"] 字符串仍在，导出回退路径保证 byte-perfect
         pass
 
-    # 补齐标签时只更新标签层，身份哈希保持原值，并标记标签表需要重建。
+    # 补齐标签时只更新标签层，身份哈希保持原值。
     try:
         from . import normalize
-        if normalize.ensure_all_named(root_col):
-            root_col["labels_dirty"] = 1
+        normalize.ensure_all_named(root_col)
     except Exception:
         pass
 
@@ -685,21 +680,15 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
     _play_count_changed = len(play_objs_prescan) != int(str(r.get("hdr_count_play", len(play_objs_prescan))))
     _extern_count_changed = len(extern_objs) != int(str(r.get("hdr_count_extern", len(extern_objs))))
     _subselect_count_changed = len(subselect_objs_prescan) != int(str(r.get("hdr_count_subselect", len(subselect_objs_prescan))))
-    _labels_need_rebuild = _entry_count_changed or _play_count_changed or _extern_count_changed
     # Entry 数变化也会改变 Subselect 中可写出的成员。
     _subselect_need_rebuild = _subselect_count_changed or _entry_count_changed
 
-    # 未改标签和结构时保留原始 blob；否则从连续标签前缀和原始尾部重建。
-    if int(r.get("labels_dirty", 0)) or _labels_need_rebuild:
-        # 仅写有标签的连续前缀，顺序为 Action、Extern、Entry。
-        _ordered = list(play_objs_prescan) + list(extern_objs) + list(body_objs)
-        _labels  = [str(o.get("efx_raw_label", ""))
-                    for o in _ordered if int(o.get("efx_has_label", 1))]
-        _tail    = _b64dec(str(r.get("label_tail", "")))
-        label_bytes = b''.join(s.encode('utf-8') + b'\x00' for s in _labels) + _tail
-    else:
-        # 原始 blob 包含不透明尾部。
-        label_bytes = _b64dec(str(r["label_bytes"]))
+    # 标签区总是按对象树重建：有标签的连续前缀（Action、Extern、Entry 顺序）+ 原始尾部。
+    _ordered = list(play_objs_prescan) + list(extern_objs) + list(body_objs)
+    _labels  = [str(o.get("efx_raw_label", ""))
+                for o in _ordered if int(o.get("efx_has_label", 1))]
+    _tail    = _b64dec(str(r.get("label_tail", "")))
+    label_bytes = b''.join(s.encode('utf-8') + b'\x00' for s in _labels) + _tail
     label_size = len(label_bytes)
 
     # EOF 由 Entry 归属集合重建为 Main 段局部索引；旧数据使用字符串回退。

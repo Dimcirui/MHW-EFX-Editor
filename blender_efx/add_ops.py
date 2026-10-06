@@ -235,7 +235,7 @@ def add_entry_from_preset(preset_path: str,
     按 entry 预设新建一个 EFX_ENTRY 对象（含属性子对象），归属 root_obj 文件集合。
 
     复用 io_tree 的构建逻辑，属性 data_bytes 逐字保留为 raw（v1 不跨文件指针化）。
-    新增后置 root_obj["labels_dirty"]=1，导出端按实际内容重算 header。
+    header 与标签表由导出端按实际内容重算。
 
     参数
     ----
@@ -345,9 +345,6 @@ def add_entry_from_preset_dict(preset: dict,
     # （per_entry 模型：Direct Trigger / Not Direct Trigger 二选一；opaque 不动）。
     from . import entry_action_ref
     entry_action_ref.place_new_entry(root_obj, entry_obj, bool(preset.get("in_eof")))
-
-    # entry 数量变化 → 标签表变 → 触发导出端重算
-    root_obj["labels_dirty"] = 1
 
     return entry_obj
 

@@ -1,10 +1,10 @@
 """EFX 属性字段的 Blender 表示、编辑和字节重建。
 
 维护约束：
-- 字段保留原始字节；仅 edited 且非 read_only 的字段重新打包，其他字段原样导出。
+- 导出一律按当前值重新打包；只读字段写原始字节。值未变的路径保留原始字节（含填充）。
 - 字段展开后必须通过原字节重建检查；失败的属性保持不可编辑。
-- 加载期不得触发脏标记。值槽、路径与颜色显示层均须通过 PropertyGroup 更新，以触发
-  导出和预览失效处理。
+- 加载期不得触发字段 update 回调。值槽、路径与颜色显示层均须通过 PropertyGroup 更新，
+  以触发摆位和预览失效处理。
 - 坐标显示转换只能改变显示值；未改变的分量必须保留原始精确值。
 """
 
@@ -26,21 +26,19 @@ from bpy.props import (
 from bpy.types import PropertyGroup
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 加载守卫：导入时防止 update 回调置脏
+# 加载守卫：导入时跳过字段 update 回调
 # ─────────────────────────────────────────────────────────────────────────────
 
 _LOADING: bool = False
 
 
-def _mark_attribute_dirty(self, context):
-    """标记字段和属性已编辑，并使相关视图或预览失效。"""
+def _on_field_changed(self, context):
+    """字段值改变后同步摆位，并使相关视图或预览失效。"""
     if _LOADING:
         return
     try:
-        self.edited = True
         obj = self.id_data
         if obj is not None and hasattr(obj, "efx_block"):
-            obj.efx_block.efx_dirty = True
             try:
                 from ..efx_format.hashes import TRANSFORM3D, MESH, EMITTERSHAPE3D
                 blk_hash = int(obj.efx_block.type_hash_str)
@@ -240,7 +238,7 @@ def _float3_display_set(self, val):
 #
 # 两者都是打包成单个 int32 的 RGBA（非现成支持的 'colour'/('XYZ',2) 4-ubyte-list
 # 格式）。跟 float6_display/float3_display 一样：不单独存值，读写直接转发到真实
-# 值槽 int_value，写入时触发该值槽自身的 update=_mark_attribute_dirty，不需要额外
+# 值槽 int_value，写入时触发该值槽自身的 update=_on_field_changed，不需要额外
 # 挂 update。只有 TUBELIGHT 的 headColor/tailColor 用到，其余属性的 item 上这个
 # 槽位始终空闲。
 # ─────────────────────────────────────────────────────────────────────────────
@@ -397,7 +395,7 @@ def _enum_backing_read(item):
 
 
 def _enum_backing_write(item, v):
-    """把整数写回 int 背板槽（触发原槽 update=_mark_attribute_dirty，复用脏标记/同步逻辑）。"""
+    """把整数写回 int 背板槽（触发原槽 update=_on_field_changed，复用脏标记/同步逻辑）。"""
     dt = item.data_type
     if dt == "BYTE1":
         item.byte1_value = v
@@ -571,7 +569,7 @@ def _enumvec_items(item, comp):
 def _enumvec_set(item, comp, value):
     a = list(item.int3_value)
     a[comp] = int(value)
-    item.int3_value = a   # 触发 int3_value 的 update=_mark_attribute_dirty
+    item.int3_value = a   # 触发 int3_value 的 update=_on_field_changed
 
 
 def _ev_items_x(self, context): return _enumvec_items(self, 0)
@@ -596,7 +594,7 @@ class EFXFieldItem(PropertyGroup):
     ori_name  ：schema 中的字段名（权威，用于重建 dict）。
     data_type ：字段数据类型枚举，决定读取哪个值槽。
     各值槽   ：按 data_type 只有一个槽有效数据。
-    每个值槽均挂 update=_mark_attribute_dirty 以在编辑时置脏。
+    每个值槽均挂 update=_on_field_changed 以在编辑时置脏。
     """
 
     ori_name: StringProperty(
@@ -658,18 +656,9 @@ class EFXFieldItem(PropertyGroup):
         name="Original Bytes (base64)",
         description=(
             "base64 of the byte slice for this field in the original data_bytes. "
-            "When unedited, export uses these bytes directly (bit-exact, avoids float NaN/precision issues)."
+            "Exported as-is for read-only fields."
         ),
         default="",
-    )
-
-    edited: BoolProperty(
-        name="Edited",
-        description=(
-            "True = user modified this field value, export re-packs with the new value; "
-            "False = export uses the orig_b64 original bytes (identity restore)."
-        ),
-        default=False,
     )
 
     read_only: BoolProperty(
@@ -687,41 +676,41 @@ class EFXFieldItem(PropertyGroup):
         name="",
         description="float32 value",
         precision=6,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     int_value: IntProperty(
         name="",
         description="int32/int16/int8 value",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     # uint32/uint64 存字符串，避免 Blender C int 32 位溢出
     uint_str: StringProperty(
         name="",
         description="uint value (decimal string, avoids overflow)",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     bool_value: BoolProperty(
         name="",
         description="Boolean value",
         default=False,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     byte1_value: IntProperty(
         name="",
         description="uint8 value [0, 255]",
         min=0, max=255,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     short1_value: IntProperty(
         name="",
         description="int16 value",
         min=-32768, max=32767,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     # ── 向量值槽（FloatVectorProperty）───────────────────────────────────────
@@ -730,28 +719,28 @@ class EFXFieldItem(PropertyGroup):
         name="",
         size=2,
         precision=6,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     float3_value: FloatVectorProperty(
         name="",
         size=3,
         precision=6,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     float4_value: FloatVectorProperty(
         name="",
         size=4,
         precision=6,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     float6_value: FloatVectorProperty(
         name="",
         size=6,
         precision=6,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     # ── Blender 坐标显示影子属性（toggle 开时由面板绘制；get/set 按字段单位换算）──
@@ -811,7 +800,7 @@ class EFXFieldItem(PropertyGroup):
         name="",
         size=4,
         min=0, max=255,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     # ── 颜色色轮值槽 ─────────────────────────────────────────────────────
@@ -826,7 +815,7 @@ class EFXFieldItem(PropertyGroup):
         size=4,
         min=0.0, max=1.0,
         default=(0.0, 0.0, 0.0, 1.0),
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     # COLOR_RGB：保留值槽（当前无 spec 映射到此 dtype；旧数据兼容）
@@ -838,25 +827,25 @@ class EFXFieldItem(PropertyGroup):
         size=3,
         min=0.0, max=1.0,
         default=(0.0, 0.0, 0.0),
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     int2_value: IntVectorProperty(
         name="",
         size=2,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     int3_value: IntVectorProperty(
         name="",
         size=3,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     int4_value: IntVectorProperty(
         name="",
         size=4,
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     # ── 较大数组：逗号分隔字符串 ──────────────────────────────────────────────
@@ -868,49 +857,49 @@ class EFXFieldItem(PropertyGroup):
     float2_str: StringProperty(
         name="",
         description="2 floats, comma-separated",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     float3_str: StringProperty(
         name="",
         description="3 floats, comma-separated",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     float5_str: StringProperty(
         name="",
         description="5 floats, comma-separated",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     float8_str: StringProperty(
         name="",
         description="8 floats, comma-separated",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     float16_str: StringProperty(
         name="",
         description="16 floats, comma-separated",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     int_pair_str: StringProperty(
         name="",
         description="2 ints, comma-separated",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     int10_str: StringProperty(
         name="",
         description="10 ints, comma-separated",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     int16_str: StringProperty(
         name="",
         description="16 ints, comma-separated",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     # ── 通用数组字符串（ARRAY_STR）────────────────────────────────────────────
@@ -919,7 +908,7 @@ class EFXFieldItem(PropertyGroup):
     array_str: StringProperty(
         name="",
         description="Generic array (comma-separated), for float/int arrays of any count",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     # ── 不可表示字段（base64 opaque）─────────────────────────────────────────
@@ -927,7 +916,7 @@ class EFXFieldItem(PropertyGroup):
     opaque_str: StringProperty(
         name="",
         description="This structure is not editable yet (stored as base64-encoded data)",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
     # ── 路径字符串槽（custom-codec 含路径类型）──────────────────────────
@@ -937,7 +926,7 @@ class EFXFieldItem(PropertyGroup):
     string_value: StringProperty(
         name="",
         description="Path string (in-game resource path, e.g. .dds/.efx/.mod3 paths)",
-        update=_mark_attribute_dirty,
+        update=_on_field_changed,
     )
 
 
@@ -948,7 +937,7 @@ class EFXFieldItem(PropertyGroup):
 class EFXAttributeProps(PropertyGroup):
     """
     挂到 bpy.types.Object.efx_block 上（EFX_ATTRIBUTE Empty）。
-    存储 AttrBlock 的字段模型、脏标记和原始字节安全网。
+    存储 AttrBlock 的字段模型和原始字节安全网。
     """
 
     type_hash_str: StringProperty(
@@ -956,22 +945,10 @@ class EFXAttributeProps(PropertyGroup):
         description="AttrBlock type hash (decimal string, avoids uint32 overflow)",
     )
 
-    efx_dirty: BoolProperty(
-        name="Modified",
-        description=(
-            "Set True after a field is edited by the user. UI indicator only "
-            "(shows the '● Modified' badge) — does not affect export: exporting "
-            "always rebuilds from the field model when this attribute is editable, "
-            "regardless of this flag"
-        ),
-        default=False,
-    )
-
     raw_b64: StringProperty(
         name="Original Bytes (base64)",
         description="Backup of this attribute's original data; exported as-is when the "
-                    "attribute is read-only, and per-field for any field never edited by "
-                    "the user",
+                    "attribute is read-only",
     )
 
     field_items: CollectionProperty(
@@ -1246,7 +1223,7 @@ def dict_to_items(
     ----
     bool — True=成功（全部字段均可表示）；False=失败（含不可表示字段）
 
-    注意：调用者应在调用前后管理 _LOADING 守卫，并在成功后清零 efx_dirty。
+    注意：调用者应在调用前后管理 _LOADING 守卫。
     """
     block_props.field_items.clear()
 
@@ -1268,7 +1245,6 @@ def dict_to_items(
         item.ori_name = name
         item.data_type = dtype
         item.type_hash_str = getattr(block_props, "type_hash_str", "") or ""
-        item.edited = False
 
         # ── 记录原始字节切片 + 判定 read_only ────────────────────────
         if data_bytes is not None:
@@ -1602,9 +1578,9 @@ def _resolve_renamed_spec(block_props, spec_map: dict, item):
 
 def rebuild_data_bytes(block_props, schema: list) -> bytes:
     """
-    按字段顺序重建 data_bytes，实现逐字段无损性：
-      - edited=False 或 read_only=True → 直接用 b64decode(item.orig_b64)（bit 精确）
-      - edited=True 且 read_only=False → 用该字段 spec 重新 pack 新值
+    按字段顺序重建 data_bytes：
+      - read_only=True → 直接用 b64decode(item.orig_b64)（bit 精确）
+      - 其余字段 → 用该字段 spec 按当前值重新 pack
 
     参数
     ----
@@ -1632,10 +1608,7 @@ def rebuild_data_bytes(block_props, schema: list) -> bytes:
         if spec is None:
             raise ValueError(f"rebuild_data_bytes: 字段 {name!r} 不在 schema 中")
 
-        # 判断是否使用 orig 字节
-        use_orig = (not item.edited) or item.read_only
-
-        if use_orig:
+        if item.read_only:
             if item.orig_b64:
                 parts.append(base64.b64decode(item.orig_b64))
             else:
@@ -1643,7 +1616,6 @@ def rebuild_data_bytes(block_props, schema: list) -> bytes:
                 val = _read_item_value(item, item.data_type, spec)
                 parts.append(structs_pack([("_", spec)], {"_": val}))
         else:
-            # edited=True 且 read_only=False：用新值 pack
             # COLOR_RGBA（含 ('XYZ',2) 的 alpha 通道）：全4字节均从 picker 取，直接 pack
             val = _read_item_value(item, item.data_type, spec)
             parts.append(structs_pack([("_", spec)], {"_": val}))
@@ -1730,7 +1702,6 @@ def _build_custom_field_items(values, schema, bp) -> bool:
         # 供 enum_proxy / enum_vec3 回调反查 FIELD_REGISTRY（同 dict_to_items）；
         # 缺它则 custom 块的枚举字段下拉取不到选项、只显示 "—"。
         item.type_hash_str = getattr(bp, "type_hash_str", "") or ""
-        item.edited = False
         item.orig_b64 = ""
         item.read_only = False
         try:
@@ -1794,7 +1765,6 @@ def _init_custom_field_attribute(blk, bp, paths) -> bool:
         item = bp.field_items.add()
         item.ori_name = name
         item.data_type = 'STRING'
-        item.edited = False
         item.read_only = False
         item.orig_b64 = ""
         item.string_value = path_str.rstrip('\x00')
@@ -1915,7 +1885,6 @@ def _init_path_attribute_props(blk, bp) -> None:
         item = bp.field_items.add()
         item.ori_name = name
         item.data_type = 'STRING'
-        item.edited = False
         item.read_only = False
         item.orig_b64 = ""   # 路径字段不需要 orig_b64（rebuild 走 rebuild_with_paths）
         # UI 存储不含尾部 \x00 的路径字符串（\x00 在 rebuild 时由 rebuild_with_paths 保留）
@@ -1925,7 +1894,6 @@ def _init_path_attribute_props(blk, bp) -> None:
     hint = bp.field_items.add()
     hint.ori_name = '__opaque_hint__'
     hint.data_type = 'OPAQUE'
-    hint.edited = False
     hint.read_only = True
     hint.orig_b64 = ""
     hint.opaque_str = ""
@@ -2036,7 +2004,7 @@ def _PTBEHAVIOR_HASH_RB() -> int:
 # mDistanceFadeRange=(0, 0.45)。**codec 仍按 '<q' 原样存取**（任意字节都能无损往返，
 # 不碰 NaN 位型），只在这一层按位重解释成两个 float 显示。
 #
-# 导出重建：unpack 原字节 → 对 edited=True 的 item 覆盖值 → pack_ptbehavior
+# 导出重建：unpack 原字节 → 用非只读 item 的当前值覆盖 → pack_ptbehavior
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _q_to_float2(q: int):
@@ -2117,7 +2085,6 @@ def _init_ptbehavior_attribute(blk, bp) -> bool:
     bt = bp.field_items.add()
     bt.ori_name = 'b_type'
     bt.data_type = 'STRING'
-    bt.edited = False
     bt.read_only = False
     bt.orig_b64 = ''
     bt.string_value = d['b_type'].rstrip(b'\x00').decode('utf-8', errors='replace')
@@ -2132,7 +2099,6 @@ def _init_ptbehavior_attribute(blk, bp) -> bool:
         it.ori_name = f'p{i}'
         it.hint_name = key_label
         it.data_type = 'FLOAT4' if t == 0x15 else _ptb_param_dtype(t)
-        it.edited = False
         it.read_only = False
         it.orig_b64 = ''
         if t == 0x15:
@@ -2159,7 +2125,7 @@ def _init_ptbehavior_attribute(blk, bp) -> bool:
 
 def rebuild_ptbehavior_attribute(bp, original_data: bytes = None) -> bytes:
     """
-    Phase B 重建：unpack 原始字节 → 对 edited=True 的 item 覆盖值 → pack_ptbehavior。
+    Phase B 重建：unpack 原始字节 → 用非只读 item 的当前值覆盖 → pack_ptbehavior。
 
     参数
     ----
@@ -2179,7 +2145,8 @@ def rebuild_ptbehavior_attribute(bp, original_data: bytes = None) -> bytes:
 
     # b_type
     bt = imap.get('b_type')
-    if bt and bt.edited and not bt.read_only:
+    orig_bt = d['b_type'].rstrip(b'\x00').decode('utf-8', errors='replace')
+    if bt and not bt.read_only and bt.string_value != orig_bt:
         new_str = bt.string_value
         if d['b_type'].endswith(b'\x00') and not new_str.endswith('\x00'):
             new_str += '\x00'
@@ -2191,7 +2158,7 @@ def rebuild_ptbehavior_attribute(bp, original_data: bytes = None) -> bytes:
 
         if t == 0x15:
             c_item = imap.get(f'p{i}')
-            if c_item is not None and c_item.edited and not c_item.read_only:
+            if c_item is not None and not c_item.read_only:
                 v = c_item.float4_value
                 param['unkn0'] = float(v[0])
                 param['unkn1'] = float(v[1])
@@ -2200,7 +2167,7 @@ def rebuild_ptbehavior_attribute(bp, original_data: bytes = None) -> bytes:
             continue
 
         item = imap.get(f'p{i}')
-        if not (item and item.edited and not item.read_only):
+        if not (item and not item.read_only):
             continue
 
         if t == 0x03:
@@ -2362,7 +2329,6 @@ def _init_material_attribute(blk, bp) -> bool:
     marker = bp.field_items.add()
     marker.ori_name = '__material__'
     marker.data_type = 'OPAQUE'
-    marker.edited = False
     marker.read_only = True
     marker.orig_b64 = ''
     marker.opaque_str = ''
@@ -2371,7 +2337,6 @@ def _init_material_attribute(blk, bp) -> bool:
         it = bp.field_items.add()
         it.ori_name = f'matshader_{j}'
         it.data_type = 'UINT'
-        it.edited = False
         it.read_only = False
         it.orig_b64 = ''
         it.uint_str = str(blk_d['mat_shader'] & 0xFFFFFFFF)
@@ -2379,7 +2344,6 @@ def _init_material_attribute(blk, bp) -> bool:
         nit = bp.field_items.add()
         nit.ori_name = f'matnamehash_{j}'
         nit.data_type = 'UINT'
-        nit.edited = False
         nit.read_only = False
         nit.orig_b64 = ''
         nit.uint_str = str(blk_d['mat_name_hash'] & 0xFFFFFFFF)
@@ -2394,7 +2358,6 @@ def _init_material_attribute(blk, bp) -> bool:
                 sit = bp.field_items.add()
                 sit.ori_name = material_slotpath_name(j, t, n)
                 sit.data_type = 'STRING'
-                sit.edited = False
                 sit.read_only = False
                 sit.orig_b64 = ''
                 sit.string_value = _me.slot_path_str(s)
@@ -2408,7 +2371,6 @@ def _init_material_attribute(blk, bp) -> bool:
             value = _me.get_param_value(s, type_str)
             pit = bp.field_items.add()
             pit.ori_name = f'matparam_{j}_{t}'
-            pit.edited = False
             pit.read_only = False
             pit.orig_b64 = ''
             if type_str == 'bbool':
@@ -2443,7 +2405,7 @@ def _init_material_attribute(blk, bp) -> bool:
 
 def rebuild_material_attribute(bp, original_data: bytes = None) -> bytes:
     """
-    Phase C 重建：unpack 原始字节 → 对 edited=True 的 item 覆盖值 → pack_material。
+    Phase C 重建：unpack 原始字节 → 用非只读 item 的当前值覆盖 → pack_material。
 
     参数
     ----
@@ -2471,17 +2433,17 @@ def rebuild_material_attribute(bp, original_data: bytes = None) -> bytes:
 
     for j, blk_d in enumerate(d['blocks']):
         sh_item = imap.get(f'matshader_{j}')
-        if sh_item and sh_item.edited and not sh_item.read_only:
+        if sh_item and not sh_item.read_only:
             blk_d['mat_shader'] = _me._to_signed32(int(sh_item.uint_str))
 
         nh_item = imap.get(f'matnamehash_{j}')
-        if nh_item and nh_item.edited and not nh_item.read_only:
+        if nh_item and not nh_item.read_only:
             blk_d['mat_name_hash'] = _me._to_signed32(int(nh_item.uint_str))
 
         shader_hash = blk_d['mat_shader'] & 0xFFFFFFFF
         for t, n, s in _me.path_sets(blk_d):
             sit = imap.get(material_slotpath_name(j, t, n))
-            if not (sit and sit.edited and not sit.read_only):
+            if not (sit and not sit.read_only):
                 continue
             if sit.string_value:
                 _me.fill_path_set(s, sit.string_value)
@@ -2493,7 +2455,7 @@ def rebuild_material_attribute(bp, original_data: bytes = None) -> bytes:
                 continue
             t = s['t'] & 0xFFFFFFFF
             pit = imap.get(f'matparam_{j}_{t}')
-            if not (pit and pit.edited and not pit.read_only):
+            if not (pit and not pit.read_only):
                 continue
             hit = _mp.param_name_type(shader_hash, t)
             if hit is None:
@@ -2589,8 +2551,8 @@ def rebuild_path_attribute_data_bytes(bp, type_hash: int) -> bytes:
 #
 # 策略（decode → 覆盖 → pack）：
 #   1. unpack 原始字节得到精确原值 dict（含 NaN/精度/哨兵）。
-#   2. 对每个被编辑的标量字段项（edited=True, 非 read_only, 非 STRING, 名在 schema）
-#      用 _read_item_value 读出新值覆盖 dict。
+#   2. 对每个非只读标量字段项（非 STRING, 名在 schema）用 _read_item_value 读出当前值
+#      覆盖 dict。
 #   3. 对每个路径 STRING 字段项，按出现顺序对应 decode dict 里 bytes 类型键的顺序
 #      （与 extract_paths / unpack_* 顺序一致）覆盖；保留原 null 结尾习惯。
 #   4. pack(dict) 回字节。
@@ -2643,7 +2605,7 @@ def rebuild_custom_field_attribute(bp, type_hash: int) -> bytes:
                 candidate = entry_map.get(new_name)
                 if candidate is not None and candidate['dtype'] == item.data_type:
                     e = candidate
-        if item.edited and (not item.read_only) and e is not None:
+        if (not item.read_only) and e is not None:
             try:
                 e['set'](values, _read_item_value(item, item.data_type, e['spec']))
             except Exception:
@@ -2658,12 +2620,12 @@ def rebuild_custom_field_attribute(bp, type_hash: int) -> bytes:
         if it.data_type == 'STRING' and it.ori_name != '__opaque_hint__'
     ]
     for it, key in zip(str_items, path_keys):
-        # 未编辑的路径：保留 unpack 出来的原始字节（含 null 对齐填充），不替换。
-        # 替换会把原文件里多余的 null 填充字节丢失，导致 path_len 字段不一致。
-        if not it.edited:
-            continue
+        # 值未变的路径保留 unpack 出来的原始字节（含 null 对齐填充）：替换会丢掉
+        # 原文件里多余的 null 填充字节，导致 path_len 字段不一致。
         new = it.string_value
         orig_bytes = values[key]
+        if bytes(orig_bytes).rstrip(b'\x00').decode('utf-8', errors='replace') == new.rstrip('\x00'):
+            continue
         # 还原 null 结尾习惯：若原 bytes 以 \x00 结尾且新串不含尾 \x00，则补 \x00。
         if isinstance(orig_bytes, (bytes, bytearray)) \
                 and orig_bytes.endswith(b'\x00') and not new.endswith('\x00'):
@@ -2723,7 +2685,6 @@ def init_attribute_props(obj: bpy.types.Object, blk,
     - 设置 obj.efx_block.raw_b64（始终，作为安全网）
     - 若 flat schema：decode → dict_to_items → is_editable=True
     - 否则：is_editable=False
-    - 最后把 efx_dirty=False（覆盖加载期 update 回调的误置）
     - extern_ref.py：若 type_hash==EXTERNREFERENCE，额外初始化 obj.efx_extern_ref
     """
     global _LOADING
@@ -2789,9 +2750,6 @@ def init_attribute_props(obj: bpy.types.Object, blk,
             # 任何异常安全跳过（efx_extern_ref 保持默认 pointerized=False）
             pass
 
-        # 导入末尾统一重置脏标记
-        bp.efx_dirty = False
-
     finally:
         _LOADING = False
 
@@ -2807,12 +2765,12 @@ def get_attribute_data_bytes(obj: bpy.types.Object,
     """
     从 obj.efx_block 还原 data_bytes。
 
-    策略（2026-07 退休 block 级 efx_dirty 门控，见 memory attribute-dirty-gate-retired）
+    策略
     ----
-    - 若 is_editable=True（不再看 efx_dirty）：
+    - 若 is_editable=True：
         schema 驱动的重建路径（rebuild_data_bytes / rebuild_custom_field_attribute /
         rebuild_ptbehavior_attribute / rebuild_path_attribute_data_bytes 之一）
-        → 未编辑字段用 orig_b64 逐字段 verbatim、编辑字段重新 pack，返回新字节。
+        → 只读字段用 orig_b64 逐字段 verbatim、其余字段按当前值 pack，返回新字节。
         本函数唯一调用方 `io_tree._resolve_attribute_data_bytes` 已先做过同一
         is_editable 判断才会调用到这里，故此处判断对当前调用链是重复但无害的
         防御，保留是为了这个函数被直接调用时同样安全。
@@ -3230,7 +3188,6 @@ class _MockFieldItem:
         self.data_type     = "FLOAT"
         # 无损性元数据
         self.orig_b64      = ""
-        self.edited        = False
         self.read_only     = False
         # 值槽
         self.float_value   = 0.0
@@ -3272,7 +3229,6 @@ class _MockAttributeProps:
     def __init__(self):
         self._items         = []
         self.type_hash_str  = ""
-        self.efx_dirty      = False
         self.raw_b64        = ""
         self.is_editable    = False
         self.field_index    = 0

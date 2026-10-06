@@ -1019,7 +1019,7 @@ def export_extern_data(obj: bpy.types.Object) -> bytes:
     从 obj.efx_extern 重建 ExternAttribute 的序列化字节。
 
     策略：
-    - is_editable=True 的实例：rebuild_data_bytes（edited=False 走 orig_b64，byte-perfect）
+    - is_editable=True 的实例：rebuild_data_bytes（只读字段走 orig_b64，其余按当前值 pack）
     - 否则：raw_b64 原样
     - 任何异常：整体回退到 efx_extern.raw_b64
     """

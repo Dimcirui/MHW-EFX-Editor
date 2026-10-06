@@ -501,7 +501,6 @@ STRINGS = {
     "sim.err_build":       {"EN": "Failed to build the simulation", "ZH": "建立模拟失败"},
     "sim.calib_hint":      {"EN": "Its effect is unclear — toggle it and compare the result",
                             "ZH": "具体作用尚不明确；可切换后比较效果"},
-    "common.modified":     {"EN": "Modified", "ZH": "已修改"},
     "sim.reapply":         {"EN": "Apply & Restart", "ZH": "应用并重放"},
     "sim.uvs":             {"EN": "UV Sequence", "ZH": "序列帧"},
     "sim.uvs_file":        {"EN": "{0}  ·  {1} group(s)", "ZH": "{0}  ·  {1} 组"},

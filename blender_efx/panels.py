@@ -1210,14 +1210,11 @@ def _draw_attribute_fields_content(layout, context, obj=None):
             # ctc 风格：字段列表包在 box 里，用 column 统一管理行高
             box = layout.box()
             col = box.column(align=True)
-            # 属性类型名称区块标题行（含 dirty 标记）
+            # 属性类型名称区块标题行
             title_row = col.row(align=True)
             title_row.scale_y = 1.0
             block_title = type_name if type_name else f"Hash {bp.type_hash_str}"
-            if bp.efx_dirty:
-                title_row.label(text=f"{block_title}  ● {T('common.modified')}", icon="MODIFIER")
-            else:
-                title_row.label(text=block_title, icon="MODIFIER")
+            title_row.label(text=block_title, icon="MODIFIER")
             # MATERIAL（Phase C）：材质槽编辑器（增删材质槽 + 类型下拉 + 贴图路径填/清）
             if _material_groups is not None:
                 _draw_material_editor(col, context, _material_groups)

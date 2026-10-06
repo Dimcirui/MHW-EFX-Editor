@@ -144,7 +144,7 @@ def ensure_all_named(root) -> bool:
         （哈希与新标签天然自洽）；未命中退回合成 "类型_序号"（哈希不受影响）。
       - EFX_EXTERN / EFX_ENTRY(非 standard)：无身份哈希语义，直接合成 "类型_序号"。
 
-    返回是否有任何补名发生（调用方据此置 labels_dirty=1）。
+    返回是否有任何补名发生。
     满命名后所有段都在标签表内 → 前缀恒满 → copy/duplicate 不再破坏前缀。
     """
     changed = False
@@ -165,8 +165,7 @@ def ensure_all_named(root) -> bool:
 
 
 def normalize_root(root) -> bool:
-    """导出前兜底 / 导入后初始化的统一入口：撞车重编号 + 满命名。返回是否有变动。
-    满命名若有变动，调用方应置 root['labels_dirty']=1 使导出重建标签表。"""
+    """导出前兜底 / 导入后初始化的统一入口：撞车重编号 + 满命名。返回是否有变动。"""
     c1 = renumber_all_groups(root)
     c2 = ensure_all_named(root)
     return c1 or c2

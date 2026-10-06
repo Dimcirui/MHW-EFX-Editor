@@ -1,8 +1,8 @@
 """重排 Entry、Action、Extern 与属性对象。
 
 维护约束：重排后必须按列表顺序为整个段重新编号并刷新显示名；导出时引用依据
-对象到段内索引的映射重算，不能手工交换引用。顶层条目顺序变化必须置
-``labels_dirty``，使标签表按新顺序重建。Root body 的位置规则由 normalize 维护。
+对象到段内索引的映射重算，不能手工交换引用；标签表由导出端按新顺序重建。
+Root body 的位置规则由 normalize 维护。
 """
 
 import bpy
@@ -189,8 +189,6 @@ def _move_labeled_entry(obj, direction: str, type_tag: str, report) -> set:
             o.name = normalize._display_name(o, type_tag, i)
         except Exception:
             pass
-
-    root["labels_dirty"] = 1
 
     dir_str = "up" if direction == "UP" else "down"
     report({"INFO"}, f"Moved {dir_str}: {obj.name}")
@@ -567,7 +565,6 @@ def apply_rename(obj, new_name: str):
     idx = int(obj.get("efx_index", 0))
     obj["efx_raw_label"] = new_name
     obj["efx_has_label"] = 1
-    root["labels_dirty"] = 1
 
     if t == "EFX_ENTRY":
         obj.name = _entry_display_name(idx, new_name, entry_obj=obj)

@@ -109,8 +109,6 @@ class EFX_OT_delete_entry(bpy.types.Operator):
 
         remaining = _reindex_siblings(root, "EFX_ENTRY", _rebuild_entry_name)
 
-        root["labels_dirty"] = 1
-
         self.report(
             {"INFO"},
             f"Deleted {len(targets)} EFX_ENTRY(s), {remaining} entry(s) remaining",
@@ -199,8 +197,6 @@ class EFX_OT_delete_action(bpy.types.Operator):
 
         remaining = _reindex_siblings(root, "EFX_ACTION", _rebuild_action_name)
 
-        root["labels_dirty"] = 1
-
         self.report(
             {"INFO"},
             f"Deleted {len(targets)} EFX_ACTION(s), {remaining} action(s) remaining",
@@ -246,8 +242,6 @@ class EFX_OT_delete_extern(bpy.types.Operator):
             bpy.data.objects.remove(obj, do_unlink=True)
 
         remaining = _reindex_siblings(root, "EFX_EXTERN", _rebuild_extern_name)
-
-        root["labels_dirty"] = 1
 
         self.report(
             {"INFO"},

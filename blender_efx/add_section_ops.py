@@ -174,7 +174,6 @@ def add_action(root_obj, entry_type='PLAYEMITTER') -> bpy.types.Object:
     except Exception:
         pass
 
-    root_obj["labels_dirty"] = 1
     return obj
 
 
@@ -217,7 +216,6 @@ def add_extern(root_obj) -> bpy.types.Object:
     ep.items.clear()
     ep.raw_b64 = raw_b64
 
-    root_obj["labels_dirty"] = 1
     return obj
 
 

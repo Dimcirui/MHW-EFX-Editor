@@ -366,8 +366,7 @@ class EFX_OT_export(bpy.types.Operator, ExportHelper):
         # 先规范索引与标签，再按类型排序属性。
         try:
             from . import normalize
-            if normalize.normalize_root(root):
-                root["labels_dirty"] = 1  # 满命名/重编号可能改标签表 → 导出重建
+            normalize.normalize_root(root)
         except Exception:
             pass  # 规范化失败不阻断导出
 
@@ -583,10 +582,7 @@ class EFX_OT_paste_attribute_fields(bpy.types.Operator):
                     if value is None:
                         continue
                     if _json_value_to_item(item, data_type, value):
-                        item.edited = True
                         written += 1
-                if written > 0:
-                    bp.efx_dirty = True
                 total_written += written
         finally:
             _fields._LOADING = old_loading
@@ -676,7 +672,6 @@ class EFX_OT_ptb_add_override(bpy.types.Operator):
         if not _fields.reinit_ptbehavior_from_bytes(bp, new_bytes):
             self.report({"ERROR"}, "Re-init failed after add")
             return {"CANCELLED"}
-        bp.efx_dirty = True
         self.report({"INFO"}, "Override added (0x{:08X})".format(key))
         return {"FINISHED"}
 
@@ -783,7 +778,6 @@ class EFX_OT_ptb_set_btype(bpy.types.Operator):
         if not _fields.reinit_ptbehavior_from_bytes(bp, pack_ptbehavior(d)):
             self.report({"ERROR"}, "Re-init failed after behavior type change")
             return {"CANCELLED"}
-        bp.efx_dirty = True
         if dropped:
             self.report({"WARNING"}, "Behavior type changed; %d propert%s dropped"
                         % (dropped, "y" if dropped == 1 else "ies"))
@@ -826,7 +820,6 @@ class EFX_OT_ptb_remove_override(bpy.types.Operator):
         if not _fields.reinit_ptbehavior_from_bytes(bp, new_bytes):
             self.report({"ERROR"}, "Re-init failed after remove")
             return {"CANCELLED"}
-        bp.efx_dirty = True
         self.report({"INFO"}, "Override removed (0x{:08X})".format(key))
         return {"FINISHED"}
 
@@ -895,7 +888,6 @@ class EFX_OT_material_add_block(bpy.types.Operator):
         if not _fields.reinit_material_from_bytes(bp, new_bytes):
             self.report({"ERROR"}, "Re-init failed after add")
             return {"CANCELLED"}
-        bp.efx_dirty = True
         self.report({"INFO"}, "Material slot added")
         return {"FINISHED"}
 
@@ -1009,7 +1001,6 @@ class EFX_OT_material_set_name(bpy.types.Operator):
         if not _fields.reinit_material_from_bytes(bp, new_bytes):
             self.report({"ERROR"}, "Re-init failed after setting material name")
             return {"CANCELLED"}
-        bp.efx_dirty = True
         self.report({"INFO"}, f'Bound to material "{name}"')
         return {"FINISHED"}
 
@@ -1064,7 +1055,6 @@ class EFX_OT_material_set_shader(bpy.types.Operator):
         if not _fields.reinit_material_from_bytes(bp, new_bytes):
             self.report({"ERROR"}, "Re-init failed after changing material type")
             return {"CANCELLED"}
-        bp.efx_dirty = True
         self.report({"INFO"}, "Material type changed")
         return {"FINISHED"}
 
@@ -1098,7 +1088,6 @@ class EFX_OT_material_remove_block(bpy.types.Operator):
         if not _fields.reinit_material_from_bytes(bp, new_bytes):
             self.report({"ERROR"}, "Re-init failed after remove")
             return {"CANCELLED"}
-        bp.efx_dirty = True
         self.report({"INFO"}, "Material slot removed")
         return {"FINISHED"}
 
@@ -1287,7 +1276,6 @@ class EFX_OT_material_add_from_mrl3(bpy.types.Operator):
         if not _fields.reinit_material_from_bytes(bp, new_bytes):
             self.report({"ERROR"}, "Re-init failed after add")
             return {"CANCELLED"}
-        bp.efx_dirty = True
         self.report(
             {"INFO"},
             f"Material slot added, {n_filled} texture path(s) and {n_params} parameter(s) pre-filled",
@@ -1489,9 +1477,7 @@ class EFX_OT_new_efx(bpy.types.Operator):
         root_col["hdr_double_buffer"]   = "15000"
 
         # 新文件的标签表由导出端按实际内容重建。
-        root_col["label_bytes"]  = _b64.b64encode(b"\x00").decode("ascii")
         root_col["label_tail"]   = ""
-        root_col["labels_dirty"] = 1
         root_col["eof_ints"]     = ""
         root_col["eof_tail"]     = ""
         root_col["eof_model"]    = "per_entry"

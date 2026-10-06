@@ -601,8 +601,6 @@ class EFX_OT_batch_apply(Operator):
                     skipped += 1     # 长度以各属性自己的当前路径为准
                     continue
                 if _presets._json_value_to_item(ti, dtype, val):
-                    ti.edited = True
-                    o.efx_block.efx_dirty = True
                     wrote = True
                     touched_blocks.add(o.name)
             touched_fields += wrote
