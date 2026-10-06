@@ -156,9 +156,8 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
             try:
                 from . import transform_sync
                 armature = getattr(context.scene, "efx_armature", None)
-                use_anchor = getattr(context.scene, "efx_anchor_placement", True)
                 for root_obj in imported_roots:
-                    transform_sync.sync_all_transform3d(root_obj, armature, use_anchor=use_anchor)
+                    transform_sync.sync_all_transform3d(root_obj, armature)
             except Exception:
                 pass
 

@@ -1715,7 +1715,6 @@ class EFX_PT_entry(bpy.types.Panel):
 
         # ── 骨架选择器 + 刷新特效体位置（按 TRANSFORM3D + jointNo 绑定骨骼摆位）─
         layout.prop(context.scene, "efx_armature", text=T("entry.armature"))
-        layout.prop(context.scene, "efx_anchor_placement", text=T("entry.anchor_placement"))
         layout.prop(context.scene, "efx_blender_coords", text=T("entry.blender_coords"))
         row = layout.row(align=True)
         row.operator("efx.sync_transform_to_view",

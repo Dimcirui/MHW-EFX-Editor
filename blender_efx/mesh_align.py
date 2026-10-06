@@ -180,7 +180,7 @@ def _reconcile():
     _sc.remove_collection_named(_TEMP_COLLECTION)
 
 
-def _start(roots, armature, use_anchor):
+def _start(roots, armature):
     """清场后创建并对齐实例，返回实例数量。"""
     _reconcile()
     col = _sc.get_or_create_collection(_TEMP_COLLECTION)
@@ -189,7 +189,7 @@ def _start(roots, armature, use_anchor):
         if root is None:
             continue
         try:
-            _ts.sync_all_transform3d(root, armature, use_anchor=use_anchor)
+            _ts.sync_all_transform3d(root, armature)
         except Exception:
             pass
         for body in _iter_scope_bodies(root):
@@ -243,9 +243,8 @@ class EFX_OT_mesh_align_enter(Operator):
             self.report({"ERROR"}, T("align.no_root"))
             return {"CANCELLED"}
         armature = getattr(context.scene, "efx_armature", None)
-        use_anchor = getattr(context.scene, "efx_anchor_placement", True)
         try:
-            n = _start(roots, armature, use_anchor)
+            n = _start(roots, armature)
         except Exception as exc:
             _stop()
             self.report({"ERROR"}, T("align.failed").format(exc))

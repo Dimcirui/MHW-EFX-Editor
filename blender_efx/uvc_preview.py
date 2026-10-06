@@ -5,16 +5,12 @@
 不解析或修改 EFX 字节数据。
 """
 
-from math import radians
-
 import bpy
-from mathutils import Matrix, Euler, Vector
 from bpy.props import PointerProperty, BoolProperty
 from bpy.types import Operator, Panel
 from bpy.app.handlers import persistent
 
 from .i18n import T
-from . import transform_sync as _tsync
 from . import root_collection as _rc
 
 
@@ -278,20 +274,8 @@ def _find_sibling_mesh_target(uvc_obj):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 网格变换动画：TRANSFORM3D（base + 速度/加速度）+ ROTATEANIM（自转）→ mesh matrix_world
+# 网格绑定查找
 # ─────────────────────────────────────────────────────────────────────────────
-
-# ROTATEANIM 自转速度按游戏 tick 换算。
-_ROTATEANIM_SPIN_SCALE = 60.0
-
-
-def _entry_attribute(entry_obj, type_hash):
-    """entry 下第一个指定 type_hash 的 EFX_ATTRIBUTE；无则 None。"""
-    for blk in entry_obj.children:
-        if blk.get("~TYPE") == "EFX_ATTRIBUTE" and _attribute_type_hash(blk) == type_hash:
-            return blk
-    return None
-
 
 def _entry_mesh_target(entry_obj):
     """entry 下 MESH 属性绑定的网格对象（或 None）。"""
@@ -301,104 +285,6 @@ def _entry_mesh_target(entry_obj):
             if tgt is not None:
                 return tgt
     return None
-
-
-def _read_triple(block, name, default=(0.0, 0.0, 0.0)):
-    """读 XYZ type 0（FLOAT6）字段的基础三元组（idx 0/2/4）；缺失返回 default。"""
-    v = _read_field(block, name)
-    if isinstance(v, (tuple, list)):
-        if len(v) >= 6:
-            return (float(v[0]), float(v[2]), float(v[4]))
-        if len(v) >= 3:
-            return (float(v[0]), float(v[1]), float(v[2]))
-    return default
-
-
-def _collect_transform_entries(roots, armature):
-    """收集有绑定网格及变换来源的 Entry，并快照其世界矩阵。"""
-    from ..efx_format.hashes import TRANSFORM3D, ROTATEANIM
-    entries = []
-    snaps = []
-    seen = set()
-    for root in roots:
-        if root is None:
-            continue
-        for body in _rc.collect_top_level(root, "EFX_ENTRY"):
-            mesh = _entry_mesh_target(body)
-            if mesh is None or mesh.name in seen:
-                continue
-            t3d = _entry_attribute(body, TRANSFORM3D)
-            rot = _entry_attribute(body, ROTATEANIM)
-            if t3d is None and rot is None:
-                continue
-
-            # 骨骼只提供世界位置；朝向统一由游戏到 Blender 轴变换处理。
-            bone_base = _tsync.bone_base_matrix(armature, _tsync._entry_joint_no(body))
-            bone_pos = bone_base.to_translation() if bone_base is not None else None
-
-            ent = {"mesh": mesh, "bone_pos": bone_pos}
-            if t3d is not None:
-                ent["base_translate"] = _read_triple(t3d, "translate")
-                ent["base_rotate"] = _read_triple(t3d, "rotate")
-                ent["base_scale"] = _read_triple(t3d, "resize", (1.0, 1.0, 1.0))
-                # bit 0 决定是否应用速度，基础变换始终保留。
-                flag = _read_field(t3d, "enableVelocityBitflag")
-                vel_on = bool(int(flag) & 1) if flag is not None else False
-                if vel_on:
-                    ent["trans_vel"] = _read_triple(t3d, "translation_velocity")
-                    ent["rot_vel"] = _read_triple(t3d, "rotation_velocity")
-                    ent["scale_vel"] = _read_triple(t3d, "scale_velocity")
-                else:
-                    ent["trans_vel"] = (0.0, 0.0, 0.0)
-                    ent["rot_vel"] = (0.0, 0.0, 0.0)
-                    ent["scale_vel"] = (0.0, 0.0, 0.0)
-            else:
-                ent["base_translate"] = (0.0, 0.0, 0.0)
-                ent["base_rotate"] = (0.0, 0.0, 0.0)
-                ent["base_scale"] = (1.0, 1.0, 1.0)
-                ent["trans_vel"] = (0.0, 0.0, 0.0)
-                ent["rot_vel"] = (0.0, 0.0, 0.0)
-                ent["scale_vel"] = (0.0, 0.0, 0.0)
-            if rot is not None:
-                ent["spin_vel"] = _read_triple(rot, "spin_velocity")
-            else:
-                ent["spin_vel"] = (0.0, 0.0, 0.0)
-
-            entries.append(ent)
-            snaps.append((mesh, mesh.matrix_world.copy()))
-            seen.add(mesh.name)
-    return entries, snaps
-
-
-def _transform_matrix(ent, t):
-    """按时刻 t 计算网格的 matrix_world。
-
-    base 三元组随时间线性演化：value(t) = base + velocity·t。
-    ROTATEANIM spin 作为附加自转叠在 TRANSFORM3D 旋转之后（mesh 局部空间）。
-    坐标约定与 transform_sync 一致：有骨骼基准用游戏坐标原样，无骨骼用 M_G2B 轴交换。
-    """
-    bt, tv = ent["base_translate"], ent["trans_vel"]
-    br, rv = ent["base_rotate"], ent["rot_vel"]
-    bs, sv = ent["base_scale"], ent["scale_vel"]
-    sp = ent["spin_vel"]
-
-    tr = tuple(bt[i] + tv[i] * t for i in range(3))
-    ro = tuple(br[i] + rv[i] * t for i in range(3))
-    sc = tuple(bs[i] + sv[i] * t for i in range(3))
-    spin = tuple(sp[i] * _ROTATEANIM_SPIN_SCALE * t for i in range(3))
-
-    # 朝向统一通过游戏到 Blender 的轴变换计算。
-    loc = Vector(_tsync.game_loc_to_blender(*tr))
-    rot_m = Euler(_tsync.game_rot_to_blender(*ro), "XYZ").to_matrix().to_4x4()
-    spin_m = Euler(_tsync.game_rot_to_blender(*spin), "XYZ").to_matrix().to_4x4()
-    sx, sy, sz = _tsync.game_scale_to_blender(*sc)
-
-    scl_m = Matrix.Diagonal(Vector((sx, sy, sz, 1.0)))
-    local = Matrix.Translation(loc) @ rot_m @ spin_m @ scl_m
-    # 绑定骨骼时仅叠加其世界位置。
-    if ent["bone_pos"] is not None:
-        return Matrix.Translation(ent["bone_pos"]) @ local
-    return local
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -411,8 +297,6 @@ _state = {
     "handler": None,
     "pairs": [],
     "restore": [],
-    "xform": [],
-    "xform_snaps": [],
     "start_frame": 0,
 }
 
@@ -469,12 +353,6 @@ def _apply_frame(scene):
         except Exception:
             continue
 
-    for ent in _state["xform"]:
-        try:
-            ent["mesh"].matrix_world = _transform_matrix(ent, t)
-        except Exception:
-            continue
-
     # handler 改节点值后显式更新材质和 3D 视口。
     for nt in touched:
         try:
@@ -493,7 +371,7 @@ def _apply_frame(scene):
 @persistent
 def _on_frame(scene, depsgraph=None):
     # 残留 handler 的空状态无需处理。
-    if _state["pairs"] or _state["xform"]:
+    if _state["pairs"]:
         _apply_frame(scene)
 
 
@@ -543,7 +421,7 @@ def _all_efx_roots():
 
 
 def _restore():
-    """根据快照还原材质节点、材质状态及网格矩阵。"""
+    """根据快照还原材质节点和材质状态。"""
     for rec in _state["restore"]:
         try:
             for tex, orig_ext in rec.get("tex_ext", []):
@@ -572,12 +450,6 @@ def _restore():
         except Exception:
             continue
 
-    for mesh, mw in _state["xform_snaps"]:
-        try:
-            mesh.matrix_world = mw
-        except Exception:
-            continue
-
 
 def _stop_preview():
     """停止预览、移除残留 handler、还原状态并清空会话。"""
@@ -586,8 +458,6 @@ def _stop_preview():
     _state["handler"] = None
     _state["pairs"] = []
     _state["restore"] = []
-    _state["xform"] = []
-    _state["xform_snaps"] = []
     _state["start_frame"] = 0
 
 
@@ -644,11 +514,7 @@ class EFX_OT_uvc_preview_enter(Operator):
             self.report({"ERROR"}, T("uvc.missing_header").format(detail))
             return {"CANCELLED"}
 
-        # 网格变换动画可独立于 UV 配对存在。
-        armature = getattr(context.scene, "efx_armature", None)
-        xform, xform_snaps = _collect_transform_entries(roots, armature)
-
-        if not pairs and not xform:
+        if not pairs:
             _state["restore"] = restore
             _restore()
             _state["restore"] = []
@@ -657,8 +523,6 @@ class EFX_OT_uvc_preview_enter(Operator):
 
         _state["pairs"] = pairs
         _state["restore"] = restore
-        _state["xform"] = xform
-        _state["xform_snaps"] = xform_snaps
         _state["start_frame"] = context.scene.frame_current
         _state["handler"] = _on_frame
         _remove_our_frame_handlers()
@@ -666,7 +530,7 @@ class EFX_OT_uvc_preview_enter(Operator):
 
         # 立即应用当前帧状态。
         _apply_frame(context.scene)
-        self.report({"INFO"}, T("uvc.entered").format(len(pairs), len(xform)))
+        self.report({"INFO"}, T("uvc.entered").format(len(pairs)))
         return {"FINISHED"}
 
 
@@ -698,8 +562,6 @@ def _on_load(*_args):
     _state["handler"] = None
     _state["pairs"] = []
     _state["restore"] = []
-    _state["xform"] = []
-    _state["xform_snaps"] = []
     _state["start_frame"] = 0
 
 

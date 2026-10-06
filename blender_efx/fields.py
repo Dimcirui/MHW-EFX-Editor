@@ -51,8 +51,7 @@ def _mark_attribute_dirty(self, context):
                     from . import transform_sync
                     scene = getattr(context, "scene", None) or bpy.context.scene
                     armature = getattr(scene, "efx_armature", None) if scene else None
-                    use_anchor = getattr(scene, "efx_anchor_placement", True) if scene else True
-                    transform_sync.place_single_entry(body, armature, use_anchor=use_anchor)
+                    transform_sync.place_single_entry(body, armature)
                     from . import mesh_align
                     mesh_align.realign_entry_if_active(body)
                 elif blk_hash == MESH and self.ori_name in ("rotation", "rotationOrder", "scale",
