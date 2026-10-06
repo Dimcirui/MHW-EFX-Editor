@@ -725,34 +725,30 @@ def export_efx_tree(root_object: bpy.types.Collection, recalc_timl_length: bool 
         kind = str(entry_obj["entry_kind"])
 
         if kind == "root":
-            # Root 子项使用 AttrBlock 的等价编码；没有可编辑子项时回退原始字节。
+            # Root 子项使用 AttrBlock 的等价编码；没有可编辑子项时回退原始字节，
+            # 两者都没有的是零子项的空 Root。
             blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
-            if blk_objs:
-                blk_objs.sort(key=lambda o: int(o["efx_index"]))
-                valid_objs, bad_objs = [], []
-                for blk in blk_objs:
-                    (valid_objs if int(str(blk["type_hash"])) in ROOT_SUBENTRY_HASHES
-                     else bad_objs).append(blk)
-                for blk in bad_objs:
+            blk_objs.sort(key=lambda o: int(o["efx_index"]))
+            valid_objs = []
+            for blk in blk_objs:
+                if int(str(blk["type_hash"])) in ROOT_SUBENTRY_HASHES:
+                    valid_objs.append(blk)
+                else:
                     _root_attr_dropped.append(
                         f"{blk.get('efx_type_name', blk.name)} on Root entry "
                         f"'{entry_obj.name}' (not a Root sub-entry type)"
                     )
-                if valid_objs:
-                    attr_blocks = [
-                        AttrBlock(type_hash=int(str(blk["type_hash"])),
-                                 data_bytes=_b64dec(str(blk["data_bytes"])))
-                        for blk in valid_objs
-                    ]
-                    main_bodies.append(RootBody(entries=attr_blocks))
-                elif "raw" in entry_obj:
-                    raw = _b64dec(str(entry_obj["raw"]))
-                    main_bodies.append(RootBody(raw=raw))
-                else:
-                    main_bodies.append(RootBody(entries=[]))
+            if valid_objs:
+                attr_blocks = [
+                    AttrBlock(type_hash=int(str(blk["type_hash"])),
+                             data_bytes=_b64dec(str(blk["data_bytes"])))
+                    for blk in valid_objs
+                ]
+                main_bodies.append(RootBody(entries=attr_blocks))
+            elif "raw" in entry_obj:
+                main_bodies.append(RootBody(raw=_b64dec(str(entry_obj["raw"]))))
             else:
-                raw = _b64dec(str(entry_obj["raw"]))
-                main_bodies.append(RootBody(raw=raw))
+                main_bodies.append(RootBody(entries=[]))
 
         elif kind == "standard":
             blk_objs = _collect_children_by_type(entry_obj, "EFX_ATTRIBUTE", _attr_children_map)
