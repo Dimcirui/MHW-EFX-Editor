@@ -62,10 +62,14 @@ def _root_entry_to_attr_block(e) -> AttrBlock:
     return AttrBlock(type_hash=type_hash, data_bytes=e.raw[4:])
 
 
+ENTRY_DISPLAY_SIZE = 0.1
+
+
 def _new_empty(name: str, collection: bpy.types.Collection) -> bpy.types.Object:
     """在指定集合里建 Empty 对象，返回对象。"""
     obj = bpy.data.objects.new(name, None)
-    obj.empty_display_size = 0.1
+    # 默认尺寸 0：属性和段对象与 Entry 重叠，视口点击必须只命中 Entry；Entry 自行设尺寸。
+    obj.empty_display_size = 0.0
     collection.objects.link(obj)
     return obj
 
@@ -99,7 +103,7 @@ def make_timl_handle(entry_obj: bpy.types.Object, collection: bpy.types.Collecti
     label = str(entry_obj.get("efx_raw_label", "")) or entry_obj.name
     h = bpy.data.objects.new("%s TIML" % label, None)
     h.empty_display_type = 'SPHERE'
-    h.empty_display_size = 0.12
+    h.empty_display_size = 0.0
     collection.objects.link(h)
     h["~TYPE"] = "EFX_TIML"
     h.parent = entry_obj
@@ -257,6 +261,7 @@ def import_efx_tree(filepath: str, context=None, color_editor_mode: bool = False
 
         entry_obj = _new_empty(display_name, col_entry)
         entry_obj.empty_display_type = 'ARROWS'
+        entry_obj.empty_display_size = ENTRY_DISPLAY_SIZE
         entry_obj["~TYPE"]         = "EFX_ENTRY"
         entry_obj["efx_index"]     = body_idx
         entry_obj["efx_raw_label"] = raw_label

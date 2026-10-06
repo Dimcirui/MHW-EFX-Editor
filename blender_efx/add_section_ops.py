@@ -76,7 +76,7 @@ def _section_collection(root_obj, suffix: str):
 def _new_empty(name: str, collection) -> bpy.types.Object:
     """建 Empty 对象（与 io_tree._new_empty 一致）。"""
     obj = bpy.data.objects.new(name, None)
-    obj.empty_display_size = 0.1
+    obj.empty_display_size = 0.0
     collection.objects.link(obj)
     return obj
 

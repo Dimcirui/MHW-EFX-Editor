@@ -68,7 +68,7 @@ def ensure_host_for_attribute(blk_obj, context=None):
 
     host = bpy.data.objects.new("%s [uvs]" % blk_obj.name, None)
     host.empty_display_type = "PLAIN_AXES"
-    host.empty_display_size = 0.1
+    host.empty_display_size = 0.0
     host["~TYPE"] = _UVS_LINK_ITEM_MARKER
     host.efx_uvs_source = blk_obj
     # 挂在源属性下便于在大纲里找到；集合归属仍是 `_uvs`。

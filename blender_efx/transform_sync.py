@@ -8,6 +8,7 @@ FLOAT6 的基础值使用索引 0/2/4。骨骼只通过 Copy Location 叠加当�
 from math import radians
 
 import bpy
+from bpy.app.handlers import persistent
 from mathutils import Matrix, Euler, Vector
 
 from . import root_collection as _rc
@@ -389,6 +390,36 @@ class EFX_OT_sync_transform(bpy.types.Operator):
         return {"FINISHED"}
 
 
+# ── 视口点选：只有 Entry 可点 ────────────────────────────────────────────────
+
+# 与 Entry 重叠的辅助 empty 尺寸为 0，视口点击只命中 Entry。不能改用 hide_select 或隐藏：
+# 那样对象进不了 selected_objects，大纲多选后的删除、复制等操作会失效。
+_HELPER_TYPES = frozenset(("EFX_ATTRIBUTE", "EFX_TIML", "EFX_ACTION", "EFX_EXTERN",
+                           "EFX_SUBSELECT", "EFX_UVS_LINK_ITEM"))
+#: 旧版本创建时的默认尺寸；其他尺寸是用户自设的，保留。
+_LEGACY_HELPER_SIZES = (0.1, 0.12)
+
+
+def shrink_legacy_helper_empties() -> int:
+    """把旧文件中辅助 empty 的默认尺寸改为 0，返回修改数。"""
+    n = 0
+    for o in bpy.data.objects:
+        if o.type != "EMPTY" or o.library is not None or o.get("~TYPE") not in _HELPER_TYPES:
+            continue
+        if any(abs(o.empty_display_size - s) < 1e-6 for s in _LEGACY_HELPER_SIZES):
+            o.empty_display_size = 0.0
+            n += 1
+    return n
+
+
+@persistent
+def _on_load(*_args):
+    try:
+        shrink_legacy_helper_empties()
+    except Exception:
+        pass
+
+
 def _armature_poll(self, obj):
     """Scene.efx_armature 选择器只接受骨架对象。"""
     return obj.type == "ARMATURE"
@@ -424,9 +455,13 @@ def register():
                     "决定只显示当前生效的字段，其余隐藏（值仍保留，纯视觉）。",
         default=False,
     )
+    if _on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_on_load)
 
 
 def unregister():
+    if _on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_on_load)
     try:
         del bpy.types.Scene.efx_armature
     except AttributeError:

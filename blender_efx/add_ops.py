@@ -302,6 +302,7 @@ def add_entry_from_preset_dict(preset: dict,
     display_name = f"{nn} {source_label or 'entry'}"
     entry_obj = io_tree._new_empty(display_name, col_entry)
     entry_obj.empty_display_type = 'ARROWS'   # XYZ 三色轴，使特效体朝向直观可见
+    entry_obj.empty_display_size = io_tree.ENTRY_DISPLAY_SIZE
 
     entry_obj["~TYPE"]         = "EFX_ENTRY"
     entry_obj["efx_index"]     = new_index
