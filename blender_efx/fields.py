@@ -2321,7 +2321,8 @@ def ptbehavior_addable_items(bp):
 #                                   mrl3 材质槽的依据，jamcrc(材质槽名)，见
 #                                   efx_format/material/edit.py::set_block_material_name）
 #   'slotpath_{j}_{t}'    STRING — 第 j 个材质槽里 t 对应贴图槽（Tex_Set type=0x80）
-#                                   的当前路径（按 block 内出现顺序枚举）
+#                                   的当前路径（按 block 内出现顺序枚举）；同一槽里 t
+#                                   重复时后续的加 '_{n}' 后缀，见 material_slotpath_name
 #   'matparam_{j}_{t}'    BOOL/UINT/FLOAT/FLOAT2/FLOAT3/FLOAT4 — 第 j 个材质槽里
 #                                   t 对应的着色器参数（Tex_Set type 0x03/0x0A/
 #                                   0x0C/0x15），按 material/params.py 查到名字+
@@ -2335,6 +2336,11 @@ def ptbehavior_addable_items(bp):
 # 这条与 PTBEHAVIOR 覆盖项增删完全对称的路径（见 operators.py 的
 # EFX_OT_material_add_block/EFX_OT_material_remove_block）。
 # ─────────────────────────────────────────────────────────────────────────────
+
+def material_slotpath_name(j: int, t: int, n: int = 0) -> str:
+    """贴图路径 item 名；同一材质槽里 t 重复时第 n 个（n≥1）加 ``_{n}`` 后缀。"""
+    return f'slotpath_{j}_{t}' if n == 0 else f'slotpath_{j}_{t}_{n}'
+
 
 def _init_material_attribute(blk, bp) -> bool:
     """
@@ -2379,11 +2385,14 @@ def _init_material_attribute(blk, bp) -> bool:
         nit.uint_str = str(blk_d['mat_name_hash'] & 0xFFFFFFFF)
 
         shader_hash = blk_d['mat_shader'] & 0xFFFFFFFF
+        path_seen = {}
         for s in blk_d['sets']:
             if s['type'] == 0x80:
                 t = s['t'] & 0xFFFFFFFF
+                n = path_seen.get(t, 0)
+                path_seen[t] = n + 1
                 sit = bp.field_items.add()
-                sit.ori_name = f'slotpath_{j}_{t}'
+                sit.ori_name = material_slotpath_name(j, t, n)
                 sit.data_type = 'STRING'
                 sit.edited = False
                 sit.read_only = False
@@ -2470,18 +2479,19 @@ def rebuild_material_attribute(bp, original_data: bytes = None) -> bytes:
             blk_d['mat_name_hash'] = _me._to_signed32(int(nh_item.uint_str))
 
         shader_hash = blk_d['mat_shader'] & 0xFFFFFFFF
-        for s in blk_d['sets']:
-            t = s['t'] & 0xFFFFFFFF
-            if s['type'] == 0x80:
-                sit = imap.get(f'slotpath_{j}_{t}')
-                if not (sit and sit.edited and not sit.read_only):
-                    continue
-                if sit.string_value:
-                    _me.fill_slot_path(blk_d, t, sit.string_value)
-                else:
-                    _me.clear_slot_path(blk_d, t)
+        for t, n, s in _me.path_sets(blk_d):
+            sit = imap.get(material_slotpath_name(j, t, n))
+            if not (sit and sit.edited and not sit.read_only):
                 continue
+            if sit.string_value:
+                _me.fill_path_set(s, sit.string_value)
+            else:
+                _me.clear_path_set(s)
 
+        for s in blk_d['sets']:
+            if s['type'] == 0x80:
+                continue
+            t = s['t'] & 0xFFFFFFFF
             pit = imap.get(f'matparam_{j}_{t}')
             if not (pit and pit.edited and not pit.read_only):
                 continue

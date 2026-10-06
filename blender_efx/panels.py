@@ -1119,10 +1119,11 @@ def _draw_attribute_fields_content(layout, context, obj=None):
                     j = int(it.ori_name.split("_", 1)[1])
                     _material_groups.setdefault(j, {})["name_item"] = it
                 elif it.ori_name.startswith("slotpath_"):
+                    # 名字为 slotpath_{j}_{t} 或重复 t 时的 slotpath_{j}_{t}_{n}
                     _, j_str, t_str = it.ori_name.split("_", 2)
                     j = int(j_str)
                     _material_groups.setdefault(j, {}).setdefault("slots", []).append(
-                        (int(t_str), it)
+                        (int(t_str.split("_")[0]), it)
                     )
                 elif it.ori_name.startswith("matparam_"):
                     _, j_str, t_str = it.ori_name.split("_", 2)

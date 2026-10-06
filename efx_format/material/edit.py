@@ -3,6 +3,8 @@
 维护约束：
 - Tex_Block 可增删；已知贴图槽由 shader schema 决定，未知 Tex_Set 保持原样。
 - 新建或切换到已知 schema 时使用空路径槽；填充与清空同步更新 path、path_len 与 head。
+  head 不是固定值：已有路径的槽改路径时保留原 head，只有空槽填入时写 HEAD_FILLED。
+- 同一 Tex_Block 里路径槽的 t 可能重复，按 (t, 同 t 序号) 定位，见 ``path_sets``。
 - 切换到未知 schema 时不得重建现有 sets，避免丢失无法解释的数据。
 """
 
@@ -120,34 +122,70 @@ def find_path_set(block: dict, t: int):
     return None
 
 
-def fill_slot_path(block: dict, t: int, path_str: str) -> bool:
-    """把 t 对应槽位的路径设为 path_str（非空）；head 切到 606035435。
+def path_sets(block: dict):
+    """按出现顺序产出 (t, 同 t 的序号, Tex_Set)；同一 block 里 t 可能重复。"""
+    seen = {}
+    for s in block['sets']:
+        if s['type'] != 0x80:
+            continue
+        t = s['t'] & 0xFFFFFFFF
+        n = seen.get(t, 0)
+        seen[t] = n + 1
+        yield t, n, s
 
-    返回 True 成功；False = 该 block 里没有这个 t 的 Tex_Set（不做插入——
-    槽位数量是 schema 固定的，新增材质槽走 add_block 一次性铺满）。
+
+def _encode_path(path_str: str) -> bytes:
+    # 与 slot_path_str 的 latin-1 解码互逆；含 latin-1 以外字符时才退回 UTF-8。
+    try:
+        return path_str.encode('latin1')
+    except UnicodeEncodeError:
+        return path_str.encode('utf-8')
+
+
+def fill_path_set(s: dict, path_str: str) -> None:
+    """把一个 Tex_Set 的路径设为 path_str（非空）。
+
+    路径不变时不改字节，保留终止符之后的原始内容。原已有路径的槽保留其 head：
+    head 不是固定值，只有空槽填入时才写默认的 HEAD_FILLED。
     """
-    s = find_path_set(block, t)
-    if s is None:
-        return False
-    path_b = path_str.encode('utf-8')
+    if slot_path_str(s) == path_str:
+        return
+    path_b = _encode_path(path_str)
     if not path_b.endswith(b'\x00'):
         path_b += b'\x00'
+    if s['head'] == HEAD_EMPTY:
+        s['head'] = HEAD_FILLED
+        s['null'] = 0
     s['path'] = path_b
     s['path_len'] = len(path_b)
-    s['head'] = HEAD_FILLED
-    s['null'] = 0
-    return True
 
 
-def clear_slot_path(block: dict, t: int) -> bool:
-    """把 t 对应槽位清空（path=b''，head=0）。返回 True 成功；False = 找不到该槽位。"""
-    s = find_path_set(block, t)
-    if s is None:
-        return False
+def clear_path_set(s: dict) -> None:
+    """清空一个 Tex_Set 的路径（path=b''，head=0）。"""
+    if not s['path'] and s['head'] == HEAD_EMPTY:
+        return
     s['path'] = b''
     s['path_len'] = 0
     s['head'] = HEAD_EMPTY
     s['null'] = 0
+
+
+def fill_slot_path(block: dict, t: int, path_str: str) -> bool:
+    """填 t 对应的第一个路径槽。返回 False = 该 block 里没有这个 t（不做插入——
+    槽位数量是 schema 固定的，新增材质槽走 add_block 一次性铺满）。"""
+    s = find_path_set(block, t)
+    if s is None:
+        return False
+    fill_path_set(s, path_str)
+    return True
+
+
+def clear_slot_path(block: dict, t: int) -> bool:
+    """清空 t 对应的第一个路径槽。返回 False = 找不到该槽位。"""
+    s = find_path_set(block, t)
+    if s is None:
+        return False
+    clear_path_set(s)
     return True
 
 
