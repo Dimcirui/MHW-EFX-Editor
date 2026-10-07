@@ -81,10 +81,8 @@ class EFX_OT_import(bpy.types.Operator, ImportHelper):
 
     # 颜色模式隐藏非颜色内容，但保留完整对象树用于导出。
     import_only_colors: BoolProperty(
-        name="Import Only Colors",
-        description="只暴露含颜色/亮度字段的 entry 与 attribute，其余内容（结构编辑/TIML/"
-                    "预设等）在此文件里隐藏——供只想改色、不想碰其他任何东西的场景使用。"
-                    "导出仍是完整合法的 .efx",
+        name="Use Color Editor",
+        description="用 Color Editor 打开：只显示颜色和亮度，可以整体改色。导出的 .efx 仍然完整",
         default=False,
         options={"SKIP_SAVE"},
     )

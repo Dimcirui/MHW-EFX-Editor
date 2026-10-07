@@ -810,7 +810,8 @@ class EFX_PT_batch_edit(Panel):
 
     @classmethod
     def poll(cls, context):
-        return bool(_selected(context))
+        from . import root_collection as _rc
+        return bool(_selected(context)) and not _rc.context_in_color_editor(context)
 
     def draw(self, context):
         _draw_content(self.layout, context)

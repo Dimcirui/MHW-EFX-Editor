@@ -199,6 +199,15 @@ def root_is_color_editor_mode(root_col: bpy.types.Collection) -> bool:
     return root_col is not None and int(root_col.get("color_editor_mode", 0)) == 1
 
 
+def context_in_color_editor(context) -> bool:
+    """活动对象属于颜色模式的根，或场景里的 EFX 全部处于颜色模式时返回 True。"""
+    obj = getattr(context, "active_object", None)
+    if obj is not None and find_root_collection(obj) is not None:
+        return is_color_editor_mode(obj)
+    roots = all_root_collections()
+    return bool(roots) and all(root_is_color_editor_mode(r) for r in roots)
+
+
 def register():
     bpy.types.Collection.efx_root_ptr = PointerProperty(
         name="EFX Root Collection",

@@ -111,6 +111,11 @@ class EFX_PT_mesh_drive(Panel):
     bl_order = 2
     bl_options = {"DEFAULT_CLOSED"}
 
+    @classmethod
+    def poll(cls, context):
+        from . import root_collection as _rc
+        return not _rc.context_in_color_editor(context)
+
     def draw(self, context):
         layout = self.layout
         scene = context.scene
