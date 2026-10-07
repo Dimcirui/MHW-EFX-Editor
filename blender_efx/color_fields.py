@@ -57,6 +57,24 @@ _BRIGHTNESS_NAMES = frozenset({
 })
 
 
+# EPV 颜色槽：非 0 时颜色取自调用方 .epv3 的槽位，本地颜色不生效。
+_EPV_SLOT_NAMES = frozenset({
+    "epv_color_slot", "epvcolorslot", "epv_color_slot1", "epv_color_slot2",
+    "EPVColorSlot1", "EPVColorSlot2", "epvColorSlot",
+    "epvcolor_0", "epvcolor_1",
+    "headColorEpvSlot", "tailColorEpvSlot",
+})
+_INT_TYPES = frozenset({"INT", "UINT", "BYTE1", "SHORT1"})
+
+
+def is_epv_slot_field(ori_name: str, data_type: str) -> bool:
+    """字段是否为整数型 EPV 颜色槽。"""
+    if data_type not in _INT_TYPES:
+        return False
+    suffix = ori_name.rsplit(".", 1)[-1] if ori_name else ori_name
+    return suffix in _EPV_SLOT_NAMES or suffix.endswith("orrectColorNo")
+
+
 def is_brightness_field(type_hash, ori_name: str, data_type: str) -> bool:
     """字段是否为可整体乘算的亮度/强度浮点（供 Color Tool 的亮度乘数使用）。"""
     if data_type != "FLOAT":
