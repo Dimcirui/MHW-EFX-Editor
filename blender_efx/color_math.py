@@ -104,6 +104,28 @@ def effective_colors(entries):
     return out
 
 
+def entry_lightness(entry):
+    """Entry 可见颜色的平均明度；没有可见颜色时返回 None。"""
+    colors = effective_colors([entry])
+    if not colors:
+        return None
+    return sum(max(c) for c in colors) / len(colors)
+
+
+def pick_white(entries, ratio, by_lightness, rng):
+    """按比例挑出改白的 Entry 序号。
+
+    by_lightness 为真时取原来最亮的那部分，否则随机挑；没有可见颜色的 Entry 不参与。
+    """
+    idx = [i for i, e in enumerate(entries) if entry_lightness(e) is not None]
+    k = int(round(len(idx) * min(1.0, max(0.0, ratio))))
+    if by_lightness:
+        idx.sort(key=lambda i: entry_lightness(entries[i]), reverse=True)
+    else:
+        rng.shuffle(idx)
+    return set(idx[:k])
+
+
 def plan_recolor(entries, op, target_rgb, delta=0.0):
     """为每个颜色返回新 RGB，不改的为 None。
 

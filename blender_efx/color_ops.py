@@ -8,6 +8,7 @@
 
 import colorsys
 import math
+import random
 
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty
@@ -330,6 +331,12 @@ class EFX_OT_recolor_apply(bpy.types.Operator):
             if scn.efx_recolor_black_white:
                 dark = [g for g in groups if g.blend_state not in _BRIGHT_ONLY_STATES]
                 white = [g for g in groups if g.blend_state in _BRIGHT_ONLY_STATES]
+                assign = scn.efx_recolor_bw_assign
+                if assign != "ALL_DARK":
+                    picked = _cm.pick_white(_to_math(dark), scn.efx_recolor_white_ratio,
+                                            assign == "LIGHTNESS", random.Random())
+                    white += [g for i, g in enumerate(dark) if i in picked]
+                    dark = [g for i, g in enumerate(dark) if i not in picked]
             else:
                 dark, white = groups, []
             tgt = tuple(scn.efx_recolor_dark)[:3]
@@ -451,6 +458,15 @@ class EFX_PT_color_tool(bpy.types.Panel):
         else:
             col.prop(scn, "efx_recolor_dark", text=T("colortool.dark_color"))
             col.prop(scn, "efx_recolor_black_white", text=T("colortool.black_white"))
+            if scn.efx_recolor_black_white:
+                row = col.row(align=True)
+                for value, key in (("ALL_DARK", "colortool.assign_all_dark"),
+                                   ("LIGHTNESS", "colortool.assign_lightness"),
+                                   ("RANDOM", "colortool.assign_random")):
+                    row.prop_enum(scn, "efx_recolor_bw_assign", value, text=T(key))
+                if scn.efx_recolor_bw_assign != "ALL_DARK":
+                    col.prop(scn, "efx_recolor_white_ratio", text=T("colortool.white_ratio"),
+                             slider=True)
         row = layout.row(align=True)
         sub = row.row(align=True)
         sub.enabled = bool(_selected_entry_names(context))
@@ -554,6 +570,22 @@ def register():
                      "When off, every part is set to the dark color"),
         default=True,
     )
+    bpy.types.Scene.efx_recolor_bw_assign = EnumProperty(
+        name="Assignment",
+        items=(
+            ("ALL_DARK", "All Dark", "Every part that can show dark colors becomes the dark color"),
+            ("LIGHTNESS", "By Lightness", "Parts that were brighter turn white, the rest become the dark color"),
+            ("RANDOM", "Random", "Parts turn white or dark at random; apply again for a different result"),
+        ),
+        default="ALL_DARK",
+    )
+    bpy.types.Scene.efx_recolor_white_ratio = FloatProperty(
+        name="White Share",
+        description="Share of the parts that turn white instead of dark",
+        subtype="FACTOR",
+        min=0.0, max=1.0,
+        default=0.5,
+    )
     bpy.types.Scene.efx_recolor_keep_value = BoolProperty(
         name="Keep Lightness",
         description="Keep each color's own lightness and only take the target's hue and saturation",
@@ -575,6 +607,7 @@ def unregister():
         bpy.utils.unregister_class(c)
     for prop in ("efx_recolor_mode", "efx_recolor_hue", "efx_recolor_hue_swatch",
                  "efx_recolor_target", "efx_recolor_dark", "efx_recolor_black_white",
+                 "efx_recolor_bw_assign", "efx_recolor_white_ratio",
                  "efx_recolor_keep_value",
                  "efx_brightness_mult"):
         try:
