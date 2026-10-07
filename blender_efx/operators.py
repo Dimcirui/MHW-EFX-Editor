@@ -236,7 +236,7 @@ def _default_export_basename(collection) -> str:
 
 
 def _resolve_default_export_collection(context):
-    """按活动 EFX、活动对象所属根的顺序选择导出目标。"""
+    """按活动 EFX、活动对象所属根、场景唯一 EFX 的顺序选择导出目标。"""
     scn = getattr(context, "scene", None)
     active_col = getattr(scn, "efx_active_efx", None) if scn is not None else None
     if _efx_root_in_collection(active_col) is not None:
@@ -245,6 +245,13 @@ def _resolve_default_export_collection(context):
     root = _find_efx_root(context)
     if root is not None:
         return root
+
+    if scn is None:
+        return None
+    in_scene = set(scn.collection.children_recursive)
+    roots = [c for c in _rc.all_root_collections() if c in in_scene]
+    if len(roots) == 1:
+        return roots[0]
     return None
 
 
