@@ -133,17 +133,18 @@ def _read_for_display():
 
 
 # 字段动画状态缓存按 Entry 名和字节长度失效，由 ``set_entry_timl`` 显式清理。
-_ANIM_CACHE = {"key": None, "set": frozenset()}
+_ANIM_CACHE = {}
 
 
 def invalidate_anim_cache():
     """TIML 字节被改写后清缓存（由 timl_edit.set_entry_timl 调用）。"""
-    _ANIM_CACHE["key"] = None
+    _ANIM_CACHE.clear()
 
 
-def entry_animated_channels():
-    """当前 entry 的 TIML 里已存在的 (tlp_hash, dt_hash) 集合；无 TIML 返回空集。"""
-    body = _active_entry()
+def entry_animated_channels(body=None):
+    """Entry 的 TIML 里已存在的 (tlp_hash, dt_hash) 集合；默认取活动 Entry，无 TIML 返回空集。"""
+    if body is None:
+        body = _active_entry()
     if body is None:
         return frozenset()
     try:
@@ -153,8 +154,9 @@ def entry_animated_channels():
     if not raw:
         return frozenset()
     key = (body.name, len(raw))
-    if _ANIM_CACHE["key"] == key:
-        return _ANIM_CACHE["set"]
+    cached = _ANIM_CACHE.get(body.name)
+    if cached is not None and cached[0] == key:
+        return cached[1]
     out = set()
     try:
         timl_obj = _timl.parse_timl(raw)
@@ -167,9 +169,9 @@ def entry_animated_channels():
                     out.add((tlp, tf.datatype_hash & 0xFFFFFFFF))
     except Exception:
         out = set()
-    _ANIM_CACHE["key"] = key
-    _ANIM_CACHE["set"] = frozenset(out)
-    return _ANIM_CACHE["set"]
+    result = frozenset(out)
+    _ANIM_CACHE[body.name] = (key, result)
+    return result
 
 
 def _timl_capable_entry():
@@ -243,9 +245,44 @@ def _ptbehavior_channel(attr_obj, item):
     return tlp, entries
 
 
+def _item_entry(item):
+    """字段所属的 Entry；无法从字段反查时返回 ``None``（调用方回退到活动 Entry）。"""
+    obj = getattr(item, "id_data", None) if item is not None else None
+    if obj is not None and obj.get("~TYPE") == "EFX_ATTRIBUTE":
+        return obj.parent
+    return None
+
+
+def _field_channels(type_name: str, ori_name: str, item=None):
+    """字段对应的 (tlp, [(dt, dataType), ...])；不可动画时返回 ``None``。"""
+    tname = type_name.upper()
+    if tname == "PTBEHAVIOR":
+        obj = getattr(item, "id_data", None) if item is not None else None
+        if obj is None or obj.get("~TYPE") != "EFX_ATTRIBUTE":
+            return None
+        return _ptbehavior_channel(obj, item)
+    entries = FIELD_TO_DT.get((tname, ori_name))
+    tlp = BLOCK_TO_TLP.get(tname)
+    if not entries or tlp is None:
+        return None
+    return tlp, list(entries)
+
+
+def field_animated(type_name: str, ori_name: str, item=None) -> bool:
+    """字段是否已有 TIML 轨道（有则静态值不生效）。"""
+    ch = _field_channels(type_name, ori_name, item)
+    if ch is None:
+        return False
+    present = entry_animated_channels(_item_entry(item))
+    if not present:
+        return False
+    tlp = ch[0] & 0xFFFFFFFF
+    return any((tlp, dt & 0xFFFFFFFF) in present for dt, _dtp in ch[1])
+
+
 def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
-    """在字段标题行 row 上追加单个 +TIML 图标按钮（T2）。
-    点击后弹出 popup 选 +A0/+A1。无 TIML 时灰显。
+    """在字段标题行 row 上追加单个 TIML 图标按钮（T2）。
+    无轨道时点击添加（必要时弹出 +A0/+A1 选择）；已有轨道时按钮按下，点击确认后删除。
 
     两条路径：
       - 普通块：查 FIELD_TO_DT + BLOCK_TO_TLP 的静态映射，仅确认字段显示。
@@ -257,7 +294,7 @@ def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
     data_type = 0
 
     animated = False
-    present = entry_animated_channels()
+    present = entry_animated_channels(_item_entry(item))
     if tname == "PTBEHAVIOR":
         if item is None:
             return
@@ -286,6 +323,15 @@ def draw_field_timl_buttons(row, type_name: str, ori_name: str, item=None):
                            for dt, _dtype in entries)
 
     sub = row.row(align=True)
+    if animated:
+        # 已有轨道：按钮保持按下，点击后确认删除该字段的全部轨道。
+        ch = _field_channels(tname, ori_name, item)
+        body = _item_entry(item)
+        op = sub.operator("efx.timl_delete_field_tracks", text="", icon="ANIM", depress=True)
+        op.entry_name = body.name if body is not None else ""
+        op.tlp_hash_hex = "%08X" % ch[0]
+        op.dt_hash_hex = ",".join("%08X" % (dt & 0xFFFFFFFF) for dt, _dtp in ch[1])
+        return
     # 可支持的 Entry 即使尚无 TIML 也可触发添加。
     sub.enabled = (_timl_capable_entry() is not None)
     # 有绝对优势轴时直接加到该轴；另一轴仍可在 TIML 侧栏手动添加。
@@ -540,6 +586,61 @@ class EFX_OT_timl_delete_track(Operator):
         _commit_edit(body, timl)
         lbl = channel_label(tlp, dt)
         self.report({"INFO"}, f"Deleted {lbl} from {_SLOT_LABEL.get(self.slot, str(self.slot))}")
+        return {"FINISHED"}
+
+
+class EFX_OT_timl_delete_field_tracks(Operator):
+    """删除字段在两条轴上的全部 TIML 轨道，字段恢复按静态值生效"""
+
+    bl_idname = "efx.timl_delete_field_tracks"
+    bl_label  = "Delete Field TIML"
+    bl_options = {"REGISTER", "UNDO"}
+
+    entry_name:   StringProperty(default="")
+    tlp_hash_hex: StringProperty(default="")
+    dt_hash_hex:  StringProperty(default="")
+
+    @classmethod
+    def description(cls, context, properties):
+        return T("timl.field_delete_tip")
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        try:
+            return wm.invoke_confirm(self, event, title=T("timl.field_delete_title"),
+                                     message=T("timl.field_delete_msg"),
+                                     confirm_text=T("timl.field_delete_confirm"), icon="WARNING")
+        except TypeError:
+            # 旧版 Blender 的确认框不接受标题与说明。
+            return wm.invoke_confirm(self, event)
+
+    def execute(self, context):
+        try:
+            tlp = int(self.tlp_hash_hex, 16)
+            dts = [int(t, 16) for t in self.dt_hash_hex.split(",") if t.strip()]
+        except ValueError:
+            self.report({"ERROR"}, "Invalid hash hex value")
+            return {"CANCELLED"}
+        body = bpy.data.objects.get(self.entry_name) if self.entry_name else _active_entry()
+        if body is None:
+            self.report({"ERROR"}, "No valid TIML found on active entry")
+            return {"CANCELLED"}
+        from . import timl_edit as _te
+        _te.commit_fcurves_to_bytes(body)
+        timl = _te.read_model(body)
+        if timl is None:
+            self.report({"ERROR"}, "No valid TIML found on active entry")
+            return {"CANCELLED"}
+        n = 0
+        for slot in range(len(timl.animations)):
+            for dt in dts:
+                if _timl.delete_transform(timl, slot, tlp, dt):
+                    n += 1
+        if n == 0:
+            self.report({"WARNING"}, "Track not found")
+            return {"CANCELLED"}
+        _commit_edit(body, timl)
+        self.report({"INFO"}, T("timl.field_deleted").format(n=n))
         return {"FINISHED"}
 
 
@@ -801,6 +902,7 @@ _CLASSES = (
     EFX_OT_timl_add_field_tracks,
     EFX_OT_timl_add_track,
     EFX_OT_timl_delete_track,
+    EFX_OT_timl_delete_field_tracks,
     EFX_OT_timl_copy_track,
     EFX_PT_timl_tracks,
     EFX_PT_timl_tracks_graph,

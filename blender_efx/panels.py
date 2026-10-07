@@ -70,6 +70,45 @@ def _friendly_name(ori_name: str, type_name: str = "") -> str:
 
 
 
+# 绘制被 TIML 驱动的字段时置真：字段画进灰显子布局，TIML 按钮改由外层单独绘制。
+_TIML_LOCK = {"on": False}
+
+
+def _field_timl_animated(type_name: str, ori_name: str, item=None) -> bool:
+    if not type_name:
+        return False
+    try:
+        from . import timl_tracks as _tt
+        return _tt.field_animated(type_name, ori_name, item)
+    except Exception:
+        return False
+
+
+def _timl_lockable(draw_fn):
+    """字段已有 TIML 轨道时灰显整个字段，只保留可点击的 TIML 按钮。
+
+    被包装函数的签名为 ``(layout, item, type_name, ...)``，type_name 可按关键字传入。
+    """
+    import functools
+
+    @functools.wraps(draw_fn)
+    def wrapper(layout, item, *args, **kw):
+        type_name = kw.get("type_name", args[0] if args else "")
+        if _TIML_LOCK["on"] or not _field_timl_animated(type_name, item.ori_name, item):
+            return draw_fn(layout, item, *args, **kw)
+        outer = layout.row(align=True)
+        inner = outer.column(align=True)
+        inner.enabled = False
+        _TIML_LOCK["on"] = True
+        try:
+            draw_fn(inner, item, *args, **kw)
+        finally:
+            _TIML_LOCK["on"] = False
+        from . import timl_tracks as _tt
+        _tt.draw_field_timl_buttons(outer, type_name, item.ori_name, item)
+    return wrapper
+
+
 def _draw_field_row_buttons(row, type_name: str, ori_name: str,
                             item=None, timl: bool = True,
                             anno_name: str = "") -> None:
@@ -87,7 +126,7 @@ def _draw_field_row_buttons(row, type_name: str, ori_name: str,
         )
         op.type_name = type_name
         op.field_name = _aname
-    if timl:
+    if timl and not _TIML_LOCK["on"]:
         try:
             from . import timl_tracks as _tt
             _tt.draw_field_timl_buttons(row, type_name, ori_name, item)
@@ -164,6 +203,7 @@ def _draw_value_jitter_pair(layout, vitem, jitem, type_name: str = "", label_ove
     row.scale_y = 1.1
     row.use_property_split = False
     split = row.split(factor=0.45)
+    split.enabled = not _field_timl_animated(type_name, vitem.ori_name, vitem)
     split.label(text=fname)
     sub = split.row(align=True)
     sub.prop(vitem, vattr, text=lbl_a)
@@ -192,8 +232,10 @@ def _draw_axis_group(layout, type_name: str, group, item_by_name: dict):
         row = layout.row(align=True)
         row.scale_y = 1.1
         row.use_property_split = False
-        row.label(text=axis_label, icon="BLANK1")
-        vals = row.row(align=True)
+        axis = row.row(align=True)
+        axis.enabled = not _field_timl_animated(type_name, base, vitem)
+        axis.label(text=axis_label, icon="BLANK1")
+        vals = axis.row(align=True)
         if jitem is not None:
             jattr = _SCALAR_PROP_ATTR[jitem.data_type]
             vals.prop(vitem, vattr, text=T("field.static"))
@@ -282,6 +324,7 @@ def _bitmask_field(type_name: str, ori_name: str):
     return None
 
 
+@_timl_lockable
 def _draw_field_item(layout, item, type_name: str = "", label_override=None, obj=None,
                      anno_name: str = ""):
     """
@@ -608,6 +651,7 @@ def _draw_group_bit_rows(layout, item_by_name, type_name, rows, zh):
         _draw_bitmask_bit_row(layout, it, type_name, bit, label, anno_name=anno)
 
 
+@_timl_lockable
 def _draw_tubelight_int_as_color(layout, item, type_name, label):
     """headColor/tailColor：打包 RGBA 颜色选择器。"""
     row = layout.row(align=True)
@@ -622,6 +666,7 @@ def _draw_tubelight_int_as_color(layout, item, type_name, label):
 
 
 
+@_timl_lockable
 def _draw_shadersettings_preset_id(layout, item, type_name, label):
     """presetId：预设名字符串输入框 + 已知名字下拉。"""
     row = layout.row(align=True)
@@ -721,6 +766,7 @@ _PTB_VECTOR_PROPS = {
 }
 
 
+@_timl_lockable
 def _draw_ptb_vector_row(layout, item, type_name, label):
     """PTBEHAVIOR 的非颜色小数组（vector2/3/4、2×int32）：一行画完。"""
     prop, n = _PTB_VECTOR_PROPS[item.data_type]
@@ -735,6 +781,7 @@ def _draw_ptb_vector_row(layout, item, type_name, label):
     _draw_field_row_buttons(row, type_name, item.ori_name, item=item, anno_name=item.hint_name)
 
 
+@_timl_lockable
 def _draw_ptb_float4_as_color(layout, item, type_name, label):
     """PTBEHAVIOR 的 4×float32 颜色参数（mColor）：色块 + A 滑块。
 
